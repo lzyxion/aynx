@@ -35,6 +35,21 @@
 
 [See all features](docs/features.md)
 
+## Getting started
+
+At first the window looks almost empty: AYNX keeps its menus in three docks that open when you hover an edge of the window.
+
+- **Left edge**: the launcher dock with shells, Claude Code, Codex, hosts, projects and databases (`Ctrl+Shift+H`)
+- **Right edge**: the side chat (`Ctrl+Shift+'`)
+- **Bottom center**: your favorites
+- Open an AI agent with `Ctrl+Shift+A`; `Ctrl+Shift+P` lists every command and its keys.
+
+<p align="center">
+  <img src="docs/images/getting-started/hidden-docks.png" width="640" alt="Where the hidden docks open">
+</p>
+
+The [Getting started](docs/user/getting-started.md) guide walks through the first session step by step: AI tiles, tiling keys, adding an SSH host, the side chat, the session sheet and themes.
+
 ## Status
 
 Personal project under active development; expect breaking changes. It supports **Windows 11** only (WebView2), and installers are **unsigned**. Linux and macOS support is undecided.
@@ -44,6 +59,7 @@ The supported AI agents are **Claude Code** and **Codex** only. On this PC they 
 
 Get the installer from the [latest release](https://github.com/lzyxion/aynx/releases/latest): `AYNX_<version>_x64-setup.exe` installs for the current user, `AYNX_<version>_x64_en-US.msi` for all users.
 The installers are unsigned, so Windows SmartScreen may warn on first run. Choose **More info → Run anyway**.
+New to AYNX? Start with the [Getting started](docs/user/getting-started.md) guide.
 
 ## Build from source
 
@@ -59,7 +75,7 @@ npm run tauri build   # installers in src-tauri/target/release/bundle/{nsis,msi}
 
 [All features](docs/features.md) · [Security notes](docs/security.md)
 
-User guides: [Settings](docs/user/settings.md) · [Hosts](docs/user/hosts.md) · [Projects](docs/user/projects.md) · [Files and documents](docs/user/files.md) · [Query tile](docs/user/query-tile.md) · [Sessions and task plans](docs/user/dashboard.md) · [Orchestration](docs/user/orchestration.md) · [Remote access](docs/user/remote-web.md) · [Shortcuts](docs/user/shortcuts.md)
+User guides: [Getting started](docs/user/getting-started.md) · [Settings](docs/user/settings.md) · [Hosts](docs/user/hosts.md) · [Projects](docs/user/projects.md) · [Files and documents](docs/user/files.md) · [Query tile](docs/user/query-tile.md) · [Sessions and task plans](docs/user/dashboard.md) · [Orchestration](docs/user/orchestration.md) · [Remote access](docs/user/remote-web.md) · [Shortcuts](docs/user/shortcuts.md)
 
 For contributors: [Contributing](CONTRIBUTING.md)
 

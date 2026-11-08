@@ -35,6 +35,21 @@
 
 [전체 기능 보기](docs/features.ko.md)
 
+## 시작하기
+
+처음에는 창이 거의 비어 보입니다. AYNX는 메뉴를 독 세 개에 넣어 두고, 창 가장자리에 마우스를 대면 꺼냅니다.
+
+- **왼쪽 끝**: 런처 독 — 셸, Claude Code, Codex, 호스트, 프로젝트, DB (`Ctrl+Shift+H`)
+- **오른쪽 끝**: 사이드 채팅 (`Ctrl+Shift+'`)
+- **아래 가운데**: 즐겨찾기
+- AI 에이전트는 `Ctrl+Shift+A`로 열고, `Ctrl+Shift+P`를 누르면 모든 명령과 단축키가 보입니다.
+
+<p align="center">
+  <img src="docs/images/getting-started/hidden-docks.png" width="640" alt="숨은 독이 열리는 곳">
+</p>
+
+[시작하기](docs/user/getting-started.ko.md) 안내에서 AI 타일, 타일 배치 단축키, SSH 호스트 추가, 사이드 채팅, 세션 판, 테마까지 처음 쓰는 흐름을 차례로 볼 수 있습니다.
+
 ## 상태
 
 활발히 개발 중인 개인 프로젝트로, 호환되지 않는 변경이 있을 수 있습니다. **Windows 11**(WebView2)만 지원하며, 설치 관리자는 **서명 없이** 제공합니다. Linux와 macOS 지원 여부는 미정입니다.
@@ -44,6 +59,7 @@
 
 [최신 릴리스](https://github.com/lzyxion/aynx/releases/latest)에서 설치 관리자를 받습니다. `AYNX_<버전>_x64-setup.exe`는 현재 사용자에게, `AYNX_<버전>_x64_en-US.msi`는 모든 사용자에게 설치합니다.
 설치 관리자에 서명이 없어서 처음 실행할 때 Windows SmartScreen 경고가 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요.
+처음이라면 [시작하기](docs/user/getting-started.ko.md) 안내부터 보세요.
 
 ## 소스에서 빌드
 
@@ -57,7 +73,7 @@ npm run tauri build   # 설치 관리자: src-tauri/target/release/bundle/{nsis,
 
 ## 문서
 
-[전체 기능](docs/features.ko.md) · [보안](docs/security.ko.md)
+[시작하기](docs/user/getting-started.ko.md) · [전체 기능](docs/features.ko.md) · [보안](docs/security.ko.md)
 
 사용자 안내(영어): [설정](docs/user/settings.md) · [호스트](docs/user/hosts.md) · [프로젝트](docs/user/projects.md) · [파일 · 문서 타일](docs/user/files.md) · [쿼리 타일](docs/user/query-tile.md) · [세션과 작업안](docs/user/dashboard.md) · [오케스트레이션](docs/user/orchestration.md) · [원격 접속](docs/user/remote-web.md) · [단축키](docs/user/shortcuts.md)
 
