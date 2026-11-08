@@ -90,6 +90,8 @@ The trust basis is **the list of public certificate authorities built into the a
 
 There are four layers from the top (on the left is the [schema tree](#tree)).
 
+![A query tile on SQLite: the schema tree, the editor and the result table](../images/guides/query-schema.png)
+
 | Layer | What is there |
 | --- | --- |
 | **Script tab row** | Tree show/hide, **script tabs** `[Query 1 ●] [Query 2] [+]`, and at the right end the connection state dot (green = connected, red = disconnected) |
@@ -185,6 +187,8 @@ Typing in the **Find names** field below the tree's head (**`Ctrl+F`**, or **`Ct
 
 **Right-click → View DDL** on a tree row (or select that row in the tree and press **`F4`**) shows the object's DDL (`CREATE …`) in the lower pane.
 
+![The DDL tab for a table](../images/guides/query-ddl.png)
+
 ```text
 ┌ Result │ DDL × ┐                                  ← Once DDL is opened, the lower pane splits in two (× closes the DDL)
  Tables  public.orders  [Reconstructed]      [Copy] [Insert into editor]
@@ -265,6 +269,8 @@ A **single-statement run** (one statement) has no tab row: a one-row list and, f
 ### Charts
 
 **[Table | Chart]** at the head of a result table shows the same result as a chart (both for a single statement's table and in [Result N] tabs). The result is not fetched again. The rows already received (within the row limit) are drawn as they are. The selected side, axes and type are remembered per result and are **not saved** (running again returns to the table and default axes).
+
+![Query results drawn as a line chart](../images/features/query-tile.png)
 
 - **Type** — Line, Bar, Scatter. **Scatter works only when X is a numeric or time column.**
 - **Axes** — One X (a column or **Row order**), and several numeric Y columns (up to 8). At first the app chooses:
@@ -434,6 +440,8 @@ If the session server is an earlier version (version 10), AI permission is saved
 ### AI write plans
 
 On connections at Ask or higher, the AI can **propose** changing data (`create_db_write_plan`). The AI cannot run it. The proposal appears on a **review card** at the bottom of the screen, and the app runs it only after a person approves. **DB plans are not auto-approved by an allow list.** Only connections whose AI permission is set to **YOLO** (the level above Ask — choosing it shows a confirmation dialog) are approved and run immediately with no person, and only while the global switch in Settings › Auto-approval is on (the run rules below still apply).
+
+![A review card for an AI write plan on a database](../images/features/approval.png)
 
 - **What the card shows**: connection name, engine, DB, via SSH, the full statements (with syntax highlighting), the **maximum affected rows** (`maxAffected` — the AI must set it), and "Runs in one transaction — if any statement fails or the affected rows exceed the limit, nothing is committed and everything is rolled back". If there are statements whose affected rows are not counted (DDL, `TRUNCATE`, `WITH …`), a warning that "the limit cannot stop them" is added, and [Approve run] must be clicked twice.
 - **What is filtered at creation** (no plan is created): transaction statements (`BEGIN`, `COMMIT`, `SAVEPOINT`, `SET autocommit` …); DDL and `LOCK TABLES` in MySQL and MariaDB (implicit commits cannot go in one transaction — a person does these in a query tile); `CALL` and `CREATE`/`DROP TEMPORARY TABLE` in MySQL and MariaDB (commits inside a procedure cannot be seen, and they are not rolled back); statements that run only outside a transaction in PostgreSQL (`VACUUM`, `… CONCURRENTLY`); two statements in one item; and more than 20 statements or 64 KiB.

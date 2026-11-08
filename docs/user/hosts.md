@@ -100,6 +100,8 @@ Shows **what the vault holds** for this host (password, key passphrase). The onl
 
 The values in this tab are used only on screen and do not affect the connection. If all are empty, inherited or default values apply.
 
+![The Appearance tab: icon, color, group and tags](../images/guides/host-appearance.png)
+
 If the icon or color field is empty and a value is inherited, the dimmed text in the field says **where it came from and what it is** — "From preset prod · Ubuntu", "From defaults · #8a8a8a" (`[defaults]`). The preview and color swatch also draw that value dimmed (the color with hatching), which marks it as not written on this host. The tooltip of [↺] says what the field follows after clearing.
 
 <a id="host-icon"></a>
@@ -242,6 +244,8 @@ The position is the same as in commands the app starts: for Claude, at the end o
 ## AI access — `~/.aynx/delegation.toml`
 
 Sets what the AI can do on this host. It applies **the same way to tiles a person opened and headless sessions the AI opened**. If a host has three tiles, all three follow the same permission. Clicking the permission chip in the tile header (or **AI access…** in the tile menu) changes the same value. The default is **Off**, and only what you choose is written to the file (at Off, this host's line disappears). See the whole list of hosts with permissions in Settings › Security.
+
+![The AI access tab set to Ask](../images/guides/host-ai-access.png)
 
 - Only this form and the tile header (a person) can change the permission. The AI has no way to widen its own permission.
 - **Local tiles** have only **Off · Read**, per tile. Choose them with the same permission chip in the header or **AI access…** in the tile menu. Ask, Auto and YOLO are locked. They have no permission to run anything (they cannot be task plan targets). **AI tiles** (local tiles running a Claude or Codex that the app started or that you ran from a shell) have no AI access at all: there is no chip or menu row, and it is always **Off** (another AI does not read that conversation through MCP). A tile restored with it on is turned off.

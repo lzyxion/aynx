@@ -27,6 +27,8 @@ Remote (SSH) artists do not exist yet.
 The Orchestration cell in the launcher dock (headphones) or **Orchestration** in the command palette opens the orchestration tab. If the current workspace already has such a tab, the app navigates
 inside it; otherwise it creates one. Albums do not get a tab each — use **Open in new tab** only when you want to view the same album separately. ← and `Esc` go up one level.
 
+![The library: artists on the left, studios, recent albums and the album list](../images/guides/orch-library.png)
+
 - **Library** — artists on the left. On the right: **New album**, the view chips (All · In progress · Ended · **Archive · n**), **Studios** (a square card for each repository, counting only albums that match the view chip, with a playing mark if one of them is in progress — click a card to open that studio), **Recent** (albums in progress first, then the most recently updated, up to five) and the album list. The two buttons beside the **Albums** title switch albums and the archive between square cards (the default) and rows; the choice is remembered on that device.
 - **Studio** — one repository's albums. The head shows its name, full path and album counts, with **New album** (that repository already selected). Below it are the same view chips, limited to this studio, then **Recent** and the album list. An album opened from here returns here with ← and `Esc`.
 - **Album** — the producer chat on the left. On the right: the album head, the track table, the remaining limits and the timeline.
@@ -58,6 +60,8 @@ The artists panel in the library leads to the **Artists** screen. This is the on
 
 **An album comes into being only at the moment a person sends the first message in [New album].** AI and MCP have no way to open an album or widen its configuration. The producer chat is tied to that album
 from the start and receives the first message.
+
+![New album: the producer chat on the left, the studio, artists, permissions and verification on the right](../images/guides/orch-new-album.png)
 
 You can get there through **New album** in the library; **New album in this repository** in the command palette, the project right-click menu and the status bar item (if a project is targeted, the draft is locked to its repository); and
 [Continue in orchestration](#fork) in the AI tile menu.
@@ -158,6 +162,8 @@ as a dashed pill: "AYNX woke the producer · #1 reported".
 
 **Album permissions** in the album head (only when Running or Paused) is the only place to change the configuration. **Only a person can change it.** AI and MCP have no way to write it.
 
+![Album permissions opened beside a running album](../images/guides/orch-permissions.png)
+
 - What can change: adding and removing artists · permissions · allowed commands · acceptance rules · rework limit · verification mode (Ask a person ↔ Run automatically) · auto-merge · plan tools · wake-up limit.
 - What cannot change: **the verification command, its time limit and advanced fields, and the five limits** ("Fixed" in the table above). They are fixed when the album starts. To change them, open a new album.
 - **Widening and narrowing both apply from the next turn.** A running turn finishes as it is. The app wakes the producer with "Album permissions changed" to tell it.
@@ -182,6 +188,8 @@ Widening from a remote web window asks for the master password again (changes wi
 
 The album head shows the repository, track count, accepted count, integration head and participating artists. Once exported, a line shows the branch and **Merge**. The **⋯** menu holds Pause, Resume, Complete album, Copy merge command, Album info, Clean up worktrees, Archive album and Stop album, each shown only when it applies. **Album info** adds a line under the head with the producer, elapsed time,
 verification command, remaining reviews and producer generation. Below the track table (or on the right if there is room) are the **Remaining** limits and the **Timeline**.
+
+![A running album: the producer chat, the track table, the remaining limits and the timeline](../images/guides/orch-album.png)
 
 ### Album states
 
@@ -280,6 +288,8 @@ If the track overlaps with the integration head, no commit is made and the track
 
 If you set a **verification** command in [New album], that command runs for every integration candidate (the commit that would land on the integration ref if accepted), and the candidate lands **only if it passes**.
 
+![Track 1 accepted, track 2 waiting for a person to run its verification](../images/guides/orch-verify.png)
+
 - **Only a person sets the command** — only in [New album]. It is fixed when the album starts, and neither the producer, the artists nor [Album permissions] can change it.
 - The app moves its dedicated verify folder (`<repository name>-wt/orch-<run8>-verify`, detached HEAD) to the candidate, **cleans it completely** (`clean -ffdx`), then runs one `cmd.exe /d /s /v:off /c "<command>"`. If something must be installed, put it in the command (`npm ci && npm test`).
   **Kept folders** (e.g. `node_modules`) are not removed and are reused, but they are removed when a **cache key file** (e.g. `package-lock.json`) changes.
@@ -332,6 +342,8 @@ only conversations seen on this device can be opened.
 
 **Merge** on the album puts the exported branch into the branch the album started from (`git merge --no-ff`, one merge commit, no squash). **The app never pushes.** Producers and artists cannot merge, and no MCP tool can.
 
+![The Merge dialog: commits, files and the checks that must pass](../images/guides/orch-merge.png)
+
 The dialog checks first, without changing the repository: no uncommitted changes (tracked files, plus untracked or ignored files the merge would overwrite), the main working folder is on the target branch, no expected conflict. A merge or rebase in progress, a moved or outdated exported branch, and repository settings outside integration support also block it. The server checks again right before merging. If the merge fails, it is aborted and you see why.
 
 When **Merge** cannot run, **Copy merge command** in the dialog and the ⋯ menu gives you `git merge --no-ff orch-<run8>-int` for a terminal. An album that started on a detached HEAD has no target branch, so only copying works. If you merge from a terminal, the album still shows **Merged into main** once that commit is in the branch.
@@ -366,6 +378,8 @@ If there are unexpected changes or a process is still using it, the folder is **
 ### Artist worktrees · refs — a person chooses
 
 **Clean up** on an ended album (completed · stopped · read-only — Clean up worktrees in the ⋯ menu) opens a window over the album and deletes only what you select. On the left you pick work folders, grouped as **Safe to delete**, **Check before picking** and **Can't delete**. On the right, a read-only graph in the same style as the branch tile shows main and this album's branches. Lines of the work folders you pick turn dashed and struck through, and **Open full graph** opens the branch tile if the repository is a project. If the graph can't be read, picking and deleting still work. Recovery records (refs) are collapsed under their own heading, unless a leftover temporary ref is already selected.
+
+![Clean up album: work folders to delete beside a read-only branch graph](../images/guides/orch-cleanup.png)
 
 | What | Default | Rule |
 |---|---|---|

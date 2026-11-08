@@ -11,6 +11,8 @@ in the "File tiles" and "Mouse" sections of the [shortcuts guide](shortcuts.md).
 <a id="files-view"></a>
 ### Three views: Icons · Compact · Details
 
+![A file tile beside a document tile](../images/features/files-docs.png)
+
 The three buttons next to back/forward on the left of the toolbar (`Ctrl+1` · `Ctrl+2` · `Ctrl+3`) choose the view. The view is remembered per tile. A new
 tile opens in the view last picked from a toolbar, and otherwise uses Settings › General › File tile default view.
 
@@ -56,6 +58,8 @@ it keeps only items whose name contains that text and the folders containing the
 ### Preview panel
 
 `F11` (or the right panel button at the far right of the toolbar) shows a preview panel to the right of the list. It is remembered per tile and is off at first.
+
+![The preview panel showing an image and its properties](../images/guides/files-preview.png)
 
 - With one item selected: image files (png · jpg · gif · webp · bmp · svg · ico) show a fitted picture and resolution, and other files and folders show a
   large picture. Below that come Size · Modified · Permissions · Path. A folder shows its item count if it has been expanded before.
@@ -145,6 +149,8 @@ preview tile **changes** to that file.
 ### Editing
 
 [Edit] edits within that tile. Save with `Ctrl+S` or [Save], and [Done] returns to the reading view.
+
+![Editing Markdown side by side with the rendered preview](../images/guides/doc-edit.png)
 
 - If there are unsaved changes, [Done] changes to [Revert]. Pressing it **discards** the changes and ends editing.
 - Files that are too large, files that could not be read fully as text, and remote files whose connection dropped cannot be edited (the button's tooltip gives the reason).

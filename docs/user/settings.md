@@ -122,8 +122,12 @@ local shells, SSH and the AI CLIs inside them keep running in the session server
 Save the current look as one set, then swap it all at once by choosing a card. For a quick switch, use `Ctrl+Shift+U`.
 
 - **What is included**: everything this section sets, meaning wallpaper (image, dim, blur, fit), brightness (mode), colors and
-  opacity, tab, status bar, signal and tile header styles, and the terminal palette (including colors extracted from the wallpaper).
-- **What is not included**: settings that are not about appearance, such as shortcuts, shells, tile placement and auto-reconnect, and the app icon.
+  opacity, material, tab, status bar and tile header styles, [resource rings](#resource-rings) and [usage rings](#usage-rings) on or off,
+  [window buttons](#window-buttons), [dock layout](#dock-layout), the [app icon](#app-icon) and the [app font](#app-ui-font).
+  From the Terminal section it also takes the terminal palette (including colors extracted from the wallpaper), terminal opacity,
+  the terminal font, [cursor style](#cursor-style) and [ligatures](#term-ligatures).
+- **What is not included**: settings that are not about appearance, such as shortcuts, shells, tile placement and auto-reconnect, and font sizes (app and terminal).
+- Profiles saved before a setting was added keep your current value for it when you apply them.
 - Wallpapers keep a separate copy per picture in the app folder, so each profile switches to its own picture. The same picture is stored only once,
   and copies used by neither any profile nor the current settings are cleaned up.
 - If a profile's picture copy is missing, only the background stays as it is and the rest is applied.
@@ -186,6 +190,7 @@ The palette for the whole app chrome: **System** · **Dark** · **Light**. It is
 - Changing the mode also changes the terminal theme if it is a preset with a pair (AYNX Dark ↔ AYNX Light and so on).
 - Built-in themes and custom colors change to the opposite-mode palette of the same variant and source color. Wallpaper extraction is also rebuilt from the same source color.
 - A preset picked separately in the terminal stays selected, and changes to its opposite-mode pair if it has one.
+- **Match color theme · Dark** and **· Light** in the terminal keep their brightness: changing the mode does not switch them (see [Terminal › Theme](#term-preset)).
 
 <a id="app-opacity"></a>
 ### Opacity
@@ -237,6 +242,13 @@ How tabs in the tab bar are drawn: **Pill** · **Flat**. The default is Pill.
 - Everything is drawn in CSS, so no extra font is needed.
 - The older **Powerline** and **Slanted** styles are gone. If they remain in a settings file or a look profile, they appear as Pill.
 
+<a id="window-buttons"></a>
+### Window buttons
+
+Whether to show **minimize · maximize · close** at the right end of the tab bar. **On** by default.
+
+- When off, close with the dock's [Quit…], maximize by double-clicking the empty space after the tabs, and minimize with your OS shortcut.
+
 <a id="status-bar"></a>
 ### Status bar
 
@@ -268,6 +280,12 @@ How the status bar strip is drawn. The default is **Flat**.
 - **Rounded** gives it margins on all sides and rounded corners so it floats like a tile. The tab bar also becomes a floating panel with the same margins and corners
   (window buttons at the right end inside it). With the status bar on top, the tab bar and status bar become a single two-row panel with no divider.
 
+<a id="dock-layout"></a>
+### Dock layout
+
+Which window edge holds the launcher dock and which holds the side chat: **Launcher left · chat right** (default) or **Launcher right · chat left**.
+They are always on opposite sides. Each opens when you hover its edge (see [Getting started](getting-started.md#3-find-the-hidden-docks)).
+
 <a id="resource-rings"></a>
 ### Resource rings
 
@@ -281,6 +299,14 @@ Whether to show two rings for **this whole PC's CPU and memory** at the very fro
 - If the session server is an older version or has no first sample yet (a few seconds after startup), the rings do not appear. If there are no sessions at all, the server stops
   measuring and the rings disappear after 30 seconds.
 - When off, the rings do not appear and the status bar's share of sample pulls stops. The tile [resource chip](#resource-chip) and the Resources view stay as they are.
+
+<a id="usage-rings"></a>
+### Usage rings
+
+Whether to show the **AI CLI usage limit rings** (Claude Code · Codex) in the status bar's middle group, after the resource rings. **On** by default.
+
+- Hovering shows usage per limit window. Pressing opens the **Usage view**.
+- When off, only the rings disappear. The Usage view stays available from the command palette (`Ctrl+Shift+P`).
 
 <a id="tiling"></a>
 ### Tile placement
@@ -353,7 +379,12 @@ The shell that **New terminal** (`Ctrl+Shift+N`) and the start screen open. It a
 ### Theme
 
 The palette inside the terminal (background, text, cursor, selection, ANSI 16 colors). It is chosen separately from the app theme. The list is grouped into **Dark · Light · My themes**,
-and if wallpaper color extraction is on, that palette stands at the very bottom.
+and when the app colors come from a color theme, a custom color or the wallpaper, two more options stand at the very bottom:
+
+- **Match color theme · Dark** and **Match color theme · Light** build the terminal palette from the same source color as the app, in a fixed brightness.
+  They stay as chosen when you switch the app between light and dark, so you can keep a dark terminal in a light app (or the other way around).
+- Picking a new color theme, custom color or wallpaper extraction keeps the brightness you chose and rebuilds the palette from the new color.
+- Older versions had a plain **Match color theme** that followed the app's brightness. A setting saved with it moves to the fixed option of the brightness it showed last.
 
 <a id="term-theme-import"></a>
 #### Import

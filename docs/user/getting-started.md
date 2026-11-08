@@ -4,7 +4,7 @@
 
 This guide walks through a first session with AYNX: install it, open an AI agent, arrange tiles, add an SSH host and find your way around. Each step links to a detailed guide when you want more.
 
-The screenshots use the default theme. Your colors follow the wallpaper and theme you pick.
+The screenshots use light mode with colors extracted from a wallpaper, and the terminal kept on the dark palette of the same colors. Your colors follow the wallpaper and theme you pick.
 
 ## 1. Install
 

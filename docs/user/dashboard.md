@@ -16,6 +16,8 @@ the flow, circumstances and exceptions are written here. The three screens open 
 <a id="sessions"></a>
 ### Tab map
 
+![The session sheet: every tab drawn as its tile layout](../images/features/session-sheet.png)
+
 This shows the window's tabs reduced **exactly as their actual tile layout**. The sheet is an overlay, so it does not resize tiles. `Esc`, the same key,
 clicking outside the sheet, or the window losing focus collapses it.
 
@@ -75,6 +77,8 @@ This is where you review, approve and reject **task plans** the AI proposed thro
 and opening it from an auxiliary window moves to the main window. A remote window does not change the main PC's layout and shows it as an overlay within its own window.
 There are two views — **Active** (awaiting review · current and recent runs) and **History** (past runs). The audit pill on the right of the head row says whether the audit log is recording and how many
 records it holds.
+
+![The Plans panel: a plan awaiting review and a finished run](../images/guides/task-plans.png)
 
 <a id="plan-flow"></a>
 ### Run flow — sequential canary

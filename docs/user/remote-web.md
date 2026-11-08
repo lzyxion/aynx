@@ -21,6 +21,8 @@ Tailscale also handles certificates and TLS.
 In **Settings › Remote access**, expand the **Remote access** card and press [Connect] on the **Tailscale connection** row. That is all: it finds the name, starts `tailscale serve`, turns remote access on and saves, in one step
 (it does not wait for [Save], and other fields with unsaved edits stay as they are). You are ready when the row shows the address to open.
 
+![Settings › Remote access with the one-step Tailscale Connect](../images/features/remote-access.png)
+
 - If something else is using 443, the row shows that target, and you have to press [Replace and connect] to overwrite it. If Funnel is exposing 443 or this port, it does not connect.
 - If serve or HTTPS must be turned on in the tailnet first, the reason appears with [Admin console ↗] and [Try again].
 - [Stop serve] removes only serve (remote access on/off and the name stay as they are). The remote access toggle does not touch serve.

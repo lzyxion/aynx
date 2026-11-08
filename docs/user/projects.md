@@ -139,6 +139,8 @@ On the right of a worktree row (except the primary folder), small text such as `
 
 A read-only tile that draws, on one page, **where the project's branches forked off and which worktree or agent is where**, with one row per commit. There are three ways to open it: click a change badge on a worktree row (with that branch selected), right-click a project or worktree row → [Branch graph], or use "Branch graph" in the palette (for the project of the current tile). It opens **side by side in the current tab**, not in a new tab, and if it is already open, the app goes to that tile.
 
+![The branch graph tile beside a diff tile](../images/features/git.png)
+
 - **Two lanes** — The left lane is the main branch (the branch of the main folder), and the right lane is shared by all other branches, so the width stays the same however many branches there are. Each branch has its own color.
 - **Rows** — Each row shows the lane marks, the name cell, the commit subject, `+added −removed` and the time, such as "3 minutes ago". A merge commit shows no line counts. Main branch commits are listed newest first, and skipped commits between them become a "⋯ N commits" row. Each branch's commits form a block placed right above the main commit it forked from.
 - **Name cell** — The first row of a block shows the branch name, the worktree name (or "no worktree") and the agent status glyph if there is an agent. The last row of a block shows "↳ branched from {commit}". The main branch shows "main folder".
@@ -213,6 +215,8 @@ If an agent sends signals from an old version of the hook script, the app notifi
 
 <a id="project-start"></a>
 ### Past conversations
+
+![A project start screen with past conversations in this worktree](../images/guides/project-start.png)
 
 When you open a project (or worktree), the start screen appears first instead of a shell, with past conversations from that folder, one per row (this can be turned off in Settings › General › Project start screen). Remote projects work the same way, except that when **creating** a new remote worktree, the SSH tile opens straight away (a new local worktree with a setup script also goes straight to that tile).
 
