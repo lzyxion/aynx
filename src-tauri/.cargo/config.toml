@@ -1,0 +1,11 @@
+# russh → aws-lc-sys 가 Windows 에서 NASM 을 요구함 — 프리빌트 오브젝트로 우회
+# (docs/log/2026-08-31-ssh-config-parser.md 참조)
+[env]
+AWS_LC_SYS_PREBUILT_NASM = "1"
+
+# 링커를 MSVC link.exe 대신 툴체인에 딸려 오는 rust-lld(lld-link) 로 — 링크가 더 빠르다.
+# 재 보니 작은 수정 한 번에 약 0.6초(8 → 7.3초)를 던다 — 크지 않지만 공짜다.
+# rustc 가 툴체인의 bin 을 링커 PATH 에 얹어 주므로 이름만 적으면 된다(rustup 컴포넌트 추가 불필요).
+# 릴리스(`tauri build`)에도 같이 걸린다 — docs/log/2026-09-26-dev-build-speed.md
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"

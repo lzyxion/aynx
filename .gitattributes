@@ -1,0 +1,5 @@
+src-tauri/Cargo.toml text eol=lf
+# logos 전체 아이콘 표(7MB 한 줄 JSON, 생성물) — diff 를 그리지 않는다 (docs/log/2026-09-29-logos-full-icons.md)
+src/lib/host-icons-logos.generated.json -diff linguist-generated
+# lucide 전체 아이콘 표(570KB 한 줄 JSON, 생성물) — 같은 이유 (같은 로그의 Lucide 절)
+src/lib/host-icons-lucide.generated.json -diff linguist-generated

@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "메인 창과 탭 분리로 생긴 창(tear-*)의 권한. 분리 창은 메인 창과 완전히 같은 페이지를 띄우므로 권한도 같아야 한다 — 빠뜨리면 새 창에서 이벤트 수신(tear-taken)과 창 닫기가 조용히 실패한다. opener 는 기본 세트에 open-path 가 없어(URL 열기와 탐색기에서 보기만 준다) 로컬 파일 브라우저의 '기본 앱으로 열기' 를 위해 따로 켠다 — 그 명령은 권한 말고 경로 스코프도 함께 본다. drag 는 Alt+드래그로 파일을 탐색기에 끌어내는 명령 하나(start_drag)를 연다 — 분리 창에서도 같은 목록을 그리므로 tear-* 에도 있어야 한다. notification 은 창이 포커스를 잃은 동안 끝난 긴 명령을 알리는 한 갈래다 — 분리 창의 타일도 같은 규칙을 쓰므로 역시 tear-* 에 있어야 한다. window:show 는 메인 창이 `visible:false` 로 태어나기 때문이다(스플래시가 칠해진 뒤 프런트가 띄운다, docs/log/2026-09-17-splash.md) — 분리 창은 보이는 채로 태어나므로 이 권한을 쓰지 않지만, 두 창이 같은 페이지를 띄우므로 목록은 하나로 둔다. webview:set-webview-zoom 은 설정의 'UI 크기' 가 웹뷰 확대로 걸리기 때문이다(docs/log/2026-09-25-ui-scale-font.md) — 분리 창도 같은 배율로 떠야 하므로 두 창 모두에 있다. clipboard-manager:allow-read-text 는 터미널 붙여넣기의 OS 클립보드 읽기 하나다 — navigator.clipboard.readText() 가 WebView2 권한 창(허용/차단)을 띄워 플러그인으로 옮겼다(docs/log/2026-09-28-clipboard-plugin.md). 쓰기·이미지·HTML 은 열지 않는다(쓰기는 웹 API 로 충분하고 권한 창이 없다). 분리 창의 터미널도 붙여넣으므로 tear-* 에도 있어야 한다.",
+  "windows": ["main", "tear-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-show",
+    "core:webview:allow-set-webview-zoom",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }, { "path": "**/*" }]
+    },
+    "opener:allow-reveal-item-in-dir",
+    "dialog:default",
+    "drag:default",
+    "notification:default",
+    "clipboard-manager:allow-read-text"
+  ]
+}

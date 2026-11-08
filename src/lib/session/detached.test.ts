@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+import { detachedName, detachedWindowName, paneForDetached, parseDetached, sortDetached, type DetachedSession } from "./detached";
+
+const tr = (key: string, p?: Record<string, string | number>) => (p ? `${key}:${JSON.stringify(p)}` : key);
+
+function row(over: Partial<DetachedSession> = {}): DetachedSession {
+  return {
+    stream: "s1",
+    kind: "local",
+    home: "main",
+    homeOpen: true,
+    detachedAt: 100,
+    lastOutputAt: null,
+    openedAt: 1,
+    shell: "pwsh",
+    alias: null,
+    tmux: null,
+    aiRead: false,
+    unclaimed: true,
+    ...over,
+  };
+}
+
+describe("detached sessions model", () => {
+  it("drops malformed rows and keeps known fields", () => {
+    const list = parseDetached([
+      { stream: "a", kind: "local", home: "main", detachedAt: 5, openedAt: 1, shell: "pwsh", unclaimed: true },
+      { stream: "b", kind: "weird" },
+      null,
+      { kind: "ssh" },
+      { stream: "c", kind: "ssh", alias: "web", tmux: "aynx-1", detachedAt: "x" },
+    ]);
+    expect(list.map((s) => s.stream)).toEqual(["a", "c"]);
+    expect(list[1].detachedAt).toBeNull();
+    expect(list[1].tmux).toBe("aynx-1");
+    expect(parseDetached("nope")).toEqual([]);
+  });
+
+  it("sorts the most recently detached first, unknown times last", () => {
+    const sorted = sortDetached([row({ stream: "old", detachedAt: 1 }), row({ stream: "none", detachedAt: null }), row({ stream: "new", detachedAt: 9 })]);
+    expect(sorted.map((s) => s.stream)).toEqual(["new", "old", "none"]);
+  });
+
+  it("names a local row by its shell and an ssh row by alias and tmux", () => {
+    expect(detachedName(row(), tr)).toBe("PowerShell 7");
+    expect(detachedName(row({ shell: null }), tr)).toBe("pane.name.local");
+    expect(detachedName(row({ kind: "ssh", alias: "web", tmux: "aynx-2" }), tr)).toBe("web · aynx-2");
+    expect(detachedName(row({ kind: "ssh", alias: null }), tr)).toBe("app.detached.unknownHost");
+  });
+
+  it("names the last window", () => {
+    expect(detachedWindowName("main", tr)).toBe("app.detached.window.main");
+    expect(detachedWindowName("tear-3", tr)).toContain("tear-3");
+    expect(detachedWindowName("ws-1", tr)).toBe("ws-1");
+  });
+
+  it("builds a tile that reuses the session's stream (attach, not a new shell)", () => {
+    const local = paneForDetached(row({ stream: "keep-me", shell: "gitbash" }));
+    expect(local).toMatchObject({ kind: "local", shell: "gitbash", historyStreamId: "keep-me" });
+    const ssh = paneForDetached(row({ kind: "ssh", stream: "ssh-1", alias: "web", tmux: "aynx-4", shell: null }));
+    expect(ssh).toMatchObject({ kind: "ssh", alias: "web", tmux: "aynx-4", historyStreamId: "ssh-1" });
+    expect(ssh.autorun).toBeUndefined();
+  });
+});
+
+describe("no orchestration worker tag (3차 3b — 작업자는 헤드리스)", () => {
+  it("ignores an old server's worker tag and keeps the shell", () => {
+    const [plain] = parseDetached([{ stream: "p", kind: "local", home: "main", shell: "pwsh", orchestration: { runId: "r" } }]);
+    expect("orchestration" in plain).toBe(false);
+    expect(paneForDetached(plain).shell).toBe("pwsh");
+  });
+});

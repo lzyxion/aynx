@@ -1,0 +1,276 @@
+[package]
+name = "aynx"
+version = "0.1.0"
+description = "A Hyprland-style workspace for AI coding agents."
+authors = ["lzyxion"]
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "aynx_lib"
+# 데스크톱(Windows·Linux·macOS) 전용이라 rlib 하나면 된다 — staticlib·cdylib 는 Tauri 템플릿이
+# 모바일(android/ios)용으로 넣어 둔 것인데, 남겨 두면 매 빌드마다 수백 MB 짜리 aynx_lib.lib 를 쓰고
+# aynx_lib.dll 을 링크한다. 모바일 타깃을 붙이게 되면 둘을 되살린다.
+# doctest 는 끈다 — 문서 주석의 코드 블록은 전부 text·toml 등이거나 `ignore` 라 돌 것이 없다.
+# docs/log/2026-09-26-dev-build-speed.md ("P0 — crate-type")
+crate-type = ["rlib"]
+doctest = false
+
+# 배포용 빌드 프로필 — 설치기 크기를 줄이는 쪽으로 맞춘다(docs/log/2026-09-07-release-build.md).
+# `panic = "abort"` 는 **일부러 넣지 않았다**: 이 앱은 PTY 리더 스레드 6개와 다수의 tokio
+# 태스크가 세션마다 따로 도는 구조라, 지금은 한 세션 스레드가 패닉해도 그 세션만 죽고 나머지
+# 살아 있는 세션과 앱은 버틴다. abort 로 바꾸면 그 격리가 사라져 세션 하나의 패닉이 앱 전체를
+# 즉사시킨다 — "연결이 끊기지 않는" 이 제품의 전제와 정면으로 어긋난다.
+# (`catch_unwind`·`JoinError` 를 직접 쓰는 곳은 없지만, 의존하는 것은 스레드 경계의 되감기다.)
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# 개발 빌드의 디버그 정보를 줄 번호만으로 낮춘다 — 전체 디버그 정보(변수·타입)는 컴파일·링크
+# 시간과 target 크기를 크게 늘리는데, 우리는 디버거를 거의 쓰지 않는다. 백트레이스의 파일·줄은
+# 그대로 남는다. 의존 크레이트는 아예 끈다(줄 번호도 필요 없다). argon2 의 opt-level 덮어쓰기는
+# 아래 따로 둔 절이 `package."*"` 위에 합쳐져 그대로 먹는다(더 구체적인 이름이 이긴다).
+# docs/log/2026-09-26-dev-build-speed.md
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# 개발 빌드에서도 **금고 잠금 해제만은** 최적화해 둔다 (`vault.rs`). Argon2id 는 일부러 비싼
+# 계산이라 디버그 빌드에서 64 MiB·3회가 1.5초 걸렸다 — `tauri dev` 로 화면을 만지는 사람이
+# 잠금 해제를 누를 때마다 그만큼 멈춘다. 최적화하면 같은 일이 100ms 안팎이다.
+# 이 크레이트 하나만 올리므로 우리 코드의 디버그 정보·컴파일 시간은 그대로다.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# image-png — 설정에서 고른 캐릭터 앱 아이콘(내장 PNG)을 `Image::from_bytes` 로 풀어 창에 건다
+# (`app_icon.rs`, docs/log/2026-10-04-app-icon-switch.md). `image` 크레이트(png 포함)는 이미
+# 전이 의존이라 새로 받는 크레이트가 없다.
+tauri = { version = "2", features = ["protocol-asset", "image-png"] }
+# 사용자 앱 아이콘(`app_icon/user.rs` — docs/log/2026-10-22-custom-app-icon.md)의 PNG 디코드 · 256px 리사이즈 · 인코드. 위 줄의
+# 전이 의존(0.25 · png)을 직접 의존으로 올릴 뿐 **새로 받는 크레이트가 없다** — 기본 기능을 끄고 `png` 하나만(리사이즈는 기본 몸에 있다).
+image = { version = "0.25", default-features = false, features = ["png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+# OS 알림 — **창이 포커스를 잃었을 때만** 쓰는 하나의 표면이다(긴 명령 완료 알림.
+# docs/log/2026-09-16-finish-notify-block-marks-bell.md). 창을 보고 있으면 앱 안 토스트로
+# 말하므로 이 플러그인은 그 한 갈래에서만 불린다. 권한은 `notification:default`(capabilities)
+# 이고, 사용자가 거절하면 토스트로 되돌아간다 — 알림을 못 띄운다고 기능이 사라지지 않는다.
+tauri-plugin-notification = "2"
+# OS 클립보드 **읽기**(터미널 붙여넣기) — `navigator.clipboard.readText()` 는 WebView2 가
+# "클립보드를 보려고 합니다 — 허용/차단" 권한 창을 띄운다(docs/log/2026-09-28-clipboard-plugin.md).
+# 권한은 `clipboard-manager:allow-read-text` 하나만 준다(capabilities) — 쓰기는 웹 API 그대로.
+# 2.4.0 은 더 새 window-vibrancy 를 요구해 잠금이 2.3.x 에 머문다 — npm 쪽도 `~2.3.0` 으로
+# 맞춘다(tauri CLI 는 크레이트와 npm 패키지의 major.minor 가 어긋나면 빌드를 막는다).
+tauri-plugin-clipboard-manager = "2"
+# GUI 한 개 — 둘째 실행은 첫 GUI 의 주 창을 앞으로 가져오고 끝난다(③-3a, 2026-10-09 사용자 결정). Windows 는 이름 있는
+# 뮤텍스 `<identifier>-sim` + 숨은 창 WM_COPYDATA 로 가른다 — identifier 가 개발 빌드에서 `-dev` 로 바뀌므로
+# (`instance::apply_to_context`) 개발 앱과 릴리스는 서로 막지 않는다. 같은 판의 개발 앱 둘(다른 워크트리)은 서로 막는다.
+# 프런트 API 는 쓰지 않아 npm 패키지는 없다. 잠금 2.4.5(tauri 2.11 과 짝 — 이 크레이트는 tauri ^2.10 을 요구).
+tauri-plugin-single-instance = "2.4"
+serde = { version = "1", features = ["derive"] }
+# preserve_order — JSON 객체의 키 순서를 보존한다(indexmap 기반). Claude `settings.json` 의
+# `permissions.allow` 를 수술하듯 병합할 때 사용자의 다른 키 순서를 흐트러뜨리지 않으려면 필요하다.
+# indexmap 은 이미 전이 의존이라 새로 받는 크레이트가 없다.
+serde_json = { version = "1", features = ["preserve_order"] }
+portable-pty = "0.9"
+dirs = "6"
+russh = "=0.63.1"
+# ~/.ssh/sessions.toml 파서. 이미 잠긴(전이 의존) 버전에 맞춰 핀.
+toml = "=1.1.4"
+# sessions.toml **쓰기** 전용 — cargo 가 Cargo.toml 을 고칠 때 쓰는 포맷 보존 편집기.
+# 사용자가 손으로 적은 주석·키 순서·들여쓰기를 남긴 채 우리 키만 갈아 끼운다.
+# (toml 크레이트로 재직렬화하면 주석이 전부 사라진다.)
+toml_edit = "=0.25.13"
+tokio = { version = "1", features = ["full"] }
+# 세션 로그 파일 이름의 시각(`YYYYMMDD-HHMMSS`, 로컬 시간). 이미 전이 의존으로 들어와 있어
+# 직접 의존으로 올려도 새로 받는 크레이트가 없다. 필요한 것은 로컬 시계뿐이라 기본 기능은 끈다.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+russh-sftp = "=2.4.0"
+# MCP 서버(AI 통합) — 실행 중인 앱을 localhost HTTP 로 연다. 표면이 작고 상태가 없어
+# 무거운 async MCP 프레임워크 대신 블로킹 tiny_http 를 별도 std 스레드에서 돌린다
+# (docs/verification/mcp.md). tokio 런타임과 얽히지 않는다.
+tiny_http = "0.12"
+# MCP Bearer 토큰(32바이트 무작위 hex) 생성용. 이미 전이 의존(russh 경유)이라 새로 받는
+# 크레이트가 없다 — 직접 의존으로만 올린다. 시각·PID 해시보다 예측 저항이 강하다.
+getrandom = "0.3"
+# MCP 서버가 **저장된 포트를 다시 잡기** 위한 `SO_REUSEADDR` — std 의 TcpListener 는 이 옵션을
+# 열어 주지 않는다. Windows 는 방금 끝난 프로세스가 남긴 TIME_WAIT 만으로도 bind 를 거절해서,
+# 이게 없으면 앱을 껐다 켤 때마다 포트가 바뀌고 `claude mcp add` 로 박아 둔 URL 이 죽는다
+# (mcp.rs 의 `bind_saved` 참고 — 아무도 듣지 않는 것을 확인한 뒤에만 켠다).
+# 이미 tokio 경유 전이 의존이라 새로 받는 크레이트가 없다.
+socket2 = "0.6"
+# 웹뷰 밖(탐색기)으로 파일을 끌어내는 길 — Alt+드래그 (docs/log/2026-09-04-native-drag-out.md).
+# 웹 표준 DnD 로는 앱 밖에 **파일**을 내보낼 수 없어(글자와 DownloadURL 뿐이다) 셸의
+# IDataObject/CF_HDROP 을 직접 쓰는 이 플러그인이 필요하다. CrabNebula, Apache-2.0 OR MIT.
+# 프런트는 npm 패키지(2.1.0 — 크레이트보다 낡았다) 대신 `src/lib/native-drag.ts` 로 벤딩했다.
+tauri-plugin-drag = "2.1.1"
+# known_hosts 의 **해시된 항목**(`|1|salt|hash`)을 지우거나 갱신하기 위한 셋
+# (docs/log/2026-09-16-quick-connect-and-host-keys.md). OpenSSH 는 호스트 이름을
+# HMAC-SHA1(salt, hostname) 으로 적어 두므로, 그 줄이 이 호스트의 것인지 알려면 같은 계산을
+# 해야 한다 — 읽기(검증)는 russh 가 하지만 **쓰기(지우기·교체)** 는 우리 몫이라 직접 필요하다.
+# 셋 다 이미 russh 경유 전이 의존이고 러시 자신이 같은 조합으로 쓴다(러시의 `known_hosts.rs`
+# 와 글자 그대로 같은 판정을 하려는 것이다) — 새로 받는 크레이트가 없다.
+hmac = "0.13"
+sha1 = "0.11"
+data-encoding = "2"
+# 자동 승인 정책(단계 10b)의 위험 명령 판정 — `policy.rs` 가 프런트 `operations.ts` 의
+# DANGEROUS 정규식 목록을 그대로 포팅해 백엔드에서도 권위 있게 재검증한다. 이미 전이 의존
+# (러스트 툴체인 다수가 끌어온다)으로 Cargo.lock 에 1.13 이 있어 새로 받는 크레이트가 없다.
+regex = "1"
+# 암호구 문자열을 드롭 순간 0 으로 덮는다 (`ssh.rs` 의 `open_ssh_session` 한 자리).
+# 이미 러시·ssh-key 경유 전이 의존(1.9.0)이라 **새로 받는 크레이트가 없다** — 직접 의존으로만
+# 올린다. 개인키 바이트는 `ssh_key::PrivateKey` 가 스스로 문지르므로 여기서 할 일이 없고,
+# 우리가 들고 있는 비밀 문자열은 그 한 칸뿐이다.
+zeroize = "1"
+# 사용량 읽기(`agent_usage.rs`)의 줄 거르기 — 대화 파일(합쳐 1 GB 넘게)의 줄마다 바늘(`"usage"` · `token_count`)이
+# 있는지만 먼저 보고 든 줄만 JSON 으로 푼다. 이미 regex 경유 전이 의존(2.8)이라 새로 받는 크레이트가 없다.
+memchr = "2"
+# 자격증명 금고(`vault.rs`)의 AEAD — XChaCha20-Poly1305. **직접 만들지 않는다**(CLAUDE.md 보안
+# 제약: 암호를 손으로 짜지 않는다). RustCrypto 의 0.11 은 이 잠금 파일에 이미 있는
+# aead 0.6 · chacha20 0.10 · poly1305 0.9 위에 서므로 **새로 받는 크레이트가 없다**.
+# 기본 기능(`getrandom`·`alloc`)만 쓴다 — 논스는 우리가 `getrandom` 으로 직접 뽑는다.
+chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
+# 같은 금고의 KDF — 마스터 비밀번호 → 32바이트 키. Argon2id 는 메모리 하드라 GPU 사전 공격에
+# 값이 든다. 이미 `ssh-key` 경유 전이 의존(0.6.0)이라 **새로 받는 크레이트가 없다** — 직접
+# 의존으로만 올린다. PHC 문자열(`password-hash`)은 쓰지 않는다: 우리가 필요한 것은 해시 비교가
+# 아니라 **키 유도**(`hash_password_into`)뿐이고, 파라미터는 금고 머리에 우리가 적는다.
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
+# 메신저 알림(Discord 웹훅 — `messenger.rs`)의 HTTPS POST 하나. 0.13.4 가 이미 이 잠금 파일에 있지만
+# **Tauri 는 모바일 타깃에서만** 그것을 쓴다 — 데스크톱 빌드에는 HTTP 클라이언트도 TLS 도 없었다.
+# 그래서 이것은 **새로 빌드되는 크레이트가 있는** 몇 안 되는 직접 의존이다(Windows 에서 22개 — hyper·tower·rustls 무리).
+# 줄이는 선택: 기본 기능을 끄고 `rustls` 하나만 — 암호 공급자는 russh 가 이미 빌드하는 aws-lc-rs 를
+# 같이 쓰고, 인증서는 OS 신뢰 저장소(rustls-platform-verifier)로 본다. http2·charset·시스템 프록시·
+# json 은 끈다(몸통은 serde_json 으로 직접 만든다). docs/log/2026-09-27-discord-notify.md.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# 쿼리 타일(`db/sqlite.rs` — 세션 서버의 DB 평면)의 SQLite 엔진. `bundled` 로 SQLite C 소스를 함께 빌드한다(OS 의 sqlite 를
+# 찾지 않는다 — 세 OS 같은 판). 기본 기능(cache·wasm)은 끈다. 스파이크 docs/log/2026-10-12-query-tile.md 의 줄 그대로다
+# (네이티브 셋 — PG·MySQL 드라이버는 아래 줄들).
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+# 같은 평면의 PostgreSQL 엔진(`db/pg.rs` — 쿼리 타일 7단계). 기본 기능을 꺼 chrono·serde 연동을 받지 않는다 — 값은 바이너리 형식을
+# 직접 푼다(`db/pg_value.rs`).
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+# PG 의 TLS(쿼리 타일 9단계 — `db/tls.rs`). 스파이크 줄 그대로 — 공급자는 aws-lc-rs 하나(ring 없음), 신뢰 기준은 우리가 짠
+# `ClientConfig`(webpki-roots + 사용자 CA 파일 · OS 저장소 아님)를 넘긴다. 채널 바인딩용 x509-cert 0.2 가 같이 온다.
+tokio-postgres-rustls = { version = "0.14", default-features = false, features = ["aws-lc-rs"] }
+# 같은 평면의 MySQL · MariaDB 엔진(`db/mysql.rs` — 쿼리 타일 8단계). 스파이크 결정 줄 그대로다: 기본 기능(zlib 압축 C 백엔드 ·
+# derive)을 끄고 `minimal-rust`(flate2 순수 Rust) · TLS 는 rustls + 공급자 aws-lc-rs 하나(ring 없음 — `cargo tree -i ring` 이 빈다).
+# TLS 는 `db/mysql_tls.rs`(9단계). 값은 바이너리 프로토콜의 `Value` 를 직접 푼다(chrono·time·decimal 기능 없음 — `db/mysql_value.rs`).
+mysql_async = { version = "0.37", default-features = false, features = ["minimal-rust", "rustls-tls", "tls12", "aws-lc-rs"] }
+# mysql_async 는 TLS 설정을 `ClientConfig::builder()`(전역 기본 공급자)로 짠다 — 세션 서버 진입에서 aws-lc-rs 를 기본 공급자로
+# 한 번 설치하려고 직접 의존으로 올린다(`server.rs` · 스파이크 함정 1). 이미 전이 의존(0.23.x)이라 새로 받는 크레이트가 없다.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+# 9단계 TLS 의 신뢰 기준(내장 공개 CA — mysql_async 가 이미 끌어온 1.x) · MySQL CA 검증 탐침의 TLS 스트림(tokio-rustls — 이미 전이 의존) ·
+# 탐침이 서버 인증서의 이름(SAN)을 읽는 x509-cert(tokio-postgres-rustls 가 이미 끌어온 0.2). 셋 다 새로 받는 크레이트가 없다.
+webpki-roots = "1"
+tokio-rustls = { version = "0.26", default-features = false }
+x509-cert = { version = "0.2", default-features = false }
+# 원격 웹 클라이언트 관문(`remote/gateway.rs` — 127.0.0.1 HTTP, TLS 는 사용자의 `tailscale serve`). 기존 루프백 리스너(tiny_http)는
+# 블로킹 스레드라 뒤 커밋의 WebSocket·tokio 이벤트와 맞지 않아 hyper 를 tauri 의 tokio 런타임에서 돌린다. 셋 다 reqwest 경유로
+# 이미 잠금 파일에 있다(hyper 1.11 · hyper-util 0.1.20 · http-body-util 0.1.5) — 켜는 기능 `server`·`http1`·`tokio` 의 의존
+# (httparse·httpdate 등)도 이미 있어 **새로 받는 크레이트가 없다**. 클라이언트·http2 는 켜지 않는다.
+hyper = { version = "1", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+http-body-util = "0.1"
+# 같은 관문이 내는 HTML 의 인라인 `<script>` sha256(CSP 해시 — `remote/static_files.rs`). 이미 전이 의존(0.11)이라 새로 받는 크레이트가 없다.
+# 오케스트레이션 수락 전 검증의 명령 해시 · 출력 꼬리 해시(SHA-256 — 통합 설계 2-1 · 2-5)도 같은 크레이트다.
+sha2 = "0.11"
+# 원격 관문의 기기 토큰 해시 비교(R1a-2 — `remote/auth.rs`, 상수시간). 이미 전이 의존(2.6 — RustCrypto)이라 새로 받는 크레이트가 없다.
+subtle = "2.6"
+# 원격 창의 WebSocket(R1a-3 — `remote/ws.rs`). **새로 받는 크레이트 둘**(tokio-tungstenite · tungstenite 0.30) — 나머지 의존(bytes·log·
+# rand·thiserror·utf-8)은 이미 잠금 파일에 있다. 기본 기능(connect·handshake — 클라이언트 연결·http 핸드셰이크)은 끈다: 업그레이드
+# 핸드셰이크는 관문의 hyper 가 하고(`Sec-WebSocket-Accept` 는 이미 있는 sha1 + data-encoding), TLS 는 사용자의 `tailscale serve` 다.
+tokio-tungstenite = { version = "0.30", default-features = false }
+# 같은 ws 의 split·SinkExt/StreamExt. 이미 전이 의존(0.3)이라 새로 받는 크레이트가 없다.
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# 관문의 쿼리 값(`/remote/asset?path=` · `/remote/ws?t=`) 퍼센트 디코딩. 이미 전이 의존(2.3)이라 새로 받는 크레이트가 없다.
+percent-encoding = "2"
+# 로컬 자원 모니터(`server/resources.rs` — 타일 머리줄의 CPU · 메모리 칩과 사용량 화면의 "자원")의 프로세스 목록 읽기. 세 OS 를 한
+# API 로 덮는다(OS 를 타는 코드를 우리가 cfg 로 셋 짜지 않는다). `system` 기능 하나만 켠다 — 디스크 · 네트워크 · 부품 · 사용자는 끈다.
+# Windows 의존 `windows 0.62` 는 이미 잠금 파일에 있고(0.62.2) **새로 받는 크레이트는 sysinfo 와 ntapi 둘**(macOS 대상이면 objc2-io-kit 하나 더 — Windows 빌드에는 들지 않는다)이다. 0.39.6 = 2026-07-09 게시.
+# 명령줄 인자(`cmd`)는 읽지 않는다 — 실행 파일 이름만(토큰이 섞일 수 있다).
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+# 로컬 파일 타일의 자동 새로고침(`local_watch.rs` — docs/log/2026-10-21-file-tile-auto-refresh.md). 세 OS 의 변경 알림
+# (Windows ReadDirectoryChangesW · Linux inotify · macOS FSEvents)을 한 API 로 덮어 OS 를 타는 코드를 우리가 짜지 않는다.
+# 8.2.0 = 2025-08-03 게시(9.x 는 아직 rc). 기본 기능(macOS FSEvents)만 — 폴링 감시(PollWatcher)는 쓰지 않는다.
+notify = "8.2.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 트레이(③-4 — `tray.rs`): Tauri 의 `tray-icon` 기능을 **Windows 대상에만** 켠다(같은 의존성의 기능은 대상 표끼리 합쳐진다).
+# 리눅스·macOS 는 트레이 없는 스텁이라 appindicator 같은 시스템 라이브러리를 끌어오지 않는다. `tray-icon`·`muda` 크레이트는
+# 이미 잠금 파일에 있어(tauri 의 선택 의존) 새로 받는 크레이트는 없다.
+tauri = { version = "2", features = ["tray-icon"] }
+# 웹뷰 렌더러 종료 감시(`webview_crash.rs` — ProcessFailed → Reload). wry 가 이미 같은 0.38 을 들고 와서 새로 받는 크레이트는 없다
+# (컨트롤러 형이 tauri 의 것과 같아야 하므로 판을 wry 와 맞춘다).
+webview2-com = "0.38"
+# Win32 직접 호출 — tauri 를 통해 같은 0.60 이 이미 들어와 있어 새로 받는 크레이트는 없다.
+# 실제로 쓰는 것만 켠다: HANDLE·HWND 등(Foundation).
+# 다음 넷은 `cwd.rs` 의 PEB 걷기용이다 — OpenProcess(Threading) ·
+# ReadProcessMemory(Diagnostics_Debug) · NtQueryInformationProcess(Wdk_System_Threading) ·
+# PROCESS_BASIC_INFORMATION(Win32_System_Kernel 뒤에 가려져 있다).
+# 마지막 하나(`Win32_Security_Cryptography`)는 `vault.rs` 의 DPAPI 한 쌍이다 —
+# CryptProtectData/CryptUnprotectData 로 금고 키 파일을 **이 사용자 계정에 묶어** 감싼다.
+# `Win32_UI_WindowsAndMessaging` 은 `app_icon.rs` 의 큰 아이콘(CreateIcon · WM_SETICON ICON_BIG)이고,
+# `Win32_UI_Shell` 은 같은 파일의 작업 표시줄 앱 ID(SetCurrentProcessExplicitAppUserModelID)다.
+# 세션 서버(`server/` — 설계 internal/session-server-design-2026-10-08.md ③)가 여섯을 더 연다: 파이프의 사용자 SID·DACL
+# (`Win32_Security` · `Win32_Security_Authorization`) · 상대 pid(`Win32_System_Pipes`) · 자기 잡(`Win32_System_JobObjects`) ·
+# 자식 트리·explorer 찾기(`Win32_System_Diagnostics_ToolHelp`) · explorer 의 로그온 세션 확인(`Win32_System_RemoteDesktop`).
+# 하나 더(`Win32_System_Console`)는 서버 진입의 SetConsoleCtrlHandler(NULL, FALSE) — 물려받은 Ctrl+C 무시를 걷는다.
+# 전부 코드 생성 게이트일 뿐이라 새로 받는 크레이트는 없다.
+# `Win32_Storage_FileSystem` 은 오케스트레이션 6단계의 전방 커서(`agent_transcript/forward.rs`)가 대화 파일의 세대를 가리는
+# 파일 인덱스(GetFileInformationByHandle) 하나다 — 역시 게이트뿐.
+# `Win32_System_Power` 는 잠자기 방지(`keep_awake.rs` — PowerCreateRequest · PowerSetRequest · PowerClearRequest) 하나다 — 게이트뿐.
+# `Win32_System_SystemInformation` 은 오케스트레이션 수락 전 검증(`server/os.rs` 의 `system_cmd`)이 신뢰된 셸 경로를
+# `GetSystemDirectoryW()\cmd.exe` 로 정하는 것 하나다(환경 `ComSpec` 를 믿지 않는다 — 통합 설계 5-3). 게이트뿐.
+# `Win32_System_ProcessStatus` 는 자원 모니터(`server/resources.rs`)가 AYNX 트리 프로세스의 전용 작업 집합을 읽는
+# K32GetProcessMemoryInfo(PROCESS_MEMORY_COUNTERS_EX2) 하나다 — 게이트뿐.
+windows-sys = { version = "0.60", features = [
+  "Wdk_System_Threading",
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_JobObjects",
+  "Win32_System_Kernel",
+  "Win32_System_Pipes",
+  "Win32_System_Power",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Registry",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+# 작업 표시줄 바로 가기(`taskbar_shortcut.rs` — IShellLinkW · IPersistFile · IPropertyStore · SHChangeNotify)는 COM 인터페이스가
+# 있어야 해서 `windows` 크레이트를 직접 쓴다. tauri 가 이미 같은 0.61 을 들고 와서 새로 받는 크레이트는 없다.
+windows = { version = "0.61", features = [
+  "Win32_Storage_EnhancedStorage",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+
+
+# 시험 전용 — `tauri::test`(MockRuntime)로 원격 창 다리(`remote/bridge.rs` — 불안정 API `InvokeRequest`·`on_message`)를 통합 시험한다.
+# tauri 의 `test` 기능은 의존이 없다(새로 받는 크레이트 없음 · 시험 빌드에서만 켜진다).
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

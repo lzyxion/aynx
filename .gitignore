@@ -1,0 +1,22 @@
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Claude Code 에이전트 워크트리 (스파이크용 — 저장소에 넣지 않는다)
+.claude/worktrees/
+
+# 이미지 생성 등 로컬 작업 산출물 — 저장소에 넣지 않는다
+/output/
+
+# 비공개 노트 저장소 aynx-notes 의 정션 (노트 저장소의 tools/link-notes.ps1 이 만든다)
+/docs/log
+/docs/verification
+/docs/internal
+/scripts/lab

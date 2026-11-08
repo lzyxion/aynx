@@ -1,0 +1,1622 @@
+/* 디자인 토큰 — 색·간격의 기본값.
+ * 색 체계 = **MD3(Material 3) 역할** (2026-10-18 — End-4 · Illogical Impulse 식). 원천 색 하나에서 MCU(`@material/material-color-utilities`)가
+ * 낸 역할(`--m3-*`)이 먼저 있고, 크롬의 원시 토큰(`--bg-base` · `--fg` · `--accent` · `--border` …)은 그 역할의 **별칭**이다(아래 표).
+ * 기본 팔레트 = AYNX · 기본: `SchemeTonalSpot(#8ab4ff)` — `--m3-*` 의 hex 두 벌(다크 · 라이트)은 손으로 고르지 않은
+ * 생성값이고 `app-color-themes.ts` 의 `defaultM3Tokens` 와 같다(짝 시험). 색 테마 · 사용자 색 · 월페이퍼 full 은 같은 함수
+ * (`appM3Tokens`)로 `--m3-*` 를 인라인에 다시 얹고, 저장 칸 여덟(`APP_TOKENS`)은 그 역할의 값이다.
+ * MD3 에 없는 의미색 둘(`--ok` · `--warn`)과 그 옅은 판 · 판 위 글자(`--*-soft` · `--on-*-soft`)는 그 전 규칙(ANSI 톤 생성 · `derivedChromeTokens`)이다.
+ * 터미널 칸(`--term-bg` · `aynx-*` 프리셋)은 그 전 값 그대로다 — MD3 범위 밖.
+ *
+ *   원시 토큰          MD3 역할
+ *   --bg-base          surface               (창)
+ *   --bg-panel-base    surfaceContainer      (뜬 면 — 독 · 메뉴 · 모달)
+ *   --bg-hover         surfaceContainerHigh
+ *   --bg-chip          surfaceContainerHighest
+ *   --border           outlineVariant        (`--line-strong` 은 outline 쪽으로 섞는다 — 의미 토큰층)
+ *   --fg               onSurface
+ *   --fg-muted · --fg-chip   onSurfaceVariant
+ *   --accent           primary          (`--on-accent` = onPrimary)
+ *   --accent-soft      secondaryContainer   (선택 줄 — "골랐지만 조용한" 판, 글자 `--on-accent-soft` = onSecondaryContainer)
+ *   --secondary        secondary        (primary 와 같은 hue · 낮은 채도) · `-soft` = secondaryContainer
+ *   --tertiary         tertiary         (**무엇인지** — 폴더 · 구문 키워드 · 분류 배지 · 브랜치 줄기) · `-soft` = tertiaryContainer
+ *   --folder           tertiary
+ *   --err · --err-soft error · errorContainer
+ *   --bg-overlay       다크 surfaceContainerLowest 62% · 라이트 inverseSurface 35% (스크림은 두 모드 모두 어둡다)
+ */
+/* 앱 UI 글꼴 — Pretendard(OFL-1.1, 1.3.9 가변 woff2 · `fonts/Pretendard-LICENSE.txt`). 앱에 넣어 OS 에 없어도 같다.
+ * 맑은 고딕은 자간·획이 넓어 화면이 낡아 보였다(2026-10-11 디자인 점검). 뒤의 스택은 파일을 못 읽을 때의 대비다 */
+@font-face {
+  font-family: "Pretendard Variable";
+  src: url("./fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* 앱 크롬 면은 **기저색(-base) × 투명도(--chrome-pct)** 로 합성한다.
+   * `--chrome-pct` 에는 설정의 투명도 슬라이더 값이 +page 의 $effect 로 **언제나** 인라인된다.
+   * 슬라이더는 **앱 배경(월페이퍼 · 없으면 번짐)이 크롬 · 타일에 얼마나 비치나**다(10-22) — 창 자체는
+   * 늘 불투명하다(아래 `html` 이 합성 전 `--bg-base` 를 칠한다). 사용자가 앱 테마에서 색을 고르면 그 값은
+   * `--bg-base` 쪽에 들어가므로 커스텀 색에도 슬라이더가 그대로 먹는다.
+   * (`--term-bg` 는 이 값으로 합성하지 않는다 — 터미널 칸에는 자기 슬라이더가 따로 있다.) */
+  /* MD3 역할 — 기본 원천 #8ab4ff 의 SchemeTonalSpot 다크(생성값 · 짝 시험). 인라인 `--m3-*` 가 덮는다 */
+  --m3-surface: #111318;
+  --m3-surface-container-lowest: #0c0e13;
+  --m3-surface-container-low: #191c20;
+  --m3-surface-container: #1e2025;
+  --m3-surface-container-high: #282a2f;
+  --m3-surface-container-highest: #33353a;
+  --m3-on-surface: #e2e2e9;
+  --m3-on-surface-variant: #c4c6d0;
+  --m3-outline: #8e9099;
+  --m3-outline-variant: #44474e;
+  --m3-primary: #aac7ff;
+  --m3-on-primary: #0b305f;
+  --m3-primary-container: #284777;
+  --m3-on-primary-container: #d7e3ff;
+  --m3-secondary-container: #3e4759;
+  --m3-on-secondary-container: #dae2f9;
+  --m3-tertiary-container: #573e5c;
+  --m3-on-tertiary-container: #fad8fd;
+  --m3-secondary: #bec6dc;
+  --m3-on-secondary: #283141;
+  --m3-tertiary: #ddbce0;
+  --m3-on-tertiary: #3f2844;
+  --m3-error: #ffb4ab;
+  --m3-on-error: #690005;
+  --m3-error-container: #93000a;
+  --m3-on-error-container: #ffdad6;
+  --m3-inverse-surface: #e2e2e9;
+  /* 크롬 원시 토큰 = 위 역할의 별칭(머리 표). 저장 칸 여덟은 인라인으로 이 별칭을 덮는다(값은 같은 역할) */
+  --bg-base: var(--m3-surface);
+  --bg-panel-base: var(--m3-surface-container);
+  --chrome-pct: 100%; /* 크롬 불투명도 = 설정의 투명도 슬라이더 값(%) — 마운트 전 자리값, 기본값은 options.ts */
+  --bg: color-mix(in srgb, var(--bg-base) var(--chrome-pct), transparent);
+  --bg-panel: color-mix(in srgb, var(--bg-panel-base) var(--chrome-pct), transparent);
+  --fg: var(--m3-on-surface);
+  --fg-muted: var(--m3-on-surface-variant);
+  --accent: var(--m3-primary);
+  --accent-soft: var(--m3-secondary-container);
+  --on-accent-soft: var(--m3-on-secondary-container);
+  --secondary: var(--m3-secondary);
+  --secondary-soft: var(--m3-secondary-container);
+  /* 제3색 — **무엇인지**(구조·종류: 폴더·구문 키워드·분류 배지·브랜치 줄기). 강조색은 "무엇을 할지·골라진 것" 에 남는다
+     (2026-10-13 의 `--secondary` 가 2026-10-18 에 MD3 tertiary 로 옮겨 왔다) */
+  --tertiary: var(--m3-tertiary);
+  --tertiary-soft: var(--m3-tertiary-container);
+  --bg-hover: var(--m3-surface-container-high);
+  --border: var(--m3-outline-variant);
+  --bg-chip: var(--m3-surface-container-highest);
+  --fg-chip: var(--m3-on-surface-variant);
+  --warn: #d9a441;
+  --warn-soft: #5f4100; /* derivedChromeTokens — MD3 container 톤 30 */
+  --on-warn-soft: #ffdeaa; /* derivedChromeTokens — MD3 onContainer 톤 90 */
+  --ok: #6fb37c;
+  /* 안내 말풍선(대화 면 신뢰 안내 — 옅게 누런 면 · 목업 ECxt7kCXrca2NqrTJU93jf) */
+  --hint-bubble-bg: #3a3524;
+  --hint-bubble-line: #5a5232;
+  --hint-bubble-fg: #eadfb8;
+  --ok-soft: #1e502c; /* derivedChromeTokens — 성공의 container(톤 30) · 작업안 상태 알약 */
+  --on-ok-soft: #b8f0bf;
+  --err: var(--m3-error);
+  --err-soft: var(--m3-error-container);
+  /* 에이전트 빛깔 — 사용량 칸의 모델 막대만 쓴다(docs/log/2026-09-26-agent-usage.md). 빛깔 = 에이전트, 같은
+     에이전트의 모델은 **네 단계**(순위 — 첫째는 가족의 바탕 빛깔). 단계는 **밝기(와 채도 조금)만** 바꾸고 빛깔은 가족 안에 묶는다:
+     Claude = 테라코타/점토(빛깔 19~25° — 분홍·빨강으로 새지 않는다), Codex = 흰색→회색 무채(노랑·올리브 기 없음 —
+     b* < 2). 셋째 판(실기)에서 넷째 단계가 분홍·카키로 튀어 가족이 안 읽혔다. 검산: 기본 카드 바탕(#161b26) 대비 최소 3.25:1 ·
+     여덟 색 사이 ΔE76 11 이상. "기타" 는 --fg-3. */
+  --agent-claude-1: #db9670; /* 첫째(가장 많이 쓴 모델) = 가족의 바탕 테라코타 — 가장 밝은 단계는 Codex 흰색과 붙어 보였다 */
+  --agent-claude-2: #f0c09e;
+  --agent-claude-3: #bf734c;
+  --agent-claude-4: #9d5a3a;
+  --agent-codex-1: #ecebe8;
+  --agent-codex-2: #c3c2bf;
+  --agent-codex-3: #9a9996;
+  --agent-codex-4: #767573;
+  /* 검정 단색 로고(OpenAI·Apple·GitHub …)의 칠 — 생성기가 그 로고의 검정을 이 토큰으로 바꿔 둔다
+     (`src/lib/mono-logo.js`, docs/log/2026-09-29-logos-full-icons.md 의 "검정 단색 로고"). 다크에서는 흰색 쪽이라
+     어두운 면 위에서 사라지지 않는다. `-inverse` 는 검정 + 흰색 로고의 흰 자리(통째 반전 — 흰 오려낸 자리가 남게). */
+  --logo-mono-chrome: #f2f2f2;
+  --logo-mono-chrome-inverse: #161618;
+  /* 크롬 위 값 — 터미널 · AI 타일 머리줄(터미널 면)은 터미널 글자 · 바탕색으로 바꿔 입는다(`PaneHeader` 의 `.pane-head.term`) */
+  --logo-mono: var(--logo-mono-chrome);
+  --logo-mono-inverse: var(--logo-mono-chrome-inverse);
+  --term-bg: #0b111c;
+  /* 터미널 글자색 — 터미널 · AI 타일 머리줄의 글자 · 칩(2026-10-20 `PaneHeader` 의 `.term`). `applySettings` 가 테마의 foreground 를
+     옮겨 적고, 못 적었을 때만 이 값(크롬 본문 글자)이 남는다 */
+  --term-fg: var(--fg);
+  /* 터미널 칸의 불투명도 — 설정의 **터미널 투명도** 슬라이더 값(0~1). 크롬(`--chrome-pct`)과
+   * 별개의 손잡이다: 크롬은 많이 비쳐도 예쁘지만 글자가 앉는 칸까지 같이 비치면 대비가
+   * 무너져서, 두 값을 각자 두고 터미널 쪽을 높게 잡도록 권한다.
+   * 기본 1 = 불투명 = `--term-bg` 그대로 = 이 기능이 없던 때와 완전히 동일하다.
+   * (`--term-bg` 자체는 건드리지 않는다 — 프리셋·월페이퍼 추출이 쓰는 **색**이라, 알파는
+   * 아래 파생 토큰에서만 입힌다.)
+   *
+   * **이 파생 토큰이 터미널 칸의 색을 칠하는 유일한 층이다** (`.pane-box` — PaneHost.svelte).
+   * 위에 겹치는 세 층은 전부 비워 둔다: `.term`(Terminal.svelte) · `.xterm-viewport`(아래
+   * !important 규칙) · xterm 캔버스 배경(theme.ts 의 `withTransparentCanvas`). 층마다 알파를
+   * 한 번씩 칠하면 0.8 × 0.8 = 0.96 으로 곱해져 슬라이더를 내려도 뒤가 안 비친다. */
+  --term-opacity: 1;
+  --term-bg-fill: color-mix(in srgb, var(--term-bg) calc(var(--term-opacity) * 100%), transparent);
+  --bg-overlay: color-mix(in srgb, var(--m3-surface-container-lowest) 62%, transparent);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
+  /* 옅은 그림자 — 원래 타일의 것이었으나 2026-09-25 작업면 단계에서 타일에서는 뺐다(그림자는
+     뜬 면에만). 지금은 툴팁(`Tooltip.svelte`) 하나가 쓴다 — 툴팁 단계에서 `--shadow-raised` 로 접는다 */
+  --shadow-tile: 0 1px 2px rgba(0, 0, 0, 0.3), 0 3px 10px rgba(0, 0, 0, 0.18);
+  /*
+   * ── 시작 화면 ───────────────────────────────────────────────────────────────
+   *
+   * 시작 화면에서 **칠해지는 것은 이것 하나뿐**이다 — 마우스를 얹은 줄·바로가기 칸의
+   * 반투명 한 겹. 2026-09-15 에 판(테두리·그림자·카드 바탕)을 걷어 내면서 `--start-card-bg`
+   * 와 `--start-card-shadow` 는 함께 지웠다: 빈 탭마다 뜨는 화면이 판을 두르자 그 자체로
+   * 대시보드처럼 무거워졌다 (`StartPage.svelte` 머리 주석).
+   *
+   * 불투명한 `--bg-hover` 를 쓰지 않는 이유는 남는다: 월페이퍼를 깐 창에서 마우스가 지나는
+   * 줄마다 사진이 뚝 끊긴다. `--bg-panel` 이 아니라 `--bg-panel-base` 에서 뽑는 것도
+   * 그대로다 — 투명도 슬라이더(`--chrome-pct`)를 30 까지 내려도 이 한 겹은 같은 농도로
+   * 남고, 동적 색(`dynamic-color.ts`)이 `--bg-panel-base` 를 덮으면 **파생이라 저절로**
+   * 그 색을 따른다.
+   */
+  --start-card-bg-hover: color-mix(in srgb, var(--bg-panel-base) 76%, transparent);
+  /* 시작 화면 위젯 판(평면의 `StartWidgetFrame` · 빈 판의 [위젯 추가] — 글래스의 위젯 카드는 `--glass-mid` 면이다(10-29)) —
+     월페이퍼 위에 바로 놓이는 판이라 크롬 투명도를 탄다.
+     평면의 `--control-tile-bg` 는 불투명(`--bg-hover`)이라 그대로 쓰면 슬라이더가 안 먹었다(10-28 사용자). 글래스는 아래
+     블록에서 `--control-tile-bg` 그대로 — 그쪽은 이미 `--glass-dense` 로 슬라이더를 탄다(여기서 또 섞으면 두 겹) */
+  --start-widget-bg: color-mix(in srgb, var(--control-tile-bg) var(--chrome-pct), transparent);
+  --start-widget-bg-hover: color-mix(in srgb, var(--control-tile-bg-hover) var(--chrome-pct), transparent);
+  /* 타일링 거터(패널 사이·창 가장자리 간격). layout.ts 의 GAP 상수와 **같은 값**이어야 한다 */
+  --gap: 8px;
+  --radius: 10px; /* 둥글둥글 — 버튼·칩·작은 요소 (의미 토큰층의 `--radius-md` 가 이것이다) */
+  /*
+   * 탭 한 칸의 **기본(최대) 폭**. 글자 수에 따라 폭이 출렁이면 같은 탭이 매번 다른
+   * 자리에 서게 되어 "몇 번째 칸" 이라는 근육 기억이 만들어지지 않는다 — 그래서 제목은
+   * 잘라 내고(ellipsis, 전체 제목은 툴팁) 칸의 크기는 제목과 무관하다.
+   * 200px = 글리프 + 한글 11자 안팎 + 배지 + × 가 들어가는 폭 (2026-09-29, 168 → 200).
+   * 창이 좁아 다 못 들어가면 탭이 **모두 같이** `--tab-min-width` 까지 줄고, 그래도 넘치면
+   * 뒤의 탭부터 접혀 `⌄N` 목록으로 간다 (docs/log/2026-09-29-tab-width-shrink.md · `$lib/tab-overflow`).
+   */
+  --tab-width: 200px;
+  /* 줄어드는 하한 = 아이콘 한 칸 (64px 아래는 제목·× 를 접는다 — 그래도 넘치면 뒤 탭부터 `⌄N` 목록으로) */
+  --tab-min-width: 36px;
+  --term-pad: 8px; /* 터미널 안쪽 여백 (kitty window_padding 감각) — 글자가 둥근 타일에 안 붙게 */
+  /* 옛 셋째 단(14px) — 2026-09-25 작업면 단계에서 md 의 별칭으로 접었다(docs/log/2026-09-25-work-surface.md 결정 3).
+     이름은 남겨 둔다 — 부르는 자리(터미널 안 팝업 등)가 저절로 md 를 따른다. 새 코드는 `--radius-md` 를 쓴다.
+     큰 면(타일 · 독 · 떠 있는 상태줄)의 모서리는 2026-10-25 부터 아래 의미 토큰층의 `--radius-surface` 다. */
+  --radius-lg: var(--radius);
+  /* 강조 링 — 관제판 행·독 손잡이가 아직 쓴다. **타일 포커스는 더 이상 이것을 쓰지 않는다**
+     (중성 `--line-strong` — PaneHost.svelte, 같은 문서 결정 2). */
+  --ring-active: var(--accent);
+  /* 타일 머리줄 높이 — `PaneHeader`(띠 자체)와 `PaneHost`(본문을 그만큼 내리는 `top`)가 함께
+     읽는다. 한쪽만 고치면 머리줄이 터미널 첫 줄을 덮거나 틈이 벌어진다. 4px 격자의 32. */
+  --tile-head-h: 32px;
+  /*
+   * **머리줄 칩 색** (2026-10-11, 목업 E2 — `pane/PaneHeader.svelte` 의 `.hchip`). 칩은 종류마다 고유 색이고, 판 = 그 색
+   * `--chip-tint` 만큼 + 투명, 글자 = 그 색(테두리 없음). 호버는 한 단 진하게(`--chip-tint-hover`) — 2026-10-18 알약으로 바꾸며
+   * 안쪽 1px 선은 걷었다(MD3 상태 층만).
+   * 강조색(파랑)은 "선택 줄 · 주 버튼 · 입력 대기 점" 자리라 폴더에 쓰지 않고, 초록은 "실행 중" 신호라 브랜치에 쓰지 않는다.
+   * **종류 칩 다섯은 MD3 custom color 생성값**이다(2026-10-19 — `dynamic-color.ts` 의 `chipTokens`): hue 고정(폴더 83 금빛 · 브랜치 301
+   * 보라 · tmux 182 청록 · 경유 358 장미 · 포워딩 51 산호) · chroma 40 · 테마 primary 쪽으로 harmonize · 톤 다크 80 / 라이트 40 에서
+   * 머리줄 판(surfaceContainer · 활성 surfaceContainerHigh) 위 호버 칩 판 대비 4.5 이상이 될 때까지 민다. 색 테마 · 동적 색 · 사용자 색은
+   * `--m3-*` 와 함께 인라인으로 덮고, 아래는 기본 팔레트의 값이다(짝 시험 · 대비 시험이 내장 테마 전부를 지킨다). Monochrome 은 chroma 16 ·
+   * harmonize 없음.
+   */
+  --chip-tint: 16%;
+  --chip-tint-hover: 20%;
+  --chip-folder: #feb868;
+  --chip-branch: #c1c1ff;
+  --chip-tmux: #72d6d6;
+  --chip-jump: #f6b2dd; /* 경유 — 장미 */
+  --chip-forward: #ffb49e; /* 포워딩 — 산호 */
+  /* AI 권한 칩 — 단계 이름 글자가 들어가 4.5:1 을 맞춘다(2026-10-11). 원시 토큰(MD3 별칭)에서 파생해 색 테마를 따른다.
+     중성(읽기 전용)은 본문색을 40% 섞는다. 강조는 다크에서 그대로(최저 5.24), 경고는 MD3 면(cHigh)이 밝아져 그대로는 4.34 라
+     본문색 쪽으로 25% 당긴다(최저 4.78 — 2026-10-19 대비 시험) */
+  --chip-ai-read: color-mix(in srgb, var(--fg) 40%, var(--fg-muted));
+  /* 끔(10-23 — 칩이 끔이어도 선다): 게이지의 끔 색 그대로 흐리게. 터미널 머리줄은 `PaneHeader` 가 머리줄의 흐린 글자로 바꾼다 */
+  --chip-ai-off: var(--ai-lv0);
+  /* 승인 후 실행 · 자동 승인 실행 · 모두 승인 칩은 **게이지의 단계 색**(아래 `--ai-lv*`)을 그대로 입는다(10-23 — 칸 색과 칩 글자가 한 말).
+     자동 승인 실행은 경고색에서 강조색 계열로 옮겼고, 경고색은 '대상이 바뀌어 풀림'(DB) 하나에 남는다(`--chip-ai-broken`) */
+  --chip-ai-approve: var(--ai-lv2);
+  --chip-ai-auto: var(--ai-lv3);
+  --chip-ai-all: var(--ai-lv4);
+  --chip-ai-broken: color-mix(in srgb, var(--warn) 75%, var(--fg));
+  /*
+   * **AI 권한 게이지의 단계 색**(2026-10-23 — `AiGauge.svelte` · `ai-gauge.ts`). 자리 1~3 은 강조색(MD3 primary) 한 가족 —
+   * **밝기만** 계단이다(다크: 바탕 쪽으로 20% → primary → 흰색 쪽으로 45%, 단계가 오를수록 바탕과 멀어진다). 자리 4(모두 승인)는
+   * 주황(경고 쪽 · 실패색 `--err` 아님 — 목업). 글자로도 쓰므로(고른 눈금 · 지금 단계 이름 · 칩) 뜬 면 · 칩 판 위 4.5:1 이 하한
+   * (모든 내장 테마 × 두 모드 — `app-color-themes.test.ts` 의 게이지 · 칩 대비 시험). `--on-ai-lv4` 는 YOLO 표지의 글자.
+   */
+  --ai-lv0: var(--fg-muted);
+  --ai-lv1: color-mix(in srgb, var(--accent) 80%, var(--bg-base));
+  --ai-lv2: var(--accent);
+  --ai-lv3: color-mix(in srgb, var(--accent) 55%, white);
+  --ai-lv4: #f5a05a;
+  --on-ai-lv4: #2a1400;
+  --ai-all-ink: color-mix(in srgb, var(--ai-lv4) 55%, white);
+  /* 자원 칩(CPU · 메모리 — 2026-10-17) — 읽기 전용 수치라 중성. AI 읽기 전용 칩과 같은 섞음(4.73) */
+  --chip-resource: color-mix(in srgb, var(--fg) 40%, var(--fg-muted));
+  /*
+   * **폴더 색** — 세션 타일의 그룹, 파일 브라우저의 디렉터리가 함께 쓴다.
+   *
+   * 예전에는 📁 이모지라 글꼴이 칠하는 노랑 고정이었고, 테마를 어떻게 바꿔도 그 한 칸만
+   * 다른 앱에서 온 것처럼 보였다. 이제 폴더는 `currentColor` 를 입는 SVG 라(`host-icons.ts`)
+   * 이 토큰 하나가 앱 전체의 폴더 색이 된다.
+   *
+   * 폴더는 "무엇인지" 를 말하는 자리라 **제3색(`--tertiary` = MD3 tertiary)** 이다(2026-10-18 — 그 전에는 tertiary hue 를
+   * 한 톤 눌러 만든 값). 강조색은 "골라진 것 · 포커스" 의 색이라 폴더까지 같은 색이면 목록에서 무엇이 선택된 것인지 읽히지 않는다.
+   */
+  --folder: var(--tertiary);
+  /*
+   * ── 탐색기 줄의 공용 치수 ─────────────────────────────────────────────────
+   *
+   * 파일 브라우저(`SftpBrowser`)와 세션 타일(`Sidebar`)의 목록은 **같은 문법의 탐색기**다
+   * (docs/log/2026-09-04-icons-and-rows.md). 그런데 두 컴포넌트가 각자 패딩·글자 크기·앞자리
+   * 폭을 적어 두는 바람에 세션 줄이 미묘하게 더 높고 컸다 — 두 타일을 나란히 놓으면 같은
+   * 폴더가 서로 다른 크기로 보인다. 값을 여기 한 벌만 두면 그 어긋남이 **구조적으로** 사라진다.
+   */
+  --row-pad-y: 3px; /* 줄의 위아래 여백 (= 줄 높이를 정하는 값) */
+  --row-pad-x: 6px; /* 줄 안쪽 좌우 여백 */
+  --row-inset: 4px; /* 목록 상자의 좌우 여백 — 둥근 강조가 벽에 붙지 않게 */
+  --row-gap: 6px; /* 아이콘 ↔ 이름 사이 */
+  --row-font: 12px; /* 줄 글자 */
+  --row-icon: 18px; /* 앞자리 아이콘 **슬롯 폭** (아이콘이 없어도 이름이 세로로 맞는다) */
+  --row-icon-size: 14px; /* 그 슬롯 안의 글리프 한 변 */
+  /* 파일 타일의 보기 셋 (docs/log/2026-10-07-file-tile-dolphin.md) — 아이콘 보기의 두 값은 크기 단계 `1` 의 것이고
+     화면이 단계 배율(`--icon-scale`, `browser/file-view.ts` 의 표)을 곱한다 */
+  --tile-icon-cell: 80px; /* 아이콘 보기(격자) 한 칸의 최소 폭 */
+  --tile-icon-size: 36px; /* 그 칸의 글리프 한 변 */
+  --compact-col-min: 150px; /* 간단히 보기 한 열의 폭 — 이름이 짧아도 이만큼은 선다 */
+  --compact-col-max: 220px; /* 그 열의 최대 폭 — 넘치는 이름은 말줄임 */
+  --file-status-h: 26px; /* 파일 타일 맨 아래 상태 줄의 높이 */
+  --preview-w: 240px; /* 파일 타일 오른쪽 미리 보기 패널의 폭 (그림 자리의 최대 높이도 이 값) */
+  /*
+   * ── 상태바 치수 (`StatusBar.svelte`) ─────────────────────────────────────
+   *
+   * 띠의 크기를 정하는 값은 **여기 한 벌**이다 (docs/log/2026-09-25-statusbar-size.md). 띠
+   * 밖에서도 이 크기에 기대는 자리가 있어서다 — 왼쪽 기둥 옆에 서는 독(`+page` 의
+   * `--dock-inset-left`)이 기둥 폭을 그대로 읽는다. 컴포넌트 안에 두면 그쪽이 숫자를 다시
+   * 적어야 하고, 한쪽만 고치면 독이 기둥을 덮거나 틈이 벌어진다.
+   *
+   * 아이콘 한 변만은 CSS 가 아니라 `StatusBar.svelte` 의 `ICON_SIZE`(JS 상수 — `UiIcon` 의
+   * prop 이다)다. **칸을 바꾸면 그것도 같이 본다** — 칸 대비 아이콘이 ~60% 일 때 여백이 고르다.
+   */
+  --sb-h: 30px; /* 가로(위·아래) 띠 높이 — 칸 높이 + 위아래 여유(테두리 1px 포함). 데스크톱은 탭 줄 두께를 따른다(`+page` 의 `--tab-band`) */
+  --sb-w: 36px; /* 세로(왼쪽·오른쪽) 기둥 폭 — 칸 폭 + 양옆 4px. 데스크톱은 탭 줄 두께를 따른다(`+page` 의 `--tab-band`) */
+  --tab-h: 28px; /* 탭 한 칸의 높이(`Tabs.svelte`) — 탭 줄 두께(`+page` 의 `--tab-row` · `--tab-band`)의 바탕 */
+  --sb-cell-w: 28px; /* 글리프 칸 한 개의 폭 (칩은 이것이 최소 폭) */
+  --sb-cell-h: 26px; /* 글리프 칸 한 개의 높이 */
+  --sb-gap: 4px; /* 칸 사이 간격 (4px 격자) */
+  /* 글자 크기는 따로 두지 않는다 — 띠의 글자는 전부 의미 토큰 `--t-xs`(12px) 한 단이다
+     (옛 `--sb-font`·`-sm`·`-xs` 12/11/10 을 2026-09-25 작업면 단계에서 접었다). */
+  --font-ui: "Pretendard Variable", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "D2Coding", Consolas, monospace;
+  /*
+   * 네이티브 위젯(드롭다운 팝업·슬라이더 트랙·색 선택기)이 따라갈 밝기.
+   * 우리가 칠하는 것은 `<select>` 상자까지고, **열렸을 때 뜨는 목록**은 OS/브라우저가 그린다 —
+   * 이 한 줄이 없으면 어두운 앱 위에서 그 목록만 하얗게 떴다. 라이트 블록에서 `light` 로 뒤집는다.
+   */
+  color-scheme: dark;
+}
+
+/* ── 라이트 모드 ─────────────────────────────────────────────────────────────
+ * 기본(#8ab4ff TonalSpot)의 라이트 역할. 크롬 원시 토큰은 별칭이라 다시 적지 않는다 — 의미색 · 에이전트 빛깔 · 로고 · 터미널 ·
+ * 그림자처럼 모드마다 값이 다른 것만 여기 있다. MD3 라이트는 면 용기가 창(surface 98)보다 **어둡다**(surfaceContainer 94) —
+ * 2026-10-18 전의 "뜬 면이 가장 밝다" 계단은 MD3 계단으로 바뀌었다.
+ */
+:root[data-theme="light"] {
+  /* MD3 역할 — 기본 원천 #8ab4ff 의 SchemeTonalSpot 라이트(생성값 · 짝 시험). 별칭(`--bg-base` …)은 위 블록 그대로 따라온다 */
+  --m3-surface: #f9f9ff;
+  --m3-surface-container-lowest: #ffffff;
+  --m3-surface-container-low: #f3f3fa;
+  --m3-surface-container: #ededf4;
+  --m3-surface-container-high: #e7e8ee;
+  --m3-surface-container-highest: #e2e2e9;
+  --m3-on-surface: #191c20;
+  --m3-on-surface-variant: #44474e;
+  --m3-outline: #74777f;
+  --m3-outline-variant: #c4c6d0;
+  --m3-primary: #415f91;
+  --m3-on-primary: #ffffff;
+  --m3-primary-container: #d7e3ff;
+  --m3-on-primary-container: #284777;
+  --m3-secondary-container: #dae2f9;
+  --m3-on-secondary-container: #3e4759;
+  --m3-tertiary-container: #fad8fd;
+  --m3-on-tertiary-container: #573e5c;
+  --m3-secondary: #565e71;
+  --m3-on-secondary: #ffffff;
+  --m3-tertiary: #705574;
+  --m3-on-tertiary: #ffffff;
+  --m3-error: #ba1a1a;
+  --m3-on-error: #ffffff;
+  --m3-error-container: #ffdad6;
+  --m3-on-error-container: #93000a;
+  --m3-inverse-surface: #2e3036;
+  --warn: #906816;
+  --warn-soft: #ffdeaa;
+  --on-warn-soft: #271900;
+  --ok: #397c47;
+  --hint-bubble-bg: #fbf3d3;
+  --hint-bubble-line: #e6d89e;
+  --hint-bubble-fg: #4a3f15;
+  --ok-soft: #baf0bd;
+  --on-ok-soft: #002109;
+  /* 에이전트 빛깔 네 단계 — 순백 카드 대비 3:1 이상 · ΔE76 10 이상 · 빛깔은 가족 안(Claude 18~21° · Codex 무채).
+     밝은 바탕에서는 밝을수록 안 보이므로 어두운 쪽으로 계단을 내린다 */
+  --agent-claude-1: #bb6c42;
+  --agent-claude-2: #9c5433;
+  --agent-claude-3: #7f4126;
+  --agent-claude-4: #613019;
+  --agent-codex-1: #7b7a77;
+  --agent-codex-2: #5f5e5b;
+  --agent-codex-3: #454442;
+  --agent-codex-4: #2b2a29;
+  /* 검정 단색 로고 — 라이트에서는 원본 그대로(검정 · 흰색) */
+  --logo-mono-chrome: #111111;
+  --logo-mono-chrome-inverse: #ffffff;
+  --logo-mono: var(--logo-mono-chrome);
+  --logo-mono-inverse: var(--logo-mono-chrome-inverse);
+  --term-bg: #fcfaff;
+  /* 모달 뒤를 덮는 층은 라이트에서도 **어둡다** — 스크림은 "뒤를 가린다" 는 뜻이고,
+     흰 화면 위에 흰 스크림을 깔면 아무것도 가려지지 않는다. 알파만 낮춰 부드럽게 둔다. */
+  --bg-overlay: color-mix(in srgb, var(--m3-inverse-surface) 35%, transparent);
+  --shadow-modal: 0 8px 32px rgba(20, 20, 24, 0.18);
+  /* 타일 그림자 — 밝은 바탕에서는 같은 알파도 훨씬 진해 보이므로 다크의 절반 이하로 둔다 */
+  --shadow-tile: 0 1px 2px rgba(20, 20, 24, 0.07), 0 3px 10px rgba(20, 20, 24, 0.05);
+  /* 머리줄 종류 칩 — 다크 블록의 규칙(MD3 custom color, 라이트 톤 40 에서 대비까지)으로 낸 기본 팔레트의 라이트 값(짝 시험) */
+  --chip-folder: #784a0a;
+  --chip-branch: #4e4e8e;
+  --chip-tmux: #005f60;
+  --chip-jump: #7e406a;
+  --chip-forward: #874029;
+  /* 라이트는 옅은 판 위라 강조 · 경고를 어둡게 섞는다 — MD3 값에서도 그대로는 강조 3.70 · 경고 3.22 라 여전히 필요하다
+     (강조 75% → 최저 5.34 · 경고 70% → 5.02, 2026-10-19 대비 시험) */
+  --chip-ai-read: color-mix(in srgb, var(--fg) 40%, var(--fg-muted));
+  --chip-ai-broken: color-mix(in srgb, var(--warn) 70%, black);
+  /* 게이지 단계 색(라이트) — 옅은 판 위라 계단을 **어두운 쪽**으로 내린다: primary → 검정 쪽 25% → 45%(위 다크 블록의 주석 · 대비 시험).
+     `--chip-ai-approve` · `-auto` · `-all` 은 다크 블록의 별칭이 그대로 따라온다 */
+  --ai-lv1: var(--accent);
+  --ai-lv2: color-mix(in srgb, var(--accent) 75%, black);
+  --ai-lv3: color-mix(in srgb, var(--accent) 55%, black);
+  --ai-lv4: #803800;
+  --on-ai-lv4: #ffffff;
+  --ai-all-ink: color-mix(in srgb, var(--ai-lv4) 85%, black);
+  --chip-resource: color-mix(in srgb, var(--fg) 40%, var(--fg-muted));
+  /* 시작 화면의 호버 한 겹 — 흰 패널을 다크보다 조금 더 진하게(82%) 깐다. 밝은 월페이퍼
+     위에서는 같은 비율도 대비가 덜 나오기 때문이다. */
+  --start-card-bg-hover: color-mix(in srgb, var(--bg-panel-base) 82%, transparent);
+  color-scheme: light;
+}
+
+/* ── 의미 토큰층 (2026-09-25 — docs/log/2026-09-25-design-tokens.md) ─────────────
+ *
+ * 승인된 디자인 방향(넉넉한 간격 · 회색 세 단의 위계 · 절제된 강조)의 **어휘**다. 위 두
+ * 블록의 원시 토큰(`--fg` · `--bg-panel` · `--border` …)은 그대로 두고, 화면이 앞으로 부를
+ * 이름만 여기 한 벌 더 둔다. 지금은 아무 화면도 이 층을 부르지 않는다 — 옮겨 적는 것은
+ * 다음 단계(작업면 → 빈 탭 → 팔레트 → 독 → 대시보드)의 일이다.
+ *
+ * ## 규칙: 색은 **원시 토큰에서 파생만** 한다 (hex 를 새로 적지 않는다)
+ *
+ * 원시 토큰에는 이미 네 갈래의 덮개가 걸린다 — 라이트 블록 · 설정의 앱 테마 색(인라인
+ * `APP_TOKENS`) · 동적 색/월페이퍼 추출(인라인 `DERIVED_TOKENS`) · 모양 프로필(그 둘을
+ * 한꺼번에 적는다). 여기서 hex 를 새로 적으면 그 네 길이 전부 이 층을 비껴가고, 사용자가
+ * 고른 색 위에 기본 팔레트 조각이 떠 버린다. `var()` 로만 파생하면 사용자 속성은 **선언된
+ * 요소에서 계산**되므로(`<html>` 하나) 라이트·인라인 덮개가 저절로 따라온다 — 이 블록을
+ * 라이트용으로 한 벌 더 적을 필요가 없는 이유다(2026-10-18 부터 예외가 없다 — `--on-accent` 도 MD3 onPrimary 의 별칭).
+ *
+ * ## 투명도 슬라이더
+ *
+ * 면(surface)은 **이미 합성된** 원시 토큰을 가리킨다: 창 = `--bg`, 뜬 면 = `--bg-panel`
+ * (둘 다 기저색 × `--chrome-pct`), 타일 = `--term-bg-fill`(× `--term-opacity`). 새 면을
+ * 불투명 hex 로 만들면 슬라이더를 내려도 그 면만 안 비친다. 터미널 글자 위에 뜨는 팝오버처럼
+ * **비치면 안 되는** 자리는 `--surface-raised-solid`(합성 전 기저색)를 쓴다 — 지금
+ * `Terminal.svelte` 의 트리거 팁이 `--bg-panel-base` 를 직접 쓰는 것과 같은 판단이다.
+ *
+ * ## 면과 글자는 같은 쪽에서 온다
+ *
+ * 크롬 모드(다크/라이트)와 터미널 테마는 **따로 고른다** — 라이트 크롬 + 어두운 터미널이 흔하다.
+ * 그래서 크롬 글자(`--fg-*`)를 얹는 상자(입력 칸 · 드롭다운 · 정보 상자 · 카드)는 크롬 면
+ * (`--surface-field` · `--surface-raised` …)에, `--surface-tile` 위에는 터미널 색으로 그리는 것만
+ * 둔다. 섞으면 한쪽 조합에서 검은 바탕에 검은 글자가 된다 (docs/log/2026-10-01-field-surface.md).
+ *
+ * ## 강조색이 서는 자리는 셋뿐이다
+ *
+ * 선택된 행(`--accent-soft` 판) · 화면당 하나인 주 동작 버튼(`.btn-primary`) · "입력
+ * 대기" 에이전트 점/배지. 활성 탭의 글자·테두리, 묶음 제목, 구분선, 평범한 개수 배지에는
+ * 쓰지 않는다. 키보드 포커스 링도 강조색이 아니라 중성(`--focus-ring`)이다 — 강조색이
+ * 보이면 그것이 곧 "골라진 것 / 눌러야 할 것" 이어야 해서다. 타일 포커스도 중성이다
+ * (`--line-strong` 테두리 — 작업면 단계, docs/log/2026-09-25-work-surface.md). 예외는
+ * **잠깐 뜨는 손끝 피드백**(끌어 놓기 삽입선·벨 번쩍임)뿐이다 — 상시 칠이 아니라 지나가는 표시다.
+ *
+ * 덧붙임(2026-10-18 — End-4 식 MD3): 누르고 고르는 것은 MD3 부품 모양이고 색은 역할 별칭(`--control-*`, 아래 블록)이다.
+ * 고른 칩 · 세그먼트 · 선택 줄은 **secondaryContainer**(골랐지만 조용한 판)이고, 강조색(primary) 채움은 켜진 스위치 ·
+ * 주 동작 · 슬라이더 · 게이지 · 기본 셸 실행 타일뿐이다. 포커스 링은 그대로 중성이고 부품 모양(알약)을 따라 둥글다.
+ */
+:root {
+  /* 글자 크기 — 네 단뿐이다. 위계는 크기보다 **회색 세 단**(아래 `--fg-*`)으로 만든다 */
+  --t-xs: 12px; /* 보조 — 시각 · 키 안내 · 배지 */
+  --t-sm: 13px; /* 본문 — 목록 줄 · 버튼 · 입력 (앱의 대부분) */
+  --t-md: 15px; /* 소제목 — `--fw-semibold` 와 짝 */
+  --t-lg: 20px; /* 제목 — `--fw-semibold` 와 짝 */
+  --fw-regular: 400;
+  --fw-semibold: 600;
+
+  /* 글자 회색 세 단 — 본문 / 보조 / 흐림 */
+  --fg-1: var(--fg);
+  --fg-2: var(--fg-muted);
+  /* 흐림 — 보조를 바탕 쪽으로 28% 끌어내린 값 (기본 다크 ≈ #5f6268, 라이트 ≈ #919197).
+     비활성·자리표시자·꼬리표 전용이라 4.5:1 을 맞추지 않는다 — 읽어야 하는 글자는 fg-2 다 */
+  --fg-3: color-mix(in srgb, var(--fg-muted) 72%, var(--bg-base));
+
+  /* 면 — 밝기 계단 하나로 층을 가른다 (창 < 타일 < 뜬 면 < 호버). 그림자는 뜬 면에만 */
+  --surface-window: var(--bg);
+  /* 타일 면 = **터미널 테마**의 바탕이다(크롬 모드가 아니라). 그래서 이 위에는 터미널 색으로
+     그리는 것만 얹는다 — 크롬 글자(`--fg-*`)를 얹으면 "라이트 크롬 + 어두운 터미널" 에서
+     검은 바탕에 검은 글자가 된다(docs/log/2026-10-01-field-surface.md) */
+  --surface-tile: var(--term-bg-fill);
+  /* 필드의 우물 — 입력 칸 · 드롭다운 · 모달 안의 정보 상자처럼 **크롬 글자를 얹는 오목한 면**.
+     뜬 면과 창 바탕을 4:6 으로 섞어 "뜬 면보다 한 칸 깊게" 판다. 크롬에서 파생하므로 앱 테마 색 ·
+     동적 색 · 프로필 덮개를 저절로 따르고, 투명도는 크롬 슬라이더(`--chrome-pct`)를 탄다 */
+  --surface-field: color-mix(in srgb, var(--surface-field-solid) var(--chrome-pct), transparent);
+  /* 위와 같은 색, 투명도를 타지 않는다 — 가로로 밀리는 글 위에 붙어 서는 거터(`CodeView` · 문서 편집기)처럼
+     **비치면 밑의 글자가 겹쳐 보이는** 자리 */
+  --surface-field-solid: color-mix(in srgb, var(--bg-panel-base) 40%, var(--bg-base));
+  --surface-raised: var(--bg-panel); /* 독 · 팔레트 · 토스트 · 메뉴 */
+  --surface-raised-solid: var(--bg-panel-base); /* 위와 같은 색, 투명도를 타지 않는다 — **타일 위에 뜨는 면**(독의 본문·머리줄·꼬리줄 · 모달 상자)은
+     이것을 쓴다: 투명도를 타면 밑의 터미널 글자가 비쳐 읽기를 해친다. 월페이퍼 위의 크롬(사이드바 · 탭 바 · 상태바)은 위의 것 */
+  --surface-hover: var(--bg-hover);
+  --shadow-raised: var(--shadow-modal);
+
+  /* 선 — 머리카락 한 줄. 강한 쪽은 포커스·뜬 면의 가장자리 */
+  --line: var(--border);
+  /* 강한 선 = outlineVariant 를 outline 쪽으로 40% — outline 그대로는 1px 테두리에 너무 진하다 */
+  --line-strong: color-mix(in srgb, var(--m3-outline) 40%, var(--border));
+  /* 옅은 쪽 — 늘 보이는 타일의 테두리와 머리줄 아래 구분선(2026-10-11 사용자: 진하다). 대비를 대략 절반으로 —
+     다크 · 라이트 모두 같은 식이라 블록 하나다. 포커스 타일은 그대로 `--line-strong` 이라 더 또렷이 갈린다 */
+  --line-faint: color-mix(in srgb, var(--line) 55%, transparent);
+
+  /* 간격 — 4px 격자, 이 여섯 값만. 뜬 면 안쪽 여백은 space-4, 묶음 사이는 space-5 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 모서리 — 컨트롤·행은 sm, 작은 면(대화상자 · 메뉴 · 칸)은 md(= 기존 `--radius`).
+     옛 `--radius-lg`(14px)는 작업면 단계에서 md 의 별칭으로 접었다.
+     **큰 면은 따로 두 단**(2026-10-25 사용자 — 채팅 독 값으로 통일): 바깥 면(타일 · 런처 독 · 채팅 독 · 설정 모달 · 떠 있는 상태줄)은
+     `--radius-surface` 하나, 그 안의 카드는 한 단 작게 `--radius-surface-inner`. 단추 · 칩 · 탭은 알약(999px) 그대로다. */
+  --radius-sm: 7px;
+  --radius-md: var(--radius);
+  --radius-surface: 16px;
+  --radius-surface-inner: 12px;
+  /* 목록 줄의 칠(호버 · 고른 줄) — **한 줄짜리 줄은 알약**(2026-10-29 사용자 C안 — End-4 · MD3): 명령 팔레트 · 메뉴 한 벌(`.menu-row`) ·
+     독 목록 줄이 같은 모양이다. 알약 끝 곡선에 글자가 먹히지 않게 줄 안쪽 좌우 여백은 `--space-3` 이상(앞자리가 원형 아바타면 그 칸이 곡선을 비운다).
+     두 줄 카드 · 40px 넘는 줄은 알약이 어색해 이 토큰을 쓰지 않는다 */
+  --radius-row: 999px;
+  /* 입력 칸 — 앱 전체 알약(MD3 filled · 2026-11-07 사용자 결정). 폼 · 모달 · 설정의 칸이 같은 값을 쓴다.
+     좁은 도구줄 칸(찾기 · 거르기 · 이름 고치기)은 높이가 달라 모서리만 알약으로 맞춘다 */
+  --field-radius: 16px; /* 한 줄 칸 = 32px 의 절반 */
+  --field-radius-multi: 16px; /* 여러 줄 칸 — 999 로 두면 늘어날 때 끝이 지나치게 둥글다 */
+  --field-height: 32px;
+
+  /* 명령 팔레트 폭 — launcher 검색 칸과 **같은 값**이라 칸이 그대로 펼쳐지는 것처럼 열린다
+     (docs/log/2026-09-25-launcher.md 덧붙임). 둘 중 하나만 바꾸면 가장자리가 어긋난다.
+     칸 없이 여는 자리의 셈(`launcher.ts` 의 `PALETTE_W`)도 같은 값을 숫자로 쥔다 — 같이 바꾼다 */
+  --palette-w: 560px;
+
+  /* 창 끝 독의 여닫이 — 런처 독(`Dock.svelte`) · 채팅 독(`ChatDock.svelte`)이 **같은 값**을 쓴다(2026-10-23 — 채팅 독의 움직임으로
+     맞췄다). 여는 · 닫는 쪽 모두 이 시간 · 곡선이고 투명도 · 크기는 바뀌지 않는다. 미는 거리는 아래 `.edge-dock` 의 `--edge-dock-off` */
+  --edge-dock-dur: 200ms;
+  --edge-dock-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 강조 — `--accent`·`--accent-soft`(선택된 행 판)는 위 원시 블록 그대로다 */
+  /* 호버 = MD3 상태 층 — 판 위에 그 판의 글자색을 8% (다크는 밝게, 라이트는 어둡게) */
+  --state-hover: 8%;
+  --accent-hover: color-mix(in srgb, var(--on-accent) var(--state-hover), var(--accent));
+  /* 채운 강조 · 보조 · 제3색 위 글자 = MD3 on* (테마마다 생성 — 모드 고정값이 아니다) */
+  --on-accent: var(--m3-on-primary);
+  --on-secondary: var(--m3-on-secondary);
+  --on-tertiary: var(--m3-on-tertiary);
+  --focus-ring: color-mix(in srgb, var(--fg) 55%, transparent);
+  /* 입력 칸·고르개의 포커스 테두리 — 중성(강조색 아님). 예전 `--fg-3` 은 바탕 대비 약 2.85:1 로
+     포커스 표시 하한 3:1 에 못 미쳤다(2026-10-11 디자인 점검) — 보조 글자색으로 올린다 */
+  --focus-border: var(--fg-2);
+  /* 컨트롤 = MD3 부품의 역할 별칭(2026-10-18 — End-4 식 목업). 값은 원시 토큰(= `--m3-*` 별칭)에서만 오고 모드별 재료가 없다.
+     호버는 MD3 상태 층(그 판의 글자색 `--state-hover`). 부품마다 쓰는 자리:
+     - 안 고른 칩 · 세그먼트 = 투명 + `--control-outline` 테두리 + `--control-fg` 글자, 호버 `--control-ghost-hover`
+     - 고른 칩 · 세그먼트 · 독 칸 지시자 · 보조(tonal) 단추 = `--control-sel-*`(secondaryContainer)
+     - 켜진 스위치 · 주 동작 · 슬라이더 · 게이지 채움 = `--control-on-*`(primary)
+     - 꺼진 스위치 트랙 · filled 입력 칸 = `--control-bg`(surfaceContainerHighest), 손잡이 · 테두리 = outline
+     - 실행 타일 · 알림 카드 · 검색 알약 · 카드 안 카드 = `--control-tile-*`(surfaceContainerHigh)
+     - 슬라이더 · 게이지 비활성 = `--control-track`(secondaryContainer) */
+  --control-fg: var(--fg-muted);
+  --control-outline: var(--m3-outline);
+  --control-ghost-hover: color-mix(in srgb, var(--control-fg) var(--state-hover), transparent);
+  --control-bg: var(--bg-chip);
+  --control-bg-hover: color-mix(in srgb, var(--fg) var(--state-hover), var(--control-bg));
+  --control-tile-bg: var(--bg-hover);
+  --control-tile-bg-hover: color-mix(in srgb, var(--fg) var(--state-hover), var(--control-tile-bg));
+  --control-sel-bg: var(--accent-soft);
+  --control-sel-fg: var(--on-accent-soft);
+  --control-sel-bg-hover: color-mix(in srgb, var(--control-sel-fg) var(--state-hover), var(--control-sel-bg));
+  --control-on-bg: var(--accent);
+  --control-on-bg-hover: var(--accent-hover);
+  --control-on-fg: var(--on-accent);
+  --control-track: var(--accent-soft);
+  /* filled 입력 칸(폼 · 모달 · 설정) — 판 surfaceContainerHighest · 라벨 primary. 좁은 도구줄 칸은 필드 우물 `--surface-field`(위) 그대로 */
+  --field-bg: var(--control-bg);
+  --field-label: var(--accent);
+  /* 의미색 `--ok`·`--warn`·`--err`(+ `-soft`)는 위 원시 블록에 이미 있다 — 강조색과 섞지 않는다 */
+  /* AI 권한 게이지(10-23) — 빈 칸은 게이지 비활성(`--control-track`), '끔' 고리는 안 고르면 강한 선. 모두 승인이면 카드 테두리 ·
+     설명 상자 · 확인 단추가 따뜻한 판을 입는다(단계 색은 원시 블록의 `--ai-lv*`) */
+  --ai-track: var(--control-track);
+  --ai-ring: var(--line-strong);
+  --ai-all-line: color-mix(in srgb, var(--ai-lv4) 55%, var(--line));
+  --ai-all-soft: color-mix(in srgb, var(--ai-lv4) 14%, var(--surface-raised-solid));
+}
+
+/* 게이지 색 자리 → 단계 색 — `data-ai-tone` 을 단 상자 안에서 `--ai-c` 가 지금 단계의 색이다(`AiGauge` · `AiGaugeMini` · 머리줄 칩) */
+[data-ai-tone="0"] {
+  --ai-c: var(--ai-lv0);
+}
+[data-ai-tone="1"] {
+  --ai-c: var(--ai-lv1);
+}
+[data-ai-tone="2"] {
+  --ai-c: var(--ai-lv2);
+}
+[data-ai-tone="3"] {
+  --ai-c: var(--ai-lv3);
+}
+[data-ai-tone="4"] {
+  --ai-c: var(--ai-lv4);
+}
+
+/* ── 창 끝 독의 여닫이 (2026-10-23) ─────────────────────────────────────────────
+ * 닫힘 = 창 끝 밖으로 통째로 민다(제 폭 + 여백 + 안쪽 기둥 + 그림자 한 뼘 32px) — 쪽은 상자의 `data-dock-side`. 채팅 독에서 온 모양이고
+ * 런처 독이 그대로 따른다. 이 클래스는 **거리만** 준다: 닫힌 상태의 `transform: translateX(var(--edge-dock-off))` 와 전이
+ * (`--edge-dock-dur` · `--edge-dock-ease`)는 각 독이 제 숨김 방식(채팅 = `.open` 토글 · 런처 = `hidden` + `allow-discrete`)에 맞춰 쓴다.
+ * 열리면 `transform` 이 남지 않아야 한다(안쪽 `position: fixed` 메뉴의 기준 상자가 독으로 바뀐다). 움직임 줄이기면 각 독이 전이를 끈다.
+ */
+.edge-dock {
+  --edge-dock-off: calc(-100% - var(--gap) - var(--dock-inset-left, 0px) - 32px);
+}
+
+.edge-dock[data-dock-side="right"] {
+  --edge-dock-off: calc(100% + var(--gap) + var(--dock-inset-right, 0px) + 32px);
+}
+
+/* ── 재질 — 평면 / 글래스 (2026-10-11, `[app] material` · `<html data-material>`) ─────────────
+ *
+ * 색과 **독립된 축**이다. **판의 바탕은 훤히 비치는 흰 유리다(10-22 사용자)** — 라이트 · 다크 상관없이 같은 공식으로
+ * 흰색을 8~22% 만 깐다 — 판에서 보이는 것은 흐려진 월페이퍼 · 번짐의 색과 모양이다. 테마 색은 판 위의 것(단추 · 고른 것의
+ * 강조 · 아이콘 · 실행 단추 on 면 · 스위치)과 번짐(`--glass-glow`), 그리고 사용자가 슬라이더로 올린 판 진하기(아래)에만 든다.
+ * **알고 받은 대가**: 글자색은 모드를 따르므로 다크 + 밝은 월페이퍼 · 라이트 + 어두운 월페이퍼(· 어두운 터미널 위)에서는
+ * 흰 유리 판의 글자가 묻힌다(하네스 실측은 커밋 기록). 그래서 **판 진하기는 투명도 슬라이더가 정한다(10-22 사용자)** —
+ * 20% 이하는 위의 흰 유리 그대로, 올릴수록 테마 면(`--surface-raised-solid`)이 섞여 100% 에서 거의 불투명하다
+ * (`--glass-dense` — 띠 · 독 · 뜬 면 · 대화 상자 모두). 기본 60% 는 흐린 배경이 비치면서 터미널 위 글자 대비 4.5:1 을
+ * 넘는 자리다(라이트 · 다크). 흐림 · 가장자리는 슬라이더와 상관없이 그대로다.
+ *
+ * **평면(flat)에서는 아래 토큰이 하나도 정의되지 않는다.** 쓰는 쪽은 언제나 지금 값을 폴백으로 적는다
+ * (`background: var(--glass-raised, var(--surface-raised-solid))`) — 그래서 평면 화면은 2026-10-11 이전과
+ * 픽셀 단위로 같다. 면마다 평면 값이 달라(탭 줄은 `--surface-raised`, 모달은 `-solid`) 평면 값을 한 토큰에
+ * 담을 수 없기 때문이기도 하다.
+ *
+ * **모양 = 글래스모피즘(2026-10-21 · 디자인 목업 E안 · 사용자 승인).** 반투명 판 + 약한 흐림(월페이퍼 색이 비치게) +
+ * 가장자리 + 부드러운 그림자(`--glass-shadow`). 고른 것(활성 탭 · 독의 고른 줄)도 흰 반투명 칠(`--glass-pick`)이다.
+ * **가장자리 = 옅은 1px 흰 선(`--glass-rim`) 하나(10-29 사용자 — 10-22 V3 의 안쪽 빛 띠는 걷었다: 선 + 띠 두 겹이 두껍고
+ * 밝게 읽혔고, 띠 고리의 곡선이 테두리 안쪽 곡선과 어긋나 모서리에 실금이 떴다).** 위쪽 `inset 0 1px 0` 빛 선
+ * (`--glass-edge`)은 1px 밀린 안쪽 그림자라 둥근 모서리에서 초승달이 되므로 곧은 띠의 흐림 판에만 쓴다. 자리마다:
+ *  - 뜬 면(독 · 메뉴 · 대화 상자 …)은 아래 공용 규칙이 테두리 색 · 그림자를 한 번에 건다. 에이전트 알림
+ *    (`AgentNotifyBanners`)은 상자 자신이 흐리므로 같은 수를 스스로 건다.
+ *  - 상태바는 모양마다 스스로 건다(`StatusBar.svelte` 끝 — 평면은 캔버스 쪽 변 하나, 둥근 패널은 네 변). 감싸기는 `+page` 의
+ *    캔버스 선(`--hug-line`)이 캔버스 둘레 한 바퀴를 진다.
+ *  - 탭 줄 아래 변은 `+page` 의 `.canvas-edge`(평면 띠 왼쪽 · 오른쪽이면 기둥 안쪽 선과 한 L), 둥근 패널이면 탭 줄이 제목줄이 진
+ *    떠 있는 패널 안에 선다(위 상태바면 두 줄 패널 하나).
+ *  - `--glass-border` 는 그 밖의 안쪽 선(폰 띠 · 활성 탭)이다.
+ * 판 · 흐림은 크롬과 **터미널이 아닌 타일**에 건다. 터미널 · AI 타일의 면 · 투명도 · 월페이퍼 설정은 이 절이 건드리지 않는다
+ * (쉬지 않고 다시 그리는 글자 캔버스 위에 흐림을 얹으면 글자 가독과 성능을 해친다 — 따로 다음 단계). 파일 · 브랜치 · diff · 문서 ·
+ * 쿼리 · Run · 프로젝트 시작 화면은 10-29 부터 독 등급 판(`--glass-mid` + 흐림 24px)이다 — 내용이 정적이라 그리기는 한 번이고, 판이
+ * 없으면 월페이퍼가 흐림 없이 비쳐 글자를 먹었다(사용자). 판은 타일 상자가 한 번 칠하고 안쪽 화면은 비운다(`PaneHost` 의 `.glass-tile`
+ * · `--tile-inner`). launcher 시작 타일은 빠진다(위젯 카드가 이미 유리). 모든 타일은 **가장자리**도 같은 결로 받는다 — 테두리 색
+ * `--tile-rim`(포커스 `--tile-rim-focus`) 선 하나(안쪽 띠는 10-29 에 걷었다). 라이트의 타일 선은 흰 선에 `--line-strong` 을 섞는다(아래 블록).
+ *
+ * 층마다 세기가 다르다(셋 — 흰색 몫은 `--glass-dense` 가 테마 면을 섞기 전의 값):
+ *  - **강** — 띠(`--glass-band` — 탭 줄 · 상태바 · 감싸기 테두리 · 폰 띠, 흰 12% × 슬라이더) · 중간(`--glass-mid` — 독 · 세션 목록 판 ·
+ *    시작 화면 위젯 카드 · 터미널이 아닌 타일, 흰 14%). 흐림 22 · 24px. 대비 · 밝기 필터로 판을 누르지 않고 흐림 뒤 채도(160%)만 올린다.
+ *    평면 띠는 창 가장자리 · 타일과 맞닿아 테두리가 캔버스 쪽 변 하나뿐이다. 띠는 그림자를 받지 않는다(아래 공용 규칙).
+ *  - **중** — 작은 뜬 면(`--glass-float` — 메뉴 · 고르는 목록 · 토스트 · 호버 카드 · 명령 팔레트 · 에이전트 알림 · 상태바
+ *    떠 있는 메뉴 · 워크스페이스/프로필 전환 · 원격 칩 상자). 강보다 한 단(흰 18%) — 터미널 글자 위에 뜨므로 흐림을
+ *    가장 세게(28px) 둔다.
+ *  - **약** — 대화 상자와 설정 모달(`--glass-raised` 의 `.modal` 들 · `ConfirmDialog` · `--glass-modal` · `--glass-card*`).
+ *    흰 유리가 가장 진하다(흰 22% · 그 안의 카드는 +8 · +12% — 카드는 모달 판 위의 단차라 슬라이더를 타지 않는다).
+ *    긴 본문 · 입력 칸이 있는 면이라 한 단 더 둔다.
+ *  - `--glass-inner`: 바깥 상자가 판을 칠하는 곳(독)의 안쪽 본문 — 투명. 안쪽까지 칠하면 반투명이 두 겹이 된다.
+ *
+ * 흐림(`--glass-filter-*`)은 상자 자신이 아니라 `::before` 한 겹이 진다(아래 규칙) — 그래서 판 토큰(`--glass-band` 등)은
+ * **색 하나**로 남는다(감싸기 모서리 조각이 그라디언트 색 정지점 · 테두리 색으로 쓴다).
+ */
+/* 글래스 크롬 타일의 등장 · 닫기 페이드 값(`PaneHost` 의 `.glass-tile` 규칙 · `pane/tile-ghost.ts` — 10-29). 등록해야 애니메이션이 값 사이를
+   이어 그리고(등록 안 된 사용자 속성은 중간에서 한 번에 바뀐다), 초기값 1 이라 평소엔 쓰는 곳이 모두 그대로다. 자식(머리줄 · 본문)이
+   상자의 값을 읽으므로 상속한다 */
+@property --tile-in {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+/* 글래스 하단 독의 내용 페이드 값(`FloatingStatusDock`) — `--tile-in` 과 같은 까닭으로 등록한다 */
+@property --floating-in {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+:root[data-material="glass"] {
+  /* 판 진하기 — 투명도 슬라이더(`--chrome-pct`)를 탄다. 20% 이하는 아래 흰 유리 그대로(0)이고, 올릴수록 테마 면
+     (`--surface-raised-solid`)이 섞여 60%(기본) 46% · 100% 92% — 거의 불투명한 판이 된다 */
+  --glass-dense: clamp(0%, (var(--chrome-pct) - 20%) * 1.15, 92%);
+  /* 강 — 띠 · 독. 띠의 흰 유리는 슬라이더에 비례해 옅어진다(100% → 흰 12%) */
+  --glass-band: color-mix(in srgb, var(--surface-raised-solid) var(--glass-dense), color-mix(in srgb, #fff calc(var(--chrome-pct) * 0.12), transparent));
+  --glass-mid: color-mix(in srgb, var(--surface-raised-solid) var(--glass-dense), color-mix(in srgb, #fff 14%, transparent));
+  /* 중 — 작은 뜬 면 */
+  --glass-float: color-mix(in srgb, var(--surface-raised-solid) var(--glass-dense), color-mix(in srgb, #fff 18%, transparent));
+  /* 약 — 대화 상자 · 설정 모달 */
+  --glass-raised: color-mix(in srgb, var(--surface-raised-solid) var(--glass-dense), color-mix(in srgb, #fff 22%, transparent));
+  --glass-modal: var(--glass-raised);
+  /* 모달 안의 묶음 카드 · 카드 안에서 한 단 뜬 칸(펼친 에이전트) — 모달 판 위에 흰색을 한 겹 더 얹는 단차 */
+  --glass-card: color-mix(in srgb, #fff 8%, transparent);
+  --glass-card-high: color-mix(in srgb, #fff 12%, transparent);
+  --glass-inner: transparent;
+  /* 판이 옅으니 흐림이 가독을 맡는다 — 월페이퍼를 매끈한 색 면으로 펴고 채도를 한 단 살린다(대비 · 밝기 필터 없음) */
+  --glass-filter-band: blur(22px) saturate(160%);
+  --glass-filter-mid: blur(24px) saturate(160%);
+  --glass-filter-raised: blur(28px) saturate(160%);
+  /* 그 밖의 안쪽 선 — `.glass-band` 의 남은 안쪽 변(폰 띠 — 데스크톱 띠는 `--glass-rim` 선을 따로 긋는다) · 활성 탭. 판보다 한 단만 밝게 */
+  --glass-border: rgb(255 255 255 / 0.16);
+  /* 뜬 면의 가장자리 선(1px 테두리 색) — 네 변 고르게. 경계만 짚는 옅은 선이다(10-29 — .26 은 번쩍였다 · 라이트는 아래 블록) */
+  --glass-rim: rgb(255 255 255 / 0.14);
+  /* 뜬 면의 그림자 — 색을 따로 둔다: Svelte 움직임(`CheatSheet` 의 `slide`)이 그림자를 `color-mix` 로 페이드하려면 색만 필요하다
+     (모양 `0 8px 32px` 는 그쪽이 같은 값으로 적는다) */
+  --glass-shadow-color: rgb(0 0 0 / 0.28);
+  --glass-shadow: 0 8px 32px var(--glass-shadow-color);
+  /* 타일 가장자리(`PaneHost` 의 `.pane-box`) — 크롬과 같은 선 하나. 포커스 타일은 선이 한 단 밝다(중성 — 강조색 아님) */
+  --tile-rim: var(--glass-rim);
+  --tile-rim-focus: rgb(255 255 255 / 0.34);  /* 고른 것(활성 탭 · 독의 고른 줄) — 흰 반투명 칠 */
+  --glass-pick: rgb(255 255 255 / 0.18);
+  /* 띠(직선)의 위쪽 1px 빛 선. 뜬 면에는 쓰지 않는다 — 1px 밀린 안쪽 그림자라 둥근 모서리에서 초승달이 된다 */
+  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.14);
+  /* 보조 · 흐림 글자를 본문 쪽으로 한 단 당긴다 — 반투명 판 뒤로 월페이퍼가 비치면 판이 밝아져(라이트는 어두워져)
+     평면 기준으로 맞춘 회색이 판에 묻혔다(10-17 사용자). 본문(`--fg`) 쪽으로 섞으므로 라이트 · 다크 모두 대비가 오른다.
+     세 단의 순서(본문 > 보조 > 흐림)는 그대로다. 평면 재질은 이 블록이 없어 예전 값 그대로 */
+  --fg-2: color-mix(in srgb, var(--fg-muted) 55%, var(--fg));
+  --fg-3: color-mix(in srgb, var(--fg-muted) 88%, var(--fg));
+  /* 판 위의 부품(10-28 — 목업 FYAKgwVvoZpsGRn7Ey4j1n 표준형) — 판과 **같은 손잡이**로 섞는다: MD3 역할 `--glass-dense` + 나머지는
+     유리 칠(`--glass-ink-*`). 슬라이더 20 이하 = 흰 유리 부품, 100 = 거의 평면 MD3 부품. 원시 별칭 셋(호버 · 칩 · 고른 판)을 여기서
+     덮으므로 `--surface-hover` · `--control-bg` · `--field-bg` · `--control-sel-bg` · `--control-track` 은 저절로 따라온다.
+     채운 강조(주 동작 · 켜짐 · 슬라이더 채움)는 그대로 불투명 primary 다. 가장자리는 아래 `--glass-*-edge`(안쪽 그림자라 크기 불변) */
+  --glass-ink-ctl: rgb(255 255 255 / 0.08);
+  --glass-ink-field: rgb(255 255 255 / 0.08);
+  --glass-ink-hover: rgb(255 255 255 / 0.1);
+  --glass-ink-sel: color-mix(in srgb, var(--accent) 24%, transparent);
+  --bg-hover: color-mix(in srgb, var(--m3-surface-container-high) var(--glass-dense), var(--glass-ink-hover));
+  --bg-chip: color-mix(in srgb, var(--m3-surface-container-highest) var(--glass-dense), var(--glass-ink-field));
+  --accent-soft: color-mix(in srgb, var(--m3-secondary-container) var(--glass-dense), var(--glass-ink-sel));
+  --control-tile-bg: color-mix(in srgb, var(--m3-surface-container-high) var(--glass-dense), var(--glass-ink-ctl));
+  --start-widget-bg: var(--control-tile-bg);
+  --start-widget-bg-hover: var(--control-tile-bg-hover);
+  --surface-field: color-mix(in srgb, var(--surface-field-solid) var(--glass-dense), var(--glass-ink-field));
+  /* 단축키 알약(`.keycap-group` — 팔레트 · 치트시트 · 툴팁)도 판 위의 부품이다 — 불투명 면 대신 칩 판 + 흰 고리 */
+  --keycap-bg: var(--bg-chip);
+  --keycap-line: var(--glass-ctl-rim);
+  /* 부품 가장자리 — 1px 흰 고리 + 위쪽 빛 선. 고른 것은 강조색 고리, 채운 강조는 빛 선만 */
+  --glass-ctl-rim: rgb(255 255 255 / 0.18);
+  --glass-sel-rim: color-mix(in srgb, var(--accent) 42%, transparent);
+  --glass-ctl-edge: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 0 1px var(--glass-ctl-rim);
+  --glass-sel-edge: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 0 1px var(--glass-sel-rim);
+  --glass-on-edge: inset 0 1px 0 rgb(255 255 255 / 0.35);
+  /* 월페이퍼가 없을 때 창 맨 뒤에 까는 번짐(`+page` 의 `.glass-glow`) — 유리 뒤가 단색이면 회색 판으로 읽힌다.
+     반투명 판이 비칠 색이 있어야 한다 — 강조색 · 보조색 · 둘을 섞은 색 세 점 + 패널 색 한 점.
+     모두 테마 토큰에서 파생하므로 색 테마를 바꾸면 그대로 따라온다 */
+  --glass-glow:
+    radial-gradient(55% 55% at 8% 4%, color-mix(in srgb, var(--accent) 38%, transparent), transparent 72%),
+    radial-gradient(50% 50% at 94% 98%, color-mix(in srgb, var(--tertiary) 30%, transparent), transparent 72%),
+    radial-gradient(45% 45% at 22% 96%, color-mix(in srgb, color-mix(in srgb, var(--accent) 50%, var(--tertiary)) 24%, transparent), transparent 72%),
+    radial-gradient(70% 60% at 72% 18%, color-mix(in srgb, var(--bg-panel-base) 70%, transparent), transparent 76%);
+}
+
+/* 라이트 — 판 · 테두리 · 고른 것 · 빛 선은 위와 같은 공식이다. 가장자리 선만 밝게(밝은 바탕에서 다크 값은 묻힌다),
+   타일 선은 따로(아래), 그림자는 옅게(밝은 화면에서 검은 그림자가 무겁다) */
+:root[data-theme="light"][data-material="glass"] {
+  --glass-rim: rgb(255 255 255 / 0.45);
+  /* 타일 선은 흰 선에 평면의 진한 선(`--line-strong`)을 섞는다 — 월페이퍼가 없으면 흰 바탕 위 흰 선이라 타일 경계와 포커스가
+     사라졌다. 포커스는 평면과 같은 진한 선 */
+  --tile-rim: color-mix(in srgb, var(--line-strong) 40%, rgb(255 255 255 / 0.55));
+  --tile-rim-focus: var(--line-strong);
+  --glass-shadow-color: rgb(20 20 24 / 0.14);
+  /* 부품 — 흰 칠은 진하게(밝은 판 위에서 8% 는 안 보인다), 호버 · 고른 판은 흰색이 아니라 글자 · 강조색 쪽으로(흰 판 위 흰 호버는 사라진다).
+     고리는 흰 선에 진한 선을 섞는다(타일 선과 같은 까닭 — 월페이퍼가 없으면 흰 바탕 위 흰 선) */
+  --glass-ink-ctl: rgb(255 255 255 / 0.45);
+  --glass-ink-field: rgb(255 255 255 / 0.5);
+  --glass-ink-hover: color-mix(in srgb, var(--fg) 6%, transparent);
+  --glass-ink-sel: color-mix(in srgb, var(--accent) 16%, transparent);
+  --glass-ctl-rim: color-mix(in srgb, var(--line-strong) 30%, rgb(255 255 255 / 0.8));
+  --glass-sel-rim: color-mix(in srgb, var(--accent) 32%, transparent);
+  --glass-ctl-edge: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 0 0 1px var(--glass-ctl-rim);
+  --glass-sel-edge: inset 0 1px 0 rgb(255 255 255 / 0.5), inset 0 0 0 1px var(--glass-sel-rim);
+  --glass-on-edge: inset 0 1px 0 rgb(255 255 255 / 0.25);
+  --glass-glow:
+    radial-gradient(55% 55% at 8% 4%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 72%),
+    radial-gradient(50% 50% at 94% 98%, color-mix(in srgb, var(--tertiary) 24%, transparent), transparent 72%),
+    radial-gradient(45% 45% at 22% 96%, color-mix(in srgb, color-mix(in srgb, var(--accent) 50%, var(--tertiary)) 20%, transparent), transparent 72%),
+    radial-gradient(70% 60% at 72% 18%, color-mix(in srgb, var(--bg-panel-base) 80%, transparent), transparent 76%);
+}
+
+/* 번짐의 채도 — 기본 테마의 강조 · 보조색은 파스텔(낮은 채도)이라 위 섞기만으로는 회청색 안개로 읽혔다. 상대 색 문법이
+   되는 엔진에서는 같은 색상(h)의 채도를 올린 점으로 갈아 끼운다(안 되면 위 값 그대로 — BranchGraph 와 같은 @supports 관용) */
+@supports (color: oklch(from red l c h)) {
+  :root[data-material="glass"] {
+    --glass-glow:
+      radial-gradient(55% 55% at 8% 4%, oklch(from var(--accent) calc(l * 0.8) calc(c * 2) h / 0.42), transparent 72%),
+      radial-gradient(50% 50% at 94% 98%, oklch(from var(--tertiary) calc(l * 0.8) calc(c * 2) h / 0.34), transparent 72%),
+      radial-gradient(45% 45% at 22% 96%, oklch(from color-mix(in srgb, var(--accent) 50%, var(--tertiary)) calc(l * 0.8) calc(c * 2) h / 0.26), transparent 72%),
+      radial-gradient(70% 60% at 72% 18%, color-mix(in srgb, var(--bg-panel-base) 70%, transparent), transparent 76%);
+  }
+  :root[data-theme="light"][data-material="glass"] {
+    --glass-glow:
+      radial-gradient(55% 55% at 8% 4%, oklch(from var(--accent) l calc(c * 1.6) h / 0.32), transparent 72%),
+      radial-gradient(50% 50% at 94% 98%, oklch(from var(--tertiary) l calc(c * 1.6) h / 0.26), transparent 72%),
+      radial-gradient(45% 45% at 22% 96%, oklch(from color-mix(in srgb, var(--accent) 50%, var(--tertiary)) l calc(c * 1.6) h / 0.2), transparent 72%),
+      radial-gradient(70% 60% at 72% 18%, color-mix(in srgb, var(--bg-panel-base) 80%, transparent), transparent 76%);
+  }
+}
+
+/*
+ * 흐림 한 겹 — 면에 `.glass-band` · `.glass-mid` · `.glass-raised` 를 붙이면(메뉴 `.menu-surface` 는 저절로) 글래스일 때
+ * `::before` 가 그 면 뒤를 흐린다.
+ *
+ * **상자 자신에 `backdrop-filter` 를 걸지 않는 이유**: 그 속성은 상자를 안쪽 `position: fixed` 자식의 기준 상자로
+ * 만든다 — 탭 줄의 우클릭 메뉴 · 독 안의 폼과 메뉴 · 모달 안의 고르는 목록이 창 좌표가 아니라 그 상자 좌표에 서서
+ * 어긋난다(`Dock.svelte` 의 transform 주석과 같은 함정). `::before` 는 자식이 없어 그 일이 없다.
+ *
+ * `z-index: -1` 이라 상자의 글자 **밑**에 깔린다. 뜬 면은 스스로 쌓임 맥락을 만들어(`isolation`) 그 안에 갇히고,
+ * 띠는 만들지 않는다 — 탭 줄 안의 `position: fixed` 메뉴가 띠의 쌓임 맥락에 갇히면 타일 밑으로 들어간다.
+ * 띠의 흐림 층은 그래서 바깥(창) 맥락의 맨 아래로 가지만, 띠 뒤에는 창 바탕 · 월페이퍼 · 번짐뿐이라 같은 그림이다.
+ *
+ * 자리·쌓임은 `:where()` 로 특이도 0 이다 — 면이 스스로 `position`(fixed·absolute)을 적었으면 그쪽이 이긴다.
+ * 흐림은 띠·뜬 면에만 건다. 타일마다 늘어나는 자리(타일 머리줄 · 터미널)에는 걸지 않는다(성능 · 글자 가독) — 터미널이 아닌
+ * 타일은 상자 하나에 같은 수(`::before` 흐림 한 겹)를 따로 건다(`PaneHost` 의 `.glass-tile`).
+ */
+:where(:root[data-material="glass"] :is(.glass-band, .glass-mid, .glass-raised, .menu-surface)) {
+  position: relative;
+}
+:where(:root[data-material="glass"] :is(.glass-mid, .glass-raised, .menu-surface)) {
+  isolation: isolate;
+}
+:root[data-material="glass"] :is(.glass-band, .glass-mid, .glass-raised, .menu-surface)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  backdrop-filter: var(--glass-filter-raised);
+}
+:root[data-material="glass"] .glass-band::before {
+  box-shadow: var(--glass-edge);
+  backdrop-filter: var(--glass-filter-band);
+}
+:root[data-material="glass"] .glass-mid::before {
+  backdrop-filter: var(--glass-filter-mid);
+}
+/*
+ * 흰 테두리 · 그림자 — 면이 이미 긋는 선의 **색만** 바꾼다(없는 변에 선을 만들지 않는다 — 띠는 안쪽 변 하나만 남는다).
+ * 컴포넌트 `<style>` 의 스코프 규칙(설정 모달의 `.dock.settings-modal` 처럼 투명 선을 적는 0,3,0 까지)을 이기려고 `body` 를
+ * 끼워 한 단 세게 둔다. 띠는 그림자를 받지 않는다(창 가장자리에 붙은 면이라 그림자가 타일 위로 번진다).
+ * 뜬 면의 판 색은 테두리 안쪽(`padding-box`)만 칠한다 — 반투명 선 밑에 판이 깔리면 선이 판만큼 한 번 더 밝아지고, 흐림 판
+ * (`::before`)도 테두리 안쪽이라 둘의 가장자리가 같다.
+ */
+:root[data-material="glass"] body .glass-band {
+  border-color: var(--glass-border);
+}
+:root[data-material="glass"] body :is(.glass-mid, .glass-raised, .menu-surface) {
+  border-color: var(--glass-rim);
+  background-clip: padding-box;
+  box-shadow: var(--glass-shadow);
+}
+/* 10-22 의 가장자리 빛 띠(`::after` 고리)는 10-29 에 걷었다(재질 절 머리말). 되살린다면: **스크롤 상자가 될 수 있는 면의 가상
+   요소는 안쪽 여백 상자 밖으로 내밀지 않는다** — 0.3px 만 내밀어도 `overflow-y: auto` 메뉴에 스크롤바가 섰다(10-24 실측). */
+
+/* ── 버튼 세 종류 (의미 토큰층의 첫 소비자) ────────────────────────────────────
+ *
+ * `class="btn btn-primary"` 처럼 **두 클래스**로 쓴다. 주 동작(채운 강조, 화면당 하나) ·
+ * 보조(호버 회색으로 채움) · 고스트(글자만). 테두리 두른 알약 버튼은 이 셋으로 옮겨 가며
+ * 사라진다 — 아직 아무 버튼도 옮기지 않았다 (docs/internal/design-audit-2026-09-25.md 가 목록).
+ *
+ * 전역 클래스라 컴포넌트 `<style>` 의 스코프 규칙(특이도 0,2,0)이 언제나 이긴다 — 옮길 때는
+ * 그 컴포넌트의 옛 버튼 규칙을 **지우고** 클래스를 붙인다(덮어쓰기 싸움을 만들지 않는다).
+ * 테두리 1px 을 투명으로 남기는 것은 높이를 고정하려는 것이다 — 나중에 선 두른 변형이
+ * 생겨도 줄이 흔들리지 않는다. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--fw-regular);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--fg-1);
+  background: transparent;
+  border: 1px solid transparent;
+  /* MD3 알약 — 반지름 = 높이의 절반(2026-10-18). 높이는 앱 밀도(28 · 작은 것 24)를 그대로 둔다 */
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-sm {
+  height: 24px;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+  font-size: var(--t-xs);
+}
+
+.btn-primary {
+  color: var(--control-on-fg);
+  background: var(--control-on-bg);
+  font-weight: var(--fw-semibold);
+  /* 글래스면 위쪽 빛 선(재질 절의 부품 가장자리) — 평면은 토큰이 없어 없음 */
+  box-shadow: var(--glass-on-edge, none);
+}
+
+.btn-primary:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--control-on-bg-hover);
+}
+
+/* 보조 = MD3 tonal 단추(secondaryContainer) */
+.btn-secondary {
+  color: var(--control-sel-fg);
+  background: var(--control-sel-bg);
+  box-shadow: var(--glass-sel-edge, none);
+}
+
+.btn-secondary:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--control-sel-bg-hover);
+}
+
+.btn-ghost {
+  color: var(--fg-2);
+  background: transparent;
+}
+
+.btn-ghost:hover:not(:disabled, [aria-disabled="true"]) {
+  color: var(--fg-1);
+  background: var(--surface-hover);
+}
+
+/* 창은 **늘 불투명**하다(10-22 사용자 — 바탕화면 비침을 걷음). 투명도 슬라이더(`--chrome-pct`)는 그 위의 앱 배경
+ * (+page 의 월페이퍼 · 없으면 글래스 번짐)이 크롬 · 타일에 얼마나 비치나만 정한다. 창이 `transparent:true` 라도
+ * 아래 한 겹이 합성 전 기저색으로 막는다.
+ * 터미널 칸에는 **자기 슬라이더**(`--term-opacity`)가 따로 있다 — 낮추면 같은 앱 배경이 비친다. */
+
+/* 앱 배경은 **html 에만** 칠한다 (canvas 로 전파돼 창 전체를 덮는다). 반투명 `--bg` 가 아니라 `--bg-base` —
+ * 창 밖이 비치지 않게. 월페이퍼 · 번짐은 그 위(`z-index: -1`)에 깔린다. */
+html {
+  background: var(--bg-base);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  color: var(--fg);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+/* 타일링 캔버스 — 창 가장자리에서 `--gap` 만큼 안쪽으로. 타일 사이 거터(layout GAP)와
+   같은 폭이라 안팎 간격이 고르게 읽힌다. 뒤에 깔린 main 배경(app bg)이 거터로 보인다.
+   폰(원격 창의 모바일 배치)은 틈 · 모서리 · 테두리 없이 가장자리까지다(`PaneHost` 의 `.host.edge` — 터미널 여백도 4px). */
+.tile-canvas {
+  position: absolute;
+  inset: var(--gap);
+}
+
+/*
+ * 타일 하나. 기하(퍼센트 절대배치)는 그대로 두고 **보이는 면만** 둥글게 만든다:
+ * 둥근 모서리(`--radius-surface` 16 — 2026-10-25, 터미널 캔버스까지 클립 · 글자는 `--term-pad` 8 안쪽이라 곡선에 먹히지 않는다) · 머리카락 테두리(`--line-faint` — 2026-10-11 옅게).
+ * **그림자는 없다** — 타일은 뜬 면이 아니라 창 위에 놓인 면이고, 거터와는 밝기 계단 + 선
+ * 하나로 갈린다 (작업면 단계 — docs/log/2026-09-25-work-surface.md 결정 2).
+ * 테두리는 항상 1px 자리를 차지한다 (색만 line-faint ↔ line-strong) — 포커스가 옮겨 다닐 때마다
+ * 터미널 크기가 흔들려 refit 이 도는 것을 막는다. (radius 는 크기를 안 바꾼다.)
+ */
+.tile-frame {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  /* `--term-bg` 가 아니라 **알파를 입힌 파생 토큰**이다 (theme.css). 터미널 투명도가
+     100% 면 두 값이 같으므로 예전과 똑같이 불투명하다.
+     **터미널 칸의 색을 칠하는 층은 이 한 겹뿐이다** — 위에 겹치는 `.term`·`.xterm-viewport`·
+     xterm 캔버스는 전부 비워 두므로(각 파일의 주석), 여기 알파가 그대로 화면의 투명도가
+     된다. 안쪽 여백(`--term-pad`)도 이 판의 색을 받는다. */
+  background: var(--term-bg-fill);
+  /* 글래스면 크롬과 같은 흰 선(`--tile-rim` — 재질 절) · 평면은 토큰이 없어 예전 값 그대로. */
+  border: 1px solid var(--tile-rim, var(--line-faint));
+  border-radius: var(--radius-surface);
+  /* 판은 테두리 **안쪽**까지만 — 옅은 선(`--line-faint`, 반투명)이 타일 판(어두운 터미널) 위가 아니라 바깥(거터 · 월페이퍼)
+     위에 섞이게. 판 위에 섞이면 라이트 크롬 + 어두운 터미널에서 선이 오히려 진해진다(2026-10-11 캡처) */
+  background-clip: padding-box;
+  /* 상자 안의 z-index(재연결 배너 5, 헤더 4 등)가 **페이지 전역 층위로 새지 않게**
+     격리한다. 없으면 그 z 값들이 모달(.overlay)과 직접 경쟁해 모달을 덮는다. */
+  isolation: isolate;
+}
+
+/* 설정·파일·빈 시작 타일은 안쪽 크롬 면만 칠한다 — 반투명 배경을 겹치지 않는다(글래스는 거꾸로 상자가 판을 칠하고 안쪽이
+   비운다 — `PaneHost` 의 `.glass-tile`). */
+.tile-frame.chrome {
+  background: none;
+}
+
+/* ── 스크롤바 ────────────────────────────────────────────────────────────────
+ *
+ * 앱 전체(설정·세션 트리·파일 브라우저·명령 팔레트·시작 화면)의 스크롤바를 한 곳에서
+ * 정한다. WebView2(Chromium) 라 `::-webkit-scrollbar` 계열이 그대로 먹는다.
+ *
+ * **터미널은 여기 포함되지 않는다.** xterm 6 은 브라우저 스크롤바를 쓰지 않고 자기 DOM
+ * 슬라이더를 그리며 그 색을 팔레트(`ITheme.scrollbarSlider*`)에서 읽는다 — 그래서 색은
+ * `theme.ts` 의 `withScrollbarSlider` 가 팔레트에서 파생시키고, 모양만 아래 규칙이 맞춘다.
+ *
+ * 트랙을 칠하지 않는 이유는 투명이다: 창이 비치는 상태에서 트랙에 색을 깔면 스크롤 되는
+ * 목록마다 불투명한 띠가 하나씩 생긴다. 손잡이만 흐린 글자색으로 띄우고, 마우스가 오면
+ * 강조색 쪽으로 한 칸 진해진다. */
+
+/* 표준 속성은 WebKit 스크롤바를 지원하지 않는 브라우저에서만 폴백으로 쓴다.
+   Chromium에서는 값이 `auto`가 아니면 아래 세부 스타일과 버튼 숨김을 무시한다. */
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--fg-muted) 45%, transparent) transparent;
+  }
+}
+
+/* 트랙 자리는 10px 로 잡고, 손잡이는 그 안에서 투명 테두리만큼 **더 얇게** 그린다.
+   자리를 넉넉히 두면 얇은 손잡이도 집기 쉽고, 마우스가 오면 테두리가 한 겹 줄어
+   손잡이가 두꺼워진다 — 폭이 아니라 손잡이만 자라므로 레이아웃은 안 움직인다. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-muted) 40%, transparent);
+  border-radius: 999px;
+  /* 손잡이가 벽에 붙지 않게 안쪽으로 한 겹 — 배경을 content-box 에만 칠해 얻는다
+     (margin 은 스크롤바 부품에 안 먹는다). */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background-clip: content-box;
+  border-width: 2px;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--accent) 80%, transparent);
+  background-clip: content-box;
+  border-width: 2px;
+}
+
+/* xterm 의 스크롤 뷰포트는 자기 CSS 에 **`background-color: #000` 이 박혀 있다**
+ * (`@xterm/xterm/css/xterm.css` — "On OS X this is required in order for the scroll bar to
+ * appear fully opaque"). 캔버스 바로 뒤에 깔리는 층이라, 터미널 투명도를 켜면 반투명해진
+ * 글자 칸이 **그 검정 위에 합성되어** 값을 내릴수록 도리어 새까매진다 (실기 증상 그대로).
+ * 색은 타일 배경판(`--term-bg-fill`) 한 곳에서만 나와야 하므로 이 층은 비운다.
+ * `!important` 는 번들 순서 때문이다 — xterm.css 는 `Terminal.svelte` 가, 이 파일은
+ * `+layout.svelte` 가 들여오므로 같은 특이도(0,2,0)에서 누가 뒤에 놓일지 보장할 수 없다.
+ * 투명도 100 에서는 캔버스가 불투명해 이 층이 보이지 않으므로 렌더가 예전과 같다. */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* 한글 조합 중인 글자(`.composition-view`)를 고른 커서 모양대로 — xterm.css 기본(검정 판 · 흰 글자)은 늘 블럭처럼
+ * 보였다(10-17). 블럭은 커서 색 판 · 밑줄은 글자 아래 선 · 세로선은 글자 뒤 세로 막대. 색은 `Terminal.svelte` 가
+ * `.term-screen` 에 싣는 `--ime-*` 다. `!important` 는 위 viewport 와 같은 번들 순서 이유. */
+.term-screen .xterm .composition-view {
+  background: var(--ime-cursor, #fff) !important;
+  color: var(--ime-accent, #000) !important;
+}
+.term-screen[data-cursor="underline"] .xterm .composition-view,
+.term-screen[data-cursor="bar"] .xterm .composition-view {
+  background: var(--ime-bg, #000) !important;
+  color: var(--ime-fg, #fff) !important;
+}
+.term-screen[data-cursor="underline"] .xterm .composition-view {
+  box-shadow: inset 0 -2px 0 var(--ime-cursor, #fff);
+}
+.term-screen[data-cursor="bar"] .xterm .composition-view {
+  box-shadow: inset -2px 0 0 var(--ime-cursor, #fff);
+}
+
+/* 터미널 슬라이더 — 색은 팔레트가 정하고(위 주석), 여기서는 **모양만** 맞춘다
+ * (docs/log/2026-09-26-thin-terminal-scrollbar.md).
+ *
+ * 잡는 자리(트랙)는 10px 이고 xterm 이 인라인으로 박는다 — 그 폭은 Terminal.svelte 의
+ * `overviewRuler.width` 가 정한다(CSS 로 줄이면 FitAddon 이 비워 두는 폭과 어긋난다).
+ * 보이는 손잡이는 그 안에서 **사방 3px 투명 테두리로 깎아 4px** 로 그리고, 호버·끄는 중에도
+ * **두께는 그대로**다 — 반응은 색으로만 한다(사용자가 크기 변화 없는 쪽을 골랐고, 2px 은
+ * 너무 가늘다고 해 4px 로 정했다 — 2026-09-26). 트랙 가운데에 고정이고 벽과는 3px 떨어져
+ * 둥근 타일 테두리에 닿지 않는다.
+ * `box-sizing: border-box` 가 있어야 테두리가 인라인 10px **안쪽**을 깎는다 — xterm 의
+ * 슬라이더는 content-box 라, 빼면 테두리가 바깥에 붙어 상자가 16px 로 커지고 칠한 10px 가
+ * 오른쪽으로 밀려 타일 가장자리에 잘린 띠로 보인다(첫판이 그랬다).
+ *
+ * 색 반응은 xterm 이 준다: 손잡이 **자체** 위 = hover 칸, 끄는 중(`.active`) = active 칸.
+ * 트랙의 빈 곳 위에서는 색이 바뀌지 않는다 — 받아들였다(기계를 더 달지 않는다).
+ *
+ * 호버 색은 앱 스크롤바와 달리 **강조색으로 가지 않는다** — 손잡이 색은 터미널 팔레트
+ * (월페이퍼 동적 팔레트 포함)에서 나오는데 강조색은 앱 크롬의 것이라 둘이 부딪칠 수 있고,
+ * 글자 바로 옆이라 강조색 띠는 시끄럽다. 팔레트의 쉼·hover·active 칸이 한 칸씩 진해지는
+ * 것으로 충분하다(값은 `theme.ts` 의 `withScrollbarSlider`).
+ *
+ * `!important` 는 두 가지 때문이다: `background-clip` 은 xterm 이 화면 안에 심는
+ * `<style>` 이 `background` 단축 속성으로 되돌리고(그 규칙이 문서 순서상 더 뒤라 보통은
+ * 그쪽이 이긴다), 테두리·모서리는 xterm.css 와의 번들 순서가 보장되지 않는다.
+ * 전환 애니메이션은 두지 않는다 — xterm 의 나타남/사라짐 페이드가 이미 있다. */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  box-sizing: border-box !important;
+  border-style: solid !important;
+  border-color: transparent !important;
+  border-width: 3px !important;
+  border-radius: 999px !important;
+  background-clip: content-box !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 메뉴 한 벌 — 뜬 목록의 공용 조각 (docs/log/2026-09-25-leftovers-menus-dots.md)
+ *
+ * 탭 우클릭 · 타일 ⋯ · tmux · 호스트/프로젝트/파일 우클릭 · 셸 메뉴 · 고르는 목록
+ * (`Dropdown`·`Combobox`) · 배치 독 ⋯ 가 **같은 값을 각자 적던 것**을
+ * 여기 하나로 모았다(값의 근거는 2026-09-25-finish-menus.md 의 "메뉴 한 벌의 값" 표).
+ *
+ * 쓰는 법: 상자에 `.menu-surface`, 줄에 `.menu-row`(+ `.danger` · `.selected`), 머리글
+ * `.menu-title`, 구분선 `.menu-sep`, 앞자리 그림 칸 `.menu-mark`, 오른쪽 부연 `.menu-kbd`,
+ * 인라인 칸 `.menu-input`. 자리(`position`·`z-index`·폭 상한)는 각 컴포넌트가 갖는다.
+ *
+ * **주의 — 스코프 규칙이 이긴다.** 컴포넌트의 `.item.svelte-x`(0,2,0)가 여기의
+ * `.menu-row`(0,1,0)를 이기므로, 옮길 때는 같은 속성을 적던 스코프 규칙을 **지운다**
+ * (남겨 두면 값을 여기서 바꿔도 그 메뉴만 옛 값으로 남는다). 스코프 쪽에 남는 것은
+ * 자리와 그 메뉴만의 모양(두 줄 tmux 줄 · 옆목록 `▸` 줄 · 모노 글꼴 등)뿐이다.
+ *
+ * 하이라이트는 두 결이다:
+ *  - 보통 메뉴 — 손이 올라간 줄(`:hover`)과 키보드 포커스(`:focus-visible`)가 칠해진다.
+ *  - **`.menu-keyed`** 상자 — 골라진 줄이 **하나**여야 하는 목록(셸 메뉴 · 고르는 목록).
+ *    칠은 `.selected` 또는 포커스만 받고, 손이 다른 줄에 남아 있어도 그 줄은 칠하지 않는다
+ *    (포인터가 움직이면 스크립트가 골라진 줄을 옮긴다). 둘이 따로 칠해지면 Enter 가 무엇을
+ *    여는지 화면만 봐서는 모른다.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.menu-surface {
+  padding: var(--space-1);
+  font-family: var(--font-ui);
+  color: var(--fg-1);
+  background: var(--glass-float, var(--surface-raised-solid));
+  border: 1px solid var(--line-strong);
+  /* 메뉴도 바깥 면(2026-10-25 — 10 → `--radius-surface`). 줄 칠의 모서리는 `.menu-surface .menu-row` 가 같은 중심으로 맞춘다 */
+  border-radius: var(--radius-surface);
+  box-shadow: var(--shadow-raised);
+}
+
+/* 상자 자체는 포커스를 받아 키를 듣지만(tabindex=-1) 테두리를 그리지 않는다 — 줄이 칠을 진다 */
+.menu-surface:focus {
+  outline: none;
+}
+
+/* 줄 = 28px · 13px `--fg-1` · 알약(`--radius-row` — 2026-10-29, 그 전엔 `--radius-sm` · 상자 곡선과 같은 중심의 11px).
+   알약 끝이 글자를 먹지 않게 좌우 여백 `--space-3`. 넘치면 말줄임(이름이 긴 호스트·파일) */
+.menu-row {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--fw-regular);
+  color: var(--fg-1);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-row);
+  /* 줄은 **누르는 것**이지 긁는 글자가 아니다 — 글자 선택의 파란 칠이 하이라이트와 겹치지 않게 */
+  user-select: none;
+  cursor: pointer;
+}
+
+/* 호버·포커스·골라진 줄 = 회색 판 (메뉴에 강조색은 없다 — 강조 셋 밖) */
+.menu-row:hover:not(:disabled, [aria-disabled="true"]),
+.menu-row:focus-visible,
+.menu-row.selected,
+.menu-keyed .menu-row:focus {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.menu-keyed .menu-row:hover:not(.selected, :focus) {
+  background: transparent;
+}
+
+/*
+ * 고르는 목록(`Dropdown` · `Combobox` · `MultiDropdown` 의 펼친 상자 — `.md3-list`)은 MD3 메뉴다(2026-10-18 실기 피드백):
+ * 판 surfaceContainer · 16px · 테두리 없음 · 그림자, 줄 36px 알약, 손이 간 줄 · 키보드 활성 줄(`.selected`) = 상태 층,
+ * **고른 값**(`aria-selected="true"`) = secondaryContainer 알약 + 굵게(✓ 는 각 부품이 그린다). 키 동작 · 메뉴 통로는 그대로.
+ * 우클릭 메뉴 같은 다른 `.menu-surface` 는 이 규칙 밖이다.
+ */
+/* 판은 다른 뜬 면과 같은 글래스다. 넘치는 목록은 **안쪽 상자(`.md3-scroll`)가 굴린다** — 바깥 상자가 굴리면 글래스의 흐림 층
+   (`::before`, `inset: 0`)이 내용과 함께 굴러가 아래로 굴린 자리에 흐림 없는 반투명 판만 남아 뒤의 터미널 글자가 비쳤다(10-18 실기).
+   바깥 = 판 · 모서리 · 그림자 · 여백(굴리지 않음), 안쪽 = 최대 높이(각 부품이 잰다) · 세로 스크롤 */
+.menu-surface.md3-list {
+  padding: 6px;
+  background: var(--glass-float, var(--m3-surface-container));
+  border-color: transparent;
+  border-radius: var(--radius-surface);
+}
+
+/* 구분선 — outlineVariant(`--line`)를 줄 안쪽 여백만큼 들여 긋는다 */
+.md3-list .menu-sep {
+  margin: var(--space-1) var(--space-2);
+  border-top-color: var(--line);
+}
+
+.md3-list > .md3-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.md3-list .menu-row {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-row);
+}
+
+.md3-list .menu-row + .menu-row {
+  margin-top: 2px;
+}
+
+.md3-list .menu-row:hover:not(:disabled, [aria-disabled="true"]),
+.md3-list .menu-row:focus-visible,
+.md3-list.menu-keyed .menu-row.selected,
+.md3-list.menu-keyed .menu-row:focus {
+  background: color-mix(in srgb, var(--fg-1) var(--state-hover), transparent);
+}
+
+.md3-list.menu-keyed .menu-row[role="option"][aria-selected="true"] {
+  color: var(--control-sel-fg);
+  font-weight: var(--fw-semibold);
+  background: var(--control-sel-bg);
+}
+
+.md3-list.menu-keyed .menu-row[role="option"][aria-selected="true"]:is(.selected, :focus) {
+  background: var(--control-sel-bg-hover);
+}
+
+/* 흐린 줄 — 지금은 뜻이 없다(툴팁이 왜인지 말한다) */
+.menu-row:disabled,
+.menu-row[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 되돌릴 수 없는 항목(삭제·제거·빼기) — 의미색 글자 */
+.menu-row.danger {
+  color: var(--err);
+}
+
+/* 머리글 — 대상의 이름이거나 묶음 제목. 누를 수 없으므로 보조 글자(12 · `--fg-3`), 호버 없음.
+   좌우 여백은 줄과 같은 `--space-3` — 머리글 글자가 줄 글자와 같은 x 에서 시작한다 */
+.menu-title {
+  /* 메뉴 폭은 **줄들이** 정한다 — 머리 글(파일 타일의 경로 · 문서 제목 등)은 폭 셈에서 빠지고(`contain: inline-size` — 제 고유 폭 0)
+     줄들이 정한 폭 안에서 말줄임한다. 예전엔 긴 경로가 메뉴를 폭 상한까지 넓혔다(10-29 사용자) */
+  contain: inline-size;
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--fw-regular);
+  color: var(--fg-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 묶음 사이 머리카락 선 — `<hr>` 에도 `<div>` 에도 같은 그림 */
+.menu-sep {
+  height: 0;
+  margin: var(--space-1) 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * 앞자리 그림 칸 — **비어 있어도 폭을 차지한다**(✓ 가 붙은 줄과 안 붙은 줄의 글자가 같은 x 에서
+ * 시작해야 목록이 들쭉날쭉하지 않다). `vertical-align` 은 블록 줄에서 칸을 글자 가운데에 맞추고,
+ * 플렉스 줄에서는 무시된다(거기서는 `align-items` 가 맞춘다).
+ */
+.menu-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  margin-right: var(--space-2);
+  vertical-align: -0.25em;
+  color: var(--fg-2);
+}
+
+/*
+ * 오른쪽 부연 — 단축키·"기본"·옆목록 `▸`. 플렉스 줄의 끝으로 밀린다.
+ * 단축키는 **칩이 아니라 흐린 글자 한 줄**(`Ctrl+Shift+W` 그대로)이다 — 메뉴는 글자, 나머지 자리는 칩(`Keys.svelte`).
+ * Windows 는 키 이름이 낱말(`Ctrl` · `Shift`)이라 메뉴 줄마다 칩 셋이 늘어서면 무겁다(VS Code 와 같은 갈래 — 2026-10-25 사용자 결정 C안).
+ */
+.menu-kbd {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--space-3);
+  /* `<kbd>` 의 기본 모노 글꼴을 걷는다 — 단축키 글자도 메뉴 글꼴이다(예전엔 `PaneMenu` 만 스코프로 적어 파일 타일 보기 고르개 · 쿼리 트리 메뉴가 모노로 섰다 — 2026-10-20) */
+  font-family: inherit;
+  font-size: var(--t-xs);
+  color: var(--fg-3);
+}
+
+/*
+ * 단축키 칩 — 앱의 모든 단축키 표시가 이 한 벌이다(`Keys.svelte` — 2026-10-25 통일, 그 전엔 컴포넌트마다 `kbd {}` 가
+ * 따로 서 키캡 · 회색 판 · 모노가 섞였다). **조합 하나 = 알약 하나**(2026-10-28 — 목업 5QhXvUMX3m1gBpcSEDuBZS 2안, 사용자 선택):
+ * 판은 조합 묶음(`.keycap-group`)이 지고, 안의 키(`.keycap`)는 글자만 6px 간격으로 늘어선다 — 키마다 칩이 서면 메뉴 · 툴팁 ·
+ * 설정처럼 조합이 늘어선 자리가 무거웠고, 10-25 의 키캡(모노 · 진한 선 · 아래 그림자)은 MD3 알약 · 칩 사이에서 혼자 옛 모양이었다.
+ * 공백으로 이은 시퀀스(`Ctrl+B d`)는 묶음마다 알약이 따로 서고 묶음 사이 6px. 글꼴은 UI 글꼴. 메뉴 줄에는 칩을 두지 않는다
+ * (메뉴는 글자 — `.menu-kbd`). 강조색 단추처럼 바탕이 다른 자리는 둘레에서 `--keycap-fg` · `--keycap-bg` · `--keycap-line` 을 바꾼다.
+ */
+.keycaps {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.keycap-group {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 9px;
+  background: var(--keycap-bg, color-mix(in srgb, var(--fg) 8%, transparent));
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--keycap-line, var(--line));
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1;
+  color: var(--keycap-fg, var(--fg));
+  background: none;
+  border: none;
+}
+
+/* 작은 칩 — 툴팁 · 메뉴 · 글줄 안(줄 높이를 밀어 올리지 않게) */
+.keycaps.sm .keycap-group {
+  gap: 5px;
+  height: 16px;
+  padding: 0 7px;
+}
+.keycaps.sm .keycap {
+  font-size: 10.5px;
+}
+
+/*
+ * 마우스 클릭 칩 — 글자 대신 마우스 아이콘(`mouse-left` · `mouse-right`, `Keys.svelte`). 알약 안의 키 하나로 선다(판 · 선은
+ * 묶음 몫). 더블클릭은 왼쪽 아이콘에 작은 `2` 를 붙인다 — `::after` 라 `textContent` 에 섞이지 않는다
+ * (낱말은 칩 안의 숨긴 글자 `.keycap-label` 이 지킨다).
+ */
+.keycap-mouse {
+  position: relative;
+  gap: 1px;
+}
+.keycap-mouse[data-mouse="double"]::after {
+  content: "2";
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  align-self: flex-start;
+  margin-top: 0;
+}
+.keycaps.sm .keycap-mouse[data-mouse="double"]::after {
+  font-size: 8px;
+}
+
+/* 구분 글자(`+` · 공백) · 마우스 칩의 낱말 — 눈에는 숨기고 복사 · 스크린 리더 · `textContent` 에는 남긴다. 절대 위치라 플렉스 간격을 먹지 않는다 */
+.keycap-sep,
+.keycap-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: pre;
+}
+
+/* 메뉴 안 인라인 칸 — 필드 우물(`--surface-field`) + 머리카락 선, 포커스도 중성(강조색 선 없음) */
+.menu-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 0 var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+  background: var(--surface-field);
+  border: 1px solid var(--glass-ctl-rim, var(--line));
+  border-radius: 999px;
+  outline: none;
+}
+
+.menu-input:focus {
+  border-color: var(--focus-border);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 신호 점의 모양 — 뜻을 **색이 아니라 모양으로** 가른다
+ * (docs/log/2026-09-25-leftovers-menus-dots.md · 에이전트 점 셋은 docs/log/2026-10-01-agent-status-three.md ·
+ *  글리프는 docs/log/2026-11-03-tab-status-glyphs.md)
+ *
+ * 사람을 부르는 신호는 **M3 · Material Symbols 글리프**(10~12px, 판 + 기호)이고, 조용한 사실은 6px 점이다:
+ *
+ *   pending       — 에이전트 **권한 대기**(강조색 판 · 점 셋)        `AgentStatusGlyph`
+ *   check_circle  — 에이전트 **완료**(안 봄 — 초록 판 · 체크)         `AgentStatusGlyph`
+ *   진행 표시     — 에이전트 **실행 중**(M3 원형 진행 — 돈다)          `AgentStatusGlyph`
+ *   error         — **실패**(오류색 판 · `!`)                          `ErrorGlyph`
+ *   ● 꽉 찬 원    — 명령 실행 중 · 성공 · 활동(색이 뜻을 가른다: 초록 / 회색)
+ *   ○ 속 빈 고리  — 끊김 · 취소
+ *
+ * 글리프의 그림 · 색은 두 컴포넌트 안에 있다(여기에는 전역 규칙이 없다). 움직이는 것은 실행 중의 진행 표시 하나이고,
+ * 움직임 줄이기(`prefers-reduced-motion: reduce`)면 멈춘 호로 선다. 예전의 전역 `.agentdot` · `data-sig`(후광 · 숨 쉬기 ·
+ * 물결)과 `--sig-wait-halo` · `--sig-ripple` · `--sig-fail-radius` 는 2026-11-03 에 걷었다.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 모달 등장 — **아래에서 올라온다**(2026-10-21 — 마스터 암호를 묻는 자리 셋: `dialogs/VaultUnlockDialog` ·
+ * `dialogs/MasterPromptDialog` · 가림막 카드 `Veil.svelte`).
+ *
+ * 상자(`.modal-rise`)는 아래에서 올라오며 살짝 커지고(scale) 투명 → 불투명, 끝에 아주 약한 오버슛. 배경 막(`.overlay-fade`)은
+ * 페이드 인(가림막의 흐림 층은 제 `veil-in` 그대로). 값은 아래 `--rise-*` 한 곳에서 고친다 — 첫 판(14px · 200ms)은 거의
+ * 느껴지지 않아 키웠다(사용자). **들어갈 때만**이다 — 상자가 `{#if}` 로 새로 붙을 때 한 번 재생되고, 열린 채 내용만 바뀌면
+ * (틀린 암호 줄 등) 다시 움직이지 않는다. 닫힘 움직임은 없다(닫힘이 늦으면 포커스 · 제출 흐름이 바뀐다). 움직이는 것은
+ * `transform` · `opacity` 뿐이라 자동 포커스는 그대로 곧바로 선다. 움직임 줄이기면 움직이지 않는다(위 `data-sig` 와 같은 관례).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --rise-distance: 40px;
+  --rise-scale: 0.96;
+  --rise-duration: 360ms;
+  --rise-ease: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --rise-overlay-duration: 220ms;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .overlay-fade {
+    animation: overlay-fade-in var(--rise-overlay-duration) ease-out;
+  }
+
+  .modal-rise {
+    animation: modal-rise-in var(--rise-duration) var(--rise-ease);
+  }
+
+  /* 글래스 — 상자 자신의 `opacity` 는 움직이지 않는다(아래 막과 같은 까닭). 판 색 · 선 · 그림자와 안의 내용만 페이드한다.
+     내용 쪽은 `:where()` 로 특이도 0 — 자식이 제 움직임을 적었으면 그쪽이 이긴다 */
+  :root[data-material="glass"] .modal-rise {
+    --glass-in-from: translateY(var(--rise-distance)) scale(var(--rise-scale));
+    animation-name: glass-surface-in;
+  }
+  :where(:root[data-material="glass"] .modal-rise > *) {
+    animation: glass-content-in var(--rise-duration) ease-out;
+  }
+}
+
+/*
+ * **글래스 면의 등장은 `opacity` 를 움직이지 않는다**(10-28). `opacity` 가 1 아래인 동안 그 요소는 배경 뿌리(backdrop root)가
+ * 되어 안쪽 흐림(`.glass-*` 의 `::before` · `::after` 의 `backdrop-filter`)이 창 뒤를 못 보고, 움직임이 끝나는 순간 유리가 툭
+ * 켜진다 — 글래스 면 **자신**과 그 **조상**(덮개 막 · 감싸는 칸) 모두 같다(`filter` · `mask` · `clip-path` 도 같은 일을 한다).
+ * 대신: 막은 배경색을, 면은 판 색 · 선 · 그림자(`glass-surface-in` — 출발 자리는 `--glass-in-from`)를, 안의 내용은 자식마다
+ * `opacity`(`glass-content-in`)를 페이드한다. 흐림 판은 처음부터 서 있다.
+ */
+@keyframes overlay-fade-in {
+  from {
+    background-color: transparent;
+  }
+}
+
+@keyframes glass-surface-in {
+  from {
+    transform: var(--glass-in-from, none);
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@keyframes glass-content-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-rise-in {
+  from {
+    transform: translateY(var(--rise-distance)) scale(var(--rise-scale));
+    opacity: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 잠금 카드 — **가림막(`Veil.svelte`)과 볼트 잠금 해제(`dialogs/VaultUnlockDialog.svelte`)가 한 벌**(2026-10-28 — 목업
+ * LNdmYmQkmSP9qGzd8JwP4c). 둘은 같은 물음(마스터 암호)이라 같은 카드로 보여야 한다. 갈리는 것은 카드 **둘레**뿐이다 —
+ * 가림막은 뒤를 흐리고 카드 밖에 시계 · 요약을 두며, 볼트 해제는 흐림 없이 옅은 막(25%)과 설명 · [건너뛰기] 를 더한다.
+ * [자물쇠 원] → 제목 → (설명) → 라벨 + 칸 → (틀림 줄) → [열기](꽉 찬 알약) → ([건너뛰기] 글자 단추).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.lock-card {
+  box-sizing: border-box;
+  width: min(360px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 28px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--fg-1);
+  text-align: center;
+  background: var(--glass-raised, var(--surface-raised-solid));
+  border: 1px solid var(--line-strong);
+  border-radius: 28px;
+  box-shadow: var(--shadow-raised);
+  outline: none;
+}
+
+/* 자물쇠 원 — 고른 것과 같은 면(secondaryContainer). "덮였다" 가 아니라 "잠겼다" 로 읽힌다 */
+.lock-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  color: var(--control-sel-fg);
+  background: var(--control-sel-bg);
+  border-radius: 50%;
+}
+
+.lock-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  color: var(--fg-1);
+}
+
+.lock-lead {
+  margin: -8px 0 0;
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.lock-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+
+.lock-label {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+
+.lock-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--fg-1);
+  background: var(--surface-field);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  outline: none;
+}
+
+/* 포커스는 중성 — 강조색 선은 "강조는 셋뿐" 밖이다 */
+.lock-input:focus {
+  border-color: var(--focus-border);
+}
+
+/* 칸 아래 유일한 줄 — **틀렸다** 뿐이다 */
+.lock-wrong {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--err);
+}
+
+/* [열기] — 전역 `.btn-primary` 를 카드 폭의 큰 알약으로 */
+.lock-open.btn {
+  width: 100%;
+  height: 44px;
+  margin-top: 4px;
+  font-size: var(--t-sm);
+}
+
+/* [이번엔 건너뛰기] — 글자 단추(`.btn-ghost`) · 카드 폭 */
+.lock-skip.btn {
+  width: 100%;
+  height: 40px;
+  color: var(--fg-2);
+}
+
+/* ── 테마 전환의 원 퍼짐 (`theme-reveal.ts` — 2026-11-02) ──────────────────────────
+ * 루트 한 장만 찍는다 — 다른 요소에 `view-transition-name` 을 달지 않는다(달면 루트 밖으로 빠져 원에 안 덮인다).
+ * 기본 크로스페이드는 끄고, 새 화면에 거는 `clip-path` 퍼짐은 스크립트(`animate` · `pseudoElement`)가 한다. 옛 화면은 그대로 아래에. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

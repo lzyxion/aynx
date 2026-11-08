@@ -1,0 +1,12 @@
+{"type":"thread.started","thread_id":"01a143b6-0000-7000-8000-00000000abcd"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"FAKE"}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"aynx-sessions-dev","tool":"get_task","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"aynx-sessions-dev","tool":"get_task","arguments":{},"result":{"content":[{"type":"text","text":"FAKE"}]},"error":null,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"file_change","changes":[{"path":"C:\\fake\\wt\\x\\a.txt","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"file_change","changes":[{"path":"C:\\fake\\wt\\x\\a.txt","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"FAKE COMMAND","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"FAKE COMMAND","aggregated_output":"FAKE OUTPUT","exit_code":1,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"mcp_tool_call","server":"aynx-sessions-dev","tool":"report_done","arguments":{"outcome":"success"},"result":{"content":[]},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_5","type":"agent_message","text":"FAKE"}}
+{"type":"turn.completed","usage":{"input_tokens":160654,"cached_input_tokens":151040,"output_tokens":618,"reasoning_output_tokens":22}}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote",
+  "description": "원격 웹 클라이언트의 숨은 창(remote-*)의 권한 — 원격 브라우저의 invoke 가 이 창을 통해 Tauri IPC 로 들어온다(src-tauri/src/remote/bridge.rs). 앱 명령은 ACL 을 보지 않으므로(앱 ACL 매니페스트 없음 · Local 출처) 앱 명령의 문은 remote/deny.rs 하나다. 여기는 플러그인·core 명령만이고 **필요한 것만** 연다: 원격 페이지의 emit/emitTo(출처 = 원격 창) 와 path(homeDir 등 — 집 PC 의 경로가 맞는 답). listen/unlisten 은 관문이 Rust 리스너로 대신 달아 IPC 로 오지 않는다. dialog·opener·drag·clipboard·notification·window·webview·app 은 주지 않는다 — 폴리필(remote/polyfill.js)이 브라우저 쪽에서 대신하거나 거절하고, 새면 이 ACL 이 막는다(이중 문).",
+  "windows": ["remote-*"],
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-emit-to",
+    "core:path:default"
+  ]
+}

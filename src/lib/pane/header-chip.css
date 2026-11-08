@@ -1,0 +1,54 @@
+/*
+  **머리줄 칩 한 벌** (2026-10-11, 목업 E2 · 2026-10-18 `HeaderChips.svelte` 에서 꺼냄) — 타일 머리줄(`pane/HeaderChips`)과
+  설정 › 터미널의 칩 줄(`settings/HeaderChipsSetting`)이 **같은 모양**을 입는다. 그래서 컴포넌트 스코프가 아닌 전역 파일이고,
+  둘이 각자 import 한다(한 번만 실린다). 칩마다의 색(`--c`) · 접기 표 · 상태 변형은 각 컴포넌트에 남는다 — 스코프 선택자
+  (클래스 둘 이상)가 여기 것(클래스 하나)을 이긴다.
+
+  종류마다 고유 색 하나(`--c`)를 정하면 판 = 그 색 `--chip-tint`(16%) + 투명, 글자 · 그림 = 그 색, 테두리 없음. 호버 · 펼침은
+  판이 한 단 진해진다(`--chip-tint-hover` 20% — MD3 상태 층). 2026-10-18 End-4 식 **알약**으로 바꾸며 안쪽 1px 선은 걷었다.
+  색 값(MD3 custom color 생성)과 대비 규칙은 `theme.css` 의 `--chip-*`.
+
+  예전 tmux 칩은 `.tile-code` 를 베낀 회색 각인(포커스 타일에서만 판)이었고 AI 권한 칩은 판 없는 아이콘이었다 — 칩이 넷으로
+  늘면서 "무엇이 누를 수 있는 칩인가" 를 한 모양이 말하게 했다. 포커스와 상관없이 늘 판이 선다.
+
+  `flex: 0 0 auto` — 묶음(grid)이 줄 때 먼저 주는 것은 이름 칸이다. 칩을 먼저 접는 것은 `HeaderChips` 의 재서 접기(`pane/chip-fit.ts` — 넘칠 때만 · 끝 칩부터).
+*/
+.hchip {
+  --c: var(--fg-2);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 20px;
+  padding: 0 8px; /* 알약은 양 끝이 깎여 6px 이면 글자가 끝에 붙어 보였다 */
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) var(--chip-tint), transparent);
+  border: none;
+  box-shadow: none;
+  /* End-4 식 알약(2026-10-18 — 독 · 메뉴 · 단추가 알약 · 큰 모서리로 간 뒤 머리줄만 5px 네모로 남아 있었다) */
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.hchip:hover,
+.hchip[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--c) var(--chip-tint-hover), transparent);
+}
+
+.hchip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* 칩 안의 글자 — 줄지 않는다(상한은 칩마다의 `max-width`). 넘치면 말줄임 */
+.hchip-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

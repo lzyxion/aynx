@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+2026-10-16T07:57:40.372730Z ERROR codex_core::tools::router: error=patch rejected: writing outside of the project; rejected by user approval settings
+2026-10-16T07:55:32.568488Z ERROR codex_core::tools::router: error=exec_command failed: CreateProcess { message: "Rejected(\"FAKE COMMAND\") rejected: blocked by policy" }
+2026-10-16T07:55:33.000000Z WARN codex_core::something: not a denial

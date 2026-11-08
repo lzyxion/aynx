@@ -1,0 +1,6 @@
+{
+  "name": "aynx-usage",
+  "version": "1.0.0",
+  "description": "AYNX: passes Claude Code plan limits (5-hour and 7-day %) to the app.",
+  "author": { "name": "AYNX" }
+}

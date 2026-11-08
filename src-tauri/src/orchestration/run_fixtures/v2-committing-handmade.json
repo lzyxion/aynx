@@ -1,0 +1,50 @@
+{
+ "version": 4,
+ "run": {
+  "id": "run-c0ff00000000000000000000000000e1",
+  "name": "handmade-committing",
+  "state": "running",
+  "gen": 1,
+  "createdAt": 1792200000000,
+  "updatedAt": 1792200090000,
+  "endedAt": null,
+  "limits": {"maxTasks": 50, "maxCallsPerMinute": 60, "maxWaiters": 2, "coordinationMinutes": 120, "executionGraceMinutes": 30, "maxConcurrentWorkers": 3, "maxTotalWorkers": 8, "maxDeliveries": 200, "maxReviews": 6},
+  "workerPermission": "acceptEdits",
+  "attachMode": "onDemand",
+  "autoStopReported": true,
+  "allowedClis": ["claude"],
+  "repo": "C:/fixture/repo",
+  "worktreeDir": "C:/fixture/repo-wt",
+  "coordinationDeadlineAt": 1792207200000,
+  "executionDeadlineAt": 1792209000000,
+  "pauseReason": null,
+  "seq": 12,
+  "tasks": [
+   {"id": "task-c0ff0000000000000000000000000001", "title": "t1", "goal": "g1", "scope": "", "doneWhen": "", "dependsOn": [], "version": 3, "state": "integrating", "currentAttempt": "att-c0ff00000000000000000000000000a1", "createdAt": 1792200001000, "updatedAt": 1792200080000, "review": {"active": null, "target": null}},
+   {"id": "task-c0ff0000000000000000000000000002", "title": "t2", "goal": "g2", "scope": "", "doneWhen": "", "dependsOn": [], "version": 2, "state": "active", "currentAttempt": "att-c0ff00000000000000000000000000a2", "createdAt": 1792200002000, "updatedAt": 1792200003000, "review": {"active": null, "target": null}}
+  ],
+  "attempts": [
+   {"id": "att-c0ff00000000000000000000000000a1", "taskId": "task-c0ff0000000000000000000000000001", "cli": "claude", "gen": 1, "state": "reported", "stream": "orch-c0ff00000000000000000000000000a1", "worktree": "C:/fixture/repo-wt/orch-c0ff0000-c0ff0000", "branch": "orch-c0ff0000-c0ff0000", "baseCommit": "4444444444444444444444444444444444444444", "pid": 4294967040, "conversationId": "00000000-0000-4000-8000-000000000001", "launchArgs": "claude --permission-mode acceptEdits", "attention": null, "startedAt": 1792200001500, "endedAt": null, "exitReason": null, "role": "worker"},
+   {"id": "att-c0ff00000000000000000000000000a2", "taskId": "task-c0ff0000000000000000000000000002", "cli": "codex", "gen": 1, "state": "working", "stream": "orch-c0ff00000000000000000000000000a2", "worktree": "C:/fixture/repo-wt/orch-c0ff0000-c0ff0001", "branch": "orch-c0ff0000-c0ff0001", "baseCommit": "4444444444444444444444444444444444444444", "pid": 4294967044, "conversationId": "00000000-0000-4000-8000-000000000002", "launchArgs": "codex --sandbox workspace-write", "attention": null, "startedAt": 1792200002500, "endedAt": null, "exitReason": null, "role": "worker"}
+  ],
+  "reports": [
+   {"reportId": "rep-c0ff0000000000000000000000000001", "attemptId": "att-c0ff00000000000000000000000000a1", "taskId": "task-c0ff0000000000000000000000000001", "outcome": "success", "summary": "s1", "notes": null, "commitOid": "3333333333333333333333333333333333333333", "baseCommitOid": "4444444444444444444444444444444444444444", "dirty": false, "changedFiles": ["a.txt"], "changedFilesTruncated": false, "at": 1792200050000, "late": false}
+  ],
+  "accepted": [],
+  "reviews": [],
+  "deliveries": [],
+  "commits": [],
+  "log": [
+   {"seq": 11, "at": 1792200080000, "actor": "coordinator", "action": "integration_started", "target": "task-c0ff0000000000000000000000000001", "outcome": "prepared"},
+   {"seq": 12, "at": 1792200090000, "actor": "server", "action": "integration_committing", "target": "task-c0ff0000000000000000000000000001", "outcome": "committing"}
+  ],
+  "requests": [],
+  "integration": {"workRef": "refs/oldroot/orch/c0ff000000000000/int", "exportBranch": "orch-c0ff0000-int", "baseCommit": "1111111111111111111111111111111111111111", "baseBranch": "main", "expectedHead": "1111111111111111111111111111111111111111"},
+  "jobs": [
+   {"jobId": "job-c0ff0000000000000000000000000001", "taskId": "task-c0ff0000000000000000000000000001", "gen": 1, "taskVersion": 3, "attemptId": "att-c0ff00000000000000000000000000a1", "reportId": "rep-c0ff0000000000000000000000000001", "reportCommit": "3333333333333333333333333333333333333333", "mergeBase": "4444444444444444444444444444444444444444", "old": "1111111111111111111111111111111111111111", "candidate": "2222222222222222222222222222222222222222", "candidateTree": "5555555555555555555555555555555555555555", "phase": "committing", "requestId": "acc-1", "by": "coordinator", "startedAt": 1792200080000, "committingAt": 1792200090000}
+  ],
+  "requireReview": false,
+  "reviewerClis": [],
+  "reviewReports": []
+ }
+}
