@@ -35,26 +35,37 @@
   meta.remove(); // 부팅 표는 한 번 쓰면 끝 — DOM 에 남기지 않는다
   const LABEL = String(boot.label || "");
   const GEN = Number(boot.gen) >>> 0;
-  const UNSUPPORTED = "원격에서는 할 수 없습니다 (not available in the remote client)";
+  // 이 파일 자신의 문구 언어 — 앱 모듈이 뜨기 전에는 관문이 실은 집 PC 의 앱 언어(`boot.lang`), 뜬 뒤에는 앱이 적는
+  // `<html lang>`(`i18n.svelte.ts` 의 `setLocale` — 원격에서 언어를 바꿔도 따라간다). 셸의 처음 `lang` 은 고정값이라 보지 않는다.
+  let lang = boot.lang === "en" ? "en" : "ko";
+  new MutationObserver(() => {
+    const l = document.documentElement.lang;
+    if (l === "en" || l === "ko") lang = l;
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+  /** `[한국어, English]` 둘 중 지금 언어 쪽 */
+  const L = (pair) => (lang === "en" ? pair[1] : pair[0]);
+  const UNSUPPORTED = ["원격에서는 할 수 없습니다", "Not available in the remote client"];
+  const CLOSED = ["원격 연결이 끊겼습니다", "The remote connection was closed"];
+  const CANCELLED = ["마스터 암호 확인을 취소했습니다", "Master password check cancelled"];
   // 거절 문구의 사람 말 이름(R1a-5) — 명령 이름 대신.
   const PLUGIN_LABEL = {
-    "plugin:opener|open_path": "메인 PC 에서 파일 열기",
-    "plugin:opener|reveal_item_in_dir": "탐색기에서 보기",
-    "plugin:dialog|open": "파일·폴더 고르기",
-    "plugin:dialog|save": "저장 위치 고르기",
-    "plugin:drag|start_drag": "탐색기로 끌어내기",
+    "plugin:opener|open_path": ["메인 PC 에서 파일 열기", "Open a file on the main PC"],
+    "plugin:opener|reveal_item_in_dir": ["탐색기에서 보기", "Show in File Explorer"],
+    "plugin:dialog|open": ["파일·폴더 고르기", "Choose a file or folder"],
+    "plugin:dialog|save": ["저장 위치 고르기", "Choose where to save"],
+    "plugin:drag|start_drag": ["탐색기로 끌어내기", "Drag out to File Explorer"],
   };
   // 재확인 칸에 보일 사람 말(R1a-5) — 표에 없으면 받은 글자 그대로(`confirmRemoteMaster(what)` 의 화면 이름 포함).
   const REAUTH_LABEL = {
-    approve_operation: "작업안 승인",
-    modify_operation_targets: "작업안 대상 고치기",
-    delegation_set_target: "호스트의 AI 권한 바꾸기",
-    db_ai_set: "DB 연결의 AI 권한 바꾸기",
-    orchestration_approve_verify: "오케스트레이션 검증 실행",
-    orchestration_override_verify: "오케스트레이션 검증 실패 덮어쓰기",
-    orchestration_delete_archived: "보관한 앨범 영구 삭제",
+    approve_operation: ["작업안 승인", "Approve a task plan"],
+    modify_operation_targets: ["작업안 대상 고치기", "Change task plan targets"],
+    delegation_set_target: ["호스트의 AI 권한 바꾸기", "Change a host's AI permission"],
+    db_ai_set: ["DB 연결의 AI 권한 바꾸기", "Change a DB connection's AI permission"],
+    orchestration_approve_verify: ["오케스트레이션 검증 실행", "Run orchestration verification"],
+    orchestration_override_verify: ["오케스트레이션 검증 실패 덮어쓰기", "Override a failed orchestration verification"],
+    orchestration_delete_archived: ["보관한 앨범 영구 삭제", "Permanently delete an archived album"],
   };
-  const unsupportedFor = (cmd) => `${UNSUPPORTED} — ${PLUGIN_LABEL[cmd] || cmd}`;
+  const unsupportedFor = (cmd) => `${L(UNSUPPORTED)} — ${PLUGIN_LABEL[cmd] ? L(PLUGIN_LABEL[cmd]) : cmd}`;
   // 재확인 명령(관문 `deny.rs` 의 REAUTH — 부팅 표로 온다).
   const REAUTH = new Set(Array.isArray(boot.reauth) ? boot.reauth.map(String) : []);
   // 관문이 "원격 미지원" 으로 거절하는 것 중 브라우저에서 "아무것도 안 함" 이 맞는 것(창 조작 흉내와 같은 결) — 보내지 않고 null.
@@ -95,7 +106,7 @@
   function reloadSoon(ms) {
     if (reloading) return;
     reloading = true;
-    for (const p of pending.values()) p.reject("원격 연결이 끊겼습니다 (remote connection closed)");
+    for (const p of pending.values()) p.reject(L(CLOSED));
     pending.clear();
     setTimeout(() => location.reload(), ms);
   }
@@ -190,7 +201,7 @@
 
   function call(frameFor) {
     return new Promise((resolve, reject) => {
-      if (reloading) return reject("원격 연결이 끊겼습니다 (remote connection closed)");
+      if (reloading) return reject(L(CLOSED));
       const id = nextId++;
       pending.set(id, { resolve, reject });
       send(frameFor(id));
@@ -241,10 +252,13 @@
   }
 
   function reauthFailure(r) {
-    if (r.status === 429) return `잠시 뒤 다시 하세요 (${Math.ceil((Number(r.data.retryAfterMs) || 0) / 1000)}초)`;
-    if (r.status === 401 && r.data.error === "session") return "원격 세션이 끝났습니다 — 다시 여세요";
-    if (r.status === 401) return "마스터 암호가 맞지 않습니다";
-    return "마스터 암호를 확인하지 못했습니다";
+    if (r.status === 429) {
+      const s = Math.ceil((Number(r.data.retryAfterMs) || 0) / 1000);
+      return L([`잠시 뒤 다시 하세요 (${s}초)`, `Try again in a moment (${s}s)`]);
+    }
+    if (r.status === 401 && r.data.error === "session") return L(["원격 세션이 끝났습니다 — 다시 여세요", "The remote session has ended — open it again"]);
+    if (r.status === 401) return L(["마스터 암호가 맞지 않습니다", "Wrong master password"]);
+    return L(["마스터 암호를 확인하지 못했습니다", "Couldn't check the master password"]);
   }
 
   // 작은 암호 칸 — 인라인 스크립트·스타일 없이(DOM + CSSOM). 앱의 단축키가 가로채지 않게 키 이벤트는 여기서 멈춘다.
@@ -263,18 +277,21 @@
       box.setAttribute("role", "dialog");
       box.setAttribute("aria-modal", "true");
       const title = document.createElement("strong");
-      title.textContent = "마스터 암호 확인";
+      title.textContent = L(["마스터 암호 확인", "Confirm master password"]);
       const lead = document.createElement("div");
-      lead.textContent = "원격에서 이 일을 하려면 메인 PC 볼트의 마스터 암호를 다시 확인합니다.";
+      lead.textContent = L([
+        "원격에서 이 일을 하려면 메인 PC 볼트의 마스터 암호를 다시 확인합니다.",
+        "To do this remotely, confirm the master password of the main PC's vault again.",
+      ]);
       lead.style.opacity = "0.8";
       const what = document.createElement("code");
-      what.textContent = REAUTH_LABEL[cmd] || cmd;
+      what.textContent = REAUTH_LABEL[cmd] ? L(REAUTH_LABEL[cmd]) : cmd;
       what.style.opacity = "0.6";
       const input = document.createElement("input");
       input.type = "password";
       input.autocomplete = "current-password";
       input.maxLength = 1024;
-      input.setAttribute("aria-label", "마스터 암호");
+      input.setAttribute("aria-label", L(["마스터 암호", "Master password"]));
       Object.assign(input.style, {
         padding: "8px", borderRadius: "6px", border: "1px solid #444", background: "#111216", color: "inherit", font: "inherit",
       });
@@ -286,10 +303,10 @@
       Object.assign(row.style, { display: "flex", gap: "8px", justifyContent: "flex-end" });
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "취소";
+      cancel.textContent = L(["취소", "Cancel"]);
       const ok = document.createElement("button");
       ok.type = "submit";
-      ok.textContent = "확인";
+      ok.textContent = L(["확인", "OK"]);
       for (const b of [cancel, ok]) Object.assign(b.style, { padding: "6px 14px", borderRadius: "6px", border: "1px solid #555", background: "#2b2d34", color: "inherit", font: "inherit" });
       row.append(cancel, ok);
       box.append(title, lead, what, input, msg, row);
@@ -301,11 +318,11 @@
       };
       for (const type of ["keydown", "keyup", "keypress"]) {
         veil.addEventListener(type, (e) => {
-          if (type === "keydown" && e.key === "Escape") done(() => reject("마스터 암호 확인을 취소했습니다"));
+          if (type === "keydown" && e.key === "Escape") done(() => reject(L(CANCELLED)));
           e.stopPropagation();
         });
       }
-      cancel.addEventListener("click", () => done(() => reject("마스터 암호 확인을 취소했습니다")));
+      cancel.addEventListener("click", () => done(() => reject(L(CANCELLED))));
       box.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (!input.value) return;

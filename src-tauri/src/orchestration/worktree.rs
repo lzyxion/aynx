@@ -349,6 +349,17 @@ pub(crate) enum BranchRule<'a> {
     Lenient { preserved: Option<&'a str> },
 }
 
+/// **장부 근거**(2026-11-09) — 곁 기록에 그 폴더의 줄이 **아예 없을 때만** 받는 두 번째 소유 근거. 사람의 [정리](`cleanup_run`)만 넘긴다
+/// (부른 쪽이 Run 장부의 Attempt 경로라고 보증한다). 곁 기록 줄이 빠지는 길(만든 직후 곁 기록 쓰기 실패 · 프로젝트 독 목록 걷기와의 경쟁)이
+/// 있어, 빠지면 정리 창에는 줄이 뜨는데 지우기가 `not-run-worktree` 로 막혀 앨범 보관까지 막혔다(11-06 실측). 곁 기록에 다른 Run · 사람의
+/// 줄이 있으면 예전처럼 거절한다. 조건: 폴더가 Run 의 worktree 자리 안 · git 목록의 그 worktree 브랜치가 장부의 브랜치와 같음.
+pub(crate) struct LedgerClaim<'a> {
+    /// `Run.worktree_dir` — 작업자 worktree 가 서는 자리.
+    pub worktree_dir: &'a str,
+    /// 장부의 그 Attempt 브랜치(`spawn::worktree_name`) — 없으면 장부 근거를 쓰지 않는다.
+    pub branch: Option<&'a str>,
+}
+
 /// 브랜치를 지워도 되는 근거.
 enum BranchDel {
     /// 병합 확인(조상 · 고유 커밋 없음 · 내용) — `branch -d`, 거절이면 내용 판정 뒤 조건 삭제.
@@ -367,16 +378,17 @@ pub(crate) fn remove_blocking(
     sidecar: Option<&Path>,
 ) -> Result<Removed, OrchError> {
     let rule = if delete_branch { BranchRule::Strict } else { BranchRule::Keep };
-    remove_with(repo, path, rule, run_id, sidecar)
+    remove_with(repo, path, rule, run_id, sidecar, None)
 }
 
-/// [`remove_blocking`] 의 몸통 — 브랜치 규칙을 고른다.
+/// [`remove_blocking`] 의 몸통 — 브랜치 규칙을 고른다. `ledger` 는 사람 [정리]만 넘긴다([`LedgerClaim`]).
 pub(crate) fn remove_with(
     repo: &Path,
     path: &str,
     rule: BranchRule<'_>,
     run_id: &str,
     sidecar: Option<&Path>,
+    ledger: Option<LedgerClaim<'_>>,
 ) -> Result<Removed, OrchError> {
     let path = path.trim();
     if path.is_empty() || path.starts_with('-') || path.chars().any(char::is_control) || !Path::new(path).is_absolute() {
@@ -384,12 +396,21 @@ pub(crate) fn remove_with(
     }
     let key = wt::path_key(path);
     let file = sidecar.map(wt::load_sidecar).unwrap_or_default();
-    if wt::run_of(&file, &key).as_deref() != Some(run_id) {
-        return Err(OrchError::new(
+    let not_ours = || {
+        OrchError::new(
             reason::NOT_RUN_WORKTREE,
             "only a worktree this run created can be removed here (a person's worktree is removed from the project dock)",
-        ));
-    }
+        )
+    };
+    // 곁 기록 줄이 있으면 그것만 본다(다른 Run · 사람 줄이면 거절). 줄이 아예 없을 때만 장부 근거 — 자리 안인가는 여기서, 브랜치는 git 목록에서.
+    let by_ledger = match wt::record_for(&file, &key) {
+        Some(rec) if rec.run.as_deref() == Some(run_id) => None,
+        Some(_) => return Err(not_ours()),
+        None => match ledger {
+            Some(l) if l.branch.is_some() && inside(Path::new(l.worktree_dir), Path::new(path)) => l.branch,
+            _ => return Err(not_ours()),
+        },
+    };
     let listing = git(repo, &["worktree", "list", "--porcelain"])?;
     if !listing.ok {
         return Err(failed(wt::first_line(&wt::git_failure(&listing))));
@@ -401,6 +422,9 @@ pub(crate) fn remove_with(
     };
     if idx == 0 {
         return Err(OrchError::new(reason::NOT_RUN_WORKTREE, "the main working folder is never removed"));
+    }
+    if by_ledger.is_some() && entry.branch.as_deref() != by_ledger {
+        return Err(not_ours());
     }
     let branch = entry.branch.clone();
     let current = list.first().and_then(|w| w.branch.clone());

@@ -654,4 +654,30 @@
       display: none;
     }
   }
+  /* 폰 폭 — 가운데 칸의 최소 240px 가 남는 폭을 다 먹어 앨범 이름 · 상태가 "재…" 처럼 한두 글자로 줄었다(11-06 남은 것).
+     가운데는 단추만(시간 줄 걷음) · 단추 · 틈을 줄여 왼쪽 칸이 남는 폭을 받는다 */
+  @container orchbar (max-width: 480px) {
+    .orch-bar {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: var(--space-2, 8px);
+      padding: 0 12px;
+    }
+    .time {
+      display: none;
+    }
+    .buttons {
+      gap: 8px;
+    }
+    .round.small {
+      width: 32px;
+      height: 32px;
+    }
+    .round.main {
+      width: 42px;
+      height: 42px;
+    }
+    .now {
+      gap: 8px;
+    }
+  }
 </style>

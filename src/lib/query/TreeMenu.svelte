@@ -5,7 +5,7 @@
 
   /**
    * **스키마 트리의 우클릭 메뉴** — 정의가 있는 줄(`query/definition` 의 `definitionTarget`)에서만 선다. 항목은 **읽기만** 한다:
-   * "DDL 보기"(`F4` 와 같다). 만들기 · 고치기 · 지우기 항목은 없다(docs/user/query-tile.md "만들지 않는 것").
+   * "DDL 보기"(`F4` 와 같다). 만들기 · 고치기 · 지우기 항목은 없다(docs/user/query-tile.md "What is not built").
    *
    * 상자 모양은 독 메뉴(`DbMenu`)와 같은 한 벌(`.menu-*`)이고, 그 컴포넌트처럼 타일의 컨테이너(`container: qtile` — 고정 위치의 기준이
    * 된다) **밖**에서 그려진다(부르는 쪽 `QueryView` 가 `.query` 의 형제로 둔다).

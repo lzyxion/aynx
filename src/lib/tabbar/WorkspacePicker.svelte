@@ -200,9 +200,11 @@
   /* 워크스페이스 목록 — 모양은 전역 메뉴 한 벌, 여기는 자리와 줄 안 배치(아이콘 · 이름 · 수 · ✓)뿐이다 */
   /* 판 · 줄 · 고른 줄 · 구분선은 고르는 목록과 같은 MD3 메뉴(`.md3-list` — theme.css). 넘치면 안쪽 상자가 굴린다(글래스 흐림 층이
      함께 굴러가지 않게) */
+  /* 층 40 = 다른 떠 있는 메뉴(호스트 · 파일 · DB 메뉴)와 같은 층. 상태바 감싸기(hug)의 캔버스 모서리 조각(30 — `+page.svelte`)보다
+     위여야 왼쪽 위 모서리에 걸친 메뉴 위로 곡선이 그려지지 않는다 */
   .menu.ws-menu {
     position: fixed;
-    z-index: 6;
+    z-index: 40;
     min-width: 200px;
     max-width: 280px;
     overflow: hidden;
@@ -302,7 +304,7 @@
   .ws-row.drop-end::after { bottom: 0; }
   .menu.ws-ctx-menu {
     position: fixed;
-    z-index: 7;
+    z-index: 41;
     min-width: 180px;
   }
   .ws-row-check {

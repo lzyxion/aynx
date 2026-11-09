@@ -678,7 +678,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "query.ask": "Ask AI",
   "query.ask.title": "Ask AI ({key})",
   "query.ask.title.off": "AI permission off — see where to turn it on",
-  "query.ask.off": "{name}'s AI permission is off, so AI cannot see this connection. Turn it on from the dock's DB right-click menu › AI permission, or in the connection settings",
+  "query.ask.off": "{name}'s AI permission is off, so AI cannot see this connection. Raise it from the AI permission chip in this tile's header, or in the connection settings",
   "query.ask.off.open": "Open connection settings",
   "query.ask.lead": "Please look at this database query. Pass the connId below to the aynx DB tools to see the structure and data.",
   "query.ask.lead.error": "This database query failed — please find out why. Pass the connId below to the aynx DB tools to see the structure and data.",

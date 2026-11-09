@@ -904,7 +904,7 @@ impl Orchestration {
         ref_names: &[String],
         delete_branches: bool,
     ) -> Result<Value, OrchError> {
-        let (repo, integ, gen, state) = {
+        let (repo, integ, gen, state, wt_dir) = {
             let g = self.lock();
             let s = g.runs.get(run_id).ok_or_else(not_found_run)?;
             if !cleanable_state(s.run.state) {
@@ -913,7 +913,7 @@ impl Orchestration {
             if s.archiving {
                 return Err(OrchError::new(reason::INVALID_STATE, "this album is being archived"));
             }
-            (PathBuf::from(&s.run.repo), s.run.integration.clone(), s.run.gen, s.run.state)
+            (PathBuf::from(&s.run.repo), s.run.integration.clone(), s.run.gen, s.run.state, s.run.worktree_dir.clone())
         };
         let temps = self.sweep_temps(run_id);
         let sidecar = self.sidecar();
@@ -959,7 +959,9 @@ impl Orchestration {
             } else {
                 super::worktree::BranchRule::Keep
             };
-            let r = super::worktree::remove_with(&repo, &row.path, rule, run_id, sidecar.as_deref());
+            // 줄은 Run 장부에서 왔다 — 곁 기록 줄이 빠진 worktree 도 장부 근거로 지운다(`LedgerClaim` · 11-09).
+            let ledger = super::worktree::LedgerClaim { worktree_dir: &wt_dir, branch: row.branch.as_deref() };
+            let r = super::worktree::remove_with(&repo, &row.path, rule, run_id, sidecar.as_deref(), Some(ledger));
             if r.is_ok() {
                 self.note_worktree_removed(run_id, &row.path);
             }

@@ -81,7 +81,7 @@
 
   .menu.more-menu {
     position: fixed;
-    z-index: 6;
+    z-index: 40; /* 다른 떠 있는 메뉴와 같은 층 — hug 캔버스 모서리 조각(30)보다 위 */
     min-width: 180px;
     max-width: 280px;
     overflow: hidden;

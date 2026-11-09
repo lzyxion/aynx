@@ -197,8 +197,8 @@ export const settings = {
   "general.files_refresh.note":
     "원격 파일 타일은 ⟳ 로 새로고침합니다. 네트워크 드라이브 · WSL 폴더도 ⟳ 로 읽습니다.",
   "general.project_start.label": "프로젝트 시작 화면",
-  "general.project_start.summary": "자동이면 로컬 프로젝트·워크트리를 열 때 셸 대신 시작 화면(새로 시작 · 지난 대화)부터",
-  "general.project_start.note": "끔이면 늘 곧장 셸입니다. 원격 프로젝트는 어느 쪽이든 곧장 엽니다.",
+  "general.project_start.summary": "자동이면 프로젝트·워크트리(로컬 · 원격)를 열 때 셸 대신 시작 화면(새로 시작 · 지난 대화)부터",
+  "general.project_start.note": "끔이면 늘 곧장 셸을 엽니다(원격은 그 폴더의 SSH 셸).",
   "general.project_start.option.auto": "자동",
   "general.project_start.option.off": "끔",
 
@@ -269,7 +269,7 @@ export const settings = {
   // 창을 모두 닫으면 트레이에 남기(③-4) — GUI 의 수명 한 칸
   "general.tray.label": "창을 모두 닫으면 트레이에 남기",
   "general.tray.summary": "켜면 마지막 창을 닫아도 앱이 트레이에 남아 작업안 결과 알림·메신저가 계속 돕니다. 끄면 창을 닫을 때 앱이 끝나고, 세션은 어느 쪽이든 세션 서버에서 계속 삽니다.",
-  "general.tray.note": "트레이 메뉴: 열기 · 떨어진 세션 · 앱 종료(세션은 계속) · 모든 세션 종료. 사전 정책 자동 승인은 앱이 꺼져 있어도 세션 서버가 돌립니다.",
+  "general.tray.note": "트레이 메뉴: 열기 · 떨어진 세션 · GUI 종료(세션은 계속 실행) · 모든 세션 종료. 사전 정책 자동 승인은 앱이 꺼져 있어도 세션 서버가 돌립니다.",
   "general.tray.unsupported": "이 환경에는 트레이가 없어 창을 닫으면 앱이 끝납니다 — 세션은 세션 서버에 남습니다.",
   "general.server.label": "세션 서버",
   "general.server.summary": "로컬·SSH 세션을 쥐는 분리 프로세스입니다 — 앱을 닫거나 앱이 죽어도 셸과 그 안의 CLI 가 살고, 다시 켜면 같은 세션에 붙습니다. 아무 창도 데려가지 않은 세션은 세션 목록의 '떨어진 세션' 에 남습니다.",

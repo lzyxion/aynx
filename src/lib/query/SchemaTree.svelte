@@ -54,7 +54,7 @@
    *
    * 누르기: 관계 · 파티션 = 편집기에 `SELECT * … LIMIT 100;`(`onpick`) · 외래 키 · 참조됨 = 다른 쪽 테이블로 트리 이동(조상을 펴고
    * 고른다 — 그 스키마를 아직 안 읽었으면 읽는다) · 그 밖의 잎 = 편집기 커서 자리에 인용된 이름(`oninsert` — 함수는 여는 괄호까지).
-   * **만들기 · 고치기 · 지우기 동작은 없다**(읽고 이해하는 창 — docs/user/query-tile.md "만들지 않는 것").
+   * **만들기 · 고치기 · 지우기 동작은 없다**(읽고 이해하는 창 — docs/user/query-tile.md "What is not built").
    * 키보드(트리 묶음이 받는다): ↑↓ · →(펼치기 / 첫 자식) · ←(접기 / 부모) · Home · End · Enter · `F4` = DDL 보기.
    * 정의가 있는 줄(`query/definition` 의 `definitionTarget`)은 우클릭하면 메뉴(`oncontext` — 그림은 부르는 쪽의 `TreeMenu`)가 뜬다.
    *

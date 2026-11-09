@@ -240,10 +240,6 @@
     color: var(--fg-3);
   }
 
-  .fw-hint code {
-    font-family: var(--font-mono);
-  }
-
   /* 실패 한 줄 — 의미색 판(`--err-soft`), 강조색 선이 아니다 */
   .error {
     margin: 0 0 var(--space-3);

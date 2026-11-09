@@ -74,8 +74,9 @@ fn archived_row(git: Option<&dyn IntegrationGit>, r: &Run) -> Value {
         "archivedAt": r.archived_at.unwrap_or(r.updated_at),
         "exportedBranch": exported,
         "unexported": unexported,
-        // [Export first] 는 복원 뒤 앨범 화면의 [브랜치로 내보내기]다 — orphaned 는 서버가 내보내지 않고(읽기 전용) 저장소가 없으면 낼 곳이 없다.
-        "exportable": unexported && r.state != RunState::Orphaned && Path::new(&r.repo).join(".git").exists(),
+        // [Export first] 는 복원 뒤 앨범 화면의 [브랜치로 내보내기]다 — orphaned 도 내보내기 하나는 받는다(11-09 · `export_branch_by`).
+        // 저장소가 없으면 낼 곳이 없다.
+        "exportable": unexported && Path::new(&r.repo).join(".git").exists(),
     })
 }
 

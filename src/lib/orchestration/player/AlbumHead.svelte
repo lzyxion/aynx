@@ -174,7 +174,8 @@
         ><UiIcon name="shield-check" size={13} />{t("orch.perm.title")}</button
       >{/if}
     <!-- 이미 지금 통합 머리를 내보냈으면 단추 대신 아래 "내보냄" 칩만(같은 머리를 다시 내보낼 일이 없다 — 뒤처졌으면 다시 선다 · 실기 10-31) -->
-    {#if detail.integration && detail.state !== "orphaned" && integ?.exported !== "current"}
+    <!-- orphaned(서버 재시작 뒤 읽기 전용)도 내보내기 하나는 된다(11-09 — 영구 삭제 전에 결과를 살리는 길) -->
+    {#if detail.integration && integ?.exported !== "current"}
       <button type="button" class="pill" data-run-action="export" disabled={busy}
         title={t("orch.integration.export.title", { branch: detail.integration.exportBranch })} onclick={onexport}>{t("orch.integration.export")}</button>
     {/if}

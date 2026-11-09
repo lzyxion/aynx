@@ -968,7 +968,7 @@
     <!--
       문법 힌트 한 줄 — 문구 사이사이에 `<code>` 가 끼므로 **마크업에 맞춰 키를 쪼갰다**
       (문자열에 HTML 을 넣지 않는다 · docs/log/2026-09-17-i18n.md). 자세한 규칙(칩 지우기 ·
-      `#명령` 과 `@타일` 섞기 · 맨 앞 공백)은 docs/user/shortcuts.md 의 "찾기" 절.
+      `#명령` 과 `@타일` 섞기 · 맨 앞 공백)은 docs/user/shortcuts.md 의 "Find" 절.
     -->
     <p class="hint">
       <code>{t("commands.search.hint.at")}</code>{t("commands.search.hint.scope")}<code>/re</code>

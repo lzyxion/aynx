@@ -131,11 +131,11 @@
     `.menu-title`·`.menu-mark`·`.menu-sep`). 여기 남는 것은 자리뿐이다.
     `fixed` 인 이유: 탭은 `overflow-x: auto` 인 스트립 안에 있어 절대배치로는 잘린다.
     좌표는 스크립트가 커서 자리에서 넣는다 (`openTabMenu`). 커서 자리에 뜨므로 좁아도 되고,
-    층은 탭 줄의 다른 것들 위로 못 박아 둔다.
+    층은 다른 떠 있는 메뉴와 같은 40 — 상태바 감싸기(hug)의 캔버스 모서리 조각(30)보다 위.
   */
   .menu.ctx {
     position: fixed;
-    z-index: 6;
+    z-index: 40;
     min-width: 140px;
     max-width: 220px;
     max-height: 60vh;

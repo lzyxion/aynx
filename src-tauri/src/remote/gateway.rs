@@ -373,6 +373,11 @@ fn remote_shell(ctx: &Ctx, headers: &hyper::HeaderMap, now: Instant, bytes: &[u8
         // 이 기기의 id(10-20 — 폰 설정의 [이 기기 페어링 해제]가 원격 허용 `remote_device_revoke` 에 넘긴다). 비밀이 아니다 — 기기
         // 목록(`remote_devices_list`)이 이미 원격에 내보내는 값이다. 페어링 토큰 · 세션 쿠키와 무관.
         "deviceId": device,
+        // 집 PC 의 지금 앱 언어 — 앱 모듈이 뜨기 전 폴리필 자신의 문구(작은 암호 칸 · 거절 문구)가 쓴다. 뜬 뒤에는 `<html lang>`.
+        "lang": match crate::i18n::lang() {
+            crate::i18n::Lang::En => "en",
+            crate::i18n::Lang::Ko => "ko",
+        },
     });
     static_files::inject_remote_boot(&String::from_utf8_lossy(bytes), &boot.to_string())
 }

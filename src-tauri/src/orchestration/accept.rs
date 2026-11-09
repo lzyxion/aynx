@@ -29,7 +29,7 @@ use super::report::acceptable;
 #[cfg(test)]
 use super::store::StartRun;
 use super::store::{
-    human_detail, human_slot, not_found_run, reason, request_seen, revoke_run, settle_stopping, state_error, OrchError,
+    human_detail, human_slot, not_found_run, reason, request_seen, revoke_run, settle_stopping, OrchError,
     Orchestration, Slot,
 };
 use super::tools::{coordinator_gate, coordinator_slot};
@@ -795,6 +795,10 @@ impl Orchestration {
     /// [브랜치로 내보내기](op `orchestration_export` — 사람 · N1 · 4-5) — 통합 머리를 `refs/heads/orch-<run8>-int` 로. 통합 ref 가 기대 머리와
     /// 다르면 보류 · 그 브랜치가 어느 worktree 에 체크아웃돼 있으면 `export-checked-out` · 사람이 앱 밖에서 바꿨으면 `export-branch-moved`
     /// (CAS — 덮지 않는다). Run 완료 때도 부른다. 블로킹(git).
+    ///
+    /// **orphaned 도 이것 하나는 받는다**(2026-11-09 사용자 결정) — 서버 재시작 뒤 읽기 전용이 된 앨범이라도 영구 삭제 전에 통합 결과를
+    /// 살릴 길이 있어야 한다. 하는 일은 ref → 브랜치 하나(실행 · 병합 · 프로세스 없음)라 읽기 전용의 뜻을 넓히지 않는다. 대신 orphaned 에는
+    /// 보류를 세우지 않는다(사람 [조정]이 orphaned 를 받지 않아 풀 길이 없다) — 통합 ref 가 움직였으면 거절만 한다.
     pub(crate) fn export_branch(&self, run_id: &str) -> Result<Value, OrchError> {
         self.export_branch_by(run_id, Actor::Human)
     }
@@ -803,23 +807,24 @@ impl Orchestration {
     /// 실기 b 고침 F: 조정자의 `complete_run` 이 내보낸 줄이 `human` 으로 적혔다). 깨움 허용 목록에 없는 낱말이라 주체와 무관하게 깨우지 않는다.
     pub(super) fn export_branch_by(&self, run_id: &str, actor: Actor) -> Result<Value, OrchError> {
         let git = self.hand()?;
-        let (repo, integ) = {
+        let (repo, integ, orphaned) = {
             let g = self.lock();
             let slot = g.runs.get(run_id).ok_or_else(not_found_run)?;
-            if slot.run.state == RunState::Orphaned {
-                return Err(state_error(RunState::Orphaned));
-            }
+            let orphaned = slot.run.state == RunState::Orphaned;
             let integ = slot
                 .run
                 .integration
                 .clone()
                 .ok_or_else(|| OrchError::new(reason::INVALID_STATE, "this run has no integration ref"))?;
-            (PathBuf::from(&slot.run.repo), integ)
+            (PathBuf::from(&slot.run.repo), integ, orphaned)
         };
         let head = integ.expected_head.clone();
         let current = git.read_ref(&repo, &integ.work_ref).map_err(git_failed)?;
         // [정리]로 지운 통합 ref 의 부재는 기대한 상태 — 내보낸 브랜치가 그 머리를 품을 때만 지울 수 있었다(E2E 10-16 #10).
         if !integ.head_matches(current.as_deref()) {
+            if orphaned {
+                return Err(OrchError::new(reason::RUN_ON_HOLD, "the integration ref moved"));
+            }
             let now = self.now();
             let mut g = self.lock();
             if let Some(slot) = g.runs.get_mut(run_id) {
@@ -842,9 +847,11 @@ impl Orchestration {
         }
         let now_branch = git.read_ref(&repo, &branch_ref).map_err(git_failed)?;
         if now_branch.as_deref() != Some(head.as_str()) {
-            let op = match &integ.exported_head {
-                Some(o) => RefOp::Update { name: branch_ref.clone(), new: head.clone(), old: Some(o.clone()) },
-                None => RefOp::Create { name: branch_ref.clone(), new: head.clone() },
+            // 사람이 내보낸 브랜치를 지웠으면 다시 만든다(11-09 — 덮을 것이 없다 · 보관함은 이때 "내보내지 않음 · [먼저 내보내기]" 를
+            // 띄우는데 예전엔 여기서 `export-branch-moved` 로 거절했다). 만들기도 CAS 라 그 사이 누가 같은 이름을 세웠으면 거절.
+            let op = match (&integ.exported_head, &now_branch) {
+                (Some(o), Some(_)) => RefOp::Update { name: branch_ref.clone(), new: head.clone(), old: Some(o.clone()) },
+                _ => RefOp::Create { name: branch_ref.clone(), new: head.clone() },
             };
             if !matches!(git.update_refs(&repo, &[op]), Ok(TxOutcome::Committed)) {
                 return Err(OrchError::new(

@@ -17,6 +17,7 @@
   - **지금 타일이 AI 타일의 대화 면이면 띠 전체가 숨는다**(2026-11-04 사용자 결정 — 목업 YLJE1mCKsE1NJXQzMiDM5c B안): 칸 · 키가 보이지 않는 CLI 로 곧장 들어가고 입력 칸도 둘이 된다.
     언마운트하지 않고 숨긴다(치던 글 · `registerLineField` 가 그대로 — 터미널로 돌아오면 그 자리). 숨을 때 걸린 끈적 Ctrl 은 푼다 — 안 그러면 대화 입력 칸의 글이 Ctrl 로 나간다.
     그 사이 터미널은 상자 크기를 따라가지 않는다(`Terminal` 의 `refit` — 넘길 때마다 PTY 크기가 흔들리지 않게).
+    **오케스트레이션 탭에서도 숨는다**(2026-11-09) — 터미널이 없고 프로듀서 채팅이 제 입력 칸을 가져, 흐린 띠가 자리만 차지했다.
 -->
 <script lang="ts">
   import { activeTabId, currentWorkspaceTabs, paneOf } from "$lib/app/tabs.svelte.js";
@@ -41,8 +42,10 @@
     return pane && hasSession(pane.kind) ? pane.id : null;
   });
 
-  /** 지금 타일이 대화 면이다 — 띠를 숨긴다(칸 · 키가 보이지 않는 CLI 로 새지 않게) */
-  const hidden = $derived(target !== null && flipViewOf(target) === "convo");
+  /** 지금 탭이 오케스트레이션 탭이다 — 터미널이 없고 프로듀서 채팅이 제 입력 칸을 가진다(11-09 — 흐린 띠가 아래를 차지하던 것) */
+  const orchTab = $derived(!!currentWorkspaceTabs().find((x) => x.id === activeTabId())?.orch);
+  /** 지금 타일이 대화 면이거나 오케스트레이션 탭이다 — 띠를 숨긴다(칸 · 키가 보이지 않는 CLI 로 새지 않게) */
+  const hidden = $derived(orchTab || (target !== null && flipViewOf(target) === "convo"));
   $effect(() => {
     if (hidden && stickyCtrl()) setStickyCtrl(false);
   });

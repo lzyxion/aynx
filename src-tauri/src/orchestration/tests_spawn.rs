@@ -767,6 +767,46 @@ fn worktree_remove_refuses_human_and_unmerged() {
     cleanup(&root);
 }
 
+/// 곁 기록 줄이 빠진 Run worktree — 사람 [정리]가 넘기는 장부 근거(`LedgerClaim` · 11-09)로만 지운다. 줄이 있으면 그 줄이 정한다.
+#[test]
+fn worktree_remove_by_ledger_only_when_sidecar_row_is_missing() {
+    let root = scratch("ledger");
+    let r = repo(&root);
+    let empty = root.join("empty-hooks");
+    std::fs::create_dir_all(&empty).unwrap();
+    let side = root.join("worktrees.json");
+    let wt_dir = root.join("repo-wt").to_string_lossy().into_owned();
+    let run = run_id();
+    fn claim<'a>(dir: &'a str, b: &'a str) -> owt::LedgerClaim<'a> {
+        owt::LedgerClaim { worktree_dir: dir, branch: Some(b) }
+    }
+    let c = owt::create_blocking(&r, &wt_dir, "orch-l", &Base::Main, &run, Some(&side), &empty).unwrap();
+    // 곁 기록 줄이 빠졌다.
+    crate::worktree::forget_path(&side, &crate::worktree::path_key(&c.path)).unwrap();
+    // 장부 근거가 없는 길(조정자 · `remove_blocking`)은 예전처럼 거절.
+    assert_eq!(owt::remove_blocking(&r, &c.path, false, &run, Some(&side)).unwrap_err().code, "not-run-worktree");
+    // 브랜치가 장부와 다르면 거절.
+    let e = owt::remove_with(&r, &c.path, owt::BranchRule::Keep, &run, Some(&side), Some(claim(&wt_dir, "orch-x"))).unwrap_err();
+    assert_eq!(e.code, "not-run-worktree");
+    // Run 의 worktree 자리 밖이면 거절.
+    let elsewhere = root.join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let e = owt::remove_with(&r, &c.path, owt::BranchRule::Keep, &run, Some(&side), Some(claim(&elsewhere.to_string_lossy(), "orch-l")))
+        .unwrap_err();
+    assert_eq!(e.code, "not-run-worktree");
+    assert!(Path::new(&c.path).is_dir(), "거절이면 그대로");
+    // 자리 안 · 브랜치 같음 — 지운다.
+    owt::remove_with(&r, &c.path, owt::BranchRule::Keep, &run, Some(&side), Some(claim(&wt_dir, "orch-l"))).unwrap();
+    assert!(!Path::new(&c.path).exists());
+    // 곁 기록에 다른 Run 의 줄이 있으면 장부 근거로도 거절.
+    let other = run_id();
+    let c2 = owt::create_blocking(&r, &wt_dir, "orch-m", &Base::Main, &other, Some(&side), &empty).unwrap();
+    let e = owt::remove_with(&r, &c2.path, owt::BranchRule::Keep, &run, Some(&side), Some(claim(&wt_dir, "orch-m"))).unwrap_err();
+    assert_eq!(e.code, "not-run-worktree");
+    owt::remove_blocking(&r, &c2.path, true, &other, Some(&side)).unwrap();
+    cleanup(&root);
+}
+
 /// 정션(Windows) · 심볼릭 링크(그 밖)를 만든다.
 fn make_dir_link(link: &Path, target: &Path) {
     #[cfg(windows)]

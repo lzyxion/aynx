@@ -510,7 +510,8 @@ pub(crate) fn with_file_lock<T>(path: &Path, f: impl FnOnce() -> Result<T, Strin
     }
 }
 
-/// 이 폴더의 곁 파일 줄이 오케스트레이션 Run 의 것인가 — 그 Run id(`crate::orchestration::worktree` 의 삭제 관문).
+/// 이 폴더의 곁 파일 줄의 Run id — 시험이 곁 기록을 확인할 때만 쓴다(삭제 관문은 11-09 부터 [`record_for`] 로 줄의 있고 없음까지 본다).
+#[cfg(test)]
 pub(crate) fn run_of(file: &Sidecar, key: &str) -> Option<String> {
     record_for(file, key).and_then(|r| r.run.clone())
 }

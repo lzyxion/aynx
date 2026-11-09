@@ -1164,7 +1164,7 @@ export const app = {
   "query.local.error.port": "포트는 1~65535 사이여야 합니다",
   "query.local.error.duplicate": "같은 경유에 같은 이름의 DB 연결이 이미 있습니다",
   "query.local.error.ca": "CA 검증은 CA 파일이 필요합니다. 공개 인증서를 쓰는 서버라면 CA+이름 검증을 고르세요.",
-  // AI 권한 (2026-10-07 — 원격 세션의 권한 = 호스트 하나의 단계 · docs/user/hosts.md "AI 권한").
+  // AI 권한 (2026-10-07 — 원격 세션의 권한 = 호스트 하나의 단계 · docs/user/hosts.md "AI access").
   // 단계 이름·설명 줄은 `app.ai.stage.*` 이 쥐고(머리줄 팝오버와 함께 쓴다), 여기는 폼의 틀만.
   "hostform.tab.ai": "AI 권한",
   "hostform.ai.title": "AI 권한",
@@ -1731,7 +1731,7 @@ export const app = {
   "ai.all.confirm.ok": "YOLO 로 올리기",
   "ai.gauge.none": "고르지 않음",
   "ai.gauge.locked": "{name} (잠김)",
-  // DB 연결의 AI 권한 (쿼리 타일 3단계 3a — docs/user/query-tile.md "AI 에게 DB 보여 주기"). Off · Read · Ask · YOLO 이름은
+  // DB 연결의 AI 권한 (쿼리 타일 3단계 3a — docs/user/query-tile.md "Showing a database to the AI"). Off · Read · Ask · YOLO 이름은
   // `ai.stage.*` 를 그대로 쓰고, "Schema" 와 DB 뜻의 설명 줄만 여기.
   "dbai.title": "AI 권한",
   "dbai.note":
@@ -1802,7 +1802,7 @@ export const app = {
   "mirror.someDevice": "기기",
   "mirror.coldWorkspace": "메인 PC 에서 아직 열지 않은 워크스페이스입니다 — 메인 PC 에서 한 번 열면 여기서 볼 수 있습니다.",
   "mirror.fromFile": "메인 PC 창이 닫혀 있어 저장된 배치를 보여 줍니다 — 메인 PC 창이 열리면 그 화면을 따라갑니다.",
-  // ── 원격 창의 모바일 배치 (원격 웹 R5 — docs/user/remote-web.md "폰에서 쓰기") ─────────────
+  // ── 원격 창의 모바일 배치 (원격 웹 R5 — docs/user/remote-web.md "Using it from a phone") ─────────────
   "mobile.picker.open": "탭 · 타일 고르기",
   "mobile.picker.close": "닫기",
   "mobile.picker.tabs": "탭 {n}개",

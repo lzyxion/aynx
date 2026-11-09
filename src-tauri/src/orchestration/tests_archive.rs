@@ -166,6 +166,9 @@ fn orphaned_archive_restores_like_a_restart_and_stays_archived_across_restarts()
     let h = harness("orphan");
     let run = done_album(&h, "one");
     h.o.flush_saves();
+    // 내보낸 브랜치를 사람이 지웠다 — 통합 결과가 내보내지지 않은 채로 orphaned 가 된다.
+    let branch = run_of(&h.o, &run).integration.unwrap().export_branch;
+    git(&h.repo, &["branch", "-D", &branch]);
     let (o2, _rx) = orch_at(&h.data, &h.side);
     assert_eq!(o2.lock().runs.get(&run).unwrap().run.state, RunState::Orphaned);
     o2.archive_run(&run).unwrap();
@@ -174,7 +177,8 @@ fn orphaned_archive_restores_like_a_restart_and_stays_archived_across_restarts()
     let row = row_of(&o2, &run);
     assert_eq!(row["state"], "orphaned");
     assert_eq!(row["previousState"], "done");
-    assert_eq!(row["exportable"], false, "orphaned 는 서버가 내보내지 않는다");
+    assert_eq!(row["unexported"], true);
+    assert_eq!(row["exportable"], true, "orphaned 도 [먼저 내보내기]가 선다(11-09)");
     // 재시작 — 라이브러리에는 없고 보관함에는 있다.
     drop(o2);
     let (o3, _rx3) = orch_at(&h.data, &h.side);
@@ -186,6 +190,11 @@ fn orphaned_archive_restores_like_a_restart_and_stays_archived_across_restarts()
     assert_eq!((r.state, r.previous_state), (RunState::Orphaned, Some(RunState::Done)));
     assert!(o3.coordinator_caller(&run).is_none());
     assert_eq!(o3.pause(&run).unwrap_err().code, reason::RUN_ORPHANED, "읽기 전용 그대로");
+    // 내보내기 하나는 받는다 — 통합 머리에 브랜치가 다시 서고 상태는 orphaned 그대로.
+    let head = r.integration.as_ref().unwrap().expected_head.clone();
+    o3.export_branch(&run).unwrap();
+    assert_eq!(rev(&h.repo, &format!("refs/heads/{branch}")).as_deref(), Some(head.as_str()));
+    assert_eq!(o3.lock().runs.get(&run).unwrap().run.state, RunState::Orphaned);
     o3.flush_saves();
     drop(o3);
     let (o4, _rx4) = orch_at(&h.data, &h.side);

@@ -722,7 +722,7 @@ export const pane = {
   "query.ask": "AI 에 묻기",
   "query.ask.title": "AI 에 묻기 ({key})",
   "query.ask.title.off": "AI 권한 꺼짐 — 켜는 곳 보기",
-  "query.ask.off": "{name} 의 AI 권한이 꺼져 있어 AI 가 이 연결을 볼 수 없습니다. 독 DB 칸의 우클릭 › AI 권한, 또는 연결 설정에서 켜세요",
+  "query.ask.off": "{name} 의 AI 권한이 꺼져 있어 AI 가 이 연결을 볼 수 없습니다. 이 타일 머리줄의 AI 권한 칩, 또는 연결 설정에서 올리세요",
   "query.ask.off.open": "연결 설정 열기",
   "query.ask.lead": "이 DB 쿼리를 봐 줘. aynx DB 도구에 아래 connId 를 넘기면 구조와 데이터를 볼 수 있어.",
   "query.ask.lead.error": "이 DB 쿼리가 실패했어. 원인을 봐 줘. aynx DB 도구에 아래 connId 를 넘기면 구조와 데이터를 볼 수 있어.",
