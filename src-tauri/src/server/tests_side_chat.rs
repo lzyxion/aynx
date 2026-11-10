@@ -927,7 +927,7 @@ mod live {
         assert!(st.starts_with("HTTP/1.1 200"), "{st}");
         assert_eq!(names(&body), crate::chat_token::READ_TOOLS.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         let (_, body) = post_mcp(port, &global, list).await;
-        // DB 도구는 이 PC 의 실제 DB 연결 권한(설정 루트의 `delegation.toml` — 서버가 읽는다)대로 붙으니 빼고 센다
+        // DB 도구(뒷면이 있으면 늘 일곱 — 2026-11-09)는 빼고 센다
         let global_names: Vec<String> = names(&body).into_iter().filter(|n| !crate::mcp::db::is_db_tool(n)).collect();
         assert_eq!(global_names.len(), 13, "전역 토큰의 목록은 그대로");
 

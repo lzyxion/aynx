@@ -51,7 +51,8 @@
 //!    목록·원격 새 워크트리 준비 멈춤은 서버 op(`detach_window`·`close_window`·`live_streams` — `crate::server::proxy`)로 보낸다. 서버의 같은 연결 위에서 차례로
 //!    처리되므로 새 페이지의 붙기보다 먼저 닿는다(페이지 로드 훅은 새 페이지 스크립트보다 앞선다). generation 가드(3)는
 //!    GUI 에 남는다 — 창이 사라진 열기를 거두는 것은 창을 아는 쪽의 일이다. **앱 전체 종료·트레이로 가기**(메인 창 X — `quitAll`)는
-//!    세션을 닫지 않는다(`proxy::QUITTING` — 창 파괴를 리로드처럼 떼어 두기로 거두고, 서버의 세션은 산다 · ③-4).
+//!    세션을 닫지 않는다(`proxy::QUITTING` — 창 파괴를 리로드처럼 떼어 두기로 거두고, 서버의 세션은 산다 · ③-4). 쿼리 타일의
+//!    DB 연결은 그 뒤 `dbOnly` 로 떨어진 세션으로 남긴다([`Event::Leaving`] · [`window_ops`] — 2026-11-09 ②).
 //!
 //! 맡지 않는 것: 창 사이로 세션을 **옮기는** 일은 `crate::handoff`. 이 파일은 거두기만 한다.
 //! 현재 서로 부름: `crate::handoff` 와 순환하고, 거둘 때 `context`·`routing`·`operations`·`remote_worktree`
@@ -238,8 +239,40 @@ pub(crate) fn window_gone_message() -> String {
 pub(crate) enum Event {
     /// 페이지 리로드·웹뷰 크래시(같은 창이 다시 뜬다) — 로컬·SSH 를 떨어뜨린다(닫지 않는다).
     Reload,
+    /// 앱 전체 종료 · 트레이로 가는 중의 창 파괴(`proxy::QUITTING` — 마지막 창 X → 트레이 · GUI 끝내기) — 리로드처럼 떨어뜨리되
+    /// 쿼리 타일의 DB 연결은 **떨어진 세션으로 남긴다**(TTL 없음 — `db::table` 머리말 · 2026-11-09 ②).
+    Leaving,
     /// 창 파괴 — 닫는다(떨어진 것까지).
     Destroyed,
+}
+
+/// 창 파괴의 계기 — **사건 순간에 읽은** `QUITTING` 으로 가른다(`lib.rs` 의 `WindowEvent::Destroyed`). **순수**.
+pub(crate) fn destroyed_event(quitting: bool) -> Event {
+    if quitting {
+        Event::Leaving
+    } else {
+        Event::Destroyed
+    }
+}
+
+/// 거둠이 세션 서버에 보내는 창 op 하나(`crate::server::proxy`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WindowOp {
+    /// `detach_window`(리로드 몸 — `proxy::detach_body`): 로컬·SSH 임대를 풀고 DB 연결은 리로드로 떼어 둔다(TTL).
+    Detach,
+    /// `detach_window` 의 `dbOnly`(`proxy::keep_body`): 그 창의 DB 연결을 떨어진 세션으로 남긴다(앞의 리로드 떼어 둠을 올린다).
+    KeepDbs,
+    /// `close_window`: 그 창의 세션 · DB 연결을 닫는다(이관 중인 것은 빼고).
+    Close,
+}
+
+/// 계기마다 보내는 창 op 와 그 **차례**([`spawn_reap`] · [`reap`] 이 이 순서대로 보낸다). **순수** — 시험이 이 차례를 서버에 재생한다.
+pub(crate) fn window_ops(event: Event) -> &'static [WindowOp] {
+    match event {
+        Event::Reload => &[WindowOp::Detach],
+        Event::Leaving => &[WindowOp::Detach, WindowOp::KeepDbs],
+        Event::Destroyed => &[WindowOp::Close],
+    }
 }
 
 /// 이 라벨이 남긴 세션을 전부 닫는다.
@@ -256,17 +289,16 @@ pub(crate) async fn reap(app: AppHandle, label: String, reaped_before: u64, even
 
     // 로컬·SSH 모두 세션 서버가 닫는다(이관 중인 것은 빼고 · 앱 전체 종료면 닫지 않는다 — `proxy::close_window`). 원격 새
     // 워크트리의 첫 커밋 질문을 기다리던 접속도 서버가 같은 op 안에서 멈춘다(`crate::remote_worktree::cancel_for_window`).
-    let (local_ids, ssh_ids) = match event {
-        Event::Reload => (Vec::new(), Vec::new()),
-        Event::Destroyed => {
-            crate::server::proxy::close_window(
-                &label,
-                held.local.iter().copied().collect(),
-                held.ssh.iter().copied().collect(),
-                held.db_streams.iter().cloned().collect(),
-            )
-            .await
-        }
+    let (local_ids, ssh_ids) = if window_ops(event).contains(&WindowOp::Close) {
+        crate::server::proxy::close_window(
+            &label,
+            held.local.iter().copied().collect(),
+            held.ssh.iter().copied().collect(),
+            held.db_streams.iter().cloned().collect(),
+        )
+        .await
+    } else {
+        (Vec::new(), Vec::new())
     };
 
     if !local_ids.is_empty() || !ssh_ids.is_empty() {
@@ -280,7 +312,7 @@ pub(crate) async fn reap(app: AppHandle, label: String, reaped_before: u64, even
     // 보고된 거울도 제외한다([`crate::context::reclaim_streams`] — 서버가 같은 규칙으로 돈다).
     // 리로드면 이 창의 살아 있는 세션(떼어 둔 로컬·SSH) 거울도 빼 둔다 — 새 페이지의 타일이 다시 붙어 그대로 쓴다.
     let mut keep_streams = held.streams;
-    if event == Event::Reload {
+    if event != Event::Destroyed {
         keep_streams.extend(crate::server::proxy::live_streams(&label).await);
     }
     // 거울·라우팅·작업안은 세션 서버에 산다(③-3c) — 거울 큐를 지나(그 창의 마지막 거울 쓰기 뒤에 서게) 서버가 거둔다.
@@ -305,14 +337,20 @@ pub(crate) async fn reap(app: AppHandle, label: String, reaped_before: u64, even
 pub(crate) fn spawn_reap(app: &AppHandle, label: &str, event: Event) {
     // generation 도 이 순간 올린다 — `reap` 본문(비동기)에서 올리면 그 사이 등록되는 옛 열기를 놓친다.
     generations().bump(label);
-    let skip = (event == Event::Reload).then(|| held_now(app));
+    let ops = window_ops(event);
+    let skip = ops.contains(&WindowOp::Detach).then(|| held_now(app));
     // 거울 되거둠의 기준선도 지금 찍는다 — 이 시각 이후 다시 보고된 거울은 살아난 것이라 뺀다.
     let reaped_before = now_ms();
     let app = app.clone();
     let label = label.to_string();
     tauri::async_runtime::spawn(async move {
         if let Some(held) = skip {
+            let held_db: Vec<String> = held.db_streams.iter().cloned().collect();
             crate::server::proxy::detach_window(&label, held).await;
+            // 앱 전체 종료 · 트레이로 — 리로드로 떼어 둔 DB 연결을 떨어진 세션으로 올린다(같은 연결 위 차례 — 떨어뜨리기 뒤).
+            if ops.contains(&WindowOp::KeepDbs) {
+                crate::server::proxy::keep_window_dbs(&label, held_db).await;
+            }
         }
         reap(app, label, reaped_before, event).await
     });

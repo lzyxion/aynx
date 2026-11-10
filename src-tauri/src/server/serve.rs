@@ -79,10 +79,10 @@ pub(crate) enum Exit {
 /// 있으면 무기한이다(설계 4.1 · 열린 질문 2). ③-3c 부터 **진행 중 작업안**(승인됨·실행 중 — `plans`)도 바쁜 이유다(헤드리스
 /// 대상만 도는 실행은 세션 표에 타일이 없어도 끝까지 돈다).
 ///
-/// **쿼리 타일의 DB 연결은 바쁜 이유가 아니다**(9단계 — 칸이 없다는 것 자체가 결정이다): 붙은 DB 연결은 그 GUI 연결이 `clients` 로
-/// 이미 세이고, 떼어 둔 것의 TTL(`db::table::DETACH_TTL` 10분)은 이 시계(기본 10분)와 같은 순간 — GUI 연결이 끊긴 때 — 에 함께
-/// 시작한다. 그래서 DB 만 남은 서버는 TTL 즈음 함께 끝나고 끝날 때 남은 DB 연결을 닫는다(`run` 끝 — `db::table::close_all`).
-/// 세면 서버가 "TTL + 고아 시계" 로 쓸데없이 두 배를 산다.
+/// **떨어진 세션으로 남은 쿼리 타일의 DB 연결은 세션으로 센다**(`sessions` 에 더한다 — 2026-11-09 사용자 결정 ②): 창이 사라져도(GUI
+/// 종료 · 마지막 창 X · GUI 연결 끊김) DB 타일은 TTL 없이 떨어진 세션 목록에 남아 사람이 닫거나 다시 붙일 때까지 산다(`db::table` 머리말).
+/// 붙은 DB 연결은 그 GUI 연결이 `clients` 로 이미 세이고, 리로드로 떼어 둔 것(TTL 10분)은 창이 살아 있으니 따로 세지 않는다. 서버가
+/// 끝날 때 남은 DB 연결을 닫는다(`run` 끝 — `db::table::close_all`).
 ///
 /// **사이드 채팅 프로세스도 바쁜 이유가 아니다**(v2 2단계 — DB 연결과 같은 근거 · 같은 TTL 10분 — `side_chat::DETACH_TTL`). 끝날 때 닫는다
 /// (`run` 끝 — `side_chat::close_all`).
@@ -156,7 +156,8 @@ impl Shared {
     fn busy(&self) -> Busy {
         Busy {
             clients: self.clients.load(Ordering::SeqCst),
-            sessions: sessions::live_count(),
+            // 떨어진 세션으로 남은 쿼리 타일의 DB 연결도 세션으로 센다(② — 사람이 닫거나 다시 붙일 때까지 서버가 산다).
+            sessions: sessions::live_count() + crate::db::table::kept_count(),
             plans: self.ai.ops.in_progress(),
             runs: self.ai.orch.active_count(),
         }
@@ -634,6 +635,10 @@ async fn serve_conn(stream: BoxStream, peer: Peer, shared: Arc<Shared>) {
             // 스크립트 실행(판 10) — 판 9 로 붙은 GUI 는 이 op 를 모른다.
             Routed::Session(_) if op == "db_script" && negotiated.is_some_and(|p| p < frame::DB_SCRIPT_PROTOCOL) => {
                 Frame::err(id, WireError::new(code::PROTOCOL_MISMATCH, "db_script needs protocol 10"))
+            }
+            // 연결 테스트(판 28) — 판 27 로 붙은 GUI 는 이 op 를 모른다.
+            Routed::Session(_) if op == "db_test" && negotiated.is_some_and(|p| p < frame::DB_TEST_PROTOCOL) => {
+                Frame::err(id, WireError::new(code::PROTOCOL_MISMATCH, "db_test needs protocol 28"))
             }
             Routed::Session(body) if super::db_ops::is_db_op(&op) => {
                 let ctx = ctx.clone();

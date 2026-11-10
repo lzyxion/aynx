@@ -18,8 +18,8 @@
 //! - AI 권한(`delegation.toml`)은 `tools/call` 하나에 **한 번**, 컨텍스트 잠금 **앞**에서 읽어 모든 도구에
 //!   넘긴다 — 호스트 권한을 바꾸면 다음 호출부터 바로 반영된다(캐시가 없다).
 //! - DB 도구(`mcp/db.rs` — 쿼리 타일 3a · 3b)는 `wait_for_operation` 처럼 **잠금 앞**에서 갈라진다(쓰기 작업안 초안 `create_db_write_plan` 도 —
-//!   저장만 하고 실행 · 승인 갈래는 여전히 없다). `tools/list` 는 DB 권한이 하나라도 있을
-//!   때만 DB 도구를 싣는다(권한 없는 연결은 도구 호출에서도 "없는 연결").
+//!   저장만 하고 실행 · 승인 갈래는 여전히 없다). `tools/list` 는 DB 뒷면이 있으면 권한과
+//!   무관하게 DB 도구 일곱을 늘 싣는다(2026-11-09) — 권한 없는 연결은 도구 호출에서 "없는 연결", 모자란 단계는 거절(호출마다 판정).
 
 use serde_json::{json, Value};
 
@@ -138,8 +138,8 @@ pub(crate) fn dispatch_full(
 }
 
 /// [`dispatch`] 의 알맹이 — 호출자 · 오케스트레이션 저장소 · AI 권한 읽기 · DB 뒷면을 받는다.
-/// `load_delegation` 은 `tools/list`(전역 · 조정자 — DB 도구를 실을지, 쿼리 타일 3a) · `tools/call`(`wait_for_operation` ·
-/// 오케스트레이션 도구 제외)일 때 한 번 불린다.
+/// `load_delegation` 은 `tools/call`(`wait_for_operation` · 오케스트레이션 도구 제외)일 때 한 번 불린다(`tools/list` 는 권한을 읽지 않는다 —
+/// DB 도구는 늘 싣는다).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_as(
     caller: &Caller,
@@ -177,23 +177,18 @@ pub(crate) fn dispatch_as(
             };
             RpcReply::Json(ok_response(&id, initialize_result_for(kind)))
         }
-        // DB 도구는 권한이 하나라도 있을 때만 싣는다(쿼리 타일 3a — 끔이면 모델이 헷갈리지 않게 아예 없다).
-        // 전역 · 타일은 같은 판정을 받는다(조정자에게 더 주지도 덜 주지도 않는다) — 작업자는 DB 도구가 없으니 읽지 않는다.
+        // DB 도구는 DB 뒷면이 있으면 **권한과 무관하게 일곱 다** 싣는다(2026-11-09 — CLI 는 목록을 캐시하고 이 서버는 `list_changed` 를
+        // 보내지 않는다: 단계로 거르면 사람이 권한을 올려도 재연결 전에는 도구가 없었다). 판정은 호출마다 서버(`mcp/db.rs`). 전역 · 타일 ·
+        // 프로듀서는 같은 목록을 받는다(조정자에게 더 주지도 덜 주지도 않는다) — 작업자 · 검토자 · 사이드 채팅은 DB 도구가 없다.
         "tools/list" => {
-            let (max, listed) = match caller {
-                Caller::Worker { .. } | Caller::Reviewer { .. } | Caller::SideChat { .. } => (crate::db::ai::DbAiLevel::Off, false),
+            let (with_db, listed) = match caller {
+                Caller::Worker { .. } | Caller::Reviewer { .. } | Caller::SideChat { .. } => (false, false),
                 // 프로듀서 — `listed` 자리는 "작업안 도구를 싣나"(띄울 때 토큰 칸에 고정한 값 — O5 · 새 프로듀서부터).
-                Caller::Producer { chat, proc } => {
-                    let d = load_delegation();
-                    (super::db::max_level(&d, db), crate::chat_token::plan_tools_listed(chat, *proc))
-                }
+                Caller::Producer { chat, proc } => (db.has_backend(), crate::chat_token::plan_tools_listed(chat, *proc)),
                 // 전역 · 타일 · (시험의) 조정자 — 13 + DB. 조율 도구는 조정자에게만(`tools_list_for`).
-                _ => {
-                    let d = load_delegation();
-                    (super::db::max_level(&d, db), false)
-                }
+                _ => (db.has_backend(), false),
             };
-            RpcReply::Json(ok_response(&id, tools_list_for(caller, max, listed)))
+            RpcReply::Json(ok_response(&id, tools_list_for(caller, with_db, listed)))
         }
         "tools/call" => {
             let result = tools_call(caller, orch, store, ops, results, signal, v.get("params"), load_delegation, db);
@@ -313,6 +308,8 @@ fn tools_call(
 
     // AI 권한 — 파일 읽기라 **잠금 앞**에서 한 번(대상·세션마다 읽지 않는다).
     let delegation = load_delegation();
+    // 창이 없는 동안 세션 서버가 잇는 거울(2026-11-09 — `crate::screen_mirror`)을 읽기 직전에 지금 화면으로(잠금 앞).
+    crate::screen_mirror::flush_dirty();
 
     let guard = match store.lock() {
         Ok(guard) => guard,

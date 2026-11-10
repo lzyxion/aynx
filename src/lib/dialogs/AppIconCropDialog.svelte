@@ -135,6 +135,7 @@
       bind:this={modalEl}
       onkeydown={onKeydown}
     >
+      <div class="glass-scroll">
       <h2 id="app-icon-crop-title">{t(appIconCrop.replace ? "settings.avatars.crop.titleRecrop" : "settings.theme.app_icon.crop.title")}</h2>
       <p class="lead">{t("settings.theme.app_icon.crop.lead")}</p>
 
@@ -240,6 +241,7 @@
           {t(appIconCrop.replace ? "settings.avatars.crop.okRecrop" : "settings.theme.app_icon.crop.ok")}
         </button>
       </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -258,14 +260,20 @@
   }
 
   .modal {
+    box-sizing: border-box;
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 32px);
-    overflow: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   .modal h2 {

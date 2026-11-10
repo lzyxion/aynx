@@ -40,6 +40,7 @@
       bind:this={modalEl}
       onkeydown={(ev) => modalEl && trapTab(ev, modalEl)}
     >
+      <div class="glass-scroll">
       {#if hostKey.changed}
         <h2 id="tofu-title" class="danger">{t("app.hostkey.changed.title")}</h2>
         <p class="lead">
@@ -108,6 +109,7 @@
           </button>
         {/if}
       </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -120,7 +122,8 @@
        나와 모달을 투명하게 덮으면 "보이는데 클릭·입력이 안 되는" 증상이 된다 (실기 발견).
        패널 쪽은 pane-box 의 isolation 으로 새는 것 자체도 막지만, 모달의 최상층 보장은
        여기서 독립적으로 지킨다. */
-    z-index: 100;
+    /* 관문 창은 다른 모달(DB 연결 폼의 [연결 테스트] 등 — 마운트가 더 뒤라 같은 층이면 위에 온다) 위에 선다 — 2026-11-09 */
+    z-index: 112;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -129,17 +132,23 @@
   }
 
   .modal {
+    box-sizing: border-box;
     width: 100%;
-    max-width: 420px;
+    max-width: calc(420px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
     /* 호스트 폼은 칸이 10개라 작은 창에서 화면을 넘긴다 — 모달 안에서 스크롤한다
        (overlay 의 padding 16px 을 빼 준다) */
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   .modal h2 {

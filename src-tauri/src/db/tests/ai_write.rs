@@ -128,7 +128,7 @@ impl World {
     fn grant(&self, id: &str, level: DbAiLevel) {
         let conn = self.conns.lock().unwrap().iter().find(|c| c.id == id).cloned().unwrap();
         let mut doc = self.doc.lock().unwrap();
-        *doc = upsert_database_in_doc(&doc, id, &DbIdentity::of(&conn, None), level).unwrap();
+        *doc = upsert_database_in_doc(&doc, id, &DbIdentity::of(&conn, None), level, Some(true)).unwrap();
     }
 
     fn delegation(&self) -> Delegation {
@@ -302,13 +302,13 @@ async fn sqlite_write_plan_runs_only_after_a_person_approves() {
     let audit_dir = dir.join("audit");
     let p = plane(&world, Some(audit_dir.clone()));
 
-    // 단계마다 — 끔: 도구 없음 · 없는 연결 / 읽기 전용: 도구 없음 · 거절 / 승인 후 실행: 도구가 선다.
+    // 단계마다 — 도구는 늘 목록에 있고(2026-11-09) 판정은 호출마다: 끔 = 없는 연결 / 읽기 전용 = 거절 / 승인 후 실행 = 통한다(아래).
     let ask = |w: &Arc<World>| mcp(w, &p.ops, "create_db_write_plan", json!({ "summary": "s", "effect": "delete", "connId": id, "statements": ["DELETE FROM t"], "maxAffected": 5 }));
-    assert!(!tool_names(&world).iter().any(|n| n == "create_db_write_plan"));
+    assert!(tool_names(&world).iter().any(|n| n == "create_db_write_plan"), "끔이어도 목록에 있다");
     let (err, text) = ask(&world);
     assert!(err && text.contains("Unknown database connection"), "{text}");
     world.grant(id, DbAiLevel::Read);
-    assert!(!tool_names(&world).iter().any(|n| n == "create_db_write_plan"));
+    assert!(tool_names(&world).iter().any(|n| n == "create_db_write_plan"), "읽기 전용이어도 목록에 있다");
     let (err, text) = ask(&world);
     assert!(err && text.contains("needs 'Ask'"), "{text}");
     world.grant(id, DbAiLevel::Approve);
@@ -584,7 +584,7 @@ async fn open_tile(stream: &str, conn: &DbConn, pw: &str) -> super::table::Opene
     std::fs::write(&file, serde_json::to_string(&[conn]).unwrap()).unwrap();
     super::conns::set_path_override(Some(file));
     super::table::conn_opened(7_700_401);
-    let secrets = super::net::OpenSecrets { password: Some(zeroize::Zeroizing::new(pw.to_string())), ssh: Default::default() };
+    let secrets = super::net::OpenSecrets { password: Some(zeroize::Zeroizing::new(pw.to_string())), ssh: Default::default(), vault: true, from_vault: false };
     match super::table::open(stream.into(), stream.into(), 7_700_401, super::table::ConnRef { id: conn.id.clone() }, secrets).await {
         Ok(o) => o,
         Err(super::net::OpenError::Msg(m)) => panic!("타일 열기: {m}"),

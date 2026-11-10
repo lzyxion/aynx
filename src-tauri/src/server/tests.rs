@@ -161,7 +161,7 @@ fn grades_are_checked_per_op() {
         assert_eq!(frame::check_grade(op, Grade::Write).unwrap_err().code, code::GRADE_MISMATCH, "{op}");
         assert!(super::db_ops::is_db_op(op), "{op}");
     }
-    for op in ["db_open", "db_query", "db_cancel", "db_set_write", "db_close", "db_tx", "db_script"] {
+    for op in ["db_open", "db_test", "db_query", "db_cancel", "db_set_write", "db_close", "db_tx", "db_script"] {
         assert!(frame::check_grade(op, Grade::Write).is_ok(), "{op}");
         assert_eq!(frame::check_grade(op, Grade::Read).unwrap_err().code, code::GRADE_MISMATCH, "{op}");
         assert_eq!(frame::check_grade(op, Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED, "{op}");
@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 27, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 29, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -232,7 +232,15 @@ fn grades_are_checked_per_op() {
     assert!(frame::check_grade("orchestration_merge_preview", Grade::Read).is_ok());
     assert!(frame::check_grade("orchestration_merge", Grade::Write).is_ok());
     assert_eq!(frame::check_grade("orchestration_merge", Grade::Read).unwrap_err().code, code::GRADE_MISMATCH);
-    assert_eq!(frame::PROTOCOL_MAX, 27);
+    // 판 28(DB 연결 폼 [연결 테스트]) — 새 op `db_test`(쓰기), MIN 은 그대로.
+    assert_eq!(frame::DB_TEST_PROTOCOL, 28);
+    // 판 29(DB 타일도 떨어진 세션으로 — 새 op 없음 · 목록 줄 `kind: "db"`) — MIN 은 그대로 · 낮은 서버면 `keep` 의 DB 열쇠를 뺀다.
+    assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
+    assert_eq!(frame::PROTOCOL_MAX, 29);
+    let keep = vec!["local-1".to_string(), "query:tk-1".to_string()];
+    assert_eq!(crate::session_core::commands::keep_for_server(keep.clone(), Some(28)), vec!["local-1".to_string()]);
+    assert_eq!(crate::session_core::commands::keep_for_server(keep.clone(), Some(29)), keep);
+    assert_eq!(crate::session_core::commands::keep_for_server(keep.clone(), None), keep);
     assert_eq!(negotiate(ProtocolRange::OURS, range(7, 8)), Some(8));
     assert_eq!(negotiate(ProtocolRange::OURS, range(7, 7)), Some(7));
     // 판에 무관한 op 는 둘뿐.
@@ -1962,12 +1970,416 @@ pub(in crate::server) mod live {
         }
     }
 
+    /// 시험 `db_borrowed_password_lifecycle`(2026-11-09 — `db::borrowed`): 사람 타일이 비밀번호로 인증해 붙어 있는 동안 AI 연결은 볼트 없이 그
+    /// 값으로 연다(`ai::open_with` — 볼트 물러남 끔 · 몸에 그 값) · 거절되면 그 값을 버리고 볼트 차례로 한 번 더 · 대상이 바뀌면 쓰지 않고
+    /// 버린다 · **볼트 잠금(가림막 · 창 0개 — `vault_ops::lock`)과 잠금 해제는 빌린 값에 닿지 않는다**(잠긴 동안에도 같은 값 · 같은 번호로
+    /// 빌려주고 AI 연결이 열린다) · **마지막 타일 닫힘**에 지워지고 AI 문구가 까닭을 가른다. SQLite 타일은 비밀번호를 줘도 담지 않는다(비밀번호
+    /// 엔진만). 잠금 답 · 문구 · `Debug` 에 값이 없다. 비밀번호 엔진(PG · MySQL)의 실제 서버는 없으므로 인증 성공은 `borrowed::remember`(타일
+    /// 열기가 부르는 그 함수 — 친 값 · 미리 정한 볼트 값 모두)로 세우고, 엔진 접속은 `open_with` 의 여는 함수 자리에 시험 함수를 둔다.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_borrowed_password_lifecycle() {
+        use crate::db::ai::{self, DbAiLevel, PasswordSource};
+        use crate::db::borrowed::{self, Missing};
+        use crate::db::net::{OpenError, OpenSecrets};
+        use crate::delegation::database::{upsert_database_in_doc, DbIdentity};
+        use super::super::vault_ops::{self, VaultPlane};
+        use std::sync::Mutex as StdMutex;
+        const SECRET: &str = "BRW-SECRET-typed-1";
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, _) = db_fixture("db-borrow", "Test_brw0001");
+        let line = crate::db::conns::load_at(&list).unwrap().conns.remove(0);
+        let id = line.id.clone();
+        let grant_for = |c: &crate::db::conns::DbConn| {
+            let doc = upsert_database_in_doc("", &c.id, &DbIdentity::of(c, None), DbAiLevel::Read, Some(true)).unwrap();
+            ai::authorize(&crate::delegation::Delegation::parse(&doc).unwrap(), c, None, DbAiLevel::Read).ok().unwrap()
+        };
+        let grant = grant_for(&line);
+        let typed = || zeroize::Zeroizing::new(SECRET.to_string());
+        let lend_now = || {
+            assert!(borrowed::remember(&id, DbIdentity::of(&line, None), typed()), "타일이 있으면 담긴다");
+        };
+        let no_pw = || OpenError::Msg(crate::errors::with_reason(crate::errors::DB_PASSWORD, "needs a password".into()));
+        let text = || ai::open_error_text(no_pw(), None, &id);
+        let lent_secret = || ai::lend_for(&grant, &PasswordSource::Vault).map(|l| (l.password.to_string(), l.stamp));
+        assert_eq!(borrowed::missing(&id), Some(Missing::TileClosed));
+
+        // 사람 타일(SQLite) — 비밀번호를 줘도 비밀번호 엔진이 아니라 담지 않는다. 타일은 표에 선다.
+        crate::db::conns::set_path_override(Some(list.clone()));
+        crate::db::table::conn_opened(7_719_001);
+        let secrets = OpenSecrets { password: Some(typed()), ssh: Default::default(), vault: true, from_vault: false };
+        let o = crate::db::table::open("brw-1".into(), "brw-1".into(), 7_719_001, crate::db::table::ConnRef { id: id.clone() }, secrets)
+            .await
+            .expect("타일 열기");
+        assert_eq!(borrowed::missing(&id), Some(Missing::NoPassword), "SQLite 는 담지 않는다");
+        let t = text();
+        assert!(t.contains("connected without a password") && !t.contains(SECRET), "(e) 비밀번호 없이 붙음: {t}");
+        // 재부착(같은 stream · 같은 참조)은 새 인증이 없다 — 새로 담지 않는다(담긴 값이 있으면 그대로 — 아래 ④).
+        let again = crate::db::table::open(
+            "brw-1".into(),
+            "brw-1".into(),
+            7_719_001,
+            crate::db::table::ConnRef { id: id.clone() },
+            OpenSecrets { password: Some(typed()), ssh: Default::default(), vault: true, from_vault: false },
+        )
+        .await
+        .expect("재부착");
+        assert!(again.reattached, "재부착");
+        assert_eq!(borrowed::missing(&id), Some(Missing::NoPassword), "재부착은 담지 않는다");
+
+        // ① 타일 인증 성공(비밀번호 엔진이라면 표가 부르는 그 함수) → AI 는 볼트 없이 그 값으로 연다.
+        lend_now();
+        let seen: StdMutex<Vec<(Option<String>, bool)>> = StdMutex::default();
+        let record = |s: OpenSecrets| {
+            seen.lock().unwrap().push((s.password.as_ref().map(|p| p.to_string()), s.vault));
+            std::future::ready(Ok::<(), OpenError>(()))
+        };
+        let lent = ai::lend_for(&grant, &PasswordSource::Vault);
+        let (_, stamp) = ai::open_with(&grant, &PasswordSource::Vault, lent, record).await.unwrap();
+        assert!(stamp.is_some(), "빌린 값으로 열었다");
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(Some(SECRET.to_string()), false)], "몸에 빌린 값 · 볼트 물러남 끔");
+        // 시험의 몸 비밀번호(`Given`)는 빌린 값을 보지 않는다.
+        assert!(ai::lend_for(&grant, &PasswordSource::Given(None)).is_none());
+
+        // ② 빌린 값이 거절되면(`[db-auth]`) 그 값을 버리고 볼트 차례로 한 번 더(몸 없음 · 볼트 물러남 켬).
+        seen.lock().unwrap().clear();
+        let reject_borrowed = |s: OpenSecrets| {
+            let first = s.password.is_some();
+            seen.lock().unwrap().push((s.password.as_ref().map(|p| p.to_string()), s.vault));
+            std::future::ready(if first {
+                Err(OpenError::Msg(crate::errors::with_reason(crate::errors::DB_AUTH, "rejected".into())))
+            } else {
+                Ok(())
+            })
+        };
+        let lent = ai::lend_for(&grant, &PasswordSource::Vault);
+        let (_, stamp) = ai::open_with(&grant, &PasswordSource::Vault, lent, reject_borrowed).await.unwrap();
+        assert_eq!(stamp, None, "볼트 차례로 열었다");
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(Some(SECRET.to_string()), false), (None, true)]);
+        assert_eq!(borrowed::missing(&id), Some(Missing::Rejected), "거절된 값은 버렸다");
+        let t = text();
+        assert!(t.contains("database rejected the password borrowed"), "(d) 거절: {t}");
+        // 빌린 값이 없으면 곧바로 볼트 차례 한 번.
+        seen.lock().unwrap().clear();
+        ai::open_with(&grant, &PasswordSource::Vault, None, record).await.unwrap();
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(None, true)]);
+
+        // ③ 대상이 바뀜(사람이 DB 이름을 고쳐 저장) → 그 신원으로는 빌려주지 않고 버린다 · 같은 신원으로도 다시 못 빌린다 · 문구는 "대상 바뀜".
+        lend_now();
+        let mut moved = line.clone();
+        moved.engine = crate::db::conns::DbEngine::Postgres;
+        moved.path = None;
+        moved.host = Some("evil.example".into());
+        assert!(ai::lend_for(&grant_for(&moved), &PasswordSource::Vault).is_none(), "바뀐 대상");
+        assert!(ai::lend_for(&grant, &PasswordSource::Vault).is_none(), "버렸다");
+        assert_eq!(borrowed::missing(&id), Some(Missing::TargetChanged));
+        let t = text();
+        assert!(t.contains("target changed since the query tile connected") && t.contains("reconnect it in a query tile"), "(c) 대상: {t}");
+
+        // ④ 볼트 잠금(가림막 `shade` · 창 0개 `windows_zero` — 서버의 볼트 잠금 한 문)은 빌린 값에 닿지 않는다 — 잠긴 동안에도 같은 값 · 같은
+        //    번호로 빌려주고, AI 연결은 그 값으로 열린다(볼트가 잠겨 있어도 — 사람 타일이 붙어 있는 동안). 해제도 아무것도 바꾸지 않는다.
+        lend_now();
+        let (first, stamp) = lent_secret().expect("빌려준다");
+        assert_eq!(first, SECRET);
+        let vdir = dir.join("vault");
+        std::fs::create_dir_all(&vdir).unwrap();
+        let plane = VaultPlane::new(Some(vdir));
+        vault_ops::handle("vault_create", json!({ "master": null }), &plane).unwrap();
+        for reason in [crate::vault::LockReason::Shade, crate::vault::LockReason::WindowsZero] {
+            let r = vault_ops::lock(&plane, reason, "test");
+            assert!(!r.to_string().contains(SECRET), "{r}");
+            assert!(!plane.vault.is_unlocked(), "볼트는 잠겼다");
+            assert_eq!(borrowed::missing(&id), None, "잠금이 지우지도 멈추지도 않는다");
+            assert_eq!(lent_secret(), Some((SECRET.to_string(), stamp)), "잠긴 동안에도 같은 값 · 같은 번호");
+            assert!(borrowed::still_lent(&id, stamp), "빌린 값으로 연 풀 연결도 그대로");
+            seen.lock().unwrap().clear();
+            let lent = ai::lend_for(&grant, &PasswordSource::Vault);
+            let (_, opened) = ai::open_with(&grant, &PasswordSource::Vault, lent, record).await.unwrap();
+            assert_eq!(opened, Some(stamp), "볼트 잠김 + 타일 열림 → AI 연결이 열린다");
+            assert_eq!(seen.lock().unwrap().as_slice(), &[(Some(SECRET.to_string()), false)]);
+            vault_ops::handle("vault_unlock", json!({ "master": null, "lang": "en" }), &plane).expect("빈 값으로 열린다");
+            assert_eq!(lent_secret(), Some((SECRET.to_string(), stamp)), "해제도 바꾸지 않는다");
+        }
+        // 재부착은 담긴 값을 건드리지 않는다.
+        let again = crate::db::table::open(
+            "brw-1".into(),
+            "brw-1".into(),
+            7_719_001,
+            crate::db::table::ConnRef { id: id.clone() },
+            OpenSecrets::default(),
+        )
+        .await
+        .expect("재부착");
+        assert!(again.reattached);
+        assert_eq!(lent_secret(), Some((SECRET.to_string(), stamp)), "재부착 뒤에도 같은 값");
+
+        // ⑤ 볼트가 잠긴 채 마지막 사람 타일이 닫힘 → 지움 · 다음 AI 호출은 "타일 없음"(볼트 잠김이면 "잠금 해제" 안내 — 순수 문구는 `db::ai` 시험).
+        vault_ops::lock(&plane, crate::vault::LockReason::Shade, "test");
+        assert!(crate::db::table::close(o.handle, None).unwrap());
+        assert_eq!(borrowed::missing(&id), Some(Missing::TileClosed));
+        assert!(ai::lend_for(&grant, &PasswordSource::Vault).is_none());
+        assert!(!borrowed::remember(&id, DbIdentity::of(&line, None), typed()), "타일 없이 담지 않는다");
+        let t = text();
+        assert!(t.contains("no query tile") && !t.contains(SECRET), "(a) 타일 없음: {t}");
+
+        drop(plane);
+        crate::db::conns::set_path_override(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 시험 `db_headless_gate`(2026-11-09 — `[[database]] headless`): AI 연결의 볼트 차례는 헤드리스 위임이 켜진 연결만. 끔 + 타일 없음 →
+    /// **아무것도 열지 않고**(여는 함수를 부르지 않는다 = 볼트 · 경유 SSH 에 닿지 않는다) 헤드리스 문구(볼트 잠김 · 값 없음 문구가 아니다) ·
+    /// 켬 → 볼트 차례(볼트 물러남 켬) · 타일이 비밀번호로 붙어 있으면(빌린 값) 칸과 무관하게 그 값으로 · 빌린 값이 거절되면 끔이면 볼트로
+    /// 물러나지 않는다 · 타일이 비밀번호 없이 붙어 있으면 볼트 없이 한 번(서버가 청하면 헤드리스 문구) · 대상이 바뀌면 헤드리스도 꺼진다.
+    /// 쓰기 작업안 연결(`ai_write::open`)은 같은 `open_with` 를 지난다(소스 훑기) · 실행 직전 재판정의 증표가 칸을 싣는다.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_headless_gate() {
+        use crate::db::ai::{self, DbAiLevel, PasswordSource};
+        use crate::db::borrowed;
+        use crate::db::net::{OpenError, OpenSecrets};
+        use crate::delegation::database::{upsert_database_in_doc, DbIdentity};
+        use std::sync::Mutex as StdMutex;
+        const SECRET: &str = "HDL-SECRET-typed-1";
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, _) = db_fixture("db-headless", "Test_hdl0001");
+        let line = crate::db::conns::load_at(&list).unwrap().conns.remove(0);
+        let id = line.id.clone();
+        let grant_with = |c: &crate::db::conns::DbConn, level: DbAiLevel, headless: Option<bool>| {
+            let doc = upsert_database_in_doc("", &c.id, &DbIdentity::of(c, None), level, headless).unwrap();
+            ai::authorize(&crate::delegation::Delegation::parse(&doc).unwrap(), c, None, DbAiLevel::Schema).ok().unwrap()
+        };
+        let off = grant_with(&line, DbAiLevel::Read, None);
+        let on = grant_with(&line, DbAiLevel::Read, Some(true));
+        assert!(!off.headless() && on.headless(), "새 블록은 끔 · 켜면 켬");
+        // 쓰기 작업안의 재판정(`operations::db_exec` — 같은 `authorize`)도 칸을 싣는다.
+        assert!(!grant_with(&line, DbAiLevel::Approve, None).headless());
+        assert!(grant_with(&line, DbAiLevel::All, Some(true)).headless());
+        let seen: StdMutex<Vec<(Option<String>, bool)>> = StdMutex::default();
+        let record = |s: OpenSecrets| {
+            seen.lock().unwrap().push((s.password.as_ref().map(|p| p.to_string()), s.vault));
+            std::future::ready(Ok::<(), OpenError>(()))
+        };
+        let msg = |r: Result<((), Option<u64>), OpenError>| match r {
+            Err(OpenError::Msg(m)) => m,
+            Err(OpenError::Ssh(_)) => panic!("SSH 관문"),
+            Ok(_) => panic!("열렸다"),
+        };
+        let headless_text = |t: &str| t.contains("headless access is off") && t.contains("'Headless connection'") && t.contains("the vault was not used");
+        let not_vault_text = |t: &str| !t.contains("vault is locked") && !t.contains("stored in the vault") && !t.contains("no vault is set up");
+
+        // ① 끔 + 타일 없음 → 여는 함수를 부르지 않는다(볼트 · SSH 에 닿지 않음) · 헤드리스 문구.
+        assert_eq!(borrowed::missing(&id), Some(borrowed::Missing::TileClosed));
+        let t = msg(ai::open_with(&off, &PasswordSource::Vault, ai::lend_for(&off, &PasswordSource::Vault), record).await);
+        assert!(seen.lock().unwrap().is_empty(), "아무것도 열지 않았다");
+        assert!(headless_text(&t) && not_vault_text(&t) && t.contains("open it in a query tile"), "{t}");
+        assert_eq!(ai::open_error_text(OpenError::Msg(t.clone()), None, &id), t, "AI 문구는 그대로 지난다");
+        // ② 켬 + 타일 없음 → 볼트 차례 한 번(몸 없음 · 볼트 물러남 켬).
+        ai::open_with(&on, &PasswordSource::Vault, None, record).await.unwrap();
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(None, true)]);
+
+        // 사람 타일(SQLite — 비밀번호 없이 붙음).
+        crate::db::conns::set_path_override(Some(list.clone()));
+        crate::db::table::conn_opened(7_719_101);
+        let o = crate::db::table::open("hdl-1".into(), "hdl-1".into(), 7_719_101, crate::db::table::ConnRef { id: id.clone() }, OpenSecrets::default())
+            .await
+            .expect("타일 열기");
+        assert_eq!(borrowed::missing(&id), Some(borrowed::Missing::NoPassword));
+        // ③ 끔 + 타일이 비밀번호 없이 붙음 → 볼트 없이 한 번 · 서버가 비밀번호를 청하면 헤드리스 문구.
+        seen.lock().unwrap().clear();
+        ai::open_with(&off, &PasswordSource::Vault, None, record).await.unwrap();
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(None, false)], "볼트 물러남 끔");
+        let needs_pw = |s: OpenSecrets| {
+            assert!(!s.vault && s.password.is_none());
+            std::future::ready(Err::<(), OpenError>(OpenError::Msg(crate::errors::with_reason(crate::errors::DB_PASSWORD, "needs".into()))))
+        };
+        let t = msg(ai::open_with(&off, &PasswordSource::Vault, None, needs_pw).await);
+        assert!(headless_text(&t) && t.contains("connected without a password"), "{t}");
+
+        // ④ 타일이 비밀번호로 붙음(빌린 값) → 칸과 무관하게 그 값으로.
+        assert!(borrowed::remember(&id, DbIdentity::of(&line, None), zeroize::Zeroizing::new(SECRET.to_string())));
+        for g in [&off, &on] {
+            seen.lock().unwrap().clear();
+            let (_, stamp) = ai::open_with(g, &PasswordSource::Vault, ai::lend_for(g, &PasswordSource::Vault), record).await.unwrap();
+            assert!(stamp.is_some());
+            assert_eq!(seen.lock().unwrap().as_slice(), &[(Some(SECRET.to_string()), false)]);
+        }
+        // ⑤ 끔 + 빌린 값 거절 → 그 값을 버리고 볼트로 물러나지 않는다.
+        seen.lock().unwrap().clear();
+        let reject = |s: OpenSecrets| {
+            seen.lock().unwrap().push((s.password.as_ref().map(|p| p.to_string()), s.vault));
+            std::future::ready(Err::<(), OpenError>(OpenError::Msg(crate::errors::with_reason(crate::errors::DB_AUTH, "rejected".into()))))
+        };
+        let t = msg(ai::open_with(&off, &PasswordSource::Vault, ai::lend_for(&off, &PasswordSource::Vault), reject).await);
+        assert_eq!(seen.lock().unwrap().as_slice(), &[(Some(SECRET.to_string()), false)], "한 번만 — 볼트 차례 없음");
+        assert!(headless_text(&t) && t.contains("rejected the password borrowed") && !t.contains(SECRET), "{t}");
+
+        // ⑥ 대상이 바뀜 → 그 대상의 증표는 헤드리스가 꺼진다(옛 파일의 켬 블록이 새 대상에 번지지 않는다) · 빌린 값도 없다.
+        assert!(borrowed::remember(&id, DbIdentity::of(&line, None), zeroize::Zeroizing::new(SECRET.to_string())));
+        let mut moved = line.clone();
+        moved.path = Some(format!("{}-other", line.path.clone().unwrap()));
+        let doc = upsert_database_in_doc("", &id, &DbIdentity::of(&line, None), DbAiLevel::Read, Some(true)).unwrap();
+        let d = crate::delegation::Delegation::parse(&doc).unwrap();
+        assert!(ai::authorize(&d, &moved, None, DbAiLevel::Schema).is_err(), "스냅샷 어긋남 = 끔(권한 전체)");
+        assert!(!d.db_headless(&moved, None));
+        let rewritten = upsert_database_in_doc(&doc, &id, &DbIdentity::of(&moved, None), DbAiLevel::Read, None).unwrap();
+        let moved_grant = ai::authorize(&crate::delegation::Delegation::parse(&rewritten).unwrap(), &moved, None, DbAiLevel::Schema).ok().unwrap();
+        assert!(!moved_grant.headless(), "새 대상으로 다시 적으면 끔");
+        seen.lock().unwrap().clear();
+        let t = msg(ai::open_with(&moved_grant, &PasswordSource::Vault, ai::lend_for(&moved_grant, &PasswordSource::Vault), record).await);
+        assert!(seen.lock().unwrap().is_empty() && headless_text(&t) && t.contains("target changed"), "{t}");
+
+        // 쓰기 작업안 연결도 같은 차례(`open_with`)를 지난다 — 비밀번호 엔진 둘 다.
+        let w = include_str!("../db/ai_write.rs");
+        assert_eq!(w.matches("ai::open_with(grant, src, ai::lend_for(grant, src)").count(), 2, "PG · MySQL 쓰기 연결");
+
+        assert!(crate::db::table::close(o.handle, None).unwrap());
+        crate::db::conns::set_path_override(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 시험 `db_headless_off_drops_vault_pool`(2026-11-09 실기 — 헤드리스를 꺼도 볼트로 연 AI 풀 연결이 계속 쓰였다): 풀에서 꺼내 쓰는 것도
+    /// 이번 호출의 증표를 지난다 — **볼트 차례로 연 풀 연결 + 이번 증표 헤드리스 끔 → 그 연결을 쓰지 않고**(풀에서 빼고) 새 열기로 간다 · 켬이면
+    /// 그대로 다시 쓴다 · 빌린 값으로 연 풀 연결은 칸과 무관하게 다시 쓴다(`retire_borrowed` · `still_lent` 그대로). **SQLite 도 헤드리스 칸을
+    /// 따른다**(같은 날 — `ai::sqlite_gate`): 그 연결의 사람 타일이 표에 없으면(`borrowed` 의 타일 집합) 끔 = 안 엶 · 켬 = 엶 · 타일 열림 = 칸과
+    /// 무관 · 비밀번호 없이 연 풀 연결도 같은 문(타일 닫힘 + 끔이면 다시 쓰지 않는다) · 쓰기 작업안 연결도 같은 문. PG · MySQL 서버가 없으므로 풀 연결은 SQLite 엔진에 표지만 달아 심는다(`plant_for_test` — 다시 쓰기 판정은 엔진 종류를 보지 않는다).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_headless_off_drops_vault_pool() {
+        use crate::db::ai::{self, DbAiLevel, PwFrom};
+        use crate::delegation::database::{upsert_database_in_doc, DbIdentity};
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, _) = db_fixture("db-headless-pool", "Test_hdp0001");
+        let line = crate::db::conns::load_at(&list).unwrap().conns.remove(0);
+        let id = line.id.clone();
+        let grant_with = |headless: Option<bool>| {
+            let doc = upsert_database_in_doc("", &line.id, &DbIdentity::of(&line, None), DbAiLevel::Read, headless).unwrap();
+            ai::authorize(&crate::delegation::Delegation::parse(&doc).unwrap(), &line, None, DbAiLevel::Schema).ok().unwrap()
+        };
+        let (off, on) = (grant_with(None), grant_with(Some(true)));
+        assert!(!off.headless() && on.headless());
+
+        // 순수 판정(셋째 인자 = 그 연결의 사람 타일이 표에 있다).
+        for t in [false, true] {
+            assert!(!ai::reusable(PwFrom::Vault, false, t) && ai::reusable(PwFrom::Vault, true, t), "볼트 차례는 칸만 본다");
+            for h in [false, true] {
+                assert!(ai::reusable(PwFrom::Borrowed, h, t));
+                assert_eq!(ai::reusable(PwFrom::NoPassword, h, t), h || t, "비밀번호 없이 연 것은 여는 문과 같다");
+                assert_eq!(ai::sqlite_opens(h, t), h || t);
+            }
+        }
+        let off_text = |e: String| assert!(e.contains("headless access is off") && !e.contains("vault") && !e.contains("password"), "{e}");
+        let tile = |open: bool| if open { crate::db::borrowed::tile_opened(&id) } else { crate::db::borrowed::last_tile_closed(&id) };
+
+        // ① 볼트로 연 풀 연결 + 헤드리스 끔 → 쓰지 않는다 — 타일이 없으면 SQLite 도 열지 않고(2026-11-09), 타일이 있으면 비밀번호 없이 새로 연다.
+        ai::plant_for_test(&on, PwFrom::Vault);
+        off_text(ai::acquire_for_test(&off).await.unwrap_err());
+        tile(true);
+        ai::plant_for_test(&on, PwFrom::Vault);
+        let (from, same) = ai::acquire_for_test(&off).await.unwrap();
+        assert!(!same && from == PwFrom::NoPassword, "볼트 풀 연결을 다시 쓰지 않았다");
+        // ② 볼트로 연 풀 연결 + 헤드리스 켬 → 그대로 다시 쓴다.
+        ai::plant_for_test(&on, PwFrom::Vault);
+        assert_eq!(ai::acquire_for_test(&on).await.unwrap(), (PwFrom::Vault, true));
+        // ③ 타일이 열려 있으면 빌린 값 · 비밀번호 없이 연 풀 연결 → 헤드리스 끔이어도 다시 쓴다.
+        for f in [PwFrom::Borrowed, PwFrom::NoPassword] {
+            ai::plant_for_test(&off, f);
+            assert_eq!(ai::acquire_for_test(&off).await.unwrap(), (f, true), "{f:?}");
+        }
+        // ④ 타일이 닫혔다 — 비밀번호 없이 연 풀 연결은 헤드리스 끔이면 쓰지 않고(새로도 열지 않는다) · 켬이면 그대로.
+        tile(false);
+        ai::plant_for_test(&off, PwFrom::NoPassword);
+        off_text(ai::acquire_for_test(&off).await.unwrap_err());
+        ai::plant_for_test(&on, PwFrom::NoPassword);
+        assert_eq!(ai::acquire_for_test(&on).await.unwrap(), (PwFrom::NoPassword, true));
+        // ⑤ 새로 열기(SQLite) — 타일 없음 + 끔 = 안 엶 · 켬 = 엶 · 타일 열림 = 칸과 무관하게 엶.
+        ai::close_for_test(&[&id]);
+        off_text(ai::acquire_for_test(&off).await.unwrap_err());
+        assert_eq!(ai::acquire_for_test(&on).await.unwrap(), (PwFrom::NoPassword, false));
+        ai::close_for_test(&[&id]);
+        tile(true);
+        assert_eq!(ai::acquire_for_test(&off).await.unwrap(), (PwFrom::NoPassword, false));
+        // ⑥ 쓰기 작업안 연결(SQLite 쓰기)도 같은 문 — Ask 증표로.
+        let ask = |headless: bool| {
+            let doc = upsert_database_in_doc("", &line.id, &DbIdentity::of(&line, None), DbAiLevel::Approve, Some(headless)).unwrap();
+            ai::authorize(&crate::delegation::Delegation::parse(&doc).unwrap(), &line, None, DbAiLevel::Approve).ok().unwrap()
+        };
+        let src = ai::PasswordSource::Vault;
+        assert!(crate::db::ai_write::open(&ask(false), &src).await.is_ok(), "타일 열림 = 칸과 무관");
+        tile(false);
+        off_text(crate::db::ai_write::open(&ask(false), &src).await.err().unwrap());
+        assert!(crate::db::ai_write::open(&ask(true), &src).await.is_ok(), "켬 = 타일 없이도 엶");
+
+        ai::close_for_test(&[&id]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 시험 `db_test_connects_once_and_leaves_nothing`(판 28 — DB 연결 폼 [연결 테스트]): 저장 안 한 초안(SQLite)으로 붙으면 판 글자 ·
+    /// 걸린 시간이 오고 **표 · 접속 기록에 아무것도 남지 않는다** · 없는 파일은 만들지 않고 실패 · 저장 검사에 걸리는 초안(상대 경로)은
+    /// 거절 · `dbtest-` 머리가 아닌 열쇠는 거절 · 판 27 연결에는 열지 않는다. 로그에 경로가 없다.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_test_connects_once_and_leaves_nothing() {
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, _conn) = db_fixture("db-test-PATHMARK", "Test28_saved1");
+        let file = dir.join("life.db");
+        let pipe = test_pipe();
+        let own = os::own_image().unwrap();
+        let mut cfg = config(&pipe, None, vec![own], Duration::from_secs(60));
+        cfg.db_conns = Some(list.clone());
+        let server = tokio::spawn(serve::run(cfg));
+        let (mut a, _) = connect_retry(&pipe).await;
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 29);
+        let db = super::super::db_ops::DB;
+        let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
+        let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });
+        let before = crate::db::table::live_count();
+
+        // 저장 안 한 새 id 의 초안 — 붙고 곧바로 닫는다.
+        let ok = ok_body(
+            call(&mut a, 2, Grade::Write, "db_test", body("dbtest-a1", draft("Test28_draft1", &file.to_string_lossy()))).await,
+        );
+        assert_eq!(ok["dialect"], "sqlite");
+        assert!(ok["serverVersion"].as_str().unwrap().starts_with("SQLite 3."), "{ok}");
+        assert!(ok["elapsedMs"].is_u64(), "{ok}");
+        assert!(ok.get("via").is_none(), "{ok}");
+        assert_eq!(crate::db::table::live_count(), before, "연결 테스트가 표에 남았다");
+        assert!(!dir.join("db-history.json").exists(), "연결 테스트가 접속 기록에 남았다");
+
+        // 없는 파일 — 만들지 않고 실패.
+        let gone = dir.join("missing.db");
+        let e = db_err(call(&mut a, 3, Grade::Write, "db_test", body("dbtest-a2", draft("Test28_draft1", &gone.to_string_lossy()))).await);
+        assert!(!e.is_empty());
+        assert!(!gone.exists(), "없는 파일을 만들었다");
+        // 저장과 같은 검사 — 상대 경로 · 빈 이름은 거절.
+        assert_eq!(err_code(call(&mut a, 4, Grade::Write, "db_test", body("dbtest-a3", draft("Test28_draft1", "rel.db"))).await), db);
+        let nameless = json!({ "id": "Test28_draft1", "name": " ", "engine": "sqlite", "path": file.to_string_lossy() });
+        assert_eq!(err_code(call(&mut a, 5, Grade::Write, "db_test", body("dbtest-a4", nameless)).await), db);
+        // 타일 열쇠 꼴은 받지 않는다(세워 둔 전송로를 타일과 나눠 갖지 않게).
+        let tile = body("query:tile-1", draft("Test28_draft1", &file.to_string_lossy()));
+        assert_eq!(err_code(call(&mut a, 6, Grade::Write, "db_test", tile).await), db);
+        assert_eq!(crate::db::table::live_count(), before);
+        assert!(!dir.join("db-history.json").exists());
+
+        // 판 27 로 붙은 연결에는 열지 않는다.
+        let (mut b, _) = connect_retry(&pipe).await;
+        ok_body(call(&mut b, 1, Grade::Read, "hello", hello(7, 27)).await);
+        let r = call(&mut b, 2, Grade::Write, "db_test", body("dbtest-b1", draft("Test28_draft1", &file.to_string_lossy()))).await;
+        assert_eq!(err_code(r), code::PROTOCOL_MISMATCH);
+
+        for line in super::super::log::CAPTURED.lock().unwrap().iter() {
+            assert!(!line.contains("PATHMARK") && !line.contains("Test28_draft1"), "로그에 경로 · id: {line}");
+        }
+        drop(b);
+        assert_eq!(ok_body(call(&mut a, 99, Grade::Write, "shutdown", json!({})).await)["stopping"], true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+        crate::db::conns::set_path_override(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// 쿼리 타일 9단계 — **DB 연결의 수명이 창·GUI 연결을 따른다**(세션 코어 밖 `db::table`):
     /// ① 페이지 리로드(`detach_window`) = 떼어 둠 + 도는 쿼리 취소 → 같은 stream 다시 열기 = 재부착(같은 핸들 · 임대 +1) → 옛 임대 stale
-    /// ② DB 연결은 떨어진 세션 목록(`sessions_detached`)에도 MCP `list_sessions` 에도 없다 ③ 창 파괴(`close_window`) = 떼어 둔 것까지
-    /// 즉시 닫음 · 이관 중인 stream(`dbStreams`)은 빼고 · `set_home` 으로 옮긴 것은 새 창의 파괴만 닫는다 ④ GUI 연결 끊김(`conn_gone`)
-    /// = 떼어 둠 → TTL 안 다시 열기는 재부착 · TTL 이 지나면 `[session-gone]` ⑤ 트레이 [모든 세션 종료](`close_all`) = 모두 닫음
-    /// ⑥ 서버 끝 = 남은 DB 연결을 닫는다.
+    /// ② 리로드로 떼어 둔 DB 연결은 떨어진 세션 목록(`sessions_detached`)에 없고 MCP `list_sessions` 에는 늘 없다 ③ 창 파괴(`close_window`) = 떼어 둔 것까지
+    /// 즉시 닫음 · 이관 중인 stream(`dbStreams`)은 빼고 · `set_home` 으로 옮긴 것은 새 창의 파괴만 닫는다 ④ **창이 사라짐**(GUI 연결 끊김
+    /// `conn_gone` · 앱 끝내기 중 창 파괴 `dbOnly`) = 떨어진 세션으로 남김(2026-11-09 ② — TTL 없음 · 목록에 `kind: "db"` · 서버 고아 시계가
+    /// 센다) · 리로드는 TTL 그대로 · [붙이기](재부착) · 복원이 데려가지 않음(`restore_done`) · [닫기](`close_detached` — 붙은 것은 안 닫음)
+    /// ⑤ 트레이 [모든 세션 종료](`close_all`) = 모두 닫음 ⑥ 서버 끝 = 남은 DB 연결을 닫는다.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn db_connections_follow_window_and_client_lifetimes() {
         let _g = SESSION_STATE.lock().await;
@@ -2014,7 +2426,7 @@ pub(in crate::server) mod live {
         // ── ② 떨어진 세션 목록 · MCP 에 없다 ──
         ok_body(call(&mut c, 3, Grade::Write, "detach_window", json!({ "window": "main" })).await);
         let rows = ok_body(call(&mut a, req("detached"), Grade::Read, "sessions_detached", json!({})).await);
-        assert!(!rows.to_string().contains("life-1"), "떨어진 세션 목록에 DB 연결: {rows}");
+        assert!(!rows.to_string().contains("life-1"), "리로드로 떼어 둔 DB 연결이 떨어진 세션 목록에: {rows}");
         let port = ok_body(call(&mut a, req("coords"), Grade::Read, "mcp_coords", json!({})).await)["port"].as_u64().unwrap() as u16;
         let token = ok_body(call(&mut a, req("token"), Grade::Read, "mcp_token", json!({})).await)["token"].as_str().unwrap().to_string();
         let listed = mcp_tool(port, &token, "list_sessions", json!({})).await;
@@ -2036,33 +2448,74 @@ pub(in crate::server) mod live {
         // 창 파괴는 다른 창의 연결을 건드리지 않는다.
         ok_body(call(&mut a, req("still"), Grade::Write, "db_query", q(h1, 2)).await);
 
-        // ── ④ GUI 연결 끊김 = 떼어 둠 → TTL 안 재부착 · TTL 뒤 [session-gone] ──
+        // ── ④ 창이 사라짐 = 떨어진 세션으로 남김(TTL 없음) · 리로드만 TTL ──
         crate::db::table::set_detach_ttl_for_test(Some(Duration::from_millis(600)));
         let (mut b, _) = connect_retry(&pipe).await;
         ok_body(call(&mut b, 1, Grade::Read, "hello", hello(7, 8)).await);
         let h4 = ok_body(call(&mut b, 2, Grade::Write, "db_open", open("life-4", "main")).await)["handle"].as_u64().unwrap();
         let h5 = ok_body(call(&mut b, 3, Grade::Write, "db_open", open("life-5", "main")).await)["handle"].as_u64().unwrap();
-        // 트레이로 남는 quitAll — 창은 파괴되지만 GUI 연결은 산다: 창 파괴 거둠이 DB 연결만 떼어 둔다(`dbOnly`).
+        // 트레이로 남는 quitAll — 창은 파괴되지만 GUI 연결은 산다: 창 파괴 거둠이 DB 연결을 떨어진 세션으로 남긴다(`dbOnly`).
         let h6 = ok_body(call(&mut a, req("o6"), Grade::Write, "db_open", open("life-6", "tray-main")).await)["handle"].as_u64().unwrap();
         ok_body(call(&mut c, 10, Grade::Write, "detach_window", json!({ "window": "tray-main", "dbOnly": true })).await);
+        // 리로드(창은 산다) — TTL 그대로.
+        let h8 = ok_body(call(&mut a, req("o8"), Grade::Write, "db_open", open("life-8", "reload-w")).await)["handle"].as_u64().unwrap();
+        ok_body(call(&mut c, 11, Grade::Write, "detach_window", json!({ "window": "reload-w" })).await);
         drop(b); // GUI kill · quitAll 뒤 GUI 종료
         tokio::time::sleep(Duration::from_millis(200)).await;
         let dbs = ok_body(call(&mut a, req("st"), Grade::Read, "status", json!({})).await)["dbs"].as_u64().unwrap();
-        assert!(dbs >= 3, "떼어 둔 DB 연결은 TTL 동안 산다: {dbs}");
-        // 다시 켠 GUI 의 복원 — 같은 stream 으로 열면 재부착(비밀번호 다시 안 물음). 프런트는 볼트 관문 전에 `reattachOnly` 로 먼저 붙는다.
+        assert!(dbs >= 4, "떼어 둔 DB 연결이 산다: {dbs}");
+        let rows_of = |v: &Value| -> Vec<(String, Value)> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["kind"] == "db")
+                .map(|r| (r["stream"].as_str().unwrap().to_string(), r.clone()))
+                .collect()
+        };
+        let rows = rows_of(&ok_body(call(&mut a, req("rows"), Grade::Read, "sessions_detached", json!({})).await));
+        let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
+        for s in ["life-4", "life-5", "life-6"] {
+            assert!(names.contains(&s), "창이 사라진 DB 타일은 떨어진 세션 목록에: {names:?}");
+        }
+        assert!(!names.contains(&"life-8"), "리로드로 떼어 둔 것은 목록에 없다: {names:?}");
+        let r6 = &rows.iter().find(|(s, _)| s == "life-6").unwrap().1;
+        assert_eq!((r6["home"].as_str(), r6["conn"].as_str(), r6["writable"].as_bool(), r6["inTx"].as_bool()), (Some("tray-main"), conn["id"].as_str(), Some(false), Some(false)), "{r6}");
+        assert!(r6["detachedAt"].as_u64().is_some() && r6["unclaimed"] == false, "{r6}");
+        // 서버 고아 시계가 세션으로 센다(사람이 닫거나 붙일 때까지 서버가 산다).
+        assert!(crate::db::table::kept_count() >= 3);
+        // [새 탭에 붙이기] — 같은 stream 으로 열면 재부착(비밀번호 다시 안 물음). 프런트는 볼트 관문 전에 `reattachOnly` 로 먼저 붙는다.
         let mut ro = open("life-5", "main");
         ro["reattachOnly"] = json!(true);
         let o5 = ok_body(call(&mut a, req("o5"), Grade::Write, "db_open", ro).await);
         assert_eq!((o5["handle"].as_u64(), o5["reattached"].as_bool()), (Some(h5), Some(true)));
         tokio::time::sleep(Duration::from_millis(1200)).await;
-        assert!(db_err(call(&mut a, req("g4"), Grade::Write, "db_query", q(h4, 1)).await).contains("[session-gone]"), "TTL 이 지나면 닫힌다");
-        assert!(db_err(call(&mut a, req("g6"), Grade::Write, "db_query", q(h6, 1)).await).contains("[session-gone]"), "트레이로 간 창의 DB 도 TTL");
+        // TTL 이 지나도 창이 사라진 것은 산다 · 리로드로 떼어 둔 것만 닫힌다.
+        let rows = rows_of(&ok_body(call(&mut a, req("rows2"), Grade::Read, "sessions_detached", json!({})).await));
+        let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
+        assert!(names.contains(&"life-4") && names.contains(&"life-6"), "TTL 없음: {names:?}");
+        assert!(!names.contains(&"life-5"), "붙은 것은 목록에 없다: {names:?}");
+        assert!(db_err(call(&mut a, req("g8"), Grade::Write, "db_query", q(h8, 1)).await).contains("[session-gone]"), "리로드 TTL 은 그대로");
         // TTL 이 지난 뒤의 `reattachOnly` 는 새로 열지 않고 `[session-gone]` — 프런트가 평소 관문으로 연다.
         let before = ok_body(call(&mut a, req("st0"), Grade::Read, "status", json!({})).await)["dbs"].clone();
-        let mut ro4 = open("life-4", "main");
-        ro4["reattachOnly"] = json!(true);
-        assert!(db_err(call(&mut a, req("ro4"), Grade::Write, "db_open", ro4).await).contains("[session-gone]"));
+        let mut ro8 = open("life-8", "reload-w");
+        ro8["reattachOnly"] = json!(true);
+        assert!(db_err(call(&mut a, req("ro8"), Grade::Write, "db_open", ro8).await).contains("[session-gone]"));
         assert_eq!(ok_body(call(&mut a, req("st1"), Grade::Read, "status", json!({})).await)["dbs"], before, "붙기만 — 새로 열지 않는다");
+        // 복원이 데려가지 않음 — 그 창(`main`)의 떨어진 DB 연결 중 `keep` 에 없는 것을 표시만(닫지 않는다).
+        let rd = ok_body(call(&mut a, req("rd"), Grade::Write, "restore_done", json!({ "window": "main", "keep": [] })).await);
+        assert!(rd["unclaimed"].as_u64().unwrap() >= 1, "{rd}");
+        let rows = rows_of(&ok_body(call(&mut a, req("rows3"), Grade::Read, "sessions_detached", json!({})).await));
+        assert_eq!(rows.iter().find(|(s, _)| s == "life-4").unwrap().1["unclaimed"], true);
+        // [닫기] — 떨어져 있을 때만(붙은 life-5 는 닫지 않는다).
+        assert_eq!(ok_body(call(&mut a, req("cd5"), Grade::Write, "close_detached", json!({ "stream": "life-5" })).await), false);
+        assert_eq!(ok_body(call(&mut a, req("cd6"), Grade::Write, "close_detached", json!({ "stream": "life-6" })).await), true);
+        assert!(db_err(call(&mut a, req("g6"), Grade::Write, "db_query", q(h6, 1)).await).contains("[session-gone]"), "[닫기] = 닫음");
+        let rows = rows_of(&ok_body(call(&mut a, req("rows4"), Grade::Read, "sessions_detached", json!({})).await));
+        assert!(rows.iter().all(|(s, _)| s != "life-6"));
+        // 떨어진 것을 지금 임대로 부르면 다시 붙은 것으로 친다(목록에서 빠진다).
+        ok_body(call(&mut a, req("a4"), Grade::Write, "db_query", q(h4, 1)).await);
+        let rows = rows_of(&ok_body(call(&mut a, req("rows5"), Grade::Read, "sessions_detached", json!({})).await));
+        assert!(rows.iter().all(|(s, _)| !s.starts_with("life-")), "{rows:?}");
         // 붙어 있는 것(life-1 · 다시 붙은 life-5)은 TTL 과 무관하다.
         ok_body(call(&mut a, req("a5"), Grade::Write, "db_query", q(h5, o5["lease"].as_u64().unwrap())).await);
         crate::db::table::set_detach_ttl_for_test(None);
@@ -2080,6 +2533,67 @@ pub(in crate::server) mod live {
         assert_eq!(ok_body(call(&mut a, 999, Grade::Write, "shutdown", json!({})).await)["stopping"], true);
         let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
         assert_eq!(crate::db::table::live_count(), 0, "서버 끝에 DB 연결이 남았다");
+        crate::db::conns::set_path_override(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 2026-11-09 실기 — **트레이로 · GUI 끝내기 중의 창 파괴는 DB 타일을 떨어진 세션으로 남긴다**(리로드 TTL 이 아니다): GUI 의 창 파괴
+    /// 거둠이 실제로 고르는 계기(`reap::destroyed_event(QUITTING)`)와 그 계기가 보내는 op 차례(`reap::window_ops`) · 몸(`proxy::*_body`)을
+    /// 그대로 서버에 재생한다. 옛 시험은 `dbOnly` 몸을 손으로 보냈고, GUI 는 QUITTING 이면 리로드 계기로 거둬 `close_window`(그 안의
+    /// `dbOnly` 갈래)에 닿지 않아 리로드 떨어뜨리기만 갔다 — 10분 뒤 닫혔다. 일반 리로드는 TTL 그대로 · QUITTING 아닌 창 파괴는 닫음.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_tile_survives_leave_to_tray_window_destroy() {
+        use crate::reap::{destroyed_event, window_ops, Event, Held, WindowOp};
+        use crate::server::proxy::{close_body, detach_body, keep_body};
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, conn) = db_fixture("db-tray", "Test9_tray01");
+        let pipe = test_pipe();
+        let own = os::own_image().unwrap();
+        let mut cfg = config(&pipe, None, vec![own], Duration::from_secs(60));
+        cfg.db_conns = Some(list.clone());
+        let server = tokio::spawn(serve::run(cfg));
+        let (mut a, _) = connect_retry(&pipe).await;
+        ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await);
+        let open = |stream: &str, window: &str| json!({ "stream": stream, "window": window, "conn": conn.clone() });
+        let q = |h: u64| json!({ "handle": h, "lease": 1, "sql": "SELECT x FROM t", "queryId": "q" });
+        // 그 계기에 GUI 가 보내는 op 를 같은 차례 · 같은 몸으로(이관 중인 것 없음).
+        async fn replay(a: &mut BoxStream, event: Event, label: &str) {
+            for (i, op) in window_ops(event).iter().enumerate() {
+                let (name, body) = match op {
+                    WindowOp::Detach => ("detach_window", detach_body(label, Held::default(), &[])),
+                    WindowOp::KeepDbs => ("detach_window", keep_body(label, &[], &[])),
+                    WindowOp::Close => ("close_window", close_body(label, &[], &[], &[], &[])),
+                };
+                ok_body(call(a, 100 + i as u64, Grade::Write, name, body).await);
+            }
+        }
+        crate::db::table::set_detach_ttl_for_test(Some(Duration::from_millis(400)));
+        let ht = ok_body(call(&mut a, 2, Grade::Write, "db_open", open("tray-1", "main")).await)["handle"].as_u64().unwrap();
+        let hr = ok_body(call(&mut a, 3, Grade::Write, "db_open", open("reload-1", "aux-r")).await)["handle"].as_u64().unwrap();
+        let hd = ok_body(call(&mut a, 4, Grade::Write, "db_open", open("close-1", "aux-d")).await)["handle"].as_u64().unwrap();
+        // 트레이로(`tray::leave_to_tray` — QUITTING 을 세운 뒤 창 파괴) · 보통 리로드 · 보통 창 파괴.
+        assert_eq!(destroyed_event(true), Event::Leaving);
+        assert_eq!(destroyed_event(false), Event::Destroyed);
+        replay(&mut a, destroyed_event(true), "main").await;
+        replay(&mut a, Event::Reload, "aux-r").await;
+        replay(&mut a, destroyed_event(false), "aux-d").await;
+        assert!(crate::db::table::kept_count() >= 1, "트레이로 간 창의 DB 는 남김(Kept)");
+        let rows = ok_body(call(&mut a, 20, Grade::Read, "sessions_detached", json!({})).await);
+        let names: Vec<&str> = rows.as_array().unwrap().iter().filter(|r| r["kind"] == "db").filter_map(|r| r["stream"].as_str()).collect();
+        assert!(names.contains(&"tray-1") && !names.contains(&"reload-1"), "{names:?}");
+        assert!(db_err(call(&mut a, 21, Grade::Write, "db_query", q(hd)).await).contains("[session-gone]"), "보통 창 파괴는 닫음");
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(db_err(call(&mut a, 22, Grade::Write, "db_query", q(hr)).await).contains("[session-gone]"), "리로드 TTL 은 그대로");
+        let rows = ok_body(call(&mut a, 23, Grade::Read, "sessions_detached", json!({})).await);
+        assert!(rows.to_string().contains("tray-1"), "TTL 이 지나도 트레이로 간 창의 DB 는 남는다: {rows}");
+        // 다시 켠 창의 복원이 같은 stream 으로 붙는다(같은 핸들).
+        let mut ro = open("tray-1", "main");
+        ro["reattachOnly"] = json!(true);
+        let o = ok_body(call(&mut a, 24, Grade::Write, "db_open", ro).await);
+        assert_eq!((o["handle"].as_u64(), o["reattached"].as_bool()), (Some(ht), Some(true)), "{o}");
+        crate::db::table::set_detach_ttl_for_test(None);
+        assert_eq!(ok_body(call(&mut a, 999, Grade::Write, "shutdown", json!({})).await)["stopping"], true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
         crate::db::conns::set_path_override(None);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2222,6 +2736,58 @@ pub(in crate::server) mod live {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 2026-11-09 ② — **떨어진 세션으로 남은 DB 타일의 열린 트랜잭션은 떨어진 지 TTL(10분)이면 되돌리고 연결은 남긴다**: GUI 연결이 끊긴
+    /// 뒤 목록 줄은 `inTx` · `writable` 을 싣고, TTL 뒤에도 같은 핸들로 다시 붙으면 작업은 방치 되돌림(`idleRolledBack`)으로 끝나 있고 쓰기
+    /// 모드 · 연결은 그대로다(값은 커밋되지 않았다).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn db_detached_tile_rolls_back_open_tx_but_keeps_connection() {
+        let _g = SESSION_STATE.lock().await;
+        let (dir, list, conn) = db_fixture("db-kept-tx", "Test2_kept01");
+        let file = dir.join("life.db");
+        let seen = |sql: &str| -> i64 { rusqlite::Connection::open(&file).unwrap().query_row(sql, [], |r| r.get(0)).unwrap() };
+        let pipe = test_pipe();
+        let own = os::own_image().unwrap();
+        let mut cfg = config(&pipe, None, vec![own], Duration::from_secs(60));
+        cfg.db_conns = Some(list.clone());
+        let server = tokio::spawn(serve::run(cfg));
+        let (mut a, _) = connect_retry(&pipe).await;
+        ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, 9)).await);
+        let (mut b, _) = connect_retry(&pipe).await;
+        ok_body(call(&mut b, 1, Grade::Read, "hello", hello(7, 9)).await);
+        let open = json!({ "stream": "kept-tx", "window": "main", "conn": conn.clone() });
+        let h = ok_body(call(&mut b, 2, Grade::Write, "db_open", open.clone()).await)["handle"].as_u64().unwrap();
+        ok_body(call(&mut b, 3, Grade::Write, "db_set_write", json!({ "handle": h, "lease": 1, "on": true })).await);
+        let t = ok_body(call(&mut b, 4, Grade::Write, "db_tx", json!({ "handle": h, "lease": 1, "action": "begin", "txId": 0 })).await);
+        let id = t["tx"]["id"].as_u64().unwrap();
+        ok_body(call(&mut b, 5, Grade::Write, "db_query", json!({ "handle": h, "lease": 1, "sql": "INSERT INTO t VALUES (2)", "queryId": "q", "txId": id })).await);
+        crate::db::table::set_detach_ttl_for_test(Some(Duration::from_millis(500)));
+        drop(b); // GUI 가 사라졌다 — 떨어진 세션으로 남는다
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let rows = ok_body(call(&mut a, 2, Grade::Read, "sessions_detached", json!({})).await);
+        let row = rows.as_array().unwrap().iter().find(|r| r["stream"] == "kept-tx").cloned().expect("목록 줄");
+        assert_eq!((row["kind"].as_str(), row["writable"].as_bool(), row["inTx"].as_bool()), (Some("db"), Some(true), Some(true)), "{row}");
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let rows = ok_body(call(&mut a, 3, Grade::Read, "sessions_detached", json!({})).await);
+        let row = rows.as_array().unwrap().iter().find(|r| r["stream"] == "kept-tx").cloned().expect("TTL 뒤에도 목록에 남는다");
+        assert_eq!(row["inTx"], false, "열린 작업은 되돌렸다: {row}");
+        assert_eq!(seen("SELECT count(*) FROM t"), 1, "커밋되지 않았다");
+        // 다시 붙이기 — 같은 핸들 · 작업은 방치 되돌림으로 끝나 있고 쓰기 모드는 그대로.
+        let mut ro = open.clone();
+        ro["reattachOnly"] = json!(true);
+        let o = ok_body(call(&mut a, 4, Grade::Write, "db_open", ro).await);
+        assert_eq!((o["handle"].as_u64(), o["reattached"].as_bool(), o["writable"].as_bool()), (Some(h), Some(true), Some(true)), "{o}");
+        assert_eq!((o["tx"]["state"].as_str(), o["tx"]["ended"]["outcome"].as_str()), (Some("none"), Some("idleRolledBack")), "{o}");
+        let lease = o["lease"].as_u64().unwrap();
+        let r = ok_body(call(&mut a, 5, Grade::Write, "db_query", json!({ "handle": h, "lease": lease, "sql": "SELECT count(*) FROM t", "queryId": "q", "txId": 0 })).await);
+        assert_eq!(r["rows"], json!([[1]]), "연결은 살아 있다");
+        crate::db::table::set_detach_ttl_for_test(None);
+        assert_eq!(ok_body(call(&mut a, 6, Grade::Write, "db_close", json!({ "handle": h, "lease": lease })).await), true);
+        assert_eq!(ok_body(call(&mut a, 999, Grade::Write, "shutdown", json!({})).await)["stopping"], true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+        crate::db::conns::set_path_override(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// 10-14 — **자동 커밋 토글 · 실행 단위 세이브포인트**(판 13): ① 열기 답의 `autoCommit`(켬) · 읽기 전용에서 끄기 거절 ② 끔 → 조회는
     /// 작업을 열지 않는다 ③ 데이터를 바꾸는 문장은 작업을 저절로 연다(다른 연결엔 안 보임) ④ 실행 A 성공 → 실행 B(3문장 중 2번째 오류) =
     /// B 만 되돌림 · 작업 유지 ⑤ 작업 중 토글 바꾸기 거절 ⑥ 커밋 → 다른 연결에 A 만 · 토글은 끈 채 → 다음 변경 문장에서 다시 연다 ⑦ 숨은
@@ -2349,7 +2915,7 @@ pub(in crate::server) mod live {
     async fn table_open_sqlite(list: &std::path::Path, stream: &str, id: &str, conn: u64) -> crate::db::table::Opened {
         crate::db::conns::set_path_override(Some(list.to_path_buf()));
         crate::db::table::conn_opened(conn);
-        let secrets = crate::db::net::OpenSecrets { password: None, ssh: Default::default() };
+        let secrets = crate::db::net::OpenSecrets { password: None, ssh: Default::default(), vault: true, from_vault: false };
         match crate::db::table::open(stream.into(), stream.into(), conn, crate::db::table::ConnRef { id: id.into() }, secrets).await {
             Ok(o) => o,
             Err(e) => panic!("열기 실패: {e:?}"),
@@ -2558,8 +3124,9 @@ pub(in crate::server) mod live {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 쿼리 타일 9단계 — **고아 자진 종료는 DB 연결을 세지 않는다**(`serve::Busy` 머리말): 떼어 둔 DB 연결(TTL 10분)만 남은 서버는
-    /// 고아 시계대로 끝나고, 끝날 때 그 연결을 닫는다.
+    /// 쿼리 타일 9단계 → 2026-11-09 ② — **고아 자진 종료는 떨어진 세션으로 남은 DB 연결을 세션으로 센다**(`serve::Busy` 머리말): GUI 연결이
+    /// 끊긴 뒤 DB 연결만 남은 서버는 끝나지 않고(TTL 없음), 사람이 떨어진 세션 목록에서 [닫기] 하면 고아 시계대로 끝난다(서버 끝의 남은
+    /// DB 연결 닫기는 `db_connections_follow_window_and_client_lifetimes` ⑥).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn orphan_server_with_only_db_connections_exits_and_closes_them() {
         let _g = SESSION_STATE.lock().await;
@@ -2568,15 +3135,23 @@ pub(in crate::server) mod live {
         let own = os::own_image().unwrap();
         let mut cfg = config(&pipe, None, vec![own], Duration::from_millis(800));
         cfg.db_conns = Some(list.clone());
-        let server = tokio::spawn(serve::run(cfg));
+        let mut server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
         ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, 8)).await);
         ok_body(call(&mut a, 2, Grade::Write, "db_open", json!({ "stream": "orphan-1", "window": "main", "conn": conn })).await);
         assert_eq!(crate::db::table::live_count(), 1);
-        drop(a); // 클라이언트 0 — DB 연결은 떼어 둔다(TTL 10분), 고아 시계는 그와 무관하게 간다
-        let exit = tokio::time::timeout(Duration::from_secs(10), server).await.expect("DB 연결이 서버를 붙들었다").unwrap();
+        drop(a); // 클라이언트 0 — DB 연결은 떨어진 세션으로 남는다(TTL 없음) · 서버가 산다
+        assert!(tokio::time::timeout(Duration::from_secs(3), &mut server).await.is_err(), "떨어진 DB 타일이 있는데 서버가 끝났다");
+        assert_eq!(crate::db::table::kept_count(), 1);
+        // 사람이 떨어진 세션 목록에서 [닫기] — 그 뒤로는 고아 시계대로 끝난다.
+        let (mut c, _) = connect_retry(&pipe).await;
+        ok_body(call(&mut c, 1, Grade::Read, "hello", hello(7, 8)).await);
+        assert_eq!(ok_body(call(&mut c, 2, Grade::Write, "close_detached", json!({ "stream": "orphan-1" })).await), true);
+        assert_eq!(crate::db::table::live_count(), 0);
+        drop(c);
+        let exit = tokio::time::timeout(Duration::from_secs(10), server).await.expect("서버가 끝나지 않았다").unwrap();
         assert!(matches!(exit, serve::Exit::Shutdown(ref r) if r.contains("idle")), "{exit:?}");
-        assert_eq!(crate::db::table::live_count(), 0, "끝날 때 떼어 둔 DB 연결을 닫는다");
+        assert_eq!(crate::db::table::live_count(), 0, "끝날 때 DB 연결이 남았다");
         crate::db::conns::set_path_override(None);
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -4,8 +4,12 @@
 //! 프런트(xterm·OSC 133 상태 기계)가 이미 손에 쥔 것 — 열린 세션 목록, 마지막 명령의
 //! 명령문·출력·종료 코드, 스크롤백 — 을 Tauri 명령으로 이 저장소에 **거울처럼 비춘다**.
 //! MCP 서버([`crate::mcp`])는 그 거울을 표준 프로토콜(JSON-RPC over HTTP)로 읽기만 한다. ③-3c 부터 이 저장소는 **세션 서버
-//! 프로세스**에 산다(`crate::server::ai`) — GUI 를 꺼도 거울(마지막으로 보낸 값)이 남고, 그 세션이 떨어진 동안은 MCP 가
-//! `stale: true` 로 밝힌다(`crate::mcp::sessions::enrich_sessions`).
+//! 프로세스**에 산다(`crate::server::ai`) — GUI 를 꺼도 거울이 남는다.
+//!
+//! **거울의 주인은 창이 있으면 프런트, 없으면 세션 서버다**(2026-11-09 — [`crate::screen_mirror`]). 세션 서버가 출력 바이트를 같은 뜻으로
+//! 해석하는 해석기를 세션마다 두고, 붙은 주 창이 없는 동안(트레이 · GUI 종료 · 리로드 틈) 그 해석기가 [`update`] · [`push_server_block`]
+//! 으로 잇는다 — 그 동안 MCP 는 `stale` 을 달지 않는다(`mirror:"server"` — `crate::mcp::sessions::enrich_sessions`). 쓰기 문지기
+//! (`opted_in` · 로컬은 세션 코어의 읽기 허용)도 읽기 문지기([`ai_readable`])도 그대로다 — 서버는 사람이 정한 값을 바꾸지 않는다.
 //!
 //! ```text
 //!   프런트 (거울 원본)                 Rust (거울)                  외부 CLI 에이전트
@@ -238,6 +242,10 @@ pub struct SessionContext {
     /// 바뀌는 순간(`app/sessions.svelte.ts` 의 `noteSession`)을 보고 따로 쥔다 — 그쪽이
     /// 재연결을 정확히 아는 유일한 자리다. 즉 이 칸은 **다른 창·헤드리스 세션용**이다.
     pub connected_at: u64,
+    /// **프런트 블록 번호의 밀림**(2026-11-09) — 거울 번호 = 프런트 번호 + 이 값. 처음 0(번호가 그대로다). 새로 뜬 페이지(GUI 재시작 ·
+    /// 리로드)의 프런트는 블록 번호를 1 부터 다시 매기는데, 그 번호가 거울에 이미 있는 **다른** 블록(옛 페이지 · 서버 해석기가 쓴 것)과
+    /// 겹치면 [`push_block`] 이 이 값을 지금 가장 큰 번호로 올려 뒤로 민다 — 덮어쓰지 않는다. 옵트아웃 때 0 으로 돌아간다.
+    pub front_shift: i64,
 }
 
 /// 이 세션의 AI 권한을 정하는 **호스트 별칭** — 원격 창 타일은 [`SessionContext::host_alias`],
@@ -384,6 +392,7 @@ pub(crate) fn report(
         entry.last = None;
         entry.scrollback.clear();
         entry.history.clear();
+        entry.front_shift = 0;
     }
     // 신원 갱신도 거울을 건드린 것이다 — 신선도 표식을 찍는다(신선도 가드).
     touch(entry);
@@ -495,7 +504,7 @@ pub(crate) fn reclaim_window(
 pub(crate) fn push_block(
     map: &mut HashMap<String, SessionContext>,
     key: &str,
-    block: CommandBlockMirror,
+    mut block: CommandBlockMirror,
 ) {
     let Some(entry) = map.get_mut(key) else {
         return;
@@ -503,6 +512,42 @@ pub(crate) fn push_block(
     if !entry.opted_in {
         return;
     }
+    // **프런트 번호 → 거울 번호**(2026-11-09). 같은 번호의 블록이 이미 있는데 **다른 블록**(시작 시각 · 명령문이 다르다)이면 새로 뜬
+    // 페이지가 1 부터 다시 센 것이다(옛 페이지의 블록 · 창이 없던 동안 서버 해석기가 쓴 블록과 겹친다) — 덮어쓰지 않고 지금 가장 큰
+    // 번호 뒤로 민다. 같은 블록의 다시 보내기(백필 · 이관이 실어 온 이력)는 같은 번호 그대로 갈아 끼운다.
+    let mut id = block.id + entry.front_shift;
+    if entry
+        .history
+        .iter()
+        .any(|b| b.id == id && (b.started_at != block.started_at || b.command_line != block.command_line))
+    {
+        let max = entry.history.iter().map(|b| b.id).max().unwrap_or(0);
+        entry.front_shift = max;
+        id = block.id + max;
+    }
+    block.id = id;
+    insert_block(entry, block);
+}
+
+/// **서버 해석기가 닫은 블록**을 이력에 덧붙인다(창이 없을 때 — [`crate::screen_mirror`]). 번호는 지금 가장 큰 번호 다음(프런트 번호와
+/// 겹치지 않는다 — 창이 다시 붙어 프런트가 같은 번호를 보내면 [`push_block`] 이 뒤로 민다). 문지기는 [`push_block`] 과 같다.
+pub(crate) fn push_server_block(
+    map: &mut HashMap<String, SessionContext>,
+    key: &str,
+    mut block: CommandBlockMirror,
+) {
+    let Some(entry) = map.get_mut(key) else {
+        return;
+    };
+    if !entry.opted_in {
+        return;
+    }
+    block.id = entry.history.iter().map(|b| b.id).max().unwrap_or(0) + 1;
+    insert_block(entry, block);
+}
+
+/// 블록 하나를 이력에 넣는다(같은 번호면 갈아 끼운다) — 상한 · 신선도 표식은 여기 한 곳.
+fn insert_block(entry: &mut SessionContext, block: CommandBlockMirror) {
     // **id 로 upsert 한다** — 같은 블록 번호가 이미 있으면 제자리에서 갈아 끼운다.
     // OFF→ON 백필(이력 전체를 한 배치로)과 증분 경로(`onblock`)가 같은 틱에서 겹치면 방금
     // 닫힌 블록 하나가 양쪽에 실릴 수 있는데(프런트에서 두 경로의 순서를 못 박기 어렵다),
@@ -555,8 +600,15 @@ pub(crate) fn update(
     if !entry.opted_in {
         return;
     }
-    entry.status = status;
-    entry.last = last;
+    // **모름(`None`)은 아는 값을 지우지 않는다**(2026-11-10). 새로 뜬 페이지(GUI 재시작 · 리로드 · 트레이에서 다시 연 창)의 프런트는
+    // 붙은 뒤 첫 갱신에서 상태 · 마지막 명령을 아직 모른다 — 그 `None` 이 창이 없던 동안 서버 해석기가 쓴 마지막 명령을 지우면
+    // `commands` 는 있는데 `lastCommand` · `lastExit` 가 비는 엇갈린 거울이 된다. 지우는 길은 옵트아웃([`report`]) 하나다.
+    if status.is_some() {
+        entry.status = status;
+    }
+    if last.is_some() {
+        entry.last = last;
+    }
     entry.scrollback = scrollback_tail;
     // 거울이 상한을 넘겨 보내와도 저장소는 tail 만 쥔다.
     let len = entry.scrollback.len();

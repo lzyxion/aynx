@@ -47,6 +47,7 @@
       bind:this={modalEl}
       onkeydown={onKeydown}
     >
+      <div class="glass-scroll">
       <h2 id="worktree-branch-title">{t("app.projects.worktrees.branch.delete.title")}</h2>
       <p class="lead">{t("app.projects.worktrees.branch.delete.lead")}</p>
       <div class="list" role="radiogroup" aria-label={t("app.projects.worktrees.branch.list.aria")}>
@@ -78,6 +79,7 @@
           onclick={() => void submitWorktreeBranch()}>{t("app.projects.worktrees.branch.delete.submit")}</button
         >
       </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -96,15 +98,21 @@
   }
 
   .modal {
+    box-sizing: border-box;
     width: 100%;
-    max-width: 440px;
+    max-width: calc(440px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   .modal h2 {

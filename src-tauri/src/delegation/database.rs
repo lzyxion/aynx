@@ -5,6 +5,7 @@
 //! [[database]]
 //! id              = "Qp9-pg-dev01"        # db-connections.json 의 id(= 볼트 db_password 의 열쇠)
 //! ai              = "read"                # "schema"(구조만) · "read"(읽기 전용) · "approve"(승인 후 실행) · "all"(모두 승인) — 끔 = 블록 없음
+//! headless        = false                 # 타일 없이 AI 접속(볼트의 비밀번호 사용) — 칸 없음 = 켬(옛 블록 · 아래 불변식)
 //! expect_engine   = "postgres"            # ── 신원 스냅샷(아래) ──
 //! expect_via      = "web-01"              # 경유 호스트 별칭(직접이면 없음)
 //! expect_via_target = "deploy@10.0.0.5:22" # 그 별칭이 적는 순간 가리키던 SSH 서버(user@host:port)
@@ -29,6 +30,13 @@
 //! - **쓰는 길은 Tauri 명령뿐**([`db_ai_set`] · [`db_ai_remove`]) + 연결 목록 · 호스트 편집의 따라가기([`forget_databases`] ·
 //!   [`follow_via_rename`]). **MCP 에는 이 블록을 고치는 도구가 없다**(호스트 위임과 같은 규칙 — AI 는 자기 권한을 넓힐 표면이 없다).
 //! - **판정은 세션 서버에서**(MCP 도구 호출마다 파일을 새로 읽는다 — `mcp::db`). GUI 의 [`db_ai_list`] 는 화면용 사본이다.
+//! - **헤드리스(`headless`) = 타일 없이 AI 가 볼트의 비밀번호로 새로 여는 것**(2026-11-09 사용자 결정 — SSH 호스트 위임의 헤드리스 접속과 같은
+//!   원칙: 사람이 연 세션 위의 일은 붙은 접근, 사람 없이 새로 여는 것은 명시적 위임). 단계와 따로인 칸이고, 단계가 끔이거나 신원 스냅샷이
+//!   어긋나면 함께 꺼진다([`Delegation::db_headless`]). 판정 자리는 AI 연결의 비밀번호 차례(`db::ai::open_with`) 하나 — 빌린 값(사람 타일이
+//!   열린 동안)은 이 칸과 무관하다. **SQLite 도 이 칸을 따른다**(같은 날 — 비밀번호가 없어도 사람 없이 여는 것은 위임): 그 연결의 사람 타일이
+//!   세션 서버 표에 없으면 켠 연결만 AI 가 파일을 연다(`db::ai::sqlite_gate` — 읽기 · 쓰기 작업안 공통). **이관**: 칸이 없는 블록(이 칸 전에 적힌 것)은 **켬**으로 읽는다(그때까지의 동작 — 읽기 해석이라 파일을
+//!   고치지 않는다). 새로 만드는 블록 · 스냅샷이 바뀌어 다시 적는 블록은 `headless = false` 를 **명시**한다([`upsert_database_in_doc`]).
+//!   편집은 [`db_ai_set`] 의 `headless` 인자뿐(같은 Tauri 명령 — 원격 재확인 등급도 같다).
 //!
 //! ## 따라가기
 //!
@@ -109,6 +117,9 @@ pub struct DatabaseTarget {
     pub id: String,
     #[serde(default)]
     pub ai: String,
+    /// 타일 없이 AI 접속(볼트의 비밀번호) — `None` = 칸이 없는 옛 블록(켬으로 읽는다 — [`DatabaseTarget::headless`]).
+    #[serde(default)]
+    pub headless: Option<bool>,
     #[serde(default)]
     pub expect_engine: String,
     #[serde(default)]
@@ -130,6 +141,11 @@ pub struct DatabaseTarget {
 impl DatabaseTarget {
     pub fn level(&self) -> DbAiLevel {
         DbAiLevel::parse(&self.ai)
+    }
+
+    /// 파일의 헤드리스 칸 — **칸이 없으면 켬**(이관: 이 칸 전에 적힌 블록은 타일 없이도 볼트로 열렸다 — 그 동작을 깨지 않는다).
+    pub fn headless(&self) -> bool {
+        self.headless.unwrap_or(true)
     }
 
     fn identity(&self) -> DbIdentity {
@@ -234,6 +250,12 @@ impl Delegation {
         t.level()
     }
 
+    /// 이 연결에 **타일 없이 AI 접속**(볼트의 비밀번호)이 위임됐나 — 단계가 끔이 아니고(스냅샷 포함 — [`Delegation::db_level`]) 칸이 켜졌을
+    /// 때만. **순수.**
+    pub(crate) fn db_headless(&self, conn: &DbConn, via_target: Option<&str>) -> bool {
+        self.db_level(conn, via_target) != DbAiLevel::Off && self.database(&conn.id).is_some_and(DatabaseTarget::headless)
+    }
+
     /// 블록 전부(파일 순서).
     pub(crate) fn databases(&self) -> &[DatabaseTarget] {
         &self.databases
@@ -318,8 +340,16 @@ pub(crate) fn remove_databases_in_doc(content: &str, ids: &[String]) -> Result<(
     Ok((match_line_endings(content, with_rescued(doc.to_string(), &carry)), removed))
 }
 
-/// 연결 하나의 권한을 적거나(단계 + 스냅샷) 지운다(끔) — **순수**.
-pub(crate) fn upsert_database_in_doc(content: &str, id: &str, ident: &DbIdentity, level: DbAiLevel) -> Result<String, String> {
+/// 연결 하나의 권한을 적거나(단계 + 스냅샷 + 헤드리스) 지운다(끔) — **순수**. `headless`: `Some` = 그 값을 적는다 · `None` = 그대로 두되
+/// **새 블록이거나 스냅샷이 바뀐 블록이면 `false` 를 명시**한다(새 대상에 옛 위임을 옮기지 않는다 · 옛 블록의 "칸 없음 = 켬" 이 새 블록에
+/// 번지지 않게).
+pub(crate) fn upsert_database_in_doc(
+    content: &str,
+    id: &str,
+    ident: &DbIdentity,
+    level: DbAiLevel,
+    headless: Option<bool>,
+) -> Result<String, String> {
     let id = id.trim();
     if !crate::vault::db_conn_id_ok(id) {
         return Err(tr!(ko: "DB 연결 id 가 올바르지 않습니다", en: "The database connection id is invalid"));
@@ -327,6 +357,11 @@ pub(crate) fn upsert_database_in_doc(content: &str, id: &str, ident: &DbIdentity
     if level == DbAiLevel::Off {
         return Ok(remove_databases_in_doc(content, &[id.to_string()])?.0);
     }
+    // 지금 블록이 같은 대상을 가리키나(파일을 읽는 눈 그대로 — 못 읽으면 다른 대상으로 본다 · 닫힌 쪽).
+    let same_target = Delegation::parse(content)
+        .ok()
+        .and_then(|d| d.database(id).map(|t| t.identity().same(ident)))
+        .unwrap_or(false);
     let mut doc = parse_doc(content)?;
     let existing = databases_of(&doc)?.and_then(|arr| index_of(arr, id));
     let arr = doc
@@ -338,10 +373,16 @@ pub(crate) fn upsert_database_in_doc(content: &str, id: &str, ident: &DbIdentity
         Some(i) => {
             let table = arr.get_mut(i).ok_or_else(not_array)?;
             write_database(table, None, ident, level);
+            match headless {
+                Some(on) => put(table, "headless", Value::from(on)),
+                None if !same_target => put(table, "headless", Value::from(false)),
+                None => {}
+            }
         }
         None => {
             let mut table = Table::new();
             write_database(&mut table, Some(id), ident, level);
+            put(&mut table, "headless", Value::from(headless.unwrap_or(false)));
             arr.push(table);
         }
     }
@@ -386,13 +427,13 @@ fn identity_now(conn: &DbConn) -> Result<DbIdentity, String> {
     Ok(DbIdentity::of(conn, via_target))
 }
 
-fn set_at(path: &Path, id: &str, level: DbAiLevel) -> Result<(), String> {
+fn set_at(path: &Path, id: &str, level: DbAiLevel, headless: Option<bool>) -> Result<(), String> {
     let (before, existed) = read_or_empty(path)?;
     let after = if level == DbAiLevel::Off {
         remove_databases_in_doc(&before, &[id.to_string()])?.0
     } else {
         let conn = conns::find(id)?;
-        upsert_database_in_doc(&before, id, &identity_now(&conn)?, level)?
+        upsert_database_in_doc(&before, id, &identity_now(&conn)?, level, headless)?
     };
     write_if_changed(path, &before, existed, after)
 }
@@ -434,6 +475,8 @@ pub struct DbAiView {
     pub id: String,
     /// 파일에 적힌 단계(스냅샷이 어긋나도 그대로 — 실제 효력은 `identityOk` 와 함께 읽는다).
     pub level: DbAiLevel,
+    /// 타일 없이 AI 접속(볼트의 비밀번호) — 파일의 칸(칸이 없는 옛 블록은 켬 — [`DatabaseTarget::headless`]). 효력은 `level` 과 같이 `identityOk` 와 함께.
+    pub headless: bool,
     /// 지금 연결 줄과 스냅샷이 같다(거짓 = 권한이 풀려 끔으로 동작한다 — "다시 고르세요").
     pub identity_ok: bool,
     /// 그 id 의 연결이 목록에 있다(거짓 = 고아 블록 — [제거]).
@@ -454,6 +497,9 @@ pub struct DbAiList {
     /// 붙은 세션 서버가 AI 의 DB 쓰기 작업안을 아는 판인가(판 12 — `server::ipc::frame::DB_WRITE_PLAN_PROTOCOL`, 3b). 거짓이면 'Ask'
     /// 단계가 "세션 서버를 다시 시작해야 쓰기 작업안이 섭니다" 를 밝힌다(그때까지는 읽기 전용과 같다).
     pub write_plans: bool,
+    /// 붙은 세션 서버가 DB 연결 폼의 [연결 테스트](op `db_test`)를 아는 판인가(판 28 — `server::ipc::frame::DB_TEST_PROTOCOL`). 거짓이면
+    /// 폼이 그 단추를 숨긴다(이 목록은 폼이 열릴 때 이미 다시 읽힌다 — 판 표지를 한곳에서 받으려고 여기 싣는다).
+    pub conn_test: bool,
 }
 
 /// 블록들 + 지금 연결 목록 → 화면 줄 — **순수**(경유 신원은 `via_target` 이 답한다).
@@ -469,6 +515,7 @@ pub(crate) fn views(d: &Delegation, list: &[DbConn], via_target: impl Fn(&str) -
             DbAiView {
                 id: t.id.clone(),
                 level: t.level(),
+                headless: t.headless(),
                 identity_ok,
                 conn_known: conn.is_some(),
                 name: conn.map(|c| c.name.clone()),
@@ -492,13 +539,16 @@ pub async fn db_ai_list() -> DbAiList {
         targets,
         server_ready: negotiated.is_none_or(|p| p >= crate::server::ipc::frame::DB_AI_PROTOCOL),
         write_plans: negotiated.is_none_or(|p| p >= crate::server::ipc::frame::DB_WRITE_PLAN_PROTOCOL),
+        conn_test: negotiated.is_none_or(|p| p >= crate::server::ipc::frame::DB_TEST_PROTOCOL),
     }
 }
 
 /// 연결 하나의 AI 권한을 저장한다(끔 = 블록을 지운다). 스냅샷은 여기서 `db-connections.json`(+ `~/.ssh/config`)으로 계산한다.
+/// `headless` = 타일 없이 AI 접속(볼트의 비밀번호) — 없으면 그대로(새 블록 · 대상이 바뀐 블록은 끔 — [`upsert_database_in_doc`]). 이 칸을
+/// 바꾸는 길은 이 명령 하나다(원격 창에서는 단계와 같은 재확인 — `remote::deny` 의 REAUTH).
 #[tauri::command]
-pub async fn db_ai_set(app: tauri::AppHandle, id: String, level: DbAiLevel) -> Result<(), String> {
-    let out = tauri::async_runtime::spawn_blocking(move || set_at(&path_or_err()?, &id, level))
+pub async fn db_ai_set(app: tauri::AppHandle, id: String, level: DbAiLevel, headless: Option<bool>) -> Result<(), String> {
+    let out = tauri::async_runtime::spawn_blocking(move || set_at(&path_or_err()?, &id, level, headless))
         .await
         .map_err(|e| tr!(ko: "AI 권한을 저장하는 작업이 실패했습니다: {e}", en: "The task that saves the AI permission failed: {e}"))?;
     announce_on_ok(&app, out)
@@ -538,7 +588,7 @@ mod tests {
 
     fn granted(conn: &DbConn, level: DbAiLevel) -> Delegation {
         let ident = DbIdentity::of(conn, Some(VIA.into()));
-        let doc = upsert_database_in_doc("", &conn.id, &ident, level).unwrap();
+        let doc = upsert_database_in_doc("", &conn.id, &ident, level, None).unwrap();
         Delegation::parse(&doc).unwrap()
     }
 
@@ -589,6 +639,54 @@ mod tests {
         assert_eq!(d.db_level(&pg("Other_conn01"), Some(VIA)), DbAiLevel::Off);
     }
 
+    /// 시험 `db_headless_migration`(2026-11-09) — 칸이 없는 옛 블록은 **켬**으로 읽고(그때까지의 동작) 파일은 고치지 않는다 · 새로 만드는
+    /// 블록은 `headless = false` 를 명시 · 단계만 바꾸면(`None`) 칸을 그대로 둔다(옛 블록의 칸 없음도) · 값을 주면 그 값 · 스냅샷이 바뀐 다시
+    /// 적기는 `false` 로 되돌린다 · 단계가 끔이거나 스냅샷이 어긋나면 헤드리스도 꺼진다 · 끔 = 블록째 지움.
+    #[test]
+    fn db_headless_migration() {
+        let c = pg("Qp9-pg-dev01");
+        let ident = DbIdentity::of(&c, Some(VIA.into()));
+        // 옛 블록(칸 없음) — 손으로 적은 이 칸 전의 파일.
+        let legacy = upsert_database_in_doc("", &c.id, &ident, DbAiLevel::Read, None).unwrap().replace("headless = false\n", "");
+        assert!(!legacy.contains("headless"), "{legacy}");
+        let d = Delegation::parse(&legacy).unwrap();
+        assert_eq!(d.database(&c.id).unwrap().headless, None);
+        assert!(d.db_headless(&c, Some(VIA)), "칸 없음 = 켬(이관)");
+        assert!(views(&d, std::slice::from_ref(&c), |_| Some(VIA.into()))[0].headless);
+        // 단계만 바꾸면 옛 블록의 칸 없음이 그대로 — 여전히 켬.
+        let raised = upsert_database_in_doc(&legacy, &c.id, &ident, DbAiLevel::Approve, None).unwrap();
+        assert!(!raised.contains("headless") && raised.contains("ai = \"approve\""), "{raised}");
+        assert!(Delegation::parse(&raised).unwrap().db_headless(&c, Some(VIA)));
+        // 새 블록은 끔을 명시한다.
+        let fresh = upsert_database_in_doc("", &c.id, &ident, DbAiLevel::Schema, None).unwrap();
+        assert!(fresh.contains("headless = false"), "{fresh}");
+        let d = Delegation::parse(&fresh).unwrap();
+        assert!(!d.db_headless(&c, Some(VIA)) && d.db_level(&c, Some(VIA)) == DbAiLevel::Schema);
+        // 켬 · 끔을 적는다(블록 하나 그대로).
+        let on = upsert_database_in_doc(&fresh, &c.id, &ident, DbAiLevel::Schema, Some(true)).unwrap();
+        assert!(on.contains("headless = true") && on.matches("[[database]]").count() == 1, "{on}");
+        let d = Delegation::parse(&on).unwrap();
+        assert!(d.db_headless(&c, Some(VIA)));
+        // 대상이 바뀌면(스냅샷 어긋남) 단계와 함께 꺼진다 · 경유가 다른 서버를 가리켜도.
+        let mut moved = c.clone();
+        moved.host = Some("prod-db".into());
+        assert!(!d.db_headless(&moved, Some(VIA)) && !d.db_headless(&c, Some("deploy@10.9.9.9:22")));
+        // 새 대상으로 다시 적으면(칸을 주지 않으면) 끔으로 되돌린다 — 옛 위임이 새 대상에 옮겨 가지 않는다.
+        let rewritten = upsert_database_in_doc(&on, &c.id, &DbIdentity::of(&moved, Some(VIA.into())), DbAiLevel::Schema, None).unwrap();
+        let d = Delegation::parse(&rewritten).unwrap();
+        assert!(!d.db_headless(&moved, Some(VIA)) && d.db_level(&moved, Some(VIA)) == DbAiLevel::Schema, "{rewritten}");
+        // 같은 대상의 단계만 바꾸기는 켬을 지킨다.
+        let kept = upsert_database_in_doc(&on, &c.id, &ident, DbAiLevel::Read, None).unwrap();
+        assert!(Delegation::parse(&kept).unwrap().db_headless(&c, Some(VIA)), "{kept}");
+        // 끔 = 블록째(헤드리스 칸까지) 지움 — 다시 켜면 새 블록(끔 명시).
+        let off = upsert_database_in_doc(&kept, &c.id, &ident, DbAiLevel::Off, Some(true)).unwrap();
+        assert!(!off.contains("database") && !off.contains("headless"), "{off}");
+        let again = upsert_database_in_doc(&off, &c.id, &ident, DbAiLevel::Read, None).unwrap();
+        assert!(!Delegation::parse(&again).unwrap().db_headless(&c, Some(VIA)));
+        // 다른 id · 블록 없음은 끔.
+        assert!(!Delegation::parse(&on).unwrap().db_headless(&pg("Other_conn01"), Some(VIA)));
+    }
+
     #[test]
     fn sqlite_identity_is_the_path() {
         let c = DbConn {
@@ -605,7 +703,7 @@ mod tests {
             tls_ca: None,
             folder: None,
         };
-        let doc = upsert_database_in_doc("", &c.id, &DbIdentity::of(&c, None), DbAiLevel::Schema).unwrap();
+        let doc = upsert_database_in_doc("", &c.id, &DbIdentity::of(&c, None), DbAiLevel::Schema, None).unwrap();
         assert!(doc.contains("expect_path") && !doc.contains("expect_via") && !doc.contains("expect_host"), "{doc}");
         let d = Delegation::parse(&doc).unwrap();
         assert_eq!(d.db_level(&c, None), DbAiLevel::Schema);
@@ -619,25 +717,25 @@ mod tests {
         let base = "# 머리글\n[[target]]\nalias = \"web-01\"\nexpect_user = \"u\"\nexpect_host = \"h\"\nexpect_port = 22\nread = true\n";
         let c = pg("Qp9-pg-dev01");
         let ident = DbIdentity::of(&c, Some(VIA.into()));
-        let a = upsert_database_in_doc(base, &c.id, &ident, DbAiLevel::Read).unwrap();
+        let a = upsert_database_in_doc(base, &c.id, &ident, DbAiLevel::Read, None).unwrap();
         assert!(a.starts_with(base), "{a}");
         assert!(a.contains("[[database]]") && a.contains("ai = \"read\"") && a.contains(VIA), "{a}");
         // 단계만 바꾸면 그 블록만.
-        let b = upsert_database_in_doc(&a, &c.id, &ident, DbAiLevel::Schema).unwrap();
+        let b = upsert_database_in_doc(&a, &c.id, &ident, DbAiLevel::Schema, None).unwrap();
         assert_eq!(b.matches("[[database]]").count(), 1);
         assert!(b.contains("ai = \"schema\""));
         // 직접 연결로 바뀐 스냅샷은 경유 칸을 지운다.
         let mut direct = c.clone();
         direct.via = None;
-        let e = upsert_database_in_doc(&b, &c.id, &DbIdentity::of(&direct, None), DbAiLevel::Schema).unwrap();
+        let e = upsert_database_in_doc(&b, &c.id, &DbIdentity::of(&direct, None), DbAiLevel::Schema, None).unwrap();
         assert!(!e.contains("expect_via"), "{e}");
         // 끔 = 블록이 없다(키까지) · 호스트 블록 · 머리글은 그대로.
-        let off = upsert_database_in_doc(&b, &c.id, &ident, DbAiLevel::Off).unwrap();
+        let off = upsert_database_in_doc(&b, &c.id, &ident, DbAiLevel::Off, None).unwrap();
         assert!(!off.contains("database"), "{off}");
         assert!(off.contains("# 머리글") && off.contains("[[target]]"));
         let d = Delegation::parse(&b).unwrap();
         assert!(d.read_granted("web-01"), "호스트 위임은 그대로 읽힌다");
-        assert!(upsert_database_in_doc("", "bad id!", &ident, DbAiLevel::Read).is_err());
+        assert!(upsert_database_in_doc("", "bad id!", &ident, DbAiLevel::Read, None).is_err());
     }
 
     #[test]
@@ -645,8 +743,8 @@ mod tests {
         let c1 = pg("Qp9-pg-dev01");
         let c2 = pg("Other_conn01");
         let ident = DbIdentity::of(&c1, Some(VIA.into()));
-        let doc = upsert_database_in_doc("", &c1.id, &ident, DbAiLevel::Read).unwrap();
-        let doc = upsert_database_in_doc(&doc, &c2.id, &DbIdentity::of(&c2, Some(VIA.into())), DbAiLevel::Schema).unwrap();
+        let doc = upsert_database_in_doc("", &c1.id, &ident, DbAiLevel::Read, None).unwrap();
+        let doc = upsert_database_in_doc(&doc, &c2.id, &DbIdentity::of(&c2, Some(VIA.into())), DbAiLevel::Schema, None).unwrap();
         let (renamed, n) = rename_via_in_doc(&doc, "WEB-01", "web-new").unwrap();
         assert_eq!(n, 2);
         let d = Delegation::parse(&renamed).unwrap();
@@ -665,7 +763,7 @@ mod tests {
         let c = pg("Qp9-pg-dev01");
         let d = granted(&c, DbAiLevel::Read);
         let ok = views(&d, std::slice::from_ref(&c), |_| Some(VIA.into()));
-        assert_eq!(ok[0], DbAiView { id: c.id.clone(), level: DbAiLevel::Read, identity_ok: true, conn_known: true, name: Some("앱 DB".into()) });
+        assert_eq!(ok[0], DbAiView { id: c.id.clone(), level: DbAiLevel::Read, headless: false, identity_ok: true, conn_known: true, name: Some("앱 DB".into()) });
         let mut moved = c.clone();
         moved.host = Some("prod".into());
         assert!(!views(&d, &[moved], |_| Some(VIA.into()))[0].identity_ok);

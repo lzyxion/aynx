@@ -76,6 +76,7 @@ import { listenAgentSignals, syncAgentStates } from "$lib/app/agent-status.svelt
 import { mountAgentSeen } from "$lib/app/agent-seen.svelte.js";
 import { watchAiFocus } from "$lib/app/ask-ai.svelte.js";
 import { listenDelegationChanged, orphanDelegationTargets, refreshDelegationTargets } from "$lib/app/delegation.svelte.js";
+import { refreshDbAi } from "$lib/app/db-ai.svelte.js";
 import { ensureDbConns } from "$lib/app/db-conns.svelte.js";
 import { openCredentialsSettings } from "$lib/app/overlays.svelte.js";
 import { DELEGATION_ORPHANS_ANCHOR } from "$lib/settings/credentials-view";
@@ -165,6 +166,8 @@ export async function boot(): Promise<void> {
   void refreshDelegationTargets().then(() => {
     if (isMainWindow) noticeOrphanDelegations();
   });
+  // DB 연결의 AI 권한 사본 — 복원된 쿼리 타일 머리줄 칩이 동기로 읽는다(안 읽으면 서버가 Read 여도 Off 로 보인다 · 2026-11-09 실기).
+  void refreshDbAi();
   try {
     await bootTear();
     // 원격 창(R2-B)은 제 탭을 만들지 않는다 — 집 PC 주 창의 화면을 비춘다(`app/mirror`).
@@ -530,8 +533,11 @@ export function mountAppListeners(): () => void {
     noteWorkspaceStyle(event.payload.id, event.payload.icon, event.payload.color)).catch(() => () => {});
   const quitting = listen("workspace-quitting", () => { leaveConfirmed = true; }).catch(() => () => {});
   // 세션 서버에 **다시 붙었다** — 끊긴 사이 창 0개 잠금(`relock`)이거나 서버가 바뀌었으면 가림막(③-3b1 · `app/veil`).
-  const serverConnected = listen<{ replaced: boolean }>("session-server-connected", (event) =>
-    void recheckVaultVeil(event.payload.replaced)).catch(() => () => {});
+  // DB AI 권한 사본도 다시 읽는다 — 부팅 때 서버가 아직 없었으면 빈 사본(칩 Off)이고, 바뀐 서버는 판(작업안 · 연결 테스트)이 다를 수 있다.
+  const serverConnected = listen<{ replaced: boolean }>("session-server-connected", (event) => {
+    void recheckVaultVeil(event.payload.replaced);
+    void refreshDbAi();
+  }).catch(() => () => {});
   // 가림막은 집 PC 창 전체에 하나처럼 선다 — 다른 창이 세우면 서고, 관문을 지나면 같이 걷힌다(2026-10-28 · `app/veil`).
   const veilAcross = listenVeilAcrossWindows().catch(() => () => {});
   // 트레이 메뉴(③-4) — [GUI 종료]·[모든 세션 종료] 를 창이 열려 있을 때 주 창이 받아 X 와 같은 흐름을 돈다 · [떨어진 세션]

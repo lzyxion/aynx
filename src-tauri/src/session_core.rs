@@ -892,6 +892,12 @@ impl Core {
         }
     }
 
+    /// 로컬 타일의 "AI 읽기 허용"(세션 메타) — 끝나지 않은 세션에서만 참. 서버 해석기가 거울에 쓰기 직전에 다시 본다(`crate::screen_mirror` —
+    /// 창이 없을 때도 사람이 마지막으로 정한 값보다 넓어지지 않게).
+    pub(crate) fn ai_read_of(&self, stream: &str) -> bool {
+        self.streams.get(stream).is_some_and(|e| e.ai_read && !e.state.ended())
+    }
+
     /// 붙은 뒤 — 체크포인트는 다 썼다(다음 리로드는 새로 맡긴다).
     #[cfg(test)]
     pub(crate) fn drop_checkpoint(&mut self, stream: &str) {

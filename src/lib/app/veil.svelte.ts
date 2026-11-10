@@ -46,6 +46,7 @@
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { rememberFocusOrigin, returnFocus } from "$lib/app/focus-return.svelte.js";
+import { settleVaultUnlockIfOpen } from "$lib/app/prompts.svelte.js";
 import { emit, isRemote, listen, type UnlistenFn } from "$lib/ipc";
 import * as vault from "$lib/vault";
 
@@ -150,6 +151,8 @@ export function closeVeil(): void {
   open = false;
   returnFocus(FOCUS_VEIL);
   broadcastLifted();
+  // 가림막 밑에 볼트 잠금 해제 카드가 깔려 있었으면 같이 닫는다(볼트가 실제로 열렸을 때만 — `settleVaultUnlockIfOpen`).
+  void settleVaultUnlockIfOpen();
 }
 
 /**
@@ -171,6 +174,7 @@ export function listenVeilAcrossWindows(): Promise<UnlistenFn> {
         if (open && status.state !== "locked") {
           open = false;
           returnFocus(FOCUS_VEIL);
+          void settleVaultUnlockIfOpen();
         }
       })
       .catch(() => {});

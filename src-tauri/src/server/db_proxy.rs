@@ -4,6 +4,7 @@
 //! | Tauri 명령 | 서버 op | 인자 → 답 |
 //! | --- | --- | --- |
 //! | [`db_open`] | `db_open` | `stream, conn: {id}, password?, ssh?` → `{handle, lease, dialect, serverVersion, writable, reattached}` (창 라벨은 부른 창) · 실패는 **글자** 또는 경유 SSH 관문의 `SshOpenError` 객체(`{kind, …}` — 터미널 열기와 같은 꼴) |
+//! | [`db_test`] | `db_test` | `stream("dbtest-…"), conn: <DbConn 초안 한 줄>, password?, ssh?` → `{dialect, serverVersion, via?, elapsedMs}`(DB 연결 폼의 [연결 테스트] — 판 28 · 낮은 판 서버면 보내지 않고 `[server-outdated]`) · 실패는 `db_open` 과 같은 꼴 |
 //! | [`db_query`] | `db_query` | `handle, lease, sql, queryId, maxRows?, timeoutMs?` → `{columns, rows, truncated, cellTruncated, affected?, elapsedMs}` |
 //! | [`db_cancel`] | `db_cancel` | `handle, queryId` → bool |
 //! | [`db_schema`] · [`db_objects`] · [`db_table_detail`] | 같은 이름 | `handle, lease(, schema?(, table))` → 목록(스키마 이름 · 스키마의 객체 · 테이블 구조) |
@@ -16,7 +17,9 @@
 //! - **판**: 붙은 서버가 판 8 미만이면 보내지 않고 `[server-outdated]` 문구로 끝낸다(셸·SSH 는 그 서버에서 그대로 돈다 — 판 7
 //!   서버와도 협상이 서기 때문이다. `ipc::frame::DB_PROTOCOL`).
 //! - `password`(DB) · `ssh`(경유 SSH 관문의 답 — 비밀번호·암호구 포함)는 이 호출 한 번의 몸에만 싣는다(로그·`Debug` 없음).
-//! - 경로·주소·경유를 보내지 않는다 — 서버가 `db-connections.json` 에서 다시 읽는다(`db::conns`). 그 목록의 편집 명령은
+//! - 경로·주소·경유를 보내지 않는다 — 서버가 `db-connections.json` 에서 다시 읽는다(`db::conns`). **예외 하나 — [`db_test`]** 는
+//!   저장 전 폼 값(초안 한 줄)을 싣는다: 시험할 것이 바로 그 값이다. 서버는 그 줄을 저장과 같은 검사로 다시 보고, 볼트 비밀번호로
+//!   물러날지는 저장된 줄과 대상을 견줘 **서버가** 정한다(`db::table::test` — 이 몸에는 그 판단이 없다). 그 목록의 편집 명령은
 //!   `db::conns::db_conn_list`·`db_conn_save`(GUI 가 파일을 직접 — 비밀이 없다).
 
 use std::time::Duration;
@@ -24,7 +27,9 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::client;
-use super::ipc::frame::{DB_AUTOCOMMIT_PROTOCOL, DB_PROTOCOL, DB_SCRIPT_PROTOCOL, DB_TX_PROTOCOL, DB_TX_SERIAL_PROTOCOL, DB_TX_VERDICT_PROTOCOL};
+use super::ipc::frame::{
+    DB_AUTOCOMMIT_PROTOCOL, DB_PROTOCOL, DB_SCRIPT_PROTOCOL, DB_TEST_PROTOCOL, DB_TX_PROTOCOL, DB_TX_SERIAL_PROTOCOL, DB_TX_VERDICT_PROTOCOL,
+};
 use super::ipc::Grade;
 use super::ssh_proxy::lang;
 use crate::errors::{with_reason, SERVER_OUTDATED};
@@ -74,6 +79,20 @@ fn check_autocommit_protocol() -> Result<(), String> {
             tr!(
                 ko: "세션 서버가 이전 판이라 자동 커밋을 끌 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
                 en: "The session server is an older version and cannot turn off auto-commit — restart it in Settings › Session server (open shell sessions will close)"
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// 판 28 미만 서버면 연결 테스트만 보내지 않는다(폼은 `db_ai_list` 의 `connTest` 로 단추를 숨긴다 — 이것은 그 사이 서버가 바뀐 틈).
+fn check_test_protocol() -> Result<(), String> {
+    match client::negotiated_protocol() {
+        Some(p) if p < DB_TEST_PROTOCOL => Err(with_reason(
+            SERVER_OUTDATED,
+            tr!(
+                ko: "세션 서버가 이전 판이라 연결을 테스트할 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
+                en: "The session server is an older version and cannot test connections — restart it in Settings › Session server (open shell sessions will close)"
             ),
         )),
         _ => Ok(()),
@@ -151,6 +170,30 @@ pub async fn db_open(
             }
             Ok(v)
         }
+        Err(e) if e.code == super::sessions::SSH_OPEN => match serde_json::from_str::<Value>(&e.message) {
+            Ok(v) if v.get("kind").is_some() => Err(v),
+            _ => Err(Value::String(e.message)),
+        },
+        Err(e) => Err(Value::String(reach_error(e))),
+    }
+}
+
+/// **연결 테스트**(판 28 — DB 연결 폼) — 저장 안 한 초안(`conn` — `db_conn_save` 의 한 줄 꼴)으로 한 번 붙고 닫는다. `password` ·
+/// `ssh` 는 [`db_open`] 과 같다(이 호출 한 번의 몸에만). 실패도 같은 꼴(글자 또는 경유 SSH 관문 객체 — 프런트의 같은 고리가 묻는다).
+#[tauri::command]
+pub async fn db_test(stream: String, conn: Value, password: Option<String>, ssh: Option<Value>) -> Result<Value, Value> {
+    let password = password.map(zeroize::Zeroizing::new);
+    check_protocol().map_err(Value::String)?;
+    check_test_protocol().map_err(Value::String)?;
+    let body = json!({
+        "stream": stream,
+        "conn": conn,
+        "password": password.as_deref(),
+        "ssh": ssh,
+        "lang": lang(),
+    });
+    match client::request(Grade::Write, "db_test", body).await {
+        Ok(v) => Ok(v),
         Err(e) if e.code == super::sessions::SSH_OPEN => match serde_json::from_str::<Value>(&e.message) {
             Ok(v) if v.get("kind").is_some() => Err(v),
             _ => Err(Value::String(e.message)),

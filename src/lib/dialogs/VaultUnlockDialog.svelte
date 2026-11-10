@@ -103,7 +103,8 @@
        나와 모달을 투명하게 덮으면 "보이는데 클릭·입력이 안 되는" 증상이 된다 (실기 발견).
        패널 쪽은 pane-box 의 isolation 으로 새는 것 자체도 막지만, 모달의 최상층 보장은
        여기서 독립적으로 지킨다. */
-    z-index: 100;
+    /* 관문 창은 다른 모달(DB 연결 폼의 [연결 테스트] 등 — 마운트가 더 뒤라 같은 층이면 위에 온다) 위에 선다 — 2026-11-09 */
+    z-index: 112;
     display: flex;
     align-items: center;
     justify-content: center;

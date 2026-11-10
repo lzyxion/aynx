@@ -71,6 +71,8 @@ async fn probe(engine: Engine, t: NetTarget, pw: &str, ssh_pw: Option<&str>) -> 
         let secrets = OpenSecrets {
             password: Some(Zeroizing::new(pw.to_string())),
             ssh: ssh_creds(ssh_pw, &declined),
+            vault: true,
+            from_vault: false,
         };
         let r = match engine {
             Engine::Pg => match Pg::connect("tls-matrix", t.clone(), secrets).await {

@@ -12,6 +12,10 @@
 //! 바이트를 받는다. **시청자 싱크의 send 가 실패하면 그 싱크만 뺀다**(예산 초과 · 연결 끊김 — 주 싱크는 예전처럼 실패해도 남는다).
 //! 수문([`Gate`])을 세우는 것은 여전히 주의 크레딧뿐이다(`server::credit`). 터미널 질의에 서버가 대신 답할지는 [`Responder`] 가 정한다.
 //!
+//! **서버 해석기**(2026-11-09 — `crate::screen_mirror`): 슬롯은 세션의 해석기 하나를 쥐고([`set_tap`]), 배처는 링에 적은 배치의 사본을 슬롯 잠금
+//! **밖에서** 먹인다. 주 싱크를 빼면([`clear_output`]) 거울 펜이 서버로, 꽂으면([`swap_output`] · [`attach_output`] · [`swap_output_replaying`]) 창으로
+//! 간다(슬롯 잠금 안에서는 원자 값만).
+//!
 //! 조각: 수문 [`Gate`] 는 `output/gate.rs`, 터미널 질의 해석 · 답 내용은 `output/queries.rs`(순수 — 대답 손은 여기 배처가 슬롯 잠금 밖에서 부른다). 슬롯 ·
 //! 꼬리 링 · 재생 · 배처는 **한 파일**에 둔다 — 링 기록 · 재생 · 싱크 교체 · 전송이 같은 슬롯 잠금을 쓰는 원자성이 이 파일의 계약이다.
 //! 시험은 `output/tests/`(수문 · 슬롯 · 꼬리 링 · 시청자는 모듈 이름 예전 그대로 · 질의 시험은 `queries::dsr_tests`).
@@ -65,6 +69,8 @@ pub(crate) struct SlotState {
     /// 터미널 질의에 누가 답하나(크기 주인 — `session_core` 의 `size_owner`).
     responder: Responder,
     tail: TailRing,
+    /// 서버 해석기(2026-11-09 — `crate::screen_mirror`) — 배처가 배치마다 먹인다(슬롯 잠금 밖에서). 주 싱크가 빠지고 꽂힐 때 거울 펜을 넘긴다.
+    tap: Option<Arc<crate::screen_mirror::Tap>>,
 }
 
 /// 터미널 질의(DSR·DA·DECRQM·OSC 10/11)에 답하는 쪽 — 세션 코어의 **크기 주인**과 같다(`session_core::viewers` 머리말).
@@ -109,7 +115,31 @@ pub(crate) fn output_slot(channel: Option<Box<dyn OutputSink>>) -> OutputSlot {
         viewers: Vec::new(),
         responder: Responder::Primary,
         tail: TailRing::default(),
+        tap: None,
     }))
+}
+
+/// 서버 해석기를 꽂는다(세션 열기 — `crate::screen_mirror::install`). 지금까지 링에 적힌 바이트(SSH 는 꽂기 전의 보안 알림 · 첫 프롬프트)로
+/// 먼저 따라잡는다 — **해석기 잠금을 먼저** 쥐고 슬롯 잠금 안에서 링을 베끼며 꽂으므로, 배처의 다음 배치는 따라잡기 뒤에 먹는다.
+pub(crate) fn set_tap(slot: &OutputSlot, tap: Arc<crate::screen_mirror::Tap>) {
+    let mut interp = tap.interp_guard();
+    let seed = {
+        let mut state = slot.lock().unwrap();
+        let from = if state.tail.base() == 0 { 0 } else { state.tail.safe_base() };
+        let seed = state.tail.since(from).unwrap_or_default();
+        // 펜은 창의 것으로 시작한다 — SSH 는 꽂는 순간 아직 주 싱크가 없지만 곧 열기가 꽂는다(그 전엔 거울 항목도 없다).
+        state.tap = Some(Arc::clone(&tap));
+        seed
+    };
+    let _ = interp.feed(&seed);
+}
+
+/// 서버 해석기의 크기를 바꾼다(PTY · 원격 창의 크기가 바뀐 뒤 — 슬롯 잠금은 해석기 잠금 전에 놓는다).
+pub(crate) fn resize_tap(slot: &OutputSlot, cols: u16, rows: u16) {
+    let tap = slot.lock().unwrap().tap.clone();
+    if let Some(tap) = tap {
+        tap.resize(cols, rows);
+    }
 }
 
 /// 질의에 답하는 쪽을 바꾼다(세션 서버가 크기 주인 노트를 비우며).
@@ -134,7 +164,19 @@ pub(crate) fn viewer_sinks(slot: &OutputSlot) -> Vec<u64> {
 /// 슬롯의 채널을 비운다 — 붙은 창이 떠났다(`crate::session_core` 의 detach). 배처는 이 뒤로 배치를
 /// 어디에도 보내지 않지만 **꼬리 링에는 계속 적는다**([`spawn_batcher`]) — 다음에 붙는 창이 재생한다.
 pub(crate) fn clear_output(slot: &OutputSlot) {
-    slot.lock().unwrap().channel = None;
+    let mut state = slot.lock().unwrap();
+    state.channel = None;
+    // 붙은 창이 없다 — 이 뒤로 거울은 서버 해석기가 잇는다(`crate::screen_mirror` · 원자 값만).
+    if let Some(tap) = &state.tap {
+        tap.on_detach();
+    }
+}
+
+/// 주 싱크를 꽂았다 — 거울은 다시 창(프런트)의 것이다.
+fn primary_plugged(state: &SlotState) {
+    if let Some(tap) = &state.tap {
+        tap.on_attach();
+    }
 }
 
 /// 꼬리 링의 끝 = 지금까지 **생산된** 바이트 수.
@@ -151,7 +193,9 @@ pub(crate) fn last_output_ms(slot: &OutputSlot) -> Option<u64> {
 /// 슬롯의 채널을 통째로 갈아 끼운다 — **순수 조작** (유닛 테스트 대상). 꼬리 링은 그대로다.
 /// 배치 단위로만 잠기므로 이 교체는 배치 경계에서 원자적으로 보인다.
 pub(crate) fn swap_output(slot: &OutputSlot, next: impl OutputSink + 'static) {
-    slot.lock().unwrap().channel = Some(Box::new(next));
+    let mut state = slot.lock().unwrap();
+    state.channel = Some(Box::new(next));
+    primary_plugged(&state);
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +512,7 @@ pub(crate) fn swap_output_replaying(
         }
     }
     state.channel = Some(Box::new(next));
+    primary_plugged(&state);
     out
 }
 
@@ -501,6 +546,7 @@ pub(crate) fn attach_output(
     let mut state = slot.lock().unwrap();
     let out = replay_into(&state, &next, consumed);
     state.channel = Some(Box::new(next));
+    primary_plugged(&state);
     out
 }
 
@@ -719,6 +765,9 @@ pub(crate) fn spawn_batcher_with<T: Into<Chunk> + Send + 'static>(
             // 잠금은 배치 하나당 한 번이다 (청크마다가 아니다) — 비용이 사실상 없다.
             let mut slot = output.lock().unwrap();
             let client_answers = slot.client_answers();
+            // 서버 해석기 몫(사본) — 슬롯 잠금 밖에서 먹인다(해석이 출력 전달을 늦추지 않게).
+            let tap = slot.tap.clone();
+            let tap_bytes = tap.as_ref().map(|_| batch.clone());
             let SlotState { channel, viewers, tail, .. } = &mut *slot;
             // 꼬리 링은 **채널이 없어도** 적는다 — 오프셋 축 = "생산한 순서" ([`TailRing`] 주석). 같은 잠금
             // 안이라 재부착·붙기의 재생과 서로를 배제한다.
@@ -762,6 +811,9 @@ pub(crate) fn spawn_batcher_with<T: Into<Chunk> + Send + 'static>(
                 }
             }
             drop(slot);
+            if let (Some(tap), Some(bytes)) = (tap, tap_bytes) {
+                tap.feed(&bytes);
+            }
             if !unanswered.is_empty() {
                 if let Some(hook) = &answer {
                     hook(unanswered);

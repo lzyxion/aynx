@@ -64,6 +64,7 @@
       bind:this={modalEl}
       onkeydown={onKey}
     >
+      <div class="glass-scroll">
       {#if req.title || req.kind !== "info"}
         <h2 id="confirm-dialog-title">
           {#if req.kind !== "info"}
@@ -129,6 +130,7 @@
         {/each}
       </div>
       {#if req.footnote}<p class="footnote">{req.footnote}</p>{/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -147,14 +149,19 @@
   .modal {
     width: min(420px, 100%);
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     box-sizing: border-box;
-    padding: var(--space-4);
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
     color: var(--fg-1);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
   .modal.wide {
     width: min(520px, 100%);

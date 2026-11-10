@@ -2,6 +2,7 @@ import { invoke, listen } from "../ipc";
 import { tick } from "svelte";
 import { openInNewTab } from "$lib/app/tabs.svelte.js";
 import { openSessionSheet } from "$lib/app/session-sheet.svelte.js";
+import { findDbConn } from "$lib/app/db-conns.svelte.js";
 import { paneForDetached, parseDetached, type DetachedSession } from "$lib/session/detached";
 
 /**
@@ -76,7 +77,7 @@ export function detachedReveal(): number {
 
 /** [새 탭에 붙이기] — 그 종류의 새 타일을 새 탭에 열고, 첫 열기가 그 스트림에 붙는다(새 셸을 열지 않는다) */
 export function attachDetachedInNewTab(s: DetachedSession): void {
-  openInNewTab(paneForDetached(s));
+  openInNewTab(paneForDetached(s, s.conn ? findDbConn(s.conn)?.name : null));
   // 목록에서 곧바로 뺀다 — 붙고 나면 서버 이벤트가 다시 맞춘다(붙기가 실패하면 다시 나타난다).
   list = list.filter((x) => x.stream !== s.stream);
   schedule();

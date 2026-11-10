@@ -117,7 +117,7 @@ fn grant_id(g: &Grant) -> String {
 fn delegation(grants: &[(&DbConn, DbAiLevel)]) -> Delegation {
     let mut doc = String::new();
     for (c, level) in grants {
-        doc = upsert_database_in_doc(&doc, &c.id, &DbIdentity::of(c, None), *level).unwrap();
+        doc = upsert_database_in_doc(&doc, &c.id, &DbIdentity::of(c, None), *level, Some(true)).unwrap();
     }
     Delegation::parse(&doc).unwrap()
 }
@@ -310,6 +310,8 @@ async fn open_tile(stream: &str, conn: &DbConn, pw: &str) -> super::table::Opene
     let secrets = super::net::OpenSecrets {
         password: Some(zeroize::Zeroizing::new(pw.to_string())),
         ssh: Default::default(),
+        vault: true,
+        from_vault: false,
     };
     match super::table::open(stream.into(), stream.into(), 7_700_301, super::table::ConnRef { id: conn.id.clone() }, secrets).await {
         Ok(o) => o,

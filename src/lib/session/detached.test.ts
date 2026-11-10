@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { detachedName, detachedWindowName, paneForDetached, parseDetached, sortDetached, type DetachedSession } from "./detached";
+import {
+  detachedDbStatus,
+  detachedName,
+  detachedWindowName,
+  iconPaneForDetached,
+  paneForDetached,
+  parseDetached,
+  sortDetached,
+  type DetachedSession,
+} from "./detached";
 
 const tr = (key: string, p?: Record<string, string | number>) => (p ? `${key}:${JSON.stringify(p)}` : key);
 
@@ -17,6 +26,9 @@ function row(over: Partial<DetachedSession> = {}): DetachedSession {
     tmux: null,
     aiRead: false,
     unclaimed: true,
+    conn: null,
+    writable: false,
+    inTx: false,
     ...over,
   };
 }
@@ -60,6 +72,45 @@ describe("detached sessions model", () => {
     const ssh = paneForDetached(row({ kind: "ssh", stream: "ssh-1", alias: "web", tmux: "aynx-4", shell: null }));
     expect(ssh).toMatchObject({ kind: "ssh", alias: "web", tmux: "aynx-4", historyStreamId: "ssh-1" });
     expect(ssh.autorun).toBeUndefined();
+  });
+});
+
+describe("detached query tiles (2026-11-09 ② — DB 타일도 떨어진 세션으로)", () => {
+  it("keeps a db row only with a connection id and a query key", () => {
+    const list = parseDetached([
+      { stream: "query:tk-1", kind: "db", home: "main", detachedAt: 7, openedAt: 1, conn: "Conn_0001", writable: true, inTx: true },
+      { stream: "query:tk-2", kind: "db", home: "main" },
+      { stream: "life-9", kind: "db", conn: "Conn_0001" },
+    ]);
+    expect(list.map((s) => s.stream)).toEqual(["query:tk-1"]);
+    expect(list[0]).toMatchObject({ kind: "db", conn: "Conn_0001", writable: true, inTx: true, shell: null, alias: null });
+    // 판 28 이하 서버의 세션 줄에는 DB 칸이 없다 — 꺼짐으로 읽는다.
+    const [old] = parseDetached([{ stream: "a", kind: "local", home: "main", shell: "pwsh" }]);
+    expect(old).toMatchObject({ conn: null, writable: false, inTx: false });
+  });
+
+  it("names a db row by its connection name (falls back to the id)", () => {
+    const db = row({ kind: "db", stream: "query:tk-1", conn: "Conn_0001", shell: null });
+    expect(detachedName(db, tr, (id) => (id === "Conn_0001" ? "docker-pg-test" : null))).toBe("docker-pg-test");
+    expect(detachedName(db, tr, () => null)).toBe("Conn_0001");
+    expect(detachedName(db, tr)).toBe("Conn_0001");
+  });
+
+  it("states mode, open transaction and AI permission", () => {
+    expect(detachedDbStatus(row({ kind: "db" }), "Read", tr)).toBe("app.detached.db.readOnly · AI Read");
+    expect(detachedDbStatus(row({ kind: "db", writable: true }), null, tr)).toBe("app.detached.db.write");
+    expect(detachedDbStatus(row({ kind: "db", writable: true, inTx: true }), "Ask", tr)).toBe("app.detached.db.write · app.detached.db.tx · AI Ask");
+  });
+
+  it("reattaches through a query tile with the same tile key", () => {
+    const pane = paneForDetached(row({ kind: "db", stream: "query:tk-77", conn: "Conn_0001", shell: null }));
+    expect(pane).toMatchObject({ kind: "query", query: { connId: "Conn_0001" }, tileKey: "tk-77" });
+    expect(pane.historyStreamId).toBeUndefined();
+    // 연결 이름을 넘기면 탭 제목용 이름이 실린다(없으면 싣지 않는다)
+    expect(paneForDetached(row({ kind: "db", stream: "query:tk-77", conn: "Conn_0001", shell: null }), "pg-main").query?.name).toBe("pg-main");
+    expect(pane.query?.name).toBeUndefined();
+    expect(iconPaneForDetached(row({ kind: "db", stream: "query:tk-77", conn: "Conn_0001" }))).toMatchObject({ kind: "query", query: { connId: "Conn_0001" } });
+    expect(iconPaneForDetached(row({ kind: "ssh", alias: "web" }))).toMatchObject({ kind: "ssh", alias: "web" });
   });
 });
 

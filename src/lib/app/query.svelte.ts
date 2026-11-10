@@ -10,6 +10,10 @@
 // 취소 · Escape 가 닫는다). 폼의 규칙은 순수 `$lib/query/conn-form`, 저장은 목록 통째(`app/db-conns`), 삭제는 OS 확인 대화
 // (`confirmRemoveDbConn` — 독의 호스트 · 프로젝트 삭제와 같은 `askConfirm`) 뒤 볼트의 그 id 비밀번호도 걷는다(열려 있을 때만).
 //
+// 폼의 **[연결 테스트]**(2026-11-09)는 저장 안 한 폼 값(저장과 같은 `connOfRow`)으로 서버 op `db_test` 를 부른다 — 타일과 같은 여는
+// 고리(`openDbFlow` — 경유 SSH 관문 · DB 접속 모달)를 돌되 "이 앱에 저장" 은 숨기고 볼트에 아무것도 담지 않는다. 볼트 비밀번호로
+// 물러날지는 서버가 정한다(저장된 줄과 대상이 같을 때만). 칩의 규칙은 순수 `$lib/query/conn-test`.
+//
 // 상태(`dbPicker`)는 여기에만 산다 — 그리는 곳은 `dialogs/DbPickerDialog.svelte`, Escape 사슬 · `anyModalOpen` 은 `app/keys`.
 import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -29,7 +33,20 @@ import {
 import { newTileKey } from "$lib/workspaces/schema";
 import { DB_NAME_MAX, type DbConn, type DbEngine } from "$lib/db-conn";
 import { stripReason } from "$lib/error-reason";
-import { dbOpen, errorMessage } from "$lib/query/query-backend";
+import { dbOpen, dbTest, errorMessage, type DbTested } from "$lib/query/query-backend";
+import {
+  beginConnTest,
+  connFormKey,
+  connTestMayUseVault,
+  connTestReason,
+  finishConnTest,
+  idleConnTest,
+  invalidConnTest,
+  newConnTestStream,
+  onConnFormChange,
+  resetConnTest,
+  type ConnTestState,
+} from "$lib/query/conn-test";
 import { openDbFlow, type DbOpenOutcome } from "$lib/query/open-flow";
 import { dbConns, ensureDbConns, findDbConn, reloadDbConns, removeDbConn, saveDbConns } from "$lib/app/db-conns.svelte.js";
 import {
@@ -40,9 +57,9 @@ import {
   promptPassphrase,
   promptPassword,
 } from "$lib/app/prompts.svelte.js";
-import { dbAiNeedsConfirm, dbAiToWrite, formAiLevel, sameDbTarget, setDbAi, type DbAiLevel } from "$lib/db-ai";
+import { dbAiFormWrite, dbAiNeedsConfirm, formAiLevel, formDbHeadless, sameDbTarget, setDbAi, type DbAiLevel } from "$lib/db-ai";
 import { confirmApproveAll } from "$lib/app/approve-all-confirm";
-import { dbAiLevelOf, dbAiViewOf, refreshDbAi } from "$lib/app/db-ai.svelte.js";
+import { dbAiHeadlessOf, dbAiLevelOf, dbAiViewOf, refreshDbAi } from "$lib/app/db-ai.svelte.js";
 import {
   connOfRow,
   connRowOf,
@@ -218,6 +235,9 @@ export const dbPicker = $state<{
   ai: DbAiLevel;
   aiTouched: boolean;
   aiOrig: DbConn | null;
+  /** **헤드리스**(2026-11-09) — 타일 없이 AI 접속(볼트의 비밀번호). 단계와 같은 규칙(대상이 바뀌고 안 만졌으면 끔 · 같은 저장) */
+  headless: boolean;
+  headlessTouched: boolean;
 }>({
   open: false,
   view: "list",
@@ -232,6 +252,8 @@ export const dbPicker = $state<{
   ai: "off",
   aiTouched: false,
   aiOrig: null,
+  headless: false,
+  headlessTouched: false,
 });
 
 /** 폼의 AI 칸을 그 연결의 지금 값으로(새 연결이면 끔) — 사본을 다시 읽은 뒤 한 번 더 맞춘다(만지기 전일 때만) */
@@ -239,8 +261,11 @@ function resetFormAi(orig: DbConn | null): void {
   dbPicker.aiOrig = orig;
   dbPicker.aiTouched = false;
   dbPicker.ai = orig ? dbAiLevelOf(orig.id) : "off";
+  dbPicker.headlessTouched = false;
+  dbPicker.headless = orig ? dbAiHeadlessOf(orig.id) : false;
   void refreshDbAi().then(() => {
     if (!dbPicker.aiTouched && dbPicker.aiOrig === orig) dbPicker.ai = orig ? dbAiLevelOf(orig.id) : "off";
+    if (!dbPicker.headlessTouched && dbPicker.aiOrig === orig) dbPicker.headless = orig ? dbAiHeadlessOf(orig.id) : false;
   });
 }
 
@@ -255,6 +280,16 @@ export function connTargetChanged(): boolean {
 /** 폼에 보일(그리고 저장할) AI 단계 — 대상이 바뀌었고 만지지 않았으면 끔 */
 export function connAiShown(): DbAiLevel {
   return formAiLevel(dbPicker.ai, dbPicker.aiTouched, connTargetChanged());
+}
+
+/** 폼에 보일(그리고 저장할) 헤드리스 — 대상이 바뀌었고 만지지 않았으면 끔 */
+export function connHeadlessShown(): boolean {
+  return formDbHeadless(dbPicker.headless, dbPicker.headlessTouched, connTargetChanged());
+}
+
+export function setConnHeadless(on: boolean): void {
+  dbPicker.headless = on;
+  dbPicker.headlessTouched = true;
 }
 
 /** 이 연결의 블록이 있는데 스냅샷이 어긋나 풀려 있다(편집 전부터) */
@@ -310,6 +345,8 @@ export async function openDbPicker(): Promise<void> {
 
 export function closeDbPicker(): void {
   if (dbPicker.busy) return;
+  // 도는 [연결 테스트] 는 버린다 — 닫힌 폼 위로 비밀번호 창이 뜨지 않게.
+  clearConnTest();
   dbPicker.open = false;
   dbPicker.view = "list";
   dbPicker.formError = null;
@@ -318,6 +355,7 @@ export function closeDbPicker(): void {
 /** Escape — 폼이면 목록으로(폼만 열었으면 닫기), 목록이면 닫기 */
 export function escapeDbPicker(): void {
   if (dbPicker.view === "form" && !dbPicker.busy && !dbPicker.formOnly) {
+    clearConnTest();
     dbPicker.view = "list";
     dbPicker.formError = null;
     return;
@@ -332,6 +370,7 @@ export function pickDb(d: DbConn): void {
 }
 
 export function startNewConn(): void {
+  clearConnTest();
   dbPicker.form = emptyConnRow();
   resetFormAi(null);
   dbPicker.isNew = true;
@@ -342,6 +381,7 @@ export function startNewConn(): void {
 export function startEditConn(id: string): void {
   const d = findDbConn(id);
   if (!d) return;
+  clearConnTest();
   dbPicker.form = connRowOf(d);
   resetFormAi(d);
   dbPicker.isNew = false;
@@ -356,6 +396,7 @@ export function leaveConnForm(): void {
     closeDbPicker();
     return;
   }
+  clearConnTest();
   dbPicker.view = "list";
   dbPicker.formError = null;
 }
@@ -369,6 +410,7 @@ export async function openConnForm(opts: { id?: string; via?: string; folder?: s
   await Promise.all([ensureDbConns(), loadPickerHosts()]);
   const d = opts.id === undefined ? null : findDbConn(opts.id);
   if (opts.id !== undefined && !d) return;
+  clearConnTest();
   dbPicker.form = d ? connRowOf(d) : emptyConnRow(undefined, opts.via ?? null, opts.folder ?? "");
   resetFormAi(d);
   dbPicker.isNew = !d;
@@ -385,6 +427,77 @@ export function setConnEngine(engine: DbEngine): void {
 
 export function setConnVia(via: string | null): void {
   dbPicker.form = withConnVia(dbPicker.form, via);
+}
+
+// ---------------------------------------------------------------------------
+// [연결 테스트] — 폼 바닥 줄 왼쪽 단추 + 그 옆 칩(규칙은 `$lib/query/conn-test`)
+// ---------------------------------------------------------------------------
+
+/** 칩 하나의 상태(모듈 상태라 객체 한 칸에 둔다 — 필드 대입이 반응한다) */
+export const connTestUi = $state<{ state: ConnTestState }>({ state: idleConnTest() });
+
+/** 칩을 지운다 — 폼을 새로 열 때 · [취소] · 칸 바꾸기. 도는 시도의 답은 회차가 버린다 */
+export function clearConnTest(): void {
+  connTestUi.state = resetConnTest(connTestUi.state);
+}
+
+/** 폼 칸이 바뀌었을 때(그리는 쪽의 `$effect` 가 부른다) — 칩이 있으면 지운다 */
+export function noteConnFormChanged(): void {
+  const next = onConnFormChange(connTestUi.state, connFormKey(dbPicker.form));
+  if (next !== connTestUi.state) connTestUi.state = next;
+}
+
+/** [취소] — 화면에서만 버린다(서버의 시도는 제 시한에 스스로 끝난다) · [저장] 은 그대로 쓸 수 있다 */
+export function cancelConnTest(): void {
+  clearConnTest();
+}
+
+/**
+ * **[연결 테스트]** — 폼 값을 저장과 같은 꼴(`connOfRow`)로 만들어 한 번 붙어 본다. 폼이 틀렸으면 저장과 같은 문구를 보이고 서버에
+ * 가지 않는다. 비밀번호는 서버가 청할 때만 묻고(타일과 같은 모달 — 저장 칸 없음) 볼트에 담지 않는다. 늦게 온 답 · 회차가 바뀐 뒤의
+ * 물음은 버린다(묻는 창도 띄우지 않는다).
+ */
+export async function startConnTest(): Promise<void> {
+  if (connTestUi.state.phase.kind === "running") return;
+  const r = connOfRow(dbPicker.form);
+  if (!r.ok) {
+    // 테스트의 결과는 칩 하나로만 — 폼 안 빨간 줄(`formError`)은 [저장] 의 것이다.
+    connTestUi.state = invalidConnTest(connTestUi.state, connFormKey(dbPicker.form), connProblemText(r.problem));
+    return;
+  }
+  dbPicker.formError = null;
+  const draft = r.conn;
+  connTestUi.state = beginConnTest(connTestUi.state, connFormKey(dbPicker.form), Date.now());
+  const gen = connTestUi.state.gen;
+  const live = () => connTestUi.state.gen === gen;
+  const stream = newConnTestStream();
+  const via = draft.via ?? null;
+  const who = draft.user && draft.database ? `${draft.user}@${draft.database}` : (draft.user ?? draft.database ?? "");
+  const out = await openDbFlow<DbTested>({
+    open: (password, ssh) => dbTest(stream, draft, password, ssh),
+    via,
+    // 경유 SSH 관문은 타일과 같다 — 저장 칸만 숨기고, 버려진 회차에는 묻지 않는다(취소로 끝난다).
+    gates: {
+      confirm: (p) => (live() ? confirmHostKey(p) : Promise.resolve("reject" as const)),
+      promptPassword: (p) => (live() ? promptPassword({ ...p, noSave: true }) : Promise.resolve(null)),
+      promptPassphrase: (p) => (live() ? promptPassphrase({ ...p, noSave: true }) : Promise.resolve(null)),
+    },
+    askPassword: (p) => (live() ? promptPassword(p) : Promise.resolve(null)),
+    noSave: true,
+    target: { id: draft.id, name: draft.name, who, via },
+    // 볼트를 쓸 수 있는 테스트(저장된 연결 · 대상 그대로)만 잠긴 볼트를 열어 달라고 한다 — 판단의 진실은 서버다.
+    ensureUnlocked: () => (connTestMayUseVault(dbPicker.aiOrig, draft) ? ensureVaultUnlocked() : Promise.resolve()),
+    // 테스트는 볼트에 아무것도 담지 않는다(저장 칸이 없어 적어 둔 값도 없다).
+    flushSaves: () => {},
+    dropSaves: () => {},
+    tr: t,
+  });
+  const phase = out.ok
+    ? ({ kind: "ok", result: out.opened } as const)
+    : out.kind === "cancelled"
+      ? ({ kind: "cancelled" } as const)
+      : ({ kind: "error", reason: connTestReason(out.raw ?? out.message), message: out.message } as const);
+  connTestUi.state = finishConnTest(connTestUi.state, gen, phase);
 }
 
 /** 폼 갈래 → 문구 */
@@ -425,18 +538,22 @@ export async function submitConn(ev?: Event): Promise<void> {
   // AI 권한(쿼리 타일 3a) — 연결 저장이 선 **뒤에** 적는다(스냅샷은 Rust 가 저장된 줄에서 계산한다).
   const id = dbPicker.form.id;
   const view = dbAiViewOf(id);
-  const aiWrite = dbAiToWrite({
+  // 헤드리스는 엔진 무관(SQLite 도 — 2026-11-09 · 타일 없이 AI 가 여는 것은 위임).
+  const storedHeadless = dbAiHeadlessOf(id);
+  const aiWrite = dbAiFormWrite({
     level: connAiShown(),
     stored: dbAiLevelOf(id),
     blockExists: view !== null,
     broken: view !== null && !view.identityOk,
     targetChanged: connTargetChanged(),
+    headless: connHeadlessShown(),
+    storedHeadless,
   });
   try {
     await saveDbConns(r.list);
     if (aiWrite !== null) {
       try {
-        await setDbAi(id, aiWrite);
+        await setDbAi(id, aiWrite.level, aiWrite.headless);
       } finally {
         await refreshDbAi();
       }

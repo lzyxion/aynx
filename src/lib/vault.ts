@@ -72,6 +72,14 @@ const STATUS_TTL_MS = 5000;
 
 let cached: { at: number; value: VaultStatus } | null = null;
 
+/**
+ * 떠 있는 잠금 해제 카드를 **다른 곳에서 연 볼트**(가림막)로 닫아도 되는가 — 기다리는 접속이 있고 · 카드가 [열기]를 처리하는
+ * 중이 아니고 · 볼트가 **실제로 열렸을 때만**(`absent` · `locked` 는 닫지 않는다 — 건너뛰는 길이 되면 안 된다). 2026-11-10.
+ */
+export function canSettleUnlockCard(waiting: number, busy: boolean, state: VaultStatus["state"] | null): boolean {
+  return waiting > 0 && !busy && state === "unlocked";
+}
+
 /** 기억해 둔 값을 버린다 — 금고를 만들거나 열거나 잠근 **직후**에 부른다 */
 export function invalidateStatus(): void {
   cached = null;

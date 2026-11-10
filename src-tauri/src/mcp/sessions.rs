@@ -131,7 +131,7 @@ pub(super) fn adhoc_user(label: &str) -> Option<String> {
 /// `user`(어느 계정으로) · `connectedAt`(언제 붙었나) · `lastActivityAt`(마지막 명령이 언제
 /// 끝났나) · `windowLabel`(어느 창의 타일인가, 헤드리스는 `null`). MCP `list_sessions` 도
 /// 같은 함수를 지나므로 AI 도 같은 칸을 본다 — **더하기만 한다**(빼면 등록된 계약이 깨진다).
-pub(super) fn enrich_sessions(
+pub(crate) fn enrich_sessions(
     map: &HashMap<String, SessionContext>,
     delegation: &crate::delegation::Delegation,
     config: Option<&ConfigIndex>,
@@ -161,6 +161,14 @@ pub(super) fn enrich_sessions(
             let core_status = core_states.get(id.as_str()).copied();
             let core_state = core_status.map(|(s, _)| s);
             let link_lost = core_state == Some("disconnected");
+            // 2026-11-09 — **누가 이 거울을 잇고 있나**: 붙은 창(프런트) · 붙은 창 없이 세션 서버의 해석기(`crate::screen_mirror`).
+            // 떨어진 세션이라도 서버가 잇고 있으면 낡지 않았다.
+            let server_pen = core_state == Some("detached") && crate::screen_mirror::server_pen(id);
+            let mirror = match core_state {
+                Some("attached") => Some("window"),
+                Some("detached") if server_pen => Some("server"),
+                _ => None,
+            };
             json!({
                 "id": id,
                 // 사용자가 타일 헤더에서 보는 코드(`p2` / `t7·p2`) — 같은 `label` 세션도 이걸로
@@ -197,11 +205,14 @@ pub(super) fn enrich_sessions(
                 // 코어에 없는 세션(헤드리스 위임 · 옛 항목)은 null.
                 "attached": core_state.map(|s| s == "attached"),
                 // ③-3c — 코어의 상태 이름(`attached`·`detached`·`exited`·`disconnected`)과 실행 회차. 코어에 없으면 null.
-                // **떨어진 세션의 거울은 지우지 않는다**(GUI 가 꺼져 있어도 셸은 살아 있다) — 대신 `stale` 로 "이 화면 거울은
-                // 지금 갱신되지 않는다(붙은 창이 없다)" 를 밝힌다. 거울 값은 그 창이 마지막으로 보낸 것이다(`capturedAt` 참고).
+                // **떨어진 세션의 거울은 지우지 않는다**(GUI 가 꺼져 있어도 셸은 살아 있다). 2026-11-09 부터 붙은 창이 없으면 세션 서버가
+                // 출력을 해석해 거울을 잇는다(`mirror:"server"`) — 그때는 낡지 않았다. `stale` 은 이제 "이 거울은 지금 아무도 잇지 않는다"
+                // (세션이 끝났다 · 끊겼다 · 서버 해석기가 없다)일 때만 참이다 — 거울 값은 마지막으로 쓴 것이다(`capturedAt` 참고).
                 "state": core_state,
                 "sessionEpoch": core_status.map(|(_, e)| e),
-                "stale": core_state.is_some_and(|s| s != "attached"),
+                "stale": core_state.is_some_and(|s| s != "attached") && !server_pen,
+                // 2026-11-09 — 거울을 잇는 쪽: `"window"`(붙은 창의 화면) · `"server"`(붙은 창 없이 세션 서버) · 아무도 아니면 null.
+                "mirror": mirror,
                 // SessionLifecycle — 살아 있던 헤드리스 세션이 떨어졌는가. 창 세션은 언제나 false.
                 "dropped": dropped,
                 // 라이브 항목은 **언제나 참** — 붙어 있는 세션에게 "설정에 없는 별칭" 은 뜻이 없다
@@ -282,6 +293,7 @@ pub(super) fn enrich_sessions(
 /// MCP `list_sessions` 와 **같은 객체**를 낸다(순수 [`enrich_sessions`] 를 그대로 쓴다). **블로킹**(파일 둘 —
 /// `delegation.toml` · `~/.ssh/config`) — 부르는 쪽이 블로킹 풀에서. 잠금이 오염됐어도 목록은 낸다(`into_inner`).
 pub(crate) fn console_list(store: &crate::context::Store) -> Value {
+    crate::screen_mirror::flush_dirty();
     let delegation = crate::delegation::Delegation::load_default();
     let index = config_index();
     let map = store.lock().unwrap_or_else(|e| e.into_inner());
@@ -289,7 +301,7 @@ pub(crate) fn console_list(store: &crate::context::Store) -> Value {
 }
 
 /// `get_last_command` — `{ commandLine, output, exit, running }` 또는 오류.
-pub(super) fn get_last_command(
+pub(crate) fn get_last_command(
     map: &HashMap<String, SessionContext>,
     delegation: &crate::delegation::Delegation,
     args: Option<&Value>,
@@ -307,7 +319,7 @@ pub(super) fn get_last_command(
 }
 
 /// `get_scrollback` — `{ lines: [...] }`, 최근 N 줄(기본 200, 최대 1000).
-pub(super) fn get_scrollback(
+pub(crate) fn get_scrollback(
     map: &HashMap<String, SessionContext>,
     delegation: &crate::delegation::Delegation,
     args: Option<&Value>,

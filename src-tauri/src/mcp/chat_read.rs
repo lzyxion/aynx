@@ -63,6 +63,7 @@ pub(super) fn call(
     }
     let link = crate::chat_token::link_of(chat);
     let delegation = load_delegation();
+    crate::screen_mirror::flush_dirty();
     let guard = store.lock().map_err(|_| "internal error".to_string())?;
     let scoped = scope(link.as_deref(), args, &guard, &delegation)?;
     drop(guard);

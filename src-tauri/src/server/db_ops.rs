@@ -4,6 +4,7 @@
 //! | op | 등급 | 몸 → 답 |
 //! | --- | --- | --- |
 //! | `db_open` | 쓰기 | `{stream, window, conn: {id}, password?, ssh?: {hostKeyDecision?, password?, passphrase?, passphraseFor?, declinedKeys?}, reattachOnly?, lang}` → `{handle, lease, dialect, serverVersion, writable, reattached}` · 경유 SSH 관문은 코드 `ssh-open` + `SshOpenError` JSON(터미널 `open_ssh` 와 같은 꼴) · `reattachOnly` = 있는 연결에 붙기만(없으면 `[session-gone]`) |
+//! | `db_test` | 쓰기 | 판 28 — `{stream: "dbtest-…", conn: <DbConn 한 줄 — db_conn_save 의 꼴>, password?, ssh?, lang}` → `{dialect, serverVersion, via?, elapsedMs}`(DB 연결 폼의 [연결 테스트] — 저장 안 한 초안으로 한 번 붙고 곧바로 닫는다 · 표 · 접속 기록에 남지 않는다 · 볼트 물러남은 서버가 저장된 줄과 대상을 견줘 정한다 — `table::test`) · 실패는 `db_open` 과 같은 꼴 |
 //! | `db_query` | 쓰기 | `{handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?}` → `{columns: [{name, type}], rows, truncated, cellTruncated, affected?, elapsedMs, tx}` · `txId`(판 9 — 화면이 아는 작업 id, 0 = 작업 없음)가 지금 작업과 다르면 `[db-tx-stale]` |
 //! | `db_cancel` | 쓰기 | `{handle, queryId}` → bool(지금 돌던 그 쿼리를 끊었나) |
 //! | `db_schema` | 읽기 | `{handle, lease}` → `{schemas: [{name}]}`(스키마 이름만 — 트리 첫 단계) |
@@ -41,6 +42,7 @@ pub(crate) fn is_db_op(op: &str) -> bool {
     matches!(
         op,
         "db_open"
+            | "db_test"
             | "db_query"
             | "db_cancel"
             | "db_schema"
@@ -104,9 +106,22 @@ struct SshGate {
     declined_keys: Option<Vec<String>>,
 }
 
-fn secrets(password: Option<String>, ssh: Option<SshGate>) -> OpenSecrets {
+/// `db_test` 의 몸(판 28) — 연결은 **참조가 아니라 초안 한 줄**이다(저장 전 값을 시험한다 · 서버가 저장과 같은 검사를 다시 한다).
+#[derive(Deserialize)]
+struct Test {
+    stream: String,
+    conn: db::conns::DbConn,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default)]
+    ssh: Option<SshGate>,
+}
+
+/// 비밀 재료 — `vault` 는 볼트 물러남(타일 열기는 참 · 연결 테스트는 `table::test` 가 다시 정한다).
+fn secrets(password: Option<String>, ssh: Option<SshGate>, vault: bool) -> OpenSecrets {
     let g = ssh.unwrap_or_default();
     OpenSecrets {
+        vault,
         password: password.map(zeroize::Zeroizing::new),
         ssh: SharedCreds {
             host_key_decision: g.host_key_decision,
@@ -116,6 +131,7 @@ fn secrets(password: Option<String>, ssh: Option<SshGate>) -> OpenSecrets {
             declined_keys: g.declined_keys.unwrap_or_default(),
             unattended: None,
         },
+        from_vault: false,
     }
 }
 
@@ -242,7 +258,7 @@ pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Valu
                 log::line(format!("db_open reattach-only hit {}", r.is_ok()));
                 return r.map(|x| json!(x)).map_err(derr);
             }
-            let s = secrets(o.password, o.ssh);
+            let s = secrets(o.password, o.ssh, true);
             let id = o.conn.id.clone();
             let r = table::open(o.stream, o.window, ctx.id, o.conn, s).await;
             match &r {
@@ -263,6 +279,19 @@ pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Valu
                 }
                 Err(OpenError::Ssh(_)) => log::line(format!("db_open ssh gate ({} ms)", ms())),
                 Err(OpenError::Msg(_)) => log::line(format!("db_open failed ({} ms)", ms())),
+            }
+            r.map(|x| json!(x)).map_err(open_err)
+        }
+        "db_test" => {
+            let o: Test = body(b)?;
+            // 볼트 물러남은 거짓으로 시작한다 — `table::test` 가 저장된 줄과 대상을 견줘 그 자리에서 정한다.
+            let s = secrets(o.password, o.ssh, false);
+            let r = table::test(&o.stream, o.conn, s).await;
+            // 한 줄 결과만(주소 · 경로 · 이름 · 오류 문구 없음 — 식별자가 섞인다).
+            match &r {
+                Ok(x) => log::line(format!("db_test ok {} ({} ms)", x.dialect, ms())),
+                Err(OpenError::Ssh(_)) => log::line(format!("db_test ssh gate ({} ms)", ms())),
+                Err(OpenError::Msg(_)) => log::line(format!("db_test failed ({} ms)", ms())),
             }
             r.map(|x| json!(x)).map_err(open_err)
         }

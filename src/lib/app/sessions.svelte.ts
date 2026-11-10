@@ -11,6 +11,7 @@ import { CHECKPOINT_SCROLLBACK, isHandoff, snapshotPane } from "$lib/tear";
 import type { FsDrag } from "$lib/fs-drag";
 import { fsDropRoute, hostIdentity, type FsDropRoute } from "$lib/fs-drop-route";
 import type { PaneSpec } from "$lib/session/spec";
+import { QUERY_STREAM_PREFIX } from "$lib/session/detached";
 import {
   activeTab,
   findPaneAnywhere,
@@ -199,11 +200,15 @@ export function stashWindowCheckpoints(): void {
 /**
  * 이 창이 지금 그리고 있는 세션 타일들(로컬·SSH)의 스트림 — 복원이 끝났다는 알림(`restoreDoneSessions`)이 "데려간
  * 것" 으로 남겨 둘 목록이다. 아직 붙지 않은 타일(계단 지연 · SSH 연결 대기 — 마운트에서 먼저 붙어 본다)도 들어간다.
+ * 쿼리 타일의 DB 연결 열쇠(`query:<tileKey>` — 영속 키가 있는 것만)도 싣는다 — 서버가 데려가지 않은 DB 연결만 떨어진 세션 목록에
+ * 올린다(2026-11-09 ②).
  */
 export function windowSessionStreams(): string[] {
-  return windowPanes()
-    .filter((pane) => hasSession(pane.kind))
-    .map((pane) => sessionStreamOf(pane));
+  const panes = windowPanes();
+  return [
+    ...panes.filter((pane) => hasSession(pane.kind)).map((pane) => sessionStreamOf(pane)),
+    ...panes.filter((pane) => pane.kind === "query" && pane.tileKey).map((pane) => `${QUERY_STREAM_PREFIX}${pane.tileKey}`),
+  ];
 }
 
 /**

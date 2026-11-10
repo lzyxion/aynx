@@ -20,8 +20,12 @@
 //!
 //! ## 경유 SSH · 비밀번호
 //!
-//! 3a 와 같다 — 비밀번호는 볼트에서만(세션 서버 안), 경유 SSH 는 무인 관문(`ai::secrets_for` — 사람의 답 없음 · 볼트의 SSH 비밀번호 없음 ·
-//! 키 암호구는 그 호스트의 `vault_passphrase` 위임일 때만). 실패 문구도 3a 의 것(`ai::open_error_text`)이다.
+//! 3a 와 같다 — 비밀번호는 빌린 값(그 연결의 사람 쿼리 타일이 비밀번호(친 값 · 볼트 값)로 붙어 있는 동안 — 볼트 잠금과 무관 · `db::borrowed`, 2026-11-09) → 볼트
+//! (`ai::open_with` — 둘 다 세션 서버 안 · **볼트 차례는 그 연결의 헤드리스 위임 `[[database]] headless` 가 켜졌을 때만** — 실행 직전 재판정의
+//! 증표가 지금 파일로 싣는다, 2026-11-09), 경유 SSH 는 무인 관문(`ai::secrets_for` — 사람의 답 없음 · 볼트의 SSH 비밀번호 없음 · 키 암호구는 그
+//! 호스트의 `vault_passphrase` 위임일 때만). 빌린 값은 **열 때만** 본다 — 연 뒤 타일이 닫혀도 도는 트랜잭션은 끝까지 가고, 연결은 실행이
+//! 끝나면 닫힌다(다음 실행은 다시 빌려야 한다). 실패 문구도 3a 의 것(`ai::open_error_text`)이다. **SQLite 쓰기 연결도 같은 문**
+//! (`ai::sqlite_gate` — 그 연결의 사람 타일이 표에 있거나 헤드리스 위임이 있을 때만 · 2026-11-09).
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -68,23 +72,29 @@ pub(crate) async fn open(grant: &Grant, src: &PasswordSource) -> Result<WriteCon
     let via = grant.conn().via.clone();
     let resolved = ai::resolve_for(grant).await?;
     let stream = stream_of(&grant.conn().id);
-    let secrets = ai::secrets_for(grant, src);
+    let id = grant.conn().id.clone();
     let engine = match resolved {
         Resolved::Sqlite(path) => {
+            // 읽기와 같은 문(2026-11-09) — 사람 타일이 없으면 헤드리스 위임이 있어야 연다(실행 직전 재판정의 증표가 지금 파일로 싣는다).
+            ai::sqlite_gate(grant, src)?;
             let s = tokio::task::spawn_blocking(move || Sqlite::open(std::path::Path::new(&path), true))
                 .await
                 .map_err(|_| "The database task failed (worker thread)".to_string())??;
             Engine::Sqlite(Arc::new(s))
         }
         Resolved::Pg(t) => {
-            let p = Pg::connect(&stream, t, secrets).await.map_err(|e| ai::open_error_text(e, via.as_deref()))?;
+            let (p, _) = ai::open_with(grant, src, ai::lend_for(grant, src), |s| Pg::connect(&stream, t.clone(), s))
+                .await
+                .map_err(|e| ai::open_error_text(e, via.as_deref(), &id))?;
             let p = Arc::new(p);
             // PG 의 쓰기는 앱 플래그뿐이다(세션 `SET` 없음 — 풀러 뒤에서 남의 세션에 새지 않게). 실행기의 쓰기 트랜잭션이 그것을 따른다.
             p.set_write(true).await.map_err(|e| { p.shutdown(); ai::plain(&super::table::message(e, false, false, 0)) })?;
             Engine::Pg(p)
         }
         Resolved::Mysql(t) => {
-            let m = Mysql::connect(&stream, t, secrets).await.map_err(|e| ai::open_error_text(e, via.as_deref()))?;
+            let (m, _) = ai::open_with(grant, src, ai::lend_for(grant, src), |s| Mysql::connect(&stream, t.clone(), s))
+                .await
+                .map_err(|e| ai::open_error_text(e, via.as_deref(), &id))?;
             let m = Arc::new(m);
             m.set_write(true).await.map_err(|e| { m.shutdown(); ai::plain(&super::table::message(e, false, false, 0)) })?;
             Engine::Mysql(m)

@@ -29,6 +29,7 @@
       bind:this={modalEl}
       onkeydown={(ev) => modalEl && trapTab(ev, modalEl)}
     >
+      <div class="glass-scroll">
       <h2 id="fw-title">{t("app.forward.title")}</h2>
       <p class="lead">{t("app.forward.lead")}</p>
 
@@ -119,6 +120,7 @@
           </button>
         </div>
       </form>
+      </div>
     </div>
   </div>
 {/if}
@@ -140,17 +142,23 @@
   }
 
   .modal {
+    box-sizing: border-box;
     width: 100%;
-    max-width: 420px;
+    max-width: calc(420px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
     /* 호스트 폼은 칸이 10개라 작은 창에서 화면을 넘긴다 — 모달 안에서 스크롤한다
        (overlay 의 padding 16px 을 빼 준다) */
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   .modal h2 {

@@ -1,6 +1,6 @@
 //! **DB 연결 표** — 세션 서버 프로세스에 한 벌. 열쇠는 타일의 `stream`(프런트 tileKey 글자), 값은 핸들·임대 회차·쥔 창·
-//! 엔진 연결이다. **세션 코어(`session_core`)에 오르지 않는다** — DB 연결은 셸 세션이 아니라 MCP·떨어진 세션 목록에 섞이면
-//! 안 된다. 임대 규칙만 세션 코어와 같은 꼴(`[stale-lease]`)로 따로 둔다.
+//! 엔진 연결이다. **세션 코어(`session_core`)에 오르지 않는다** — DB 연결은 셸 세션이 아니라 MCP `list_sessions` 에 섞이면 안 된다.
+//! 임대 규칙만 세션 코어와 같은 꼴(`[stale-lease]`)로 따로 둔다. 떨어진 세션 목록에는 `kind: "db"` 줄로 따로 오른다(② — 아래 수명 표).
 //!
 //! ## 규칙(5단계 — 기본만)
 //!
@@ -9,6 +9,14 @@
 //! - 핸들을 받는 호출(`db_query`·`db_schema`·`db_objects`·`db_table_detail`·`db_definition`·`db_set_write`·`db_tx`)은 **지금 임대 회차**와 같아야 한다 — 옛 임대면
 //!   `[stale-lease]`(다른 창이 같은 타일에 다시 붙었다). 없는 핸들은 `[session-gone]`(닫혔다 — 프런트는 다시 연다).
 //! - `db_cancel` 은 임대를 보지 않는다(그 쿼리 id 가 지금 돌 때만 끊는다). `db_close` 는 임대를 주면 본다.
+//! - **[연결 테스트](`db_test` — [`test`])는 이 표에 오르지 않는다** — 저장 안 한 초안으로 한 번 붙고 곧바로 닫는다(핸들 · 임대 ·
+//!   떼어 두기 · 접속 기록 없음 · 열쇠는 `dbtest-` 머리만). 볼트 비밀번호는 저장된 줄과 대상이 같을 때만([`test_vault_allowed`]).
+//! - **빌린 비밀번호**(2026-11-09 사용자 결정 — `db::borrowed`): 새 열기가 비밀번호로 네트워크 엔진에 붙으면 — 사람이 친 값이든 볼트에서
+//!   읽은 값이든(`OpenSecrets::settle_password` 로 엔진에 넘기기 전에 정한다 · [`open_engine`]) — 그 값을 인증 당시 신원과 함께 세션 서버 메모리에
+//!   담는다([`open`] 하나 — [연결 테스트] · 재부착(새 인증 없음) · SQLite 는 담지 않는다). 그 연결 id 의 마지막 항목이 표에서 빠지면([`retire`] —
+//!   닫기 · 창 파괴 · 리로드 TTL · 떨어진 세션 [닫기] · 모두 닫기 · 다른 연결로 바뀜) 지운다 — 볼트 잠금 · 가림막 · 창 0개와는 무관하다(떨어진
+//!   세션으로 남은 동안은 항목이 사니 그대로다). 담기 · 지우기 모두 표의 잠금 안이다. 떨어진 세션을 다시 붙이는데 DB 쪽이 연결을 끊었으면
+//!   새 열기가 그 항목의 값으로 다시 붙는다(몸이 비었고 신원이 같을 때만 — `borrowed::carry` · 거절되면 평소처럼 묻는다).
 //! - 쿼리는 연결 하나에 **한 번에 하나**(돌고 있으면 바로 거절 — 줄 세우지 않는다). 실행 · 작업 시작 · [커밋] · [되돌리기] · 모드
 //!   바꾸기(쓰기 · 자동 커밋) · 메타 조회 · 방치 되돌리기가 모두 **한 조정 장치**([`claim`])를 지나고, 작업 id · 모드 검증도 그 안에서
 //!   한다(Codex 검토 반영 2 — 검증과 엔진 진입 사이에 다른 요청이 끼지 않게). 실행이 돌면 [커밋]도 바쁨으로 거절한다.
@@ -24,8 +32,8 @@
 //! | 사건 | DB 연결 |
 //! |---|---|
 //! | 타일 닫기(`db_close`) | 닫음 |
-//! | 페이지 리로드·웹뷰 크래시(`detach_window`) | **떼어 둠** → [`DETACH_TTL`] 뒤 닫음 · 그 안에 같은 stream 으로 `db_open` 이면 재부착 |
-//! | GUI 종료·강제 종료·마지막 창 X(quitAll)·GUI 연결 끊김(`conn_gone`) | 떼어 둠 → TTL(셸은 살지만 DB 는 TTL 만 — 다시 켜서 복원되면 재부착) |
+//! | 페이지 리로드·웹뷰 크래시(`detach_window`) | **떼어 둠** → [`DETACH_TTL`] 뒤 닫음 · 그 안에 같은 stream 으로 `db_open` 이면 재부착(창이 살아 곧 다시 붙는다) |
+//! | GUI 종료·강제 종료·GUI 연결 끊김(`conn_gone`) · 마지막 창 X → 트레이 · 앱 끝내기 중 창 파괴(`detach_window` 의 `dbOnly`) | **떨어진 세션으로 남김**(TTL 없음 — 2026-11-09 사용자 결정 ②) · 다시 켠 GUI 의 복원이 같은 stream 으로 재부착 · 복원이 데려가지 않으면(`restore_done`) · 창이 없으면 떨어진 세션 목록에 `kind: "db"` 줄 — [새 탭에 붙이기](재부착) · [닫기](`close_detached`) |
 //! | 보조 창 파괴(`close_window`) | 닫음(떼어 둔 것까지 · 이관 중인 stream 은 뺀다) |
 //! | 트레이 [모든 세션 종료](`close_all`) · 서버 끝 | 닫음(비밀번호를 묻는 동안 세워 둔 전송로까지 — `net::drop_all_parked`) |
 //! | 탭·타일 이관(handoff) | 받는 창이 짐을 꺼낼 때 쥔 창을 옮기고(`set_home` — 보낸 창의 `close_window` 보다 먼저), 같은 stream 으로 `db_open` = 재부착(옛 창 임대는 stale) |
@@ -33,8 +41,12 @@
 //! - **떼어 둔다** = 쥔 쪽(창·연결)은 그대로 두고 떼어 둔 시각을 적는다 · 도는 쿼리는 취소한다. 엔진·SSH 전송로 핀·터널·제어 연결은
 //!   그대로 쥐고 있다가 TTL 이 지나면 [`retire`](엔진 `shutdown` — 핀·터널·제어 연결까지)로 거둔다. 지금 임대로 다시 부르면(늦게 닿은
 //!   `detach_window` 가 살아 있는 타일을 떼어 놓은 경우) 다시 붙은 것으로 친다.
+//! - **떨어진 세션으로 남긴다**([`How::Kept`]) = 떼어 두되 TTL 을 걸지 않는다 — 리로드로 떼어 둔 것을 창이 사라진 사건이 다시 부르면
+//!   올린다(거꾸로는 내리지 않는다 — 다시 켠 GUI 의 리로드 거둠이 남은 것에 TTL 을 걸지 않게). 열린 트랜잭션 작업만 떨어진 지 TTL 이면
+//!   되돌린다(연결은 남는다 — 아래 작업 표).
 //! - TTL 시계는 **표 하나에 태스크 하나**([`reaper`]) — 가장 이른 마감까지 자고, 떼어 둘 때마다 깨운다.
-//! - **세션 코어 밖이다** — 떨어진 세션 목록·MCP `list_sessions` 에 섞이지 않는다(서버 통합 시험이 지킨다).
+//! - **세션 코어 밖이다** — MCP `list_sessions` 에 섞이지 않는다(서버 통합 시험이 지킨다). 떨어진 세션 목록(`sessions_detached`)에는 떨어진
+//!   세션으로 남은 것만 `kind: "db"` 로 따로 잇는다([`detached_rows`] — 리로드로 떼어 둔 것 · 붙은 것은 없다).
 //!
 //! ## 트랜잭션 작업(1단계 — 칸은 `tx`, 엔진 몫은 각 엔진의 `tx_begin` · `tx_end` · `in_tx`)
 //!
@@ -46,9 +58,10 @@
 //! | 응답 대기 중단([`run_timed`] 의 버림) | **실행 결과 미확인**(`EngineError::Unconfirmed`) — 그 연결은 버린다(엔진 `abandon` — 끊김 표시 + 소켓 닫기 · 열린 작업은 서버가 되돌린다 → `disconnected`). "이번 실행만 되돌림" 이라 하지 않는다 |
 //! | 무활동 10분(`tx::IDLE_LIMIT`) | [`reaper`] 가 1분 전 경고 이벤트 → 되돌림(이벤트) — 사람의 문장 · [연장] 만 시계를 늘린다. 다른 일이 돌거나 엔진이 바쁘면 미뤘다가 다시 간다(그 일이 끝날 때 · [`IDLE_RETRY`] 뒤 — Codex 검토 반영 2) |
 //! | 페이지 리로드 · 크래시 · GUI 종료(떼어 둠) | **그대로 둔다**(방치 시계는 계속 흐른다 · 도는 문장도 끊지 않는다 — 끊으면 그 실행분이 되돌려진다). 다시 붙으면 `Opened.tx` 로 칩이 돌아온다 |
+//! | 떨어진 세션으로 남음(②) | 떨어진 지 [`DETACH_TTL`](10분)이면 방치 상한과 같은 길로 **되돌린다 — 연결은 남는다**(DB 잠금을 무기한 쥐지 않게 · 사용자 결정). 다시 붙으면 `Opened.tx.ended` 가 방치 되돌림을 알린다 |
 //! | 이관(handoff) | 같은 항목 · 같은 작업(시계 유지) — 받는 창이 다시 붙는다 |
 //! | 쓰기 끄기([`set_write`]) | 되돌린 뒤 끈다(화면이 먼저 확인을 받는다) |
-//! | 타일 닫기 · 보조 창 파괴 · 트레이 [모든 세션 종료] · 서버 끝 · TTL | 연결을 닫는다 = 서버가 되돌린다(화면이 타일 · 보조 창 닫기 전에 확인을 받는다) |
+//! | 타일 닫기 · 보조 창 파괴 · 떨어진 세션 [닫기] · 트레이 [모든 세션 종료] · 서버 끝 · 리로드 TTL | 연결을 닫는다 = 서버가 되돌린다(화면이 타일 · 보조 창 닫기 전에 확인을 받는다) |
 //!
 //! ## 스크립트 실행(2단계 — 실행기는 `db::script`, 입구는 [`script`])
 //!
@@ -56,11 +69,10 @@
 //! |---|---|
 //! | [취소](`db_cancel`) | 멈추고 되돌린다(작업 안이면 그 실행분만 — 세이브포인트) |
 //! | 페이지 리로드 · 크래시 · GUI 종료(떼어 둠) | **끊지 않는다**(`Work::Script`) — 서버가 끝까지 끝내거나 되돌리고, 떼어 둔 동안 끝났으면 요약을 남겨 다시 붙는 화면에 한 번(`Opened.last_script`) |
-//! | 타일 닫기 · 보조 창 파괴 · 모두 닫기 · TTL · 서버 끝 | 멈추고 되돌린다([`retire`] 가 취소 깃발을 세우고 엔진을 닫는다 — 연결이 닫히면 서버도 되돌린다) |
-//! - **서버 고아 자진 종료(`serve::Busy`)는 DB 연결을 세지 않는다** — 붙은 DB 연결은 그 GUI 연결이 이미 `clients` 로 세이고, 떼어 둔
-//!   것의 TTL(10분)은 고아 시계(기본 10분 — `server::DEFAULT_IDLE`)와 같은 순간(GUI 연결이 끊긴 때)에 함께 시작한다. 그래서 DB
-//!   만 남은 서버는 TTL 즈음 함께 끝나고, 끝날 때 남은 DB 연결을 닫는다([`close_all`]) — 세면 "TTL 10분 + 고아 10분" 으로 서버가
-//!   쓸데없이 두 배를 산다. 셸 세션이 있으면 서버는 계속 살고 DB 는 TTL 이 거둔다.
+//! | 타일 닫기 · 보조 창 파괴 · 떨어진 세션 [닫기] · 모두 닫기 · 리로드 TTL · 서버 끝 | 멈추고 되돌린다([`retire`] 가 취소 깃발을 세우고 엔진을 닫는다 — 연결이 닫히면 서버도 되돌린다) |
+//! - **서버 고아 자진 종료(`serve::Busy`)는 떨어진 세션으로 남은 DB 연결을 세션으로 센다**([`kept_count`] — ②): 사람이 닫거나 다시 붙일
+//!   때까지 서버가 산다. 붙은 DB 연결은 그 GUI 연결이 이미 `clients` 로 세이고, 리로드로 떼어 둔 것은 창(그 GUI 연결)이 살아 있어 따로
+//!   세지 않는다. 서버가 끝날 때 남은 DB 연결을 닫는다([`close_all`]).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -70,13 +82,15 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::borrowed;
 use super::mysql::{self, Mysql};
+use crate::delegation::database::DbIdentity;
 use super::net::{self, NetTarget, OpenError, OpenSecrets};
 use super::pg::{self, Pg};
 use super::sqlite::Sqlite;
 use super::script::{self, ScriptMode, ScriptOut};
 use super::{conns, guard, tx, Dialect, EngineError, QueryOut, RunEnd, TxEndError};
-use crate::errors::{with_reason, CANCELLED, DB_NEEDS_WORK, DB_UNCONFIRMED, SESSION_GONE, STALE_LEASE};
+use crate::errors::{with_reason, CANCELLED, DB_CARRY, DB_NEEDS_WORK, DB_UNCONFIRMED, SESSION_GONE, STALE_LEASE};
 use crate::i18n::tr;
 use super::conns::DbEngine;
 
@@ -227,8 +241,10 @@ struct Entry {
     running: Mutex<Option<Running>>,
     /// 방치 되돌리기가 엔진에 닿지 못했다(바쁨 등) — 이 시각 전에는 다시 가지 않는다(시계가 헛돌지 않게 · [`tx_tick`]).
     idle_retry_at: Mutex<Option<Instant>>,
-    /// 떼어 둔 시각(`None` = 붙어 있다) — 이로부터 TTL 뒤에 [`reaper`] 가 닫는다.
-    detached: Mutex<Option<Instant>>,
+    /// 떼어 둔 모양(`None` = 붙어 있다) — 리로드면 TTL 뒤에 [`reaper`] 가 닫고, 창이 사라졌으면 떨어진 세션으로 남는다([`Detached`]).
+    detached: Mutex<Option<Detached>>,
+    /// 표에 선 시각(epoch ms — 떨어진 세션 목록의 `openedAt`).
+    opened_at_ms: u64,
     /// 트랜잭션 작업(1단계 — `tx`). 방치 시계도 [`reaper`] 가 같이 본다.
     tx: Mutex<tx::Slot>,
     /// 떼어 둔 동안 끝난 스크립트의 요약(2단계) — 다시 붙는 화면에 한 번 건넨다(`Opened.last_script`).
@@ -246,19 +262,38 @@ impl Entry {
     }
 
     fn detached_at(&self) -> Option<Instant> {
-        *lock(&self.detached)
+        lock(&self.detached).map(|d| d.at)
     }
 
-    /// 떼어 둔다 — 이미 떼어 뒀으면 시각을 그대로 둔다(TTL 이 늘어나지 않게). 도는 쿼리는 취소한다(받을 화면이 없다) — **트랜잭션
-    /// 작업 안이면 끊지 않는다**: 끊긴 실행은 되돌려지므로(10-13 결정 — 떼어 두기는 작업을 지킨다 · 10-14 부터는 세이브포인트로 그 실행분만) 그 문장은 제 시간
-    /// 제한까지 돌고 결과만 버려진다.
-    fn detach(&self, now: Instant) -> bool {
+    /// 리로드로 떼어 둔 시각(TTL 이 재는 것만 — 떨어진 세션으로 남은 것은 `None`).
+    fn reload_detached_at(&self) -> Option<Instant> {
+        lock(&self.detached).filter(|d| d.how == How::Reload).map(|d| d.at)
+    }
+
+    /// 떨어진 세션으로 남은 시각(TTL 없음 — 열린 트랜잭션만 이로부터 TTL 뒤에 되돌린다).
+    fn kept_since(&self) -> Option<Instant> {
+        lock(&self.detached).filter(|d| d.how != How::Reload).map(|d| d.at)
+    }
+
+    /// 떼어 둔다 — 이미 떼어 뒀으면 시각을 그대로 둔다(TTL 이 늘어나지 않게). 리로드로 떼어 둔 것을 창이 사라진 사건이 다시 부르면
+    /// 떨어진 세션으로 올린다(TTL 이 걷힌다 — 거꾸로는 내리지 않는다: 다시 켠 GUI 의 리로드 거둠이 남은 것에 TTL 을 걸지 않게).
+    /// 도는 쿼리는 취소한다(받을 화면이 없다) — **트랜잭션 작업 안이면 끊지 않는다**: 끊긴 실행은 되돌려지므로(10-13 결정 — 떼어 두기는
+    /// 작업을 지킨다 · 10-14 부터는 세이브포인트로 그 실행분만) 그 문장은 제 시간 제한까지 돌고 결과만 버려진다. 바뀌었나(새로 떼어 둠 · 올림).
+    fn detach(&self, now: Instant, how: How) -> bool {
         {
             let mut d = lock(&self.detached);
-            if d.is_some() {
+            if let Some(cur) = d.as_mut() {
+                if cur.how == How::Reload && how != How::Reload {
+                    cur.how = how;
+                    return true;
+                }
+                if cur.how == How::Kept && how == How::Unclaimed {
+                    cur.how = how;
+                    return true;
+                }
                 return false;
             }
-            *d = Some(now);
+            *d = Some(Detached { at: now, at_ms: crate::session_core::now_ms(), how });
         }
         let in_tx = lock(&self.tx).open_id().is_some();
         if let Some(run) = lock(&self.running).as_ref() {
@@ -292,9 +327,31 @@ impl Entry {
         lock(&self.tx).view(Instant::now())
     }
 
-    fn reattach(&self) {
-        *lock(&self.detached) = None;
+    /// 다시 붙었다 — 떨어진 세션으로 남아 있었나(목록이 바뀐다).
+    fn reattach(&self) -> bool {
+        lock(&self.detached).take().is_some_and(|d| d.how != How::Reload)
     }
+}
+
+/// 떼어 둔 까닭 — TTL 을 거나(리로드) 떨어진 세션으로 남나(창이 사라졌다 · 2026-11-09 사용자 결정 ②).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum How {
+    /// 페이지 리로드 · 웹뷰 크래시(`detach_window`) — 창은 살아 곧 다시 붙는다. [`DETACH_TTL`] 뒤 닫는다.
+    Reload,
+    /// 창이 사라졌다(GUI 종료 · 강제 종료 · 마지막 창 X · GUI 연결 끊김) — TTL 없이 남는다. 다시 켠 GUI 의 복원이 붙거나, 사람이 떨어진
+    /// 세션 목록에서 [닫기] · [새 탭에 붙이기].
+    Kept,
+    /// [`How::Kept`] 인데 책임 창이 복원을 마치며 데려가지 않았다(`restore_done` — 세션 코어의 `unclaimed` 와 같은 뜻).
+    Unclaimed,
+}
+
+/// 떼어 둔 모양.
+#[derive(Debug, Clone, Copy)]
+struct Detached {
+    at: Instant,
+    /// 같은 순간의 벽시계(epoch ms — 목록의 `detachedAt`).
+    at_ms: u64,
+    how: How,
 }
 
 #[derive(Default)]
@@ -403,7 +460,9 @@ fn lookup(handle: u64, lease: Option<u64>) -> Result<Arc<Entry>, String> {
             return Err(stale());
         }
         // 지금 임대가 부른다 = 그 타일은 살아 있다(늦게 닿은 `detach_window` 가 떼어 놓았어도) — 다시 붙은 것으로.
-        e.reattach();
+        if e.reattach() {
+            crate::server::sessions::detached_changed();
+        }
     }
     Ok(e)
 }
@@ -415,6 +474,9 @@ fn stream_ok(s: &str) -> bool {
 /// 옛 연결을 표에서 빼고 도는 쿼리를 끊는다(엔진은 마지막 `Arc` 가 떨어질 때 닫힌다).
 fn retire(t: &mut Table, e: &Arc<Entry>) {
     t.by_handle.remove(&e.handle);
+    if e.kept_since().is_some() {
+        crate::server::sessions::detached_changed();
+    }
     if t.by_stream.get(&e.stream).is_some_and(|x| Arc::ptr_eq(x, e)) {
         t.by_stream.remove(&e.stream);
     }
@@ -423,6 +485,10 @@ fn retire(t: &mut Table, e: &Arc<Entry>) {
         run.cancelled.store(true, Ordering::SeqCst);
     }
     e.engine.shutdown();
+    // 그 연결 id 의 마지막 사람 타일이었다 — 빌린 비밀번호를 지운다(그 값으로 연 AI 읽기 연결도 — 도는 조회는 끝까지).
+    if !t.by_handle.values().any(|x| x.target.id == e.target.id) {
+        borrowed::last_tile_closed(&e.target.id);
+    }
 }
 
 /// 참조가 가리키는 연결 — 파일에서 해석한 값.
@@ -436,15 +502,17 @@ pub(super) enum Resolved {
 
 /// 참조를 **파일에서** 해석한다(블로킹 풀) — `db-connections.json` 의 그 id 줄(GUI 가 보낸 주소를 믿지 않는다 — 몸에는 참조뿐이다).
 /// 경유 호스트가 `~/.ssh/config` 에 없으면 분명한 문구로 거절한다(SSH 쪽은 모르는 별칭을 호스트 이름으로 보고 붙으려 한다).
-async fn resolve(target: &ConnRef) -> Result<Resolved, String> {
+/// 둘째 값 = 그 줄의 신원(빌린 비밀번호의 스냅샷 — `DbIdentity::of(.., None)` · [`test_vault_allowed`] 와 같은 눈).
+async fn resolve(target: &ConnRef) -> Result<(Resolved, DbIdentity), String> {
     let id = target.id.clone();
     tokio::task::spawn_blocking(move || {
         let d = conns::find(&id)?;
+        let ident = DbIdentity::of(&d, None);
         let hosts = match d.via {
             Some(_) => crate::ssh_config::load_default()?.hosts,
             None => Vec::new(),
         };
-        resolve_conn(d, |alias| hosts.iter().any(|h| conns::same_alias(&h.name, alias)))
+        resolve_conn(d, |alias| hosts.iter().any(|h| conns::same_alias(&h.name, alias))).map(|r| (r, ident))
     })
     .await
     .map_err(|_| task_failed())?
@@ -486,17 +554,46 @@ pub(super) fn resolve_conn(d: conns::DbConn, known: impl Fn(&str) -> bool) -> Re
     Ok(if pg { Resolved::Pg(t) } else { Resolved::Mysql(t) })
 }
 
-/// 엔진을 연다 — 참조를 파일에서 해석한 값으로.
-async fn open_engine(stream: &str, target: &ConnRef, secrets: OpenSecrets) -> Result<Engine, OpenError> {
-    match resolve(target).await? {
+/// 빌린 비밀번호의 재료 — 인증에 쓴 값과 그 줄의 신원(**`Debug` 없음**).
+pub(super) type Borrow = (DbIdentity, zeroize::Zeroizing<String>);
+
+/// 엔진을 연다 — 참조를 파일에서 해석한 값으로. 둘째 값 = 네트워크 엔진(PG · MySQL)이 비밀번호로 인증했으면 그 값과 줄의 신원(SQLite ·
+/// 비밀번호 없이 붙음은 `None`). 비밀번호 자리는 엔진에 넘기기 전에 정한다(`OpenSecrets::settle_password` — 몸이 비었으면 볼트 값 · 표지는 볼트 값
+/// 그대로) — 그래야 인증에 쓴 바로 그 값을 담는다.
+///
+/// `carried` = 같은 stream 의 끊긴 항목이 쥐고 있던 빌린 비밀번호(떨어진 세션을 다시 붙이는데 DB 쪽이 연결을 끊었다 — ②). 몸이 비었고
+/// 신원이 같을 때만 볼트보다 먼저 쓴다(거절되면 평소처럼 묻는다).
+async fn open_engine(
+    stream: &str,
+    target: &ConnRef,
+    mut secrets: OpenSecrets,
+    carried: Option<Borrow>,
+) -> Result<(Engine, Option<Borrow>), OpenError> {
+    let (resolved, ident) = resolve(target).await?;
+    if !matches!(resolved, Resolved::Sqlite(_)) {
+        seat_carried(&mut secrets, carried, &ident);
+        secrets.settle_password(&target.id);
+    }
+    let used = secrets.password.clone();
+    let borrow = |used: Option<zeroize::Zeroizing<String>>| used.map(|pw| (ident, pw));
+    match resolved {
         Resolved::Sqlite(path) => {
             let s = tokio::task::spawn_blocking(move || Sqlite::open(std::path::Path::new(&path), false))
                 .await
                 .map_err(|_| task_failed())??;
-            Ok(Engine::Sqlite(Arc::new(s)))
+            Ok((Engine::Sqlite(Arc::new(s)), None))
         }
-        Resolved::Pg(t) => Ok(Engine::Pg(Arc::new(Pg::connect(stream, t, secrets).await?))),
-        Resolved::Mysql(t) => Ok(Engine::Mysql(Arc::new(Mysql::connect(stream, t, secrets).await?))),
+        Resolved::Pg(t) => Ok((Engine::Pg(Arc::new(Pg::connect(stream, t, secrets).await?)), borrow(used))),
+        Resolved::Mysql(t) => Ok((Engine::Mysql(Arc::new(Mysql::connect(stream, t, secrets).await?)), borrow(used))),
+    }
+}
+
+/// 비밀번호 자리의 차례(네트워크 엔진의 새 열기)는 **몸 → 끊긴 항목의 빌린 값(신원이 같을 때) → 볼트**다 — 이 함수가 둘째를 앉히고
+/// 뒤따르는 `settle_password` 가 셋째를 본다. 빌린 값이 섰으면 볼트에 닿지 않는다(잠겨 있어도 묻지 않고 붙는다 — 붙은 접근은 볼트와
+/// 무관 · `db::borrowed`).
+pub(super) fn seat_carried(secrets: &mut OpenSecrets, carried: Option<Borrow>, ident: &DbIdentity) {
+    if secrets.password.is_none() {
+        secrets.password = carried.filter(|(i, _)| i.same(ident)).map(|(_, pw)| pw);
     }
 }
 
@@ -511,10 +608,20 @@ pub(crate) async fn open(
     if !stream_ok(&stream) {
         return Err(OpenError::Msg(tr!(ko: "타일 열쇠가 올바르지 않습니다", en: "The tile key is invalid")));
     }
+    // 같은 stream 의 끊긴 항목(떨어진 세션 · 리로드 뒤 DB 쪽이 연결을 끊었다)이 빌린 비밀번호를 쥐고 있으면 — 아래 재부착이 그 항목을
+    // 거두며 지우기 전에 — 다시 붙는 데 쓰려고 잡아 둔다(값은 이 프로세스 밖으로 나가지 않는다).
+    let carried = {
+        let t = lock(&TABLE);
+        t.by_stream
+            .get(&stream)
+            .filter(|e| e.target == target && e.engine.is_dead())
+            .and_then(|_| borrowed::carry(&target.id))
+    };
     if let Some(e) = reattach(&stream, &target, &window, conn) {
         return Ok(e);
     }
-    let engine = open_engine(&stream, &target, secrets).await?;
+    // 빌린 비밀번호의 재료 — 인증에 쓴 값(사람이 친 값 · 볼트에서 읽은 값 · 끊긴 항목에서 잡아 둔 값 — `db::borrowed`).
+    let (engine, borrow) = open_engine(&stream, &target, secrets, carried).await?;
     let mut t = lock(&TABLE);
     // 여는 사이 같은 stream 이 섰다 — 같은 참조면 그쪽에 붙고(방금 연 것은 버린다), 다르면 옛것을 닫는다.
     if let Some(old) = t.by_stream.get(&stream).cloned() {
@@ -538,34 +645,62 @@ pub(crate) async fn open(
         running: Mutex::new(None),
         idle_retry_at: Mutex::new(None),
         detached: Mutex::new(None),
+        opened_at_ms: crate::session_core::now_ms(),
         tx: Mutex::new(tx::Slot::default()),
         script_note: Mutex::new(None),
         auto_commit: AtomicBool::new(true),
     });
-    // 여는 사이 그 연결이 끊겼다 — 받을 화면이 없다. 곧바로 떼어 둔다(TTL 이 거둔다 · 다시 켠 GUI 가 붙을 수 있다).
-    if !t.conns.contains(&conn) && entry.detach(Instant::now()) {
+    // 여는 사이 그 연결이 끊겼다 — 받을 화면이 없다. 곧바로 떨어진 세션으로 남긴다(다시 켠 GUI 가 붙거나 사람이 목록에서 닫는다).
+    if !t.conns.contains(&conn) && entry.detach(Instant::now(), How::Kept) {
         wake_reaper();
+        crate::server::sessions::detached_changed();
     }
     t.by_stream.insert(stream, entry.clone());
     t.by_handle.insert(entry.handle, entry.clone());
+    borrowed::tile_opened(&entry.target.id);
+    // 비밀번호로 인증에 성공했다(친 값 · 볼트 값) — 그 연결의 사람 타일이 붙어 있는 동안 AI 연결이 빌려 쓴다("볼트에 저장" 체크 · 볼트 잠금과 무관).
+    if let Some((ident, pw)) = borrow {
+        borrowed::remember(&entry.target.id, ident, pw);
+    }
     Ok(opened(&entry, false))
 }
 
 /// 있는 연결에 **다시 붙기만** 한다(`db_open` 의 `reattachOnly`) — 없거나(TTL 이 지났다 · 닫혔다) 참조가 다르거나 끊겼으면
-/// `[session-gone]`(새로 열지 않는다 — 부르는 쪽이 볼트·비밀번호 관문을 지나 평소처럼 연다).
+/// `[session-gone]`(새로 열지 않는다 — 부르는 쪽이 볼트·비밀번호 관문을 지나 평소처럼 연다). 끊긴 같은 참조의 항목이 빌린 비밀번호를
+/// 쥐고 있으면 `[db-carry]` 를 덧단다([`gone_after_reattach`] — 새 열기가 그 값으로 붙으니 프런트는 볼트 잠금 해제를 먼저 묻지 않는다).
 pub(crate) fn reattach_only(stream: &str, window: &str, conn: u64, target: &ConnRef) -> Result<Opened, String> {
     if !stream_ok(stream) {
         return Err(gone());
     }
-    reattach(stream, target, window, conn).ok_or_else(gone)
+    reattach_with(stream, target, window, conn, true).ok_or_else(|| {
+        let carry = lock(&TABLE)
+            .by_stream
+            .get(stream)
+            .is_some_and(|e| e.target == *target && e.engine.is_dead() && borrowed::can_carry(&target.id));
+        gone_after_reattach(carry)
+    })
 }
 
-/// 같은 stream·같은 참조의 연결이 있으면 임대 회차 +1 · 쥔 쪽 교체. 참조가 다르거나 끊긴 연결이면 옛것을 닫고 `None`.
-fn reattach(stream: &str, target: &ConnRef, window: &str, conn: u64) -> Option<Opened> {
+/// [`reattach_only`] 의 실패 문구 — `carry` = 뒤따르는 [`open`] 이 끊긴 항목의 빌린 비밀번호(`borrowed::carry`)로 붙을 수 있다(신원이
+/// 같으면 — 견주기는 [`open`] 의 몫). 표지는 값이 아니라 있다는 것뿐이다. 프런트(`query/open-flow`)는 이 표지면 볼트 잠금 해제 관문 앞에서
+/// 한 번 열어 보고, 실패하면 평소 관문(볼트 → 묻기)으로 간다.
+pub(super) fn gone_after_reattach(carry: bool) -> String {
+    if carry {
+        with_reason(DB_CARRY, gone())
+    } else {
+        gone()
+    }
+}
+
+/// 같은 stream·같은 참조의 연결이 있으면 임대 회차 +1 · 쥔 쪽 교체. 참조가 다르면 옛것을 닫고 `None`. 끊긴 연결이면 `None` 인데 —
+/// `keep_dead`(붙기만 — [`reattach_only`])면 표에 그대로 둔다: 뒤따르는 새 열기([`open`])가 그 항목의 빌린 비밀번호로 다시 붙는다(②).
+fn reattach_with(stream: &str, target: &ConnRef, window: &str, conn: u64, keep_dead: bool) -> Option<Opened> {
     let mut t = lock(&TABLE);
     let e = t.by_stream.get(stream).cloned()?;
     if e.target != *target || e.engine.is_dead() {
-        retire(&mut t, &e);
+        if !(keep_dead && e.target == *target) {
+            retire(&mut t, &e);
+        }
         return None;
     }
     e.lease.fetch_add(1, Ordering::SeqCst);
@@ -573,12 +708,103 @@ fn reattach(stream: &str, target: &ConnRef, window: &str, conn: u64) -> Option<O
         window: window.to_string(),
         conn,
     };
-    if t.conns.contains(&conn) {
-        e.reattach();
-    } else if e.detach(Instant::now()) {
-        wake_reaper();
+    let listed = if t.conns.contains(&conn) {
+        e.reattach()
+    } else {
+        if e.detach(Instant::now(), How::Kept) {
+            wake_reaper();
+        }
+        true
+    };
+    drop(t);
+    if listed {
+        crate::server::sessions::detached_changed();
     }
     Some(opened(&e, true))
+}
+
+fn reattach(stream: &str, target: &ConnRef, window: &str, conn: u64) -> Option<Opened> {
+    reattach_with(stream, target, window, conn, false)
+}
+
+// ---------------------------------------------------------------------------
+// [연결 테스트](`db_test` — DB 연결 폼, 판 28) — 표에 오르지 않는 한 번의 접속
+// ---------------------------------------------------------------------------
+
+/// [연결 테스트] 의 열쇠 머리 — 폼이 시도마다 새로 뽑는다(`dbtest-<임의>`). 타일 열쇠(`query:…`)와 섞이지 않게 이 머리만 받는다
+/// (비밀번호를 묻는 동안 세워 둔 경유 전송로 — `net::park` — 를 타일 것과 나눠 갖지 않는다).
+pub(crate) const TEST_STREAM_PREFIX: &str = "dbtest-";
+
+/// [연결 테스트] 의 답 — 비밀 없음.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Tested {
+    pub dialect: &'static str,
+    /// 엔진이 접속 때 이미 읽은 판 글자(쿼리 타일 정보 카드와 같은 값 — `Engine::server_version`).
+    pub server_version: String,
+    /// 경유 호스트 별칭(`None` = 직접).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    /// 해석부터 접속 · 판 읽기까지 걸린 시간.
+    pub elapsed_ms: u64,
+}
+
+/// **[연결 테스트] 가 볼트 비밀번호로 물러나도 되나** — **순수**. 저장된 같은 id 의 줄이 있고(`saved`) 초안의 **대상**이 그 줄과
+/// 같을 때만 참이다. 대상의 같음은 AI 권한의 신원 스냅샷과 같은 눈(`delegation::database::DbIdentity` — 엔진 · 경유 · 주소 · 포트 ·
+/// DB · 사용자 · SQLite 파일, 이름 · TLS · 폴더는 보지 않는다)이다. 경유 별칭이 가리키는 SSH 서버는 두 쪽이 같은 별칭이면 지금 같은
+/// 곳이라 비교에서 뺀다(`None`). 새 id · 바뀐 대상이면 거짓 — 볼트의 비밀번호가 사람이 고르지 않은 다른 서버로 가지 않게.
+pub(crate) fn test_vault_allowed(saved: Option<&conns::DbConn>, draft: &conns::DbConn) -> bool {
+    saved.is_some_and(|s| s.id == draft.id && DbIdentity::of(s, None).same(&DbIdentity::of(draft, None)))
+}
+
+/// **[연결 테스트]** — 저장하지 않은 폼 값(`draft`)으로 한 번 붙어 보고 곧바로 닫는다.
+///
+/// - 초안은 **저장과 같은 검사**(`conns::validate_list`)를 지나고, 붙을 곳은 타일과 같은 순수 해석(`resolve_conn` + `~/.ssh/config`
+///   별칭 확인)으로 정한다. 엔진의 접속도 타일과 같다(`Pg::connect` · `Mysql::connect` · SQLite 읽기 전용 열기) — 접속이 이미 하는
+///   것(판 읽기 · MySQL 세션 기본값) 밖의 문장은 보내지 않는다.
+/// - **볼트 물러남은 서버가 정한다**([`test_vault_allowed`] — 저장된 파일을 여기서 다시 읽는다 · GUI 가 보낸 판단은 없다). 아니면
+///   몸의 비밀번호뿐이다(없는데 서버가 요구하면 `[db-password]` — 폼이 묻는다).
+/// - **표에 오르지 않는다**(핸들 · 임대 · 떨어진 연결 없음 — 성공하면 엔진을 곧바로 `shutdown`) · 접속 기록(독 DB 칸 "최근" — 적는 곳은 서버 op `db_open` 하나)에 남지 않는다.
+pub(crate) async fn test(stream: &str, draft: conns::DbConn, mut secrets: OpenSecrets) -> Result<Tested, OpenError> {
+    if !stream_ok(stream) || !stream.starts_with(TEST_STREAM_PREFIX) {
+        return Err(OpenError::Msg(tr!(ko: "연결 테스트 열쇠가 올바르지 않습니다", en: "The connection test key is invalid")));
+    }
+    let started = Instant::now();
+    let (resolved, vault, via) = tokio::task::spawn_blocking(move || {
+        let clean = conns::validate_list(std::slice::from_ref(&draft))?.pop().ok_or_else(task_failed)?;
+        // 저장된 같은 id 의 줄 — 파일이 없거나 못 읽으면 없는 것(닫힌 쪽: 볼트를 쓰지 않는다).
+        let saved = conns::path()
+            .and_then(|p| conns::load_at(&p).ok())
+            .and_then(|l| l.conns.into_iter().find(|d| d.id == clean.id));
+        let vault = test_vault_allowed(saved.as_ref(), &clean);
+        let hosts = match clean.via {
+            Some(_) => crate::ssh_config::load_default()?.hosts,
+            None => Vec::new(),
+        };
+        let via = clean.via.clone();
+        resolve_conn(clean, |alias| hosts.iter().any(|h| conns::same_alias(&h.name, alias))).map(|r| (r, vault, via))
+    })
+    .await
+    .map_err(|_| task_failed())??;
+    secrets.vault = vault;
+    let engine = match resolved {
+        Resolved::Sqlite(path) => {
+            let s = tokio::task::spawn_blocking(move || Sqlite::open(std::path::Path::new(&path), false))
+                .await
+                .map_err(|_| task_failed())??;
+            Engine::Sqlite(Arc::new(s))
+        }
+        Resolved::Pg(t) => Engine::Pg(Arc::new(Pg::connect(stream, t, secrets).await?)),
+        Resolved::Mysql(t) => Engine::Mysql(Arc::new(Mysql::connect(stream, t, secrets).await?)),
+    };
+    let out = Tested {
+        dialect: engine.dialect().as_str(),
+        server_version: engine.server_version(),
+        via,
+        elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+    };
+    engine.shutdown();
+    Ok(out)
 }
 
 /// 네트워크 엔진(PG · MySQL)은 서버(`statement_timeout` · `max_execution_time`/`max_statement_time`)나 엔진 자신의 타이머
@@ -1521,10 +1747,10 @@ pub(crate) fn conn_opened(conn: u64) {
     lock(&TABLE).conns.insert(conn);
 }
 
-/// 떼어 둔다 — `pick` 이 고른 것만. 떼어 둔 수(이미 떼어 둔 것은 세지 않는다).
-fn detach_where(t: &Table, pick: impl Fn(&Entry) -> bool) -> usize {
+/// 떼어 둔다 — `pick` 이 고른 것만. 바뀐 수(이미 같은 모양으로 떼어 둔 것은 세지 않는다 · 리로드 → 떨어진 세션 올림은 센다).
+fn detach_where(t: &Table, how: How, pick: impl Fn(&Entry) -> bool) -> usize {
     let now = Instant::now();
-    let n = t.by_handle.values().filter(|e| pick(e)).filter(|e| e.detach(now)).count();
+    let n = t.by_handle.values().filter(|e| pick(e)).filter(|e| e.detach(now, how)).count();
     if n > 0 {
         wake_reaper();
     }
@@ -1546,17 +1772,96 @@ fn close_where(pick: impl Fn(&Entry) -> bool) -> Vec<String> {
     streams
 }
 
-/// 서버 연결이 끊겼다(GUI 종료·kill·quitAll 뒤) — 그 연결이 쥔 DB 연결을 떼어 둔다. 떼어 둔 수.
+/// 서버 연결이 끊겼다(GUI 종료·kill·quitAll 뒤) — 그 연결이 쥔 DB 연결을 **떨어진 세션으로 남긴다**(TTL 없음 — ②). 바뀐 수.
 pub(crate) fn conn_gone(conn: u64) -> usize {
     let mut t = lock(&TABLE);
     t.conns.remove(&conn);
-    detach_where(&t, |e| lock(&e.holder).conn == conn)
+    detach_where(&t, How::Kept, |e| lock(&e.holder).conn == conn)
 }
 
-/// 페이지 리로드·웹뷰 크래시 — 그 창이 쥔 DB 연결을 떼어 둔다(`skip` = 이관 중인 stream). 떼어 둔 수.
+/// 페이지 리로드·웹뷰 크래시 — 그 창이 쥔 DB 연결을 떼어 둔다(TTL — `skip` = 이관 중인 stream). 떼어 둔 수.
 pub(crate) fn detach_window(window: &str, skip: &HashSet<String>) -> usize {
     let t = lock(&TABLE);
-    detach_where(&t, |e| !skip.contains(&e.stream) && lock(&e.holder).window == window)
+    detach_where(&t, How::Reload, |e| !skip.contains(&e.stream) && lock(&e.holder).window == window)
+}
+
+/// 앱 전체 종료 중의 창 파괴(마지막 창 X → 트레이 · GUI 끝내기 — `detach_window` 의 `dbOnly`) — 그 창이 쥔 DB 연결을 **떨어진 세션으로
+/// 남긴다**(TTL 없음 — ② · `skip` = 이관 중인 stream). 바뀐 수.
+pub(crate) fn keep_window(window: &str, skip: &HashSet<String>) -> usize {
+    let t = lock(&TABLE);
+    detach_where(&t, How::Kept, |e| !skip.contains(&e.stream) && lock(&e.holder).window == window)
+}
+
+/// **복원이 끝났다**(op `restore_done` — 세션 코어와 같은 규칙) — 이 창이 쥔 떼어 둔 DB 연결 중 `keep`(복원된 타일들의 열쇠)에 없는 것을
+/// "데려가지 않음" 으로 적는다(리로드로 떼어 둔 것도 — TTL 이 걷히고 떨어진 세션 목록에 남는다). 붙어 있는 것은 건드리지 않는다. 적은 수.
+pub(crate) fn restore_done(window: &str, keep: &HashSet<String>) -> usize {
+    let t = lock(&TABLE);
+    let now = Instant::now();
+    t.by_handle
+        .values()
+        .filter(|e| e.detached_at().is_some() && !keep.contains(&e.stream) && lock(&e.holder).window == window)
+        .filter(|e| {
+            // 리로드 → 남김 → 데려가지 않음(`detach` 는 한 번에 한 칸만 올린다).
+            e.detach(now, How::Kept);
+            e.detach(now, How::Unclaimed)
+        })
+        .count()
+}
+
+/// 떨어진 세션 목록의 [닫기](op `close_detached`) — **지금 떼어 둔 것만** 닫는다(그 사이 누가 붙었으면 `false`). 빌린 비밀번호도
+/// 마지막 타일이면 지운다([`retire`]).
+pub(crate) fn close_detached(stream: &str) -> bool {
+    let mut t = lock(&TABLE);
+    let Some(e) = t.by_stream.get(stream).cloned().filter(|e| e.detached_at().is_some()) else {
+        return false;
+    };
+    retire(&mut t, &e);
+    drop(t);
+    net::drop_parked(stream);
+    true
+}
+
+/// 떨어진 세션 목록의 DB 한 줄(op `sessions_detached` — `server::sessions::detached_rows` 가 세션 줄과 함께 싣는다).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DetachedDb {
+    pub stream: String,
+    pub home: String,
+    pub opened_at_ms: u64,
+    pub detached_at_ms: u64,
+    pub unclaimed: bool,
+    /// `db-connections.json` 의 연결 id(화면이 이름 · AI 권한을 제 사본에서 푼다).
+    pub conn: String,
+    pub writable: bool,
+    /// 열린 트랜잭션 작업이 있다(떨어진 지 [`DETACH_TTL`] 이면 되돌린다).
+    pub in_tx: bool,
+}
+
+/// 떨어진 세션으로 남은 DB 연결(리로드로 떼어 둔 것 · 붙은 것은 빼고) — 최근에 떨어진 것부터.
+pub(crate) fn detached_rows() -> Vec<DetachedDb> {
+    let entries: Vec<Arc<Entry>> = lock(&TABLE).by_handle.values().cloned().collect();
+    let mut rows: Vec<DetachedDb> = entries
+        .iter()
+        .filter_map(|e| {
+            let d = (*lock(&e.detached)).filter(|d| d.how != How::Reload)?;
+            Some(DetachedDb {
+                stream: e.stream.clone(),
+                home: lock(&e.holder).window.clone(),
+                opened_at_ms: e.opened_at_ms,
+                detached_at_ms: d.at_ms,
+                unclaimed: d.how == How::Unclaimed,
+                conn: e.target.id.clone(),
+                writable: e.engine.writable(),
+                in_tx: lock(&e.tx).open_id().is_some(),
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| b.detached_at_ms.cmp(&a.detached_at_ms).then_with(|| a.stream.cmp(&b.stream)));
+    rows
+}
+
+/// 떨어진 세션으로 남은 DB 연결 수 — 서버 고아 자진 종료(`serve::Busy.sessions`)가 세션으로 센다(②).
+pub(crate) fn kept_count() -> usize {
+    lock(&TABLE).by_handle.values().filter(|e| e.kept_since().is_some()).count()
 }
 
 /// 창 파괴(보조 창 닫기) — 그 창이 쥔 DB 연결을 닫는다(떼어 둔 것까지 · `held` = 이관 중인 stream 은 뺀다). 닫은 수.
@@ -1592,10 +1897,10 @@ fn expire(now: Instant) -> (Vec<String>, Option<Instant>) {
     let next = lock(&TABLE)
         .by_handle
         .values()
-        .filter_map(|e| e.detached_at().map(|at| at + ttl))
+        .filter_map(|e| e.reload_detached_at().map(|at| at + ttl))
         .filter(|&due| due > now)
         .min();
-    let gone = close_where(|e| e.detached_at().is_some_and(|at| at + ttl <= now));
+    let gone = close_where(|e| e.reload_detached_at().is_some_and(|at| at + ttl <= now));
     (gone, next)
 }
 
@@ -1604,6 +1909,7 @@ fn expire(now: Instant) -> (Vec<String>, Option<Instant>) {
 /// 다음 할 일의 시각을 돌려준다.
 fn tx_tick(now: Instant) -> Option<Instant> {
     let (limit, warn) = tx::clock();
+    let ttl = ttl();
     let entries: Vec<Arc<Entry>> = lock(&TABLE).by_handle.values().cloned().collect();
     let mut next: Option<Instant> = None;
     for e in entries {
@@ -1611,8 +1917,15 @@ fn tx_tick(now: Instant) -> Option<Instant> {
         if e.reconcile_tx() == Some(tx::Outcome::Disconnected) {
             crate::server::log::line(format!("db: open transaction on handle {} ended by a lost connection", e.handle));
         }
+        // 떨어진 세션으로 남은 연결의 열린 작업은 떨어진 지 TTL 이면 되돌린다(연결은 남는다 — ② · DB 잠금을 무기한 쥐지 않게).
+        let kept_due = e.kept_since().map(|at| at + ttl);
         loop {
-            let due = lock(&e.tx).next_due(limit, warn);
+            let mut due = lock(&e.tx).next_due(limit, warn);
+            if let (Some(k), Some((at, _))) = (kept_due, due) {
+                if k <= at {
+                    due = Some((k, tx::Due::Expire));
+                }
+            }
             let Some((at, what)) = due else { break };
             if at > now {
                 next = Some(next.map_or(at, |n| n.min(at)));

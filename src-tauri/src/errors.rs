@@ -79,6 +79,10 @@ pub const STALE_LIST: &str = "stale-list";
 
 /// DB 가 비밀번호를 청했는데 실은 것이 없다(볼트에도 없다) — 쿼리 타일이 **DB 접속 모달**을 띄운다(7단계).
 pub const DB_PASSWORD: &str = "db-password";
+/// [`SESSION_GONE`] 의 덧말(쿼리 타일의 붙기만 — `db::table::reattach_only`) — 같은 타일의 끊긴 연결이 **빌린 비밀번호**를 쥐고 있어
+/// 새 열기가 그 값으로 다시 붙을 수 있다(`db::borrowed` 의 `carry`). 쿼리 타일은 볼트 잠금 해제를 먼저 묻지 않고 한 번 열어 본다
+/// (`query/open-flow` — 실패하면 평소 관문). 값이 아니라 있다는 표지뿐이다.
+pub const DB_CARRY: &str = "db-carry";
 /// DB 가 비밀번호를 거절했다(PG 28P01) — 쿼리 타일이 모달로 다시 묻는다.
 pub const DB_AUTH: &str = "db-auth";
 /// [`DB_AUTH`] 의 덧말 — 거절된 값이 **볼트에 담겨 있던 것**이었다(모달이 저장 체크를 미리 켠다 — SSH `stored_rejected` 와 같은 뜻).

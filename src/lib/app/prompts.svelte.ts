@@ -293,6 +293,22 @@ function finishVaultUnlock(): void {
   for (const item of waiting) item.resolve();
 }
 
+/**
+ * **다른 곳에서 볼트가 열렸다** — 가림막을 걷은 자리(`app/veil` 의 `closeVeil` · 다른 창의 걷힘 소식)가 부른다(2026-11-10).
+ *
+ * 카드가 먼저 뜨고 그 위에 가림막이 선 뒤 가림막으로 볼트를 열면, 예전에는 밑에 깔린 카드가 그대로 남아 같은 볼트를 한 번 더
+ * 물었다(카드를 닫는 문 [`finishVaultUnlock`] 을 카드 자신의 단추만 불렀다). 이제 볼트가 **실제로 열렸을 때만**(`status(true)` 가
+ * `unlocked`) 같은 문으로 닫아 기다리던 접속을 모두 잇는다 — 열리지 않았으면(볼트 없음 · 여전히 잠김) 카드는 그대로다.
+ * 카드가 [열기]를 처리하는 중이면 그쪽이 닫는다.
+ */
+export async function settleVaultUnlockIfOpen(): Promise<void> {
+  if (!vault.canSettleUnlockCard(vuQueue.length, vu.busy, "unlocked")) return;
+  const status = await vault.status(true);
+  if (!vault.canSettleUnlockCard(vuQueue.length, vu.busy, status.state)) return;
+  vaultUi.hasMaster = status.hasMaster;
+  finishVaultUnlock();
+}
+
 /** [이번엔 건너뛰기] · Escape — 금고 없이 이번 접속을 계속한다 */
 export function skipVaultUnlock(): void {
   if (vu.busy) return;
@@ -401,7 +417,8 @@ export function resolvePassword(value: string | null): void {
   pw.value = "";
   pw.save = false;
   if (pwQueue.length === 0) returnFocus(FOCUS_PASSWORD);
-  if (value !== null && save && value !== "") {
+  // 저장 칸을 숨긴 물음(`noSave` — 연결 테스트)은 체크가 남아 있어도 담지 않는다.
+  if (value !== null && save && value !== "" && !item?.prompt.noSave) {
     // DB 접속 모달이면 볼트 `db_password`(대상 = 연결 id) — 담는 것은 역시 **접속이 선 뒤**다(`query/open-flow`).
     if (db) rememberSave("db_password", db.id, value);
     else if (alias !== undefined) rememberSave("password", alias, value);
@@ -476,7 +493,7 @@ export function resolvePassphrase(value: string | null): void {
   pp.value = "";
   pp.save = false;
   if (ppQueue.length === 0) returnFocus(FOCUS_PASSPHRASE);
-  if (value !== null && save && path !== undefined && value !== "") {
+  if (value !== null && save && path !== undefined && value !== "" && !item?.prompt.noSave) {
     rememberSave("passphrase", path, value);
   }
   item?.resolve(value);

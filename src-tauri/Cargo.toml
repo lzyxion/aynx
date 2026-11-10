@@ -51,6 +51,14 @@ debug = false
 [profile.dev.package.argon2]
 opt-level = 3
 
+# 서버 해석기(`screen_mirror` — 세션 출력을 바이트마다 읽는다)도 개발 빌드에서 최적화해 둔다. 디버그 빌드의 vt100 은 초당 4~6MB 라
+# 출력이 쏟아지는 셸(`cat` 큰 파일)에서 배처를 늦출 수 있다 — 최적화하면 50~100MB/s(실측 2026-11-09). 우리 코드는 그대로다.
+[profile.dev.package.vt100]
+opt-level = 3
+
+[profile.dev.package.vte]
+opt-level = 3
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -103,6 +111,11 @@ russh-sftp = "=2.4.0"
 # 무거운 async MCP 프레임워크 대신 블로킹 tiny_http 를 별도 std 스레드에서 돌린다
 # (docs/verification/mcp.md). tokio 런타임과 얽히지 않는다.
 tiny_http = "0.12"
+# **서버 해석기**(2026-11-09 — `screen_mirror.rs`): 붙은 창이 없을 때 세션 서버가 출력 바이트를 화면으로 해석해 AI 거울(스크롤백 ·
+# OSC 133 명령 구간)을 잇는다. MIT · 의존은 vte(Apache-2.0 OR MIT) · unicode-width · itoa · arrayvec(MIT OR Apache-2.0 — 모두 작고 순수 ·
+# 잠금에 새로 오른 것은 vt100 · vte · unicode-width · arrayvec 넷, itoa 는 이미 있었다). 스크롤백은 크레이트에
+# 맡기지 않는다(용량 0 — 셀 32바이트라 글자로 따로 쥔다). 대안: avt(Apache-2.0 — OSC 콜백이 없다) · alacritty_terminal/termwiz(무겁다).
+vt100 = "=0.18.1"
 # MCP Bearer 토큰(32바이트 무작위 hex) 생성용. 이미 전이 의존(russh 경유)이라 새로 받는
 # 크레이트가 없다 — 직접 의존으로만 올린다. 시각·PID 해시보다 예측 저항이 강하다.
 getrandom = "0.3"

@@ -76,6 +76,7 @@
     bind:this={modalEl}
     onkeydown={onKeydown}
   >
+    <div class="glass-scroll">
     <h2 id="folder-edit-title">{t("files.hostmenu.edit.title")}</h2>
     <form
       onsubmit={(ev) => {
@@ -114,6 +115,7 @@
         >
       </div>
     </form>
+    </div>
   </div>
 </div>
 
@@ -135,12 +137,17 @@
     width: 100%;
     max-width: 440px;
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   h2 {

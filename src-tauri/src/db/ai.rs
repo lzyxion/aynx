@@ -11,8 +11,18 @@
 //! - **늘 읽기 전용** — 연결은 읽기 전용으로 열고(SQLite 읽기 전용 열기 · PG/MySQL 은 쓰기 플래그를 켜는 함수를 이 모듈이 부르지 않는다),
 //!   조회는 가드의 읽기 전용 모드(`script::plan(…, ScriptMode::ReadOnly)` — 문장마다 첫 낱말 허용 목록) → 엔진 `READ ONLY` 트랜잭션.
 //!   열린 연결이 쓰기 가능으로 보이면 쓰지 않고 거절한다(그물). 시험 `db_ai_connections_are_read_only_forever`.
-//! - **비밀번호는 볼트에서만**(`net::password_for(None, id)` — 세션 서버 안 · 값이 이 모듈 밖으로 나가지 않는다). AI 는 비밀번호를 칠 수
-//!   없으므로 없거나 볼트가 잠겼으면 "사람이 쿼리 타일에서 한 번 열어 저장" 안내 오류.
+//! - **비밀번호는 빌린 값 → 볼트**(2026-11-09 사용자 결정 — `db::borrowed`): 그 연결의 사람 쿼리 타일이 비밀번호(친 값 · 볼트 값)로 인증해
+//!   붙어 있는 동안은 그 값(세션 서버 메모리)을 먼저 — **볼트 잠금 · 가림막 · 창 0개와 무관하다** — 없으면 볼트(`net::password_for` — 볼트가
+//!   열려 있어야 한다). **볼트 차례는 그 연결에 헤드리스 위임(`[[database]] headless` — 타일 없이 AI 접속)이 있을 때만**(2026-11-09 — 사람 없이
+//!   새로 여는 것은 명시적 위임) — 없으면 볼트를 읽지 않고(경유 SSH 도 열지 않고) 따로 가른 문구로 실패한다([`headless_off_text`]). 판정은 증표
+//!   ([`authorize`] — 호출마다 지금 `delegation.toml`)와 [`open_with`] 한 곳. 빌린 값이 거절되면 그 값을 버리고 (헤드리스면) 볼트로 한 번 더.
+//!   값은 세션 서버 안 · 이 모듈 밖으로 나가지 않는다.
+//! - **SQLite 도 헤드리스 칸을 따른다**(2026-11-09 사용자 결정 — 비밀번호가 없어도 사람 없이 AI 가 새로 여는 것은 명시적 위임): 그 연결 id 의
+//!   사람 쿼리 타일이 서버 표에 있으면(`borrowed` 의 타일 집합 — 엔진 무관 · [`tile_open`]) 칸과 무관하게 열고, 없으면 헤드리스 위임이 있을 때만
+//!   ([`sqlite_gate`] — 읽기 · 쓰기 작업안 연결 공통). 비밀번호 없이 붙은 PG · MySQL 타일(`Missing::NoPassword`)과 같은 모양이다.
+//!   AI 는 비밀번호를 칠 수 없으므로 둘 다 없으면 까닭(타일 없음 · 대상 바뀜 · 거절 · 비밀번호 없이 붙음)과 볼트 상태(없음 · 잠김 · 값 없음)를
+//!   가른 안내 오류. 빌린 값으로 연 연결은 그 값이 지워지면(마지막 타일 닫힘 · 대상 바뀜) 거둔다([`retire_borrowed`] — 도는 조회는 끝까지 두고
+//!   끝나면 닫는다).
 //! - **경유 SSH 는 헤드리스 규칙**(`SharedCreds::unattended`) — 사람의 답을 받지 않고(호스트 키 · 비밀번호 · 암호구), 볼트의 SSH 비밀번호를
 //!   쓰지 않으며, 볼트의 키 암호구는 그 호스트에 `vault_passphrase` 위임이 있을 때만. 사람이 이미 연 같은 호스트의 공유 전송로에는 그대로
 //!   얹힌다(인증 없음).
@@ -25,6 +35,8 @@
 //! | 도구 호출 | 있으면 다시 쓰고(신원 스냅샷이 같고 살아 있을 때) 없으면 연다 |
 //! | 무활동 [`IDLE_CLOSE`](5분) | 닫는다(시계 하나 — [`ensure_reaper`]) — 비밀번호를 오래 쥔 연결 · SSH 핀을 남기지 않는다 |
 //! | 연결 정의가 바뀜(주소 · 경유 …) | 다음 호출이 옛것을 닫고 새로 연다(권한은 스냅샷이 이미 끔으로 읽는다) |
+//! | 빌린 비밀번호가 지워짐(마지막 사람 타일 닫힘 · 대상 바뀜) | 그 값으로 연 것만 거둔다 — 돌고 있으면 끝난 뒤 닫는다([`retire_borrowed`]) |
+//! | 헤드리스 위임이 꺼짐(`[[database]] headless = false`) | 볼트 차례로 연 것 · 사람 타일이 없는데 비밀번호 없이 연 것(SQLite 포함)은 다음 호출이 쓰지 않고 거둔다 — 돌고 있으면 끝난 뒤 닫는다([`reusable`]) · 그 호출은 새로 연다(타일도 위임도 없으면 열지 않는다) |
 //! | 끊김(전송로 사망 · 서버가 끊음) | 다음 호출이 새로 연다(화면 이벤트 없음 — 타일이 아니다) |
 //! | 서버 끝 | 닫는다([`close_all`] — `serve::run` 끝) |
 //!
@@ -43,6 +55,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::borrowed::{self, Missing};
 use super::mysql::Mysql;
 use super::net::{OpenError, OpenSecrets};
 use super::pg::Pg;
@@ -105,6 +118,9 @@ pub(crate) struct Grant {
     via_target: Option<String>,
     /// 경유 호스트에 `vault_passphrase` 위임이 있다(헤드리스 규칙).
     via_vault_passphrase: bool,
+    /// 이 연결에 **타일 없이 AI 접속**(볼트의 비밀번호)이 위임됐다(`[[database]] headless` — `Delegation::db_headless`). 거짓이면 빌린 값이
+    /// 없을 때 볼트를 읽지 않는다([`open_with`]).
+    headless: bool,
 }
 
 /// 시험 전용 — 증표의 연결 id.
@@ -122,6 +138,12 @@ impl Grant {
     /// 판정 때의 단계.
     pub(crate) fn level(&self) -> DbAiLevel {
         self.level
+    }
+
+    /// 판정 때의 헤드리스 위임(타일 없이 볼트의 비밀번호로 열어도 되나) — 시험이 읽는다(판정은 [`open_with`] 가 칸을 직접 본다).
+    #[cfg(test)]
+    pub(crate) fn headless(&self) -> bool {
+        self.headless
     }
 
     /// 이 연결의 신원 스냅샷(판정 때의 연결 + 경유 대상) — 3b 작업안이 만들 때 떠 두고 실행 직전에 다시 맞춘다.
@@ -153,7 +175,40 @@ pub(crate) fn authorize(d: &Delegation, conn: &DbConn, via_target: Option<&str>,
         level,
         via_target: via_target.map(str::to_owned),
         via_vault_passphrase: conn.via.as_deref().is_some_and(|v| d.vault_passphrase_granted(v)),
+        headless: d.db_headless(conn, via_target),
     })
+}
+
+/// `list_db_connections` 의 `headless` — 사람 타일 없이 AI 연결이 설 수 있나: 엔진 무관 헤드리스 위임(`Delegation::db_headless` — 단계 · 스냅샷
+/// 포함 · SQLite 도 2026-11-09 부터). AI 가 "타일을 열어 달라" 고 먼저 말할지 고르는 표지다(판정은 [`open_with`] · [`sqlite_gate`]). **순수.**
+pub(crate) fn opens_without_tile(d: &Delegation, conn: &DbConn, via_target: Option<&str>) -> bool {
+    d.db_headless(conn, via_target)
+}
+
+/// **그 연결 id 의 사람 쿼리 타일이 세션 서버 표에 있나**(엔진 무관 — `borrowed` 의 타일 집합: `table::open` 이 세우고 그 id 의 마지막 항목이
+/// 빠질 때 걷는다 · 창이 사라져 떨어진 세션으로 남은 동안도 있다). 빌린 비밀번호 표의 값 칸은 비밀번호 엔진만 담지만 타일 칸은 SQLite 도 담는다.
+/// 시험의 `Given` 은 타일 없음으로 본다.
+pub(crate) fn tile_open(grant: &Grant, src: &PasswordSource) -> bool {
+    match src {
+        PasswordSource::Vault => borrowed::missing(&grant.conn.id) != Some(Missing::TileClosed),
+        #[cfg(test)]
+        PasswordSource::Given(_) => false,
+    }
+}
+
+/// **SQLite 를 열어도 되나**(읽기 · 쓰기 작업안 연결 공통 — 2026-11-09): 사람 타일이 표에 있거나([`tile_open`]) 헤드리스 위임이 있을 때만. 아니면
+/// 파일에 닿지 않고 [`headless_off_sqlite_text`] 로 실패한다.
+pub(crate) fn sqlite_gate(grant: &Grant, src: &PasswordSource) -> Result<(), String> {
+    if sqlite_opens(grant.headless, tile_open(grant, src)) {
+        Ok(())
+    } else {
+        Err(headless_off_sqlite_text())
+    }
+}
+
+/// [`sqlite_gate`] 의 판정 — 타일이 열려 있으면 칸과 무관 · 없으면 헤드리스 위임. **순수.**
+pub(crate) fn sqlite_opens(headless: bool, tile_open: bool) -> bool {
+    headless || tile_open
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +260,8 @@ pub(crate) struct AiOutcome {
     pub rows: Option<u64>,
 }
 
-/// 비밀번호를 어디서 — 제품은 늘 볼트(시험만 값을 직접 준다 — 사용자 볼트를 건드리지 않게).
+/// 비밀번호를 어디서 — 제품은 늘 `Vault`(= 빌린 값(`db::borrowed`) → 볼트 — [`open_with`]). 시험만 값을 직접 준다(사용자 볼트를 건드리지
+/// 않게 — 그때는 빌린 값도 보지 않는다).
 pub(crate) enum PasswordSource {
     Vault,
     #[cfg(test)]
@@ -231,6 +287,47 @@ struct AiConn {
     ident: DbIdentity,
     last_used: Mutex<Instant>,
     busy: AtomicBool,
+    /// 무슨 비밀번호로 열었나 — 빌린 값이면 그 값이 지워질 때 거두고([`retire_borrowed`]), 볼트 차례면 헤드리스 위임이 꺼진 호출이 다시 쓰지
+    /// 않는다([`reusable`]).
+    from: PwFrom,
+    /// 거뒀다(풀에서 빠짐) — 도는 조회가 끝나는 순간 닫는다([`BusyGuard`]).
+    retired: AtomicBool,
+}
+
+/// 풀 연결이 무슨 비밀번호로 열렸나.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PwFrom {
+    /// 사람 타일에서 빌린 값(`db::borrowed`).
+    Borrowed,
+    /// 볼트 차례(헤드리스 위임으로 연 것 — 서버가 비밀번호를 실제로 청했는지는 모른다, 그래서 볼트로 본다).
+    Vault,
+    /// 비밀번호 없이(SQLite · 헤드리스 끔 + 타일이 비밀번호 없이 붙음) — 사람 타일이 있거나 헤드리스일 때만 다시 쓴다([`reusable`]).
+    NoPassword,
+}
+
+impl PwFrom {
+    /// 연 차례 → 표지. SQLite 는 비밀번호가 없다 · 빌린 값이 없고 헤드리스면 볼트 차례([`open_with`]) · 아니면 비밀번호 없이 열었다. **순수.**
+    fn of(lent: Option<u64>, sqlite: bool, headless: bool) -> PwFrom {
+        if lent.is_some() {
+            PwFrom::Borrowed
+        } else if headless && !sqlite {
+            PwFrom::Vault
+        } else {
+            PwFrom::NoPassword
+        }
+    }
+}
+
+/// **풀 연결을 이번 호출이 다시 써도 되나**(위임 판정은 호출마다 지금 파일 — 풀에서 꺼내 쓰는 것도 판정을 지난다 · 2026-11-09): 볼트 차례로
+/// 연 연결은 이번 증표에 헤드리스 위임이 있을 때만. 빌린 값으로 연 것은 그 값이 살아 있는 동안([`retire_borrowed`] · `still_lent` — 칸과
+/// 무관). 비밀번호 없이 연 것(SQLite · 비밀번호 없이 붙은 타일)은 **여는 판정과 같은 문** — 그 연결의 사람 타일이 지금 표에 있거나(`tile_open`)
+/// 헤드리스 위임이 있을 때만(타일이 닫히고 칸이 꺼졌으면 다음 호출이 쓰지 않는다). **순수.**
+pub(crate) fn reusable(from: PwFrom, headless: bool, tile_open: bool) -> bool {
+    match from {
+        PwFrom::Borrowed => true,
+        PwFrom::Vault => headless,
+        PwFrom::NoPassword => headless || tile_open,
+    }
 }
 
 static POOL: LazyLock<Mutex<HashMap<String, Arc<AiConn>>>> = LazyLock::new(Default::default);
@@ -245,6 +342,10 @@ impl Drop for BusyGuard {
     fn drop(&mut self) {
         *lock(&self.0.last_used) = Instant::now();
         self.0.busy.store(false, Ordering::SeqCst);
+        // 도는 사이 거뒀다 — 끝났으니 닫는다(거두는 쪽이 바쁨을 보고 미뤘다).
+        if self.0.retired.load(Ordering::SeqCst) {
+            self.0.engine.shutdown();
+        }
     }
 }
 
@@ -281,6 +382,27 @@ pub(crate) fn close_all() -> usize {
     all.len()
 }
 
+/// **빌린 비밀번호로 연 연결을 거둔다**(`db::borrowed` 가 그 연결 id 의 값을 지울 때). 풀에서 곧바로 빼(다음 호출은 새로 열고 빌릴 값이
+/// 없으면 볼트 차례) 돌지 않으면 닫고, 돌고 있으면 그 조회가 끝난 뒤 닫는다([`BusyGuard`]). 거둔 수.
+pub(crate) fn retire_borrowed(id: &str) -> usize {
+    let gone: Vec<Arc<AiConn>> = {
+        let mut p = lock(&POOL);
+        let ids: Vec<String> = p
+            .iter()
+            .filter(|(k, c)| c.from == PwFrom::Borrowed && k.as_str() == id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        ids.iter().filter_map(|k| p.remove(k)).collect()
+    };
+    for c in &gone {
+        c.retired.store(true, Ordering::SeqCst);
+        if !c.busy.load(Ordering::SeqCst) {
+            c.engine.shutdown();
+        }
+    }
+    gone.len()
+}
+
 /// 시험 전용 — 그 연결들만 닫는다(병렬 시험이 서로의 연결을 닫지 않게).
 #[cfg(test)]
 pub(crate) fn close_for_test(ids: &[&str]) {
@@ -291,6 +413,32 @@ pub(crate) fn close_for_test(ids: &[&str]) {
     for c in gone {
         c.engine.shutdown();
     }
+}
+
+/// 시험 전용 — 그 증표의 연결(SQLite)을 읽기 전용으로 열어 `from` 표지로 풀에 심는다(PG · MySQL 서버 없이 볼트 · 빌린 값으로 연 풀 연결을
+/// 흉내 — 다시 쓰기 판정은 엔진 종류를 보지 않는다).
+#[cfg(test)]
+pub(crate) fn plant_for_test(grant: &Grant, from: PwFrom) {
+    let s = Sqlite::open(std::path::Path::new(grant.conn.path.as_deref().expect("SQLite 연결")), false).expect("열기");
+    let c = Arc::new(AiConn {
+        engine: Engine::Sqlite(Arc::new(s)),
+        ident: DbIdentity::of(&grant.conn, grant.via_target.clone()),
+        last_used: Mutex::new(Instant::now()),
+        busy: AtomicBool::new(false),
+        from,
+        retired: AtomicBool::new(false),
+    });
+    if let Some(old) = lock(&POOL).insert(grant.conn.id.clone(), c) {
+        old.engine.shutdown();
+    }
+}
+
+/// 시험 전용 — [`acquire`] 를 지나 받은 연결의 표지 · 심은 것과 같은 연결인가(포인터).
+#[cfg(test)]
+pub(crate) async fn acquire_for_test(grant: &Grant) -> Result<(PwFrom, bool), String> {
+    let before = lock(&POOL).get(&grant.conn.id).cloned();
+    let c = acquire(grant, &PasswordSource::Vault).await?;
+    Ok((c.from, before.is_some_and(|b| Arc::ptr_eq(&b, &c))))
 }
 
 /// 지금 열린 AI 연결 수(서버 `status`).
@@ -320,8 +468,21 @@ fn ensure_reaper() {
 async fn acquire(grant: &Grant, src: &PasswordSource) -> Result<Arc<AiConn>, String> {
     let ident = DbIdentity::of(&grant.conn, grant.via_target.clone());
     let reuse = |ident: &DbIdentity| -> Option<Arc<AiConn>> {
+        // 타일 표는 풀 잠금 밖에서 본다(잠금 순서 — `borrowed` 는 값을 지울 때 풀을 잠근다).
+        let tile = tile_open(grant, src);
         let mut p = lock(&POOL);
         let c = p.get(&grant.conn.id)?.clone();
+        if !reusable(c.from, grant.headless, tile) {
+            // 볼트로 연 연결인데 이번 증표는 헤드리스 끔 · 비밀번호 없이 연 연결인데 타일도 위임도 없음 — 풀에서 빼고 새 열기(`open_with` ·
+            // `sqlite_gate` — 빌린 값 또는 헤드리스 끔 문구)로 간다. 돌고 있으면
+            // 그 조회가 끝난 뒤 닫는다([`BusyGuard`] — [`retire_borrowed`] 와 같은 모양).
+            p.remove(&grant.conn.id);
+            c.retired.store(true, Ordering::SeqCst);
+            if !c.busy.load(Ordering::SeqCst) {
+                c.engine.shutdown();
+            }
+            return None;
+        }
         if c.ident == *ident && !c.engine.is_dead() {
             return Some(c);
         }
@@ -338,7 +499,8 @@ async fn acquire(grant: &Grant, src: &PasswordSource) -> Result<Arc<AiConn>, Str
     if let Some(c) = reuse(&ident) {
         return Ok(c);
     }
-    let engine = open_engine(grant, src).await?;
+    let (engine, lent) = open_engine(grant, src).await?;
+    let from = PwFrom::of(lent, matches!(engine, Engine::Sqlite(_)), grant.headless);
     if engine.writable() {
         // 그물 — 이 모듈은 쓰기를 켜지 않는다. 그래도 쓰기 가능으로 보이면 쓰지 않는다.
         engine.shutdown();
@@ -349,32 +511,112 @@ async fn acquire(grant: &Grant, src: &PasswordSource) -> Result<Arc<AiConn>, Str
         ident,
         last_used: Mutex::new(Instant::now()),
         busy: AtomicBool::new(false),
+        from,
+        retired: AtomicBool::new(false),
     });
-    if let Some(old) = lock(&POOL).insert(grant.conn.id.clone(), Arc::clone(&c)) {
-        old.engine.shutdown();
+    {
+        let mut p = lock(&POOL);
+        // 여는 사이 빌린 값이 지워졌다(마지막 타일 닫힘 · 대상 바뀜) — 이번 호출만 이 연결로 돌고 끝나면 닫는다(풀에 넣지 않는다 — 거두는 쪽이 이미
+        // 풀을 훑고 지나갔다). 풀 잠금 안에서 본다(거두기와 엇갈려 풀에 남지 않게).
+        if lent.is_some_and(|stamp| !borrowed::still_lent(&grant.conn.id, stamp)) {
+            c.retired.store(true, Ordering::SeqCst);
+            return Ok(c);
+        }
+        if let Some(old) = p.insert(grant.conn.id.clone(), Arc::clone(&c)) {
+            old.engine.shutdown();
+        }
     }
     ensure_reaper();
     Ok(c)
 }
 
-/// 이 연결의 엔진을 연다(읽기 전용 · 볼트 비밀번호 · 무인 SSH).
-async fn open_engine(grant: &Grant, src: &PasswordSource) -> Result<Engine, String> {
+/// 이 연결의 엔진을 연다(읽기 전용 · 빌린 값 → 볼트 비밀번호 · 무인 SSH). 둘째 값 = 빌린 값으로 열었으면 그 번호.
+async fn open_engine(grant: &Grant, src: &PasswordSource) -> Result<(Engine, Option<u64>), String> {
     let via = grant.conn.via.clone();
     let resolved = resolve_for(grant).await?;
     let stream = format!("{STREAM_PREFIX}{}", grant.conn.id);
-    let secrets = secrets_for(grant, src);
     let opened = match resolved {
         Resolved::Sqlite(path) => {
+            // 사람 타일이 없으면 헤드리스 위임이 있어야 연다(2026-11-09 — 파일에 닿기 전에).
+            sqlite_gate(grant, src)?;
             // 읽기 전용 열기(`writable = false`) — `SQLITE_OPEN_READ_ONLY` + `query_only`.
             let s = tokio::task::spawn_blocking(move || Sqlite::open(std::path::Path::new(&path), false))
                 .await
                 .map_err(|_| "The database task failed (worker thread)".to_string())??;
-            Ok(Engine::Sqlite(Arc::new(s)))
+            Ok((Engine::Sqlite(Arc::new(s)), None))
         }
-        Resolved::Pg(t) => Pg::connect(&stream, t, secrets).await.map(|p| Engine::Pg(Arc::new(p))),
-        Resolved::Mysql(t) => Mysql::connect(&stream, t, secrets).await.map(|m| Engine::Mysql(Arc::new(m))),
+        Resolved::Pg(t) => open_with(grant, src, lend_for(grant, src), |s| Pg::connect(&stream, t.clone(), s))
+            .await
+            .map(|(p, lent)| (Engine::Pg(Arc::new(p)), lent)),
+        Resolved::Mysql(t) => open_with(grant, src, lend_for(grant, src), |s| Mysql::connect(&stream, t.clone(), s))
+            .await
+            .map(|(m, lent)| (Engine::Mysql(Arc::new(m)), lent)),
     };
-    opened.map_err(|e| open_error_text(e, via.as_deref()))
+    opened.map_err(|e| open_error_text(e, via.as_deref(), &grant.conn.id))
+}
+
+/// 빌릴 값 — 제품(`Vault`)만 사람 타일의 빌린 값을 본다(시험의 `Given` 은 보지 않는다). 대상이 바뀌었으면 여기서 버린다(`borrowed::lend`).
+/// 없는 까닭은 표에 남는다 — 열기가 실패하면 [`open_error_text`] 가 `borrowed::missing` 으로 읽는다.
+pub(crate) fn lend_for(grant: &Grant, src: &PasswordSource) -> Option<borrowed::Lent> {
+    match src {
+        PasswordSource::Vault => borrowed::lend(&grant.conn).ok(),
+        #[cfg(test)]
+        PasswordSource::Given(_) => None,
+    }
+}
+
+/// **비밀번호 차례** — 빌린 값(`lent` — 사람 타일이 방금 인증에 쓴 값)으로 먼저 열고, DB 가 그 값을 거절하면(`[db-auth]`) 그 값을 버리고
+/// (`borrowed::reject`) 볼트 차례(`secrets_for` — 몸 없음 · 볼트 물러남)로 한 번 더 연다. 빌린 값이 없으면 곧바로 볼트 차례. 둘째 값 = 빌린
+/// 값으로 열었으면 그 번호(풀이 거둘 표지). 근거(물러남 한 번): 사람이 타일 밖에서 비밀번호를 바꿨고 볼트에는 새 값이 있을 수 있다 — 같은 값을
+/// 두 번 보내지 않으니 잠금 계정 위험은 볼트만 쓰던 때와 같다.
+///
+/// **볼트 차례는 헤드리스 위임이 있을 때만**(`Grant::headless` — 2026-11-09): 없으면 볼트에 닿지 않는다(`vault: false`). 그때 사람 타일이
+/// 비밀번호 없이 붙어 있으면(`Missing::NoPassword` — 서버가 요구하지 않았다) 비밀번호 없이 한 번 열어 보고, 타일이 없거나(닫힘 · 대상 바뀜 ·
+/// 거절) 서버가 비밀번호를 청하면 **아무것도 열지 않고**(경유 SSH 도) [`headless_off_text`] 로 실패한다 — 볼트 잠김 · 값 없음과 다른 문구다.
+pub(crate) async fn open_with<T, Fut>(
+    grant: &Grant,
+    src: &PasswordSource,
+    lent: Option<borrowed::Lent>,
+    mut open: impl FnMut(OpenSecrets) -> Fut,
+) -> Result<(T, Option<u64>), OpenError>
+where
+    Fut: std::future::Future<Output = Result<T, OpenError>>,
+{
+    if let Some(l) = lent {
+        let mut s = secrets_for(grant, src);
+        s.password = Some(l.password);
+        // 빌린 값이 거절되면 볼트 표지(`[db-stored-rejected]`)가 아니라 `[db-auth]` 로 온다 — 그때만 볼트로 물러난다(아래).
+        s.vault = false;
+        match open(s).await {
+            Ok(x) => return Ok((x, Some(l.stamp))),
+            Err(OpenError::Msg(m)) if has_reason(&m, DB_AUTH) => {
+                borrowed::reject(&grant.conn.id, l.stamp);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    if grant.headless {
+        return open(secrets_for(grant, src)).await.map(|x| (x, None));
+    }
+    // 헤드리스 위임 없음 — 볼트에 닿지 않는다. 사람 타일이 비밀번호 없이 붙어 있을 때만 비밀번호 없이 열어 본다.
+    let why = match src {
+        PasswordSource::Vault => borrowed::missing(&grant.conn.id),
+        #[cfg(test)]
+        PasswordSource::Given(_) => Some(Missing::TileClosed),
+    };
+    if why != Some(Missing::NoPassword) {
+        return Err(OpenError::Msg(headless_off_text(why)));
+    }
+    let mut s = secrets_for(grant, src);
+    s.password = None;
+    s.vault = false;
+    match open(s).await {
+        Ok(x) => Ok((x, None)),
+        Err(OpenError::Msg(m)) if has_reason(&m, DB_PASSWORD) || has_reason(&m, DB_AUTH) => {
+            Err(OpenError::Msg(headless_off_text(why)))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// 연결 정의를 여는 꼴로 편다(경유 별칭이 `~/.ssh/config` 에 있는지 · 주소 · 파일) — 블로킹 일은 작업 스레드에서. 3b 의 쓰기 연결
@@ -392,8 +634,8 @@ pub(super) async fn resolve_for(grant: &Grant) -> Result<Resolved, String> {
     .map_err(|_| "The database task failed (worker thread)".to_string())?
 }
 
-/// 여는 데 쓸 비밀 — 비밀번호는 볼트(시험만 몸으로) · 경유 SSH 는 **무인 관문**(헤드리스 규칙 — 볼트의 키 암호구는 그 호스트에
-/// `vault_passphrase` 위임이 있을 때만).
+/// 여는 데 쓸 비밀(볼트 차례) — 비밀번호는 볼트(시험만 몸으로 · 빌린 값은 [`open_with`] 가 이 위에 얹는다) · 경유 SSH 는 **무인 관문**
+/// (헤드리스 규칙 — 볼트의 키 암호구는 그 호스트에 `vault_passphrase` 위임이 있을 때만).
 pub(super) fn secrets_for(grant: &Grant, src: &PasswordSource) -> OpenSecrets {
     OpenSecrets {
         password: src.body(),
@@ -403,6 +645,9 @@ pub(super) fn secrets_for(grant: &Grant, src: &PasswordSource) -> OpenSecrets {
             }),
             ..Default::default()
         },
+        // AI 연결의 비밀번호 자리는 볼트뿐이다(`PasswordSource` — 몸에 실린 값이 없으면 볼트).
+        vault: true,
+        from_vault: false,
     }
 }
 
@@ -415,12 +660,79 @@ pub(super) fn plain(m: &str) -> String {
     rest.to_string()
 }
 
-fn vault_unlocked() -> bool {
-    crate::server::hub::vault().is_some_and(|v| v.is_unlocked())
+/// 볼트의 지금 상태 — AI 문구만 가른다(값은 보지 않는다).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VaultNow {
+    /// 열려 있다(이 연결의 값은 없다).
+    Open,
+    /// 잠겼다(가림막 · 창 0개 · 마스터 미입력).
+    Locked,
+    /// 볼트 파일이 없다(켜지 않았다).
+    Absent,
 }
 
-/// 열기 실패 → AI 가 읽는 문구(영어 — MCP 표면). 비밀번호 · SSH 관문은 "사람이 해야 하는 일" 로 바꾼다.
-pub(super) fn open_error_text(e: OpenError, via: Option<&str>) -> String {
+fn vault_now() -> VaultNow {
+    match crate::server::hub::vault().map(|v| v.status().state) {
+        Some("unlocked") => VaultNow::Open,
+        Some("locked") => VaultNow::Locked,
+        _ => VaultNow::Absent,
+    }
+}
+
+/// 빌린 값이 없는 까닭 → AI 문구의 앞 절(영어).
+fn tile_reason(missing: Option<Missing>) -> &'static str {
+    match missing {
+        Some(Missing::TileClosed) => "no query tile in the aynx app has this connection open",
+        Some(Missing::TargetChanged) => {
+            "the connection's target changed since the query tile connected, so the password borrowed from it was discarded"
+        }
+        Some(Missing::Rejected) => "the database rejected the password borrowed from the query tile, so it was discarded",
+        Some(Missing::NoPassword) | None => "the open query tile connected without a password, so there is none to borrow",
+    }
+}
+
+/// 헤드리스 위임이 꺼진 연결에 빌린 값이 없을 때 AI 가 읽는 문구(영어 — MCP 표면) — **볼트는 보지 않았다**(잠김 · 값 없음을 말하지
+/// 않는다). **순수.**
+pub(super) fn headless_off_text(missing: Option<Missing>) -> String {
+    let tile = tile_reason(missing);
+    let open = if missing == Some(Missing::TileClosed) { "open it in a query tile" } else { "reconnect it in a query tile" };
+    format!(
+        "This connection needs a database password: {tile}, and the user has not allowed AI to open this connection without a query tile \
+         (headless access is off), so the vault was not used — ask the user to {open}, or to turn on 'Headless connection' on the \
+         connection form's AI access tab. While a person keeps the connection open in a query tile, AI connections reuse the password that \
+         tile authenticated with — the AI never types passwords."
+    )
+}
+
+/// 헤드리스 위임이 꺼진 SQLite 연결에 사람 타일이 없을 때 AI 가 읽는 문구(영어 — MCP 표면) — 비밀번호 · 볼트를 말하지 않는다. **순수.**
+pub(crate) fn headless_off_sqlite_text() -> String {
+    "No query tile in the aynx app has this SQLite connection open, and the user has not allowed AI to open it without a query tile \
+     (headless access is off), so the file was not opened — ask the user to open it in a query tile, or to turn on 'AI access without a \
+     tile' in the connection form (AI permission). While a person keeps it open in a query tile, AI connections can open it."
+        .into()
+}
+
+/// 비밀번호가 없을 때 AI 가 읽는 문구(영어 — MCP 표면) — 빌린 값이 없는 까닭(`borrowed::Missing`)과 볼트 상태를 가른다. **순수.**
+pub(super) fn no_password_text(missing: Option<Missing>, vault: VaultNow) -> String {
+    const NEVER: &str = "the AI never types passwords";
+    let tile = tile_reason(missing);
+    let store = match vault {
+        VaultNow::Open => "no password for it is stored in the vault",
+        VaultNow::Locked => "the vault is locked",
+        VaultNow::Absent => "no vault is set up",
+    };
+    let open = if missing == Some(Missing::TileClosed) { "open it in a query tile" } else { "reconnect it in a query tile" };
+    let ask = match vault {
+        VaultNow::Locked => format!("ask the user to {open} or unlock aynx"),
+        _ => format!("ask the user to {open}, or to save the password to the vault for continued use"),
+    };
+    format!(
+        "This connection needs a database password: {tile}, and {store} — {ask}. While a person keeps the connection open in a query tile, \
+         AI connections reuse the password that tile authenticated with (typed or from the vault), also while aynx is locked — {NEVER}."
+    )
+}
+// 열기 실패 → AI 가 읽는 문구(영어 — MCP 표면). 비밀번호 · SSH 관문은 "사람이 해야 하는 일" 로 바꾼다.
+pub(crate) fn open_error_text(e: OpenError, via: Option<&str>, conn_id: &str) -> String {
     match e {
         // 볼트의 값이 거절됐다(스냅샷 표지 `[db-stored-rejected]`).
         OpenError::Msg(m) if has_reason(&m, DB_STORED_REJECTED) => format!(
@@ -428,18 +740,9 @@ pub(super) fn open_error_text(e: OpenError, via: Option<&str>) -> String {
              app and save the new password to the vault.",
             plain(&m)
         ),
-        // 비밀번호가 없었다(볼트에 없음 · 잠김) — MySQL 은 없는 비밀번호도 인증 실패(`[db-auth]`)로 온다.
+        // 비밀번호가 없었다(빌린 값 없음 · 볼트에 없음 · 볼트 잠김 · 볼트 없음) — MySQL 은 없는 비밀번호도 인증 실패(`[db-auth]`)로 온다.
         OpenError::Msg(m) if has_reason(&m, DB_PASSWORD) || has_reason(&m, DB_AUTH) => {
-            if vault_unlocked() {
-                "This connection needs a database password and none is stored for it. A person has to open it once in a query tile \
-                 in the aynx app and save the password to the vault — the AI never types passwords."
-                    .into()
-            } else {
-                "This connection needs its database password from the aynx vault, but the vault is locked (it locks while no \
-                 aynx window is open or the privacy veil is up) or has not been set up. Ask the user to unlock it in the app — if \
-                 no password is stored yet, a person has to open the connection once in a query tile and save it."
-                    .into()
-            }
+            no_password_text(borrowed::missing(conn_id), vault_now())
         }
         OpenError::Msg(m) => plain(&m),
         OpenError::Ssh(s) => {
@@ -842,7 +1145,58 @@ mod tests {
         assert_eq!(plain("[db-auth] 거절"), "거절");
         assert_eq!(plain("[db-auth] [db-stored-rejected] 거절"), "거절");
         assert_eq!(plain("그냥"), "그냥");
-        let t = open_error_text(OpenError::Ssh(SshOpenError::other("x".to_string())), Some("web-01"));
+        let t = open_error_text(OpenError::Ssh(SshOpenError::other("x".to_string())), Some("web-01"), "Abc_none0001");
         assert!(t.contains("web-01") && t.contains("terminal tile"), "{t}");
+    }
+
+    /// 헤드리스 끔 문구 — 볼트를 보지 않았다는 것(잠김 · 값 없음 · 볼트 없음을 말하지 않는다) · 켜는 자리(연결 폼) · 타일 까닭을 가르고, 볼트
+    /// 잠김 문구(`no_password_text`)와 다르다.
+    #[test]
+    fn headless_off_text_is_its_own() {
+        for m in [Some(Missing::TileClosed), Some(Missing::TargetChanged), Some(Missing::Rejected), Some(Missing::NoPassword)] {
+            let t = headless_off_text(m);
+            assert!(t.contains("headless access is off") && t.contains("'Headless connection'") && t.contains("the vault was not used"), "{t}");
+            assert!(!t.contains("vault is locked") && !t.contains("stored in the vault") && !t.contains("no vault is set up") && !t.contains("unlock"), "{t}");
+            assert!(t.contains(tile_reason(m)) && t.contains("the AI never types passwords"), "{t}");
+            for v in [VaultNow::Open, VaultNow::Locked, VaultNow::Absent] {
+                assert_ne!(t, no_password_text(m, v));
+            }
+        }
+        assert!(headless_off_text(Some(Missing::TileClosed)).contains("ask the user to open it in a query tile"));
+        assert!(headless_off_text(Some(Missing::Rejected)).contains("ask the user to reconnect it in a query tile"));
+    }
+
+    /// 비밀번호가 없을 때의 문구 — 까닭 넷(타일 없음 · 대상 바뀜 · 거절 · 비밀번호 없이 붙음)과 볼트 상태 셋(열림 · 잠김 · 없음)을 가르고, AI 는
+    /// 비밀번호를 치지 않는다는 문장 · 빌린 값의 규칙(친 값 · 볼트 값 · 잠겨도)을 늘 싣는다. 잠김 갈래는 "잠금 해제" 를, 그 밖은 볼트 저장을 안내한다.
+    #[test]
+    fn no_password_texts_tell_the_reason() {
+        let closed_locked = no_password_text(Some(Missing::TileClosed), VaultNow::Locked);
+        assert!(
+            closed_locked.contains("no query tile in the aynx app has this connection open, and the vault is locked")
+                && closed_locked.contains("ask the user to open it in a query tile or unlock aynx"),
+            "{closed_locked}"
+        );
+        let closed = no_password_text(Some(Missing::TileClosed), VaultNow::Open);
+        assert!(closed.contains("no password for it is stored in the vault") && closed.contains("save the password to the vault"), "{closed}");
+        assert!(!closed.contains("unlock"), "{closed}");
+        let absent = no_password_text(Some(Missing::TileClosed), VaultNow::Absent);
+        assert!(absent.contains("no vault is set up") && !absent.contains("unlock"), "{absent}");
+        let moved = no_password_text(Some(Missing::TargetChanged), VaultNow::Open);
+        assert!(moved.contains("target changed since the query tile connected") && moved.contains("reconnect it in a query tile"), "{moved}");
+        let rejected = no_password_text(Some(Missing::Rejected), VaultNow::Locked);
+        assert!(rejected.contains("database rejected the password borrowed") && rejected.contains("reconnect it in a query tile or unlock aynx"), "{rejected}");
+        let none = no_password_text(Some(Missing::NoPassword), VaultNow::Open);
+        assert!(none.contains("connected without a password"), "{none}");
+        assert_eq!(no_password_text(None, VaultNow::Open), none);
+        let all = [&closed, &moved, &rejected, &none];
+        for (i, a) in all.iter().enumerate() {
+            for b in &all[i + 1..] {
+                assert_ne!(a.split(", and ").next(), b.split(", and ").next(), "까닭마다 첫머리가 다르다");
+            }
+        }
+        for t in [&closed_locked, &closed, &absent, &moved, &rejected, &none] {
+            assert!(t.contains("the AI never types passwords") && t.contains("typed or from the vault") && t.contains("also while aynx is locked"), "{t}");
+            assert!(!t.contains("paused") && !t.contains("resumes"), "정지 · 이어짐은 없다: {t}");
+        }
     }
 }

@@ -508,7 +508,16 @@ pub(crate) async fn resize(id: u32, cols: u16, rows: u16) -> Result<(), String> 
     writer
         .window_change(cols as u32, rows as u32, 0, 0)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    resize_tap(id, cols, rows);
+    Ok(())
+}
+
+/// 서버 해석기(`crate::screen_mirror`)를 원격 창 크기에 맞춘다 — `window-change` 를 보낸 자리마다.
+pub(crate) fn resize_tap(id: u32, cols: u16, rows: u16) {
+    if let Some((slot, _, _)) = attach_parts(table(), id) {
+        crate::output::resize_tap(&slot, cols, rows);
+    }
 }
 
 /// [`shut_shell`] 의 채널 닫기 시한 — 정리 경로라 짧게.

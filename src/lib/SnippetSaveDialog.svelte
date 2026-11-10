@@ -81,6 +81,7 @@
       bind:this={modalEl}
       onkeydown={onKeydown}
     >
+      <div class="glass-scroll">
       <h2 id="snippet-save-title">{t("commands.snippet.save.title")}</h2>
       <!--
         `{{이름}}` 은 사용자에게 보여 주는 **예시 문법**이라 마크업(`<code>`)에 맞춰 키를
@@ -190,6 +191,7 @@
           <button type="submit" class="primary btn btn-primary">{t("commands.snippet.save.submit")}</button>
         </div>
       </form>
+      </div>
     </div>
   </div>
 {/if}
@@ -208,15 +210,21 @@
   }
 
   .modal {
+    box-sizing: border-box;
     width: 100%;
-    max-width: 460px;
+    max-width: calc(460px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   .modal h2 {

@@ -56,7 +56,7 @@ pub(crate) fn tool_catalog() -> Vec<ToolInfo> {
         let group = if t.get("name").and_then(Value::as_str).is_some_and(|n| PLAN_TOOLS.contains(&n)) { "plan" } else { "read" };
         push(&mut out, t, group);
     }
-    for t in super::db::tool_schemas(crate::db::ai::DbAiLevel::Approve) {
+    for t in super::db::tool_schemas() {
         push(&mut out, &t, "db");
     }
     for t in crate::orchestration::tile_tool_schemas() {

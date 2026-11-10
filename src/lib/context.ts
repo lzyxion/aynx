@@ -110,13 +110,25 @@ export function tileCode(windowLabel: string, paneId: string): string {
   return `${windowLabel}·${tile}`;
 }
 
+/**
+ * **이번 `report_session` 을 보낼 것인가**(2026-11-10). 새로 뜬 페이지(GUI 재시작 · 리로드 · 트레이에서 다시 연 창)의 타일은 공유
+ * 토글이 **꺼짐에서 시작**하고, 떨어진 세션에 붙는 순간에야 서버의 값(로컬 "AI 읽기 허용" — probe `aiRead`)으로 되살아난다. 그 앞의
+ * 꺼짐은 사람이 정한 값이 아닌데 `optedIn:false` 로 나가면 서버가 거울(창이 없던 동안 서버 해석기가 쓴 명령 블록 포함)을 지운다.
+ * 그래서 **아직 아무것도 보고하지 않았고 세션도 서지 않은** 채의 꺼짐은 보내지 않는다 — 세션이 서거나(붙기 · 새로 열기) 켜지면 그때
+ * 처음 보낸다. 한 번 보고한 뒤의 꺼짐(사람이 끔 · 호스트 단계 내림)은 언제나 보낸다(프라이버시).
+ */
+export function shouldReportMirror(optedIn: boolean, announced: boolean, sessionLive: boolean): boolean {
+  return optedIn || announced || sessionLive;
+}
+
 // ---------------------------------------------------------------------------
 // invoke 래퍼 — 전부 오류를 삼킨다 (Rust 가 아직 없어도 터미널이 살아 있어야 한다)
 // ---------------------------------------------------------------------------
 
 /**
  * 패널의 존재와 **공유 여부**를 서버에 알린다.
- * - 터미널 마운트 시 한 번(로컬은 `optedIn:false`, 원격은 그 호스트의 지금 단계대로).
+ * - 터미널 마운트 시 한 번(로컬은 `optedIn:false`, 원격은 그 호스트의 지금 단계대로) — 단 꺼짐이면 세션이 선 뒤에
+ *   ([`shouldReportMirror`]).
  * - 공유가 뒤집힐 때마다 다시 — 로컬은 타일의 "AI 읽기 허용" 토글, 원격은 호스트의 AI 권한 단계가
  *   `read` 를 넘나들 때(`delegation-changed`).
  *

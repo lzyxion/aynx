@@ -1,4 +1,4 @@
-import { dbAiAtLeast, dbAiNeedsConfirm, effectiveDbAi, listDbAi, removeDbAi, setDbAi, type DbAiLevel, type DbAiView } from "$lib/db-ai";
+import { dbAiAtLeast, dbAiNeedsConfirm, effectiveDbAi, effectiveDbHeadless, listDbAi, removeDbAi, setDbAi, type DbAiLevel, type DbAiView } from "$lib/db-ai";
 import { confirmApproveAll } from "$lib/app/approve-all-confirm";
 import { showNotice } from "$lib/app/notice";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -13,6 +13,7 @@ import { t } from "$lib/i18n/i18n.svelte.js";
 let views = $state<DbAiView[]>([]);
 let serverReady = $state(true);
 let writePlans = $state(true);
+let connTest = $state(true);
 
 /** 블록 전부(파일 순서) */
 export function dbAiViews(): readonly DbAiView[] {
@@ -29,6 +30,11 @@ export function dbAiLevelOf(id: string): DbAiLevel {
   return effectiveDbAi(dbAiViewOf(id));
 }
 
+/** 이 연결에 실제로 걸린 헤드리스(타일 없이 AI 접속) — 블록이 없거나 스냅샷이 어긋났으면 `false` */
+export function dbAiHeadlessOf(id: string): boolean {
+  return effectiveDbHeadless(dbAiViewOf(id));
+}
+
 /** 붙은 세션 서버가 DB MCP 도구를 아는가(판 11) */
 export function dbAiServerReady(): boolean {
   return serverReady;
@@ -39,12 +45,18 @@ export function dbAiWritePlans(): boolean {
   return writePlans;
 }
 
+/** 붙은 세션 서버가 DB 연결 폼의 [연결 테스트]를 아는가(판 28) — 아니면 폼이 단추를 숨긴다 */
+export function dbConnTestReady(): boolean {
+  return connTest;
+}
+
 /** 다시 읽는다 — 실패는 `listDbAi` 가 삼킨다 */
 export async function refreshDbAi(): Promise<void> {
   const r = await listDbAi();
   views = r.targets;
   serverReady = r.serverReady;
   writePlans = r.writePlans;
+  connTest = r.connTest;
 }
 
 /**

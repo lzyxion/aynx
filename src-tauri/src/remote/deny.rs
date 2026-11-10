@@ -257,7 +257,8 @@ pub(crate) const ALLOW: &[&str] = &[
     "vault_delete", "vault_store_password", "vault_store_mcp_env", "vault_store_passphrase", "vault_has_password",
     "vault_has_passphrase", "vault_store_db_password", "vault_has_db_password",
     // 쿼리 타일 · DB 연결
-    "db_open", "db_query", "db_cancel", "db_schema", "db_objects", "db_table_detail", "db_definition", "db_set_write",
+    // `db_test`(DB 연결 폼의 [연결 테스트])는 `db_open` 과 같은 결 — 사람이 고른 폼 값으로 한 번 붙어 보고 닫는다(볼트 물러남은 서버가 정한다).
+    "db_open", "db_test", "db_query", "db_cancel", "db_schema", "db_objects", "db_table_detail", "db_definition", "db_set_write",
     "db_close", "db_tx", "db_script", "db_conn_list", "db_conn_save", "db_folders_load", "db_folders_save", "db_history_list",
     // 메신저
     "messenger_status", "messenger_set_webhook", "messenger_test", "messenger_send",

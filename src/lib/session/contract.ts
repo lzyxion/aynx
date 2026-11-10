@@ -292,6 +292,11 @@ export interface PasswordPrompt {
    * 저장" 은 볼트 `db_password`(대상 = 연결 `id`)로 간다). 없으면 SSH 비밀번호(예전 그대로).
    */
   db?: DbPasswordTarget;
+  /**
+   * **"이 앱에 저장" 을 숨긴다** — DB 연결 폼의 [연결 테스트](`query/conn-test`)가 묻을 때. 테스트는 볼트에 아무것도 담지 않는다
+   * (DB 비밀번호를 볼트에 담는 길은 쿼리 타일 접속 모달 하나). 없으면 예전 그대로(체크가 보인다).
+   */
+  noSave?: boolean;
 }
 
 /** DB 접속 모달이 보일 대상 — 값이 아니라 이름들이다(비밀 없음) */
@@ -339,6 +344,8 @@ export interface PassphrasePrompt {
   storedRejected: boolean;
   attempt: number;
   maxAttempts: number;
+  /** "이 앱에 저장" 을 숨긴다 — [`PasswordPrompt.noSave`] 와 같은 뜻(DB 연결 폼의 [연결 테스트] 가 경유 SSH 관문에서) */
+  noSave?: boolean;
 }
 
 /**

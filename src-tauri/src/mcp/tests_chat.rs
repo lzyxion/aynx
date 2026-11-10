@@ -49,7 +49,7 @@ fn call(caller: &Caller, name: &str, args: Value) -> (bool, String) {
     (r["isError"].as_bool().unwrap_or(false), r["content"][0]["text"].as_str().unwrap().to_string())
 }
 
-/// 시험 `producer_tools_list`(2단계 단계 2 — 설계 2-7 · 사용자 결정 O5): 프로듀서 목록 = 13(작업안 여섯은 칸을 켰을 때만) + DB(권한대로 ·
+/// 시험 `producer_tools_list`(2단계 단계 2 — 설계 2-7 · 사용자 결정 O5): 프로듀서 목록 = 13(작업안 여섯은 칸을 켰을 때만) + DB(뒷면이 있으면 늘 일곱 ·
 /// 쓰기 초안도 같은 칸) + 타일 도구 + 조율 도구 전부 — 띄울 때의 칸 값으로 고정 · 안내는 오케스트레이션 절 · 작업안 도구 호출은 **지금** 칸
 /// 값으로 다시 판정(꺼졌으면 `producer-plan-tools-off` — 목록에 있어도).
 #[test]

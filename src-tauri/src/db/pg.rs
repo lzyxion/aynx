@@ -10,7 +10,8 @@
 //! - TLS(9단계 — 모드·신뢰 기준·검증기는 `tls`): `disable` = NoTls · `prefer` = 드라이버 `SslMode::Prefer`(서버가 SSL 을 거절하면
 //!   평문) · `require`·`verify-*` = `SslMode::Require`. 검증기는 모드가 정한다(prefer·require 는 확인 안 함 · verify-ca 는 체인만 ·
 //!   verify-full 은 체인 + 이름). 취소 요청도 같은 TLS 설정으로 보낸다(Require 연결의 취소를 평문으로 보내면 드라이버가 거절한다).
-//! - 비밀번호: `db_open` 몸의 값(이번 한 번 — `Zeroizing`) → 없으면 볼트(`db_password_for(id)`) → 둘 다 없는데 서버가 요구하면
+//! - 비밀번호: `db_open` 몸의 값(이번 한 번 — `Zeroizing`) → 없으면 볼트(`db_password_for(id)` — `OpenSecrets.vault` 일 때만: 폼의
+//!   [연결 테스트] 는 저장된 줄과 대상이 같을 때만 참 · `net::password_for`) → 둘 다 없는데 서버가 요구하면
 //!   `[db-password]`, 틀리면(28P01) `[db-auth]`(볼트 값이었으면 `[db-stored-rejected]` 도). **비밀번호는 로그·오류·`Debug` 에 없다.**
 //! - 비밀번호를 묻는 사이 SSH 전송로를 놓으면 다시 열 때 SSH 관문을 또 지나야 한다 — 그래서 `[db-password]`·`[db-auth]` 로 끝난
 //!   열기는 전송로·터널을 그 타일 열쇠에 **잠깐(60초) 세워 둔다**(`park`). 같은 타일·같은 참조로 다시 열면 그것을 쓴다.
@@ -371,10 +372,10 @@ impl Pg {
         let tls_connect = tls::verifier(target.tls, ca.as_ref())?
             .map(|v| tls::client_config(v).map(MakeRustlsConnect::new))
             .transpose()?;
-        let OpenSecrets { password, ssh } = secrets;
+        let OpenSecrets { password, ssh, vault, from_vault } = secrets;
         let transport = net::transport_for(stream, &target, ssh).await?;
         let addr = transport.as_ref().map(Transport::local_addr);
-        let (password, from_vault) = net::password_for(password, &target.id);
+        let (password, from_vault) = net::password_for(password, from_vault, &target.id, vault);
         let mut config = config_for(&target, addr);
         if let Some(p) = &password {
             config.password(p.as_bytes());

@@ -52,6 +52,7 @@
 
 <div class="overlay" role="presentation" use:portal onmousedown={(ev) => { if (ev.target === ev.currentTarget) onclose(); }}>
   <div class="dialog glass-raised" role="dialog" aria-modal="true" aria-labelledby="album-info-title" tabindex="-1" data-album-info bind:this={dialogEl} onkeydown={onKey}>
+    <div class="glass-scroll">
     <h2 id="album-info-title">{t("orch.album.menu.info")}</h2>
     <dl>
       <dt>{t("orch.album.info.producer")}</dt>
@@ -78,15 +79,17 @@
     </dl>
     {#if why}<p class="why" data-run-complete-blocked>{why}</p>{/if}
     <div class="acts"><button type="button" class="btn btn-secondary" bind:this={closeEl} onclick={onclose}>{t("orch.album.info.close")}</button></div>
+    </div>
   </div>
 </div>
 
 <style>
   .overlay { position: fixed; inset: 0; z-index: 112; display: grid; place-items: center; padding: var(--space-4); background: rgb(0 0 0 / 0.3); }
   .dialog {
-    display: grid; gap: 14px; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; padding: 22px 24px;
+    display: flex; flex-direction: column; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: hidden; box-sizing: border-box; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid)); border: 1px solid var(--line); border-radius: var(--radius-surface); box-shadow: var(--shadow-raised); color: var(--fg-1); outline: none;
   }
+  .glass-scroll { display: grid; gap: 14px; padding: 22px 24px; }
   h2 { margin: 0; font-size: 18px; font-weight: var(--fw-semibold); }
   dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 18px; margin: 0; font-size: var(--t-sm); }
   dt { color: var(--fg-3); }

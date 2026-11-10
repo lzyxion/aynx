@@ -142,10 +142,12 @@ pub async fn detach_session_viewer(stream: String, session_epoch: u64, lease_epo
 
 /// **복원이 끝났다** — 이 창이 다시 그린 타일들의 스트림(`keep`)을 받는다(서버 op `restore_done`). 이 창이 책임지는 떨어진
 /// 세션 중 그 밖의 것은 **닫지 않고** "복원이 데려가지 않음" 으로 표시해 떨어진 세션 목록에 남긴다 — 끝난 잔해만 거둔다.
-/// 서버에 닿지 못하면 `{closed:0, unclaimed:0}`(다음 복원이 다시 본다).
+/// 서버에 닿지 못하면 `{closed:0, unclaimed:0}`(다음 복원이 다시 본다). `keep` 에는 쿼리 타일의 DB 연결 열쇠(`query:<tileKey>`)도
+/// 실린다 — 판 28 이하 서버(DB 연결을 떨어진 세션으로 남기지 않는다)에는 그 열쇠를 빼고 보낸다([`keep_for_server`]).
 #[tauri::command]
 pub async fn restore_done_sessions(webview: tauri::Webview, keep: Vec<String>) -> Result<Value, String> {
     let label = webview.window().label().to_string();
+    let keep = keep_for_server(keep, crate::server::client::negotiated_protocol());
     Ok(crate::server::proxy::call(
         Grade::Write,
         "restore_done",
@@ -153,6 +155,15 @@ pub async fn restore_done_sessions(webview: tauri::Webview, keep: Vec<String>) -
     )
     .await
     .unwrap_or_else(|_| serde_json::json!({ "closed": 0, "unclaimed": 0 })))
+}
+
+/// 복원 알림의 `keep` — 붙은 서버가 쿼리 타일을 떨어진 세션으로 남기는 판(`DETACHED_DB_PROTOCOL` 29 — 2026-11-09 ②)보다 낮으면 DB 연결
+/// 열쇠(`query:` 머리)를 뺀다. 판을 모르면(아직 안 붙음) 그대로. **순수**.
+pub(crate) fn keep_for_server(keep: Vec<String>, negotiated: Option<u32>) -> Vec<String> {
+    if negotiated.is_some_and(|p| p < crate::server::ipc::frame::DETACHED_DB_PROTOCOL) {
+        return keep.into_iter().filter(|s| !s.starts_with(crate::reap::QUERY_STREAM_PREFIX)).collect();
+    }
+    keep
 }
 
 /// **떨어진 세션 목록**(③-4 — 독·대시보드·트레이) — 서버의 떨어진 세션 중 "아무 창도 데려가지 않은 것" 만: 책임 창이 복원을

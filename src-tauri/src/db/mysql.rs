@@ -344,7 +344,7 @@ impl Mysql {
     pub(crate) async fn connect(stream: &str, target: NetTarget, secrets: OpenSecrets) -> Result<Mysql, OpenError> {
         // CA 파일은 SSH 관문보다 먼저 — 틀린 설정이면 전송로를 열지 않는다.
         let ca = tls::read_ca(target.tls, target.tls_ca.as_deref()).await?;
-        let OpenSecrets { password, ssh } = secrets;
+        let OpenSecrets { password, ssh, vault, from_vault } = secrets;
         let transport = net::transport_for(stream, &target, ssh).await?;
         let addr = transport.as_ref().map(Transport::local_addr);
         // 인증서에서 맞춰 볼 이름 — verify-ca 는 탐침이 읽은 이름, 그 밖은 프리셋 host(터널 뒤에서도).
@@ -361,7 +361,7 @@ impl Mysql {
             target.host.clone()
         };
         let ssl = mysql_tls::ssl_opts_for(target.tls, ca.as_ref(), &tls_name);
-        let (password, from_vault) = net::password_for(password, &target.id);
+        let (password, from_vault) = net::password_for(password, from_vault, &target.id, vault);
         let sent = password.is_some();
         let base = opts_for(&target, addr).pass(password.as_ref().map(|p| p.as_str().to_string()));
         drop(password);

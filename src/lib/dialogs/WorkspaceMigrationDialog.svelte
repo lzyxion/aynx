@@ -21,6 +21,7 @@
   <div class="overlay" role="presentation">
     <div class="modal glass-raised" bind:this={modal} data-workspace-migration role="alertdialog" aria-modal="true" aria-labelledby="workspace-migration-title" tabindex="-1"
       onkeydown={onKey}>
+      <div class="glass-scroll">
       <h2 id="workspace-migration-title">{t("app.workspaces.migration.title")}</h2>
       <p>{t("app.workspaces.migration.note")}</p>
       <ul>{#each problems as problem}
@@ -30,13 +31,15 @@
         <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => retryWorkspaceMigration()}>{t("app.workspaces.migration.retry")}</button>
         <button type="button" class="btn danger-solid" disabled={busy} onclick={() => retryWorkspaceMigration(true)}>{t("app.workspaces.migration.fresh")}</button>
       </div>
+      </div>
     </div>
   </div>
 {/if}
 
 <style>
   .overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: rgb(0 0 0 / 0.3); }
-  .modal { width: min(640px, 90vw); max-height: 85vh; overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--glass-raised, var(--surface-raised-solid)); color: var(--fg-1); box-shadow: var(--shadow-raised); }
+  .modal { box-sizing: border-box; width: calc(min(640px, 90vw) + 2 * 24px + 2px); max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 · 너비는 옛 content-box 그대로(여백 · 테두리를 더함) */ border: 1px solid var(--line); border-radius: var(--radius-surface); background: var(--glass-raised, var(--surface-raised-solid)); color: var(--fg-1); box-shadow: var(--shadow-raised); }
+  .glass-scroll { padding: 24px; }
   .btn.danger-solid { color: var(--err); background: var(--err-soft); font-weight: var(--fw-semibold); }
   .btn.danger-solid:hover { background: color-mix(in srgb, var(--err) 22%, var(--err-soft)); }
   h2 { margin: 0 0 12px; font-size: 18px; }

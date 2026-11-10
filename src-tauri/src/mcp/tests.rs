@@ -449,16 +449,16 @@ fn tools_list_has_all_tools_with_schemas() {
     ];
     let coordinator = Caller::Coordinator { run_id: "run-x".into(), gen: 1 };
     let worker = Caller::Worker { run_id: "run-x".into(), gen: 1, attempt_id: "att-x".into() };
-    use crate::db::ai::DbAiLevel;
     // (3차 5단계) 전역 토큰의 목록은 맡긴 저장소가 있어도 바뀌지 않는다.
-    let global_list = tools_list_for(&Caller::Global, DbAiLevel::Off, true);
+    let global_list = tools_list_for(&Caller::Global, false, true);
     assert_eq!(global_list, tools_list_result(), "전역 토큰의 목록은 바뀌지 않는다");
     // DB 도구의 가시성은 전역 · 조정자에게 같다(조정자에게 더 주지도 덜 주지도 않는다) — 작업자에겐 없다.
-    for db in [DbAiLevel::Off, DbAiLevel::Schema, DbAiLevel::Read, DbAiLevel::Approve] {
+    for db in [false, true] {
         let names = |c: &Caller, listed: bool| -> Vec<String> {
             tools_list_for(c, db, listed)["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect()
         };
         let g = names(&Caller::Global, false);
+        assert_eq!(g.len(), if db { 13 + 7 } else { 13 }, "DB 뒷면이 있으면 DB 도구 일곱 다 (2026-11-09)");
         let c = names(&coordinator, false);
         let tile = Caller::Tile { stream: "tile-x".into() };
         // (오케스트레이션 탭 2단계 6절) 타일은 맡긴 저장소 유무와 무관하게 전역과 같은 목록(조율 · 타일 도구 없음).
@@ -472,7 +472,7 @@ fn tools_list_has_all_tools_with_schemas() {
     }
     // 조정자 = 13 + 타일 도구 둘 + 조율 열 (3차 6단계 — worktree 도구 셋을 걷어 28 → 25).
     for (caller, expect) in [(&Caller::Global, 13usize), (&coordinator, 24), (&worker, 3)] {
-        let list = tools_list_for(caller, DbAiLevel::Off, false);
+        let list = tools_list_for(caller, false, false);
         let role_tools = list["tools"].as_array().unwrap();
         assert_eq!(role_tools.len(), expect, "{caller:?}");
         for t in role_tools {
@@ -482,7 +482,7 @@ fn tools_list_has_all_tools_with_schemas() {
             assert!(!t["description"].as_str().unwrap().is_empty(), "{n}");
         }
     }
-    let coord_names: Vec<String> = tools_list_for(&coordinator, DbAiLevel::Off, false)["tools"]
+    let coord_names: Vec<String> = tools_list_for(&coordinator, false, false)["tools"]
         .as_array()
         .unwrap()
         .iter()
@@ -507,7 +507,7 @@ fn tools_list_has_all_tools_with_schemas() {
     for n in ["list_worktrees", "create_worktree", "remove_worktree"] {
         assert!(!global_names.contains(&n) && !coord_names.iter().any(|x| x == n), "{n}");
     }
-    assert_eq!(tools_list_for(&worker, DbAiLevel::Off, true)["tools"][0]["name"], "get_task");
+    assert_eq!(tools_list_for(&worker, true, true)["tools"][0]["name"], "get_task");
     // 설명이 AI 가 읽는 유일한 계약이다 — 이력 도구는 세 제약을 반드시 말한다.
     let find = |n: &str| {
         tools.iter().find(|t| t["name"] == n).unwrap()["description"]
@@ -3183,7 +3183,7 @@ mod db_tools {
         let mut doc = String::new();
         for (c, level) in grants {
             let vt = c.via.as_ref().map(|_| VIA.to_string());
-            doc = upsert_database_in_doc(&doc, &c.id, &DbIdentity::of(c, vt), *level).unwrap();
+            doc = upsert_database_in_doc(&doc, &c.id, &DbIdentity::of(c, vt), *level, Some(true)).unwrap();
         }
         Delegation::parse(&doc).unwrap()
     }
@@ -3267,10 +3267,12 @@ mod db_tools {
         assert!(g["result"]["content"][0]["text"].as_str().unwrap().starts_with("not-a-tile"), "{g}");
     }
 
-    /// 시험 `db_tools_follow_ai_level`(B-9) — 단계마다 `tools/list` 가 바뀌고, 도구는 권한 판정을 지난다: 끔 · 스냅샷 어긋남 = 없는 연결
-    /// (목록에도 없다) · 구조만 = `db_query` 거절(뒷면에 닿지 않음) · 읽기 전용 = 조회가 뒷면에 닿는다.
+    /// 시험 `db_tools_listed_always_judged_per_call`(B-9 · 2026-11-09 — 옛 `db_tools_follow_ai_level`) — `tools/list` 는 **단계와 무관하게
+    /// DB 도구 일곱**이고(CLI 가 목록을 캐시하므로), 도구는 호출마다 권한 판정을 지난다: 끔 · 스냅샷 어긋남 = 없는 연결(`list_db_connections`
+    /// 에도 없다) · 구조만 = `db_query` 거절(뒷면에 닿지 않음) · 읽기 전용 = 조회가 뒷면에 닿는다 · 권한을 올리면 목록을 다시 받지 않고 다음
+    /// 호출부터 통한다.
     #[test]
-    fn db_tools_follow_ai_level() {
+    fn db_tools_listed_always_judged_per_call() {
         let schema = conn("Schema_conn01", "구조만 DB", true);
         let read = conn("Read_conn0001", "읽기 DB", false);
         let off = conn("Off_conn00001", "끈 DB", false);
@@ -3287,27 +3289,70 @@ mod db_tools {
             ..Default::default()
         });
 
-        // 권한이 하나도 없으면 DB 도구가 없다(13개 그대로).
         let none = delegation(&[]);
-        assert!(db_tool_names(&tool_names(&fake, &none)).is_empty());
-        assert_eq!(tool_names(&fake, &none).len(), 13);
-        // 끔 · 스냅샷 어긋남만 있어도 없다.
         let only_moved = delegation(&[(&granted_moved, DbAiLevel::Read)]);
-        assert!(db_tool_names(&tool_names(&fake_moved, &only_moved)).is_empty());
-
-        // 구조만 — 목록 + 구조 넷, `db_query` 없음.
         let s_only = delegation(&[(&schema, DbAiLevel::Schema)]);
-        assert_eq!(
-            db_tool_names(&tool_names(&fake, &s_only)),
-            ["list_db_connections", "db_list_schemas", "db_list_objects", "db_describe_table", "db_get_definition"]
-        );
-        // 읽기 전용 하나라도 있으면 `db_query` 까지(쓰기 작업안 도구는 아직 없다).
         let both = delegation(&[(&schema, DbAiLevel::Schema), (&read, DbAiLevel::Read), (&granted_moved, DbAiLevel::Read)]);
-        assert_eq!(db_tool_names(&tool_names(&fake_moved, &both)).len(), 6);
-        assert!(!tool_names(&fake_moved, &both).iter().any(|n| n == crate::mcp::db::WRITE_PLAN_TOOL));
-        // 승인 후 실행 하나라도 있으면 쓰기 작업안 초안 도구(3b)까지 — 일곱.
         let approve = delegation(&[(&schema, DbAiLevel::Schema), (&read, DbAiLevel::Approve)]);
-        assert_eq!(db_tool_names(&tool_names(&fake, &approve)), crate::mcp::db::DB_TOOLS);
+        // 목록은 단계를 타지 않는다 — 권한이 하나도 없어도 · 끔 · 스냅샷 어긋남만 있어도 · 어느 단계든 13 + DB 일곱, 순서까지 같다.
+        let full = tool_names(&fake, &approve);
+        assert_eq!(full.len(), 13 + 7);
+        assert_eq!(db_tool_names(&full), crate::mcp::db::DB_TOOLS);
+        for (f, d) in [(&fake, &none), (&fake_moved, &only_moved), (&fake, &s_only), (&fake_moved, &both)] {
+            assert_eq!(tool_names(f, d), full, "목록은 늘 같다");
+        }
+        // DB 뒷면이 없는 서버(시험의 단독 서버)는 DB 도구가 없다 — 13 그대로.
+        let v = parse_json(dispatch_with(
+            &Store::default(),
+            &Default::default(),
+            &Default::default(),
+            &McpSignal::default(),
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }).to_string(),
+            || approve.clone(),
+        ));
+        assert_eq!(v["result"]["tools"].as_array().unwrap().len(), 13);
+
+        // 권한이 없으면(끔) 목록에 있는 도구도 없는 연결 · 구조만이면 조회 거절 — 판정은 호출마다 서버.
+        let (err, text) = tool(&fake, &none, "db_list_schemas", json!({ "connId": schema.id }));
+        assert!(err && text.contains("Unknown database connection"), "{text}");
+        let (err, text) = tool(&fake, &s_only, "db_query", json!({ "connId": schema.id, "sql": "SELECT 1" }));
+        assert!(err && text.contains("permission is 'Schema'"), "{text}");
+        let (err, text) = tool(&fake, &both, "create_db_write_plan", json!({ "summary": "s", "effect": "delete", "connId": read.id, "statements": ["DELETE FROM t"], "maxAffected": 1 }));
+        assert!(err && text.contains("needs 'Ask'"), "{text}");
+        assert!(fake.calls.lock().unwrap().is_empty(), "거절은 뒷면에 닿지 않는다");
+
+        // **즉시 적용** — 읽기 전용(Read)에서 받은 목록 그대로, 사람이 앱에서 Ask 로 올리면 `tools/list` 를 다시 받지 않고 다음 호출이 통한다.
+        {
+            let store = Store::default();
+            let ops: OperationStore = Default::default();
+            let results: ResultStore = Default::default();
+            let signal = McpSignal::default();
+            let env = DbEnv::new(Arc::clone(&fake) as Arc<dyn AiDb>);
+            let at_read = delegation(&[(&read, DbAiLevel::Read)]);
+            let raised = delegation(&[(&read, DbAiLevel::Approve)]);
+            let send = |body: Value, d: &Delegation| {
+                let d = d.clone();
+                parse_json(dispatch_full(&store, &ops, &results, &signal, &body.to_string(), || d, &env))
+            };
+            let listed = send(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), &at_read);
+            assert!(listed["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == crate::mcp::db::WRITE_PLAN_TOOL), "Read 에서도 목록에 있다");
+            let plan = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "create_db_write_plan",
+                "arguments": { "summary": "s", "effect": "write", "connId": read.id, "statements": ["UPDATE t SET a = 1 WHERE id = 7"], "maxAffected": 1 } } });
+            let before = send(plan.clone(), &at_read);
+            assert_eq!(before["result"]["isError"], true, "{before}");
+            assert!(ops.lock().unwrap().is_empty());
+            // 권한만 올린다 — 목록을 다시 받지 않는다.
+            let after = send(plan, &raised);
+            assert!(after["result"]["isError"].is_null(), "{after}");
+            assert_eq!(ops.lock().unwrap().len(), 1, "올린 다음 호출에서 초안 하나");
+            // 다시 내리면 다음 호출부터 거절(목록에는 남아 있어도 안전하다).
+            let again = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "create_db_write_plan",
+                "arguments": { "summary": "s", "effect": "write", "connId": read.id, "statements": ["UPDATE t SET a = 2 WHERE id = 7"], "maxAffected": 1 } } });
+            let lowered = send(again, &at_read);
+            assert_eq!(lowered["result"]["isError"], true, "{lowered}");
+            assert_eq!(ops.lock().unwrap().len(), 1);
+        }
+        assert!(fake.calls.lock().unwrap().is_empty(), "작업안 만들기는 DB 에 닿지 않는다");
         // 승인 후 실행이 아닌 연결에 쓰기 작업안 → 거절(작업안 없음 · 뒷면에 닿지 않음), 끔은 없는 연결.
         let (err, text) = tool(&fake, &approve, "create_db_write_plan", json!({ "summary": "s", "effect": "delete", "connId": schema.id, "statements": ["DELETE FROM t"], "maxAffected": 1 }));
         assert!(err && text.contains("needs 'Ask'"), "{text}");
@@ -3439,7 +3484,7 @@ mod db_tools {
         let keys: Vec<&String> = list[0].as_object().unwrap().keys().collect();
         let mut keys: Vec<&str> = keys.into_iter().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["aiLevel", "connId", "database", "engine", "name", "throughSsh"]);
+        assert_eq!(keys, ["aiLevel", "connId", "database", "engine", "headless", "name", "throughSsh"]);
         for leak in ["db.internal", "readonly_user", "5432", "web-01", VIA] {
             assert!(!text.contains(leak), "목록에 {leak}");
         }
@@ -3450,6 +3495,55 @@ mod db_tools {
                 // (승인 몸 이름은 `server::tests::auto_approve_has_one_entry` 가 MCP 소스 전부 — 이 파일까지 — 에서 이미 막는다.)
                 "db_password", "password_for", "hub::vault", "Zeroizing", "OpenSecrets", "ai_write", "db_exec", "execute_db",
             ] {
+                assert!(!text.contains(needle), "{} 에 {needle}", f.display());
+            }
+        }
+    }
+
+    /// 시험 `db_headless_listed_not_writable`(2026-11-09) — `list_db_connections` 의 `headless` 는 그 연결의 헤드리스 위임(새 블록 끔 ·
+    /// 켬 · 칸 없는 옛 블록 켬 · 스냅샷 어긋남은 목록에서 빠짐)이고 SQLite 도 같은 칸(2026-11-09). **MCP 에는 이 칸을 쓰는 길이 없다**: 도구 목록 · MCP 소스에
+    /// 위임 쓰기(`upsert_database_in_doc` · `db_ai_set` · `set_at` · `"headless"` 를 적는 `put`)가 없다.
+    #[test]
+    fn db_headless_listed_not_writable() {
+        let on = conn("Head_on_conn1", "켬", false);
+        let off = conn("Head_offconn1", "끔", true);
+        let legacy = conn("Head_oldconn1", "옛", false);
+        let sqlite = |id: &str, file: &str| {
+            let mut c = conn(id, "파일", false);
+            c.engine = DbEngine::Sqlite;
+            c.host = None;
+            c.port = None;
+            c.user = None;
+            c.database = None;
+            c.path = Some(file.into());
+            c
+        };
+        let lite = sqlite("Head_litconn1", "C:\\data\\x.db");
+        let lite_on = sqlite("Head_liton001", "C:\\data\\y.db");
+        let fake = Arc::new(FakeDb { conns: vec![on.clone(), off.clone(), legacy.clone(), lite.clone(), lite_on.clone()], ..Default::default() });
+        let ident = |c: &DbConn| DbIdentity::of(c, c.via.as_ref().map(|_| VIA.to_string()));
+        let mut doc = upsert_database_in_doc("", &on.id, &ident(&on), DbAiLevel::Read, Some(true)).unwrap();
+        doc = upsert_database_in_doc(&doc, &off.id, &ident(&off), DbAiLevel::Read, None).unwrap();
+        doc = upsert_database_in_doc(&doc, &lite.id, &ident(&lite), DbAiLevel::Schema, None).unwrap();
+        doc = upsert_database_in_doc(&doc, &lite_on.id, &ident(&lite_on), DbAiLevel::Read, Some(true)).unwrap();
+        let old = upsert_database_in_doc("", &legacy.id, &ident(&legacy), DbAiLevel::Schema, None).unwrap().replace("headless = false\n", "");
+        doc.push_str(&old);
+        let d = Delegation::parse(&doc).unwrap();
+        let (err, text) = tool(&fake, &d, "list_db_connections", json!({}));
+        assert!(!err, "{text}");
+        let list: Value = serde_json::from_str(&text).unwrap();
+        let flag = |id: &str| list.as_array().unwrap().iter().find(|r| r["connId"] == id).map(|r| r["headless"].clone());
+        assert_eq!(flag(&on.id), Some(json!(true)));
+        assert_eq!(flag(&off.id), Some(json!(false)), "새 블록은 끔");
+        assert_eq!(flag(&legacy.id), Some(json!(true)), "칸 없는 옛 블록은 켬");
+        assert_eq!(flag(&lite.id), Some(json!(false)), "SQLite 도 새 블록은 끔(2026-11-09)");
+        assert_eq!(flag(&lite_on.id), Some(json!(true)), "SQLite 도 켠 칸은 켬");
+        // MCP 에는 위임을 쓰는 표면이 없다.
+        let names = tool_names(&fake, &d);
+        assert!(!names.iter().any(|n| n.contains("headless") || n.contains("delegation") || n.contains("permission")), "{names:?}");
+        for f in mcp_sources() {
+            let text = code_only(&std::fs::read_to_string(&f).unwrap());
+            for needle in ["upsert_database_in_doc", "db_ai_set", "set_at(", "\"headless\", Value", "write_if_changed"] {
                 assert!(!text.contains(needle), "{} 에 {needle}", f.display());
             }
         }
@@ -3467,7 +3561,7 @@ mod db_tools {
             let text = code_only(&std::fs::read_to_string(&f).unwrap());
             for needle in [
                 "db::table", "db::pg", "db::mysql", "db::sqlite", "db::script", "db::net", "db::tx", "db_proxy", "db_ops", "set_write",
-                "set_mode", "tx_begin", "db_open", "ai_write", "db_exec",
+                "set_mode", "tx_begin", "db_open", "db_test", "ai_write", "db_exec",
             ] {
                 assert!(!text.contains(needle), "{} 에 {needle}", f.display());
             }
@@ -3541,7 +3635,7 @@ fn side_chats_and_tiles_never_list_orchestration_tools() {
     let tile = Caller::Tile { stream: "0123abcd0123abcd0123abcd0123abcd".into() };
     let side = Caller::SideChat { chat: "0123abcd0123abcd".into() };
     for c in [&tile, &side] {
-        let v = super::schema::tools_list_for(c, crate::db::ai::DbAiLevel::Off, true);
+        let v = super::schema::tools_list_for(c, true, true);
         let names: Vec<&str> = v["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
         for n in &names {
             assert!(!crate::orchestration::TILE_TOOLS.contains(n) && !crate::orchestration::COORDINATOR_TOOLS.contains(n), "{c:?}: {n}");

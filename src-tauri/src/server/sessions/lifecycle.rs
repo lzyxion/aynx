@@ -105,11 +105,12 @@ pub(crate) fn conn_opened(conn: u64) {
 }
 
 /// **연결이 끊겼다** — 그 연결이 쥔 임대를 모두 푼다(세션은 산다). GUI 정상 종료·kill 이 같은 길이다(로컬·SSH 모두). 쿼리 타일의
-/// DB 연결은 떼어 둔다(TTL 뒤 닫힘 — `db::table`).
+/// DB 연결도 떨어진 세션으로 남는다(TTL 없음 — `db::table` 머리말 · 2026-11-09 ②).
 pub(crate) fn conn_gone(conn: u64) {
     let dbs = crate::db::table::conn_gone(conn);
     if dbs > 0 {
-        log::line(format!("client conn {conn} gone — {dbs} db connection(s) detached"));
+        detached_changed();
+        log::line(format!("client conn {conn} gone — {dbs} db connection(s) kept as detached"));
     }
     // 사이드 채팅도 떼어 둔다(TTL — `server::side_chat` 머리말).
     let chats = super::side_chat::conn_gone(conn);
@@ -137,7 +138,7 @@ pub(crate) fn conn_gone(conn: u64) {
     }
 }
 
-/// 살아 있는 세션 수(붙었거나 떨어진) — 고아 자진 종료 조건.
+/// 살아 있는 세션 수(붙었거나 떨어진) — 고아 자진 종료 조건(떨어진 쿼리 타일의 DB 연결은 `serve::Busy` 가 따로 더한다).
 pub(crate) fn live_count() -> usize {
     core().live_count()
 }
@@ -210,11 +211,37 @@ pub(crate) struct DetachedSession {
     pub ai_read: bool,
     /// 책임 창이 복원을 마치며 데려가지 않았다.
     pub unclaimed: bool,
+    /// 쿼리 타일(`kind: "db"` — ②)의 연결 id(`db-connections.json`). 화면이 이름 · AI 권한을 제 사본에서 푼다. 판 28 이하 서버는 없다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conn: Option<String>,
+    /// 쿼리 타일의 쓰기 모드.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writable: Option<bool>,
+    /// 쿼리 타일에 열린 트랜잭션 작업이 있다(떨어진 지 10분이면 되돌린다).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_tx: Option<bool>,
 }
 
-/// 코어의 떨어진 세션에 자원 쪽 메타(셸·별칭·tmux·마지막 출력)를 붙인다 — 코어 잠금을 먼저 풀고 자원 표를 본다(잠금 순서).
+/// 코어의 떨어진 세션에 자원 쪽 메타(셸·별칭·tmux·마지막 출력)를 붙인다 — 코어 잠금을 먼저 풀고 자원 표를 본다(잠금 순서). 떨어진
+/// 세션으로 남은 쿼리 타일의 DB 연결(`kind: "db"` — ②)을 뒤에 잇는다(순서는 GUI · 화면이 떨어진 시각으로 다시 굳힌다).
 pub(crate) fn detached_rows() -> Vec<DetachedSession> {
     let rows = core().detached();
+    let dbs = crate::db::table::detached_rows().into_iter().map(|d| DetachedSession {
+        stream: d.stream,
+        kind: "db".into(),
+        home: d.home,
+        opened_at: d.opened_at_ms,
+        detached_at: Some(d.detached_at_ms),
+        last_output_at: None,
+        shell: None,
+        alias: None,
+        tmux: None,
+        ai_read: false,
+        unclaimed: d.unclaimed,
+        conn: Some(d.conn),
+        writable: Some(d.writable),
+        in_tx: Some(d.in_tx),
+    });
     rows.into_iter()
         .map(|r| {
             let (shell, alias, tmux, last) = match r.kind {
@@ -239,7 +266,11 @@ pub(crate) fn detached_rows() -> Vec<DetachedSession> {
                 tmux,
                 ai_read: r.ai_read,
                 unclaimed: r.unclaimed,
+                conn: None,
+                writable: None,
+                in_tx: None,
             }
         })
+        .chain(dbs)
         .collect()
 }

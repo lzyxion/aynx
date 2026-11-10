@@ -42,7 +42,7 @@ function host(alias: string, known?: boolean): DelegationTargetView {
 }
 
 function db(id: string, name: string | undefined, connKnown: boolean, identityOk: boolean): DbAiView {
-  return { id, name, level: "read", connKnown, identityOk };
+  return { id, name, level: "read", connKnown, identityOk, headless: false };
 }
 
 describe("저장된 항목", () => {

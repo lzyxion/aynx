@@ -799,18 +799,9 @@ pub(crate) async fn probe(stream: &str) -> Option<Value> {
 pub(crate) async fn detach_window(label: &str, skip: crate::reap::Held) {
     // 그 창의 시청자 경로 — 서버도 같은 op 에서 그 창의 시청자를 뗀다(R2-A).
     drop_viewer_routes(|r| r.window == label);
-    let skip_local: Vec<u32> = skip.local.into_iter().collect();
-    let skip_ssh: Vec<u32> = skip.ssh.into_iter().collect();
-    let skip_db: Vec<String> = skip.db_streams.into_iter().collect();
     // 그 창의 프로듀서 채팅 통로 — 지금 쥔 세대만 서버에서 뗀다(새 페이지가 이 뒤에 건 구독은 남는다 · `producer_proxy::take_window`).
     let producer_subs = super::producer_proxy::take_window(label);
-    match call_now(
-        Grade::Write,
-        "detach_window",
-        json!({ "window": label, "ids": skip_local, "sshIds": skip_ssh, "dbStreams": skip_db, "producerSubs": producer_subs }),
-    )
-    .await
-    {
+    match call_now(Grade::Write, "detach_window", detach_body(label, skip, &producer_subs)).await {
         Ok(v) => {
             let streams: Vec<String> = serde_json::from_value(v).unwrap_or_default();
             if !streams.is_empty() {
@@ -827,11 +818,45 @@ pub(crate) async fn detach_window(label: &str, skip: crate::reap::Held) {
     }
 }
 
+/// 리로드의 떨어뜨리기 몸(op `detach_window` — `skip` = 이관 중인 것). **순수** — 시험이 GUI 가 실제로 보내는 몸을 그대로 쓴다.
+pub(crate) fn detach_body(label: &str, skip: crate::reap::Held, producer_subs: &[u64]) -> Value {
+    let skip_local: Vec<u32> = skip.local.into_iter().collect();
+    let skip_ssh: Vec<u32> = skip.ssh.into_iter().collect();
+    let skip_db: Vec<String> = skip.db_streams.into_iter().collect();
+    json!({ "window": label, "ids": skip_local, "sshIds": skip_ssh, "dbStreams": skip_db, "producerSubs": producer_subs })
+}
+
+/// 앱 전체 종료 중의 창 파괴 몸(op `detach_window` 의 `dbOnly` — 그 창의 DB 연결을 떨어진 세션으로 남긴다 · TTL 없음). **순수**.
+pub(crate) fn keep_body(label: &str, held_db: &[String], producer_subs: &[u64]) -> Value {
+    json!({ "window": label, "dbStreams": held_db, "dbOnly": true, "producerSubs": producer_subs })
+}
+
+/// 창 파괴의 닫기 몸(op `close_window` — `held_*` = 이관 중인 것). **순수**.
+pub(crate) fn close_body(label: &str, held_local: &[u32], held_ssh: &[u32], held_db: &[String], producer_subs: &[u64]) -> Value {
+    json!({ "window": label, "ids": held_local, "sshIds": held_ssh, "dbStreams": held_db, "producerSubs": producer_subs })
+}
+
+async fn send_keep(label: &str, held_db: &[String], producer_subs: &[u64]) {
+    if let Err(e) = call_now(Grade::Write, "detach_window", keep_body(label, held_db, producer_subs)).await {
+        if !e.starts_with("not-connected") {
+            eprintln!("[server] 종료 중 `{label}` 창의 DB 연결 남기기 실패: {e}");
+        }
+    }
+}
+
+/// **앱 전체 종료 · 트레이로 가는 중의 창 파괴**(`reap::Event::Leaving` — 리로드와 같은 떨어뜨리기 [`detach_window`] **뒤에**) — 그 창의
+/// 쿼리 타일 DB 연결을 떨어진 세션으로 남긴다(`dbOnly` — 앞의 떨어뜨리기가 리로드(TTL 10분)로 떼어 둔 것을 남김(TTL 없음)으로 올린다 ·
+/// `held_db` = 이관 중인 stream). 2026-11-09 실기: 이것이 없어 트레이로 간 창의 DB 타일이 10분 뒤 닫혔다.
+pub(crate) async fn keep_window_dbs(label: &str, held_db: Vec<String>) {
+    // 프로듀서 통로는 앞의 떨어뜨리기가 이미 걷었다 — 다시 걷지 않는다(같은 라벨의 새 창이 건 구독을 건드리지 않게).
+    send_keep(label, &held_db, &[]).await;
+}
+
 /// 창 파괴 — 이 창이 책임지는 세션(로컬·SSH)과 쿼리 타일의 DB 연결을 닫는다(이관 중인 것 `held_*` 는 빼고). 닫은 `(로컬, SSH)` id.
 ///
 /// 앱 전체 종료 중(`QUITTING` — 마지막 창 X · 트레이로 · GUI 끝내기)이면 닫지 않는다. 세션은 quitAll 이 이미 떼어 뒀고, DB 연결은
-/// 여기서 **떼어 둔다**(`detach_window` 의 `dbOnly` — TTL). 트레이에 남으면 GUI 연결이 살아 있어 `conn_gone` 이 오지 않으므로, 이것이
-/// 없으면 그 DB 연결은 아무도 보지 않는 채 붙은 것으로 남는다.
+/// 여기서 **떨어진 세션으로 남긴다**(`detach_window` 의 `dbOnly` — TTL 없음 · 2026-11-09 ②). 트레이에 남으면 GUI 연결이 살아 있어
+/// `conn_gone` 이 오지 않으므로, 이것이 없으면 그 DB 연결은 아무도 보지 않는 채 붙은 것으로 남는다(떨어진 세션 목록에도 없다).
 pub(crate) async fn close_window(
     label: &str,
     held_local: Vec<u32>,
@@ -848,21 +873,10 @@ pub(crate) async fn close_window(
     // 그 창의 타일 권한 카드 통로.
     super::tile_permission_proxy::forget_window(label);
     if QUITTING.load(Ordering::SeqCst) {
-        let body = json!({ "window": label, "dbStreams": held_db, "dbOnly": true, "producerSubs": producer_subs });
-        if let Err(e) = call_now(Grade::Write, "detach_window", body).await {
-            if !e.starts_with("not-connected") {
-                eprintln!("[server] 종료 중 `{label}` 창의 DB 연결 떼어 두기 실패: {e}");
-            }
-        }
+        send_keep(label, &held_db, &producer_subs).await;
         return (Vec::new(), Vec::new());
     }
-    match call(
-        Grade::Write,
-        "close_window",
-        json!({ "window": label, "ids": held_local, "sshIds": held_ssh, "dbStreams": held_db, "producerSubs": producer_subs }),
-    )
-    .await
-    {
+    match call(Grade::Write, "close_window", close_body(label, &held_local, &held_ssh, &held_db, &producer_subs)).await {
         Ok(v) => {
             let ids = |k: &str| -> Vec<u32> {
                 v.get(k)
@@ -992,6 +1006,9 @@ mod tests {
             tmux: None,
             ai_read: false,
             unclaimed,
+            conn: None,
+            writable: None,
+            in_tx: None,
         }
     }
 

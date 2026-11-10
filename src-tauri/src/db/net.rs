@@ -67,22 +67,53 @@ impl From<String> for OpenError {
     }
 }
 
-/// `db_open` 몸의 비밀 재료 — **`Debug` 없음**. `password` 는 DB 비밀번호, `ssh` 는 경유 SSH 관문의 답.
+/// `db_open` · `db_test` 몸의 비밀 재료 — **`Debug` 없음**. `password` 는 DB 비밀번호, `ssh` 는 경유 SSH 관문의 답.
+/// `vault` = 몸에 비밀번호가 없을 때 **볼트(`db_password`, 열쇠 = 연결 id)로 물러나도 되나** — 타일은 늘 참 · AI 연결은 볼트 차례에서 참
+/// (사람 타일에서 빌린 비밀번호(`db::borrowed`)를 몸에 실은 차례는 거짓 — `ai::open_with`)이고, 폼의
+/// [연결 테스트](`table::test`)만 "저장된 연결과 대상이 같을 때" 참이다(서버가 파일을 다시 읽고 정한다 — `table::test_vault_allowed`).
+/// `from_vault` = 몸의 값이 이미 볼트에서 읽은 값이다([`OpenSecrets::settle_password`] — 쿼리 타일의 새 열기가 인증에 쓸 값을 빌린 비밀번호로 담으려고
+/// 미리 정한다 · 거절되면 볼트 값처럼 `[db-stored-rejected]`). 기본값은 거짓(닫힌 쪽).
 #[derive(Default)]
 pub(crate) struct OpenSecrets {
     pub password: Option<Zeroizing<String>>,
     pub ssh: SharedCreds,
+    pub vault: bool,
+    pub from_vault: bool,
 }
 
-/// 쓸 비밀번호 — 몸의 값(이번 한 번) → 없으면 볼트(`db_password_for(id)`). `bool` = 볼트에서 왔다(거절되면 `[db-stored-rejected]`).
-pub(crate) fn password_for(body: Option<Zeroizing<String>>, id: &str) -> (Option<Zeroizing<String>>, bool) {
+impl OpenSecrets {
+    /// 비밀번호 자리를 **지금** 정한다 — 몸이 비었고 `vault` 면 볼트 값을 몸에 옮기고 `from_vault` 를 켠다(엔진은 그 값을 그대로 보낸다 —
+    /// [`password_for`]). 쿼리 타일의 새 열기(`table::open_engine`) 하나가 부른다: 인증에 성공한 그 값이 빌린 비밀번호의 재료다(`db::borrowed`).
+    pub(crate) fn settle_password(&mut self, id: &str) {
+        self.settle_password_with(|| crate::server::hub::vault().and_then(|v| v.db_password_for(id)));
+    }
+
+    /// [`OpenSecrets::settle_password`] 의 몸 — 볼트 읽기를 받는다(시험).
+    pub(crate) fn settle_password_with(&mut self, read_vault: impl FnOnce() -> Option<Zeroizing<String>>) {
+        if self.password.is_none() && self.vault {
+            self.password = read_vault();
+            self.from_vault = self.password.is_some();
+        }
+    }
+}
+
+/// 쓸 비밀번호 — 몸의 값(이번 한 번 — `from_vault` 면 미리 읽은 볼트 값) → 없고 `vault` 면 볼트(`db_password_for(id)`) → 아니면 없음.
+/// `bool` = 볼트에서 왔다(거절되면 `[db-stored-rejected]`). `vault` 가 거짓이면 볼트에 **닿지도 않는다**(잠김 · 없음과 같은 `None` — 서버가
+/// 요구하면 `[db-password]`).
+pub(crate) fn password_for(
+    body: Option<Zeroizing<String>>,
+    from_vault: bool,
+    id: &str,
+    vault: bool,
+) -> (Option<Zeroizing<String>>, bool) {
     match body {
-        Some(p) => (Some(p), false),
-        None => {
+        Some(p) => (Some(p), from_vault),
+        None if vault => {
             let v = crate::server::hub::vault().and_then(|v| v.db_password_for(id));
             let some = v.is_some();
             (v, some)
         }
+        None => (None, false),
     }
 }
 

@@ -26,6 +26,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="modal glass-raised" data-workspace-edit data-inline-edit role="dialog" aria-modal="true"
       aria-labelledby="workspace-edit-title" tabindex="-1" bind:this={modalEl} onkeydown={keydown}>
+      <div class="glass-scroll">
       <h2 id="workspace-edit-title">{t("app.workspaces.editTitle")}</h2>
       <form onsubmit={(ev) => { ev.preventDefault(); void submitWorkspaceEdit(); }}>
         <fieldset class="fields" disabled={prompt.busy}>
@@ -43,6 +44,7 @@
           <button type="submit" class="btn btn-primary" data-workspace-edit-submit disabled={prompt.busy || !prompt.name.trim()}>{t("app.actions.save")}</button>
         </div>
       </form>
+      </div>
     </div>
   </div>
 {/if}
@@ -65,12 +67,17 @@
     width: 100%;
     max-width: 440px;
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
 
   h2 {

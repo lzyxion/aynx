@@ -77,6 +77,8 @@ fn secrets(pw: Option<&str>) -> OpenSecrets {
     OpenSecrets {
         password: pw.map(|p| Zeroizing::new(p.to_string())),
         ssh: SharedCreds::default(),
+        vault: true,
+        from_vault: false,
     }
 }
 
@@ -910,6 +912,8 @@ async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_p
                 declined_keys: declined.clone(),
                 unattended: None,
             },
+            vault: true,
+            from_vault: false,
         };
         match Pg::connect(stream, target.clone(), s).await {
             Ok(p) => return (Ok(p), seen),

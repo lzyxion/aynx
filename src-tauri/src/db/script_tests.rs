@@ -388,6 +388,8 @@ fn secrets(pw: &str) -> OpenSecrets {
     OpenSecrets {
         password: Some(Zeroizing::new(pw.to_string())),
         ssh: SharedCreds::default(),
+        vault: true,
+        from_vault: false,
     }
 }
 

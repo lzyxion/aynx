@@ -79,6 +79,11 @@ export type ErrorReason =
    */
   | "db-password"
   | "db-auth"
+  /**
+   * 2026-11-10: `[session-gone]` 의 덧말(쿼리 타일의 붙기만) — 같은 타일의 끊긴 연결이 빌린 비밀번호를 쥐고 있어 새 열기가 그 값으로
+   * 붙을 수 있다. `query/open-flow` 가 볼트 잠금 해제를 먼저 묻지 않고 한 번 열어 본다(실패하면 평소 관문).
+   */
+  | "db-carry"
   | "db-stored-rejected"
   | "db-disconnected"
   /**
@@ -229,6 +234,7 @@ export const REASONS: readonly ErrorReason[] = [
   "server-outdated",
   "db-password",
   "db-auth",
+  "db-carry",
   "db-stored-rejected",
   "db-disconnected",
   "db-tx-stale",

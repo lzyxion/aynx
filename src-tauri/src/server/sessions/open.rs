@@ -37,6 +37,8 @@ pub(super) async fn open_ssh(b: Value, ctx: &ConnCtx) -> Result<Value, WireError
     // 주의 크기를 적어 둔다(R2-A — 시청자가 크기 주인이었다가 주가 다시 칠 때 돌아갈 크기).
     core().note_size(&opened.lease.stream, opened.lease.lease_epoch, open_size.0, open_size.1);
     if let Some((slot, gate, _)) = crate::ssh::attach_parts(crate::ssh::table(), opened.id) {
+        // 서버 해석기(2026-11-09) — 꽂기 전의 링(보안 알림 · 첫 프롬프트)으로 따라잡고 이어 간다.
+        crate::screen_mirror::install(&slot, &opened.lease.stream, Kind::Ssh, open_size.0, open_size.1);
         let plugged = plug(&opened.lease, ctx.id, &gate, || {
             let credit = new_credit(Kind::Ssh, opened.id, Arc::clone(&gate));
             output::attach_output(&slot, sink(ctx, &opened.lease, credit), 0)
@@ -152,6 +154,8 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
         }
     };
     let slot = session.output_slot();
+    // 서버 해석기(2026-11-09 — `crate::screen_mirror`) — 펌프보다 먼저 꽂아 첫 바이트부터 따라간다(창이 없을 때 거울을 잇는다).
+    crate::screen_mirror::install(&slot, &o.stream, Kind::Local, open_size.0, open_size.1);
     let gate = session.gate();
     let id = pty::alloc_id();
     let keys = {

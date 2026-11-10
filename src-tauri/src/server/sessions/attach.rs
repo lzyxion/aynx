@@ -127,6 +127,7 @@ async fn attach_ssh(a: AttachArgs, got: crate::session_core::Attach, ctx: &ConnC
         if let Err(e) = writer.window_change(c as u32, r as u32, 0, 0).await {
             log::line(format!("attach window-change failed ({}): {e}", a.stream));
         }
+        output::resize_tap(&slot, c, r);
     }
     if replay.overrun_bytes > 0 {
         log::line(format!(
@@ -360,5 +361,6 @@ async fn adopt_ssh(a: Adopt, ctx: &ConnCtx) -> Result<Value, WireError> {
     if let Err(e) = writer.window_change(a.cols as u32, a.rows as u32, 0, 0).await {
         log::line(format!("handoff window-change failed (ssh {}): {e}", a.id));
     }
+    output::resize_tap(&slot, a.cols, a.rows);
     Ok(serde_json::to_value(done).unwrap_or(Value::Null))
 }

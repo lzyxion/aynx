@@ -64,7 +64,8 @@ fn request_timeout(op: &str) -> Duration {
         "ssh_exec" => Duration::from_secs(660),
         // DB 평면(판 8) — 열기는 파일 읽기·엔진 열기(7·8단계부터 터널·TLS), 스키마·쓰기 전환은 서버의 고정 시한(30초) + 여유.
         // `db_query` 는 몸의 `timeoutMs` + 여유를 [`request_timed`] 로 따로 준다(여기 값은 그 문을 거치지 않았을 때의 바깥 상한).
-        "db_open" => Duration::from_secs(60),
+        // 연결 테스트(판 28)는 열기와 같은 접속 하나다.
+        "db_open" | "db_test" => Duration::from_secs(60),
         "db_schema" | "db_objects" | "db_table_detail" | "db_definition" | "db_set_write" => Duration::from_millis(crate::db::META_TIMEOUT_MS + 15_000),
         // 트랜잭션 작업(판 9) — 끝내기는 서버가 120초까지 기다린다(`table::TX_END_TIMEOUT` — 커밋을 끊지 않는다) + 여유.
         "db_tx" => Duration::from_secs(150),

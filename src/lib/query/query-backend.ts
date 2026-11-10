@@ -8,7 +8,9 @@
  *
  * 지키는 것:
  * - **연결 값(경로·주소·경유)을 보내지 않는다** — `db_open` 의 몸은 참조(`DbConnRef` = `{id}`)뿐이고 서버가 `db-connections.json` 에서 다시 읽는다.
- * - **비밀번호는 `db_open` 한 번의 몸에만** 싣는다(DB 비밀번호 · 경유 SSH 관문의 답 — 접속 모달 `query/open-flow`).
+ *   **예외 하나 — `db_test`**(DB 연결 폼의 [연결 테스트], 판 28)는 저장 전 폼 값(초안 한 줄 — 저장과 같은 `conn-form` 의 `connOfRow`)을
+ *   싣는다. 서버가 저장과 같은 검사를 다시 하고, 볼트 비밀번호로 물러날지는 저장된 줄과 대상을 견줘 **서버가** 정한다(몸에 그 판단이 없다).
+ * - **비밀번호는 `db_open` · `db_test` 한 번의 몸에만** 싣는다(DB 비밀번호 · 경유 SSH 관문의 답 — 접속 모달 `query/open-flow`).
  * - `db_open` 의 실패는 **글자**(DB 쪽 — 이유 접두어) 또는 경유 SSH 관문의 **객체**(`{kind, …}` — 터미널 열기와 같은 꼴,
  *   `runSshGates` 가 읽는다)다.
  * - 화면에 찍기 전 이유 접두어를 뗀다(`stripReason`) — 분류는 떼기 **전** 문자열로 한다.
@@ -58,6 +60,15 @@ export interface DbOpened {
    * 단추를 막는다(이 칸은 진단용).
    */
   txSerial?: boolean;
+}
+
+/** `db_test` 의 답 — Rust `db::table::Tested`(camelCase · 비밀 없음). 판 글자는 쿼리 타일 정보 카드와 같은 값 */
+export interface DbTested {
+  dialect: DbDialect;
+  serverVersion: string;
+  /** 경유 호스트 별칭(없으면 직접) */
+  via?: string;
+  elapsedMs: number;
 }
 
 /** 트랜잭션 작업의 끝 — Rust `db::tx::Outcome` */
@@ -312,6 +323,28 @@ export function dbOpen(
     stream,
     conn,
     reattachOnly,
+    password: password ?? null,
+    ssh: ssh
+      ? {
+          hostKeyDecision: ssh.hostKeyDecision,
+          password: ssh.password,
+          passphrase: ssh.passphrase,
+          passphraseFor: ssh.passphraseFor,
+          declinedKeys: ssh.declinedKeys,
+        }
+      : null,
+  });
+}
+
+/**
+ * **연결 테스트**(판 28 — DB 연결 폼) — 저장 안 한 초안(`conn`)으로 한 번 붙고 닫는다. `stream` 은 폼이 시도마다 뽑는 `dbtest-…` 열쇠
+ * (비밀번호를 묻는 동안 서버가 경유 전송로를 그 열쇠에 세워 둔다). 실패는 [`dbOpen`] 과 같은 꼴(글자 또는 경유 SSH 관문 객체).
+ * 판 27 서버면 GUI 가 보내지 않고 `[server-outdated]`(폼은 그 전에 단추를 숨긴다 — `db_ai_list` 의 `connTest`).
+ */
+export function dbTest(stream: string, conn: DbConn, password?: string, ssh?: SshGateCreds): Promise<DbTested> {
+  return invoke<DbTested>("db_test", {
+    stream,
+    conn,
     password: password ?? null,
     ssh: ssh
       ? {

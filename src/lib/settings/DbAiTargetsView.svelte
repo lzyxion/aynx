@@ -13,7 +13,8 @@
    * **AI 권한 DB 연결**(쿼리 타일 3a) — 설정 › 보안의 하위 화면(2026-10-21 — 요약의 [관리 ›] 이 연다).
    * `delegation.toml` 의 `[[database]]`. 호스트 표(`DelegationHostsView`)와 같은 문법: 보는 것과 지우는 것뿐이고,
    * 바꾸는 자리는 DB 연결 폼의 AI 칸이다([연결 설정…]이 그 문). 스냅샷 값은 화면에 오지 않는다(맞는지만 — `identityOk`).
-   * 단계 칩 하나만 선다(헤드리스 묶음이 없다). 표는 섹션이 볼 때마다 다시 읽는다(`CredentialsSection` 의 `$effect`).
+   * 단계 칩 하나 + 헤드리스 칩 하나(2026-11-09 — 타일 없이 AI 접속 · 호스트 표의 "헤드리스 접속" 칩과 같은 꼴 · SQLite 는 비밀번호가 없어 없다).
+   * 표는 섹션이 볼 때마다 다시 읽는다(`CredentialsSection` 의 `$effect`).
    */
   let { onback }: { onback: () => void } = $props();
 
@@ -87,6 +88,7 @@
         {#each rows as v (v.id)}
           {@const orphan = !v.connKnown}
           {@const broken = v.connKnown && !v.identityOk}
+          {@const on = v.headless && !orphan && !broken}
           {@const name = dbRowName(v)}
           <li class:orphan={orphan || broken} data-db-ai-row={v.id}>
             <span class="head">
@@ -125,6 +127,15 @@
                 data-stage={v.level}
                 title={t("settings.credentials.delegation.stage.title", { stage: t(DB_AI_NAME[v.level]) })}
                 ><AiGaugeMini at={orphan || broken ? 0 : DB_AI_LEVELS.indexOf(v.level)} />{t(DB_AI_NAME[v.level])}</span
+              >
+              <!-- 헤드리스 칩 — 엔진 무관(SQLite 도 — 2026-11-09 · 고아 줄도 세운다 — 파일의 칸이다) -->
+              <span
+                class="gchip"
+                class:on
+                data-db-ai-headless={on}
+                title={t(on ? "settings.credentials.delegation.grant.on" : "settings.credentials.delegation.grant.off", {
+                  grant: t("settings.credentials.delegation.grant.connect"),
+                })}>{t("settings.credentials.delegation.grant.connect")}</span
               >
             </span>
           </li>

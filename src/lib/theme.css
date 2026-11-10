@@ -826,6 +826,16 @@
   background-clip: padding-box;
   box-shadow: var(--glass-shadow);
 }
+/*
+ * 스크롤 칸 — 흐림 층(`::before`)은 상자에 붙은 절대 위치 층이라, 상자 자신이 스크롤하면 내용과 함께 밀려 올라가 밑동에
+ * 흐림이 빠진다(창보다 긴 모달). 그래서 뜬 면 상자는 스크롤하지 않고(`overflow: hidden` · 세로 flex) 이 안쪽 칸이 스크롤과
+ * 안쪽 여백을 맡는다(2026-11-10). 칸에도 transform · filter 를 걸지 않는다 — 안쪽 `position: fixed` 목록이 창 좌표에 서야 한다.
+ */
+.glass-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  border-radius: inherit;
+}
 /* 10-22 의 가장자리 빛 띠(`::after` 고리)는 10-29 에 걷었다(재질 절 머리말). 되살린다면: **스크롤 상자가 될 수 있는 면의 가상
    요소는 안쪽 여백 상자 밖으로 내밀지 않는다** — 0.3px 만 내밀어도 `overflow-y: auto` 메뉴에 스크롤바가 섰다(10-24 실측). */
 

@@ -149,7 +149,15 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 ///
 /// 판 27(2026-11-07 앨범 병합): op `orchestration_merge_preview`(읽기) · `orchestration_merge`(쓰기) · 앨범 구성 칸 `autoMerge` · 상세의 `merge` · `mergedOutside`.
 /// 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 26 서버면 [병합]만 `[server-outdated]` 이고 복사는 그대로다([`ALBUM_MERGE_PROTOCOL`]).
-pub(crate) const PROTOCOL_MAX: u32 = 27;
+///
+/// 판 28(2026-11-09 DB 연결 폼 [연결 테스트]): op `db_test`(쓰기 — 저장 안 한 초안으로 한 번 붙고 닫는다 · 표 · 접속 기록 없음). 같은 규칙으로
+/// **`MIN` 을 올리지 않는다** — 판 27 서버면 폼이 [연결 테스트] 단추를 숨긴다(`db_ai_list` 의 `connTest` · 보내면 `[server-outdated]` — [`DB_TEST_PROTOCOL`]).
+///
+/// 판 29(2026-11-09 ② DB 타일도 떨어진 세션으로): 새 op 없음 — 창이 사라지면 쿼리 타일의 DB 연결이 TTL 없이 남고 `sessions_detached` 답에
+/// `kind: "db"` 줄(새 칸 `conn` · `writable` · `inTx`)이 실린다 · `restore_done` 의 `keep` 에 `query:<tileKey>` · `close_detached` 가 DB 줄도 닫는다.
+/// 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 28 서버면 DB 줄이 없을 뿐이고(그 서버는 예전처럼 10분 TTL) GUI 가 `keep` 의 DB 열쇠를 빼고
+/// 보낸다([`DETACHED_DB_PROTOCOL`]).
+pub(crate) const PROTOCOL_MAX: u32 = 29;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -209,6 +217,12 @@ pub(crate) const ALBUM_ARCHIVE_PROTOCOL: u32 = 26;
 
 /// 앨범 병합 op 가 서는 판.
 pub(crate) const ALBUM_MERGE_PROTOCOL: u32 = 27;
+
+/// DB 연결 폼의 [연결 테스트] op(`db_test`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
+pub(crate) const DB_TEST_PROTOCOL: u32 = 28;
+
+/// 쿼리 타일이 떨어진 세션 목록에 오르는 판(2026-11-09 ②) — 낮으면 GUI 가 복원 알림의 `keep` 에서 DB 열쇠를 뺀다.
+pub(crate) const DETACHED_DB_PROTOCOL: u32 = 29;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;
@@ -447,7 +461,7 @@ pub(crate) fn required_grade(op: &str) -> Option<Grade> {
         // DB 평면(판 8 — `server::db_ops`). 스키마·객체·컬럼 목록 = 읽기, 열기·쿼리(읽기 전용 모드여도 사람이 친 글자를 엔진에
         // 넣는다)·취소·쓰기 전환·닫기 = 쓰기.
         "db_schema" | "db_objects" | "db_table_detail" | "db_definition" => Some(Grade::Read),
-        "db_open" | "db_query" | "db_cancel" | "db_set_write" | "db_close" | "db_tx" | "db_script" => Some(Grade::Write),
+        "db_open" | "db_test" | "db_query" | "db_cancel" | "db_set_write" | "db_close" | "db_tx" | "db_script" => Some(Grade::Write),
         // 자원 모니터(판 18 — `server::resources`). 표본 읽기 = 읽기(관찰 임대를 갱신하지만 세션 · 파일 · 권한은 바꾸지 않는다).
         "resource_snapshot" => Some(Grade::Read),
         // 사이드 채팅(판 19 — `server::side_chat`). 스냅숏(다시 붙기) · 목록 = 읽기, 열기 · 보내기 · 끊기 · 모델 · 강도 · 사람의 권한 결정 · 닫기 = 쓰기

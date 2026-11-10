@@ -90,6 +90,7 @@
     pushSessionBlock,
     pushSessionBlocks,
     reportSession,
+    shouldReportMirror,
     tileCode,
     updateSessionContext,
   } from "$lib/context";
@@ -472,6 +473,13 @@
   let prevShared = false;
 
   /**
+   * 이 페이지가 거울에 한 번이라도 보고했는가(`shouldReportMirror` — 2026-11-10). 새 페이지의 첫 꺼짐은 세션이 서기 전엔 보내지
+   * 않는다 — 붙기가 공유 토글을 되살리기 전의 꺼짐이 서버 거울(창이 없던 동안 서버가 쓴 블록)을 지우지 않게. `prevShared` 와 같은
+   * 성질의 그냥 `let` 이다.
+   */
+  let mirrorAnnounced = false;
+
+  /**
    * 공유 토글을 구독한다. 마운트 시 한 번(꺼짐)으로 서버에 패널을 알리고, 헤더의 토글이
    * 뒤집힐 때마다 다시 알린다. **켤 때는 곧바로 한 번 밀어 올려** 공유된 화면이 신선하게
    * 시작하도록 한다 (`optedIn:false` 는 서버 쪽 공유 데이터를 지운다 — 프라이버시).
@@ -486,7 +494,12 @@
     // 실행 라우팅(단계 9): SSH 타일이면 지금 물고 있는 백엔드 세션 id 를 함께 보낸다. `sessionOf`
     // 를 읽어 이 `$effect` 가 세션 id 변화(연결·재연결·끊김)에도 다시 돌게 한다 — 라우팅 표가
     // 늘 살아 있는 연결을 가리키게. 로컬 타일은 undefined(서버가 라우팅에서 지운다).
-    const sshSessionId = pane.kind === "ssh" ? (sessionOf(pane.id) ?? undefined) : undefined;
+    const live = sessionOf(pane.id);
+    const sshSessionId = pane.kind === "ssh" ? (live ?? undefined) : undefined;
+    // 새 페이지의 첫 꺼짐(붙기가 토글을 되살리기 전)은 보내지 않는다 — `live` 를 읽으므로 세션이 서는 순간 이 `$effect` 가 다시 돈다
+    // (붙기는 토글을 되살린 **뒤** 세션을 알린다 — 같은 틱이라 첫 보고가 켜진 채 나간다).
+    if (!shouldReportMirror(on, mirrorAnnounced, live !== null && live !== undefined)) return;
+    mirrorAnnounced = true;
     const reported = reportSession(
       key,
       paneName(pane, tr),
@@ -2987,6 +3000,9 @@
             // 여기서 그대로 넘어간다.
             notifyFinishedBlock(pane.id, paneName(pane, tr), block, visible);
             if (!aiOn) return;
+            // **재생(떨어진 세션에 다시 붙기)이 다시 만든 블록은 올리지 않는다**(2026-11-10) — 그 바이트가 흐를 때 거울을 쥔 쪽(옛 페이지의
+            // 프런트 · 창이 없던 동안의 서버 해석기)이 이미 올렸다. 다시 올리면 시작 시각이 달라 같은 명령이 다른 블록으로 하나 더 선다.
+            if (replaying) return;
             void pushSessionBlock(contextKeyOf, block);
           },
           // 거터 표식(`12.4초`)을 몇 초부터 달 것인가 — **설정을 아는 쪽은 여기다**

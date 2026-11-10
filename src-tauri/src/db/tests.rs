@@ -1225,6 +1225,112 @@ fn conn_folder_is_kept_and_does_not_touch_identity() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// 시험 `test_vault_only_for_unchanged_saved_target` — DB 연결 폼 [연결 테스트] 의 볼트 물러남(`table::test_vault_allowed`): 저장된
+/// 같은 id 의 줄이 있고 대상(엔진 · 경유 · 주소 · 포트 · DB · 사용자 · SQLite 파일)이 같을 때만. 새 id · 바뀐 대상은 볼트를 쓰지 않는다.
+#[test]
+fn test_vault_only_for_unchanged_saved_target() {
+    use super::table::test_vault_allowed;
+    let saved = conns::validate_one(&via_entry("Abc_test0001", "web-01")).unwrap();
+    // 같은 대상 — 이름 · TLS · 폴더 · 경유 별칭의 대소문자는 대상이 아니다.
+    let mut same = saved.clone();
+    same.name = "새 이름".into();
+    same.tls_mode = Some(DbTlsMode::Require);
+    same.folder = Some("운영".into());
+    same.via = Some("WEB-01".into());
+    assert!(test_vault_allowed(Some(&saved), &saved));
+    assert!(test_vault_allowed(Some(&saved), &same));
+    // 저장된 줄이 없다(새 연결) · id 가 다르다.
+    assert!(!test_vault_allowed(None, &saved));
+    let other_id = DbConn { id: "Abc_test0002".into(), ..saved.clone() };
+    assert!(!test_vault_allowed(Some(&saved), &other_id));
+    // 대상이 하나라도 바뀌면 — 볼트 비밀번호가 다른 서버로 가지 않는다.
+    let changed: [(&str, DbConn); 7] = [
+        ("host", DbConn { host: Some("db.other".into()), ..saved.clone() }),
+        ("port", DbConn { port: Some(6543), ..saved.clone() }),
+        ("user", DbConn { user: Some("admin".into()), ..saved.clone() }),
+        ("database", DbConn { database: Some("other".into()), ..saved.clone() }),
+        ("engine", DbConn { engine: DbEngine::Mysql, ..saved.clone() }),
+        ("via", DbConn { via: Some("web-02".into()), ..saved.clone() }),
+        ("via none", DbConn { via: None, ..saved.clone() }),
+    ];
+    for (what, d) in &changed {
+        assert!(!test_vault_allowed(Some(&saved), d), "{what} 이 바뀌었는데 볼트를 썼다");
+    }
+    // SQLite — 파일이 바뀌면 다른 DB 다.
+    let lite = conns::validate_one(&sqlite_entry("Abc_test0003", &abs("a.db"))).unwrap();
+    assert!(test_vault_allowed(Some(&lite), &lite));
+    assert!(!test_vault_allowed(Some(&lite), &DbConn { path: Some(abs("b.db")), ..lite.clone() }));
+}
+
+/// `net::password_for` 의 볼트 물러남은 깃발로만 — 거짓이면 몸에 값이 없을 때 볼트에 닿지 않고 `None`(서버가 요구하면 `[db-password]`).
+#[test]
+fn password_for_skips_vault_unless_allowed() {
+    let (p, from_vault) = super::net::password_for(None, false, "Abc_test0001", false);
+    assert!(p.is_none() && !from_vault);
+    let (p, from_vault) = super::net::password_for(Some(zeroize::Zeroizing::new("x".into())), false, "Abc_test0001", false);
+    assert_eq!(p.as_deref().map(String::as_str), Some("x"));
+    assert!(!from_vault);
+    // 미리 정한 볼트 값(`OpenSecrets::settle_password`)은 볼트 값의 표지를 그대로 단다 — 거절되면 `[db-stored-rejected]`.
+    let (p, from_vault) = super::net::password_for(Some(zeroize::Zeroizing::new("v".into())), true, "Abc_test0001", false);
+    assert_eq!((p.as_deref().map(String::as_str), from_vault), (Some("v"), true));
+}
+
+/// `OpenSecrets::settle_password` — 몸이 비었고 볼트 물러남이 켜졌을 때만 볼트 값을 몸에 옮기고 `from_vault` 를 켠다(쿼리 타일의 새 열기가 인증에 쓴
+/// 그 값을 빌린 비밀번호로 담는다 — `db::borrowed`). 사람이 친 값 · 볼트 물러남 끔(연결 테스트의 다른 대상) · 볼트에 없음은 그대로.
+#[test]
+fn settle_moves_the_vault_value_into_the_body() {
+    use super::net::OpenSecrets;
+    let pw = |s: &str| Some(zeroize::Zeroizing::new(s.to_string()));
+    let mut s = OpenSecrets { vault: true, ..Default::default() };
+    s.settle_password_with(|| pw("from-vault"));
+    assert_eq!((s.password.as_deref().map(String::as_str), s.from_vault), (Some("from-vault"), true));
+    let mut s = OpenSecrets { password: pw("typed"), vault: true, ..Default::default() };
+    s.settle_password_with(|| panic!("몸에 값이 있으면 볼트를 읽지 않는다"));
+    assert_eq!((s.password.as_deref().map(String::as_str), s.from_vault), (Some("typed"), false));
+    let mut s = OpenSecrets::default();
+    s.settle_password_with(|| panic!("볼트 물러남이 꺼졌으면 볼트를 읽지 않는다"));
+    assert!(s.password.is_none() && !s.from_vault);
+    let mut s = OpenSecrets { vault: true, ..Default::default() };
+    s.settle_password_with(|| None);
+    assert!(s.password.is_none() && !s.from_vault, "잠김 · 없음 — 엔진이 예전처럼 다시 본다");
+}
+
+/// 시험 `db_carry_before_vault`(2026-11-10 실기 — 떨어진 DB 타일을 다시 붙이는데 DB 쪽이 연결을 끊었다): 끊긴 항목의 빌린 비밀번호가
+/// 있으면 붙기만(`reattach_only`)의 실패가 `[db-carry]` 를 덧달고(값 없이 표지만 — 프런트가 볼트 잠금 해제를 먼저 묻지 않는다), 새 열기의
+/// 비밀번호 차례는 **몸 → 빌린 값(신원이 같을 때) → 볼트** — 빌린 값이 섰으면 볼트를 읽지 않는다(잠겨 있든 값이 있든). 신원이 바뀌었으면
+/// 빌린 값을 쓰지 않고 볼트 차례로 간다.
+#[test]
+fn db_carry_before_vault() {
+    use super::net::OpenSecrets;
+    use super::table::{gone_after_reattach, seat_carried};
+    use crate::delegation::database::DbIdentity;
+    use crate::errors::{has_reason, DB_CARRY, SESSION_GONE};
+    let carry = gone_after_reattach(true);
+    assert!(has_reason(&carry, SESSION_GONE) && has_reason(&carry, DB_CARRY), "{carry}");
+    let plain = gone_after_reattach(false);
+    assert!(has_reason(&plain, SESSION_GONE) && !has_reason(&plain, DB_CARRY), "{plain}");
+
+    let line = conns::validate_one(&via_entry("Abc_carry001", "web-01")).unwrap();
+    let ident = DbIdentity::of(&line, None);
+    let held = || Some((DbIdentity::of(&line, None), zeroize::Zeroizing::new("borrowed".to_string())));
+    // 빌린 값 → 볼트에 닿지 않는다(볼트가 잠겼든 · 값이 있든).
+    let mut s = OpenSecrets { vault: true, ..Default::default() };
+    seat_carried(&mut s, held(), &ident);
+    s.settle_password_with(|| panic!("빌린 값이 섰으면 볼트를 읽지 않는다"));
+    assert_eq!((s.password.as_deref().map(String::as_str), s.from_vault), (Some("borrowed"), false));
+    // 사람이 친 값이 먼저다.
+    let mut s = OpenSecrets { password: Some(zeroize::Zeroizing::new("typed".into())), vault: true, ..Default::default() };
+    seat_carried(&mut s, held(), &ident);
+    assert_eq!(s.password.as_deref().map(String::as_str), Some("typed"));
+    // 신원이 바뀜 → 빌린 값을 쓰지 않고 볼트 차례.
+    let moved = DbConn { host: Some("db.other".into()), ..line.clone() };
+    let mut s = OpenSecrets { vault: true, ..Default::default() };
+    seat_carried(&mut s, held(), &DbIdentity::of(&moved, None));
+    assert!(s.password.is_none());
+    s.settle_password_with(|| Some(zeroize::Zeroizing::new("from-vault".into())));
+    assert_eq!((s.password.as_deref().map(String::as_str), s.from_vault), (Some("from-vault"), true));
+}
+
 /// 호스트 이름 변경 · 삭제를 따라간다 — `config_edit::edit_host` · `remove_host` 가 부르는 몸.
 #[test]
 fn conn_list_follows_host_rename_and_removal() {

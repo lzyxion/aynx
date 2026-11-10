@@ -18,9 +18,10 @@
 //! | `table` | 연결 표(열쇠 = 타일의 `stream` · 핸들 · 임대 회차) · 시간 제한·취소 · 블로킹 풀로 엔진 부르기 |
 //! | `script` | **스크립트 실행기**(2단계) — 문장 목록을 한 요청으로 받아 전부 검증(`plan`) → 한 연결 · 한 트랜잭션으로 차례로(`execute`) → 첫 오류에서 전부 되돌림 · 모두 성공하면 커밋. 사람 타일(`table::script`)과 3단계 AI 작업안이 같은 함수를 쓴다(연결은 부르는 쪽이 준다) |
 //! | `tx` | **트랜잭션 작업**(1단계 — 10-13 결정) 칸 — 상태 · 작업 id · 방치 시계(무활동 10분 · 1분 전 경고) · 화면 꼴 — **순수**(엔진 일은 `table` · 각 엔진의 `tx_begin`·`tx_end`·`in_tx`) |
-//! | `ai` | **AI 의 DB 평면**(3단계 3a) — 세션 서버 MCP(`mcp::db`)의 유일한 입구. 권한 증표(`authorize` — `delegation.toml` `[[database]]` 단계 + 신원 스냅샷) · **AI 전용 연결** 풀(연결 id 하나에 하나 · 무활동 5분이면 닫음 · 볼트 비밀번호 · 무인 SSH) · 늘 읽기 전용 조회(가드 읽기 전용 + 엔진 `READ ONLY` · 여러 문장은 읽기 모드 스크립트) · 상한(행 50/500 · 칸 1 KiB · 응답 256 KiB · 15/60초) |
+//! | `ai` | **AI 의 DB 평면**(3단계 3a) — 세션 서버 MCP(`mcp::db`)의 유일한 입구. 권한 증표(`authorize` — `delegation.toml` `[[database]]` 단계 + 신원 스냅샷) · **AI 전용 연결** 풀(연결 id 하나에 하나 · 무활동 5분이면 닫음 · 빌린 비밀번호 → 볼트 비밀번호 · 무인 SSH) · 늘 읽기 전용 조회(가드 읽기 전용 + 엔진 `READ ONLY` · 여러 문장은 읽기 모드 스크립트) · 상한(행 50/500 · 칸 1 KiB · 응답 256 KiB · 15/60초) |
 //! | `ai_plan` | **AI 쓰기 작업안의 사전 검증**(3단계 3b) — 순수(연결 없음). MCP `create_db_write_plan` 이 만들기 전에 부른다 — 문장 하나씩 2단계 쓰기 스크립트 규칙(`script::plan(…, Write)`) · 항목 하나 = 문장 하나 · 상한(20문장 · 64 KiB · `maxAffected` 필수) |
 //! | `ai_write` | **AI 작업안의 DB 쓰기 실행**(3단계 3b) — 사람이 승인한 뒤 `operations::db_exec` 만 부른다(MCP 에 길 없음). 실행 한 번 동안만 사는 **따로 연 쓰기 연결**(3a 읽기 풀 · 사람 타일과 별개) · 2단계 실행기 한 트랜잭션 + 영향 행 상한(넘으면 커밋 전 되돌림) |
+//! | `borrowed` | **빌린 DB 비밀번호**(2026-11-09) — 사람 쿼리 타일이 비밀번호(친 값 · 볼트 값)로 인증하면 그 값을 서버 메모리에만 들고, 그 연결의 사람 타일이 붙어 있는 동안 AI 연결(읽기 · 쓰기 작업안)이 볼트보다 먼저 쓴다(볼트 잠금 · 가림막 · 창 0개와 무관) · 마지막 타일 닫힘 · 대상 바뀜 · 거절에 지운다(`Zeroizing` · `Debug` 가림 · 밖으로 나가지 않음) |
 //! | `conns` | DB 연결 목록 `config_root()/db-connections.json` 하나(경유 = 호스트 별칭 `via` 또는 직접 · 비밀 없음) · 엔진·TLS 모드 꼴 — GUI 가 쓰고, 서버는 열 때 **파일에서 직접** 해석 |
 //!
 //! ## 불변식
@@ -33,7 +34,7 @@
 //!   `db::ai_plan` 하나를 더함) — 타일 연결 표(`table`)·쓰기 전환 · 사람의 트랜잭션 작업 · AI 쓰기 실행(`db::ai_write` — 사람 승인 뒤
 //!   작업안 실행기만)에 닿는 길이 없다. AI 는 연결마다 사람이 준 권한(`delegation.toml` `[[database]]`) 안에서 **따로 연 읽기
 //!   전용 연결**로만 읽는다(시험 `mcp_reaches_db_only_through_ai_facade` · `db_ai_never_touches_tile_entries` ·
-//!   `db_ai_connections_are_read_only_forever` · `db_tools_follow_ai_level`).
+//!   `db_ai_connections_are_read_only_forever` · `db_tools_listed_always_judged_per_call` — DB 도구 일곱은 늘 목록에 있고 권한은 호출마다 판정).
 //! - **로그에 SQL·결과·경로·비밀이 없다** — `server::db_ops` 가 남기는 것은 op·핸들·길이·행 수·ms 뿐이다.
 //! - 읽기 전용은 **이중**이다: 가드(문장 하나·첫 낱말 허용 목록) + 엔진(SQLite = 읽기 전용 열기·`query_only`·`readonly()` ·
 //!   PG = 확장 프로토콜 + 문장마다 `READ ONLY` 트랜잭션(세션 상태 없음 — 트랜잭션 모드 풀러 뒤에서도 같다) · MySQL = prepare + 문장마다
@@ -43,6 +44,7 @@
 pub(crate) mod ai;
 pub(crate) mod ai_plan;
 pub(crate) mod ai_write;
+pub(crate) mod borrowed;
 pub(crate) mod conns;
 pub(crate) mod definition;
 pub(crate) mod detail;

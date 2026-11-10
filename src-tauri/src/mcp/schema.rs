@@ -1,5 +1,5 @@
 //! AI 가 읽는 계약 글자 — `initialize` 결과와 핸드셰이크 안내([`INSTRUCTIONS`]), `tools/list` 의
-//! 도구 스키마 — 전역 토큰의 13개([`tools_list_result`]) + DB 권한이 있을 때의 DB 도구 최대 7개(`mcp/db.rs` — 쿼리 타일 3a · 3b,
+//! 도구 스키마 — 전역 토큰의 13개([`tools_list_result`]) + DB 뒷면이 있을 때의 DB 도구 7개(권한과 무관하게 늘 — `mcp/db.rs` · 쿼리 타일 3a · 3b,
 //! [`tools_list_result_for`]) · 역할별 목록([`tools_list_for`] — 조정자는 전역과 같은 목록 + 조율 도구, 작업자는 작업자 도구만, 검토자는 검토 도구만 ·
 //! 조율 도구 스키마는 `crate::orchestration`). 전부 영어다(MCP 표면은 표시 언어를 타지 않는다 — i18n.rs 머리말).
 //!
@@ -8,7 +8,8 @@
 //! - 조율 도구(조정자 — 2026-10-14)는 자기 Run 의 Task 를 정의 · 갱신하고 기다릴 뿐이다 — 명령 실행 · PTY 입력은 없다.
 //! - 승인·실행·취소·키 전송·권한 응답 도구와 위임 쓰기 도구는 **어느 역할의** 목록에도 없다 — 승인은 사용자가 앱에서만 한다.
 //! - DB 도구는 구조 · 읽기 조회 · **쓰기 작업안 초안**(3b — `create_db_write_plan`, 저장만 · 사람 승인 · 자동 승인 없음)이다. `db_query` 설명은
-//!   **"행이 모델 제공자로 간다"** 를 밝힌다. 가시성 · 권한 판정은 전역이든 조정자든 같다(작업자에게는 없다).
+//!   **"행이 모델 제공자로 간다"** 를 밝힌다. 목록 · 권한 판정은 전역이든 조정자든 같다(작업자에게는 없다) — 목록은 단계를 타지 않고
+//!   판정은 호출마다 서버다(2026-11-09 — CLI 가 목록을 캐시하므로 권한을 올리면 재연결 없이 바로 쓰이게).
 
 use serde_json::{json, Value};
 
@@ -108,16 +109,19 @@ To be eligible for auto-approval, put **one simple command** in a task plan (or 
 and do not use redirects (> <), substitution ($ `) or subshells; use pipes (|) only if the policy says allowPipes, and then every stage must be allowed. Everything else waits for a person's approval — the same rule applies there: wait about 5 minutes, then hand the turn back. \
 Look at a session's `mode` first: a session with `mode:\"screen\"` (attached through tmux, a 'screen-only session') **never** gets command blocks, \
 so the block tools (get_last_command, list_commands, get_command, compare_command_results) return empty; read those sessions with get_scrollback. \
-Databases: when the user has given a database connection an AI permission in the app, the db_* tools appear (they are not listed otherwise). \
+Databases: the db_* tools are always listed, but list_db_connections shows only the connections the user has shared with AI in the app (a connection set to Off never appears), \
+and a call that needs more than a connection's AI permission is refused. When the user changes a permission in the app it applies from your next call — no reconnect needed. \
 Start with list_db_connections (connId, engine, aiLevel), then read the structure with db_list_schemas, db_list_objects, db_describe_table and db_get_definition \
 ('Schema' or higher — no rows leave), and only then query with db_query ('Read' or higher). \
 db_query is always read-only and runs on a separate AI-only connection — never the user's query tile or its transaction — and **the rows you read are sent to your model provider**, \
 so keep queries narrow (filters, aggregates, LIMIT) and do not dump tables. \
-To change data, a connection must be at 'Ask': propose a **database write plan** with create_db_write_plan (connId, statements — one SQL statement per item, \
+To change data, a connection must be at 'Ask' or higher: propose a **database write plan** with create_db_write_plan (connId, statements — one SQL statement per item, \
 maxAffected — required, count first with db_query), then request_execution, wait_for_operation and get_operation_results exactly like a task plan. \
-It changes nothing until a person approves it in the app (database plans are **never** auto-approved); the app then runs all statements in one transaction on a separate write connection \
+It changes nothing until it is approved: a person approves it in the app (the auto-approval allow list never applies to database plans), \
+except on a connection at 'YOLO' (aiLevel 'all'), where it is approved **at once, without a person** while the user's auto-approval switch is on; the app then runs all statements in one transaction on a separate write connection \
 and rolls everything back if a statement fails or the affected rows exceed maxAffected. This server itself cannot write to a database, approve or run a plan, change a connection's AI permission, or read passwords. \
-If a tool says a person must open the connection or unlock the vault, tell the user exactly that instead of retrying.";
+While a person keeps the connection open in a query tile, AI connections reuse the password that tile authenticated with (typed or from the vault) — also while aynx is locked; it is cleared when the last tile closes or the connection's target changes. Otherwise an AI connection uses the password stored in the vault — only on a connection the user allowed to open without a query tile (headless:true in list_db_connections; false means ask the user to open it in a query tile), and the vault must be unlocked. A SQLite connection has no password but follows the same rule: without a query tile it opens only when headless is true. \
+If a tool says a person must open the connection in a query tile, save its password or unlock the vault, tell the user exactly that instead of retrying.";
 
 /// `tools/list` 결과 — 도구 13개와 각 JSON Schema(읽기 7 + 단계 8 작업안 3 + 검토 대기 롱폴 1
 /// + 단계 9 결과 읽기 1 + 자동 승인 정책 읽기 1). 전부 읽기/계획이다.
@@ -128,23 +132,25 @@ If a tool says a person must open the connection or unlock the vault, tell the u
 /// 이 서버에 없다(단계 8: 저장 + 검토 요청뿐).
 #[cfg(test)]
 pub(super) fn tools_list_result() -> Value {
-    tools_list_result_for(crate::db::ai::DbAiLevel::Off)
+    tools_list_result_for(false)
 }
 
-/// [`tools_list_result`] + DB 도구(그 단계까지 — `mcp/db.rs` `tool_schemas`). 끔이면 DB 도구가 하나도 없다.
-pub(super) fn tools_list_result_for(db: crate::db::ai::DbAiLevel) -> Value {
+/// [`tools_list_result`] + DB 도구 일곱(`with_db` = DB 뒷면이 있나 — 권한과 무관하게 늘 전부, `mcp/db.rs` `tool_schemas`).
+pub(super) fn tools_list_result_for(with_db: bool) -> Value {
     let mut v = base_tools();
-    if let Some(list) = v.get_mut("tools").and_then(Value::as_array_mut) {
-        list.extend(super::db::tool_schemas(db));
+    if with_db {
+        if let Some(list) = v.get_mut("tools").and_then(Value::as_array_mut) {
+            list.extend(super::db::tool_schemas());
+        }
     }
     v
 }
 
-/// 호출자에 따른 `tools/list`(2026-10-14 · 3차 5단계 · 2단계 2-7) — 전역 · **타일** = 13개 + 권한에 따른 DB 도구(**조율 도구 없음** — 타일은 자리가
+/// 호출자에 따른 `tools/list`(2026-10-14 · 3차 5단계 · 2단계 2-7) — 전역 · **타일** = 13개 + DB 도구 일곱(**조율 도구 없음** — 타일은 자리가
 /// 되지 못한다) · (시험의) 조정자 = + 타일 도구 + 조율 도구 · 프로듀서 채팅 = 13(작업안은 칸) + DB + 타일 도구 + 조율 도구 · 작업자 = 작업자 도구만
-/// (DB 도구 없음). **목록은 조정자가 돼도 바뀌지 않는다**(Codex 는 대화 중 목록 갱신을 받지 않는다 — 설계 3-3).
-/// `db` 는 DB 권한 판정(전역 · 타일 · 프로듀서에게 같다 — 작업자에겐 쓰지 않는다). `orchestration` 은 프로듀서의 "작업안 도구를 싣나".
-pub(super) fn tools_list_for(caller: &crate::orchestration::Caller, db: crate::db::ai::DbAiLevel, orchestration: bool) -> Value {
+/// (DB 도구 없음). **목록은 조정자가 돼도 · DB 권한이 바뀌어도 바뀌지 않는다**(Codex 는 대화 중 목록 갱신을 받지 않는다 — 설계 3-3 · 2026-11-09).
+/// `db` 는 DB 뒷면이 있나(전역 · 타일 · 프로듀서에게 같다 — 작업자에겐 쓰지 않는다 · 권한은 호출마다 서버). `orchestration` 은 프로듀서의 "작업안 도구를 싣나".
+pub(super) fn tools_list_for(caller: &crate::orchestration::Caller, db: bool, orchestration: bool) -> Value {
     use crate::orchestration::Caller;
     match caller {
         Caller::Global | Caller::Tile { .. } => tools_list_result_for(db),
@@ -187,7 +193,7 @@ pub(super) fn base_tools() -> Value {
     Each session's `code` (e.g. p2, t7·p2) is **exactly what the user sees in the tile header**, so use it when pointing a person at a tile (two sessions with the same label still differ by code). \
     The `session` tool argument still takes the exact `id`. \
     `mode` says what can be read in that session: `\"blocks\"` (the usual — command block history accumulates) or `\"screen\"` (attached through tmux, a 'screen-only session' — \
-    shell integration markers do not survive tmux, so blocks are **never** created). A session with `mode:\"screen\"` is always empty in the block tools, so read it with get_scrollback.     `attached:false` means no app window is showing that tile right now (the page is reloading — the shell and the connection are still alive, but its scrollback is not refreshed until a window re-attaches); `null` for headless sessions.",
+    shell integration markers do not survive tmux, so blocks are **never** created). A session with `mode:\"screen\"` is always empty in the block tools, so read it with get_scrollback.     `attached:false` means no app window is showing that tile right now (the window was closed, the app is in the tray or reloading — the shell and the connection are still alive).     While no window is attached the session server keeps the mirror itself (`mirror:\"server\"` — scrollback, last command and new command blocks stay live; `mirror:\"window\"` while a window shows it).     `stale:true` means nobody refreshes it any more (the session ended or the link dropped) — what you read is the last state; `null` for headless sessions.",
                 "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
             },
             {

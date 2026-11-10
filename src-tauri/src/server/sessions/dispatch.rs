@@ -172,22 +172,30 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
                 core().remove_id(*kind, *id);
                 close_resource(*kind, *id).await?;
             }
-            if !marked.is_empty() || !ended.is_empty() {
+            // 쿼리 타일의 DB 연결도 같은 규칙(② — `keep` 에 타일의 `query:<tileKey>` 가 실린다).
+            let dbs = crate::db::table::restore_done(&r.window, &keep);
+            if !marked.is_empty() || !ended.is_empty() || dbs > 0 {
                 log::line(format!(
-                    "window {} restore left {} detached session(s) kept as unclaimed {marked:?} · {} ended leftover(s) removed",
+                    "window {} restore left {} detached session(s) kept as unclaimed {marked:?} · {dbs} db connection(s) · {} ended leftover(s) removed",
                     r.window,
                     marked.len(),
                     ended.len()
                 ));
                 detached_changed();
             }
-            Ok(json!({ "closed": ended.len(), "unclaimed": marked.len() }))
+            Ok(json!({ "closed": ended.len(), "unclaimed": marked.len() + dbs }))
         }
         "sessions_detached" => Ok(json!(detached_rows())),
         "close_detached" => {
             let a: StreamArg = body(b)?;
             let taken = core().take_detached(&a.stream);
             let Some((kind, id)) = taken else {
+                // 떨어진 쿼리 타일의 DB 연결(②) — 지금 떼어 둔 것만 닫는다(빌린 비밀번호도 마지막 타일이면 지운다 · `db::table::retire`).
+                if crate::db::table::close_detached(&a.stream) {
+                    log::line(format!("closed detached db connection (stream {}) from the detached list", a.stream));
+                    detached_changed();
+                    return Ok(json!(true));
+                }
                 return Ok(json!(false));
             };
             close_resource(kind, id).await?;
@@ -206,10 +214,12 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             if d.db_only {
                 // 그 창의 시청자는 뗀다(창이 사라졌다 — 세션은 quitAll 이 이미 떼어 뒀다).
                 core().remove_window_viewers(&d.window);
+                // 쿼리 타일의 DB 연결은 떨어진 세션으로 남긴다(TTL 없음 — ② · 다시 켠 GUI 의 복원 · 떨어진 세션 목록).
                 let db_skip: HashSet<String> = d.db_streams.into_iter().collect();
-                let dbs = crate::db::table::detach_window(&d.window, &db_skip);
+                let dbs = crate::db::table::keep_window(&d.window, &db_skip);
                 if dbs > 0 {
-                    log::line(format!("window {} gone while quitting — {dbs} db connection(s) detached", d.window));
+                    log::line(format!("window {} gone while quitting — {dbs} db connection(s) kept as detached", d.window));
+                    detached_changed();
                 }
                 // 트레이로 가는 창의 사이드 채팅도 떼어 둔다(다시 연 창이 attach 하거나 TTL). 프로듀서 채팅은 그 창의 구독만 지운다.
                 super::side_chat::detach_window(&d.window);
@@ -229,7 +239,8 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             if !detached.is_empty() {
                 detached_changed();
             }
-            // 쿼리 타일의 DB 연결도 떼어 둔다(TTL — `db::table` 머리말). 떨어진 세션 목록에는 오르지 않는다.
+            // 쿼리 타일의 DB 연결도 떼어 둔다(TTL — `db::table` 머리말 · 창은 살아 곧 다시 붙는다). 떨어진 세션 목록에는 오르지 않는다
+            // (새 페이지의 복원이 데려가지 않으면 `restore_done` 이 목록에 올린다).
             let db_skip: HashSet<String> = d.db_streams.into_iter().collect();
             let dbs = crate::db::table::detach_window(&d.window, &db_skip);
             if dbs > 0 {
@@ -482,7 +493,8 @@ struct WindowIds {
     ssh_ids: Vec<u32>,
     #[serde(default)]
     db_streams: Vec<String>,
-    /// `detach_window` 만 — DB 연결만 떼어 둔다(앱 전체 종료 중의 창 파괴 — 세션은 quitAll 이 이미 떼어 뒀다 · `proxy::close_window`).
+    /// `detach_window` 만 — DB 연결만 떨어진 세션으로 남긴다(앱 전체 종료 · 트레이로 가는 중의 창 파괴 — 세션은 quitAll · 앞의 리로드 몸이
+    /// 이미 떼어 뒀다 · `proxy::keep_window_dbs` · `reap::Event::Leaving`).
     #[serde(default)]
     db_only: bool,
     /// 그 창에서 GUI 가 쥐었던 프로듀서 채팅 구독 세대(`subGen`) — 그 세대만 지운다(같은 라벨의 새 페이지가 건 구독은 그대로 ·

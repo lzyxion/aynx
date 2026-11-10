@@ -83,6 +83,7 @@ mod remote;
 mod remote_signal_file;
 mod remote_worktree;
 mod routing;
+mod screen_mirror;
 mod server;
 mod session_commands;
 mod session_core;
@@ -276,9 +277,10 @@ pub fn run() {
                     .app_handle()
                     .emit("workspace-window-gone", window.label());
                 // 앱 종료·트레이로 가는 중(`QUITTING` — `workspace_exit_app`)이면 세션을 닫지 않고 떼어 둔다(리로드와 같은 거둠 — 거울도
-                // 살아 있는 세션 몫은 남는다). **사건 순간에** 가른다 — 트레이 [열기] 가 표식을 걷은 뒤에 늦게 도는 거둠이 닫지 않게.
+                // 살아 있는 세션 몫은 남는다 · 쿼리 타일의 DB 연결은 떨어진 세션으로 남긴다 — `reap::Event::Leaving`). **사건 순간에**
+                // 가른다 — 트레이 [열기] 가 표식을 걷은 뒤에 늦게 도는 거둠이 닫지 않게.
                 let leaving = server::proxy::QUITTING.load(std::sync::atomic::Ordering::SeqCst);
-                let event = if leaving { reap::Event::Reload } else { reap::Event::Destroyed };
+                let event = reap::destroyed_event(leaving);
                 reap::spawn_reap(window.app_handle(), window.label(), event);
                 // 그 창의 "검토 중" 작업안 몫을 걷는다(서버 자동 승인이 다시 본다 — ③-4). 떨어진 세션 목록의 "책임 창 있음" 도 바뀐다.
                 server::ai_proxy::forget_reviewing_window(window.label());
@@ -774,6 +776,7 @@ pub fn run() {
             server::vault_proxy::vault_has_db_password,
             // 쿼리 타일(5단계) — DB 평면은 세션 서버(`server::db_ops`), 이 명령들은 같은 이름의 프록시 · '경유 없음' 목록은 GUI 가 파일을 직접.
             server::db_proxy::db_open,
+            server::db_proxy::db_test,
             server::db_proxy::db_query,
             server::db_proxy::db_cancel,
             server::db_proxy::db_schema,

@@ -83,6 +83,7 @@
         bind:this={modalEl}
         onkeydown={onKey}
       >
+        <div class="glass-scroll">
       <form onsubmit={submit}>
         <h2 id="remote-dialog-title">
           {req.hasMaster ? t("app.remoteReauth.title") : t("app.remoteReauth.title.noMaster")}
@@ -127,6 +128,7 @@
           >
         </div>
       </form>
+        </div>
       </div>
     {:else}
       <div
@@ -140,6 +142,7 @@
         bind:this={modalEl}
         onkeydown={onKey}
       >
+        <div class="glass-scroll">
         {#if req.title}<h2 id="remote-dialog-title">{req.title}</h2>{/if}
         <p class="message" class:warn={req.tone === "warning"} class:bad={req.tone === "error"} id="remote-dialog-message">
           {req.message}
@@ -154,6 +157,7 @@
               onclick={() => answerRemoteMessage(c.result)}>{c.key ? t(c.key) : c.label}</button
             >
           {/each}
+        </div>
         </div>
       </div>
     {/if}
@@ -174,14 +178,19 @@
   .modal {
     width: min(400px, 100%);
     max-height: calc(100vh - 32px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
     box-sizing: border-box;
-    padding: var(--space-4);
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
     border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
     box-shadow: var(--shadow-raised);
     color: var(--fg-1);
+  }
+
+  .glass-scroll {
+    padding: var(--space-4);
   }
   h2 {
     margin: 0 0 var(--space-3);

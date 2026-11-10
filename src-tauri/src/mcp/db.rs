@@ -6,7 +6,8 @@
 //! - **DB 평면에는 `crate::db::ai` 로만 닿는다**(시험 `mcp_reaches_db_only_through_ai_facade`) — 타일 연결 표 · 서버 op · 쓰기 전환에 닿는
 //!   길이 없다.
 //! - **권한 판정이 먼저다** — 도구 호출마다 `delegation.toml` 을 새로 읽고(`tools_call` 의 `load_delegation`) 연결마다 단계 + 신원 스냅샷을
-//!   본다(`ai::authorize`). 끔(또는 스냅샷 어긋남)인 연결은 **없는 연결과 같은 말**을 한다 · 목록에도 없다.
+//!   본다(`ai::authorize`). 끔(또는 스냅샷 어긋남)인 연결은 **없는 연결과 같은 말**을 한다 · `list_db_connections` 에도 없다.
+//!   도구 일곱은 DB 뒷면이 있으면 권한과 무관하게 늘 `tools/list` 에 있다(2026-11-09 — [`tool_schemas`]) — 권한을 바꾸면 다음 호출부터 바로 적용된다.
 //! - **AI 의 쓰기는 작업안뿐이다**(3b) — `create_db_write_plan` 은 'Ask' 연결에만, 사전 검증(`crate::db::ai_plan::check` — 2단계 쓰기
 //!   스크립트 규칙)을 지난 문장 목록을 **초안으로 저장**한다(연결 · 트랜잭션을 열지 않는다). 검토 요청 · 기다림 · 결과 읽기는 셸 작업안과 같은
 //!   도구다. 승인 · 실행 · 취소는 MCP 에 없고(Tauri 명령뿐), DB 작업안은 연결이 'YOLO' 일 때만 자동 승인된다(`operations::approval`). 실행 모듈
@@ -34,6 +35,11 @@ pub(crate) struct DbEnv {
 }
 
 impl DbEnv {
+    /// DB 뒷면이 있나 — `tools/list` 가 DB 도구 일곱을 실을지(권한은 보지 않는다 — [`tool_schemas`]).
+    pub(crate) fn has_backend(&self) -> bool {
+        self.backend.is_some()
+    }
+
     pub(crate) fn none() -> DbEnv {
         DbEnv { backend: None }
     }
@@ -54,7 +60,7 @@ pub(crate) const DB_TOOLS: [&str; 7] = [
     WRITE_PLAN_TOOL,
 ];
 
-/// 쓰기 작업안 초안 도구(3b) — 'Ask' 연결이 하나라도 있을 때만 목록에 실린다.
+/// 쓰기 작업안 초안 도구(3b) — 목록에는 늘 있고, 호출마다 그 연결이 'Ask' 이상인지 서버가 판정한다.
 pub(crate) const WRITE_PLAN_TOOL: &str = "create_db_write_plan";
 
 pub(crate) fn is_db_tool(name: &str) -> bool {
@@ -76,31 +82,24 @@ fn shared(d: &Delegation, backend: &dyn AiDb) -> Vec<(DbConn, DbAiLevel)> {
         .collect()
 }
 
-/// 가장 높은 단계 — `tools/list` 가 어떤 DB 도구를 실을지 정한다(끔이면 하나도 없다).
-pub(crate) fn max_level(d: &Delegation, env: &DbEnv) -> DbAiLevel {
-    match &env.backend {
-        Some(b) => shared(d, b.as_ref()).into_iter().map(|(_, l)| l).max().unwrap_or(DbAiLevel::Off),
-        None => DbAiLevel::Off,
-    }
-}
-
 fn conn_id_prop() -> Value {
     json!({ "type": "string", "description": "the connId from list_db_connections" })
 }
 
-/// DB 도구의 스키마 — 단계에 맞춰: 끔 = 없음 · 구조만 = 목록 + 구조 넷 · 읽기 전용 이상 = + `db_query`.
-pub(crate) fn tool_schemas(max: DbAiLevel) -> Vec<Value> {
-    if max == DbAiLevel::Off {
-        return Vec::new();
-    }
-    let mut tools = vec![
+/// DB 도구 일곱의 스키마 — **권한과 무관하게 늘 전부**(2026-11-09 사용자 결정). AI CLI 는 처음 받은 `tools/list` 를 캐시하고
+/// 이 서버는 `notifications/tools/list_changed` 를 보내지 않는다(Codex 는 대화 중 목록 갱신도 받지 않는다) — 단계로 목록을 거르면 사람이
+/// 권한을 올려도 MCP 재연결 전에는 도구가 생기지 않았다. 셸 작업안 도구와 같은 모양으로, 단계 판정은 호출마다 서버(`call` ·
+/// `create_write_plan` — 끔 · 스냅샷 어긋남 = 없는 연결 · 모자란 단계 = 거절)가 한다.
+pub(crate) fn tool_schemas() -> Vec<Value> {
+    vec![
         json!({
             "name": "list_db_connections",
             "description": "Lists the database connections the user has shared with AI in the aynx app — a connection whose AI permission is Off is not listed at all. \
     Each item: connId (pass it to the other db_* tools), name, engine (postgres | mysql | mariadb | sqlite), database (the database name, when one is set), throughSsh (true = reached through an SSH jump host), \
-    and aiLevel — 'schema' (Schema: schemas, objects, table structure and DDL — no rows ever leave), 'read' (Read: also db_query), 'approve' (Ask: also create_db_write_plan — you propose, a person approves in the app, the app runs it) \
+    headless (false = you can use this connection only while the user has it open in a query tile — ask them to open it; true = it also opens without one), and aiLevel — 'schema' (Schema: schemas, objects, table structure and DDL — no rows ever leave), 'read' (Read: also db_query), 'approve' (Ask: also create_db_write_plan — you propose, a person approves in the app, the app runs it) \
     or 'all' (YOLO: like 'approve', but while the user's auto-approval switch is on a write plan for this connection is approved **at once, without a person** — be deliberate). \
     Addresses, ports, user names, file paths and passwords are never returned. The user sets the AI permission per connection in the app; this server cannot change it. \
+    The db_* tools are always listed; a call on a connection whose permission is too low is refused, and a permission the user changes applies from the next call. \
     You work on a separate AI-only connection that is always read-only — never the user's query tile, its write mode or its open transaction.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
@@ -161,9 +160,7 @@ pub(crate) fn tool_schemas(max: DbAiLevel) -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
-    ];
-    if max >= DbAiLevel::Read {
-        tools.push(json!({
+        json!({
             "name": "db_query",
             "description": "Runs **read-only** SQL on one connection whose AI permission is 'Read' or higher and returns the rows. \
     ⚠️ The rows you read are sent to your model provider — ask only for what you need (filter, aggregate, count) instead of dumping tables. \
@@ -185,10 +182,8 @@ pub(crate) fn tool_schemas(max: DbAiLevel) -> Vec<Value> {
                 "required": ["connId", "sql"],
                 "additionalProperties": false
             }
-        }));
-    }
-    if max >= DbAiLevel::Approve {
-        tools.push(json!({
+        }),
+        json!({
             "name": WRITE_PLAN_TOOL,
             "description": "Saves a **database write task plan (draft)** for one connection whose AI permission is 'Ask' or higher. **This tool changes no data and opens no connection** — it only stores the plan. \
     Then call request_execution(operationId) so the user reviews it in the app; **only a person approves it there** — unless the connection's aiLevel is 'all' (YOLO) and auto-approval is on: then it is approved and run right away with no review — and the app itself runs it after approval. \
@@ -217,9 +212,8 @@ pub(crate) fn tool_schemas(max: DbAiLevel) -> Vec<Value> {
                 "required": ["connId", "statements", "maxAffected", "summary", "effect"],
                 "additionalProperties": false
             }
-        }));
-    }
-    tools
+        }),
+    ]
 }
 
 /// 그 연결의 **지금** 단계(끔 · 스냅샷 어긋남 · 없는 연결 = 끔) — `get_operation_results` 가 DB 결과의 행을 실을지 정한다.
@@ -361,6 +355,7 @@ fn list(d: &Delegation, env: &DbEnv) -> Value {
     let Some(b) = &env.backend else {
         return json!([]);
     };
+    let vt = |c: &DbConn| c.via.as_deref().and_then(|v| b.via_target(v));
     let items: Vec<Value> = shared(d, b.as_ref())
         .into_iter()
         .map(|(c, level)| {
@@ -370,6 +365,7 @@ fn list(d: &Delegation, env: &DbEnv) -> Value {
                 "engine": engine_name(&c),
                 "throughSsh": c.via.is_some(),
                 "aiLevel": level.as_str(),
+                "headless": ai::opens_without_tile(d, &c, vt(&c).as_deref()),
             });
             if let Some(db) = &c.database {
                 v["database"] = json!(db);

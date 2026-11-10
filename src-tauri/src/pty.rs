@@ -1065,18 +1065,23 @@ pub(crate) fn write_blocking(id: u32, data: &[u8]) -> Result<(), String> {
 /// 크기를 바꾼다 — **블로킹**(`ResizePseudoConsole` 은 화면 버퍼를 다시 흘린다). 표 전체 잠금을 쥔 채 부른다 — 겹치는
 /// 다른 표 조작은 resize **한 번** 길이만큼 기다릴 수 있다(docs/log/2026-09-05-async-commands.md ①).
 pub(crate) fn resize_blocking(id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    let sessions = SESSIONS.0.lock().unwrap();
-    let session = sessions.get(&id).ok_or("no such session")?;
-    session
-        .master
-        .resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| e.to_string())?;
-    session.size.store(pack_size(cols, rows), Ordering::Relaxed);
+    let slot = {
+        let sessions = SESSIONS.0.lock().unwrap();
+        let session = sessions.get(&id).ok_or("no such session")?;
+        session
+            .master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())?;
+        session.size.store(pack_size(cols, rows), Ordering::Relaxed);
+        Arc::clone(&session.output)
+    };
+    // 서버 해석기도 같은 크기로(표 잠금 밖 — `crate::screen_mirror` 의 잠금 순서).
+    crate::output::resize_tap(&slot, cols, rows);
     Ok(())
 }
 
