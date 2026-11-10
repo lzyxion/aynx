@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { loadEditor } from "$lib/doc-editor-loader";
   import type { EditorHandle } from "$lib/doc-editor-cm";
+  import type { CompleteFn } from "$lib/doc-editor-complete";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { blockInsert } from "./definition";
   import type { RunMark } from "./run-panel";
@@ -18,6 +19,9 @@
    * 스크립트 탭(10-14): 편집기는 하나이고 탭을 바꾸면 글을 바꿔 끼운다(`switchTo` — 탭마다 되돌리기 기록 · 커서 · 실행 표시가 따로
    * 산다, 몸통의 `switchDoc`). 실행 표시(거터 ✓ ↶ ✕ · · 연한 줄 바탕 · 실패 물결 밑줄과 말풍선 — 규칙은 `run-panel`)는 `setMarks`.
    * `onchange` 는 **지금 보이는 탭**의 글이다. `docKey` · `initial` 은 처음 한 번만 읽는다(그 뒤 탭 바꾸기는 `switchTo`).
+   *
+   * 자동완성(2026-11-10 — `complete`, 몸은 `sql-completer`): 표 · 뷰 · 열 · 키워드. 목록이 떠 있는 동안만 `Enter` · `Tab` = 넣기 · `Esc` = 닫기가
+   * 위 키보다 먼저다(없으면 `Esc` 는 그대로 취소 · `Enter` 는 줄바꿈). `Ctrl+Space` = 부르기(앱 단축키 표에 없다 — 편집기 몫). `complete` 도 처음 한 번만 읽는다.
    */
   let {
     docKey,
@@ -27,6 +31,7 @@
     onscript,
     oncancel,
     onchange,
+    complete,
   }: {
     /** 처음 보일 탭의 열쇠 */
     docKey: string;
@@ -39,6 +44,8 @@
     /** 실행 중이면 끊고 `true`(키를 먹는다), 아니면 `false` */
     oncancel: () => boolean;
     onchange: (text: string) => void;
+    /** 자동완성 후보 */
+    complete?: CompleteFn;
   } = $props();
 
   let host = $state<HTMLElement | null>(null);
@@ -77,6 +84,7 @@
           text: curText,
           docKey: curKey,
           runMarks: true,
+          ...(complete ? { complete } : {}),
           eol: "\n",
           indent: "  ",
           lang,

@@ -157,7 +157,11 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// `kind: "db"` 줄(새 칸 `conn` · `writable` · `inTx`)이 실린다 · `restore_done` 의 `keep` 에 `query:<tileKey>` · `close_detached` 가 DB 줄도 닫는다.
 /// 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 28 서버면 DB 줄이 없을 뿐이고(그 서버는 예전처럼 10분 TTL) GUI 가 `keep` 의 DB 열쇠를 빼고
 /// 보낸다([`DETACHED_DB_PROTOCOL`]).
-pub(crate) const PROTOCOL_MAX: u32 = 29;
+///
+/// 판 30(2026-11-10 쿼리 타일 데이터 탭): 새 op 없음 — `db_query` 몸의 `readOnly`(타일 모드와 무관하게 가드 · 엔진 읽기 전용 · 열린 작업이면
+/// 거절). 옛 서버는 모르는 칸을 버리고 타일 모드대로 돌리므로, 같은 규칙으로 **`MIN` 을 올리지 않되** GUI 가 판 29 서버에는 그 조회를 보내지
+/// 않는다(`[server-outdated]` — [`DB_READ_QUERY_PROTOCOL`]).
+pub(crate) const PROTOCOL_MAX: u32 = 30;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -223,6 +227,9 @@ pub(crate) const DB_TEST_PROTOCOL: u32 = 28;
 
 /// 쿼리 타일이 떨어진 세션 목록에 오르는 판(2026-11-09 ②) — 낮으면 GUI 가 복원 알림의 `keep` 에서 DB 열쇠를 뺀다.
 pub(crate) const DETACHED_DB_PROTOCOL: u32 = 29;
+
+/// 읽기 전용 조회(`db_query` 의 `readOnly` — 데이터 탭)가 서는 판 — 낮으면 GUI 가 그 조회를 보내지 않는다(옛 서버는 깃발을 버린다).
+pub(crate) const DB_READ_QUERY_PROTOCOL: u32 = 30;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;

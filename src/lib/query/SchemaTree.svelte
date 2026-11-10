@@ -31,6 +31,7 @@
     matchSpan,
     objectKey,
     relationFor,
+    relationOf,
     revealKeys,
     schemaKey,
     signature,
@@ -41,9 +42,11 @@
     type DetailLeaf,
     type DetailPart,
     type Load,
+    type TreeRelation,
     type TreeRow,
   } from "./schema-tree";
   import { definitionName, definitionTarget } from "./definition";
+  import type { CatalogNote } from "./sql-completer";
 
   /**
    * **스키마 트리**(DBeaver 식 — 규칙은 `schema-tree.ts`). 스키마(이름만 · `db_schema`) → 펼치면 그 스키마의 객체를 한 번에
@@ -52,7 +55,8 @@
    * 숨김). 모두 기본 접힘이고, 펼친 열쇠 목록(`expanded`)은 타일이 쥔다 — 트리를 숨겼다 펴도 · 다시 연결해도 남는다. [새로 고침]은
    * 펼친 것을 그대로 두고 다시 읽는다.
    *
-   * 누르기: 관계 · 파티션 = 편집기에 `SELECT * … LIMIT 100;`(`onpick`) · 외래 키 · 참조됨 = 다른 쪽 테이블로 트리 이동(조상을 펴고
+   * 누르기(2026-11-10 Beekeeper 식): 관계 · 파티션 = **한 번은 고르기만**(초점 · 관계는 펼치기/접기 — 편집기 글은 건드리지 않는다),
+   * **두 번 누르기 · Enter = 그 객체의 데이터 탭**(`onopen` — 객체 하나에 탭 하나는 부르는 쪽) · 외래 키 · 참조됨 = 다른 쪽 테이블로 트리 이동(조상을 펴고
    * 고른다 — 그 스키마를 아직 안 읽었으면 읽는다) · 그 밖의 잎 = 편집기 커서 자리에 인용된 이름(`oninsert` — 함수는 여는 괄호까지).
    * **만들기 · 고치기 · 지우기 동작은 없다**(읽고 이해하는 창 — docs/user/query-tile.md "What is not built").
    * 키보드(트리 묶음이 받는다): ↑↓ · →(펼치기 / 첫 자식) · ←(접기 / 부모) · Home · End · Enter · `F4` = DDL 보기.
@@ -74,11 +78,13 @@
     dialect,
     busy,
     expanded = $bindable([]),
-    onpick,
+    reading = $bindable(false),
+    onopen,
     oninsert,
     onfail,
     ondefinition,
     oncontext,
+    oncatalog,
   }: {
     handle: number;
     lease: number;
@@ -86,7 +92,10 @@
     busy: boolean;
     /** 펼친 열쇠(스키마 · 폴더 · 관계 · 구조 폴더) — 타일 상태 */
     expanded?: string[];
-    onpick: (schema: string | null, table: string) => void;
+    /** 트리가 서버에서 읽는 중인가(줄 세운 읽기가 남았나) — 데이터 탭이 그 사이에 조회를 보내지 않게(서버는 연결당 작업 하나) */
+    reading?: boolean;
+    /** 데이터 탭 열기(두 번 누르기 · Enter) */
+    onopen: (obj: TreeRelation) => void;
     /** 편집기 커서 자리에 넣을 글자 */
     oninsert: (text: string) => void;
     /** 오류 원문(접두어 그대로) — 다시 열기 갈래는 부르는 쪽이 가른다 */
@@ -94,7 +103,9 @@
     /** DDL 보기(`F4` · 메뉴) — 읽기는 부르는 쪽이 한다(아래 칸의 [DDL]) */
     ondefinition: (target: DbDefinitionTarget) => void;
     /** 정의가 있는 줄의 우클릭 — 메뉴는 부르는 쪽이 타일 컨테이너 밖에 그린다 */
-    oncontext: (ev: MouseEvent, target: DbDefinitionTarget, title: string) => void;
+    oncontext: (ev: MouseEvent, target: DbDefinitionTarget, title: string, rel: TreeRelation | null) => void;
+    /** 읽어 온 스키마 · 객체 · 구조 — 편집기 자동완성이 받아 둔다(`sql-completer`) */
+    oncatalog?: (n: CatalogNote) => void;
   } = $props();
 
   let schemas = $state<string[] | null>(null);
@@ -128,8 +139,16 @@
 
   // 서버는 연결당 작업 하나 — 트리의 읽기는 하나씩.
   let chain: Promise<unknown> = Promise.resolve();
+  let inflight = 0;
   function serial<T>(f: () => Promise<T>): Promise<T> {
+    inflight++;
+    reading = true;
     const p = chain.then(f, f);
+    const done = () => {
+      inflight--;
+      if (inflight === 0) reading = false;
+    };
+    p.then(done, done);
     chain = p.catch(() => undefined);
     return p;
   }
@@ -140,12 +159,33 @@
     return stripReason(m);
   }
 
+  // 겹침 — 연결이 열릴 때 데이터 탭 조회와 트리 읽기가 같은 순간에 출발하면 늦은 쪽이 서버의 Busy 로 실패한다(2026-11-10 실측).
+  // 트리 읽기 중에 연결이 다른 일을 했으면(`busy`) 그 실패는 오류로 보이지 않고, 그 일이 끝나면 처음부터 다시 읽는다.
+  let busyHit = false;
+  let pendingLoad = $state(false);
+  $effect(() => {
+    if (busy && loading) busyHit = true;
+  });
+  $effect(() => {
+    if (!busy && pendingLoad && !loading) {
+      pendingLoad = false;
+      untrack(() => void load());
+    }
+  });
+
   async function loadObjects(schema: string) {
     if (objects[schema]?.state !== "ok") objects[schema] = { state: "loading" };
     try {
-      const v = await serial(() => dbObjects(handle, lease, schema));
+      const c = { handle, lease };
+      const v = await serial(() => dbObjects(c.handle, c.lease, schema));
       objects[schema] = { state: "ok", value: v };
+      oncatalog?.({ ...c, kind: "objects", schema, objects: v });
     } catch (e) {
+      if (loading && busyHit) {
+        delete objects[schema];
+        pendingLoad = true;
+        return;
+      }
       objects[schema] = { state: "error", message: fail(e) };
     }
   }
@@ -155,24 +195,44 @@
     if (!rel) return;
     if (details[key]?.state !== "ok") details[key] = { state: "loading" };
     try {
-      const v = await serial(() => dbTableDetail(handle, lease, rel.schema, rel.name));
+      const c = { handle, lease };
+      const v = await serial(() => dbTableDetail(c.handle, c.lease, rel.schema, rel.name));
       details[key] = { state: "ok", value: v };
+      oncatalog?.({ ...c, kind: "detail", schema: rel.schema, name: rel.name, detail: v });
     } catch (e) {
+      if (loading && busyHit) {
+        delete details[key];
+        pendingLoad = true;
+        return;
+      }
       details[key] = { state: "error", message: fail(e) };
     }
   }
 
   /** 스키마 목록을 읽고, 펼쳐 둔 스키마의 객체 · 펼쳐 둔 관계의 구조를 다시 읽는다(펼침은 그대로) */
   async function load() {
-    if (busy || loading) return;
+    if (loading) return;
+    if (busy) {
+      // 연결이 다른 일을 하는 중 — 끝나면 읽는다(예전에는 여기서 그냥 돌아가 트리가 빈 채로 남았다)
+      pendingLoad = true;
+      return;
+    }
     loading = true;
+    busyHit = false;
     error = null;
     let names: string[];
     try {
-      const s = await serial(() => dbSchema(handle, lease));
+      const c = { handle, lease };
+      const s = await serial(() => dbSchema(c.handle, c.lease));
       names = s.schemas.map((x) => x.name);
       schemas = names;
+      oncatalog?.({ ...c, kind: "schemas", schemas: names });
     } catch (e) {
+      if (busyHit) {
+        loading = false;
+        pendingLoad = true;
+        return;
+      }
       error = fail(e);
       loading = false;
       return;
@@ -265,7 +325,8 @@
     if (r.type === "schema" || r.type === "folder" || r.type === "part") {
       setOpen(r, !r.expanded);
     } else if (r.type === "object") {
-      if (r.expandable) onpick(r.schema, r.object.name);
+      const rel = relationOf(r);
+      if (rel) onopen(rel);
       else oninsert(insertText(dialect, r.schema, r.object));
     } else if (r.type === "column") {
       const text = leafInsertText(dialect, r.schema, { part: "columns", item: r.column });
@@ -276,7 +337,8 @@
         const to = fkTarget(l.part, l.item);
         void reveal(to.schema, to.table);
       } else if (l.part === "partitions") {
-        onpick(l.item.schema, l.item.name);
+        const rel = relationOf(r);
+        if (rel) onopen(rel);
       } else {
         const text = leafInsertText(dialect, r.schema, l);
         if (text) oninsert(text);
@@ -319,7 +381,7 @@
     ev.preventDefault();
     ev.stopPropagation();
     focusKey = r.key;
-    oncontext(ev, d, definitionName(dialect, d));
+    oncontext(ev, d, definitionName(dialect, d), relationOf(r));
   }
 
   function onKey(ev: KeyboardEvent) {
@@ -386,7 +448,8 @@
 
   function objectTitle(r: Extract<TreeRow, { type: "object" }>): string {
     const o = r.object;
-    if (r.expandable) return [t("pane.query.schema.pick", { name: o.name }), defOf(r) ? t("pane.query.def.hint") : ""].filter(Boolean).join("\n");
+    // 관계 줄(두 번 누르기 = 데이터 탭)은 설명 말풍선을 두지 않는다 — 이름은 줄에 보인다(2026-11-10 사용자 결정)
+    if (r.expandable) return "";
     const lines = [t("pane.query.schema.insert", { name: signature(o) })];
     if (o.sub) lines.push(subLabel(o.sub));
     if (defOf(r)) lines.push(t("pane.query.def.hint"));
@@ -432,7 +495,7 @@
       case "partitions": {
         const x = l.item;
         const name = x.schema === here ? x.name : `${x.schema}.${x.name}`;
-        return { name, side: x.sub ? subLabel(x.sub) : "", title: lines([t("pane.query.schema.pick", { name }), x.bound ?? ""]) };
+        return { name, side: x.sub ? subLabel(x.sub) : "", title: lines([x.bound ?? ""]) };
       }
     }
   }
@@ -581,9 +644,20 @@
             data-query-table={r.type === "object" && r.expandable ? r.object.name : undefined}
             data-query-part={r.type === "part" ? r.folder.part : r.type === "leaf" ? r.leaf.part : undefined}
             onfocus={() => (focusKey = r.key)}
+            onmousedown={(ev) => {
+              // 두 번 누르기가 이름 글자를 골라(파랗게) 칠하지 않게
+              if (ev.detail > 1) ev.preventDefault();
+            }}
             onclick={() => {
               focusKey = r.key;
+              // 관계 · 파티션 줄의 한 번 누르기는 고르기만 — 펼치기/접기는 › 화살표(·→/←)로만, 데이터 탭은 두 번 누르기(아래).
+              // 줄 누르기로 펼치면 두 번 누르기(데이터 탭)마다 구조 폴더가 함께 열려 버린다(2026-11-10 사용자 결정)
+              if (relationOf(r)) return;
               if (!blocked) activate(r);
+            }}
+            ondblclick={() => {
+              const rel = relationOf(r);
+              if (rel) onopen(rel);
             }}
             oncontextmenu={(ev) => openContext(ev, r)}
           >
@@ -592,6 +666,7 @@
               <span
                 class="twisty"
                 class:dim={blocked}
+                ondblclick={(ev) => ev.stopPropagation()}
                 onclick={(ev) => {
                   ev.stopPropagation();
                   focusKey = r.key;

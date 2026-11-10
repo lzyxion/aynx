@@ -367,6 +367,11 @@ export function dbQuery(o: {
   timeoutMs?: number;
   /** 화면이 아는 트랜잭션 작업 id(0 = 작업 없음) — 서버의 지금 작업과 다르면 `[db-tx-stale]` */
   txId?: number;
+  /**
+   * 판 30 — **이 조회는 읽기 전용**(데이터 탭). 타일이 쓰기 모드여도 서버가 가드 · 엔진 모두 읽기 전용으로 돌리고, 트랜잭션 작업이 열려
+   * 있으면 거절한다(`db::table::query_read`). 좁히기만 한다 — 없으면 예전 길. 판 29 서버에는 보내지 않는다(`[server-outdated]`)
+   */
+  readOnly?: boolean;
 }): Promise<DbQueryResult> {
   return invoke<DbQueryResult>("db_query", {
     handle: o.handle,
@@ -376,6 +381,7 @@ export function dbQuery(o: {
     maxRows: o.maxRows ?? null,
     timeoutMs: o.timeoutMs ?? null,
     txId: o.txId ?? null,
+    readOnly: o.readOnly ?? null,
   });
 }
 

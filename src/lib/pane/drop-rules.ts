@@ -17,6 +17,9 @@
  * | OS 파일 (`files`) | AI CLI = 첨부, 그 밖 = 업로드 (상자 전체) | 업로드 | 업로드¹ |
  * | 파일 짐 (`fsfiles`) | 경로 붙여넣기² | **양보** — 브라우저가 받는다 | 무동작 |
  *
+ * 쿼리 타일(`query`)은 OS 파일 · 파일 짐 모두 **양보**다 — 타일이 `.sql` · `.txt` 를 새 스크립트 탭으로 스스로 받는다
+ * (`QueryView` · 규칙 `query/sql-file` — 2026-11-10). 탭 · 타일 · 호스트 끌기는 다른 타일과 같다.
+ *
  * **호스트·폴더 드래그의 출처는 이제 독뿐이다** (`Dock.svelte`) — 그 층은 타일 위에 떠
  * 있으므로 "놓는 곳" 이 될 수 없고, 표에서 `kind:"hosts"` 칸(트리가 정리로 받던 **양보**)이
  * 그래서 사라졌다 (docs/log/2026-09-08-remove-hosts-tile.md). 독 **안**에 놓는 정리(그룹
@@ -211,6 +214,8 @@ export function dropPlan(drag: DragCtx, target: DropTarget, zone: DropZone): Dro
 
     // OS 파일 — AI CLI 입력창에 첨부하거나, 그 타일의 서버·폴더로 업로드한다.
     case "files":
+      // 쿼리 타일은 놓인 `.sql` 을 새 스크립트 탭으로 스스로 받는다(`QueryView` — 2026-11-10)
+      if (k === "query") return YIELD;
       return {
         outcome: hasSession(k) && target.agent ? "attach" : "upload",
         accept: true, effect: "copy", preview: "all", split: null,
@@ -222,7 +227,7 @@ export function dropPlan(drag: DragCtx, target: DropTarget, zone: DropZone): Dro
       if (hasSession(k)) {
         return { outcome: "paste", accept: true, effect: "copy", preview: "all", split: null };
       }
-      return k === "sftp" || k === "localfs" ? YIELD : NONE;
+      return k === "sftp" || k === "localfs" || k === "query" ? YIELD : NONE;
 
     // 탭 통째로 — 그 자리에 병합. **자기 자신 위는 무시한다**(트리를 제 안에
     // 넣는 꼴이다). 창을 넘어온 것은 이 검사를 지나지 않는다: 남의 `tab-1` 은 내 `tab-1`

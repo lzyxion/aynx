@@ -454,3 +454,24 @@ describe("이름 필터 — 읽어 온 것만", () => {
     expect(shape(visibleRows(input({ schemas: ["public"], expanded, objects, filter: "  " })))).toEqual(before);
   });
 });
+
+describe("relationOf — 데이터 탭을 여는 줄(2026-11-10)", () => {
+  it("관계 줄 · 파티션 잎만 · 그 밖은 null", async () => {
+    const { relationOf } = await import("./schema-tree");
+    const obj = (kind: "table" | "view" | "function", expandable: boolean) =>
+      ({ type: "object", key: "k", level: 2, schema: "public", object: { kind, name: "o" }, expandable, expanded: false }) as const;
+    expect(relationOf(obj("table", true))).toEqual({ kind: "table", schema: "public", name: "o" });
+    expect(relationOf(obj("view", true))).toEqual({ kind: "view", schema: "public", name: "o" });
+    expect(relationOf(obj("function", false))).toBeNull();
+    const part = {
+      type: "leaf",
+      key: "p",
+      level: 4,
+      schema: "public",
+      table: "m",
+      leaf: { part: "partitions", item: { schema: "public", name: "m_2024" } },
+    } as const;
+    expect(relationOf(part)).toEqual({ kind: "partition", schema: "public", name: "m_2024" });
+    expect(relationOf({ type: "schema", key: "s", level: 0, schema: "public", expanded: false })).toBeNull();
+  });
+});

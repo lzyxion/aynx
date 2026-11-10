@@ -112,6 +112,8 @@ Only the banner shown when the connection is lost ("The connection was lost · [
 - **Results are separate per script tab.** Switching script tabs shows that tab's last result and run marks (results are not saved, so restarting the app leaves the pane empty).
 - **Connection, write mode, commit mode and transaction are one per tile.** All script tabs use the same connection and the same transaction, and the run row's state stays the same when switching script tabs. Running a statement from another script tab inside a transaction started in one script tab is the same transaction. There is also one run per tile, so while it runs, running is blocked in the other script tabs too (you can [Cancel] from there), and the result lands in the script tab that sent the run.
 - News that a transaction ended appears **in the script tab that sent the run, if the run brought the news**. Otherwise (idle rollback, disconnect, [Commit], [Roll back]) it appears **in the script tab being viewed at that moment**.
+- **Open `.sql` files**: drop `.sql` or `.txt` files on the tile (from Explorer or from a file tile), or use **[Open SQL file…]** in the tile's ⋯ menu (`Ctrl+O`). Each file opens in a new script tab named after the file, and **nothing runs**. Files over 1 MiB and binary files are refused.
+- **Save as `.sql`**: right-click a script tab → **[Save as .sql…]** (`Ctrl+S`). It always asks where to save; the script tab does not remember the file, so later edits are not written back. Data tabs have no save.
 
 <a id="run"></a>
 ## Running
@@ -122,6 +124,7 @@ Only the banner shown when the connection is lost ("The connection was lost · [
 - **Row limit** — Next to [Copy] on the row below the results, choose 1,000, 5,000 or 10,000 rows (remembered per tile and used from the next run). It is in the same place when there is no result (before running, error, cancel, or a stopped script statement). Exceeding it is reported as "Cut at the N-row limit".
 - The **schema tree** on the left — [below](#tree).
 - The editor's text is saved in the tile per script tab (up to 32 KiB) and survives an app restart ([Script tabs](#tabs)).
+- **Autocomplete** — While you type (two letters, or right after a dot), a list offers table and view names, columns and SQL keywords; `Ctrl+Space` opens it anytime. After `x.` (a table name or a `FROM`/`JOIN` alias in the same statement) it lists only that table's columns; after `schema.` it lists that schema's tables. `Enter` or `Tab` inserts, `Esc` closes. While the list is open these keys belong to it; otherwise `Enter`, `Esc` and `Ctrl+Enter` work as usual. Table names come from what the schema tree has already read (expand a schema once). Columns are read once per table when first needed, only while the connection is idle.
 - When the tile is narrow, the run row drops the less important text first, in this order: the elapsed time of the transaction state → "Manual commit" becomes "Manual" → transaction buttons that cannot be clicked now ([Commit] and [Roll back] with no transaction, [Begin] during one) → "Transaction" in the state → the pill text (padlock only) → transaction button text (picture only) → [Run script] text (picture only) → the statement count in the state (during a warning, the remaining time is dropped last). **[Run] always keeps its text.** The connection state on the script tab row also drops its text when narrow, leaving only the dot (the name is in the tooltip).
 
 <a id="tree"></a>
@@ -132,7 +135,7 @@ The tree on the left goes down, as in DBeaver, as **schema → folders by kind �
 ```text
 ▸ public                       Schema (database for MySQL/MariaDB) — only the name at first
   ▾ Tables                12    Expanding reads the schema's objects at once and splits them into folders by kind (count at the head)
-    ▾ orders                    Table, view, materialized view, foreign table — click to fill a SELECT, expand to read the structure at once
+    ▾ orders                    Table, view, materialized view, foreign table — click to select and expand, double-click for its data tab
       ▸ Columns            8
       ▸ Indexes            3    orders_pkey (id) PK — method (btree …), condition and definition are in the tooltip
       ▸ Constraints        2    Primary key, Unique, Check, Exclusion (PostgreSQL) — check expression is in the tooltip
@@ -155,11 +158,11 @@ The tree on the left goes down, as in DBeaver, as **schema → folders by kind �
 - Functions and types created by extensions (PostGIS, pgcrypto …) and constructor functions of range types are not listed, so that a schema does not get flooded with hundreds of them.
 - Up to **5,000 objects per kind group** are read at a time (and 5,000 per folder under a table). If there are more, `+` is added to the folder count and the line "Only the first 5000 are shown" appears.
 - **Clicking**
-  - Tables, views and partitions fill the editor with `SELECT * FROM "schema"."table" LIMIT 100;` (replacing all the text).
+  - Tables, views and partitions: **a single click only selects** (the editor text is not touched; to expand or collapse its structure folders, click the `›` arrow or press `→`/`←`), and **a double-click or `Enter` opens its [data tab](#data-tab)**. Right-click has **View data** and **Insert SELECT** (the old click — replaces the current query tab's text with `SELECT * FROM "schema"."table" LIMIT 100;`, without running it).
   - **Foreign Keys and Referenced By move the tree to the table on the other side**: they expand that schema and folder and select that table (reading the schema if it has not been read yet). If the table is not in the tree (a schema not listed, for example), its name goes into the editor.
   - Other leaves (functions, sequences, columns, indexes, constraints, triggers …) insert the quoted name **at the editor cursor** (functions and procedures include the opening parenthesis, as in `"public"."f1"(`).
 - What each engine does not provide: SQLite has no constraint or foreign key names (they are shown without names), and an expression index shows `expr` instead of the expression text (the definition is in the tooltip). MySQL and MariaDB triggers are visible only with the `TRIGGER` privilege, and MariaDB does not give an account with only the `SELECT` privilege the ON UPDATE and ON DELETE of foreign keys.
-- **Keyboard** — In the tree, `↑`/`↓` move, `→` expands (or goes to the first child if expanded), `←` collapses (or goes to the parent if collapsed), `Home`/`End`, `Enter` is the same as clicking, `F4` is [View DDL](#ddl), and `Ctrl+F` or `Ctrl+I` goes to the [Find names](#filter) field.
+- **Keyboard** — In the tree, `↑`/`↓` move, `→` expands (or goes to the first child if expanded), `←` collapses (or goes to the parent if collapsed), `Home`/`End`, `Enter` is the same as clicking (on a table, view or partition it opens the data tab), `F4` is [View DDL](#ddl), and `Ctrl+F` or `Ctrl+I` goes to the [Find names](#filter) field.
 - The expanded state stays **as long as the tile lives**, even if the tree is hidden and shown or the connection is reopened. **Refresh** at the top reads again and keeps what is expanded. After an app restart, the tree starts collapsed (not saved).
 - While a query runs, expansions that need a new read and refresh are blocked (one job at a time per connection). What has already been read can still be expanded and collapsed.
 
@@ -187,7 +190,7 @@ Typing in the **Find names** field below the tree's head (**`Ctrl+F`**, or **`Ct
 <a id="ddl"></a>
 ## View DDL
 
-**Right-click → View DDL** on a tree row (or select that row in the tree and press **`F4`**) shows the object's DDL (`CREATE …`) in the lower pane.
+**Right-click → View DDL** on a tree row (or select that row in the tree and press **`F4`**) shows the object's DDL (`CREATE …`) in the lower pane. Tables, views and partitions do not have this menu item: their DDL is on the **DDL** sub-tab of the [data tab](#data-tab) (`F4` still works on them).
 
 ![The DDL tab for a table](../images/guides/query-ddl.png)
 
@@ -214,6 +217,25 @@ Typing in the **Find names** field below the tree's head (**`Ctrl+F`**, or **`Ct
 - Columns and unnamed constraints (SQLite) have no "View DDL". Overloaded functions are told apart by the argument list of that row.
 - **Privileges**: MySQL and MariaDB hide the body of views, functions and procedures unless you are the definer or have privileges such as `SHOW VIEW` or `SHOW_ROUTINE`, and report "You lack the privilege to see the DDL of {name}". Triggers are not even listed without the `TRIGGER` privilege. PostgreSQL's catalog and definition functions are visible regardless of privileges.
 
+<a id="data-tab"></a>
+## Data tab
+
+Double-click a table, view or partition in the tree (or press `Enter`, or right-click → **View data**) to open its **data tab** beside the query tabs (grid icon + object name — the schema is in the tooltip). **One tab per object**: if it is already open, the app goes to it. There are no preview tabs. Close it with **×** like a query tab (no question — there is no text to lose).
+
+- **[Data | Structure | DDL]** at the top. **Structure** shows the columns, indexes, constraints, foreign keys, referenced by, triggers and partitions as tables (empty sections are hidden). **DDL** is the same read-only view as [View DDL](#ddl) (hidden when the engine gives no DDL for that kind); **Insert into editor** puts it into a new query tab.
+- **WHERE** — type the condition only (`id > 10 AND name LIKE 'a%'`), then press `Enter` (`Esc` reverts). **Refresh** queries again. The field autocompletes the table's columns and condition keywords the same way as the editor.
+- **Sorting** — click a column header: ascending ▲ → descending ▼ → none. It queries again with `ORDER BY` (rows already received are not sorted on screen).
+- **Pages** — ‹ › moves page by page with `LIMIT`/`OFFSET`, 100 rows per page by default (500 or 1,000 can be picked). The total is not counted (no `COUNT(*)`) — one extra row is read only to know whether there is a next page. The data tab uses its own page size, not the result row limit of query tabs.
+- **Open as SQL** puts the `SELECT` for the current condition, sort and page into a new query tab (it does not run).
+- The grid is the same as query results (copy, export, table/chart, find). The status row says **Read-only**.
+- **Filter from a cell** — right-click a cell and open **Filter ▸**: **Filter by this value** replaces the condition with `column = value` (`IS NULL` for NULL), **Filter out this value** with `column <> value` (`IS NOT NULL`), and **Add to filter** adds it to the current condition with `AND`. It reads page 1 again. Binary cells cannot filter.
+- **Follow a foreign key** — a foreign-key column has a link mark before its header name (a primary-key column has a key mark), and each non-NULL value shows a ↗ button when you hover over or select the cell (also **View in <table>** in the cell menu). It opens the referenced table's data tab with `ref_column = value` (all columns of a multi-column key); if that tab is already open, the app goes there and replaces its condition. The keys are read once after the first page loads; if that fails, there are just no ↗ marks.
+- **Rows that reference this** — if other tables have foreign keys pointing at this table, the cell menu has **Rows that reference this ▸** listing them (table name, with the referencing columns on the right; up to 8). Picking one opens that table's data tab with `referencing_column = this row's value` (an already open tab gets its condition replaced). An entry is dimmed when this row's referenced value is NULL or its column is not in the result.
+- On the **Structure** sub-tab, the table names under Foreign Keys and Referenced By are links: they open that table's data tab without a condition (or go to it if it is already open).
+- **It always reads only**, even when the tile is in write mode: the session server checks the condition with the read-only rules and runs it in a read-only transaction (all three engines). Anything that would change data (a write function in the condition, a second statement) is refused. **While a transaction is open, the data tab does not query** (read-only cannot be set inside an open transaction) — commit or roll back, then refresh.
+- One job at a time per connection: while a query runs (or the tree is reading), the data tab waits and then loads by itself; while the data tab loads, [Run] waits, and [Cancel] in either place stops it.
+- The condition, sort and page size are saved with the tile and come back after a restart (the rows are not saved — the tab queries again when shown). Editing cells, adding or deleting rows are not built.
+
 <a id="not-built"></a>
 ## What is not built
 
@@ -223,6 +245,7 @@ A query tile is **a window for quickly looking into a database during server wor
 | --- | --- |
 | Object list (schemas, folders by kind) | Screens that create or change objects (table, index and constraint editors, a "New table…" menu) |
 | Table structure (columns, indexes, constraints, foreign keys, referenced by, triggers, partitions) | Editing cells in the result grid and writing them to the database |
+| [Data tab](#data-tab) (read-only — condition, sort, pages) | Adding or deleting rows from the data tab |
 | [Read-only DDL view](#ddl) (right-click, `F4` — copy and insert into editor only) | Managing roles, privileges and tablespaces, or editing or running in the DDL pane |
 | [Tree name find](#filter) (over names already read — `Ctrl+F`, `Ctrl+I`) | ER diagrams, schema comparison, import/export wizards |
 | | Rarely viewed objects such as operators, collations and operator classes |
@@ -233,7 +256,9 @@ Operational information (running queries, locks) is a second-phase candidate, co
 ## Results
 
 - Click and drag over cells to select, and copy with **`Ctrl+C`** (TSV, which pastes straight into a spreadsheet). `Ctrl+A` selects everything.
-- **[Save CSV]** — RFC 4180 form + UTF-8 BOM (Excel reads non-ASCII text correctly right away). Only received rows are saved (within the row limit).
+- **Right-click a cell** — **Copy** and **Copy as ▸** (CSV, JSON, Markdown — the selected cells). A cell outside the selection becomes the selection first. The menu is the same box as the document editor's right-click menu (Copy, Copy as ▸ ─ Filter ▸ ─ foreign-key items).
+- **Filter the received rows** (query tab results) — the same cell menu has **Filter ▸** with **Filter by this value**, **Filter out this value** and **Add to filter**. It does not run the query again: it keeps only the rows already received (like sorting). Values are compared as values, not as shown text; NULL matches only NULL (`IS NULL`, `IS NOT NULL`). Binary cells cannot filter. The conditions (all `AND`) show as chips above the grid — **✕** removes one, **Clear all** removes them — and the status line shows `36 / 100 rows`. Copy, export, selection and sorting work on the filtered rows; the chart uses all received rows. Running again or switching results clears the filter. Data tabs filter with `WHERE` instead (see [Data tab](#data-tab)).
+- **[Export ▾]** — **Save as CSV…** and **Save as JSON…**. It exports the received rows in the order shown (a data tab exports the current page). CSV is RFC 4180 with CRLF and an empty field for NULL (a saved file also has a UTF-8 BOM, so Excel reads non-ASCII text). JSON is an array of row objects (`null`, numbers and booleans as such; large integers stay text; a repeated column name gets `_2`).
 - Double-clicking a cell expands a long value. For cells over 8 KiB, only the first part is received ("Long cells cut").
 - Large integers (outside ±2^53) and NaN are shown as text, and bytes as the length and the first part in hex.
 - Statements that change data end with "N row(s) changed". There is no feature to edit the result table and write to the database (write with SQL).

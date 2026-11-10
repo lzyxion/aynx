@@ -16,6 +16,7 @@
  * - `Ctrl+F` 는 편집기의 검색 패널이다. 편집 중인 문서 타일의 편집기 밖(도구줄 · 미리 보기)에서 누른 `Ctrl+F` 도
  *   이 패널을 연다([`EditorHandle.openSearch`] — `app/doc-find.ts`).
  * - `Tab` 은 들여쓰기(`indentWithTab`) — 빠져나가려면 `Esc` 다음 `Tab`(CodeMirror 의 규칙) 또는 `Alt+화살표`.
+ * - 자동완성(`complete` 를 준 편집기만 — 쿼리 타일)은 목록이 떠 있는 동안만 `Enter` · `Tab` · `Esc` · `↑↓` 를 먼저 쥔다(`doc-editor-complete`).
  *
  * ## 줄 끝
  *
@@ -55,6 +56,7 @@ import { tags } from "@lezer/highlight";
 import { normalizeEol, type Eol } from "$lib/doc-edit";
 import { docFormatEdit, type DocFormat } from "$lib/doc-format";
 import { lineMarks, type RunMark, type StmtStatus } from "$lib/query/run-panel";
+import type { CompleteFn } from "$lib/doc-editor-complete";
 
 export interface EditorOptions {
   text: string;
@@ -90,6 +92,11 @@ export interface EditorOptions {
   runMarks?: boolean;
   /** 처음 글의 열쇠 — 여러 글을 한 편집기에서 바꿔 끼울 때([`EditorHandle.switchDoc`] — 쿼리 타일의 스크립트 탭) */
   docKey?: string;
+  /**
+   * 자동완성(쿼리 타일의 SQL 편집기만 — 2026-11-10) — 후보를 짓는 함수. 주면 `doc-editor-complete`(`@codemirror/autocomplete`)를 늦게 받아
+   * 붙인다(없는 편집기는 그 청크를 받지 않는다). 키는 그 모듈 머리말 — 목록이 떠 있을 때의 `Enter` · `Tab` · `Esc` 가 `keys` 보다 먼저다
+   */
+  complete?: CompleteFn;
 }
 
 export interface EditorHandle {
@@ -416,6 +423,9 @@ function takesAppKey(b: KeyBinding): boolean {
 
 export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandle {
   const language = new Compartment();
+  const completion = new Compartment();
+  // 받아 온 자동완성 확장 — 바꿔 끼운 글(`switchDoc`)의 새 상태에도 그대로
+  let completeExt: Extension = [];
   let base: Text = Text.empty;
   let dirty = false;
   let lastCursor = 0;
@@ -451,6 +461,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
     syntaxHighlighting(highlightStyle),
     chrome,
     language.of([]),
+    completion.of(completeExt),
     EditorState.lineSeparator.of(o.eol),
     indentUnit.of(o.indent),
     EditorState.tabSize.of(o.indent === "\t" ? 4 : o.indent.length || 4),
@@ -516,6 +527,17 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       .catch((e: unknown) => console.warn(`[aynx] 편집기 언어를 받지 못했습니다: ${lang}`, e));
   };
   if (o.lang && !o.plain) applyLang(o.lang);
+
+  if (o.complete) {
+    const fn = o.complete;
+    void import("$lib/doc-editor-complete")
+      .then((m) => {
+        if (destroyed) return;
+        completeExt = m.completeExtension(fn);
+        view.dispatch({ effects: completion.reconfigure(completeExt) });
+      })
+      .catch((e: unknown) => console.warn("[aynx] 자동완성을 받지 못했습니다", e));
+  }
 
   // 바꿔 끼우는 글들(스크립트 탭) — 보이는 글의 열쇠와 넣어 둔 상태
   let docKey = o.docKey ?? "";
@@ -605,7 +627,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       stash.delete(key);
       docKey = key;
       view.setState(next);
-      view.dispatch({ effects: language.reconfigure(langExt) });
+      view.dispatch({ effects: [language.reconfigure(langExt), completion.reconfigure(completeExt)] });
     },
     textOf(key: string) {
       if (key === docKey) return view.state.sliceDoc();

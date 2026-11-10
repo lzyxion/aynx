@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick, untrack } from "svelte";
+  import { onDestroy, onMount, setContext, tick, untrack } from "svelte";
+  import { GRID_TILE_MENU, type GridTileMenu } from "$lib/query/grid-menu";
   import { listen, type UnlistenFn } from "./ipc";
   import { openFindZoneIn, registerTileFind } from "$lib/app/tile-find";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -12,14 +13,20 @@
   import SchemaTree from "$lib/query/SchemaTree.svelte";
   import SchemaPane from "$lib/query/SchemaPane.svelte";
   import DefinitionView from "$lib/query/DefinitionView.svelte";
+  import DataTab from "$lib/query/DataTab.svelte";
+  import { dataSelectSql, pageSizeOf } from "$lib/query/data-tab";
   import TreeMenu from "$lib/query/TreeMenu.svelte";
+  import ScriptTabMenu from "$lib/query/ScriptTabMenu.svelte";
+  import { sqlDropAccepts, sqlSaveName } from "$lib/query/sql-file";
+  import { dropSources, openSqlSources, pickSqlSources, saveSqlText } from "$lib/query/sql-file-io";
   import { sameTarget } from "$lib/query/definition";
-  import type { Load } from "$lib/query/schema-tree";
+  import type { Load, TreeRelation } from "$lib/query/schema-tree";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { paneHeadShown, setPaneTools } from "$lib/pane/pane-tools.svelte.js";
   import { stripReason } from "$lib/error-reason";
   import { QUERY_ROW_LIMITS, QUERY_ROWS_DEFAULT, paneName, type PaneSpec, type QueryRowLimit } from "$lib/session";
   import { selectStarSql } from "$lib/query/sql-quote";
+  import { createSqlCompleter } from "$lib/query/sql-completer";
   import { createScriptTabs, docKey } from "$lib/query/script-controller.svelte.js";
   import { createQuerySession } from "$lib/query/query-session.svelte.js";
   import {
@@ -66,6 +73,17 @@
    * ● = 저장 안 된 변경(살아 있는 글이 명세의 초안과 다르다 — 디바운스 중 · 32 KiB 초과). 추가 [+] · `Ctrl+T`, 닫기 × · 가운데 누르기 ·
    * `Ctrl+W`(마지막 하나는 못 닫음 · 글이 있으면 OS 확인), 이름 두 번 누르기 · `F2`, 순서는 끌기. `Ctrl+T`/`Ctrl+W` 는 **이 타일에 포커스가
    * 있을 때만**이고, 사용자가 같은 조합을 전역 단축키에 묶었으면 전역이 이긴다(앱 기본 전역은 `Ctrl+Shift+T`/`W` 라 겹치지 않는다).
+   *
+   * ## 데이터 탭(2026-11-10 — Beekeeper Studio 식 · 규칙 `query/data-tab` · 그림 `query/DataTab.svelte`)
+   *
+   * 트리의 테이블 · 뷰 · 파티션 줄을 **한 번 누르면 고르기만**(펼치기 · 초점 — 편집기 글은 그대로), **두 번 누르기 · Enter · 우클릭 "데이터
+   * 보기"** 면 그 객체의 데이터 탭을 스크립트 탭 줄에 연다(객체 하나에 탭 하나 — 있으면 그 탭으로 · 미리 보기 탭 없음). 예전 한 번 누르기
+   * (지금 탭 글을 `SELECT * … LIMIT 100;` 으로 바꿈)는 우클릭 "SELECT 문 넣기" 로 남았다. 데이터 탭이 보이는 동안 편집기 · 실행 줄 · 결과
+   * 칸은 숨고(편집기는 산 채 — 탭마다 되돌리기 기록 그대로) 데이터 탭이 그 자리를 채운다. 조회는 세션의 실행 칸 하나를 함께 쓰고
+   * (`ses.runData` — 연결당 하나 · [취소] · 막힘이 실행과 같다) **늘 읽기 전용**(`db_query{readOnly}` — 서버가 가드 · 엔진 모두, 열린 작업이면
+   * 거절)이다. 한 번 본 데이터 탭은 숨어도 산다(쪽 · 결과 유지) — 닫으면 사라진다. 조건(WHERE · 정렬 · 쪽 크기)만 명세에 남는다.
+   * 결과 표의 외래 키 ↗ 는 참조 표의 데이터 탭을 그 값의 조건으로 연다(`sc.openDataWhere` — 이미 열렸으면 조건을 덮고 `poke` 로 다시 읽게).
+   * 데이터 탭이 표 구조를 읽는 동안(`dataMeta`)은 트리 · 다른 데이터 탭이 기다린다(서버는 연결당 작업 하나).
    *
    * ## 수명(9단계 — 서버 `db::table` 머리말의 표)
    *
@@ -146,7 +164,17 @@
    * 마지막 오류를 AI 타일 입력 줄에 **붙여 넣기만** 한다(Enter 없음). **결과 행의 값은 넣지 않는다**(머리말 근거는 `query/ask-ai-db`). 연결의
    * AI 권한이 끔이면 넘기지 않고 켜는 곳(독 DB 우클릭 › AI 권한 · 연결 설정)을 알린다 — 직접 켜지는 않는다.
    */
-  let { pane, visible = true }: { pane: PaneSpec; visible?: boolean } = $props();
+  let {
+    pane,
+    visible = true,
+    onmenu,
+  }: {
+    pane: PaneSpec;
+    visible?: boolean;
+    /** 결과 표 칸 우클릭 — 타일 메뉴(`PaneMenu` — 문서 편집기 우클릭과 같은 상자)를 커서 자리에. 줄은 표가 짓고(`query/grid-menu.ts`) 누른 줄은 `run` 으로 */
+    onmenu?: GridTileMenu;
+  } = $props();
+  setContext<GridTileMenu>(GRID_TILE_MENU, (x, y, menu) => onmenu?.(x, y, menu));
 
   // 영속 키 — 없으면(방금 연 타일) 지금 단다. 이 값이 서버 DB 연결 표의 열쇠라 리로드 뒤에도 같은 연결에 붙는다.
   // (svelte-ignore: 처음 한 번의 값만 쓴다 — 타일 수명 동안 열쇠는 바뀌지 않는다)
@@ -247,6 +275,8 @@
   let tree = $state<ReturnType<typeof SchemaTree> | null>(null);
   /** 결과 칸(아래 칸) — 포커스가 여기 있으면 `find` 는 그 결과 표의 찾기다 */
   let outEl = $state<HTMLElement | null>(null);
+  /** 데이터 탭들의 칸 — 포커스가 여기 있으면 `find` 는 그 표의 찾기다 */
+  let dataEl = $state<HTMLElement | null>(null);
 
   /**
    * `find` 액션(`Ctrl+F` · 팔레트 — `app/tile-find.ts`, 2026-10-19)의 이 타일 몫. SQL 편집기 안의 `Ctrl+F` 는 애초에 편집기가 먼저
@@ -257,6 +287,7 @@
   function openFind(): boolean {
     const el = document.activeElement;
     if (outEl && el instanceof Element && outEl.contains(el) && openFindZoneIn(outEl)) return true;
+    if (dataEl && el instanceof Element && dataEl.contains(el) && openFindZoneIn(dataEl)) return true;
     // 좁은 타일 — 사이드바가 없으니 떠 있는 트리를 열고 그 거르기 칸으로(연결 전이면 거를 트리가 없다)
     if (treeLayout.narrow) {
       if (!ses.opened) return false;
@@ -298,10 +329,37 @@
   /** 트리에서 펼친 열쇠(스키마 · 폴더 · 관계) — 타일이 사는 동안(트리를 숨겼다 펴도 · 다시 연결해도) 남는다. 저장하지 않는다 */
   let treeExpanded = $state<string[]>([]);
 
-  function pickTable(schema: string | null, table: string) {
-    if (ses.running || !editor) return;
-    editor.setText(selectStarSql(dialect, schema, table));
+  /** 트리가 서버에서 읽는 중(데이터 탭이 그 사이 조회를 미룬다 — 서버는 연결당 작업 하나) */
+  let treeReading = $state(false);
+
+  /** 데이터 탭 열기 — 두 번 누르기 · Enter · 우클릭 "데이터 보기"(객체 하나에 탭 하나 — `sc.openData`) */
+  function openData(obj: TreeRelation) {
+    sc.openData({ kind: obj.kind, ...(obj.schema !== null ? { schema: obj.schema } : {}), name: obj.name });
   }
+
+  /**
+   * 우클릭 "SELECT 문 넣기"(예전 한 번 누르기) — 지금 쿼리 탭의 글을 `SELECT * … LIMIT 100;` 으로 바꾼다(실행하지 않는다). 지금 탭이
+   * 데이터 탭이면 새 쿼리 탭에 넣는다.
+   */
+  function selectInto(obj: TreeRelation) {
+    const sql = selectStarSql(dialect, obj.schema, obj.name);
+    if (activeData) {
+      sc.openSql(sql);
+      return;
+    }
+    if (ses.running || !editor) return;
+    editor.setText(sql);
+  }
+
+  // ── 데이터 탭(머리말) ─────────────────────────────────────────────────────
+  const activeData = $derived(sc.activeTab.data ?? null);
+  /** 한 번 보인 데이터 탭 — 숨어도 산다(쪽 · 결과 유지). 닫힌 탭은 목록에서 빠지니 저절로 사라진다 */
+  let dataSeen = $state<number[]>([]);
+  $effect(() => {
+    const n = sc.activeN;
+    if (activeData && !untrack(() => dataSeen).includes(n)) dataSeen = [...untrack(() => dataSeen), n];
+  });
+  const dataTabs = $derived(sc.tabs.filter((x) => x.data && dataSeen.includes(x.n)));
 
   /** 함수 · 시퀀스 같은 잎 — 편집기 커서 자리에 이름만 넣는다(글을 바꿔 치우지 않는다) */
   function insertName(text: string) {
@@ -342,11 +400,63 @@
     outTab = "result";
   }
 
-  let treeMenu = $state<{ target: DbDefinitionTarget; title: string; x: number; y: number } | null>(null);
-  function openTreeMenu(ev: MouseEvent, target: DbDefinitionTarget, title: string) {
-    treeMenu = { target, title, x: ev.clientX, y: ev.clientY };
+  let treeMenu = $state<{ target: DbDefinitionTarget; title: string; rel: TreeRelation | null; x: number; y: number } | null>(null);
+  function openTreeMenu(ev: MouseEvent, target: DbDefinitionTarget, title: string, rel: TreeRelation | null) {
+    treeMenu = { target, title, rel, x: ev.clientX, y: ev.clientY };
   }
   const closeTreeMenu = () => (treeMenu = null);
+
+  // ── `.sql` 파일 열기 · 저장(2026-11-10 — 규칙 `query/sql-file` · 읽기 · 쓰기 `query/sql-file-io`) ───────────────
+  // 여는 길: 끌어 놓기(OS 파일 · 파일 타일 짐) · 타일 ⋯ [SQL 파일 열기…] · `Ctrl+O` — 모두 새 스크립트 탭이고 실행하지 않는다.
+  // 저장: 스크립트 탭 우클릭 [.sql 로 저장…] · `Ctrl+S` — 늘 다른 이름으로(탭은 경로를 기억하지 않는다 · 데이터 탭은 저장 없음).
+
+  const openSqlFile = (title: string | undefined, text: string) => (disposed ? true : sc.openFile(title, text));
+  async function pickSqlFiles() {
+    const sources = await pickSqlSources();
+    if (!disposed && sources.length > 0) await openSqlSources(sources, openSqlFile);
+  }
+  function saveTabSql(n: number) {
+    const x = sc.tabs.find((y) => y.n === n);
+    const text = sc.liveText(n);
+    if (!x || text === null) return;
+    void saveSqlText(sqlSaveName(sc.tabLabel(x)), text);
+  }
+
+  // 스크립트 탭 우클릭 메뉴 — `TreeMenu` 와 같이 `.query` 밖에 그린다
+  let tabMenu = $state<{ n: number; title: string; data: boolean; x: number; y: number } | null>(null);
+  function openTabMenu(ev: MouseEvent, n: number) {
+    const x = sc.tabs.find((y) => y.n === n);
+    if (!x) return;
+    tabMenu = { n, title: sc.tabLabel(x), data: !!x.data, x: ev.clientX, y: ev.clientY };
+  }
+  const closeTabMenu = () => (tabMenu = null);
+
+  // 끌어 놓기 — 받을 수 있는 끌기(`sqlDropAccepts` — OS 파일 · 파일 타일 짐만)일 때만 놓을 곳을 그린다. **캡처 단계**에서 받는다: 편집기
+  // (CodeMirror)가 놓인 파일을 제 글에 끼워 넣기 전에. `dragover` 는 전파를 끊지 않는다 — 타일 층(`PaneHost`)이 다른 타일에 그린
+  // 하이라이트를 거두게(쿼리 타일 위 OS 파일은 그 층이 양보한다 — `pane/drop-rules`). 앱의 다른 끌기는 손대지 않는다.
+  let fileDrop = $state(false);
+  function onFileDragOver(ev: DragEvent) {
+    if (!sqlDropAccepts(ev.dataTransfer?.types)) {
+      fileDrop = false;
+      return;
+    }
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+    fileDrop = true;
+  }
+  function onFileDragLeave(ev: DragEvent) {
+    const to = ev.relatedTarget;
+    if (to instanceof Node && rootEl?.contains(to)) return;
+    fileDrop = false;
+  }
+  function onFileDrop(ev: DragEvent) {
+    fileDrop = false;
+    if (!sqlDropAccepts(ev.dataTransfer?.types)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const sources = dropSources(ev.dataTransfer);
+    if (sources.length > 0) void openSqlSources(sources, openSqlFile);
+  }
 
   /** 트리의 DDL 보기(`F4` · 우클릭 메뉴) — 떠 있는 트리에서 왔으면 닫고 편집기로(편집기 쪽 칸이 바뀌는 조작이다) */
   function defineFromTree(d: DbDefinitionTarget) {
@@ -376,6 +486,20 @@
 
   /** 떠 있는 트리의 자리(토글 아래) — `null` 이면 닫힘 */
   let treeDrop = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  // 트리가 읽는 중(데이터 탭이 기다린다) — 트리가 서 있을 때만 센다(읽는 도중 숨은 트리의 값이 남아 데이터 탭이 영영 기다리지 않게)
+  const treeBusyReading = $derived(treeReading && (treeShown || treeDrop !== null));
+  // 데이터 탭이 표 구조(외래 키 ↗ · 구조 하위 탭)를 읽는 중 — 서버는 연결당 작업 하나라 트리 · 다른 데이터 탭이 기다린다
+  let dataMeta = $state(0);
+
+  // 편집기 자동완성(2026-11-10 — 몸은 `query/sql-completer`): 표 · 뷰는 트리가 읽은 것(`oncatalog`), 열은 처음 필요할 때 표마다 한 번.
+  // 열 읽기는 연결이 한가할 때만(실행 · 작업 단추 · 모드 바꾸기 · 트리 읽기 · 데이터 탭 구조 읽기가 없을 때) 보내고, 읽는 동안은 데이터 탭의
+  // 구조 읽기와 같은 셈(`dataMeta`)으로 트리 · 데이터 탭을 기다리게 한다. 실행은 그 읽기가 끝난 뒤에 보낸다(`idle` — 서버 Busy 를 피해).
+  const completer = createSqlCompleter({
+    dialect: () => dialect,
+    conn: () => ses.opened,
+    canRead: () => ses.opened !== null && ses.running === null && !ses.txBusy && !ses.switching && !treeBusyReading && dataMeta === 0,
+    onread: (on) => (dataMeta = Math.max(0, dataMeta + (on ? 1 : -1))),
+  });
   let treeDropButton = $state<HTMLButtonElement | null>(null);
   let rootEl = $state<HTMLDivElement | null>(null);
 
@@ -534,8 +658,9 @@
       });
       return;
     }
-    const whole = editor?.getText() ?? "";
-    const sel = editor?.selection() ?? { from: 0, to: 0 };
+    // 데이터 탭이면 그 탭의 조회 문장(조건 · 정렬 · 첫 쪽 — 결과 행은 넣지 않는다)
+    const whole = activeData ? dataSelectSql(dialect, activeData, 0, pageSizeOf(activeData), false) : (editor?.getText() ?? "");
+    const sel = activeData ? { from: 0, to: 0 } : (editor?.selection() ?? { from: 0, to: 0 });
     const picked = sel.to > sel.from ? whole.slice(sel.from, sel.to) : "";
     const sql = picked.trim() !== "" ? picked : whole;
     const text = buildDbAskText(
@@ -561,6 +686,9 @@
   /** 탭 단축키(`Ctrl+T` 새 탭 · `Ctrl+W` 닫기 — 머리말) — 같은 조합이 전역 단축키에 묶여 있으면 전역이 이긴다 */
   const TAB_NEW = "Ctrl+KeyT";
   const TAB_CLOSE = "Ctrl+KeyW";
+  /** `.sql` 열기 · 저장(`Ctrl+O` · `Ctrl+S`) — 같은 꼴(전역이 이긴다). 브라우저 기본 동작(파일 열기 · 페이지 저장)도 여기서 끊는다 */
+  const FILE_OPEN = "Ctrl+KeyO";
+  const FILE_SAVE = "Ctrl+KeyS";
   const globalCombos = $derived(resolveBindings(settings.current.keybindings).global);
 
   /** 이 타일의 키 — 블록 → AI 타일의 단축키(`ask-ai-block`)가 여기서는 "AI 에 묻기"(diff 타일과 같은 규칙) · 탭 단축키 */
@@ -579,6 +707,14 @@
       ev.stopPropagation();
       if (combo === TAB_NEW) sc.newTab();
       else void sc.closeTabN(sc.activeN);
+      return;
+    }
+    // 데이터 탭이 보이는 중의 `Ctrl+S` 는 받지 않는다(창 키가 브라우저 기본 동작만 끊는다)
+    if ((combo === FILE_OPEN || (combo === FILE_SAVE && !activeData)) && !globalCombos.has(combo) && sc.renaming === null) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (combo === FILE_OPEN) void pickSqlFiles();
+      else saveTabSql(sc.activeN);
     }
   }
   const title = $derived(paneName(pane, t));
@@ -609,6 +745,11 @@
       tail: queryToggle,
       span: () => headSpan,
       iconBusy: () => (ses.conn.state === "connecting" ? connLabel : null),
+      // 타일 ⋯ 맨 위 줄 — 액션 `tool:open-sql`(통로는 `PaneHost` 의 `runTileMenu` → `runOnMenu`)
+      menu: () => [{ action: "tool:open-sql", label: t("pane.query.file.open"), icon: "folder-open", hint: "Ctrl+O" }],
+      run: (key) => {
+        if (key === "open-sql") void pickSqlFiles();
+      },
     }),
   );
 </script>
@@ -677,6 +818,7 @@
     closeTabN={sc.closeTabN}
     onTabKey={sc.onTabKey}
     newTab={sc.newTab}
+    tabMenu={openTabMenu}
   />
 {/snippet}
 
@@ -693,8 +835,20 @@
   data-tile-focus
   tabindex="-1"
   onkeydown={onTileKey}
+  ondragovercapture={onFileDragOver}
+  ondragleave={onFileDragLeave}
+  ondropcapture={onFileDrop}
 >
   {#if !inHead}{@render queryBar(false)}{/if}
+  {#if fileDrop}
+    <!-- 놓을 곳 — 끄는 동안만(포인터를 받지 않는다) -->
+    <div class="file-drop" aria-hidden="true" data-query-file-drop>
+      <span class="file-drop-card">
+        <span class="file-drop-main">{t("pane.query.file.drop")}</span>
+        <span class="file-drop-sub">{t("pane.query.file.drop.sub")}</span>
+      </span>
+    </div>
+  {/if}
 
   {#if ses.conn.state === "closed"}
     <div class="banner" role="alert" data-query-banner={ses.conn.kind}>
@@ -714,10 +868,11 @@
         {treeLayout}
         opened={ses.opened}
         conn={ses.conn}
-        busy={ses.running !== null || ses.txBusy || ses.switching}
+        busy={ses.running !== null || ses.txBusy || ses.switching || dataMeta > 0}
         bind:tree
         bind:treeExpanded
-        {pickTable}
+        bind:treeReading
+        {openData}
         {insertName}
         {onTreeFail}
         {defineFromTree}
@@ -726,25 +881,57 @@
         {treeDropKey}
         {dragTree}
         {splitKey}
+        oncatalog={completer.note}
       />
     {/if}
     <div class="work" bind:clientHeight={bodyH} bind:clientWidth={workW}>
-      <div class="ed" style:height="{editorPct}%">
+      <!-- 데이터 탭(머리말) — 한 번 본 것은 숨어도 산다. 보이는 동안 편집기 · 실행 줄 · 결과 칸은 숨는다(편집기는 산 채) -->
+      {#if dataTabs.length > 0}
+        <div class="data-tabs" class:shown={activeData !== null} bind:this={dataEl}>
+          {#each dataTabs as x (x.n)}
+            <div class="data-tab" class:on={x.n === sc.activeN}>
+              <DataTab
+                n={x.n}
+                data={x.data!}
+                {dialect}
+                opened={ses.opened}
+                visible={x.n === sc.activeN && visible}
+                waiting={ses.runOff || treeBusyReading || dataMeta > 0}
+                treeReading={treeBusyReading}
+                inWork={txOpen(ses.tx)}
+                running={ses.running?.tab === x.n}
+                runData={ses.runData}
+                oncancel={ses.cancel}
+                onchange={(d) => sc.setData(x.n, d)}
+                onopensql={sc.openSql}
+                onlost={ses.lostIfReopen}
+                onmeta={(on) => (dataMeta = Math.max(0, dataMeta + (on ? 1 : -1)))}
+                onfollow={(f) => sc.openDataWhere({ schema: f.schema, name: f.name }, f.where)}
+                onopendata={(o) => sc.openData({ kind: "table", ...(o.schema !== null ? { schema: o.schema } : {}), name: o.name })}
+                poke={sc.dataPoke(x.n)}
+              />
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <div class="ed" style:height="{editorPct}%" class:gone={activeData !== null}>
         <SqlEditor
           bind:this={editor}
           docKey={docKey(sc.activeTab.n)}
           initial={sc.activeTab.text}
           lang={sqlLang}
-          onrun={() => void ses.run()}
-          onscript={() => void ses.runScript()}
+          onrun={() => void completer.idle().then(() => ses.run())}
+          onscript={() => void completer.idle().then(() => ses.runScript())}
           oncancel={ses.cancel}
           onchange={sc.onDraft}
+          complete={completer.complete}
         />
       </div>
       <!-- 실행 줄(10-14) — 편집기와 결과 사이. 끌면 편집기 높이가 바뀐다(경계는 이 줄 위 선) -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
       <div
         class="hsplit"
+        class:gone={activeData !== null}
         role="separator"
         aria-orientation="horizontal"
         aria-label={t("pane.query.split.resize")}
@@ -755,6 +942,7 @@
         onpointerdown={dragSplit}
         onkeydown={(ev) => splitKey(ev, "split")}
       ></div>
+      {#if !activeData}
       <RunBar
         pill={ses.pill}
         {fit}
@@ -779,11 +967,12 @@
         setAutoCommit={ses.setAutoCommit}
         txCall={ses.txCall}
         {askAi}
-        runScript={ses.runScript}
+        runScript={() => completer.idle().then(() => ses.runScript())}
         cancel={ses.cancel}
-        run={ses.run}
+        run={() => completer.idle().then(() => ses.run())}
       />
-      {#if definition}
+      {/if}
+      {#if definition && !activeData}
         <div class="out-tabs" role="tablist" aria-label={t("pane.query.def.tabs")}>
           <button
             type="button"
@@ -812,7 +1001,7 @@
           </span>
         </div>
       {/if}
-      <div class="out" bind:this={outEl}>
+      <div class="out" class:gone={activeData !== null} bind:this={outEl}>
         {#if ses.note && !(definition && outTab === "definition")}
           <!-- 결과가 없는 연결 사건(작업 종료 사유) — 결과 칸 머리 줄(머리말 "알림") -->
           <div
@@ -836,7 +1025,7 @@
         {:else if runShown}
           <RunResults
             shown={runShown}
-            name={title}
+            name={sc.tabLabel(sc.activeTab)}
             limit={rowLimit}
             begin={ses.txb.begin.shown ? { disabled: ses.txb.begin.disabled, onclick: () => void ses.txCall("begin") } : null}
             onlocate={ses.locate}
@@ -846,13 +1035,13 @@
         {:else if ses.outcome.kind === "nothing"}
           <p class="out-note">{t("pane.query.nothing")}</p>
         {:else}
-          <!-- 빈 결과 칸 — 한 줄 + 단축키 셋. 정책 설명은 docs/user/query-tile.md(쓰기면 반영 시점 한 줄만) -->
+          <!-- 빈 결과 칸 — 단축키 넷(실행 · 스크립트 · 취소 · 새 탭). 정책 설명은 docs/user/query-tile.md(쓰기면 반영 시점 한 줄만) -->
           <div class="out-note hint">
             {#if ses.running?.tab === sc.activeN}
               <p>{t("pane.query.running")}</p>
             {:else}
-              <p>{t("pane.query.hint")}</p>
               <p class="keys">
+                <span><Keys combo="Ctrl+Enter" />{t("pane.query.run")}</span>
                 <span><Keys combo="Alt+X" />{t("pane.query.script")}</span>
                 <span><Keys combo="Esc" />{t("pane.query.cancel")}</span>
                 <span><Keys combo="Ctrl+T" />{t("pane.query.tab.add")}</span>
@@ -867,7 +1056,7 @@
         {/if}
       </div>
       <!-- 결과 패널이 없을 때(실행 전 · 취소 · 할 것 없음)도 행 상한은 바꿀 수 있다 — 결과 패널은 자기 아래 줄에 그린다 -->
-      {#if !(definition && outTab === "definition") && !runShown}
+      {#if !(definition && outTab === "definition") && !runShown && !activeData}
         <RowLimit {...rowLimit} line />
       {/if}
     </div>
@@ -881,10 +1070,11 @@
     {treeLayout}
     opened={ses.opened}
     conn={ses.conn}
-    busy={ses.running !== null || ses.txBusy || ses.switching}
+    busy={ses.running !== null || ses.txBusy || ses.switching || dataMeta > 0}
     bind:tree
     bind:treeExpanded
-    {pickTable}
+    bind:treeReading
+    {openData}
     {insertName}
     {onTreeFail}
     {defineFromTree}
@@ -893,6 +1083,7 @@
     {treeDropKey}
     {dragTree}
     {splitKey}
+    oncatalog={completer.note}
   />
 {/if}
 
@@ -905,6 +1096,25 @@
     y={treeMenu.y}
     onclose={closeTreeMenu}
     ondefinition={defineFromTree}
+    rel={treeMenu.rel}
+    onopen={openData}
+    onselect={selectInto}
+  />
+{/if}
+
+<!-- 스크립트 탭의 우클릭 메뉴 — 트리 메뉴와 같은 까닭으로 `.query` 밖 -->
+{#if tabMenu}
+  <ScriptTabMenu
+    n={tabMenu.n}
+    title={tabMenu.title}
+    data={tabMenu.data}
+    canClose={sc.tabs.length > 1}
+    x={tabMenu.x}
+    y={tabMenu.y}
+    onclose={closeTabMenu}
+    onrename={sc.startRename}
+    onsave={saveTabSql}
+    onclosetab={(n) => void sc.closeTabN(n)}
   />
 {/if}
 
@@ -920,6 +1130,48 @@
     color: var(--fg);
     font-family: var(--font-ui);
     outline: none;
+    /* 놓을 곳(`.file-drop`)의 기준 — 컨테이너(`qtile`)가 이미 그 기준이라 다른 자식의 자리는 바뀌지 않는다 */
+    position: relative;
+  }
+
+  /* 끌어 놓기의 놓을 곳 — 점선 테두리 + 두 줄(포인터는 아래 칸이 아니라 타일이 받는다) */
+  .file-drop {
+    position: absolute;
+    inset: 4px;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+    pointer-events: none;
+    text-align: center;
+  }
+
+  /* 글자 카드 — 면이 반투명이라 뒤의 단축키 줄과 겹쳐 읽히지 않게 불투명 바탕을 깐다 */
+  .file-drop-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 18px;
+    background: var(--surface-raised-solid);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md, 0 6px 18px rgb(0 0 0 / 0.16));
+  }
+
+  .file-drop-main {
+    font-size: 13px;
+    color: var(--fg);
+  }
+
+  .file-drop-sub {
+    font-size: 11px;
+    color: var(--fg-3);
   }
 
   .tree-toggle {
@@ -1097,6 +1349,33 @@
   .ed {
     flex: 0 0 auto;
     min-height: 48px;
+  }
+
+  /* 데이터 탭이 보이는 동안 숨는 쿼리 탭의 칸 — 편집기는 산 채로 둔다(탭마다 되돌리기 기록) */
+  .gone {
+    display: none !important;
+  }
+
+  .data-tabs {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .data-tabs.shown {
+    display: flex;
+  }
+
+  .data-tab {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .data-tab.on {
+    display: flex;
   }
 
   /* 아래 칸의 [결과 | DDL] — 정의를 연 뒤에만 선다 */

@@ -5,7 +5,7 @@
 //! | --- | --- | --- |
 //! | `db_open` | 쓰기 | `{stream, window, conn: {id}, password?, ssh?: {hostKeyDecision?, password?, passphrase?, passphraseFor?, declinedKeys?}, reattachOnly?, lang}` → `{handle, lease, dialect, serverVersion, writable, reattached}` · 경유 SSH 관문은 코드 `ssh-open` + `SshOpenError` JSON(터미널 `open_ssh` 와 같은 꼴) · `reattachOnly` = 있는 연결에 붙기만(없으면 `[session-gone]`) |
 //! | `db_test` | 쓰기 | 판 28 — `{stream: "dbtest-…", conn: <DbConn 한 줄 — db_conn_save 의 꼴>, password?, ssh?, lang}` → `{dialect, serverVersion, via?, elapsedMs}`(DB 연결 폼의 [연결 테스트] — 저장 안 한 초안으로 한 번 붙고 곧바로 닫는다 · 표 · 접속 기록에 남지 않는다 · 볼트 물러남은 서버가 저장된 줄과 대상을 견줘 정한다 — `table::test`) · 실패는 `db_open` 과 같은 꼴 |
-//! | `db_query` | 쓰기 | `{handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?}` → `{columns: [{name, type}], rows, truncated, cellTruncated, affected?, elapsedMs, tx}` · `txId`(판 9 — 화면이 아는 작업 id, 0 = 작업 없음)가 지금 작업과 다르면 `[db-tx-stale]` |
+//! | `db_query` | 쓰기 | `{handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?, readOnly?}` → `{columns: [{name, type}], rows, truncated, cellTruncated, affected?, elapsedMs, tx}` · `txId`(판 9 — 화면이 아는 작업 id, 0 = 작업 없음)가 지금 작업과 다르면 `[db-tx-stale]` · `readOnly`(판 30 — 데이터 탭)면 타일이 쓰기 모드여도 가드 · 엔진 모두 읽기 전용 · 트랜잭션 작업이 열려 있으면 거절(`table::query_read`) |
 //! | `db_cancel` | 쓰기 | `{handle, queryId}` → bool(지금 돌던 그 쿼리를 끊었나) |
 //! | `db_schema` | 읽기 | `{handle, lease}` → `{schemas: [{name}]}`(스키마 이름만 — 트리 첫 단계) |
 //! | `db_objects` | 읽기 | `{handle, lease, schema?}` → `{objects: [{kind, name, sub?, args?, returns?, on?, detail?}], truncated: [kind]}`(스키마를 펼칠 때 — 종류 = 트리 폴더) |
@@ -160,6 +160,9 @@ struct Query {
     /// 판 9 — 화면이 아는 트랜잭션 작업 id(0 = 작업 없음). 판 8 GUI 는 싣지 않는다(보지 않는다).
     #[serde(default)]
     tx_id: Option<u64>,
+    /// 판 30 — 이 조회는 타일 모드와 무관하게 **읽기 전용**(데이터 탭 — `table::query_read`). 좁히기만 한다(없으면 예전 길).
+    #[serde(default)]
+    read_only: bool,
 }
 
 /// 스크립트 op 의 몸(판 10) — `db_query` 와 같은 칸.
@@ -299,10 +302,15 @@ pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Valu
             let q: Query = body(b)?;
             let (rows, timeout) = db::clamp_limits(q.max_rows, q.timeout_ms);
             let (handle, len) = (q.handle, q.sql.len());
-            let r = table::query(q.handle, q.lease, q.sql, q.query_id, rows, timeout, q.tx_id).await;
+            let read = q.read_only;
+            let r = if read {
+                table::query_read(q.handle, q.lease, q.sql, q.query_id, rows, timeout).await
+            } else {
+                table::query(q.handle, q.lease, q.sql, q.query_id, rows, timeout, q.tx_id).await
+            };
             match &r {
                 Ok(out) => log::line(format!(
-                    "db_query handle {handle} sql {len} B rows {} truncated {} ({} ms)",
+                    "db_query handle {handle} sql {len} B read {read} rows {} truncated {} ({} ms)",
                     out.rows.len(),
                     out.truncated,
                     ms()

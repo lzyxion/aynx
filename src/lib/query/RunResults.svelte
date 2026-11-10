@@ -87,6 +87,11 @@
     const r = rows[picked]?.result;
     return r && r.columns.length > 0 && !detached ? r : null;
   });
+  /**
+   * 조용한 성공 — 문장 하나가 성공해 행을 돌려줬으면 요약 띠 · 문장 목록 없이 결과 표만(행 수 · 시간은 표의 상태 줄에 있다 — 2026-11-10
+   * 사용자 결정). 실패 · 스크립트 · 행 없는 문장(바꾼 행 수 · 자동 커밋 안내)은 그대로 보인다.
+   */
+  const quiet = $derived(shown.kind === "result" && grid !== null);
   /** 탭 줄이 있을 때 고른 결과 탭(없으면 [요약]) */
   const current = $derived(bar && typeof tab === "number" ? (tabs.find((x) => x.no === tab) ?? null) : null);
 
@@ -251,6 +256,7 @@
 </script>
 
 <div class="run" data-query-script={shown.kind === "script" ? shown.r.outcome : undefined} data-query-run-kind={shown.kind}>
+  {#if !quiet}
   <div
     class="sum tone-{head.tone}"
     class:unknown={head.unknown}
@@ -278,6 +284,7 @@
     {/if}
     {#if head.ms !== undefined}<span class="sum-ms">{t("pane.query.status.ms", { ms: head.ms })}</span>{/if}
   </div>
+  {/if}
 
   {#if bar}
     <!-- 결과 탭 줄 — [요약] + 행을 돌려준 문장마다 하나(←/→ · Home/End) -->
@@ -325,7 +332,7 @@
       {/key}
     </div>
   {:else}
-  {#if rows.length > 0}
+  {#if rows.length > 0 && !quiet}
     <!-- 문장 목록 — 화살표로 옮기고 누르면 편집기에서 그 문장을 고른다(조회 문장은 결과 표가 아래에 펼쳐진다) -->
     <div class="list" class:grow={!grid} role="listbox" tabindex="0" aria-label={t("pane.query.script.list")} onkeydown={onKey}>
       <div class="row head" aria-hidden="true">

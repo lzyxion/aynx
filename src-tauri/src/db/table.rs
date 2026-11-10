@@ -1039,6 +1039,69 @@ pub(crate) async fn query(
     })
 }
 
+/// **읽기 전용 조회 하나**(판 30 — 쿼리 타일의 데이터 탭 · `db_query` 의 `readOnly`). 타일이 쓰기 모드여도 **늘** 읽기 전용이다: 가드는
+/// 읽기 전용 허용 목록(`Mode::ReadOnly`)을 지나고, 엔진은 그 읽기 전용 길로 돈다(SQLite `readonly()` 겹 · PG `READ ONLY` 트랜잭션 ·
+/// MySQL `START TRANSACTION READ ONLY` … `ROLLBACK`). 사람이 친 WHERE 글이 섞여 있어도 데이터를 바꾸지 않는다 — 깃발은 좁히기만 한다
+/// (깃발이 없으면 예전 [`query`] 그대로 · 이 길이 다른 길보다 넓은 것은 없다).
+///
+/// **트랜잭션 작업이 열려 있으면 거절**한다(세 엔진 같은 규칙) — 열린 작업 안에서는 PG · MySQL 이 문장 하나만 `READ ONLY` 로 돌릴 길이
+/// 없고(접근 모드는 트랜잭션 머리에서만 정한다), 작업 밖에서 돌리면 그 작업과 다른 연결 상태가 섞인다. 화면은 커밋 · 되돌리기 뒤 다시
+/// 조회하라고 보인다. 판정은 조정 장치 안(`claim`)이라 검사와 엔진 진입 사이에 작업이 열리지 않는다.
+pub(crate) async fn query_read(handle: u64, lease: u64, sql: String, query_id: String, max_rows: usize, timeout_ms: u64) -> Result<QueryOut, String> {
+    let e = lookup(handle, Some(lease))?;
+    let cancelled = claim(&e, Work::Query, query_id, |e| {
+        if lock(&e.tx).is_open() || e.engine.in_tx() {
+            Err(read_in_work_message())
+        } else {
+            Ok(())
+        }
+    })?;
+    let _clear = ClearRunning(&e, cancelled.clone());
+    // 가드를 여기서도 한 번 — 엔진의 읽기 전용 길도 같은 판정을 하지만, 그 길의 모양에 기대지 않는다.
+    guard::check_mode(&sql, e.engine.dialect(), guard::Mode::ReadOnly).map_err(|err| match err {
+        // 가드의 공용 문구는 [실행] · Alt+X 안내라 데이터 탭에는 맞지 않는다 — 조건 칸의 말로.
+        guard::GuardError::Multiple => read_multiple_message(),
+        other => read_refused_message(&other.message()),
+    })?;
+    let r = match exec(&e, &sql, max_rows, timeout_ms, true, &cancelled, None).await {
+        Ok(r) => r,
+        Err(_) if cancelled.load(Ordering::SeqCst) => Err(message(EngineError::Interrupted, false, true, timeout_ms)),
+        // 쓰기 모드 연결의 읽기 전용 길이 데이터를 바꾸는 문장이라 거절했다 — 다시 돌지 않는다.
+        Err(m) => Err(read_refused_message(&m)),
+    };
+    r.map(|mut out| {
+        out.tx = Some(e.tx_view());
+        out
+    })
+}
+
+/// [`query_read`] — 열린 트랜잭션 작업 동안의 거절.
+fn read_in_work_message() -> String {
+    tr!(
+        ko: "트랜잭션 작업이 열려 있는 동안에는 데이터 탭이 조회하지 않습니다 — 데이터 탭은 늘 읽기 전용으로 도는데, 열린 작업 안에서는 읽기 전용을 걸 수 없습니다. [커밋] 또는 [되돌리기] 뒤 새로 고치세요.",
+        en: "The data tab does not query while a transaction is open — it always runs read-only, and read-only cannot be set inside an open transaction. [Commit] or [Roll back], then refresh."
+    )
+}
+
+/// [`query_read`] — 가드(읽기 전용 허용 목록 · 문장 하나)나 엔진의 읽기 전용 길이 거절했다(WHERE 안의 쓰기 함수 · 둘째 문장 등).
+fn read_refused_message(engine_msg: &str) -> String {
+    format!(
+        "{}\n{engine_msg}",
+        tr!(
+            ko: "데이터 탭은 읽기만 합니다 — 읽기 전용으로 돌 수 없는 조건이라 거절했습니다.",
+            en: "The data tab only reads — this condition cannot run read-only, so it was refused."
+        )
+    )
+}
+
+/// [`query_read`] — WHERE 칸에 문장 끝(`;`)이 들어가 문장이 여럿이 됐다.
+fn read_multiple_message() -> String {
+    tr!(
+        ko: "데이터 탭은 읽기만 합니다 — WHERE 칸에는 조건 하나만 넣을 수 있습니다(세미콜론으로 문장을 잇지 마세요).",
+        en: "The data tab only reads — the WHERE box takes one condition (do not chain statements with a semicolon)."
+    )
+}
+
 /// 자동 커밋을 끈 타일의 작업 밖 문장 하나 — 읽기 전용 길로 돌 조회인가(`true`), 작업을 열 문장인가(`false`). 작업 안에서도 받지
 /// 않을 문장이면(트랜잭션 문장 · 여러 문장 · MySQL 암묵 커밋 · PG 트랜잭션 밖 전용) 아무것도 열지 않고 거절 문구.
 pub(crate) fn auto_off_reads(sql: &str, d: Dialect) -> Result<bool, String> {

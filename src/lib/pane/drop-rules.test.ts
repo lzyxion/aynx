@@ -147,6 +147,7 @@ describe("dropPlan — 판정 표", () => {
       ["localfs", "upload"],
       ["start", "upload"],
       ["doc", "upload"], // 문서 타일도 설정처럼 받고 문구로 거절한다
+      ["query", "yield"], // 쿼리 타일이 `.sql` 을 새 스크립트 탭으로 스스로 받는다
     ])("%s 타일 위 → %s", (kind, outcome) => {
       expect(dropPlan(drag, on(kind), "top").outcome).toBe(outcome);
     });
@@ -170,6 +171,7 @@ describe("dropPlan — 판정 표", () => {
       ["localfs", "yield"],
       ["start", "none"],
       ["doc", "none"], // 읽기 전용 — 경로 짐을 받을 자리가 없다(기본 NONE)
+      ["query", "yield"], // 쿼리 타일이 스스로 받는다(`.sql` → 새 스크립트 탭)
     ])("%s 타일 위 → %s", (kind, outcome) => {
       expect(dropPlan(drag, on(kind), "bottom").outcome).toBe(outcome);
     });

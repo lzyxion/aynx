@@ -10,6 +10,8 @@
   import { runAfterClose } from "$lib/browser/menu-runner";
   import type { DbDefinitionTarget, DbOpened } from "$lib/query/query-backend";
   import type { queryTreeLayout } from "$lib/pane/head-span";
+  import type { TreeRelation } from "$lib/query/schema-tree";
+  import type { CatalogNote } from "$lib/query/sql-completer";
 
   let {
     treeDrop,
@@ -19,7 +21,8 @@
     busy,
     tree = $bindable(),
     treeExpanded = $bindable(),
-    pickTable,
+    treeReading = $bindable(),
+    openData,
     insertName,
     onTreeFail,
     defineFromTree,
@@ -28,6 +31,7 @@
     treeDropKey,
     dragTree,
     splitKey,
+    oncatalog,
   }: {
     treeDrop: { x: number; y: number; w: number; h: number } | null;
     treeLayout: ReturnType<typeof queryTreeLayout>;
@@ -36,20 +40,25 @@
     busy: boolean;
     tree: ReturnType<typeof SchemaTree> | null;
     treeExpanded: string[];
-    pickTable: (schema: string | null, table: string) => void;
+    /** 트리가 서버에서 읽는 중(데이터 탭이 그 사이 조회를 미룬다) */
+    treeReading: boolean;
+    /** 데이터 탭 열기(두 번 누르기 · Enter) */
+    openData: (obj: TreeRelation) => void;
     insertName: (text: string) => void;
     onTreeFail: (message: string) => void;
     defineFromTree: (d: DbDefinitionTarget) => void;
-    openTreeMenu: (ev: MouseEvent, target: DbDefinitionTarget, title: string) => void;
+    openTreeMenu: (ev: MouseEvent, target: DbDefinitionTarget, title: string, rel: TreeRelation | null) => void;
     closeTreeDrop: () => void;
     treeDropKey: (ev: KeyboardEvent) => void;
     dragTree: (ev: PointerEvent) => void;
     splitKey: (ev: KeyboardEvent, which: "tree" | "split") => void;
+    /** 트리가 읽은 것 — 편집기 자동완성으로 */
+    oncatalog?: (n: CatalogNote) => void;
   } = $props();
 </script>
 
 <!-- 스키마 트리 — 넓은 타일의 사이드바와 좁은 타일의 떠 있는 패널이 같은 것을 그린다(한 번에 하나만 선다 — `tree` 손잡이도 하나).
-     떠 있는 패널(`drop`)이면 편집기로 가는 조작(SELECT · 이름 넣기)이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행 · DDL 보기는 `defineFromTree`) -->
+     떠 있는 패널(`drop`)이면 편집기로 가는 조작(데이터 탭 열기 · 이름 넣기)이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행 · DDL 보기는 `defineFromTree`) -->
 {#snippet schemaTree(drop: boolean)}
   {#if opened}
     <SchemaTree
@@ -59,11 +68,13 @@
       dialect={opened.dialect}
       {busy}
       bind:expanded={treeExpanded}
-      onpick={drop ? (schema, table) => runAfterClose(closeTreeDrop, () => pickTable(schema, table)) : pickTable}
+      bind:reading={treeReading}
+      onopen={drop ? (obj) => runAfterClose(closeTreeDrop, () => openData(obj)) : openData}
       oninsert={drop ? (text) => runAfterClose(closeTreeDrop, () => insertName(text)) : insertName}
       onfail={onTreeFail}
       ondefinition={defineFromTree}
       oncontext={openTreeMenu}
+      {oncatalog}
     />
   {:else}
     <p class="side-note">{conn.state === "connecting" ? t("pane.query.state.connecting") : t("pane.query.state.closed")}</p>

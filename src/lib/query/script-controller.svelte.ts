@@ -11,10 +11,12 @@ import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
 import { noteQueryTabs } from "$lib/app/query.svelte.js";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { toast } from "$lib/toast.svelte.js";
-import { QUERY_SCRIPTS_MAX, type PaneSpec } from "$lib/session";
+import { QUERY_SCRIPTS_MAX, type PaneSpec, type QueryDataTab } from "$lib/session";
 import {
   addTab,
   closeTab,
+  findDataTab,
+  setTabData,
   moveTab,
   renameTab,
   savedText,
@@ -24,6 +26,7 @@ import {
   toScripts,
   type ScriptTab,
 } from "$lib/query/script-tabs";
+import { withWhere } from "$lib/query/data-tab";
 
 /** 탭을 바꿔 끼우는 편집기 — `query/SqlEditor.svelte` 의 손잡이 중 탭이 쓰는 것 */
 export interface ScriptTabsEditor {
@@ -54,7 +57,8 @@ export function createScriptTabs(h: ScriptTabsHost) {
   let tabs = $state<ScriptTab[]>(initTabs.tabs);
   let activeN = $state(initTabs.active);
   const activeTab = $derived(tabs.find((x) => x.n === activeN) ?? tabs[0]);
-  const tabLabel = (x: ScriptTab) => x.title ?? t("pane.query.tab.name", { n: x.n });
+  // 데이터 탭은 객체 이름(스키마는 말풍선 — `ScriptTabs`)
+  const tabLabel = (x: ScriptTab) => (x.data ? x.data.name : (x.title ?? t("pane.query.tab.name", { n: x.n })));
 
   /** 탭 · 초안 저장(디바운스 — 고칠 때마다) */
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -96,10 +100,94 @@ export function createScriptTabs(h: ScriptTabsHost) {
     h.editor?.focus();
   }
 
+  /**
+   * **데이터 탭 열기**(트리의 두 번 누르기 · Enter · 우클릭 "데이터 보기") — 객체 하나에 탭 하나: 이미 있으면 그 탭으로 가고, 없으면 맨 뒤에
+   * 새로(조건은 비어서 시작). 상한이면 알림.
+   */
+  function openData(obj: Pick<QueryDataTab, "kind" | "schema" | "name">) {
+    const have = findDataTab(tabs, obj);
+    if (have) {
+      pickTab(have.n);
+      return;
+    }
+    const r = addTab(tabs, { data: { kind: obj.kind, ...(obj.schema !== undefined ? { schema: obj.schema } : {}), name: obj.name } });
+    if (!r) {
+      toast.info(t("pane.query.tab.full", { n: QUERY_SCRIPTS_MAX }));
+      return;
+    }
+    tabs = r.tabs;
+    pickTab(r.n);
+  }
+
+  /** 바깥이 조건을 덮은 데이터 탭의 회차(탭 번호 → 수) — `DataTab` 의 `poke`. 저장하지 않는다 */
+  let dataPokes = $state<Record<number, number>>({});
+
+  /**
+   * **외래 키 따라가기**(결과 표의 ↗ · 칸 메뉴 [<표> 에서 보기]) — 그 표의 데이터 탭을 이 조건으로. 이미 열려 있으면 그 탭으로 가서 조건을
+   * 덮고 다시 읽게 하고(`dataPokes`), 없으면 그 조건으로 새 탭(정렬 · 쪽 크기는 기본). 조건은 명세에 남는다(`withWhere` — 사람이 친 조건과 같다).
+   */
+  function openDataWhere(obj: { schema: string | null; name: string }, where: string) {
+    const have = findDataTab(tabs, obj);
+    if (have?.data) {
+      tabs = setTabData(tabs, have.n, withWhere(have.data, where));
+      flushTabs();
+      dataPokes = { ...dataPokes, [have.n]: (dataPokes[have.n] ?? 0) + 1 };
+      pickTab(have.n);
+      return;
+    }
+    const base: QueryDataTab = { kind: "table", ...(obj.schema !== null ? { schema: obj.schema } : {}), name: obj.name };
+    const r = addTab(tabs, { data: withWhere(base, where) });
+    if (!r) {
+      toast.info(t("pane.query.tab.full", { n: QUERY_SCRIPTS_MAX }));
+      return;
+    }
+    tabs = r.tabs;
+    pickTab(r.n);
+  }
+
+  /** 새 쿼리 탭에 글을 넣어 연다(데이터 탭의 [SQL 로 열기] · DDL 의 [편집기에 넣기]) — 실행하지 않는다 */
+  function openSql(text: string) {
+    const r = addTab(tabs, { text });
+    if (!r) {
+      toast.info(t("pane.query.tab.full", { n: QUERY_SCRIPTS_MAX }));
+      return;
+    }
+    tabs = r.tabs;
+    pickTab(r.n);
+    h.editor?.focus();
+  }
+
+  /**
+   * `.sql` 파일을 새 쿼리 탭으로 연다(끌어 놓기 · [SQL 파일 열기…] · `Ctrl+O` — `query/sql-file-io`) — 실행하지 않는다. 탭 상한이면 `false`
+   * (알림은 부르는 쪽 — 남은 파일 수를 말한다). 탭은 파일 경로를 기억하지 않는다.
+   */
+  function openFile(title: string | undefined, text: string): boolean {
+    const r = addTab(tabs, { text, ...(title ? { title } : {}) });
+    if (!r) return false;
+    tabs = r.tabs;
+    pickTab(r.n);
+    h.editor?.focus();
+    return true;
+  }
+
+  /** 탭의 지금 글 — 고른 탭이면 편집기의 살아 있는 글, 아니면 탭이 쥔 글(데이터 탭은 `null`) */
+  function liveText(n: number): string | null {
+    const x = tabs.find((y) => y.n === n);
+    if (!x || x.data) return null;
+    return h.editor?.textOf(docKey(n)) ?? x.text;
+  }
+
+  /** 데이터 탭의 조회 조건(WHERE · 정렬 · 쪽 크기)이 바뀌었다 — 곧바로 저장 */
+  function setData(n: number, data: QueryDataTab) {
+    tabs = setTabData(tabs, n, data);
+    flushTabs();
+  }
+
   async function closeTabN(n: number) {
     const x = tabs.find((y) => y.n === n);
     if (!x || tabs.length <= 1) return;
-    const text = h.editor?.textOf(docKey(n)) ?? x.text;
+    // 데이터 탭은 잃을 글이 없다 — 묻지 않는다
+    const text = x.data ? "" : (h.editor?.textOf(docKey(n)) ?? x.text);
     if (text.trim() !== "") {
       let ok = false;
       try {
@@ -133,7 +221,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
   let renameText = $state("");
   function startRename(n: number) {
     const x = tabs.find((y) => y.n === n);
-    if (!x) return;
+    if (!x || x.data) return;
     renaming = n;
     renameText = tabLabel(x);
   }
@@ -213,12 +301,20 @@ export function createScriptTabs(h: ScriptTabsHost) {
       renameText = v;
     },
     tabLabel,
+    /** 이 데이터 탭의 바깥 덮기 회차(`openDataWhere`) */
+    dataPoke: (n: number) => dataPokes[n] ?? 0,
+    openDataWhere,
     dirtyOf,
     flushTabs,
     flushPending,
     onDraft,
     pickTab,
     newTab,
+    openData,
+    openSql,
+    openFile,
+    liveText,
+    setData,
     closeTabN,
     startRename,
     endRename,

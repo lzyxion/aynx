@@ -160,6 +160,52 @@ export interface QueryScript {
   n: number;
   title?: string;
   sql?: string;
+  /**
+   * 있으면 이 탭은 **데이터 탭**(2026-11-10 — 트리의 테이블 · 뷰를 두 번 눌러 연 탭, `query/data-tab`)이다 — 글(`sql`) · 이름(`title`)은
+   * 두지 않는다. 행 값은 저장하지 않는다(열면 다시 조회). 이 칸을 모르는 예전 빌드는 빈 쿼리 탭으로 읽는다.
+   */
+  data?: QueryDataTab;
+}
+
+/** 데이터 탭이 여는 객체의 종류 — 트리의 관계(테이블 · 뷰 · 구체화 뷰 · 외부 테이블)와 PG 파티션 */
+export const QUERY_DATA_KINDS = ["table", "view", "matview", "foreign", "partition"] as const;
+export type QueryDataKind = (typeof QUERY_DATA_KINDS)[number];
+/** 데이터 탭 쪽 크기 — 첫 값이 기본(저장하지 않는다) */
+export const QUERY_DATA_PAGE_SIZES = [100, 500, 1000] as const;
+export type QueryDataPageSize = (typeof QUERY_DATA_PAGE_SIZES)[number];
+/** 데이터 탭 WHERE 글의 상한(글자) — 넘으면 저장하지 않는다 */
+export const QUERY_DATA_WHERE_MAX = 4096;
+/** 객체 · 스키마 · 정렬 열 이름의 상한(글자) — 넘는 이름은 그 탭을 버린다(엔진 식별자는 이보다 훨씬 짧다) */
+export const QUERY_DATA_NAME_MAX = 512;
+
+/**
+ * 데이터 탭 하나의 저장 모양 — 객체(`schema` 없음 = 스키마 없는 이름) · 종류 · 사람이 친 WHERE 조건 글 · 정렬(열 하나) · 쪽 크기(기본이면 없음).
+ * 키 순서는 늘 이 차례([`canonDataTab`]).
+ */
+export interface QueryDataTab {
+  kind: QueryDataKind;
+  schema?: string;
+  name: string;
+  where?: string;
+  sort?: { col: string; dir: "asc" | "desc" };
+  pageSize?: Exclude<QueryDataPageSize, 100>;
+}
+
+const nameOk = (v: unknown): v is string => typeof v === "string" && v !== "" && v.length <= QUERY_DATA_NAME_MAX;
+
+/** 데이터 탭 칸의 정규화 — 못 쓸 모양(종류 · 이름이 없음 · 상한 초과)이면 `null`(그 탭을 버린다). 못 쓸 곁칸(WHERE · 정렬 · 쪽)만 떨어진다 */
+export function canonDataTab(v: unknown): QueryDataTab | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.kind !== "string" || !(QUERY_DATA_KINDS as readonly string[]).includes(o.kind) || !nameOk(o.name)) return null;
+  if (o.schema !== undefined && o.schema !== null && !nameOk(o.schema)) return null;
+  const d: QueryDataTab = { kind: o.kind as QueryDataKind, ...(typeof o.schema === "string" ? { schema: o.schema } : {}), name: o.name };
+  const where = typeof o.where === "string" ? o.where.trim() : "";
+  if (where !== "" && where.length <= QUERY_DATA_WHERE_MAX) d.where = where;
+  const s = o.sort as Record<string, unknown> | null | undefined;
+  if (s && typeof s === "object" && nameOk(s.col) && (s.dir === "asc" || s.dir === "desc")) d.sort = { col: s.col, dir: s.dir };
+  if (o.pageSize === 500 || o.pageSize === 1000) d.pageSize = o.pageSize;
+  return d;
 }
 
 /** 저장할 수 있는 초안이면 그 글, 아니면(비었거나 상한 초과 · 글자가 아님) `undefined` */
@@ -171,7 +217,8 @@ export function storedDraft(v: unknown): string | undefined {
  * **탭 저장 모양의 유일한 판정** — 명세 · 배치 파일 쓰기 · 읽기가 모두 거친다(키 순서도 늘 같다: `sql` → `scripts` → `active`).
  *
  * - `scripts` 가 쓸 만한 배열이면(1~[`QUERY_SCRIPTS_MAX`]개 — 넘는 뒤 탭은 버림 · `n` 은 양의 정수이고 겹치지 않음 · 못 쓸 칸은 그
- *   탭만 버림) 그것을 쓴다. 단 **탭 하나 · `n` 1 · 이름 없음**이면 예전 모양(`sql` 하나)으로 접는다.
+ *   탭만 버림) 그것을 쓴다. 단 **탭 하나 · `n` 1 · 이름 없음 · 데이터 탭 아님**이면 예전 모양(`sql` 하나)으로 접는다. 데이터 탭
+ *   (`data` 칸 — [`canonDataTab`])도 같은 번호 줄에 선다(번호는 쿼리 탭과 함께 겹치지 않는다).
  * - 아니면 예전 모양 — `sql` 하나(옛 단일 초안 — 화면이 첫 탭 "쿼리 1" 로 읽는다).
  * - `active` 는 있는 탭의 `n` 일 때만, 아니면 첫 탭.
  */
@@ -189,6 +236,14 @@ export function canonQueryTabs(raw: { sql?: unknown; scripts?: unknown; active?:
       const o = x as Record<string, unknown>;
       const n = o.n;
       if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 9999 || seen.has(n)) continue;
+      // 데이터 탭(`data` 칸이 있다) — 칸이 못 쓸 모양이면 그 탭만 버린다(빈 쿼리 탭으로 바꾸지 않는다). 글 · 이름은 두지 않는다.
+      if (o.data !== undefined) {
+        const data = canonDataTab(o.data);
+        if (!data) continue;
+        seen.add(n);
+        list.push({ n, data });
+        continue;
+      }
       seen.add(n);
       const s: QueryScript = { n };
       const title = typeof o.title === "string" ? o.title.trim().slice(0, QUERY_SCRIPT_TITLE_MAX) : "";
@@ -202,7 +257,7 @@ export function canonQueryTabs(raw: { sql?: unknown; scripts?: unknown; active?:
     const sql = storedDraft(raw.sql);
     return sql === undefined ? {} : { sql };
   }
-  if (list.length === 1 && list[0].n === 1 && list[0].title === undefined) {
+  if (list.length === 1 && list[0].n === 1 && list[0].title === undefined && list[0].data === undefined) {
     return list[0].sql === undefined ? {} : { sql: list[0].sql };
   }
   const active = typeof raw.active === "number" && list.some((s) => s.n === raw.active) ? raw.active : list[0].n;

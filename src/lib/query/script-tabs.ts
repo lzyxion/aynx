@@ -8,15 +8,27 @@
  * - 탭 번호 `n` 은 타일 안에서 겹치지 않고 다시 쓰지 않는다(새 탭 = 지금 가장 큰 번호 + 1) — 기본 이름 "쿼리 {n}" 과 결과 · 거터의
  *   열쇠다. 이름을 바꾸면 `title`.
  * - 마지막 탭 하나는 닫지 못한다. 닫으면 오른쪽 이웃, 없으면 왼쪽 이웃이 고른 탭이 된다.
+ * - **데이터 탭**(2026-11-10 — `data` 칸, 화면은 `query/data-tab`)도 같은 줄 · 같은 번호 규칙에 선다. 글 · 이름이 없고(이름 바꾸기 없음 ·
+ *   ● 없음 · 닫을 때 묻지 않음) **객체 하나에 탭 하나**(`findDataTab` — 스키마 · 이름이 같으면 같은 탭).
  * - ● = **저장 안 된 변경** — 살아 있는 글이 명세에 적힌 초안과 다르다(디바운스 중 · 초안 상한 32 KiB 를 넘어 저장하지 못함).
  */
-import { QUERY_SCRIPTS_MAX, QUERY_SCRIPT_TITLE_MAX, canonQueryTabs, storedDraft, type QueryScript, type QuerySpec } from "$lib/session";
+import {
+  QUERY_SCRIPTS_MAX,
+  QUERY_SCRIPT_TITLE_MAX,
+  canonQueryTabs,
+  storedDraft,
+  type QueryDataTab,
+  type QueryScript,
+  type QuerySpec,
+} from "$lib/session";
 
 /** 화면이 쥔 탭 하나 — `text` 는 편집기의 지금 글 */
 export interface ScriptTab {
   n: number;
   title?: string;
   text: string;
+  /** 데이터 탭이면 그 객체 · 조회 조건(저장 모양 그대로) */
+  data?: QueryDataTab;
 }
 
 /** 명세 → 탭들과 고른 탭(옛 단일 초안은 첫 탭 "쿼리 1") */
@@ -24,7 +36,9 @@ export function tabsFromSpec(q: Pick<QuerySpec, "sql" | "scripts" | "active">): 
   const c = canonQueryTabs(q);
   if (c.scripts) {
     return {
-      tabs: c.scripts.map((s) => ({ n: s.n, ...(s.title ? { title: s.title } : {}), text: s.sql ?? "" })),
+      tabs: c.scripts.map((s) =>
+        s.data ? { n: s.n, text: "", data: s.data } : { n: s.n, ...(s.title ? { title: s.title } : {}), text: s.sql ?? "" },
+      ),
       active: c.active ?? c.scripts[0].n,
     };
   }
@@ -34,6 +48,7 @@ export function tabsFromSpec(q: Pick<QuerySpec, "sql" | "scripts" | "active">): 
 /** 탭들 → 저장 모양(빈 초안 · 상한 초과는 `sql` 없이) */
 export function toScripts(tabs: readonly ScriptTab[]): QueryScript[] {
   return tabs.map((x) => {
+    if (x.data) return { n: x.n, data: x.data };
     const s: QueryScript = { n: x.n };
     if (x.title) s.title = x.title;
     const sql = storedDraft(x.text);
@@ -52,15 +67,35 @@ export function savedText(q: Pick<QuerySpec, "sql" | "scripts" | "active">, n: n
  * 않으니 늘 ●.
  */
 export function tabDirty(tab: ScriptTab, saved: string): boolean {
+  if (tab.data) return false;
   if (tab.text.trim() === "") return saved !== "";
   return storedDraft(tab.text) === undefined || tab.text !== saved;
 }
 
-/** 새 탭 — 맨 뒤에 붙인다. 상한이면 `null` */
-export function addTab(tabs: readonly ScriptTab[]): { tabs: ScriptTab[]; n: number } | null {
+/**
+ * 새 탭 — 맨 뒤에 붙인다(글 · 이름 · 데이터 칸을 줄 수 있다 — [SQL 로 열기] · `.sql` 파일 열기 · 데이터 탭). 상한이면 `null`.
+ * 이름은 `renameTab` 과 같이 다듬는다(비면 기본 이름).
+ */
+export function addTab(
+  tabs: readonly ScriptTab[],
+  init: { text?: string; title?: string; data?: QueryDataTab } = {},
+): { tabs: ScriptTab[]; n: number } | null {
   if (tabs.length >= QUERY_SCRIPTS_MAX) return null;
   const n = tabs.reduce((m, x) => Math.max(m, x.n), 0) + 1;
-  return { tabs: [...tabs, { n, text: "" }], n };
+  const title = (init.title ?? "").trim().slice(0, QUERY_SCRIPT_TITLE_MAX);
+  const tab: ScriptTab = init.data ? { n, text: "", data: init.data } : { n, ...(title ? { title } : {}), text: init.text ?? "" };
+  return { tabs: [...tabs, tab], n };
+}
+
+/** 이 객체(스키마 · 이름)의 데이터 탭 — 없으면 `null`(객체 하나에 탭 하나) */
+export function findDataTab(tabs: readonly ScriptTab[], obj: { schema?: string | null; name: string }): ScriptTab | null {
+  const schema = obj.schema ?? undefined;
+  return tabs.find((x) => x.data && x.data.name === obj.name && (x.data.schema ?? undefined) === schema) ?? null;
+}
+
+/** 데이터 탭의 조회 조건을 바꾼다(WHERE · 정렬 · 쪽 크기) — 데이터 탭이 아니면 그대로 */
+export function setTabData(tabs: readonly ScriptTab[], n: number, data: QueryDataTab): ScriptTab[] {
+  return tabs.map((x) => (x.n === n && x.data ? { ...x, data } : x));
 }
 
 /** 탭 닫기 — 마지막 하나면 `null`. 고른 탭을 닫으면 오른쪽 이웃(없으면 왼쪽)이 고른 탭 */
@@ -77,7 +112,7 @@ export function closeTab(tabs: readonly ScriptTab[], active: number, n: number):
 export function renameTab(tabs: readonly ScriptTab[], n: number, title: string): ScriptTab[] {
   const clean = title.trim().slice(0, QUERY_SCRIPT_TITLE_MAX);
   return tabs.map((x) => {
-    if (x.n !== n) return x;
+    if (x.n !== n || x.data) return x;
     const { title: _old, ...rest } = x;
     return clean === "" ? rest : { ...rest, title: clean };
   });

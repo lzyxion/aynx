@@ -25,6 +25,49 @@ export function cellKind(c: Cell): CellKind {
   return "bytes";
 }
 
+const KIND_ORDER: Record<CellKind, number> = { bool: 0, number: 1, text: 2, bytes: 3, null: 4 };
+const INT_RE = /^[+-]?\d+$/;
+const NUM_RE = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/**
+ * 칸 두 개의 순서(쿼리 탭 결과의 **받은 행 안 정렬** — 2026-11-10). 엔진의 정렬과 같다고 약속하지 않는다(콜레이션 · 형은 화면이 모른다):
+ * NULL 은 가장 큰 값(PostgreSQL 의 기본처럼 오름차순 끝 · 내림차순 앞) · 종류가 다르면 참/거짓 < 숫자 < 글자 < 바이트 ·
+ * 큰 정수 · 소수가 글자로 왔으면(`numeric` · `bigint`) 수로 비교(정수끼리는 `BigInt` — 자리 손실 없이) · 글자는 숫자를 수로 읽는 사전순.
+ */
+export function compareCells(a: Cell, b: Cell): number {
+  const ka = cellKind(a);
+  const kb = cellKind(b);
+  if (ka === "text" && kb === "text") {
+    const x = a as string;
+    const y = b as string;
+    if (INT_RE.test(x) && INT_RE.test(y)) {
+      const p = BigInt(x);
+      const q = BigInt(y);
+      return p < q ? -1 : p > q ? 1 : 0;
+    }
+    if (NUM_RE.test(x) && NUM_RE.test(y)) return Number(x) - Number(y);
+    return x.localeCompare(y, undefined, { numeric: true });
+  }
+  if (ka !== kb) {
+    // 숫자 칸과 수로 읽히는 글자 칸이 섞이면(엔진이 일부만 글자로 준 경우) 수로
+    if ((ka === "number" && kb === "text" && NUM_RE.test(b as string)) || (kb === "number" && ka === "text" && NUM_RE.test(a as string))) {
+      return Number(a) - Number(b);
+    }
+    return KIND_ORDER[ka] - KIND_ORDER[kb];
+  }
+  if (ka === "null") return 0;
+  if (ka === "bool") return Number(a) - Number(b);
+  if (ka === "number") return (a as number) - (b as number);
+  // 바이트 — 16진 글자(앞부분)로
+  return (a as { hex: string }).hex.localeCompare((b as { hex: string }).hex);
+}
+
+/** 행들을 한 열로 정렬한 새 배열(안정 정렬 — 같은 값은 받은 순서 그대로) */
+export function sortRows<R extends readonly Cell[]>(rows: readonly R[], col: number, dir: "asc" | "desc"): R[] {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((p, q) => sign * compareCells(p[col] ?? null, q[col] ?? null));
+}
+
 /** 바이트 칸의 표 글자 */
 export function bytesLabel(len: number): string {
   return `‹bytes ${len}›`;

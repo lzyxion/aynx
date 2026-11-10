@@ -271,6 +271,26 @@ export type TreeRow =
       count?: number;
     };
 
+/**
+ * 데이터 탭을 여는 줄의 객체(2026-11-10) — 관계(테이블 · 뷰 · 구체화 뷰 · 외부 테이블) 줄과 PG 파티션 잎. 그 밖의 줄이면 `null`
+ * (트리의 두 번 누르기 · Enter · 우클릭 "데이터 보기" 가 이 판정 하나를 쓴다).
+ */
+export interface TreeRelation {
+  kind: "table" | "view" | "matview" | "foreign" | "partition";
+  schema: string | null;
+  name: string;
+}
+
+export function relationOf(r: TreeRow): TreeRelation | null {
+  if (r.type === "object") {
+    const k = r.object.kind;
+    if (!r.expandable || !(k === "table" || k === "view" || k === "matview" || k === "foreign")) return null;
+    return { kind: k, schema: r.schema, name: r.object.name };
+  }
+  if (r.type === "leaf" && r.leaf.part === "partitions") return { kind: "partition", schema: r.leaf.item.schema, name: r.leaf.item.name };
+  return null;
+}
+
 export interface TreeInput {
   dialect: DbDialect;
   schemas: readonly string[];

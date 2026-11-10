@@ -414,6 +414,7 @@
       <button
         type="button"
         class="item menu-row"
+        class:hinted={!!child.hint}
         role={child.checkbox ? "menuitemcheckbox" : "menuitem"}
         aria-checked={child.checkbox ? child.checked : undefined}
         data-action={child.action}
@@ -426,7 +427,7 @@
               name={child.icon}
               size={14}
             />{/if}</span
-        >{child.label}
+        >{child.label}{#if child.hint}<kbd class="menu-kbd" data-menu-hint>{child.hint}</kbd>{/if}
       </button>
     {/each}
   </div>

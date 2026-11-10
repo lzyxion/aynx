@@ -993,7 +993,15 @@
             평면(열쇠 = 이 타일의 `tileKey`)에 따로 산다. 연결 id 없는 잎은 복원이 이미 뺐다 — 빈 주소면 아무것도 그리지 않는다.
           -->
           {#if item.pane.query?.connId}
-            <QueryView pane={item.pane} visible={item.shown} />
+            <QueryView
+              pane={item.pane}
+              visible={item.shown}
+              onmenu={(x, y, grid) => {
+                // 결과 표 칸 우클릭 — 문서 본문 우클릭과 같은 상자 · 같은 통로(줄은 표가 지어 온다)
+                tmc.tileMenuTrigger = null;
+                openTileMenu(item, x, y, null, grid);
+              }}
+            />
           {/if}
         {:else}
           <!--

@@ -5,7 +5,7 @@
 //! | --- | --- | --- |
 //! | [`db_open`] | `db_open` | `stream, conn: {id}, password?, ssh?` → `{handle, lease, dialect, serverVersion, writable, reattached}` (창 라벨은 부른 창) · 실패는 **글자** 또는 경유 SSH 관문의 `SshOpenError` 객체(`{kind, …}` — 터미널 열기와 같은 꼴) |
 //! | [`db_test`] | `db_test` | `stream("dbtest-…"), conn: <DbConn 초안 한 줄>, password?, ssh?` → `{dialect, serverVersion, via?, elapsedMs}`(DB 연결 폼의 [연결 테스트] — 판 28 · 낮은 판 서버면 보내지 않고 `[server-outdated]`) · 실패는 `db_open` 과 같은 꼴 |
-//! | [`db_query`] | `db_query` | `handle, lease, sql, queryId, maxRows?, timeoutMs?` → `{columns, rows, truncated, cellTruncated, affected?, elapsedMs}` |
+//! | [`db_query`] | `db_query` | `handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?, readOnly?` → `{columns, rows, truncated, cellTruncated, affected?, elapsedMs}` · `readOnly`(데이터 탭 — 판 30, 낮은 판 서버면 보내지 않고 `[server-outdated]`) |
 //! | [`db_cancel`] | `db_cancel` | `handle, queryId` → bool |
 //! | [`db_schema`] · [`db_objects`] · [`db_table_detail`] | 같은 이름 | `handle, lease(, schema?(, table))` → 목록(스키마 이름 · 스키마의 객체 · 테이블 구조) |
 //! | [`db_definition`] | `db_definition` | `handle, lease, schema?, kind, name, table?, args?` → `{sql, reconstructed, truncated}`(정의 읽기 전용 보기) |
@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 
 use super::client;
 use super::ipc::frame::{
-    DB_AUTOCOMMIT_PROTOCOL, DB_PROTOCOL, DB_SCRIPT_PROTOCOL, DB_TEST_PROTOCOL, DB_TX_PROTOCOL, DB_TX_SERIAL_PROTOCOL, DB_TX_VERDICT_PROTOCOL,
+    DB_AUTOCOMMIT_PROTOCOL, DB_PROTOCOL, DB_READ_QUERY_PROTOCOL, DB_SCRIPT_PROTOCOL, DB_TEST_PROTOCOL, DB_TX_PROTOCOL, DB_TX_SERIAL_PROTOCOL, DB_TX_VERDICT_PROTOCOL,
 };
 use super::ipc::Grade;
 use super::ssh_proxy::lang;
@@ -93,6 +93,21 @@ fn check_test_protocol() -> Result<(), String> {
             tr!(
                 ko: "세션 서버가 이전 판이라 연결을 테스트할 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
                 en: "The session server is an older version and cannot test connections — restart it in Settings › Session server (open shell sessions will close)"
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// 판 30 미만 서버면 읽기 전용 조회(데이터 탭)를 보내지 않는다 — 옛 서버는 `readOnly` 칸을 버리고 타일 모드대로 돌린다(쓰기 모드면
+/// 사람이 친 WHERE 글이 쓰기 길로 간다). 그래서 깃발을 버릴 서버에는 아예 보내지 않는다.
+fn check_read_query_protocol() -> Result<(), String> {
+    match client::negotiated_protocol() {
+        Some(p) if p < DB_READ_QUERY_PROTOCOL => Err(with_reason(
+            SERVER_OUTDATED,
+            tr!(
+                ko: "세션 서버가 이전 판이라 데이터 탭을 조회할 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
+                en: "The session server is an older version and cannot load the data tab — restart it in Settings › Session server (open shell sessions will close)"
             ),
         )),
         _ => Ok(()),
@@ -202,8 +217,9 @@ pub async fn db_test(stream: String, conn: Value, password: Option<String>, ssh:
     }
 }
 
-/// 문장 하나 — GUI 쪽 요청 시한은 다듬은 `timeoutMs` + 15초.
+/// 문장 하나 — GUI 쪽 요청 시한은 다듬은 `timeoutMs` + 15초. `readOnly`(데이터 탭)는 판 30 서버에만 보낸다.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // 인자 이름 = 프런트 invoke 계약
 pub async fn db_query(
     handle: u64,
     lease: u64,
@@ -212,12 +228,17 @@ pub async fn db_query(
     max_rows: Option<u64>,
     timeout_ms: Option<u64>,
     tx_id: Option<u64>,
+    read_only: Option<bool>,
 ) -> Result<Value, String> {
+    let read_only = read_only.unwrap_or(false);
+    if read_only {
+        check_read_query_protocol()?;
+    }
     let (_, ms) = crate::db::clamp_limits(max_rows, timeout_ms);
     dcall(
         Grade::Write,
         "db_query",
-        json!({ "handle": handle, "lease": lease, "sql": sql, "queryId": query_id, "maxRows": max_rows, "timeoutMs": ms, "txId": tx_id }),
+        json!({ "handle": handle, "lease": lease, "sql": sql, "queryId": query_id, "maxRows": max_rows, "timeoutMs": ms, "txId": tx_id, "readOnly": read_only }),
         Some(Duration::from_millis(ms + 15_000)),
     )
     .await

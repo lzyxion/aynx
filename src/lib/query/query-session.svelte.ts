@@ -33,6 +33,7 @@ import {
   errorMessage,
   type DbErrorKind,
   type DbOpened,
+  type DbQueryResult,
   type DbTxAction,
   type DbTxView,
 } from "$lib/query/query-backend";
@@ -351,6 +352,29 @@ export function createQuerySession(h: QuerySessionHost) {
     if (range) editor.select(range.from, range.to);
   }
 
+  /**
+   * **데이터 탭의 조회 하나**(2026-11-10 — `query/data-tab`). 도는 실행 칸(`running`)을 함께 써서 연결당 하나 규칙 · [취소] · 막힘이
+   * 쿼리 실행과 같다(데이터 탭 조회 중이면 [실행] 이 막히고, 실행 중이면 데이터 탭이 기다린다). 늘 **읽기 전용**(`readOnly` — 서버가 가드 ·
+   * 엔진 모두 읽기 전용 · 열린 작업이면 거절)이고, 작업이 열려 있으면 보내지도 않는다. 결과는 부르는 쪽(데이터 탭)이 쥔다 — 탭 결과
+   * 칸(`outcomes`)에 내리지 않는다. `null` = 보내지 못함(연결 없음 · 막힘 · 작업 열림).
+   */
+  async function runData(tab: number, sql: string, maxRows: number): Promise<{ ok: true; r: DbQueryResult } | { ok: false; message: string; cancelled: boolean } | null> {
+    const o = opened;
+    if (!o || runOff || txOpen(tx)) return null;
+    const queryId = startRun(tab);
+    try {
+      return { ok: true, r: await dbQuery({ handle: o.handle, lease: o.lease, sql, queryId, maxRows, readOnly: true }) };
+    } catch (e) {
+      const m = errorMessage(e);
+      const kind = classifyDbError(m);
+      // 판이 낮은 서버(이 조회만 못 보낸다) — 연결은 그대로 둔다. 연결을 잃은 갈래만 [다시 열기] 띠로.
+      if (!h.disposed && kind !== "outdated") lostIfReopen(m);
+      return { ok: false, message: stripReason(m), cancelled: kind === "cancelled" };
+    } finally {
+      endRun();
+    }
+  }
+
   function cancel(): boolean {
     const o = opened;
     if (!o || !running) return false;
@@ -635,6 +659,7 @@ export function createQuerySession(h: QuerySessionHost) {
     lostIfReopen,
     run,
     runScript,
+    runData,
     locate,
     cancel,
     onPill,

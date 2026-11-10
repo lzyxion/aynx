@@ -2,8 +2,8 @@
   /**
    * **쿼리 타일의 탭 줄**(`.tabsrow` — 몸 위 줄이면 트리 토글 · 스크립트 탭 · [+] · 연결 상태, 머리줄 안이면 스크립트 탭 · [+] 만) —
    * `QueryView.svelte` 에서 뗀 표시 조각. 탭 목록 · 고른 탭 · 문서와 실행 결과 · 저장 디바운스와 동작(고르기 · 새 탭 · 닫기 · 이름 · 끌어서 순서 ·
-   * 탭 키)은 부모가 쥔다. 트리 토글은 부모의 스니펫(`treeToggle` — 떠 있는 트리 단추 손잡이가 부모에 있다)을 받아 그린다. 이름 바꾸는 칸의
-   * 글은 `bind:renameText`.
+   * 탭 키 · 우클릭 메뉴)은 부모가 쥔다. 트리 토글은 부모의 스니펫(`treeToggle` — 떠 있는 트리 단추 손잡이가 부모에 있다)을 받아 그린다. 이름 바꾸는 칸의
+   * 글은 `bind:renameText`. 데이터 탭(`x.data` — 2026-11-10)은 표 그림 + 객체 이름이고(이름 바꾸기 · ● 없음) 말풍선이 스키마까지 말한다.
    */
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -31,6 +31,7 @@
     closeTabN,
     onTabKey,
     newTab,
+    tabMenu,
   }: {
     head: boolean;
     headSpan: number | null;
@@ -52,11 +53,36 @@
     closeTabN: (n: number) => Promise<void>;
     onTabKey: (ev: KeyboardEvent, n: number) => void;
     newTab: () => void;
+    /** 우클릭 — 탭 메뉴(`query/ScriptTabMenu` — 부모가 타일 컨테이너 밖에 그린다) */
+    tabMenu: (ev: MouseEvent, n: number) => void;
   } = $props();
 
   function focusRename(el: HTMLInputElement) {
     el.focus();
     el.select();
+  }
+
+  /**
+   * 탭 우클릭 — **위임이 아닌 직접 리스너**로 단다. Svelte 의 `oncontextmenu` 는 문서 뿌리 위임이라, 탭이 머리줄 안에 서면
+   * 타일 층(`PaneHost` 의 머리줄 우클릭 = 타일 메뉴 — 호스트에 직접 단 리스너)이 먼저 받아 타일 메뉴를 열고 전파를 끊는다.
+   * 여기서 먼저 `preventDefault` 하면 그 층은 비켜 선다(`ev.defaultPrevented`).
+   */
+  function tabContext(el: HTMLElement, n: number) {
+    let cur = n;
+    const on = (ev: MouseEvent) => {
+      if (renaming === cur) return; // 이름 칸은 편집 필드의 네이티브 메뉴 그대로
+      ev.preventDefault();
+      tabMenu(ev, cur);
+    };
+    el.addEventListener("contextmenu", on);
+    return {
+      update(next: number) {
+        cur = next;
+      },
+      destroy() {
+        el.removeEventListener("contextmenu", on);
+      },
+    };
   }
 </script>
 
@@ -73,7 +99,6 @@
         role="tab"
         tabindex={on ? 0 : -1}
         aria-selected={on}
-        title={t("pane.query.tab.title", { name: label })}
         draggable={renaming !== x.n}
         ondragstart={(ev) => tabDragStart(ev, x.n)}
         ondragover={tabDragOver}
@@ -82,8 +107,11 @@
         ondblclick={() => startRename(x.n)}
         onauxclick={(ev) => ev.button === 1 && void closeTabN(x.n)}
         onkeydown={(ev) => onTabKey(ev, x.n)}
+        use:tabContext={x.n}
         data-query-tab-n={x.n}
+        data-query-tab-data={x.data ? x.data.kind : undefined}
       >
+        {#if x.data}<span class="stab-icon" aria-hidden="true"><UiIcon name={x.data.kind === "table" || x.data.kind === "partition" ? "grid" : "view-compact"} size={12} /></span>{/if}
         {#if renaming === x.n}
           <input
             class="stab-rename"
@@ -180,6 +208,12 @@
     align-items: stretch;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+
+  .stab-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    color: var(--fg-3);
   }
 
   .stab {

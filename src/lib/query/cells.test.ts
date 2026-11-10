@@ -3,7 +3,9 @@ import {
   cellDisplay,
   cellExport,
   cellKind,
+  compareCells,
   csvField,
+  sortRows,
   csvFileName,
   normRange,
   rangeTsv,
@@ -94,5 +96,33 @@ describe("이름 · 가상 스크롤", () => {
     expect(windowRange(2000, 100, 20, 10_000, 2)).toEqual({ first: 98, last: 107 });
     expect(windowRange(199_900, 200, 20, 10_000, 8)).toEqual({ first: 9987, last: 10_000 });
     expect(windowRange(0, 100, 20, 0)).toEqual({ first: 0, last: 0 });
+  });
+});
+
+describe("받은 행 안 정렬 — compareCells · sortRows", () => {
+  it("NULL 은 가장 큰 값 — 오름차순 끝 · 내림차순 앞", () => {
+    const rows: Cell[][] = [[2], [null], [1]];
+    expect(sortRows(rows, 0, "asc").map((r) => r[0])).toEqual([1, 2, null]);
+    expect(sortRows(rows, 0, "desc").map((r) => r[0])).toEqual([null, 2, 1]);
+  });
+  it("글자로 온 큰 정수 · 소수는 수로(사전순이 아니다)", () => {
+    expect(compareCells("10", "9")).toBeGreaterThan(0);
+    expect(compareCells("9007199254740993", "9007199254740992")).toBeGreaterThan(0);
+    expect(compareCells("2.5", "10.25")).toBeLessThan(0);
+    expect(compareCells(3, "2.5")).toBeGreaterThan(0);
+  });
+  it("글자는 숫자를 수로 읽는 사전순", () => {
+    expect(sortRows([["고객10"], ["고객2"], ["고객1"]] as Cell[][], 0, "asc").map((r) => r[0])).toEqual(["고객1", "고객2", "고객10"]);
+  });
+  it("참/거짓 · 바이트 · 종류가 섞인 열", () => {
+    expect(compareCells(false, true)).toBeLessThan(0);
+    expect(compareCells({ $bytes: 1, hex: "0a" }, { $bytes: 1, hex: "ff" })).toBeLessThan(0);
+    expect(compareCells(true, "a")).toBeLessThan(0);
+  });
+  it("안정 정렬 — 같은 값은 받은 순서 그대로 · 원본은 바뀌지 않는다", () => {
+    const rows: Cell[][] = [["a", 1], ["b", 0], ["a", 2]];
+    const out = sortRows(rows, 0, "asc");
+    expect(out.map((r) => r[1])).toEqual([1, 2, 0]);
+    expect(rows.map((r) => r[0])).toEqual(["a", "b", "a"]);
   });
 });

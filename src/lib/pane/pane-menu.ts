@@ -172,7 +172,7 @@ export interface PaneMenuItem {
  * 옆목록의 신원 — `data-flyout` 속성으로 그대로 나간다 (헤드리스 스크립트가 겨누는 이름).
  * 액션 id 와 같은 값 공간에 살지 않으므로 둘이 섞일 일이 없다.
  */
-export type PaneFlyoutId = "server" | "output" | "format" | "paragraph" | "insert";
+export type PaneFlyoutId = "server" | "output" | "format" | "paragraph" | "insert" | "copy-as" | "filter" | "refs";
 
 /**
  * **옆목록을 여는 줄** (`▸`). 누르면 실행되는 것이 없어 [`PaneMenuItem`] 과 다른 모양이다 —

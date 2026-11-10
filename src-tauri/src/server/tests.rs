@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 29, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 30, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -236,7 +236,9 @@ fn grades_are_checked_per_op() {
     assert_eq!(frame::DB_TEST_PROTOCOL, 28);
     // 판 29(DB 타일도 떨어진 세션으로 — 새 op 없음 · 목록 줄 `kind: "db"`) — MIN 은 그대로 · 낮은 서버면 `keep` 의 DB 열쇠를 뺀다.
     assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
-    assert_eq!(frame::PROTOCOL_MAX, 29);
+    // 판 30(데이터 탭의 읽기 전용 조회 — 새 op 없음 · `db_query` 의 `readOnly`) — MIN 은 그대로.
+    assert_eq!(frame::DB_READ_QUERY_PROTOCOL, 30);
+    assert_eq!(frame::PROTOCOL_MAX, 30);
     let keep = vec!["local-1".to_string(), "query:tk-1".to_string()];
     assert_eq!(crate::session_core::commands::keep_for_server(keep.clone(), Some(28)), vec!["local-1".to_string()]);
     assert_eq!(crate::session_core::commands::keep_for_server(keep.clone(), Some(29)), keep);
@@ -1877,6 +1879,27 @@ pub(in crate::server) mod live {
         assert_eq!(sw["writable"], true);
         let ins = ok_body(ask(&mut a, i, sn, Grade::Write, "db_query", q(2, "INSERT INTO t(name) VALUES ('d')")).await);
         assert_eq!(ins["affected"], 1);
+        // 판 30 — 읽기 전용 조회(데이터 탭)는 쓰기 모드여도 읽기만: 조회는 되고 · 쓰기 문장 · 다중 문장은 거절.
+        let ro = |sql: &str| {
+            let mut b = q(2, sql);
+            b["readOnly"] = json!(true);
+            b
+        };
+        let before = ok_body(ask(&mut a, i, sn, Grade::Write, "db_query", q(2, "SELECT count(*) FROM t")).await)["rows"][0][0].clone();
+        let got = ok_body(ask(&mut a, i, sn, Grade::Write, "db_query", ro("SELECT count(*) AS n FROM t WHERE 1=1")).await);
+        assert_eq!(got["rows"][0][0], before, "{got}");
+        for sql in ["INSERT INTO t(name) VALUES ('ro')", "DELETE FROM t", "SELECT 1; DELETE FROM t"] {
+            match ask(&mut a, i, sn, Grade::Write, "db_query", ro(sql)).await {
+                Frame::Response { ok: false, error: Some(e), .. } => {
+                    assert_eq!(e.code, db, "{sql}");
+                    // 데이터 탭 문구 — [실행] · Alt+X 안내(쿼리 탭의 공용 가드 문구)가 섞이지 않는다
+                    assert!(!e.message.contains("Alt+X"), "{sql}: {}", e.message);
+                }
+                other => panic!("{sql}: 실패가 아님: {other:?}"),
+            }
+        }
+        let after = ok_body(ask(&mut a, i, sn, Grade::Write, "db_query", q(2, "SELECT count(*) FROM t")).await)["rows"][0][0].clone();
+        assert_eq!(after, before, "읽기 전용 조회가 아무것도 바꾸지 않았다");
         ok_body(ask(&mut a, i, sn, Grade::Write, "db_set_write", json!({ "handle": handle, "lease": 2, "on": false })).await);
         assert_eq!(err_code(ask(&mut a, i, sn, Grade::Write, "db_query", q(2, "DELETE FROM t")).await), db);
         // 지금 안 도는 쿼리의 취소는 false.
@@ -2325,7 +2348,7 @@ pub(in crate::server) mod live {
         cfg.db_conns = Some(list.clone());
         let server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
-        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 29);
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 30);
         let db = super::super::db_ops::DB;
         let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
         let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });
@@ -2645,6 +2668,10 @@ pub(in crate::server) mod live {
         // 작업이 열렸는데 "작업 없음(0)" 으로 알고 친 문장 · 다른 작업 id 의 문장 = 낡음.
         assert!(db_err(call(&mut a, req(), Grade::Write, "db_query", q(h, 1, "SELECT 1", 0)).await).contains("[db-tx-stale]"));
         assert!(db_err(call(&mut a, req(), Grade::Write, "db_query", q(h, 1, "SELECT 1", id + 1)).await).contains("[db-tx-stale]"));
+        // 판 30 — 열린 작업 동안 읽기 전용 조회(데이터 탭)는 거절한다(작업 안에서는 읽기 전용을 걸 수 없다) · 작업은 그대로.
+        let mut ro = q(h, 1, "SELECT 1", id);
+        ro["readOnly"] = json!(true);
+        assert!(db_err(call(&mut a, req(), Grade::Write, "db_query", ro).await).contains("트랜잭션"));
         let r = ok_body(call(&mut a, req(), Grade::Write, "db_query", q(h, 1, "INSERT INTO t VALUES (2)", id)).await);
         assert_eq!((r["affected"].as_u64(), r["tx"]["statements"].as_u64()), (Some(1), Some(1)));
         let r = ok_body(call(&mut a, req(), Grade::Write, "db_query", q(h, 1, "SELECT count(*) FROM t", id)).await);
@@ -2663,6 +2690,10 @@ pub(in crate::server) mod live {
         assert_eq!((done["state"].as_str(), done["id"].as_u64()), (Some("none"), Some(0)), "끝나면 대기 — 저절로 새 작업을 열지 않는다");
         assert_eq!((done["ended"]["outcome"].as_str(), done["ended"]["id"].as_u64()), (Some("committed"), Some(id)));
         assert_eq!(seen("SELECT count(*) FROM t"), 2, "커밋 뒤 다른 연결에 보인다");
+        // 작업이 끝나면 읽기 전용 조회가 다시 선다.
+        let mut ro = q(h, 1, "SELECT count(*) FROM t", 0);
+        ro["readOnly"] = json!(true);
+        assert_eq!(ok_body(call(&mut a, req(), Grade::Write, "db_query", ro).await)["rows"], json!([[2]]));
         // 끝난 작업의 [커밋] 다시 누름 = 낡음 · 작업 밖 문장은 다시 자동 커밋.
         assert!(db_err(call(&mut a, req(), Grade::Write, "db_tx", txop(h, 1, "commit", id)).await).contains("[db-tx-stale]"));
         ok_body(call(&mut a, req(), Grade::Write, "db_query", q(h, 1, "INSERT INTO t VALUES (3)", 0)).await);
