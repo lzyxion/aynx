@@ -55,6 +55,14 @@ The [Getting started](docs/user/getting-started.md) guide walks through the firs
 Personal project under active development; expect breaking changes. It supports **Windows 11** only (WebView2), and installers are **unsigned**. Linux and macOS support is undecided.
 The supported AI agents are **Claude Code** and **Codex** only. On this PC they must be native Windows installs: agents in WSL are not supported, and WSL works only as a plain shell tile.
 
+## AI agents and your account
+
+AYNX runs the official `claude` and `codex` CLIs you install and sign in to yourself, without modifying them, and configures them only through their documented flags, hooks and MCP settings.
+It never reads, stores or forwards their credentials, and it sends no model requests of its own.
+Terminal and AI tiles run the agents interactively. The side chat and orchestration run them non-interactively (`claude -p`, `codex exec` / `app-server`), and that usage counts toward your own plan or API key like any other use.
+Your use stays subject to each provider's terms: see Anthropic's [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page and OpenAI's [terms of use](https://openai.com/policies/terms-of-use/).
+AYNX is not affiliated with or endorsed by Anthropic or OpenAI.
+
 ## Download
 
 Get the installer from the [latest release](https://github.com/lzyxion/aynx/releases/latest): `AYNX_<version>_x64-setup.exe` installs for the current user, `AYNX_<version>_x64_en-US.msi` for all users.

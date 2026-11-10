@@ -55,6 +55,14 @@
 활발히 개발 중인 개인 프로젝트로, 호환되지 않는 변경이 있을 수 있습니다. **Windows 11**(WebView2)만 지원하며, 설치 관리자는 **서명 없이** 제공합니다. Linux와 macOS 지원 여부는 미정입니다.
 지원하는 AI 에이전트는 **Claude Code**와 **Codex**뿐입니다. 이 PC에서는 Windows 네이티브로 설치해야 합니다. WSL의 에이전트는 지원하지 않으며, WSL은 일반 셸 타일로만 쓸 수 있습니다.
 
+## AI 에이전트와 내 계정
+
+AYNX는 사용자가 직접 설치하고 로그인한 공식 `claude`·`codex` CLI를 바이너리 수정 없이 띄우고, 문서화된 플래그·훅·MCP 설정으로만 동작을 정합니다.
+그 자격 증명을 읽거나 저장하거나 다른 곳에 넘기지 않으며, 모델 요청을 스스로 보내지 않습니다.
+터미널·AI 타일은 에이전트를 대화형으로 실행합니다. 사이드 채팅과 오케스트레이션은 비대화형으로 실행하며(`claude -p`, `codex exec` / `app-server`), 이 사용량도 다른 사용과 똑같이 사용자 본인의 요금제나 API 키에서 차감됩니다.
+사용은 각 제공사의 약관을 따릅니다. Anthropic의 [Claude Code 법률 및 규정 준수](https://code.claude.com/docs/en/legal-and-compliance) 페이지와 OpenAI의 [이용 약관](https://openai.com/policies/terms-of-use/)을 확인하세요.
+AYNX는 Anthropic·OpenAI와 제휴하거나 그들의 보증을 받은 제품이 아닙니다.
+
 ## 다운로드
 
 [최신 릴리스](https://github.com/lzyxion/aynx/releases/latest)에서 설치 관리자를 받습니다. `AYNX_<버전>_x64-setup.exe`는 현재 사용자에게, `AYNX_<버전>_x64_en-US.msi`는 모든 사용자에게 설치합니다.
