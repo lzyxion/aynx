@@ -9,7 +9,8 @@
    *   [복사]는 테두리만 있는 중성, [터미널에 넣기]는 강조색 채움(`btn-primary`). 단추는 블록에 포인터가 얹히거나 포커스가 안에 있을 때만
    *   보이고, 호버가 없는 터치 기기(`(hover: none)`)에서는 늘 보인다(`ChatHistory` 와 같은 규칙).
    * - [터미널에 넣기]는 **셸 계열 언어일 때만**(`isShellLang` — 언어 없음 포함). 누르면 받는 쪽(`onterm` — 문서 타일 →
-   *   `app/code-to-term`)이 셸 타일의 입력 줄에 **넣기만** 한다(Enter 는 사람). 글은 `code` 그대로 넘긴다(끝 줄바꿈 떼기 · 정화는 받는 쪽).
+   *   `app/code-to-term`)이 셸 타일의 입력 줄에 **넣기만** 한다(Enter 는 사람). 언어를 아는 곳이 여기라 넘기기 전에 한 번
+   *   `codeForTerm` 으로 주석 줄 · 빈 줄을 뺀다(줄 안 주석 · 남은 줄의 글자는 그대로 · 끝 줄바꿈 떼기 · 정화는 받는 쪽). [복사]는 원문 그대로다.
    * - 블록 하나 = **뿌리 요소 하나**(`.dcb`) — 문서 타일의 줄 이동(`DocView` 의 `renderedBlockAt`)이 `.md` 자식 수 == 최상위 블록 수에 기댄다.
    * - 머리 띠 · 떠 있는 단추는 문서 안 찾기가 훑지 않고(`data-find-skip` — 언어 이름이 매치로 세이지 않게) 글 고르기에도 딸려 오지 않는다(`user-select: none`).
    * - 좁은 블록(컨테이너 폭 360px 아래)에서는 단추 글자를 접고 아이콘만 — 이름 · 툴팁은 그대로다.
@@ -18,7 +19,7 @@
   import CodeView from "$lib/CodeView.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { writeClipboard } from "$lib/clipboard";
-  import { isShellLang } from "$lib/code-to-term";
+  import { codeForTerm, isShellLang } from "$lib/code-to-term";
   import { toast } from "$lib/toast.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
@@ -31,7 +32,7 @@
     code: string;
     /** 펜스 언어 (없으면 `null`) */
     lang: string | null;
-    /** [터미널에 넣기] — 블록 글과 누른 단추(고르기 상자가 그 아래에 선다 · Esc 면 포커스가 돌아온다) */
+    /** [터미널에 넣기] — 넣을 글(`codeForTerm` 을 거친 블록 글)과 누른 단추(고르기 상자가 그 아래에 선다 · Esc 면 포커스가 돌아온다) */
     onterm: (code: string, button: HTMLElement) => void;
   } = $props();
 
@@ -62,7 +63,7 @@
 
   function onTerm(ev: MouseEvent): void {
     ev.stopPropagation();
-    if (ev.currentTarget instanceof HTMLElement) onterm(code, ev.currentTarget);
+    if (ev.currentTarget instanceof HTMLElement) onterm(codeForTerm(code, lang), ev.currentTarget);
   }
 </script>
 

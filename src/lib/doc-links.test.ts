@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyDocHref, headingSlugs, matchAnchor, resolveDocLink, slugify } from "$lib/doc-links";
+import { classifyDocHref, headingSlugs, hrefPathLink, matchAnchor, resolveDocLink, slugify } from "$lib/doc-links";
 import { parseMarkdown } from "$lib/markdown";
 
 describe("classifyDocHref", () => {
@@ -110,5 +110,34 @@ describe("matchAnchor", () => {
     expect(matchAnchor("Setup Guide", slugs)).toBe("setup-guide");
     expect(matchAnchor("설치", slugs)).toBe("설치");
     expect(matchAnchor("nope", slugs)).toBeNull();
+  });
+});
+
+describe("hrefPathLink — 대화 면 링크 주소의 파일 경로", () => {
+  it("경로 · `#L12` · `#L12-L20` · `:12` 꼬리", () => {
+    expect(hrefPathLink("src/lib/foo.ts#L12")).toMatchObject({ path: "src/lib/foo.ts", form: "rel", line: 12 });
+    expect(hrefPathLink("src/lib/foo.ts#L12-L20")).toMatchObject({ path: "src/lib/foo.ts", line: 12 });
+    expect(hrefPathLink("src/lib/foo.ts:7")).toMatchObject({ path: "src/lib/foo.ts", line: 7 });
+    expect(hrefPathLink("./docs/a.md")).toMatchObject({ path: "./docs/a.md", form: "rel" });
+    expect(hrefPathLink("./docs/a.md")?.line).toBeUndefined();
+    expect(hrefPathLink("C:/proj/a.md")).toMatchObject({ path: "C:/proj/a.md", form: "abs" });
+    // 일부러 건 링크라 맨 이름도 건다(코드 조각 · 평문과 다르다)
+    expect(hrefPathLink("README.md")).toMatchObject({ path: "README.md", form: "rel" });
+  });
+
+  it("줄이 아닌 `#절` 은 버리고 경로만", () => {
+    const m = hrefPathLink("docs/a.md#intro");
+    expect(m).toMatchObject({ path: "docs/a.md" });
+    expect(m?.line).toBeUndefined();
+  });
+
+  it("웹 주소 · 스킴 · 앵커뿐 · 텍스트 아닌 이름 · 공백은 아니다", () => {
+    expect(hrefPathLink("https://x.dev/a.md")).toBeNull();
+    expect(hrefPathLink("mailto:a@b.c")).toBeNull();
+    expect(hrefPathLink("file:///C:/a.md")).toBeNull();
+    expect(hrefPathLink("#intro")).toBeNull();
+    expect(hrefPathLink("img/logo.png")).toBeNull();
+    expect(hrefPathLink("my%20notes/a.md")).toBeNull();
+    expect(hrefPathLink("README")).toBeNull();
   });
 });

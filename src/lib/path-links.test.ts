@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  codePathLink,
   fileUrlToLocalPath,
   findPathLinks,
   joinHome,
   joinNormalize,
   oscLinkAction,
+  prosePathLinks,
   resolvePathLink,
+  splitProsePaths,
+  wholePathLink,
   type PathLinkPlace,
 } from "$lib/path-links";
 import { wslCwdToWindows } from "$lib/shell-integration";
@@ -39,6 +43,53 @@ describe("findPathLinks — 잡는 모양", () => {
     const [w] = findPathLinks(String.raw`C:\p\x.rs:7`);
     expect(w).toMatchObject({ path: String.raw`C:\p\x.rs`, line: 7 });
     expect(w.col).toBeUndefined();
+  });
+
+  it("줄 범위 `:12-20` · GitHub 식 `#L12` · `#L12-L20` · `#L12-20` — 시작 줄로, 범위에는 꼬리까지", () => {
+    for (const tail of [":12-20", "#L12", "#L12-L20", "#L12-20"]) {
+      const text = `see src/lib/foo.ts${tail}.`;
+      const [m] = findPathLinks(text);
+      expect(m).toMatchObject({ path: "src/lib/foo.ts", line: 12, form: "rel" });
+      expect(m.col).toBeUndefined();
+      expect(text.slice(m.start, m.end)).toBe(`src/lib/foo.ts${tail}`);
+    }
+    // 꼬리를 뗀 경로가 규칙을 지나야 한다 — 그림 · 점 없는 낱말은 여전히 아니다
+    expect(paths("img/a.png#L3 README#L2 v1:12-20")).toEqual([]);
+    // 줄 꼬리가 아닌 `#` 은 경로의 일부라 텍스트 이름이 아니게 된다
+    expect(paths("docs/a.md#intro")).toEqual([]);
+  });
+
+  it("wholePathLink — 글 전체가 경로 하나일 때만", () => {
+    expect(wholePathLink("src/lib/foo.ts:12")).toMatchObject({ path: "src/lib/foo.ts", line: 12 });
+    expect(wholePathLink("package.json")).toMatchObject({ path: "package.json" });
+    expect(wholePathLink("npm run check")).toBeNull();
+    expect(wholePathLink("cat docs/a.md")).toBeNull();
+    expect(wholePathLink("docs/a.md.")).toBeNull();
+    expect(wholePathLink("https://x.dev/a.md")).toBeNull();
+    expect(wholePathLink("")).toBeNull();
+  });
+
+  it("codePathLink — 대화 면 코드 조각은 구분자나 줄 꼬리가 있을 때만(맨 이름은 꼬리가 있어야)", () => {
+    expect(codePathLink("src/lib/foo.ts:12")).toMatchObject({ path: "src/lib/foo.ts", line: 12 });
+    expect(codePathLink("foo.ts:12")).toMatchObject({ path: "foo.ts", line: 12 });
+    expect(codePathLink("foo.ts#L3-L9")).toMatchObject({ path: "foo.ts", line: 3 });
+    expect(codePathLink("~/x.md")).toMatchObject({ form: "home" });
+    expect(codePathLink("./x.md")).toMatchObject({ path: "./x.md" });
+    expect(codePathLink("/etc/hosts.conf")).toMatchObject({ form: "abs" });
+    expect(codePathLink(String.raw`C:\p\a.md`)).toMatchObject({ form: "abs" });
+    for (const bare of ["foo.ts", "Node.js", "package.json", "index.ts"]) expect(codePathLink(bare)).toBeNull();
+    // 터미널 판정은 그대로 — 맨 이름도 잡는다
+    expect(paths("package.json")).toEqual(["package.json"]);
+  });
+
+  it("prosePathLinks · splitProsePaths — 평문은 구분자나 줄 꼬리가 있는 것만, 쪼개 이으면 원래 글", () => {
+    const text = "Node.js 는 src/a.ts:3 과 README.md 그리고 b.ts:9 를 본다";
+    expect(prosePathLinks(text).map((m) => m.path)).toEqual(["src/a.ts", "b.ts"]);
+    const parts = splitProsePaths(text);
+    expect(parts.filter((p) => p.path).map((p) => p.text)).toEqual(["src/a.ts:3", "b.ts:9"]);
+    expect(parts.map((p) => p.text).join("")).toBe(text);
+    expect(splitProsePaths("경로 없음")).toEqual([{ text: "경로 없음", path: false }]);
+    expect(splitProsePaths("")).toEqual([{ text: "", path: false }]);
   });
 
   it("문장 부호 · 따옴표 · 괄호 · `=` 는 경로가 아니다", () => {

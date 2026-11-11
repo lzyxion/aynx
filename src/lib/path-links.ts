@@ -13,7 +13,8 @@ import { isTextLike } from "$lib/doc-lang";
  * - 상대: `./x.md` · `../x.md` · `docs/x.md` · `src\a.ts` — 구분자가 있는 것. 구분자가 없는 **맨 이름**
  *   (`README.md` · `package.json` — `ls` 출력)은 **점이 있을 때만**(`README` 처럼 점 없는 이름은 산문의 낱말과
  *   구별되지 않는다).
- * - 꼬리 `:12` · `:12:3`(컴파일러 · grep 출력)은 경로에서 떼어 `line`/`col` 로 둔다. 줄은 여는 쪽이 문서 타일에
+ * - 꼬리 `:12` · `:12:3`(컴파일러 · grep 출력)은 경로에서 떼어 `line`/`col` 로 둔다. 줄 범위 `:12-20` 과 GitHub 식
+ *   `#L12` · `#L12-L20` · `#L12-20`(AI CLI 가 자주 쓴다)도 같은 꼬리다 — 시작 줄만 `line` 으로 두고 끝 줄은 버린다. 줄은 여는 쪽이 문서 타일에
  *   한 번짜리 "이 줄로" 를 걸어 그 줄로 스크롤한다(`term-path-links.ts` → `doc-line-jump.ts`) — 열은 아직 쓰지 않는다.
  *   링크 범위에는 꼬리까지 든다(눈에 보이는 토막 전체가 밑줄).
  *
@@ -42,8 +43,8 @@ const TOKEN = /[^\s"'`<>()[\]{}|,;=]+/g;
 const URL_RE = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s"'`<>]*/g;
 /** 토막 끝의 문장 부호 — 경로의 일부가 아니다(`see docs/a.md.` 의 마침표) */
 const TRAILING_PUNCT = /[.,:;!?]+$/;
-/** `:12` · `:12:3` 꼬리 */
-const LINE_COL = /:(\d+)(?::(\d+))?$/;
+/** `:12` · `:12:3` · `:12-20` · `#L12` · `#L12-L20` · `#L12-20` 꼬리 — 줄은 1 또는 4번 무리, 칸은 2번(범위의 끝 줄은 버린다) */
+const LINE_COL = /(?::(\d+)(?::(\d+)|-(\d+))?|#L(\d+)(?:-L?(\d+))?)$/;
 /** 글롭 글자가 섞이면 경로가 아니라 패턴이다 */
 const GLOB = /[*?]/;
 
@@ -85,7 +86,7 @@ export function findPathLinks(text: string): PathMatch[] {
     let col: number | undefined;
     const lc = LINE_COL.exec(token);
     if (lc) {
-      line = Number(lc[1]);
+      line = Number(lc[1] ?? lc[4]);
       if (lc[2] !== undefined) col = Number(lc[2]);
       token = token.slice(0, lc.index);
     }
@@ -98,6 +99,49 @@ export function findPathLinks(text: string): PathMatch[] {
     if (!isTextLike(path)) continue;
     out.push({ start, end, path, form, ...(line !== undefined ? { line } : {}), ...(col !== undefined ? { col } : {}) });
   }
+  return out;
+}
+
+/**
+ * 글 **전체가** 경로 하나인가(앞뒤 공백은 본다) — 아니면 `null`. 맨 이름도 지난다(대화 면 링크 주소 `[x](README.md)` —
+ * `doc-links.ts` 의 `hrefPathLink` — 는 일부러 건 링크라서다). 판정은 [`findPathLinks`] 그대로라 같은 오탐 억제를 지난다
+ * (끝의 문장 부호가 떨어져 나가면 전체가 아니다).
+ */
+export function wholePathLink(text: string): PathMatch | null {
+  const found = findPathLinks(text);
+  return found.length === 1 && found[0].start === 0 && found[0].end === text.length ? found[0] : null;
+}
+
+/**
+ * 대화 면에서 **글자만 보고** 걸 만한 경로인가 — 구분자(`/` `\` — 절대 · 홈 · `./x` 포함)가 있거나 줄 꼬리가 있는 것. 맨 이름
+ * (`Node.js` · `package.json` · `index.ts`)은 산문 · 코드 조각에 너무 흔하고 대화 면은 그냥 클릭이라 걸지 않는다(`foo.ts:12` 는 건다).
+ * 터미널의 Ctrl+클릭([`findPathLinks`])은 이 거름을 쓰지 않는다 — `ls` 출력의 맨 이름을 연다.
+ */
+function chatCue(m: PathMatch): boolean {
+  return m.form !== "rel" || /[\\/]/.test(m.path) || m.line !== undefined;
+}
+
+/** 대화 면의 인라인 코드 조각(`` `src/a.ts:12` ``) — 글 전체가 경로 하나이고 [`chatCue`] 를 지날 때만. 아니면 `null` */
+export function codePathLink(text: string): PathMatch | null {
+  const m = wholePathLink(text);
+  return m && chatCue(m) ? m : null;
+}
+
+/** 평문 속 경로 — [`findPathLinks`] 가운데 [`chatCue`] 를 지나는 것만(대화 면의 코드 조각 밖 글) */
+export function prosePathLinks(text: string): PathMatch[] {
+  return findPathLinks(text).filter(chatCue);
+}
+
+/** 글을 경로 일치와 그 사이 글로 쪼갠다(왼쪽부터 · 이어 붙이면 원래 글) — [`prosePathLinks`] 의 그리기 몫 */
+export function splitProsePaths(text: string): Array<{ text: string; path: boolean }> {
+  const out: Array<{ text: string; path: boolean }> = [];
+  let at = 0;
+  for (const m of prosePathLinks(text)) {
+    if (m.start > at) out.push({ text: text.slice(at, m.start), path: false });
+    out.push({ text: text.slice(m.start, m.end), path: true });
+    at = m.end;
+  }
+  if (at < text.length || out.length === 0) out.push({ text: text.slice(at), path: false });
   return out;
 }
 

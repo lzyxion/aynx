@@ -1,5 +1,5 @@
 /**
- * **문서 코드 블록을 셸 타일에 넣기** — 순수 규칙 넷.
+ * **문서 코드 블록을 셸 타일에 넣기** — 순수 규칙 다섯.
  *
  * 문서 타일(마크다운 보기 · 편집 중 미리 보기)의 코드 블록 머리 띠의 [터미널에 넣기]가 블록 글을 셸 타일의 **입력 줄에 넣기만**
  * 한다(Enter 는 사람이 친다). 명령 블록 → AI 타일(`$lib/ask-ai` · docs/log/2026-09-28-ask-ai-block.md)과 같은 결의 형제다 —
@@ -8,6 +8,7 @@
  * | 무엇 | 함수 |
  * | --- | --- |
  * | 이 블록에 [터미널에 넣기]를 세우나 (셸 계열 언어) | [`isShellLang`] |
+ * | 넣을 글 — 주석 줄 · 빈 줄 빼기 (단추 쪽에서 한 번) | [`codeForTerm`] |
  * | 넣는 바이트 — 괄호 붙여넣기 · 한 줄 그대로 · 여러 줄은 모드가 켜졌을 때만 | [`codeInsertBytes`] |
  * | 받을 셸 타일 — 곧장 · 고르기 상자 · 새 터미널 | [`planTermTarget`] |
  * | 새로 연 셸이 입력을 받을 준비가 됐는가 | [`shellReadyForInsert`] |
@@ -50,8 +51,39 @@ const SHELL_LANGS: ReadonlySet<string> = new Set([
  * 이 펜스 언어가 셸 계열인가 — 첫 낱말만 소문자로 본다(```` ```bash title=x ```` · ```` ```Bash ````). 없거나 빈 언어도 참.
  */
 export function isShellLang(lang: string | null | undefined): boolean {
-  const head = (lang ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  const head = langHead(lang);
   return head === "" || SHELL_LANGS.has(head);
+}
+
+/** 펜스 언어의 첫 낱말 (소문자 · 없으면 빈 글) */
+function langHead(lang: string | null | undefined): string {
+  return (lang ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// 넣을 글 — 주석 줄 · 빈 줄 빼기
+// ---------------------------------------------------------------------------
+
+/** 주석이 `#` 가 아니라 `REM` · `::` 인 언어 */
+const CMD_LANGS: ReadonlySet<string> = new Set(["cmd", "bat", "batch"]);
+
+/**
+ * **[터미널에 넣기]가 넣을 글** — 블록 글에서 **줄 전체가 주석인 줄**과 **빈 줄(공백뿐)**을 뺀다(옵션 없이 늘 — 2026-11-11 사용자
+ * 결정). 문서의 명령 블록은 설명 주석이 섞이기 마련이라, "주석 한 줄 + 명령 한 줄" 블록이 한 줄이 되어 괄호 붙여넣기를 켜지 않는 셸
+ * (Windows PowerShell)에도 들어간다. [복사]는 원문 그대로다(이 함수를 거치지 않는다).
+ *
+ * - 주석 줄 = 앞 공백 뒤 `#` 로 시작(셔뱅 `#!` 포함). cmd 계열(`cmd` · `bat` · `batch`)은 `#` 대신 앞 공백 뒤 `REM`(대소문자 무시 ·
+ *   뒤가 공백이거나 줄 끝) 또는 `::`.
+ * - 명령 뒤에 붙은 주석(`npm ci  # 설치`)은 건드리지 않는다 — 줄 안의 `#` 는 해석하지 않는다(문자열 · URL 조각 · `$#` 를 깨지 않게).
+ * - 남은 줄은 안쪽 글자 · 들여쓰기 · 순서 그대로다(줄바꿈만 `\n` 으로 맞춘다). 다 빠지면 빈 글 — [`codeInsertBytes`] 가 `empty` 로 거절한다.
+ * - 알고 받은 한계: 여러 줄 문자열 · heredoc 안의 `#` 줄도 주석으로 보고 뺀다(사람이 입력 줄에서 보고 고친다).
+ */
+export function codeForTerm(code: string, lang: string | null | undefined): string {
+  const comment = CMD_LANGS.has(langHead(lang)) ? /^\s*(?:rem(?:\s|$)|::)/i : /^\s*#/;
+  return code
+    .split(/\r\n|\r|\n/)
+    .filter((line) => line.trim() !== "" && !comment.test(line))
+    .join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +106,8 @@ export type CodeInsert =
  * 4. **여러 줄**이면 괄호 붙여넣기 모드가 켜져 있을 때만 감싸 넣는다(줄바꿈은 `\r` — xterm `paste()` 와 같은 변환,
  *    [`pasteBytes`]). 꺼져 있으면 넣지 않는다 — 한 줄로 접는 등 말없이 모양을 바꾸지 않는다.
  *
- * `$ ` 프롬프트 글자를 떼는 가공은 하지 않는다 — 글자 그대로다(사람이 입력 줄에서 보고 고친다).
+ * 받는 글은 이미 [`codeForTerm`] 을 거친 것이다(주석 줄 · 빈 줄은 단추 쪽에서 뺐다) — 여기서는 다시 거르지 않는다. `$ ` 프롬프트
+ * 글자를 떼는 가공은 하지 않는다(사람이 입력 줄에서 보고 고친다).
  */
 export function codeInsertBytes(code: string, bracketed: boolean): CodeInsert {
   const body = sanitizeForPaste(code).replace(/\n\s*$/, "");

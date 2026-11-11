@@ -1,5 +1,5 @@
 import { isWebUrl, type MdBlock, type MdInline } from "$lib/markdown";
-import { isWinAbs, joinNormalize, sepOf } from "$lib/path-links";
+import { isWinAbs, joinNormalize, sepOf, wholePathLink, type PathMatch } from "$lib/path-links";
 
 /**
  * **문서 안의 링크** — 순수 모듈 (docs/log/2026-09-27-doc-tile.md "B7 — 상대 링크").
@@ -53,6 +53,20 @@ export function classifyDocHref(href: string): DocHref {
   const path = decode(pathPart);
   if (path === "") return anchor === "" ? { kind: "other" } : { kind: "anchor", anchor };
   return anchor === "" ? { kind: "path", path } : { kind: "path", path, anchor };
+}
+
+/**
+ * **대화 면의 링크 주소 → 터미널 경로 링크와 같은 토막**(`[foo.ts:12](src/lib/foo.ts#L12)` · `[x](./docs/a.md)`). 문서 링크와 달리
+ * 그 타일 셸의 폴더 기준으로 푼다(`resolvePathLink` — 부르는 쪽). `#L12` · `#L12-L20` 은 시작 줄, 그 밖의 `#절` 은 버린다.
+ * 경로 판정은 [`wholePathLink`] 그대로(텍스트로 보이는 이름 · 공백 없음) — 아니면 `null`.
+ */
+export function hrefPathLink(href: string): PathMatch | null {
+  const h = classifyDocHref(href);
+  if (h.kind !== "path") return null;
+  const m = wholePathLink(h.path);
+  if (m === null) return null;
+  const range = h.anchor !== undefined ? /^L(\d+)(?:-L?\d+)?$/.exec(h.anchor) : null;
+  return range ? { start: m.start, end: m.end, path: m.path, form: m.form, line: Number(range[1]) } : m;
 }
 
 /** 윈도우 경로의 뿌리(`C:` · `\\server\share`) — 끝 구분자 없이. 없으면 `null` */

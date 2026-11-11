@@ -36,6 +36,8 @@
    * - **사람 말의 그림**(`pictures` — 타일 대화 면, 2026-10-24): Claude 붙여넣기 · 끌어 놓은 파일 · Codex 첨부는 기록 줄에 바로(base64 ·
    *   데이터 URL) 실린다. 쪽은 그 자리(`item.pictures`)만 싣고, 이 컴포넌트는 보이는 사람 말의 자리를 `pictures.sync` 로 올려 받은 `blob:` 을
    *   말풍선 안에 그린다(읽기 · 캐시는 부르는 쪽의 `ConvImageCache`). 우클릭은 같은 그림 메뉴(링크 복사 없음). 못 그리는 것만 "이미지 N개" 칩.
+   * - **경로 링크**(`paths` — 타일 대화 면만, 2026-11-11): 에이전트 말의 파일 경로(`MarkdownBlocks` 의 `paths` 그대로 — 판정은 거기, 푸는 일 ·
+   *   여는 일은 부르는 쪽 `pane/AiFlip`). 사이드 채팅 · 프로듀서 채팅 · 시트는 넘기지 않는다.
    */
   import { tick, untrack, type Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -43,6 +45,7 @@
   import { splitOpenFence } from "$lib/markdown";
   import { imageSrcsOfTexts } from "$lib/doc-images";
   import type { DocImageState } from "$lib/doc-images.svelte";
+  import type { PathMatch } from "$lib/path-links";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { TranscriptItem, TranscriptPage, TranscriptPicture } from "$lib/context";
   import ImageMenu from "$lib/ImageMenu.svelte";
@@ -96,6 +99,7 @@
     turnBreak,
     notes = [],
     noteCard,
+    paths,
   }: {
     /** 대화의 열쇠 — 바뀌면(열림 포함) 처음부터. `null` 이면 아무것도 읽지 않는다 */
     convKey: string | null;
@@ -187,6 +191,8 @@
     userMark?: (items: readonly TranscriptItem[]) => readonly ({ pill: string } | { note: string } | { hide: true } | null)[];
     /** **턴 끝 경계**(프로듀서 채팅) — 에이전트 줄 뒤에 오는 사람 말(알약 포함) 앞에 가는 선 한 줄. 인자 = 직전 에이전트 줄의 시각. 없으면 경계 없음 */
     turnBreak?: (at: number | null) => string;
+    /** 에이전트 말의 경로 링크(타일 대화 면 — 이 파일 머리말). 없으면 예전 그대로 */
+    paths?: { title: (m: PathMatch) => string | null; open: (m: PathMatch) => void };
   } = $props();
 
   /** 도구 이름 → 보일 이름. 이름표가 있는 것만 번역(Codex 사이드 채팅의 `imageGeneration` — 나머지는 CLI 의 이름 그대로) */
@@ -687,8 +693,8 @@
     {@const parts = streaming && diagrams ? splitOpenFence(item.text ?? "") : { done: item.text ?? "", open: null }}
     <!-- 자라는 글이면 닫히지 않은 울타리를 떼어 여느 코드 블록으로(다이어그램은 닫힌 몫만 — 이 파일 머리말) -->
     <li class="item assistant" data-item="assistant">
-      <MarkdownBlocks blocks={parseMarkdown(parts.done)} compact {diagrams} {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" />
-      {#if parts.open !== null}<MarkdownBlocks blocks={parseMarkdown(parts.open)} compact {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" />{/if}
+      <MarkdownBlocks blocks={parseMarkdown(parts.done)} compact {diagrams} {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" {paths} />
+      {#if parts.open !== null}<MarkdownBlocks blocks={parseMarkdown(parts.open)} compact {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" {paths} />{/if}
       {#if item.truncated}<span class="cut">{t("board.viewer.truncated")}</span>{/if}
     </li>
   {:else if item.role === "interrupted"}

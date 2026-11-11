@@ -1,5 +1,6 @@
 import type { PaneSpec } from "$lib/session";
 import { wslCwdToWindows } from "$lib/shell-integration";
+import type { PathLinkPlace } from "$lib/path-links";
 
 /**
  * **셸이 알려 준 폴더의 반응형 사본** — 타일 id → 그 셸이 마지막으로 알려 준 폴더(OSC 7 · OSC 9;9)
@@ -40,4 +41,17 @@ export function localReportedFolder(pane: PaneSpec): string | null {
   const distro = pane.shell?.startsWith("wsl:") ? pane.shell.slice("wsl:".length) : null;
   if (distro && reported.startsWith("/")) return wslCwdToWindows(distro, reported);
   return reported;
+}
+
+/**
+ * 그 타일에서 **경로 링크를 풀 자리**(`path-links.ts` 의 [`PathLinkPlace`]) — SSH 는 원격, 로컬은 WSL 이면 배포판 옮김을 단 자리 ·
+ * 아니면 이 PC. 터미널 · 셸 타일이 아니면 `null`(링크를 걸지 않는다). `cwd` 는 그 셸이 알려 준 폴더(배포판 안의 POSIX 그대로).
+ * 터미널 글자의 경로(`Terminal.svelte` 의 `pathPlace`)와 AI 타일 대화 면의 경로(`pane/AiFlip`)가 같이 쓴다.
+ */
+export function pathLinkPlace(pane: Pick<PaneSpec, "kind" | "shell">, cwd: string | null): PathLinkPlace | null {
+  if (pane.kind === "ssh") return { kind: "remote", cwd };
+  if (pane.kind !== "local") return null;
+  const distro = pane.shell?.startsWith("wsl:") ? pane.shell.slice("wsl:".length) : null;
+  if (distro) return { kind: "wsl", cwd, toLocal: (p) => wslCwdToWindows(distro, p) };
+  return { kind: "local", cwd };
 }

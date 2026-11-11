@@ -32,6 +32,13 @@
    *   글을 끌어 고르다 링크 위에서 놓은 클릭은 열지 않는다(`selecting`).
    * - **문서 링크**(`#절` · 스킴 없는 경로 — `classifyDocHref`)는 `ondoclink` 를 받았을 때만 산다(문서 보기 타일).
    *   같은 Ctrl+클릭이고 같은 모양이다. 주소는 적힌 그대로 올린다 — 푸는 일은 받는 쪽 몫.
+   * - **경로 링크**(`paths` — AI 타일의 대화 면만, 2026-11-11): 터미널 글자의 `파일:12` 와 같은 판정(`path-links.ts`)으로 인라인 코드 조각
+   *   **전체가** 경로 하나이고 구분자나 줄 꼬리가 있는 것(`codePathLink` — 맨 이름 `foo.ts` 는 아니고 `foo.ts:12` 는 그렇다) · 주소가 파일 경로인
+   *   링크(`hrefPathLink` — `#L12` 줄 포함 · 일부러 건 링크라 맨 이름도) · 평문 속 같은 기준의 경로
+   *   (`splitProsePaths`)를 누를 수 있게 한다. 코드 블록 안은 걸지 않는다. 푸는 일(그 타일 셸의 자리 · 폴더)은 받는 쪽 `title`(못 풀면
+   *   `null` = 걸지 않음) · `open` 몫이고, 누르는 규칙은 `linkClick` 그대로다. 모양은 여느 링크(평문 · 링크) · 밑줄 단 코드 조각이고, 요소는
+   *   `role="link"` + `tabindex` 의 글자다 — `<button>` 이 아닌 까닭: 문서 안 찾기(`doc-find-dom` 의 `SKIP`)가 단추 글자를 건너뛰고, 끌어
+   *   고르기도 단추 안에서 시작되지 않는다. Enter 가 클릭과 같다.
    * - 제목에는 GitHub 식 앵커 이름을 `data-slug` 로 단다(`headingSlugs` — 같은 이름은 `-1` · `-2`). `id` 가 아닌
    *   까닭: 한 창에 문서 타일이 여럿이면 id 가 겹친다. 찾는 쪽은 자기 상자 안에서 이 속성으로 찾는다.
    * - 그림은 `images` 를 받았을 때만 불러온다(문서 보기 타일 — 문서와 같은 백엔드의 상대 · 절대 경로만 · 사이드 채팅의 에이전트 말 —
@@ -65,7 +72,8 @@
   import { isSvgLang } from "$lib/svg-text";
   import UiIcon from "$lib/UiIcon.svelte";
   import { isWebUrl, linkHost, linkUrlTail, type MdAlertType, type MdBlock, type MdInline, type MdListItem } from "$lib/markdown";
-  import { classifyDocHref, headingSlugs, inlineText } from "$lib/doc-links";
+  import { classifyDocHref, headingSlugs, hrefPathLink, inlineText } from "$lib/doc-links";
+  import { codePathLink, splitProsePaths, type PathMatch } from "$lib/path-links";
   import type { DocImageState } from "$lib/doc-images.svelte";
   import { isImageLinkHref } from "$lib/doc-images";
   import { chipOnly, placeSourceChips } from "$lib/md-source-chips";
@@ -88,6 +96,7 @@
     linkStyle = "inline",
     onjump,
     codeActions,
+    paths,
   }: {
     blocks: MdBlock[];
     /** 링크 열기 — 주소는 이미 `isWebUrl` 을 통과했다. 없으면 링크는 글자일 뿐이다 */
@@ -134,6 +143,10 @@
      * 받는다. 없으면 코드 블록은 예전 그대로(`CodeView` 판 + 떠 있는 복사 단추). 그림으로 그리는 블록(mermaid · svg · math)에는 서지 않는다
      */
     codeActions?: { onterm: (code: string, button: HTMLElement) => void };
+    /**
+     * 경로 링크(이 파일 머리말) — `title` 은 그 토막을 풀어 툴팁 글자를(못 풀면 `null` — 링크가 아니다), `open` 은 연다. 없으면 예전 그대로
+     */
+    paths?: { title: (m: PathMatch) => string | null; open: (m: PathMatch) => void };
   } = $props();
 
   /** ```math 펜스 — 수식 블록이다(파서가 `math` 로 나누지 않은 글에서도 머리 띠를 세우지 않는다) */
@@ -183,7 +196,36 @@
     const k = classifyDocHref(href).kind;
     return k === "anchor" || k === "path";
   };
-  const live = (href: string) => (!!onlink && isWebUrl(href)) || (!!ondoclink && isDocLink(href));
+  /** 주소가 그 타일에서 풀리는 파일 경로면 그 토막(`paths` 가 있을 때만 · 웹 주소는 아니다) */
+  const hrefPath = (href: string): PathMatch | null => {
+    if (!paths || isWebUrl(href)) return null;
+    const m = hrefPathLink(href);
+    return m && paths.title(m) !== null ? m : null;
+  };
+  /** 코드 조각 · 평문 토막의 경로 툴팁(걸 수 없으면 `null`) */
+  const textPathTip = (text: string): string | null => {
+    const m = paths ? codePathLink(text) : null;
+    return m && paths ? paths.title(m) : null;
+  };
+  const live = (href: string) => (!!onlink && isWebUrl(href)) || (!!ondoclink && isDocLink(href)) || hrefPath(href) !== null;
+
+  /** 경로 링크 요소(`data-path-link`)의 토막 — 코드 조각 · 평문은 `data-path`, 링크는 `data-href` 에서 다시 판정한다 */
+  function pathOfEl(el: Element): PathMatch | null {
+    if (!paths || !el.hasAttribute("data-path-link")) return null;
+    const raw = el.getAttribute("data-path");
+    if (raw !== null) return textPathTip(raw) !== null ? codePathLink(raw) : null;
+    const href = el.getAttribute("data-href");
+    return href ? hrefPath(href) : null;
+  }
+
+  /** 경로 링크의 Enter — 클릭과 같다(초점을 받는 것은 경로 링크뿐) */
+  function onkeydown(ev: KeyboardEvent) {
+    if (ev.key !== "Enter" || ev.isComposing || !paths || !(ev.target instanceof Element)) return;
+    const m = pathOfEl(ev.target);
+    if (!m) return;
+    ev.preventDefault();
+    paths.open(m);
+  }
 
   /** 제목 → 앵커 이름 (문서 순서로 겹침을 가른다) */
   const slugs = $derived(headingSlugs(blocks));
@@ -193,6 +235,16 @@
     // 각주는 그냥 클릭 — 같은 문서 안 스크롤뿐이다(근거는 이 파일 머리 주석의 각주 항목)
     if (footnoteClick(ev)) return;
     if (linkClick === "ctrl" && !(ev.ctrlKey || ev.metaKey)) return;
+    const pathEl = ev.target instanceof Element ? ev.target.closest("[data-path-link]") : null;
+    if (pathEl) {
+      if (linkClick === "plain" && selecting(pathEl)) return;
+      const m = pathOfEl(pathEl);
+      if (m && paths) {
+        ev.preventDefault();
+        paths.open(m);
+      }
+      return;
+    }
     const el = ev.target instanceof Element ? ev.target.closest("[data-href]") : null;
     const href = el?.getAttribute("data-href");
     if (!el || !href) return;
@@ -215,7 +267,9 @@
   const linkTitle = (href: string) =>
     !live(href)
       ? href
-      : linkClick === "plain"
+      : hrefPath(href) !== null
+        ? (paths?.title(hrefPath(href)!) ?? href)
+        : linkClick === "plain"
         ? t("files.doc.md.link.openPlain", { href })
         : t("files.doc.md.link.open", { href });
 
@@ -271,8 +325,9 @@
 </script>
 
 <!-- 인라인 — 한 줄로 적는다(글자 칸이 pre-wrap 이라 태그 사이 공백이 그대로 보인다) -->
-{#snippet inl(xs: MdInline[])}{#each xs as s, si (si)}{#if s.kind === "code"}<code class="ic">{s.text}</code
-    >{:else if s.kind === "strong"}<strong>{#if s.inlines}{@render inl(s.inlines)}{:else}{s.text}{/if}</strong
+{#snippet inl(xs: MdInline[])}{#each xs as s, si (si)}{#if s.kind === "code"}{@const tip = textPathTip(s.text)}{#if tip !== null}<span role="link" tabindex="0" data-path-link data-path={s.text} title={tip}
+          ><code class="ic path">{s.text}</code></span
+        >{:else}<code class="ic">{s.text}</code>{/if}{:else if s.kind === "strong"}<strong>{#if s.inlines}{@render inl(s.inlines)}{:else}{s.text}{/if}</strong
     >{:else if s.kind === "em"}<em>{#if s.inlines}{@render inl(s.inlines)}{:else}{s.text}{/if}</em
     >{:else if s.kind === "del"}<del>{#if s.inlines}{@render inl(s.inlines)}{:else}{s.text}{/if}</del>{:else if s.kind === "link" && s.source}<button
         type="button"
@@ -286,6 +341,13 @@
         data-href={s.href}
         title={linkTitle(s.href)}
         ><span class="src-host">{linkHost(s.href)}</span><UiIcon name="external" size={10} /></button
+      >{:else if s.kind === "link" && hrefPath(s.href) !== null}<span
+        class="link live"
+        role="link"
+        tabindex="0"
+        data-path-link
+        data-href={s.href}
+        title={linkTitle(s.href)}>{s.image ? s.text || t("files.doc.md.image", { alt: "" }) : s.text}</span
       >{:else if s.kind === "link"}<span
         class="link"
         class:live={live(s.href)}
@@ -313,7 +375,14 @@
         class:live={!!onjump}
         data-fn-ref="{s.n}:{s.occ}"
         title={fnTips.get(s.n) || undefined}>{s.n}</sup
-      >{:else if s.kind === "math"}<MathView tex={s.text} />{:else}{s.text}{/if}{/each}{/snippet}
+      >{:else if s.kind === "math"}<MathView tex={s.text} />{:else if s.kind === "text" && paths}{#each splitProsePaths(s.text) as g, gi (gi)}{@const tip = g.path ? textPathTip(g.text) : null}{#if tip !== null}<span
+            class="link live"
+            role="link"
+            tabindex="0"
+            data-path-link
+            data-path={g.text}
+            title={tip}>{g.text}</span
+          >{:else}{g.text}{/if}{/each}{:else}{s.text}{/if}{/each}{/snippet}
 
 <!-- 블록 인라인 — 대화 면은 출처 이름표를 그 자리 칩으로(머리말). 표 칸은 `inl` 만 부른다. 한 줄로 적는다(pre-wrap) -->
 {#snippet blockInl(xs: MdInline[])}{#if linkStyle === "chip"}{@render inl(placeSourceChips(xs, chipLink))}{:else}{@render inl(xs)}{/if}{/snippet}
@@ -426,9 +495,9 @@
   {/each}
 {/snippet}
 
-<!-- 클릭은 링크 여는 손잡이 하나뿐(Ctrl+클릭) — 키보드로 여는 길은 두지 않는다(링크는 초점을 받지 않는 글자) -->
+<!-- 클릭은 링크 여는 손잡이 하나뿐(Ctrl+클릭) — 키보드로 여는 길은 경로 링크의 Enter 뿐이다(그 밖의 링크는 초점을 받지 않는 글자) -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="md" class:compact {onclick} {oncontextmenu} bind:this={rootEl} data-markdown>{@render blockList(blocks)}</div>
+<div class="md" class:compact {onclick} {onkeydown} {oncontextmenu} bind:this={rootEl} data-markdown>{@render blockList(blocks)}</div>
 
 {#if imgMenu}
   <ImageMenu actions={imageMenuActions(imgMenu.kind, isRemote)} x={imgMenu.x} y={imgMenu.y} onclose={closeImgMenu} onpick={imgMenu.run} />
@@ -629,6 +698,24 @@
     background: var(--surface-hover);
     border-radius: 4px;
     overflow-wrap: anywhere;
+  }
+
+  /* 경로 코드 조각(이 파일 머리말) — 코드 모양 그대로 + 여느 링크의 밑줄 · 포인터 */
+  .ic.path {
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .ic.path:hover {
+    text-decoration-color: var(--accent);
+  }
+
+  [data-path-link]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-radius: 2px;
   }
 
   .link.live {

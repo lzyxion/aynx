@@ -104,6 +104,17 @@ node scripts/dev/render-web.mjs 520 out.png     # 폭 520 으로 렌더 → 시�
 측정 부분(`.start .card`)은 예시다 — 다른 화면이면 스크립트 안의 표현식을 바꾼다. 세션·설정을
 쓰는 화면은 invoke 가 거부되어 비거나 오류가 난다(그건 CDP 9222 로 실제 앱에서 본다).
 
+## convo-path-links-harness.mjs — AI 타일 대화 면의 파일 경로 링크
+
+`MarkdownBlocks` 의 `paths`(2026-11-11 — `pane/AiFlip.svelte`). `ai-flip-harness` 의 스텁에 `local_stat` · `local_read_text` 를 더하고, 지금 폴더는
+터미널 출력에 OSC 7 을 먹여 알린다. 걸릴 것 / 안 걸릴 것(맨 이름 · 코드 블록 안 · 굵게 안) · 줄 꼬리(`:12` · `:12-20` · `#L12` · `#L12-L20`) ·
+폴더를 모를 때 상대 경로 없음 · 클릭 → stat 경로 · 문서 타일 · 줄 강조(.md 블록 · .ts 줄 띠) · 고른 채 클릭은 안 엶 · Tab → Enter 를 판정한다.
+진짜 마우스 끌기는 헤드리스에서 고르기를 만들지 못해 건너뛴다(스크립트로 건 고르기 + click 이 대신 본다).
+
+```bash
+node scripts/dev/run-harness.mjs convo-path-links-harness.mjs <outdir> --size 1280x860
+```
+
 ## flat-corner-harness.mjs — 평면 상태줄 왼쪽 · 오른쪽의 안쪽 모서리 곡선
 
 `+page.svelte` 의 `.canvas-corner` 절(2026-11-03). 재질(평면 · 글래스) × 자리(왼쪽 · 오른쪽) × 배율(1 · 1.25 · 1.5) 마다

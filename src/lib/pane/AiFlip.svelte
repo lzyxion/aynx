@@ -52,6 +52,9 @@
    * cwd ≈ 그 타일 셸이 마지막으로 알린 폴더(로컬 `localReportedFolder` · 원격 `reportedCwd`) — 모르면 절대 경로만 읽는다.
    * 사람 말에 **바로 실린** 그림(Claude 붙여넣기 · 끌어 놓은 파일의 base64 · Codex 첨부의 데이터 URL — 경로가 없다)은 쪽이 자리만 싣고
    * `ConvImageCache` 가 한 장씩 받는다(`agent_conversation_image` · 원격 `…_remote` — 쪽과 같은 색인 · 같은 전송로 · 10 MB · png/jpeg/gif/webp).
+   * 에이전트 말의 **파일 경로**(구분자나 줄 꼬리가 있는 코드 조각 · 평문 속 경로 · 경로 주소의 링크 — `MarkdownBlocks` 의 `paths`)는 그냥 클릭에 문서 타일로 연다
+   * (2026-11-11). 자리는 터미널 글자의 경로와 같은 `pathLinkPlace`(로컬 · SSH · WSL), 폴더는 그 타일 셸이 마지막으로 알린 값(`reportedCwd` —
+   * 터미널의 `shell.cwd()` 와 같은 값의 반응형 사본), 여는 길도 같은 `onopenpath` → `openPathFromTerminal`(파일일 때만 · 꼬리 줄로).
    *
    * 넘김 상태는 `pane/ai-flip.svelte.ts`(화면 상태 — 저장 안 함). AI 타일이 아니게 되면(CLI 가 끝났다) 터미널 면으로 돌아온다.
    * **신뢰 안내 말풍선**(2026-11-04 · 옅게 누런 면 + 꼬리 — docs/log/2026-11-04-trust-bubble.md): Codex 훅 신뢰는 닫으면 이 기기에서 다시 안 뜨고, Claude 폴더 신뢰는 터미널에 질문이 떠 있는
@@ -106,7 +109,8 @@
   import { DocImageCache } from "$lib/doc-images.svelte";
   import { ConvImageCache } from "$lib/conv-images.svelte";
   import { localBackend, remoteBackend } from "$lib/fs-backend";
-  import { localReportedFolder, reportedCwd } from "$lib/app/pane-cwd.svelte.js";
+  import { localReportedFolder, pathLinkPlace, reportedCwd } from "$lib/app/pane-cwd.svelte.js";
+  import { resolvePathLink, type PathMatch, type ResolvedPath } from "$lib/path-links";
   import { hasSession } from "$lib/session";
   import { stageAgentFiles } from "$lib/agent-attachments";
   import { attachmentPaths, tileAttachPastes } from "$lib/pane/composer-attachments";
@@ -136,6 +140,7 @@
     pane,
     sessionId = null,
     shown = true,
+    onopenpath,
     children,
   }: {
     pane: PaneSpec;
@@ -143,6 +148,8 @@
     sessionId?: number | null;
     /** 이 타일이 화면에 보이는가(숨은 탭이면 따라가기를 멈춘다) */
     shown?: boolean;
+    /** 대화 면의 파일 경로를 눌렀다 — 터미널의 `onopenpath` 와 같은 손잡이(이미 풀린 경로 · 꼬리 줄) */
+    onopenpath?: (target: NonNullable<ResolvedPath>, line?: number) => void;
     /** 터미널 */
     children: Snippet;
   } = $props();
@@ -426,6 +433,24 @@
   onDestroy(() => imageCache.dispose());
   /** CLI 의 cwd ≈ 그 타일 셸이 마지막으로 알린 폴더(로컬 = 이 PC 경로 · 원격 = POSIX) — 상대 경로의 기준 */
   const imageFolder = $derived(remoteAlias !== null ? reportedCwd(pane.id) : localReportedFolder(pane));
+  /** 대화 면의 경로 링크 — 터미널 글자의 경로와 같은 자리 · 같은 풀기(이 파일 머리말). 손잡이가 없거나 자리가 없으면 걸지 않는다 */
+  const pathLinks = $derived.by(() => {
+    const open = onopenpath;
+    const place = open ? pathLinkPlace(pane, reportedCwd(pane.id)) : null;
+    if (!open || !place) return undefined;
+    const label = (r: NonNullable<ResolvedPath>, m: PathMatch) =>
+      ("path" in r ? r.path : `~/${r.home}`) + (m.line !== undefined ? `:${m.line}` : "");
+    return {
+      title: (m: PathMatch) => {
+        const r = resolvePathLink(m, place);
+        return r ? label(r, m) : null;
+      },
+      open: (m: PathMatch) => {
+        const r = resolvePathLink(m, place);
+        if (r) open(r, m.line);
+      },
+    };
+  });
   const imageCtx = $derived.by(() => {
     const remote = remoteAlias !== null;
     const dir = imageFolder?.trim() ?? "";
@@ -677,7 +702,7 @@
       globalCombo: combo !== null && resolveBindings(settings.current.keybindings).global.has(combo),
       inComposer,
       inConvo,
-      onControl: !!target?.closest("button, input, textarea, select, a[href]"),
+      onControl: !!target?.closest("button, input, textarea, select, a[href], [data-path-link]"),
       hasSelection: hasConvoSelection(),
       inFind: inConvo && !!target?.closest("[data-find-bar]"),
       findCombo: combo !== null && combo === effectiveCombo("find", settings.current.keybindings),
@@ -727,7 +752,7 @@
   /** 대화 면을 눌렀다 놓음 — 고른 글이 없고 단추 · 칸이 아니면 키보드를 입력 칸으로 돌려준다(IME 가 첫 글자부터 켜져 있게) */
   function onConvoPointerUp(ev: PointerEvent): void {
     const target = ev.target instanceof Element ? ev.target : null;
-    if (target?.closest("button, input, textarea, select, a[href], [data-find-bar]")) return;
+    if (target?.closest("button, input, textarea, select, a[href], [data-path-link], [data-find-bar]")) return;
     requestAnimationFrame(() => {
       if (view === "convo" && !hasConvoSelection()) focusComposer();
     });
@@ -830,6 +855,7 @@
           noteCard={qaNote}
           {images}
           {pictures}
+          paths={pathLinks}
           bind:bodyEl
         />
       {/if}

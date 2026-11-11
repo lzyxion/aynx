@@ -23,7 +23,6 @@
   import {
     attachShellIntegration,
     registerCommands,
-    wslCwdToWindows,
     type CopyResult,
     type PaneStatus,
     type ShellIntegration,
@@ -79,7 +78,7 @@
     onAgentHookSignal,
   } from "$lib/app/agent-status.svelte.js";
   import { linkResumedAutorun, seedAgentLink } from "$lib/app/agent-sessions.svelte.js";
-  import { forgetReportedCwd, noteReportedCwd } from "$lib/app/pane-cwd.svelte.js";
+  import { forgetReportedCwd, noteReportedCwd, pathLinkPlace } from "$lib/app/pane-cwd.svelte.js";
   import { notifyFinishedBlock } from "$lib/app/finish-notify";
   import {
     agentAutorunCommand,
@@ -855,12 +854,7 @@
    * 상대 경로는 폴더를 모르면 걸지 않는다(`resolvePathLink`).
    */
   function pathPlace(): PathLinkPlace | null {
-    const cwd = shell?.cwd() ?? null;
-    if (pane.kind === "ssh") return { kind: "remote", cwd };
-    if (pane.kind !== "local") return null;
-    const distro = pane.shell?.startsWith("wsl:") ? pane.shell.slice("wsl:".length) : null;
-    if (distro) return { kind: "wsl", cwd, toLocal: (p) => wslCwdToWindows(distro, p) };
-    return { kind: "local", cwd };
+    return pathLinkPlace(pane, shell?.cwd() ?? null);
   }
   /** 언마운트됐다 — 진행 중인 접속·타이머는 전부 여기서 걸러 낸다 */
   let disposed = false;

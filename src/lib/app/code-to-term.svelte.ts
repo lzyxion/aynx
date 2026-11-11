@@ -30,6 +30,9 @@ import { glowTile } from "$lib/app/tile-glow.svelte.js";
  * - "새 터미널 열기" 는 문서 타일 오른쪽에 이 창의 기본 셸을 열고(`openShellPaneBeside`), 셸이 입력을 받을 준비가 되면 넣는다
  *   (`shellReadyForInsert` — 시한을 넘기면 넣지 않고 알린다).
  *
+ * 받는 `code` 는 단추(`DocCodeBlock`)가 이미 `codeForTerm` 으로 주석 줄 · 빈 줄을 뺀 글이다 — 여기(고르기 상자 · 넣기 · 새 터미널)는
+ * 그 글을 그대로 다루고 다시 거르지 않는다.
+ *
  * 받는 쪽은 **셸 타일만**이다 — 세션 타일(로컬 · SSH — `hasSession`) 가운데 AI 타일(`isAgentPane` — Claude · Codex 를 띄운 타일과 지금
  * AI CLI 가 도는 셸 타일)을 뺀 것. 판정은 새로 짓지 않는다.
  *
@@ -45,7 +48,7 @@ import { glowTile } from "$lib/app/tile-glow.svelte.js";
 export interface CodeTermPicker {
   /** 누른 코드 블록이 사는 문서 타일 — 새 터미널이 이 옆에 선다 */
   sourcePaneId: string;
-  /** 넣을 블록 글 (열 때 한 번 받는다) */
+  /** 넣을 글 — 주석 줄 · 빈 줄을 뺀 블록 글 (열 때 한 번 받는다) */
   code: string;
   rows: TermRow[];
   selected: number;

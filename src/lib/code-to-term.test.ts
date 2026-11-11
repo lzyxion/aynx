@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  codeForTerm,
   codeInsertBytes,
   isShellLang,
   planTermTarget,
@@ -34,6 +35,37 @@ describe("isShellLang", () => {
   });
   it("그 밖의 언어는 거짓", () => {
     for (const l of ["python", "json", "ts", "rust", "yaml", "mermaid", "svg", "math", "shx"]) expect(isShellLang(l)).toBe(false);
+  });
+});
+
+describe("codeForTerm", () => {
+  it("줄 전체 주석 · 셔뱅 · 빈 줄을 뺀다", () => {
+    expect(codeForTerm("# 의존성 받기\nnpm ci\n", "bash")).toBe("npm ci");
+    expect(codeForTerm("#!/usr/bin/env bash\n\n  # 들여쓴 주석\nset -e\n   \nmake\n", null)).toBe("set -e\nmake");
+    expect(codeForTerm("# a\r\nls\r\n", "powershell")).toBe("ls");
+  });
+  it("줄 안 주석 · 줄 안 # 는 그대로", () => {
+    expect(codeForTerm("npm ci  # 설치", "sh")).toBe("npm ci  # 설치");
+    expect(codeForTerm('echo $# "a#b" http://x/#frag', "bash")).toBe('echo $# "a#b" http://x/#frag');
+  });
+  it("남은 줄의 들여쓰기 · 순서는 그대로", () => {
+    expect(codeForTerm("if true; then\n  # 설명\n    echo hi\nfi", "bash")).toBe("if true; then\n    echo hi\nfi");
+  });
+  it("cmd 계열 — REM(대소문자 무시 · 뒤가 공백이거나 끝) · :: 만 주석, # 는 아니다", () => {
+    expect(codeForTerm("REM 빌드\n  rem\n:: 설명\nnmake\n", "cmd")).toBe("nmake");
+    expect(codeForTerm("Rem x\nremove-thing\n# not\n", "bat")).toBe("remove-thing\n# not");
+    expect(codeForTerm("REM x\ndir", "Batch")).toBe("dir");
+    // cmd 가 아니면 REM 은 명령이다
+    expect(codeForTerm("REM x\ndir", "bash")).toBe("REM x\ndir");
+  });
+  it("전부 주석 · 빈 줄이면 빈 글 — codeInsertBytes 가 empty", () => {
+    expect(codeForTerm("# a\n\n  # b\n", "sh")).toBe("");
+    expect(codeInsertBytes(codeForTerm("# a\n\n", "sh"), true)).toEqual({ ok: false, why: "empty" });
+  });
+  it("주석을 빼면 한 줄 — 괄호 붙여넣기가 꺼져 있어도 들어간다", () => {
+    const code = "# 의존성 받기\nnpm ci\n";
+    expect(codeInsertBytes(code, false)).toEqual({ ok: false, why: "multiline" });
+    expect(codeInsertBytes(codeForTerm(code, "powershell"), false)).toEqual({ ok: true, bytes: "npm ci" });
   });
 });
 

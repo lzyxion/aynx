@@ -1012,7 +1012,12 @@
             AI 타일의 [터미널 | 대화] 넘기기(`pane/AiFlip` — 2026-10-17). 감싸개는 **모든** 터미널 타일에 늘 선다 — AI 판정에 따라
             생겼다 사라지면 `<Terminal>` 이 재마운트된다(= 세션 종료). AI 가 아니면 상자 하나일 뿐이다.
           -->
-          <AiFlip pane={item.pane} sessionId={sessionOf?.(item.pane.id) ?? null} shown={item.shown}>
+          <AiFlip
+            pane={item.pane}
+            sessionId={sessionOf?.(item.pane.id) ?? null}
+            shown={item.shown}
+            onopenpath={(target, line) => onopenpath?.(item.tab.id, item.pane.id, target, line)}
+          >
             <Terminal
               pane={item.pane}
               visible={item.shown}
