@@ -28,5 +28,7 @@ Aynx — Hyprland 감성의 AI 코딩 에이전트 작업 공간
 - [conventions.md](conventions.md) — 두 번 이상 깨진 코드 규칙만 모은 곳(용어표 포함)
 - [modules.md](modules.md) — 백엔드(`src-tauri/src/`) 모듈 지도 — 층별 표와 "어디를 고치나"
 - [modules-frontend.md](modules-frontend.md) — 프런트(`src/lib/`) 모듈 지도 — 배럴 규칙과 "어디를 고치나"
+- [invariants.md](invariants.md) — 보안 제약 전문 — 불변, 바꾸려면 사용자 결정(`CLAUDE.md` 는 한 줄 요약)
+- [architecture.md](architecture.md) — 아키텍처 전문 — 세션 서버 · MCP · 오케스트레이션
 
 설계 노트와 작업 기록 같은 내부 노트는 공개 저장소에 없다.
