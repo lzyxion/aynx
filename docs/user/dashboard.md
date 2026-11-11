@@ -141,8 +141,8 @@ Close it with `Esc` or the same ring.
 
 - **Source chips** — the default is this PC's conversation logs. If SSH-connected hosts exist, that server's conversation logs and **All** (the sum of this PC and the servers) can also be picked as
   chips. A host with no connected SSH tile shows the **last values read** ("not connected") — the app does not connect on its own to read them.
-- **Claude limits** — these values come from Claude Code through the status line of AYNX tiles, so they come **from this PC only**. They appear only on Pro and Max plans,
-  and show up once you use Claude Code in an AYNX tile.
+- **Claude limits** — these values come from Claude Code through the status line of Aynx tiles, so they come **from this PC only**. They appear only on Pro and Max plans,
+  and show up once you use Claude Code in an Aynx tile.
 - **Codex limits** — the last values Codex left in its conversation logs. If you pick a remote source, they are read from that server's Codex logs.
 - **Stale** — the limit's reset time has already passed. This % is a value from the previous window.
 

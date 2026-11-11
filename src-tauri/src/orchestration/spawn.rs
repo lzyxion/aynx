@@ -129,7 +129,7 @@ pub(crate) trait WorkerLauncher: Send + Sync {
 
 /// 머리줄 — 첫 글자는 늘 `[`.
 pub(crate) fn header(attempt_id: &str, task_id: &str) -> String {
-    format!("[AYNX · worker {attempt_id} · Task {task_id}]")
+    format!("[Aynx · worker {attempt_id} · Task {task_id}]")
 }
 
 /// ask-ai 와 같은 뜻의 정화 — C0 중 TAB · LF 만 남기고 CR(CRLF 포함)은 LF 로, DEL · C1 은 지운다.
@@ -144,7 +144,7 @@ pub(crate) fn sanitize_text(s: &str) -> String {
 pub(crate) fn task_body(task: &Task) -> String {
     let mut out = String::new();
     out.push_str(
-        "You are a worker agent that AYNX started for one task of an orchestration run. \
+        "You are a worker agent that Aynx started for one task of an orchestration run. \
 A coordinator AI defined the task below and a person supervises the run.\n\
 - Start with the get_task tool. Work only inside this worktree (your current folder). It is a separate git worktree on its own branch — not a security sandbox.\n\
 - When you are done, commit with the commit_changes tool (the app runs git for you — selection \"all\" or a list of files; you need no write access to .git), then call the report_done tool once with outcome success or failure.\n\
@@ -180,13 +180,13 @@ pub(crate) fn first_instruction(attempt_id: &str, task_id: &str, body: &str) -> 
 pub(crate) const WORKER_HEADLESS_RULE: &str = "You run headless — nobody can answer a permission prompt. If a tool or command you need is denied, keep your changes in place (do not revert them), then call report_done with outcome blocked and say exactly what you need (the command, network access, or the folder). You will be resumed in this same conversation once it is allowed.";
 
 /// 쓰기형(작업자 · 해결자)의 고정 문장 — 지침 턴 파일의 머리(3-6 · E19). 사람의 역할 지침은 이 뒤에 붙고 대신하지 못한다.
-pub(crate) const WORKER_FIXED_INSTRUCTIONS: &str = "# AYNX — worker role\n\nYou are a worker that AYNX started headless for one task of an orchestration run. \
+pub(crate) const WORKER_FIXED_INSTRUCTIONS: &str = "# Aynx — worker role\n\nYou are a worker that Aynx started headless for one task of an orchestration run. \
 Work only in your worktree, commit with commit_changes and finish every turn by calling report_done (success, failure — or blocked when something you need is denied). \
 You run headless — nobody can answer a permission prompt. If a tool or command you need is denied, keep your changes in place (do not revert them), then call report_done with outcome blocked and say exactly what you need.";
 
 /// 이어지는 지시의 머리줄 — 첫 글자는 늘 `[`(조정자 → 작업자 · 턴 번호).
 pub(crate) fn resume_header(attempt_id: &str, n: u32) -> String {
-    format!("[AYNX · coordinator → worker {attempt_id} · turn {n}]")
+    format!("[Aynx · coordinator → worker {attempt_id} · turn {n}]")
 }
 
 /// 이어지는 턴의 지시(위치 인자 — 같은 대화를 resume 하는 턴의 프롬프트). 머리줄 + 정화한 본문 + 끝맺는 한 줄(보고 규칙). **첫 글자는 늘
@@ -274,7 +274,7 @@ pub(crate) const REVIEWER_CLAUDE_TOOLS: &str = "Read,Grep,Glob";
 
 /// 검토자 머리줄 — 첫 글자는 늘 `[`.
 pub(crate) fn reviewer_header(attempt_id: &str, task_id: &str) -> String {
-    format!("[AYNX · reviewer {attempt_id} · Task {task_id}]")
+    format!("[Aynx · reviewer {attempt_id} · Task {task_id}]")
 }
 
 /// 검토자의 첫 지시(위치 인자) — 짧고 고정된 안내 + 고정 OID · 읽기 자리. Task 명세 · 보고 본문은 싣지 않는다(`get_task` 로 읽는다 —
@@ -284,7 +284,7 @@ pub(crate) fn reviewer_prompt(attempt_id: &str, task_id: &str, commit: &str, bas
     let mut s = reviewer_header(attempt_id, task_id);
     s.push('\n');
     s.push_str(&format!(
-        "You are a reviewer agent that AYNX started to review one worker's report in an orchestration run. \
+        "You are a reviewer agent that Aynx started to review one worker's report in an orchestration run. \
 This is a role-based supplementary review that a person and a coordinator AI read — not an independent guarantee.\n\
 - You review the reported commit {commit} against the task's base {base} — the task's own change, not the integration result.\n\
 - That commit is checked out read-only at {place} (a detached git worktree). Your current folder is an empty folder; read the code at that path.\n\
@@ -297,7 +297,7 @@ This is a role-based supplementary review that a person and a coordinator AI rea
 }
 
 /// 판정형(검토자)의 고정 문장 — 지침 턴 파일의 머리(헤드리스 설계 3-6 · E19). 사람의 역할 지침은 이 뒤에 붙고 대신하지 못한다.
-pub(crate) const REVIEWER_FIXED_INSTRUCTIONS: &str = "# AYNX — reviewer role\n\nYou are a read-only reviewer that AYNX started headless. \
+pub(crate) const REVIEWER_FIXED_INSTRUCTIONS: &str = "# Aynx — reviewer role\n\nYou are a read-only reviewer that Aynx started headless. \
 You can only read; report your verdict with report_review exactly once.";
 
 /// 보드에 보일 검토자의 실제 고정 인자(토큰 · 경로 · 프롬프트 없음) — 헤드리스 턴(3차 2단계 · `turn::turn_argv` 의 판정형 줄).

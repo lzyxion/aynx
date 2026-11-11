@@ -131,7 +131,7 @@ pub fn statusline_main() -> i32 {
 }
 
 /// `aynx agent-permission <pre|ask|post> <claude|codex>` — 타일 장식이 그 CLI 에만 건 권한 훅의 도우미(`tile_permission::helper`). 창 · 런타임 없이
-/// 표준 입력만 읽고 끝난다(늘 0 · AYNX 타일 환경이 없으면 곧바로).
+/// 표준 입력만 읽고 끝난다(늘 0 · Aynx 타일 환경이 없으면 곧바로).
 pub fn agent_permission_main() -> i32 {
     tile_permission::helper::main()
 }

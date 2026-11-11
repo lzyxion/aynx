@@ -75,7 +75,7 @@
 //!
 //! - **채팅 토큰**(`crate::chat_token`)은 [`spawn`] 의 [`prepare`] 가 그 세대로 뽑고(세션 서버에 MCP 포트가 있을 때) 끝 정리(코어 끝 →
 //!   `Host::on_ending` — 끝 사건 전) ·
-//!   띄우기 실패가 거둔다. 값은 Claude 임시 자리의 `--mcp-config`(AYNX 서버 하나 · `--strict-mcp-config` 그대로) · Codex 프로세스 환경
+//!   띄우기 실패가 거둔다. 값은 Claude 임시 자리의 `--mcp-config`(Aynx 서버 하나 · `--strict-mcp-config` 그대로) · Codex 프로세스 환경
 //!   (`bearer_token_env_var` · 사용자 MCP 는 그대로 끈다)에만 — 로그 · 이벤트 · 스냅숏에 없다. 읽기 도구 일곱은 CLI 에 미리 허용한다(판정은 서버).
 //! - **연결**은 op `side_chat_link` 만 바꾸고 채팅과 함께 산다(닫기 · TTL · 모두 닫기에서 잊는다 — 프런트가 `chats.json` 에서 다시 건다).
 //!   바뀌면 `link_note` → [`op_send`] 가 사람 글 앞에 **앱 고정 머리글**(`side_chat::event::link_header` — 타일 표시 이름(입력 칸 칩이
@@ -410,7 +410,7 @@ fn mcp_port() -> Option<u16> {
     hub::signal_port()
 }
 
-/// 이 세대의 채팅 토큰을 뽑는다(포트가 없거나 난수를 못 얻으면 `None` — 그 프로세스는 AYNX MCP 없이 뜬다).
+/// 이 세대의 채팅 토큰을 뽑는다(포트가 없거나 난수를 못 얻으면 `None` — 그 프로세스는 Aynx MCP 없이 뜬다).
 fn chat_mcp(id: &str, proc: ProcId) -> Option<ChatMcp> {
     let port = mcp_port()?;
     let token = crate::chat_token::issue(id, proc)?;

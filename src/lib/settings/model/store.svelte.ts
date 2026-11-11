@@ -148,7 +148,7 @@ class SettingsStore {
    */
   userTermThemes = $state<UserTermTheme[]>([]);
   /**
-   * `termThemeOf` 의 셋째 인자 — id → 테마와 **없을 때 떨어질 모드**(지운 테마 · 아직 못 읽은 목록 → 같은 모드의 AYNX).
+   * `termThemeOf` 의 셋째 인자 — id → 테마와 **없을 때 떨어질 모드**(지운 테마 · 아직 못 읽은 목록 → 같은 모드의 Aynx).
    * 모드는 `<html data-theme>` 이 진실이라([`isLightNow`]) `[app] mode` 를 함께 읽어 모드가 바뀔 때 다시 계산되게 한다.
    */
   userTermLookup = $derived.by((): UserTermLookup => {

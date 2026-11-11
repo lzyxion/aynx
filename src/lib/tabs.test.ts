@@ -157,12 +157,12 @@ describe("스키마 v1 왕복 — 트리 구조와 패널 종류가 그대로 �
   });
 
   it("프로젝트 탭의 고정 제목도 돌아오고, 없는 탭(옛 파일)에는 키가 없다", () => {
-    const pinned: TabSpec = { ...tab("t3", leafOf(newStartPane()), "AYNX"), pinnedTitle: "AYNX" };
+    const pinned: TabSpec = { ...tab("t3", leafOf(newStartPane()), "Aynx"), pinnedTitle: "Aynx" };
     const file = mustParse(JSON.stringify(serialize([...tabs, pinned], "t1")));
-    expect(file.workspaces[2].pinnedTitle).toBe("AYNX");
+    expect(file.workspaces[2].pinnedTitle).toBe("Aynx");
     expect("pinnedTitle" in file.workspaces[0]).toBe(false);
     const { tabs: restored } = deserialize(file);
-    expect(restored[2].pinnedTitle).toBe("AYNX");
+    expect(restored[2].pinnedTitle).toBe("Aynx");
     expect("pinnedTitle" in restored[0]).toBe(false);
   });
 

@@ -1,4 +1,4 @@
-# AYNX features
+# Aynx features
 
 English · [한국어](features.ko.md)
 

@@ -165,7 +165,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     // 연결은 'idle in transaction (aborted)' 가 아니다 — 세이브포인트로 살아났고 다음 문장이 돈다(같은 백엔드).
     if label == "direct" {
         let st: String = a
-            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'AYNX' ORDER BY backend_start DESC LIMIT 1", &[])
+            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'Aynx' ORDER BY backend_start DESC LIMIT 1", &[])
             .await
             .unwrap()
             .get(0);
@@ -255,7 +255,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     assert_eq!((r.rows.clone(), tx_of(&r)["state"].clone()), (vec![vec![json!(2)]], json!("none")));
     if label == "direct" {
         let st: String = a
-            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'AYNX' ORDER BY backend_start DESC LIMIT 1", &[])
+            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'Aynx' ORDER BY backend_start DESC LIMIT 1", &[])
             .await
             .unwrap()
             .get(0);
@@ -269,7 +269,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs1_t WHERE id = 12").await, 0);
     if label == "direct" {
         let st: String = a
-            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'AYNX' ORDER BY backend_start DESC LIMIT 1", &[])
+            .query_one("SELECT state FROM pg_stat_activity WHERE application_name = 'Aynx' ORDER BY backend_start DESC LIMIT 1", &[])
             .await
             .unwrap()
             .get(0);
@@ -296,7 +296,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     if label == "direct" {
         let id6 = begin(&o2).await;
         q(&o2, "INSERT INTO txs1_t VALUES (7, 70)", id6).await.unwrap();
-        a.batch_execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'AYNX'").await.unwrap();
+        a.batch_execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'Aynx'").await.unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         // 끊김을 이미 알아챘으면(드라이버 연결 태스크가 끝남 — 보통) 커밋을 보내지 않고 '끊김' 으로 맞춘 뒤 `[db-tx-stale]`(화면이 상태를
         // 다시 읽는다 — 커밋을 보내기 전에 끊겼으니 결과는 분명히 되돌림), 아직 몰랐으면 보낸 뒤 결과 불명 · 끊김.
@@ -319,7 +319,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
         table::set_tx_clock_for_test(Some((Duration::from_millis(1500), Duration::from_millis(500))));
         let id7 = begin(&o3).await;
         q(&o3, "INSERT INTO txs1_t VALUES (8, 80)", id7).await.unwrap();
-        a.batch_execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'AYNX'").await.unwrap();
+        a.batch_execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'Aynx'").await.unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         let v = view(&o3);
         assert_eq!((v["state"].as_str(), v["ended"]["outcome"].as_str()), (Some("disconnected"), Some("disconnected")), "{v}");

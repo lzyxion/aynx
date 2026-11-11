@@ -115,7 +115,7 @@ fn rename_refuses_a_just_written_conversation_bad_id_and_unknown_id() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 세션 서버 장부(`agent_state::convo`)와 같은 문 — 막 닫은 타일의 대화(놓인 뒤 쓰기 없음)는 2분 안이라도 곧바로 되고, AYNX 의 산
+/// 세션 서버 장부(`agent_state::convo`)와 같은 문 — 막 닫은 타일의 대화(놓인 뒤 쓰기 없음)는 2분 안이라도 곧바로 되고, Aynx 의 산
 /// 스트림에 연결된 대화는 오래전에 쓰였어도 거절, 놓인 뒤 유예보다 늦게 쓰였으면 예전처럼 거절.
 #[test]
 fn rename_follows_the_server_ledger() {

@@ -161,7 +161,7 @@ export function producerChatSetEffort(chat: string, effort: string | null): Prom
   return invoke("producer_chat_set_effort", { chat, effort });
 }
 
-/** 사람의 권한 결정 — 카드로 선 요청만(스튜디오 밖 Read · AYNX DB 읽기 — 그 밖은 서버가 카드 없이 거절해 표에 없다) */
+/** 사람의 권한 결정 — 카드로 선 요청만(스튜디오 밖 Read · Aynx DB 읽기 — 그 밖은 서버가 카드 없이 거절해 표에 없다) */
 export function producerChatDecide(chat: string, epoch: number, requestId: string, decision: "allow" | "deny"): Promise<boolean> {
   return invoke("producer_chat_decide", { chat, epoch, requestId, decision, message: null });
 }

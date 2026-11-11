@@ -768,9 +768,9 @@ fn launch_shapes_are_shared_and_rechecked() {
     assert_eq!(codex_overrides(&http("web")), ["mcp_servers.web.url='https://example.com/mcp'"]);
     assert!(launch_ok(&s) && launch_ok(&http("web")));
     let mut helper = s.clone();
-    helper.command = Some("C:/Program Files/AYNX/aynx's.exe".into());
+    helper.command = Some("C:/Program Files/Aynx/aynx's.exe".into());
     assert!(!launch_ok(&helper), "작은따옴표가 든 경로는 TOML 리터럴에 못 싣는다");
-    helper.command = Some("C:/AYNX/aynx.exe".into());
+    helper.command = Some("C:/Aynx/aynx.exe".into());
     helper.args = vec!["mcp-run".into(), "5555".into(), "a".repeat(64)];
     assert!(launch_ok(&helper));
 }

@@ -293,7 +293,7 @@
             label: u.name,
             group: t("settings.terminal.theme.group.user"),
           })),
-          // 고른 내 테마의 파일이 없으면(지웠거나 다른 PC 의 설정) 빈 손잡이 대신 그 사실을 한 줄로 — 그리는 것은 같은 모드의 AYNX
+          // 고른 내 테마의 파일이 없으면(지웠거나 다른 PC 의 설정) 빈 손잡이 대신 그 사실을 한 줄로 — 그리는 것은 같은 모드의 Aynx
           ...(isUserTermKey(settings.presetKey) && !settings.userTermLookup.themes[userTermId(settings.presetKey)]
             ? [{
                 value: settings.presetKey,

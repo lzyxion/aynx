@@ -236,7 +236,7 @@ fn producer_args_policy() {
             assert!(ins.contains(want), "{want}");
         }
         // 사이드 채팅의 답변 지침은 프로듀서에 싣지 않는다(2026-11-01)
-        assert!(!ins.contains("Answering (AYNX side chat)"), "{cli:?}");
+        assert!(!ins.contains("Answering (Aynx side chat)"), "{cli:?}");
     }
     assert!(ins.contains("end your turn"));
     // 미리 허용 — 행을 읽는 db_query 는 Claude 카드 · Codex 미리 허용(`never` 에서 카드가 설 길이 없다 — 판정은 서버의 연결 AI 권한) ·

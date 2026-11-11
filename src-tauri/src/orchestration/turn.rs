@@ -437,7 +437,7 @@ pub(crate) fn instructions_text(fixed: &str, role: Option<&str>, docs: &[(&str, 
             }
             b.truncate(end);
         }
-        out.push_str(&format!("## {name} (copied by AYNX — the same instructions an interactive session would load)\n\n"));
+        out.push_str(&format!("## {name} (copied by Aynx — the same instructions an interactive session would load)\n\n"));
         out.push_str(&b);
         if cut {
             out.push_str("\n\n(truncated)");

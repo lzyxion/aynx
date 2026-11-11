@@ -16,7 +16,7 @@ import type { AppearanceSnapshot } from "$lib/theme-profiles";
  * 터미널 팔레트는 앱이 실제로 거는 길과 **같은 함수**로 푼다 — 옛 키 별칭(`canonicalPreset`) →
  * 프리셋 또는 월페이퍼에서 뽑은 팔레트(`termThemeOf` + `dynamicTermTheme`). 모르는 키는 앱과
  * 똑같이 기본 프리셋으로 떨어진다. 사용자 테마(`user:<id>`)는 부르는 쪽이 건넨 목록으로 풀고, 없으면 **그 프로필 모드의**
- * AYNX 로 떨어진다(앱이 그리는 것과 같은 규칙).
+ * Aynx 로 떨어진다(앱이 그리는 것과 같은 규칙).
  *
  * 은은하게(`dynamic = "subtle"`)의 틴트는 여기 없다 — 그 색은 저장되지 않고 사진을 디코딩해야
  * 나오는 값이라, 카드 수만큼 사진을 읽는 비용을 치를 만큼의 차이가 아니다.

@@ -304,7 +304,7 @@ check(pill === "밖에서 열림", `밖에서 열림 알약 (${pill})`);
 const l2 = await ev(`window.__launch.length`);
 await key("Enter"); await sleep(300);
 const conf = await ev(`${PICK}?.querySelector('[data-fc-confirm]')?.textContent.trim() ?? null`);
-check(conf === "AYNX 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && (await ev(`window.__launch.length`)) === l2, `Enter → 한 번 묻는다 (${conf})`);
+check(conf === "Aynx 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && (await ev(`window.__launch.length`)) === l2, `Enter → 한 번 묻는다 (${conf})`);
 await key("Escape"); await sleep(200);
 check((await ev(`!!${PICK} && !${PICK}.querySelector('[data-fc-confirm]')`)) === true, "Escape → 묻기만 거두고 목록은 남는다");
 await key("Escape"); await sleep(300);

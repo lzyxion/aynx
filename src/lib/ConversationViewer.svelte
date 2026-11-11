@@ -145,7 +145,7 @@
   // ---------------------------------------------------------------------------
 
   let confirming = $state(false);
-  /** AYNX 의 타일(이 창 · 다른 창)에 열려 있나 — 다른 창이면 [타일로 가기]가 그 창으로 간다(`goToOpenConversation`) */
+  /** Aynx 의 타일(이 창 · 다른 창)에 열려 있나 — 다른 창이면 [타일로 가기]가 그 창으로 간다(`goToOpenConversation`) */
   const link = $derived(conv ? conversationOpen(conv) : false);
   const outside = $derived(conv !== null && link === null && conv.cwdExists && conversationOpenElsewhere(conv, now));
 

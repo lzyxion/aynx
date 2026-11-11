@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="static/logo.png" alt="AYNX" width="160">
+  <img src="static/logo.png" alt="Aynx" width="160">
 </p>
 
-<h1 align="center">AYNX</h1>
+<h1 align="center">Aynx</h1>
 
 <p align="center">
   <b>A Hyprland-style workspace for AI coding agents.</b><br>
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="AYNX">
+  <img src="docs/images/hero.png" alt="Aynx">
 </p>
 
 ## Features
@@ -37,7 +37,7 @@
 
 ## Getting started
 
-At first the window looks almost empty: AYNX keeps its menus in three docks that open when you hover an edge of the window.
+At first the window looks almost empty: Aynx keeps its menus in three docks that open when you hover an edge of the window.
 
 - **Left edge**: the launcher dock with shells, Claude Code, Codex, hosts, projects and databases (`Ctrl+Shift+H`)
 - **Right edge**: the side chat (`Ctrl+Shift+'`)
@@ -57,17 +57,17 @@ The supported AI agents are **Claude Code** and **Codex** only. On this PC they 
 
 ## AI agents and your account
 
-AYNX runs the official `claude` and `codex` CLIs you install and sign in to yourself, without modifying them, and configures them only through their documented flags, hooks and MCP settings.
+Aynx runs the official `claude` and `codex` CLIs you install and sign in to yourself, without modifying them, and configures them only through their documented flags, hooks and MCP settings.
 It never reads, stores or forwards their credentials, and it sends no model requests of its own.
 Terminal and AI tiles run the agents interactively. The side chat and orchestration run them non-interactively (`claude -p`, `codex exec` / `app-server`), and that usage counts toward your own plan or API key like any other use.
 Your use stays subject to each provider's terms: see Anthropic's [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page and OpenAI's [terms of use](https://openai.com/policies/terms-of-use/).
-AYNX is not affiliated with or endorsed by Anthropic or OpenAI.
+Aynx is not affiliated with or endorsed by Anthropic or OpenAI.
 
 ## Download
 
-Get the installer from the [latest release](https://github.com/lzyxion/aynx/releases/latest): `AYNX_<version>_x64-setup.exe` installs for the current user, `AYNX_<version>_x64_en-US.msi` for all users.
+Get the installer from the [latest release](https://github.com/lzyxion/aynx/releases/latest): `Aynx_<version>_x64-setup.exe` installs for the current user, `Aynx_<version>_x64_en-US.msi` for all users.
 The installers are unsigned, so Windows SmartScreen may warn on first run. Choose **More info → Run anyway**.
-New to AYNX? Start with the [Getting started](docs/user/getting-started.md) guide.
+New to Aynx? Start with the [Getting started](docs/user/getting-started.md) guide.
 
 ## Build from source
 

@@ -146,7 +146,7 @@ pub(crate) fn config_for(target: &NetTarget, addr: Option<std::net::SocketAddr>)
     if let Some(db) = &target.database {
         c.dbname(db);
     }
-    c.application_name("AYNX");
+    c.application_name("Aynx");
     c.connect_timeout(CONNECT_TIMEOUT);
     c.ssl_mode(ssl_mode_for(target.tls));
     c

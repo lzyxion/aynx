@@ -438,7 +438,7 @@ mod tests {
         crate::i18n::set_lang(crate::i18n::Lang::Ko);
         let op = pending_op(r#"sudo find /var/log -name "*.gz" -mtime +7 -delete"#, Effect::Read);
         assert!(op.mismatch);
-        let m = pending_message(&op, true, false, "AYNX");
+        let m = pending_message(&op, true, false, "Aynx");
         let text = m.debug_lines().join("\n");
         assert!(text.contains("요청: AI · t1 api"), "{text}");
         assert!(text.contains("AI 설명: nginx 로그 크기를 보여 줍니다"), "{text}");
@@ -447,10 +447,10 @@ mod tests {
         assert!(text.contains("대상: web-01, s-2"), "{text}");
         assert!(text.contains("만료 없음"), "{text}");
         assert!(!text.contains("명령:"), "명령 줄은 include_command 를 켠 사람에게만");
-        assert!(text.contains("승인은 AYNX 앱(또는 원격 웹)에서만"), "{text}");
+        assert!(text.contains("승인은 Aynx 앱(또는 원격 웹)에서만"), "{text}");
         assert!(m.is_alert(), "어긋나면 경고 색");
 
-        let quiet = pending_message(&op, false, true, "AYNX");
+        let quiet = pending_message(&op, false, true, "Aynx");
         let text = quiet.debug_lines().join("\n");
         assert!(!text.contains("AI 설명:"), "설명 끄면 싣지 않는다");
         assert!(text.contains("명령: sudo find"), "{text}");
@@ -461,7 +461,7 @@ mod tests {
         crate::i18n::set_lang(crate::i18n::Lang::Ko);
         let op = pending_op("du -ah /var/log/nginx | sort -rh | head -n 10", Effect::Read);
         assert!(!op.mismatch);
-        let m = pending_message(&op, true, false, "AYNX");
+        let m = pending_message(&op, true, false, "Aynx");
         let text = m.debug_lines().join("\n");
         assert!(text.contains("앱 분석: 읽기만 · du → sort → head · AI 설명과 일치"), "{text}");
         assert!(!text.contains("확인해 주세요"), "{text}");

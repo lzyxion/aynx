@@ -42,7 +42,7 @@ describe("resource-status", () => {
     expect(resourceRings([s(0, [5, 0, 0])], 0)?.mem).toBeNull();
   });
 
-  it("AYNX 몫 = GUI + 서버 + 타일 · CPU 는 100 으로 죔", () => {
+  it("Aynx 몫 = GUI + 서버 + 타일 · CPU 는 100 으로 죔", () => {
     const x = s(0, [20, 1000, 4000], { a: [8, 400], b: [3, 100] });
     expect(prismShare(x, "cpu")).toBe(14);
     expect(prismShare(x, "mem")).toBe(800);

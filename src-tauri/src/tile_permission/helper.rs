@@ -2,7 +2,7 @@
 //! 그 CLI 프로세스에만 건 훅(`super::hook_words`)이 부른다.
 //!
 //! - 환경(`AYNX_MCP_URL` = `http://127.0.0.1:<포트>` · `AYNX_STREAM` · `AYNX_PERMISSION_TOKEN`) 중 하나라도 없거나 모양이 틀리면 **아무것도 하지
-//!   않고 0** — AYNX 밖에서 띄운 CLI · 헤드리스(정화된 환경)는 기다리지 않는다(사용자 결정 5 · 6).
+//!   않고 0** — Aynx 밖에서 띄운 CLI · 헤드리스(정화된 환경)는 기다리지 않는다(사용자 결정 5 · 6).
 //! - 표준 입력(훅 JSON)을 봉투로 줄인다: 도구 입력은 문자열을 잘라 [`super::MAX_BODY_BYTES`] 안에 맞추고(`truncated`), 대조 요약 `digest` 는
 //!   **자르기 전** 입력에서. `pre` · `post` 는 본문을 싣지 않는다(열쇠만).
 //! - `ask` 는 짧게 나눈 롱폴(`wait`)을 결정 · 풀림이 올 때까지 되풀이하고, 결정이면 서버가 지은 훅 응답 JSON 을 **그대로** stdout 에 한 줄.
@@ -246,7 +246,7 @@ mod tests {
     fn env_must_be_complete_and_local() {
         let tok = "a".repeat(64);
         assert!(Env::parse(Some("http://127.0.0.1:4100"), Some("abc"), Some(&tok)).is_some());
-        // AYNX 밖(값 없음) · 남의 주소 · 모양이 틀린 스트림 · 토큰 → 없는 것(곧바로 0).
+        // Aynx 밖(값 없음) · 남의 주소 · 모양이 틀린 스트림 · 토큰 → 없는 것(곧바로 0).
         assert!(Env::parse(None, Some("abc"), Some(&tok)).is_none());
         assert!(Env::parse(Some("http://127.0.0.1:4100"), Some("abc"), None).is_none());
         assert!(Env::parse(Some("http://evil.com:4100"), Some("abc"), Some(&tok)).is_none());

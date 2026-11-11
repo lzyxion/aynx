@@ -182,19 +182,19 @@ pub(crate) fn message_text(n: &Notice) -> String {
         ),
         "wake-limit" => tr!(
             ko: "앱이 프로듀서를 더 깨우지 않습니다 — 프로듀서 채팅에 말하면 이어 갑니다",
-            en: "AYNX stopped waking the producer — message the producer chat to continue"
+            en: "Aynx stopped waking the producer — message the producer chat to continue"
         ),
         "wake-ignored" => tr!(
             ko: "프로듀서가 앱의 깨움에 반응하지 않았습니다 — 앨범을 확인하세요",
-            en: "The producer did not respond to AYNX's wake-up — check the album"
+            en: "The producer did not respond to Aynx's wake-up — check the album"
         ),
         "wake-failed" => tr!(
             ko: "앱이 프로듀서를 깨우지 못했습니다 — 프로듀서 채팅에 말하면 이어 갑니다",
-            en: "AYNX could not wake the producer — message the producer chat to continue"
+            en: "Aynx could not wake the producer — message the producer chat to continue"
         ),
         "wake-turn-timeout" => tr!(
             ko: "앱이 깨운 프로듀서 턴이 시한을 넘겨 끊었습니다",
-            en: "A producer turn started by AYNX ran past its time limit and was interrupted"
+            en: "A producer turn started by Aynx ran past its time limit and was interrupted"
         ),
         "auto-merge-stopped" => tr!(
             ko: "자동 병합을 멈췄습니다 — 앨범에서 까닭을 보고 [병합] 하세요",

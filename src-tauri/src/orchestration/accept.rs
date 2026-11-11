@@ -363,7 +363,7 @@ impl Orchestration {
         };
         if let MergeResult::Conflict(p) = merged {
             // ⑦ 충돌 — 커밋(후보)을 만들지 않는다. 충돌 트리는 따로 붙잡는다(해결 Attempt 의 재료 — `resolve.rs`).
-            let msg = format!("AYNX conflict tree (not an integration)\n\nAynx-Run: {run_id}\nAynx-Task: {}\n", job.task_id);
+            let msg = format!("Aynx conflict tree (not an integration)\n\nAynx-Run: {run_id}\nAynx-Task: {}\n", job.task_id);
             let cc = git.commit_tree(&repo, &p.tree, &old, &msg).ok();
             if let Some(c) = &cc {
                 let op = RefOp::Update { name: refs::conflict(&refs::base_of(run_id, &integ.work_ref), &job.task_id), new: c.clone(), old: None };

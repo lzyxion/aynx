@@ -480,7 +480,7 @@ fn codex_ready() -> Codex {
     assert_eq!(
         j(&hs[0]),
         json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-            "clientInfo": {"name": "aynx", "title": "AYNX", "version": "0.1.0"}, "capabilities": {"experimentalApi": false}}})
+            "clientInfo": {"name": "aynx", "title": "Aynx", "version": "0.1.0"}, "capabilities": {"experimentalApi": false}}})
     );
     let mut evs = Vec::new();
     let mut stdin = Vec::new();
@@ -810,7 +810,7 @@ fn fixed_files_and_adapter_objects() {
 // 5단계 — 채팅 MCP · 연결 머리글
 // ---------------------------------------------------------------------------
 
-/// Claude `--mcp-config` 본문 = AYNX 서버 하나 · 그 토큰(머리) — `--strict-mcp-config` 는 그대로 · 읽기 도구는 `--allowedTools` 끝에 더한다.
+/// Claude `--mcp-config` 본문 = Aynx 서버 하나 · 그 토큰(머리) — `--strict-mcp-config` 는 그대로 · 읽기 도구는 `--allowedTools` 끝에 더한다.
 #[test]
 fn claude_chat_mcp_config_and_allowed_reads() {
     let body: Value = serde_json::from_str(&claude::mcp_config("aynx-sessions-dev", "http://127.0.0.1:5555/mcp", "tok-xyz")).unwrap();
@@ -833,7 +833,7 @@ fn claude_chat_mcp_config_and_allowed_reads() {
     assert_eq!(plain[at + 4], "--disallowedTools");
 }
 
-/// Codex — 사용자 MCP 는 하나씩 끄되 **우리 이름은 끄지 않고**, AYNX 서버 하나를 주소 · 토큰 환경 변수 이름(값 아님) · 켬 · 읽기 도구 미리
+/// Codex — 사용자 MCP 는 하나씩 끄되 **우리 이름은 끄지 않고**, Aynx 서버 하나를 주소 · 토큰 환경 변수 이름(값 아님) · 켬 · 읽기 도구 미리
 /// 허용으로 싣는다. 작은따옴표 · 제어 문자 · 키 조각이 아닌 이름은 거절.
 #[test]
 fn codex_chat_mcp_args_add_only_aynx() {
@@ -1081,7 +1081,7 @@ fn ext(name: &str, no_ask: bool) -> crate::agent_mcp::McpServer {
     .unwrap()
 }
 
-/// Claude — `--mcp-config` 본문에 고른 서버를 더하고(AYNX 칸은 덮지 않는다), 묻지 않기 서버만 통째 규칙 `mcp__<서버>` 로 미리 허용.
+/// Claude — `--mcp-config` 본문에 고른 서버를 더하고(Aynx 칸은 덮지 않는다), 묻지 않기 서버만 통째 규칙 `mcp__<서버>` 로 미리 허용.
 /// `--strict-mcp-config` 는 그대로(사용자 CLI 설정의 서버는 안 실린다).
 #[test]
 fn claude_external_mcp_config_and_no_ask_rules() {
@@ -1092,7 +1092,7 @@ fn claude_external_mcp_config_and_no_ask_rules() {
     assert_eq!(map.len(), 3);
     assert_eq!(map["aynx-sessions-dev"]["headers"]["Authorization"], "Bearer tok-xyz");
     assert_eq!(map["ask"], json!({ "type": "stdio", "command": "node", "args": ["C:/mcp/srv.mjs", "ask"] }));
-    // 같은 이름은 덮지 않는다(AYNX 이름은 외부 목록에서 거절되지만 한 번 더)
+    // 같은 이름은 덮지 않는다(Aynx 이름은 외부 목록에서 거절되지만 한 번 더)
     let mut clash = ext("aynx-sessions-dev", true);
     clash.command = Some("evil".into());
     let body: Value = serde_json::from_str(&claude::mcp_config_with(&base, &[clash])).unwrap();

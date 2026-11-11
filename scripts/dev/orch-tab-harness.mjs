@@ -888,7 +888,7 @@ if (ONLY === "" || ONLY === "producer" || ONLY === "wake") {
   const F = `${H} [data-producer-face]`;
   const WT = (id, title, state, cur) => ({ id, title, goal: title, dependsOn: [], version: 1, state, currentAttempt: cur, createdAt: NOW - 30 * 60_000, updatedAt: NOW });
   const WA = (id, taskId, state, extra = {}) => ({ id, taskId, cli: "claude", gen: 1, state, kind: "write", roleName: "impl", role: "worker", startedAt: NOW - 10 * 60_000, worktree: null, branch: null, conversationId: null, turns: [], ...extra });
-  const WAKE_TEXT = "[AYNX app notice — not from the person] Album run-wk (gen 1) changed after seq 4: task t1 reported success; task t2 integrated. Read get_run (or wait_run with afterSeq=4) for details, then keep coordinating. If nothing needs you now, end your turn with a one-line note.";
+  const WAKE_TEXT = "[Aynx app notice — not from the person] Album run-wk (gen 1) changed after seq 4: task t1 reported success; task t2 integrated. Read get_run (or wait_run with afterSeq=4) for details, then keep coordinating. If nothing needs you now, end your turn with a one-line note.";
   await ev(`(async () => (await ${importApp('app/dock.svelte.ts')}).closeDock())()`);
   const { chat } = await legacyAlbum('run-wk', '깨움 앨범', '로그 회전을 나눠서 해 줘');
   const E = (e) => `window.__pcEmit(${JSON.stringify(chat)}, ${JSON.stringify(e)})`;
@@ -924,7 +924,7 @@ if (ONLY === "" || ONLY === "producer" || ONLY === "wake") {
   await until(`document.querySelectorAll('${F} [data-item="wake"]').length === 1`, 8000);
   check(
     "⑫ 기록 — 앨범 기록과 맞는 깨움 하나만 알약(#1 보고 · #2 통합 · seq 4 뒤) · 같은 문장을 사람이 친 것은 말풍선 + 앱 기록 없음",
-    await ev(`[document.querySelectorAll('${F} [data-item="wake"]').length, document.querySelector('${F} [data-item="wake"]')?.textContent.trim(), document.querySelectorAll('${F} [data-wake-unrecorded]').length, [...document.querySelectorAll('${F} [data-item="user"]')].filter((x) => x.textContent.includes('AYNX app notice')).length]`),
+    await ev(`[document.querySelectorAll('${F} [data-item="wake"]').length, document.querySelector('${F} [data-item="wake"]')?.textContent.trim(), document.querySelectorAll('${F} [data-wake-unrecorded]').length, [...document.querySelectorAll('${F} [data-item="user"]')].filter((x) => x.textContent.includes('Aynx app notice')).length]`),
     [1, "앱이 깨움 · #1 보고 · #2 통합 (seq 4 뒤)", 1, 1],
   );
   check("⑫ 기록의 턴 끝 경계 — 에이전트 줄 뒤 사람 말(알약 포함) 앞마다 · 시각", await ev(`[document.querySelectorAll('${F} [data-item="turn-break"]').length, /턴 끝 · 프로듀서 쉼 \\(\\d\\d:\\d\\d\\)/.test(document.querySelector('${F} [data-item="turn-break"]')?.textContent ?? '')]`), [2, true]);
@@ -985,7 +985,7 @@ if (ONLY === "" || ONLY === "fixb") {
   const F = `${H} [data-producer-face]`;
   const WT = (id, title, state, cur) => ({ id, title, goal: title, dependsOn: [], version: 1, state, currentAttempt: cur, createdAt: NOW - 30 * 60_000, updatedAt: NOW });
   const WA = (id, taskId, state) => ({ id, taskId, cli: "claude", gen: 1, state, kind: "write", roleName: "impl", role: "worker", startedAt: NOW - 10 * 60_000, worktree: null, branch: null, conversationId: null, turns: [] });
-  const LIVE_TEXT = "[AYNX app notice — not from the person] Album run-fx (gen 1) changed after seq 6: task t1 integrated. Read get_run (or wait_run with afterSeq=6) for details, then keep coordinating. If nothing needs you now, end your turn with a one-line note.";
+  const LIVE_TEXT = "[Aynx app notice — not from the person] Album run-fx (gen 1) changed after seq 6: task t1 integrated. Read get_run (or wait_run with afterSeq=6) for details, then keep coordinating. If nothing needs you now, end your turn with a one-line note.";
   await ev(`(async () => (await ${importApp("app/dock.svelte.ts")}).closeDock())()`);
   const { chat } = await legacyAlbum('run-fx', '실기용 앨범', 'e1 · e2 를 나눠서 해 줘');
   const E = (e) => `window.__pcEmit(${JSON.stringify(chat)}, ${JSON.stringify(e)})`;

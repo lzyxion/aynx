@@ -71,9 +71,9 @@ export const OPEN_ELSEWHERE_WINDOW_MS = 2 * 60_000;
 export const RELEASE_GRACE_MS = 5_000;
 
 /**
- * 이 대화가 **밖에서 열림**인가(화면 "열림" 의 짝 — 그쪽은 aynx 타일에 열려 있다) — AYNX 의 어느 타일에도 연결되지 않았고 파일이
+ * 이 대화가 **밖에서 열림**인가(화면 "열림" 의 짝 — 그쪽은 aynx 타일에 열려 있다) — Aynx 의 어느 타일에도 연결되지 않았고 파일이
  * [`OPEN_ELSEWHERE_WINDOW_MS`] 안에 고쳐졌는데, 그 쓰기가 **마지막으로 놓인 뒤**(`releasedAt` — 세션 서버 장부 · 타일 닫기 · CLI 끝 ·
- * 대화 바꾸기) [`RELEASE_GRACE_MS`] 보다 늦다. 놓인 기록이 없으면(`null` — 장부를 못 읽음 · AYNX 에서 연 적 없음) 예전 규칙 그대로.
+ * 대화 바꾸기) [`RELEASE_GRACE_MS`] 보다 늦다. 놓인 기록이 없으면(`null` — 장부를 못 읽음 · Aynx 에서 연 적 없음) 예전 규칙 그대로.
  * Rust `agent_state::convo::busy` 와 같은 규칙이다(docs/log/2026-10-24-convo-rename.md "열림 판정 — 세션 서버 장부").
  */
 export function openElsewhere(
@@ -550,7 +550,7 @@ export interface ConversationPaletteEntry {
   scope: string;
   updatedAt: number;
   /**
-   * `open` = AYNX 타일에 열려 있다(Enter = 그 타일로 — 다른 창이면 그 창으로) · `missing` = 폴더가 없다(누를 수 없다) ·
+   * `open` = Aynx 타일에 열려 있다(Enter = 그 타일로 — 다른 창이면 그 창으로) · `missing` = 폴더가 없다(누를 수 없다) ·
    * `elsewhere` = aynx 밖에서 열려 있다([`openElsewhere`] — Enter 는 재개 대신 대시보드의 그 줄로 데려간다)
    */
   state: "ok" | "open" | "missing" | "elsewhere";

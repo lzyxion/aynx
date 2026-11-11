@@ -85,7 +85,7 @@ import { sideChatConvMarkOf } from "$lib/app/side-chats.svelte.js";
  *
  * ## 다른 창 · 막 닫은 타일 — 세션 서버 장부 (docs/log/2026-10-24-convo-rename.md "열림 판정 — 세션 서버 장부")
  *
- * 위 표는 이 창의 것이라 다른 AYNX 창(보조 창 · 원격 웹)의 타일을 모르고, 타일을 닫으면 연결이 사라져 그 대화가 2분 동안 "밖에서 열림" 으로
+ * 위 표는 이 창의 것이라 다른 Aynx 창(보조 창 · 원격 웹)의 타일을 모르고, 타일을 닫으면 연결이 사라져 그 대화가 2분 동안 "밖에서 열림" 으로
  * 보였다. 세션 서버가 대화 ↔ 스트림 장부(쥔 스트림 · 놓인 시각 — 서버 op `agent_conversation_links`)를 쥔다 — 목록을 읽을 때 함께 한 번
  * 읽고([`loadConversationLinks`]), 연결이 바뀔 만한 사건(이 창의 연결이 서고 · 사라짐 · 다른 창 스트림의 대화 신호 · `session-end` —
  * [`noteConversationSignal`])에 잠시 모아 다시 읽는다(폴링 없음). **이 창의 타일은 이 창의 표가**, 다른 창의 스트림은 장부가 "열림" 을 정하고,
@@ -573,7 +573,7 @@ function isThisWindowStream(stream: string): boolean {
 }
 
 /**
- * 그 대화를 **다른 AYNX 창**(보조 창 · 원격 웹)의 타일이 쥐었나 — 세션 서버 장부가 아는 그 스트림(없으면 `null`). 이 창의 타일에 열려
+ * 그 대화를 **다른 Aynx 창**(보조 창 · 원격 웹)의 타일이 쥐었나 — 세션 서버 장부가 아는 그 스트림(없으면 `null`). 이 창의 타일에 열려
  * 있으면 `null`(그쪽은 [`linkedTile`]). 반응형.
  */
 export function conversationOpenOtherWindow(s: Pick<AgentConversation, "agent" | "id">): string | null {
@@ -581,7 +581,7 @@ export function conversationOpenOtherWindow(s: Pick<AgentConversation, "agent" |
   return otherWindowStream(convoLinks?.get(conversationLinkKey(s.agent, s.id)), isThisWindowStream);
 }
 
-/** 그 대화가 **AYNX 의 어느 타일**(이 창 · 다른 창)에 열려 있나 — 화면의 "열림". 반응형 */
+/** 그 대화가 **Aynx 의 어느 타일**(이 창 · 다른 창)에 열려 있나 — 화면의 "열림". 반응형 */
 export function conversationOpen(s: Pick<AgentConversation, "agent" | "id">): boolean {
   return linkedTile(s.agent, s.id) !== null || conversationOpenOtherWindow(s) !== null;
 }
@@ -733,7 +733,7 @@ export function openConversationById(
 }
 
 /**
- * 이 대화가 밖에서 열려 있나 — AYNX 의 어느 타일에도 연결되지 않았고 파일이 방금(마지막으로 놓인 뒤) 고쳐졌다(순수 층 [`openElsewhere`]).
+ * 이 대화가 밖에서 열려 있나 — Aynx 의 어느 타일에도 연결되지 않았고 파일이 방금(마지막으로 놓인 뒤) 고쳐졌다(순수 층 [`openElsewhere`]).
  * 반응형.
  */
 export function conversationOpenElsewhere(s: AgentConversation, now: number): boolean {

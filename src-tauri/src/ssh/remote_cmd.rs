@@ -184,8 +184,8 @@ pub(crate) fn tmux_attach_command_with_env(
     // 사람이 읽는 줄이라 언어를 따라간다. **번역문도 [`sh_quote`] 를 지난다** — 셸에 그대로
     // 들어가는 자리라 따옴표 하나가 섞이면 줄이 깨진다(리터럴을 믿지 않는다).
     let missing = sh_quote(&tr!(
-        ko: "[AYNX] tmux 가 없어 일반 셸로 남깁니다",
-        en: "[AYNX] tmux is missing — keeping a plain shell"
+        ko: "[Aynx] tmux 가 없어 일반 셸로 남깁니다",
+        en: "[Aynx] tmux is missing — keeping a plain shell"
     ));
     let titles = tmux_title_chain(&q);
     let Some(env) = env else {
@@ -543,8 +543,8 @@ pub(crate) fn tmux_attach_command_with_start(
     let detach = if kick_stale_client { " -D" } else { "" };
     let q = sh_quote(name);
     let missing = sh_quote(&tr!(
-        ko: "[AYNX] tmux 가 없어 일반 셸로 남깁니다",
-        en: "[AYNX] tmux is missing — keeping a plain shell"
+        ko: "[Aynx] tmux 가 없어 일반 셸로 남깁니다",
+        en: "[Aynx] tmux is missing — keeping a plain shell"
     ));
     let env = start
         .signal_env

@@ -55,7 +55,7 @@ fn os_request() -> Option<Request> {
         use windows_sys::Win32::System::Threading::{REASON_CONTEXT, REASON_CONTEXT_0, POWER_REQUEST_CONTEXT_SIMPLE_STRING};
 
         // 전원 관리 진단(`powercfg /requests`)에 보이는 사유 — 호출 동안만 살아 있으면 된다(OS 가 복사한다).
-        let mut reason: Vec<u16> = "AYNX keep awake".encode_utf16().chain(std::iter::once(0)).collect();
+        let mut reason: Vec<u16> = "Aynx keep awake".encode_utf16().chain(std::iter::once(0)).collect();
         let ctx = REASON_CONTEXT {
             Version: 0, // POWER_REQUEST_CONTEXT_VERSION
             Flags: POWER_REQUEST_CONTEXT_SIMPLE_STRING,

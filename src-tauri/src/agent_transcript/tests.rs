@@ -233,7 +233,7 @@ fn producer_briefs_are_stripped_from_the_first_message() {
     let p = page(&codex, None, 40, codex_events);
     assert_eq!(texts(&p)[0], "이 저장소 정리 계획을 세워 줘");
     assert!(p.items[0].brief && !p.items[1].brief && !p.items[2].brief);
-    assert!(texts(&p)[1].starts_with("앞 [AYNX producer brief"));
+    assert!(texts(&p)[1].starts_with("앞 [Aynx producer brief"));
     assert!(serde_json::to_value(&p.items[1]).unwrap().get("brief").is_none());
     assert_eq!(serde_json::to_value(&p.items[0]).unwrap()["brief"], true);
     assert!(!serde_json::to_string(&p.items[0]).unwrap().contains("producer (coordinator)"), "지침 글은 화면으로 가지 않는다");

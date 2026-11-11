@@ -67,7 +67,7 @@ describe("profilePreview", () => {
     expect(unknown.ansi[1]).toBe(TERM_PRESETS["aynx-dark"].theme.red);
   });
 
-  it("걷은 옛 프리셋 키는 앱과 같은 별칭으로 푼다 — `light` → AYNX Light", () => {
+  it("걷은 옛 프리셋 키는 앱과 같은 별칭으로 푼다 — `light` → Aynx Light", () => {
     const p = profilePreview(snap({ terminal: { theme: "light" } as AppearanceSnapshot["terminal"] }));
     expect(p.ansi[1]).toBe(TERM_PRESETS["aynx-light"].theme.red);
   });

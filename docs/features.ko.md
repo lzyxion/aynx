@@ -1,4 +1,4 @@
-# AYNX 전체 기능
+# Aynx 전체 기능
 
 [English](features.md) · 한국어
 

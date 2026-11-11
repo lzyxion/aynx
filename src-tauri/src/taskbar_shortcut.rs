@@ -14,7 +14,7 @@
 //!   Windows 11 은 전역 알림만으로는 작업 표시줄이 갱신되지 않는다(Chromium `profile_shortcut_manager_win.cc`).
 //!   실측: 실행 중인 단추가 이것으로 곧바로 바뀐다.
 //!
-//! 대가(알고 받음): 시작 메뉴에 AYNX 가 둘(MSI 것 + 이것) 보이고, 앱을 제거해도 이 `.lnk` 와 `.ico` 는 남는다.
+//! 대가(알고 받음): 시작 메뉴에 Aynx 가 둘(MSI 것 + 이것) 보이고, 앱을 제거해도 이 `.lnk` 와 `.ico` 는 남는다.
 //! 블로킹(파일·COM)이라 `spawn_blocking` 에서 부른다. 실패는 삼킨다 — 작업 표시줄 그림만 빌드 아이콘으로 남을 뿐이다.
 
 use std::path::{Path, PathBuf};
@@ -38,7 +38,7 @@ use windows::Win32::UI::Shell::{
 pub struct Spec {
     /// 작업 표시줄 앱 ID (`<identifier>.window`)
     pub app_id: String,
-    /// 바로 가기 이름·설명 (`AYNX` · 개발 빌드 `AYNX (dev)`)
+    /// 바로 가기 이름·설명 (`Aynx` · 개발 빌드 `Aynx (dev)`)
     pub name: String,
     /// 바로 가기가 띄울 exe (지금 실행 중인 것)
     pub exe: PathBuf,

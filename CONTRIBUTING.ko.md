@@ -1,4 +1,4 @@
-# AYNX 기여 안내
+# Aynx 기여 안내
 
 [English](CONTRIBUTING.md) · 한국어
 

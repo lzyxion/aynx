@@ -202,7 +202,7 @@ fn side_chat_env_uses_tile_scrub() {
         }
     }
     assert_eq!(CORE_SPAWN.matches("l.env").count(), 1, "환경은 생성에 그대로 하나");
-    // 공용 정화가 실제로 걷는다(AYNX 토큰 · 세션 표지 — 대소문자 무관).
+    // 공용 정화가 실제로 걷는다(Aynx 토큰 · 세션 표지 — 대소문자 무관).
     let mut inherited: Vec<(String, String)> =
         crate::pty::scrub_env_names().map(|n| (n.to_ascii_lowercase(), "inherited".to_string())).collect();
     inherited.push(("CLAUDE_CONFIG_DIR".into(), "keep".into()));
@@ -213,7 +213,7 @@ fn side_chat_env_uses_tile_scrub() {
 
 /// (2026-10-25) **외부 MCP 목록은 프런트가 못 끼운다** — 사이드 채팅 op 몸(`*Body`)에 서버 · 명령 · URL 칸이 없고(모르는 칸은 버려진다),
 /// 띄울 때의 목록은 [`prepare`] 가 저장된 설정에서 읽는 것(`agent_mcp::side_chat_servers`) 하나뿐이며, GUI 프록시(Tauri 명령)도 그 칸을 싣지
-/// 않는다. 실린 것 = AYNX 채팅 서버 + 사람이 설정에서 사이드 채팅을 고른 외부 서버(Claude `--strict-mcp-config` 그대로).
+/// 않는다. 실린 것 = Aynx 채팅 서버 + 사람이 설정에서 사이드 채팅을 고른 외부 서버(Claude `--strict-mcp-config` 그대로).
 #[test]
 fn side_chat_ops_take_no_server_list() {
     let mut bodies = Vec::new();
@@ -251,7 +251,7 @@ fn side_chat_instructions_always_carry_search_guide() {
     assert!(SRC.contains("let append = Some(spot.write(\"instructions.md\", &instructions(&root))"));
     let body = crate::orchestration::turn::instructions_text(&fixed_guide(), None, &[("Global CLAUDE.md", "G")]).unwrap();
     assert!(body.starts_with(ANSWER_GUIDE) && body.ends_with("G\n\n"), "{body}");
-    let (a, s) = (body.find("Answering (AYNX side chat):").unwrap(), body.find("Web search (AYNX side chat):").unwrap());
+    let (a, s) = (body.find("Answering (Aynx side chat):").unwrap(), body.find("Web search (Aynx side chat):").unwrap());
     assert!(a < s, "답변 지침이 검색 지침 앞");
     assert!(SEARCH_GUIDE.lines().count() <= 10 && ANSWER_GUIDE.lines().count() <= 8, "짧게");
     // 범용 글 — 직업 · OS 를 가정하지 않는다(2026-11-01 사용자)
@@ -838,7 +838,7 @@ mod live {
             .collect()
     }
 
-    /// 5단계 — **채팅 MCP 토큰 · 연결 칩**(가짜 CLI · 실제 `/mcp`): 띄울 때 그 세대의 토큰이 임시 `--mcp-config`(AYNX 서버 + 사람이 사이드
+    /// 5단계 — **채팅 MCP 토큰 · 연결 칩**(가짜 CLI · 실제 `/mcp`): 띄울 때 그 세대의 토큰이 임시 `--mcp-config`(Aynx 서버 + 사람이 사이드
     /// 채팅에 고른 외부 서버만 — 2026-10-25 · 볼트가 잠겨 비밀 값을 못 준비한 서버는 빼고 `mcp-locked`)에만 들고 →
     /// 목록은 세션 읽기 일곱(작업안 · DB · 조율 없음) → 연결 없으면 `not-linked` → `side_chat_link` 는 서버 거울의 창 타일만(`bad-link`) ·
     /// 연결된 세션 하나만(다른 id · `sessions` 는 `not-the-linked-session` · `list_sessions` 는 그 하나) · 읽기 허용이 꺼진 타일은 `not-readable` →
@@ -901,10 +901,10 @@ mod live {
         let cfg_path = root.join(".run").join(format!("{chat}-{e}")).join("mcp.json");
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(&cfg_path).expect("채팅 mcp.json")).unwrap();
         let servers = cfg["mcpServers"].as_object().unwrap();
-        // AYNX 서버 + 사람이 사이드 채팅에 고른 외부 서버만(고르지 않은 것 · 볼트가 잠겨 못 준비한 것은 없다)
+        // Aynx 서버 + 사람이 사이드 채팅에 고른 외부 서버만(고르지 않은 것 · 볼트가 잠겨 못 준비한 것은 없다)
         let mut keys: Vec<&str> = servers.keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, [crate::instance::mcp_name(crate::instance::DEV), "plain"], "AYNX + 고른 서버만");
+        assert_eq!(keys, [crate::instance::mcp_name(crate::instance::DEV), "plain"], "Aynx + 고른 서버만");
         assert_eq!(servers["plain"], json!({ "type": "stdio", "command": "node", "args": ["srv.mjs"] }));
         let mcp_ev = evs.iter().map(|e| &e["ev"]).find(|e| t(e) == "mcpServers").expect("실린 외부 서버 이름");
         assert_eq!(mcp_ev["names"], json!(["plain"]));

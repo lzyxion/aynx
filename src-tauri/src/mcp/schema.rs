@@ -58,7 +58,7 @@ pub(super) fn initialize_result_for(kind: Instructions) -> Value {
 
 /// 새 길의 계약. 구성과 검증 명령은 사람이 이미 고른 값이며 MCP 쓰기 도구는 없다.
 const ALBUM_INSTRUCTIONS: &str = "\
-Orchestration (AYNX): the album is already open. Call get_run first without arguments to read runId and gen. \
+Orchestration (Aynx): the album is already open. Call get_run first without arguments to read runId and gen. \
 Pass runId and gen on every other coordination call. Retry the same write with the same requestId; use a new requestId for a different call. \
 Split the work into tasks whose changes do not overlap, then spawn_worker with an artist id from get_run roles; never implement in the main working folder yourself. \
 Only a person changes the album's artists, permissions or verification command. If an artist cannot do the work (role-read-only, a blocked report, a missing artist), tell the person exactly what to change in [Album permissions] and stop. \
@@ -71,8 +71,8 @@ If this chat restarted or was opened to take over, call adopt_run only for the a
 /// 타일의 안내 한 줄(2단계 2-7 · 사용자 결정 U3) — 맡긴 저장소가 하나라도 있는 PC 의 로컬 AI 타일 · 감싸개 셸 타일. 조율 도구는 목록에 없다
 /// (불러도 모르는 도구 — `orchestration::is_tool_for`).
 pub(super) const TILE_ORCHESTRATION_HINT: &str = "\
-Orchestration (AYNX): albums that split work across several workers open only from the producer chat of the AYNX orchestration tab — \
-to split work across workers, tell the person to open the AYNX orchestration tab or use [Continue in orchestration] on this tile (the conversation is copied there).";
+Orchestration (Aynx): albums that split work across several workers open only from the producer chat of the Aynx orchestration tab — \
+to split work across workers, tell the person to open the Aynx orchestration tab or use [Continue in orchestration] on this tile (the conversation is copied there).";
 
 /// 작업자 · 검토자 한 줄(헤드리스 턴 — 역할별 실패 지침은 턴 지침 파일에 있다 · `orchestration::spawn`).
 pub(super) const WORKER_INSTRUCTIONS: &str = "\

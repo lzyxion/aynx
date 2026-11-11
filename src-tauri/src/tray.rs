@@ -13,7 +13,7 @@
 //!   끝난다 — 남은 GUI 가 새 서버를 띄우지 않게). 창이 열려 있으면 둘 다 주 창의 `quitAll`(저장 안 한 문서 확인)을 거친다(이벤트
 //!   `tray-quit`). [모든 세션 종료…] 의 확인 뒤 흐름([`proceed_end_all`])은 트레이에 매이지 않아 독의 종료 단추(`app_end_all_sessions` —
 //!   확인은 앱 테마의 앱 안 상자)도 같은 것을 부른다 — 트레이 없는 OS 에서도 산다.
-//! - 아이콘은 지금 고른 앱 아이콘(`app_icon::current_image`), 툴팁은 `AYNX — 세션 N · 작업안 대기 M`([`tooltip`]) — 3초마다
+//! - 아이콘은 지금 고른 앱 아이콘(`app_icon::current_image`), 툴팁은 `Aynx — 세션 N · 작업안 대기 M`([`tooltip`]) — 3초마다
 //!   서버에 물어 고친다. 앱 언어를 바꾸면(`i18n::set_language`) 메뉴 칸 전부와 툴팁을 곧바로 다시 건다([`language_changed`]).
 //! - **OS 분기는 이 파일의 `imp` 하나**다 — Windows 만 트레이가 있고, 나머지는 [`supported`] 가 거짓인 스텁(트레이 없음 → 창을 모두
 //!   닫으면 GUI 가 끝난다, 세션은 산다). 프런트는 `tray_status().supported` 만 본다. Tauri 의 `tray-icon` 기능도 Windows 대상에만
@@ -92,7 +92,7 @@ pub(crate) struct View {
     pub pending: usize,
 }
 
-/// 툴팁 — `AYNX — 세션 3 · 작업안 대기 1`. 서버에 닿지 못하면 그 사실을. **순수**.
+/// 툴팁 — `Aynx — 세션 3 · 작업안 대기 1`. 서버에 닿지 못하면 그 사실을. **순수**.
 pub(crate) fn tooltip(view: &View) -> String {
     let app = crate::instance::window_title(crate::instance::DEV);
     if !view.connected {

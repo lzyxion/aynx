@@ -1759,7 +1759,7 @@ export const app = {
   // `ai.stage.*` 를 그대로 쓰고, "Schema" 와 DB 뜻의 설명 줄만 여기.
   "dbai.title": "AI 권한",
   "dbai.note":
-    "이 연결에서 AI(AYNX 가 띄운 로컬 AI 타일)가 할 수 있는 일입니다. AI 는 쿼리 타일과 따로 연 읽기 전용 연결만 쓰고, 경유 호스트의 AI 권한과는 별개입니다.",
+    "이 연결에서 AI(Aynx 가 띄운 로컬 AI 타일)가 할 수 있는 일입니다. AI 는 쿼리 타일과 따로 연 읽기 전용 연결만 쓰고, 경유 호스트의 AI 권한과는 별개입니다.",
   "dbai.info.aria": "AI 권한 설명 자세히",
   "dbai.aria": "DB 연결의 AI 권한 단계",
   "dbai.level.schema": "Schema",

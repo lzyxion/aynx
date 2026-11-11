@@ -98,7 +98,7 @@ fn mod_files_are_written_once_and_name_the_hooks_module() {
 
 #[test]
 fn tile_env_loads_the_mod_everywhere_but_wsl_and_keeps_user_dirs_first() {
-    let exe = Path::new("C:/Program Files/AYNX/aynx.exe");
+    let exe = Path::new("C:/Program Files/Aynx/aynx.exe");
     let dir = Path::new("C:/Users/me/AppData/Roaming/aynx/claude-mod/aynx-usage");
     let env = tile_env_values(true, "pwsh", exe, dir, None);
     assert_eq!(

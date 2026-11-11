@@ -9,7 +9,7 @@
 //!    갈래([`helper`] — `main.rs` 가 Tauri 앞에서 가른다). **사용자 전역 훅 파일은 건드리지 않는다**(전역 신호 훅은 그대로 — 단방향 · 빈 출력).
 //! 2. 도우미는 표준 입력(훅 JSON)을 읽어 [`Envelope`] 로 줄이고(도구 입력은 상한으로 자름 · 대조용 요약 `digest` 는 자르기 전 입력에서)
 //!    세션 서버의 `/agent-permission`(신호 평면과 같은 포트 · 다른 문지기 · 다른 토큰)으로 보낸다. 환경(`AYNX_MCP_URL` · `AYNX_STREAM` ·
-//!    `AYNX_PERMISSION_TOKEN`)이 없으면 아무것도 하지 않고 0 으로 끝난다(AYNX 밖의 CLI 는 기다리지 않는다 — 결정 5).
+//!    `AYNX_PERMISSION_TOKEN`)이 없으면 아무것도 하지 않고 0 으로 끝난다(Aynx 밖의 CLI 는 기다리지 않는다 — 결정 5).
 //! 3. `pre` = 그 호출의 `tool_use_id` 를 적어 두기만(곧바로 204). `ask` = 카드를 세우고 **짧게 나눈 롱폴**([`HOLD_MS`])로 결정을
 //!    기다린다 — 도우미가 `wait` 로 다시 묻는 동안만 산다. `post` = 같은 `tool_use_id` 의 카드를 치운다(사람이 TUI 에서 [Yes]).
 //! 4. 사람이 TUI 에서 No · Esc 하면 CLI 가 훅 프로세스를 죽인다 → 다음 `wait` 가 [`LIVENESS_MS`] 안에 오지 않으면 표가 그 카드를
@@ -77,7 +77,7 @@ const PENDING_CAP: usize = 16;
 /// 거절 사유(사람이 쓴 글 — 모델에게 간다) 상한.
 const MESSAGE_MAX_CHARS: usize = 2_000;
 /// 사유가 없을 때 모델에게 갈 글.
-const DEFAULT_DENY: &str = "The user denied this in AYNX.";
+const DEFAULT_DENY: &str = "The user denied this in Aynx.";
 
 /// **[이 세션 동안 허용]** 의 앱 기억(사용자 결정 2026-11-01 — Codex 의 훅 allow 는 세션 승인이 아니어서 앱이 기억했다가 같은 요청에 곧바로
 /// allow 를 돌려준다 · Claude 는 `updatedPermissions(session)` 도 함께). 끄면 카드의 `canAllowSession` 이 거짓이고 결정이 거절된다.
@@ -351,7 +351,7 @@ const REASON_ANSWER_MAX: usize = 1_000;
 const REASON_MAX: usize = 4_000;
 /// Codex 이유 글의 머리 — 고정 글. Codex TUI 가 앞에 `• Blocked by hook └` 를 붙이고(지울 수 없다) 모델은 `Tool call blocked by PreToolUse hook: <이유>` 를
 /// 받으므로, "실패가 아니라 사람의 답" 이라는 최소한의 말만 남긴다(2026-11-02 실기 — 질문 원문 · "다시 묻지 마라" 를 걷었다 · 실측 11절).
-pub(crate) const CODEX_ANSWER_HEAD: &str = "Answered in AYNX (the user's answer, not an error):";
+pub(crate) const CODEX_ANSWER_HEAD: &str = "Answered in Aynx (the user's answer, not an error):";
 
 /// 이유 글에 끼울 한 조각 — 제어 문자 · 줄바꿈은 빈칸 하나로, 큰따옴표는 홑따옴표로, 앞뒤 빈칸을 걷고 `max` 글자까지(넘으면 `…`).
 fn reason_piece(s: &str, max: usize) -> String {

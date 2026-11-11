@@ -130,8 +130,8 @@ describe("projectFolder — 저장·복원·창 이관", () => {
     const plain: TabSpec = { id: "t1", title: "탭 1", root: leafOf(newLocalPane()) };
     const proj: TabSpec = {
       id: "t2",
-      title: "AYNX",
-      pinnedTitle: "AYNX",
+      title: "Aynx",
+      pinnedTitle: "Aynx",
       projectFolder: PROJECT,
       root: leafOf(newLocalPane()),
     };
@@ -145,7 +145,7 @@ describe("projectFolder — 저장·복원·창 이관", () => {
   });
 
   it("창 이관이 들고 간다", () => {
-    const proj: TabSpec = { id: "t", title: "AYNX", projectFolder: PROJECT, root: leafOf(newLocalPane()) };
+    const proj: TabSpec = { id: "t", title: "Aynx", projectFolder: PROJECT, root: leafOf(newLocalPane()) };
     expect(adoptTab(proj, () => undefined).projectFolder).toBe(PROJECT);
     const plain: TabSpec = { id: "t", title: "탭 1", root: leafOf(newLocalPane()) };
     expect("projectFolder" in adoptTab(plain, () => undefined)).toBe(false);

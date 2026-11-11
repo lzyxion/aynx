@@ -38,7 +38,7 @@ At the top of the add dialog, choose either [Existing folder] or [Create new] (t
   git config --global user.email "you@example.com"
   ```
 
-  Copy the two lines with [Copy commands], change them to your own name and email, and type them in the right place (a shell on this PC or a shell on that server). AYNX does not set them for you or commit under a temporary name. The folder and repository remain, so after setting them, clicking the same button again makes only the first commit. If the same thing happens with [Initialize git repository] in the dock or [Make first commit and continue] for a new worktree, the same guidance appears as a notification ([Copy commands] in the notification).
+  Copy the two lines with [Copy commands], change them to your own name and email, and type them in the right place (a shell on this PC or a shell on that server). Aynx does not set them for you or commit under a temporary name. The folder and repository remain, so after setting them, clicking the same button again makes only the first commit. If the same thing happens with [Initialize git repository] in the dock or [Make first commit and continue] for a new worktree, the same guidance appears as a notification ([Copy commands] in the notification).
 - To create on a remote host, that host must have a **connected session**. The Create in location must start with `/` or `~`.
 
 <a id="project-icon"></a>
@@ -161,7 +161,7 @@ The `+` on the right of a project row (`Insert` on the keyboard, or [Open in new
 
 - Names may use only letters, digits and `. _ / -`, and may not start with `-` or contain `..`.
 - If the repository has **no commits**, the app first asks with "No first commit". Clicking [Make first commit and continue] makes an empty first commit and goes on to create the worktree (creating it directly would make git produce a branch not connected to the main branch).
-- For a **remote** project, the SSH tile in the new tab comes up first. Once connected, the app uses that connection to check the repository and create the worktree. In the meantime, the terminal shows one line, "[AYNX] Preparing the worktree… (path)", and typed characters do not go to the server. No git commands are typed into the server's shell.
+- For a **remote** project, the SSH tile in the new tab comes up first. Once connected, the app uses that connection to check the repository and create the worktree. In the meantime, the terminal shows one line, "[Aynx] Preparing the worktree… (path)", and typed characters do not go to the server. No git commands are typed into the server's shell.
   - If there are no commits, a **bar at the top of that tile** asks: [Make first commit and continue] or [Open a shell] (a plain shell in the home folder without a worktree). It waits until you answer, and you can answer after working in another tab and coming back. If you close the tile, nothing is created.
   - If the first commit cannot be made because the server has no git user name and email, the bar shows the two lines to set them and a plain shell opens.
   - If the worktree cannot be created (a git error or a connection problem), the bar shows "Could not create the worktree — <reason>" and a plain shell opens.
@@ -225,8 +225,8 @@ When you open a project (or worktree), the start screen appears first instead of
 - **[Resume]** (`Enter`) — Continues that conversation in that folder.
 - **[Continue in new conversation]** (`Shift+Enter`) — Leaves the original as it is and continues in a new conversation.
 - **[View]** (`V`) — Shows the conversation record read-only (only on local rows). [Resume] and [Continue in new conversation] inside the view do the same thing, but no keys are bound to them (`Esc` only closes).
-- **[Go to tile]** — If that conversation is already open in an AYNX tile, goes to that tile.
-- **Open elsewhere** mark — A conversation that changed recently and is not linked to an AYNX tile (it may be open in another terminal). Resuming asks once more, because you would be writing to the same conversation from two places.
+- **[Go to tile]** — If that conversation is already open in an Aynx tile, goes to that tile.
+- **Open elsewhere** mark — A conversation that changed recently and is not linked to an Aynx tile (it may be open in another terminal). Resuming asks once more, because you would be writing to the same conversation from two places.
 - **Path missing** mark — The folder where the conversation started no longer exists. Resume and Continue in new conversation are blocked.
 - Conversations from all folders can be found with this screen's scope switch, Past conversations in this folder (`Ctrl+Shift+Y`), and `conv ` in the command palette.
 

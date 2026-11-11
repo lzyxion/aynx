@@ -12,7 +12,7 @@
   } = $props();
 
   const selected = $derived(family.variants.find((variant) => variant.id === current));
-  /** 변형 하나뿐인 계열(AYNX — 기본만)은 순환이 없다: 이름 · 순서 · "다음 테마로" 를 내지 않고 계열 이름만 쓴다(눌림은 `aria-pressed`) */
+  /** 변형 하나뿐인 계열(Aynx — 기본만)은 순환이 없다: 이름 · 순서 · "다음 테마로" 를 내지 않고 계열 이름만 쓴다(눌림은 `aria-pressed`) */
   const cycles = $derived(family.variants.length > 1);
   const order = $derived(family.variants.map((variant) => t(variant.label)).join(" → "));
   const label = $derived(selected && cycles

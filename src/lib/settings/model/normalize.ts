@@ -650,7 +650,7 @@ function canonicalBefore(
  * `dynamic`(앱 밝기를 따름)은 맵의 밝기, 상대 키 `dynamic-alt`(맵의 반대 밝기 — 11-03)는 맵의 반대 밝기.
  *
  * 사용자 테마 키(`user:<id>` — `isUserTermKey`)는 **모양만 보고** 보존한다. 파일이 있는지는 여기서 모른다(목록은 따로
- * 읽는다) — 지워졌으면 그리는 쪽(`termThemeOf`)이 같은 모드의 AYNX 로 떨어지고, 설정 파일은 몰래 고쳐 쓰지 않는다.
+ * 읽는다) — 지워졌으면 그리는 쪽(`termThemeOf`)이 같은 모드의 Aynx 로 떨어지고, 설정 파일은 몰래 고쳐 쓰지 않는다.
  */
 function normalizePresetKey(
   raw: unknown,

@@ -97,7 +97,7 @@
 >
   <div class="inner">
     <img class="logo" src={logoSrc} alt="" draggable="false" />
-    <p class="brand">AYNX</p>
+    <p class="brand">Aynx</p>
     {#if version}
       <p class="version">{version}</p>
     {/if}

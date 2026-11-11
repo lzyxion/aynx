@@ -1,4 +1,4 @@
-# AYNX
+# Aynx
 
 *A Hyprland-style workspace for AI coding agents.* — **Hyprland 감성의 AI 코딩 에이전트 작업 공간.
 Claude Code · Codex 를 셸 · SSH 세션 · 파일 · DB 와 나란히 타일로 띄우는 데스크톱 앱.**
@@ -110,7 +110,7 @@ NSIS 는 현재 사용자 설치). 상세는 [docs/log/2026-09-07-release-build.
 
 ## 보안 제약 (불변 — 사용자 명시)
 
-- **AYNX 세션 서버는 CLI 전역에 등록하지 않는다 — AYNX 가 띄우는 로컬 AI 타일과 감싸개가 있는 로컬 셸 타일(PowerShell · Git Bash · 셸 통합 켬 — 그 셸에서 친 `claude` · `codex`, 2026-10-26)에만 실리고 MCP 토큰은 사용자 CLI 설정 파일에 없다** → [docs/log/2026-10-03-mcp-sessions-inject.md](docs/log/2026-10-03-mcp-sessions-inject.md) · [docs/log/2026-10-26-agent-enable.md](docs/log/2026-10-26-agent-enable.md).
+- **Aynx 세션 서버는 CLI 전역에 등록하지 않는다 — Aynx 가 띄우는 로컬 AI 타일과 감싸개가 있는 로컬 셸 타일(PowerShell · Git Bash · 셸 통합 켬 — 그 셸에서 친 `claude` · `codex`, 2026-10-26)에만 실리고 MCP 토큰은 사용자 CLI 설정 파일에 없다** → [docs/log/2026-10-03-mcp-sessions-inject.md](docs/log/2026-10-03-mcp-sessions-inject.md) · [docs/log/2026-10-26-agent-enable.md](docs/log/2026-10-26-agent-enable.md).
 
 - 비밀번호·키 암호구는 **사용자가 켠 볼트에만** 저장한다 (옵트인 — 켜지 않으면 예전 그대로
   한 번 쓰고 버리고 다음 접속에 다시 묻는다 · 예외 하나: DB 비밀번호는 그 연결의 사람 쿼리 타일이 붙어 있는 동안 세션 서버
@@ -155,7 +155,7 @@ NSIS 는 현재 사용자 설치). 상세는 [docs/log/2026-09-07-release-build.
   순간만 지킨다). 알고 받은 한계(2026-10-03 사용자 결정): 평문 `.mcp.json` 과 같은 등급이고, 디스크·
   설정 파일·프런트·MCP RPC 에는 여전히 값이 없다. 볼트가 잠기면 브로커도 값을 내주지 않는다 →
   [docs/log/2026-10-03-mcp-scopes-env.md](docs/log/2026-10-03-mcp-scopes-env.md).
-  HTTP 헤더 값은 세션 서버 안 프록시가 붙여 AYNX 프로세스(GUI·세션 서버) 밖의 CLI·도우미로 나가지 않는다 →
+  HTTP 헤더 값은 세션 서버 안 프록시가 붙여 Aynx 프로세스(GUI·세션 서버) 밖의 CLI·도우미로 나가지 않는다 →
   [docs/log/2026-10-04-mcp-http-header-proxy.md](docs/log/2026-10-04-mcp-http-header-proxy.md).
 - **앱은 사용자가 명시적으로 위임한 범위 안에서만 실행한다** (2026-09-11 재정의 — 규모에서 매
   쓰기의 실시간 감독은 불가능하다). 위임의 형식은 둘: (a) 그 자리 사람 승인, (b) 사전 정책
@@ -379,9 +379,9 @@ NSIS 는 현재 사용자 설치). 상세는 [docs/log/2026-09-07-release-build.
   보류 · 조율 한도면 깨우지 않는다. 상한: **사람 말 사이 = `Run.album.wake_max`**(기본 30 · 0 = 끔 · 0~200 · [새 앨범] · 사람의 [앨범 권한] 편집뿐 · 원격은 올림만 REAUTH · 앨범 없음/판정 실패면 깨우지 않음) ·
   앨범당 누적 200 고정(`Run.wakes` — 칸 없음 · 초기화 없음) · 최소 간격 20초 · 무반응 3 범위 · 재시도 1 — 꺼지면 사람 알림(`wake-limit` · `wake-ignored` · `wake-failed` ·
   `wake-turn-timeout`). 타일에는 깨움이 없다(타일 PTY 에 쓰는 길 없음 — 타일은 조정자 자리가 되지 못한다). 제어 프레임(결정 · 끊기 · 모델 · 강도)은 사람 op 에서만 — 깨움 턴 시한(30분)의
-  끊기 하나는 시계가 깨움 턴에만 붙인다. **프로듀서는 직접 파일을 변경하거나 읽기 전용 실행 경계를 벗어날 수 없다. Claude에는 Read·Grep·Glob만 제공하고, Codex에는 읽기 전용 샌드박스 안의 읽기 작업만 허용한다. 파일 변경·실행 경계 확대·외부 MCP·웹 검색은 프로듀서 권한 카드로도 허용하지 않는다. AYNX의 읽기·작업안·조율 도구는 각 서버 관문의 기존 권한 검사를 받는다. producer_chat_*의 원격 허용은 이 제한을 넓히지 않으며, 본문은 해당 프로듀서 채팅의 유효한 구독 연결에만 전달한다**
+  끊기 하나는 시계가 깨움 턴에만 붙인다. **프로듀서는 직접 파일을 변경하거나 읽기 전용 실행 경계를 벗어날 수 없다. Claude에는 Read·Grep·Glob만 제공하고, Codex에는 읽기 전용 샌드박스 안의 읽기 작업만 허용한다. 파일 변경·실행 경계 확대·외부 MCP·웹 검색은 프로듀서 권한 카드로도 허용하지 않는다. Aynx의 읽기·작업안·조율 도구는 각 서버 관문의 기존 권한 검사를 받는다. producer_chat_*의 원격 허용은 이 제한을 넓히지 않으며, 본문은 해당 프로듀서 채팅의 유효한 구독 연결에만 전달한다**
   (Claude `--setting-sources ""` · `--strict-mcp-config` · `MCP_TOOL_TIMEOUT` · Codex `approvalPolicy: never` · 웹 검색 끔 · `windows.sandbox` · `notify=[]` · 이름으로 끌 수 없는 사용자 MCP 면
-  띄우지 않음 · **사람이 [허용] 할 수 있는 카드는 앨범 저장소 밖 Read · AYNX DB 읽기 도구 둘뿐 — 그 밖 승인 요청은 어댑터가 카드 없이 거절**(`side_chat::guard` · 시험
+  띄우지 않음 · **사람이 [허용] 할 수 있는 카드는 앨범 저장소 밖 Read · Aynx DB 읽기 도구 둘뿐 — 그 밖 승인 요청은 어댑터가 카드 없이 거절**(`side_chat::guard` · 시험
   `producer_approval_allowlist`) · DB 읽기 카드는 Claude 만이고 **Codex 는 `db_query` 를 미리 허용한다**(`never` 에서 미리 허용 밖 MCP 도구는 묻지 않고 실패한다 — 행을 읽을지는
   서버의 연결 AI 권한이 정한다 · AI 타일과 같은 등급) · `producer_chat_*` 원격은 ALLOW). 배달: 사건은 방송하지 않고(`RELAYED` 밖) GUI 라우터(`server/producer_proxy.rs` `route`)가 사건 몸의
   `(창, subGen)` 구독 가운데 이 GUI 가 같은 채팅의 Channel 을 쥔 산 창에만 보낸다(원격 창 Channel 은 `remote::bridge` 가 그 ws 로 · 시험 `producer_subs_route` · `producer_subs_gen`) ·

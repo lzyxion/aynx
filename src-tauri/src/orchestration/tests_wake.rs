@@ -354,7 +354,7 @@ fn wake_note_parsed_from_transcript() {
     let resync = WakeNote { resync: true, items: Vec::new(), ..WakeNote::build(&r, 0, r.seq).unwrap() };
     assert_eq!(parse_wake_note(&wake_text(&resync)).unwrap().from_seq, 0);
     for bad in [
-        text.replacen(PREFIX, "[AYNX app notice]", 1),
+        text.replacen(PREFIX, "[Aynx app notice]", 1),
         text.replacen(&run, "run-XYZ", 1),
         text.replacen("(gen 1)", "(gen x)", 1),
         format!(" {text}"),

@@ -61,7 +61,7 @@ use super::store::{coordinates, Orchestration, Seat, Slot};
 use crate::audit::OrchestrationAudit;
 
 /// 문장의 머리 — 지침(`server::producer::launch`)이 이 글자를 알린다.
-pub(crate) const PREFIX: &str = "[AYNX app notice — not from the person]";
+pub(crate) const PREFIX: &str = "[Aynx app notice — not from the person]";
 /// 앨범당 누적 깨움(재시도 포함 · **고정** — 설정 칸 없음 · 초기화 없음).
 pub(crate) const RUN_MAX: u32 = 200;
 /// 사람 말 사이 깨움 상한의 기본값(`Run.album.wake_max`).

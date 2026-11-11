@@ -229,29 +229,29 @@ fn allow_targets() {
 /// 앱 시한보다 길다. Claude 설정은 훅 셋 · `*` 매처.
 #[test]
 fn hook_words_shape() {
-    let words = codex_words("C:/Users/me/AppData/Local/AYNX/aynx.exe").unwrap();
+    let words = codex_words("C:/Users/me/AppData/Local/Aynx/aynx.exe").unwrap();
     assert_eq!(words.len(), 8);
     assert_eq!(words.iter().filter(|x| *x == "-c").count(), 4);
     // 2026-11-02 — Esc 로 끊은 턴(`Interrupt`)은 신호 경로로(상태 점만)
     assert_eq!(
         words[7],
-        "hooks.Interrupt=[{hooks=[{type='command',command='C:/Users/me/AppData/Local/AYNX/aynx.exe agent-permission interrupt codex',timeout=10}]}]"
+        "hooks.Interrupt=[{hooks=[{type='command',command='C:/Users/me/AppData/Local/Aynx/aynx.exe agent-permission interrupt codex',timeout=10}]}]"
     );
     for x in &words {
         assert!(!x.contains('"') && !x.contains('%'), "{x}");
     }
     assert_eq!(
         words[3],
-        "hooks.PermissionRequest=[{hooks=[{type='command',command='C:/Users/me/AppData/Local/AYNX/aynx.exe agent-permission ask codex',timeout=150}]}]"
+        "hooks.PermissionRequest=[{hooks=[{type='command',command='C:/Users/me/AppData/Local/Aynx/aynx.exe agent-permission ask codex',timeout=150}]}]"
     );
-    assert!(codex_words("C:/Program Files/AYNX/aynx.exe").is_none(), "공백이 있으면 싣지 않는다");
+    assert!(codex_words("C:/Program Files/Aynx/aynx.exe").is_none(), "공백이 있으면 싣지 않는다");
     assert!(codex_words("C:/it's/aynx.exe").is_none());
     const { assert!(CODEX_ASK_TIMEOUT_SECS * 1000 > CODEX_WAIT_MS && CLAUDE_ASK_TIMEOUT_SECS * 1000 > CLAUDE_WAIT_MS) };
-    let c = claude_settings("C:/Program Files/AYNX/aynx.exe");
+    let c = claude_settings("C:/Program Files/Aynx/aynx.exe");
     for (ev, phase, timeout) in [("PreToolUse", "pre", MARK_TIMEOUT_SECS), ("PermissionRequest", "ask", CLAUDE_ASK_TIMEOUT_SECS), ("PostToolUse", "post", MARK_TIMEOUT_SECS)] {
         let h = &c["hooks"][ev][0];
         assert_eq!(h["matcher"], "*");
-        assert_eq!(h["hooks"][0]["command"], format!("\"C:/Program Files/AYNX/aynx.exe\" agent-permission {phase} claude"));
+        assert_eq!(h["hooks"][0]["command"], format!("\"C:/Program Files/Aynx/aynx.exe\" agent-permission {phase} claude"));
         assert_eq!(h["hooks"][0]["timeout"], timeout);
     }
 }
@@ -416,7 +416,7 @@ fn codex_question_answer_reason() {
     // 여럿이면 `<머리>=<답>; …` — 질문 원문은 싣지 않는다 · 줄바꿈 · 따옴표 정리
     assert_eq!(reason, format!("{CODEX_ANSWER_HEAD} Color=Green; Size=big and 'wide'"));
     assert!(!reason.contains("Which"), "질문 원문 없음");
-    assert_eq!(CODEX_ANSWER_HEAD, "Answered in AYNX (the user's answer, not an error):");
+    assert_eq!(CODEX_ANSWER_HEAD, "Answered in Aynx (the user's answer, not an error):");
     // 하나면 답만 · 머리가 없으면 id · 둘 다 없으면 Q<n>
     let one = json!({ "questions": [{ "id": "color", "header": "Color", "question": "Which color?", "options": [{ "label": "Red" }] }] });
     let o = answer_output(Cli::Codex, "request_user_input", &one, false, &json!({ "Which color?": "Red" })).unwrap();

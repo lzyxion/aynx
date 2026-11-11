@@ -119,7 +119,7 @@ export function appUsage(s: ResourceSample): ResourceUsage {
   return { cpu: Math.min(100, s.gui.cpu + s.server.cpu), mem: s.gui.mem + s.server.mem };
 }
 
-/** AYNX 몫 = 앱 + 로컬 타일 전부(AYNX 가 이 PC 에서 띄운 프로세스 전부) — CPU 는 100 으로 죈다. 화면에 숫자로는 안 내고 상태바 카드 막대의 분모 */
+/** Aynx 몫 = 앱 + 로컬 타일 전부(Aynx 가 이 PC 에서 띄운 프로세스 전부) — CPU 는 100 으로 죈다. 화면에 숫자로는 안 내고 상태바 카드 막대의 분모 */
 export function aynxUsage(s: ResourceSample): ResourceUsage {
   const a = appUsage(s);
   const t = tilesUsage(s);

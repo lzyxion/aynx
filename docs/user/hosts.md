@@ -156,7 +156,7 @@ A command sent **once as the first input** right after the shell comes up (for e
 
 - If SSH drops, remote work keeps running inside tmux, and reattaching brings you back to where you were. Each tile attaches to a different tmux session.
 - In exchange, that tile becomes a **screen-only session** (simple mode), because shell integration cannot reach inside tmux. What turns off: command history (jump), last output copy, block search (`#`), failure marks, status badges, and the AI's command reading (reading the screen still works). What stays: screen search, scrollback, automatic reconnect, port forwarding, and remote files.
-- If the server has no tmux, the screen prints one line, `[AYNX] tmux is missing — keeping a plain shell`, and you stay in a plain shell (the tile remains in simple mode).
+- If the server has no tmux, the screen prints one line, `[Aynx] tmux is missing — keeping a plain shell`, and you stay in a plain shell (the tile remains in simple mode).
 - Clicking the **tmux chip** in the header shows that server's list of tmux sessions. Clicking a row switches in this tile, and the buttons at the end of a row open it in a new tile or **Kill** it (🗑 — `tmux kill-session`). Kill asks for confirmation first. If this tile is attached to that session, it says this tile's connection ends too, and if other clients are attached, it also says how many. The list is read again after killing. Names containing characters such as quotes, `$`, `:`, `.` or `*` cannot be killed from the app (kill them in a shell).
 - Turning it off deletes that key. If it is on by inheritance, "Inherited: on" is shown.
 

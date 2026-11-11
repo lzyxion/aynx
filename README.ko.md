@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="static/logo.png" alt="AYNX" width="160">
+  <img src="static/logo.png" alt="Aynx" width="160">
 </p>
 
-<h1 align="center">AYNX</h1>
+<h1 align="center">Aynx</h1>
 
 <p align="center">
   <b>Hyprland 감성의 AI 코딩 에이전트 작업 공간.</b><br>
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="AYNX">
+  <img src="docs/images/hero.png" alt="Aynx">
 </p>
 
 ## 주요 기능
@@ -37,7 +37,7 @@
 
 ## 시작하기
 
-처음에는 창이 거의 비어 보입니다. AYNX는 메뉴를 독 세 개에 넣어 두고, 창 가장자리에 마우스를 대면 꺼냅니다.
+처음에는 창이 거의 비어 보입니다. Aynx는 메뉴를 독 세 개에 넣어 두고, 창 가장자리에 마우스를 대면 꺼냅니다.
 
 - **왼쪽 끝**: 런처 독 — 셸, Claude Code, Codex, 호스트, 프로젝트, DB (`Ctrl+Shift+H`)
 - **오른쪽 끝**: 사이드 채팅 (`Ctrl+Shift+'`)
@@ -57,15 +57,15 @@
 
 ## AI 에이전트와 내 계정
 
-AYNX는 사용자가 직접 설치하고 로그인한 공식 `claude`·`codex` CLI를 바이너리 수정 없이 띄우고, 문서화된 플래그·훅·MCP 설정으로만 동작을 정합니다.
+Aynx는 사용자가 직접 설치하고 로그인한 공식 `claude`·`codex` CLI를 바이너리 수정 없이 띄우고, 문서화된 플래그·훅·MCP 설정으로만 동작을 정합니다.
 그 자격 증명을 읽거나 저장하거나 다른 곳에 넘기지 않으며, 모델 요청을 스스로 보내지 않습니다.
 터미널·AI 타일은 에이전트를 대화형으로 실행합니다. 사이드 채팅과 오케스트레이션은 비대화형으로 실행하며(`claude -p`, `codex exec` / `app-server`), 이 사용량도 다른 사용과 똑같이 사용자 본인의 요금제나 API 키에서 차감됩니다.
 사용은 각 제공사의 약관을 따릅니다. Anthropic의 [Claude Code 법률 및 규정 준수](https://code.claude.com/docs/en/legal-and-compliance) 페이지와 OpenAI의 [이용 약관](https://openai.com/policies/terms-of-use/)을 확인하세요.
-AYNX는 Anthropic·OpenAI와 제휴하거나 그들의 보증을 받은 제품이 아닙니다.
+Aynx는 Anthropic·OpenAI와 제휴하거나 그들의 보증을 받은 제품이 아닙니다.
 
 ## 다운로드
 
-[최신 릴리스](https://github.com/lzyxion/aynx/releases/latest)에서 설치 관리자를 받습니다. `AYNX_<버전>_x64-setup.exe`는 현재 사용자에게, `AYNX_<버전>_x64_en-US.msi`는 모든 사용자에게 설치합니다.
+[최신 릴리스](https://github.com/lzyxion/aynx/releases/latest)에서 설치 관리자를 받습니다. `Aynx_<버전>_x64-setup.exe`는 현재 사용자에게, `Aynx_<버전>_x64_en-US.msi`는 모든 사용자에게 설치합니다.
 설치 관리자에 서명이 없어서 처음 실행할 때 Windows SmartScreen 경고가 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요.
 처음이라면 [시작하기](docs/user/getting-started.ko.md) 안내부터 보세요.
 

@@ -133,7 +133,7 @@ fn validate(server: &McpServer) -> Option<String> {
             || crate::instance::legacy_mcp_names(dev).contains(&name.as_str())
     }) {
         return Some(
-            tr!(ko: "AYNX 의 MCP 서버 이름은 쓸 수 없습니다", en: "The AYNX MCP server names are reserved"),
+            tr!(ko: "Aynx 의 MCP 서버 이름은 쓸 수 없습니다", en: "The Aynx MCP server names are reserved"),
         );
     }
     let mut env_names = HashSet::new();

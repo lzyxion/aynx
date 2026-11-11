@@ -1,6 +1,6 @@
 # Shortcuts guide
 
-AYNX's shortcut help (`Ctrl+Shift+/`) shows only keys and gestures, one per line. The circumstances and exceptions that screen leaves out are written
+Aynx's shortcut help (`Ctrl+Shift+/`) shows only keys and gestures, one per line. The circumstances and exceptions that screen leaves out are written
 here. The combinations below are defaults — ones you changed in Settings › Shortcuts appear as changed on the help screen.
 
 **Ways to open it**

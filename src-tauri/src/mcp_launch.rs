@@ -340,7 +340,7 @@ pub(crate) fn helper_main() -> i32 {
         run(port, &token)
     })();
     result.unwrap_or_else(|()| {
-        eprintln!("[aynx] {}", tr!(ko: "MCP 서버를 실행할 수 없습니다. 서버 설정을 확인하고 AYNX 에서 볼트 잠금을 해제하세요.", en: "MCP server could not start. Check the server settings and unlock the vault in AYNX."));
+        eprintln!("[aynx] {}", tr!(ko: "MCP 서버를 실행할 수 없습니다. 서버 설정을 확인하고 Aynx 에서 볼트 잠금을 해제하세요.", en: "MCP server could not start. Check the server settings and unlock the vault in Aynx."));
         1
     })
 }

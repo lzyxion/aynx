@@ -1,7 +1,7 @@
 /* 디자인 토큰 — 색·간격의 기본값.
  * 색 체계 = **MD3(Material 3) 역할** (2026-10-18 — End-4 · Illogical Impulse 식). 원천 색 하나에서 MCU(`@material/material-color-utilities`)가
  * 낸 역할(`--m3-*`)이 먼저 있고, 크롬의 원시 토큰(`--bg-base` · `--fg` · `--accent` · `--border` …)은 그 역할의 **별칭**이다(아래 표).
- * 기본 팔레트 = AYNX · 기본: `SchemeTonalSpot(#8ab4ff)` — `--m3-*` 의 hex 두 벌(다크 · 라이트)은 손으로 고르지 않은
+ * 기본 팔레트 = Aynx · 기본: `SchemeTonalSpot(#8ab4ff)` — `--m3-*` 의 hex 두 벌(다크 · 라이트)은 손으로 고르지 않은
  * 생성값이고 `app-color-themes.ts` 의 `defaultM3Tokens` 와 같다(짝 시험). 색 테마 · 사용자 색 · 월페이퍼 full 은 같은 함수
  * (`appM3Tokens`)로 `--m3-*` 를 인라인에 다시 얹고, 저장 칸 여덟(`APP_TOKENS`)은 그 역할의 값이다.
  * MD3 에 없는 의미색 둘(`--ok` · `--warn`)과 그 옅은 판 · 판 위 글자(`--*-soft` · `--on-*-soft`)는 그 전 규칙(ANSI 톤 생성 · `derivedChromeTokens`)이다.

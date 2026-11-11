@@ -1,6 +1,6 @@
 # Settings guide
 
-This guide explains each item on the AYNX settings screen (`Ctrl+,`) in detail. The ⓘ on the settings screen shows only a short
+This guide explains each item on the Aynx settings screen (`Ctrl+,`) in detail. The ⓘ on the settings screen shows only a short
 description (rows that a one-line summary covers have no ⓘ). Circumstances, exceptions and relationships with other features are written here. The order matches the list on the left of the settings screen.
 
 **Common rules**
@@ -174,8 +174,8 @@ Chips below the wallpaper choose the **whole theme**. Background, panels, text, 
   The chip shows the family and the name of the variant selected now.
 - The older variants (Luna, Aoi, Hikari, Sumire) and the Cyberpunk family were removed. Settings that used them keep their colors, and no chip lights up
   (they are treated like hand-edited colors, so they do not follow brightness changes until you pick a chip again). The Cyberpunk terminal presets were
-  also removed. Settings that chose them change to the AYNX preset of the same mode (AYNX Dark · AYNX Light). The unpaired light terminal preset
-  "Light (basic)" was removed too. Settings that chose it change to AYNX Light.
+  also removed. Settings that chose them change to the Aynx preset of the same mode (Aynx Dark · Aynx Light). The unpaired light terminal preset
+  "Light (basic)" was removed too. Settings that chose it change to Aynx Light.
 - **Custom color**: pressing the chip opens a color picker. One color builds the whole palette, and only the accent color's lightness is adjusted so it stays readable.
 - **Extract from wallpaper** builds the full app and terminal palette from the photo's representative color (Material You TonalSpot).
   Changing the photo rebuilds it. Picking a built-in theme, a custom color or a terminal preset turns photo extraction off. You can press it only when there is a photo.
@@ -187,7 +187,7 @@ Chips below the wallpaper choose the **whole theme**. Background, panels, text, 
 The palette for the whole app chrome: **System** · **Dark** · **Light**. It is applied and saved as soon as you pick it. The default is System.
 
 - **System** follows the OS brightness setting and reacts right away when the OS setting changes.
-- Changing the mode also changes the terminal theme if it is a preset with a pair (AYNX Dark ↔ AYNX Light and so on).
+- Changing the mode also changes the terminal theme if it is a preset with a pair (Aynx Dark ↔ Aynx Light and so on).
 - Built-in themes and custom colors change to the opposite-mode palette of the same variant and source color. Wallpaper extraction is also rebuilt from the same source color.
 - A preset picked separately in the terminal stays selected, and changes to its opposite-mode pair if it has one.
 - **Match color theme · Dark** and **· Light** in the terminal keep their brightness: changing the mode does not switch them (see [Terminal › Theme](#term-preset)).
@@ -293,7 +293,7 @@ Whether to show two rings for **this whole PC's CPU and memory** at the very fro
 
 - The numbers use the same basis as Task Manager (CPU = whole-machine usage, memory = used / total). Gray is the default, the warning color starts at 80%,
   and the error color starts at 95% (the same rule as usage rings). If agent usage rings exist, these stand after a thin divider.
-- Hovering (or reaching them with the keyboard) shows a card: a large number · a line for the last 5 minutes · **AYNX's share** (the sum of the screen, session server and local tiles) and
+- Hovering (or reaching them with the keyboard) shows a card: a large number · a line for the last 5 minutes · **Aynx's share** (the sum of the screen, session server and local tiles) and
   everything else · the top three consumers (tile name and the process using the most in that tile, including a row for the app itself).
 - Pressing opens the **Resources view** (charts and row lists for the last 30 minutes for this whole PC, the app and local tiles), and pressing again closes it.
 - If the session server is an older version or has no first sample yet (a few seconds after startup), the rings do not appear. If there are no sessions at all, the server stops
@@ -406,8 +406,8 @@ and when the app colors come from a color theme, a custom color or the wallpaper
 - Files live at `<config folder>/terminal-themes/<id>.json` (Windows: `%APPDATA%\aynx\terminal-themes`). A file of the same shape placed directly in this
   folder also appears in the list (names use only lowercase English letters, digits and `-`). Unreadable files are skipped.
 - **Manage** (the pencil button on the theme row, only when you have my themes): a name changes as soon as you edit it (settings that selected it carry over). Removal
-  asks for confirmation, and if it was the theme in use, the terminal goes back to **AYNX Dark / AYNX Light** matching that theme's brightness and saves. If a my theme held in a theme profile
-  was removed, that profile is drawn with the AYNX of the same brightness.
+  asks for confirmation, and if it was the theme in use, the terminal goes back to **Aynx Dark / Aynx Light** matching that theme's brightness and saves. If a my theme held in a theme profile
+  was removed, that profile is drawn with the Aynx of the same brightness.
 - Import (file or paste) and management also work on the remote web screen. Files are read in that browser and only their content is sent.
 
 <a id="header-chips"></a>
@@ -672,7 +672,7 @@ Just closing keeps the draft for the next time you open it, and [Cancel] goes ba
 <a id="ai-mcp-servers"></a>
 ### MCP servers
 
-The fixed row at the very top is the **AYNX session server** (`aynx-sessions`, dev build `aynx-sessions-dev`). It has an **app-wide** scope.
+The fixed row at the very top is the **Aynx session server** (`aynx-sessions`, dev build `aynx-sessions-dev`). It has an **app-wide** scope.
 Choose its use switch and the Claude Code · Codex target chips, then press [Save], and the change applies from the next launch.
 It cannot be edited or deleted, and turning the server off keeps the target selection. It loads only into local AI tiles that receive an MCP token, and into `claude` · `codex` typed by hand in local
 PowerShell · Git Bash tiles with shell integration on (each tile receives its own token).
@@ -697,7 +697,7 @@ App-wide entries come first, and project entries follow in project name order. T
 projects, and if a project entry with the same name exists, that whole entry takes priority. If you turn a project entry
 off, the app-wide entry with the same name does not apply in that project either. Project settings also apply to subfolders and
 that repository's worktrees. Existing entries stay app-wide. **After [Save], changes apply from the next launch of local Claude Code ·
-Codex that AYNX starts**, and conversations already open are not changed retroactively. `claude` · `codex` typed by hand in local PowerShell ·
+Codex that Aynx starts**, and conversations already open are not changed retroactively. `claude` · `codex` typed by hand in local PowerShell ·
 Git Bash tiles with shell integration on receive the same MCP, extra arguments and `--no-daemon` as those the app launches (from new tiles;
 open tiles keep the settings from when they opened). Commands typed by hand in SSH, WSL and cmd tiles, and tiles with shell integration off, do not get them (for remote, see the host's
 agent enablement in [hosts](hosts.md)).
@@ -728,7 +728,7 @@ get process environment variables.
 These are read along with user-global servers, so it is clearer to use a name different from existing servers. Turning off an external row stops only the app's injection
 and does not turn off a global server already registered in the CLI.
 
-Pressing expand (⌄) on the **AYNX session server row** at the top of the list shows the server's running state and endpoint URL.
+Pressing expand (⌄) on the **Aynx session server row** at the top of the list shows the server's running state and endpoint URL.
 
 
 ---

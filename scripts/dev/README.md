@@ -79,8 +79,8 @@ node scripts/dev/cdp.mjs console 5                       # 콘솔 메시지 5초
 node scripts/dev/cdp.mjs script file.js                  # 파일 내용 평가
 ```
 
-- 개발 인스턴스는 WebView2 사용자 폴더가 따로다(`io.github.lzyxion.aynx-dev`) — 릴리스 AYNX 가 떠 있어도
-  9222 가 먹는다. 개발 창은 `%APPDATA%\aynx-dev` 를 쓰고 제목이 `AYNX (dev)` 다
+- 개발 인스턴스는 WebView2 사용자 폴더가 따로다(`io.github.lzyxion.aynx-dev`) — 릴리스 Aynx 가 떠 있어도
+  9222 가 먹는다. 개발 창은 `%APPDATA%\aynx-dev` 를 쓰고 제목이 `Aynx (dev)` 다
   ([docs/log/2026-09-26-dev-release-isolation.md](../../docs/log/2026-09-26-dev-release-isolation.md)).
 
 - Node 22+ (전역 `WebSocket`). 의존성 없음.
@@ -644,8 +644,8 @@ node scripts/dev/projects-harness.mjs <outdir> 9224
   PNG `agent-permission-toast.png`. 스텁은 `performance.setResourceTimingBufferSize(10000)` 을 건다 —
   `importApp` 이 찾는 모듈 URL 이 기본 버퍼(250) 밖으로 밀리지 않게.
 - OS 알림 제목 앞머리는 글자로 박지 않고 앱 모듈의 `APP_TITLE`(`app/instance.ts`)을 읽어 맞춘다 — vite 개발
-  서버에서는 `import.meta.env.DEV` 라 **`AYNX (dev)`** 다(docs/log/2026-09-26-dev-release-isolation.md).
-  값이 `AYNX (dev)`·`AYNX` 둘 중 하나가 아니면 판을 멈춘다.
+  서버에서는 `import.meta.env.DEV` 라 **`Aynx (dev)`** 다(docs/log/2026-09-26-dev-release-isolation.md).
+  값이 `Aynx (dev)`·`Aynx` 둘 중 하나가 아니면 판을 멈춘다.
 
 - 우클릭은 **합성 `contextmenu`** 다(CDP 의 오른쪽 버튼은 그 DOM 이벤트를 만들지 않는다).
   메뉴는 다음 틱에 서므로 150ms 뒤에 본다.
@@ -965,7 +965,7 @@ PAGE_PORT=1567 node scripts/dev/remote-convos-harness.mjs <outdir> 9377
 ## launcher-harness.mjs — 빈 탭 launcher (세 단 · 화살표 · 타자 → 팔레트)
 
 `projects-harness.mjs` 의 사본 (docs/log/2026-09-25-launcher.md). 호스트 넷 · 이력 셋 · 프로젝트 셋 ·
-셸 셋 · 즐겨찾기 하나를 심고, AYNX 를 AI 타일로 열어 **입력 대기**로 만든 뒤 새 탭의
+셸 셋 · 즐겨찾기 하나를 심고, Aynx 를 AI 타일로 열어 **입력 대기**로 만든 뒤 새 탭의
 launcher 를 본다. 마지막에 `sessionStorage` 표식으로 **빈 사용자** 판을 다시 싣는다.
 
 ```bash

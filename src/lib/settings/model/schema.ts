@@ -107,7 +107,7 @@ export interface AppTheme {
    * `null`/`undefined` = 안 정함 = **[`DEFAULT_APP_MODE`]**(`dark`).
    *
    * 위 색 토큰들과 **층이 다르다**: 이 값이 어느 팔레트(`theme.css` 의 `[data-theme]` 블록)를
-   * 통째로 쓸지 정하고, 색 토큰은 그 위에 얹는 오버라이드다. AYNX 테마 버튼으로
+   * 통째로 쓸지 정하고, 색 토큰은 그 위에 얹는 오버라이드다. Aynx 테마 버튼으로
    * 색 여덟 칸을 걷어도 이 칸은 남는다 ([`setAppColorTheme`]).
    *
    * 값을 실제로 화면에 거는 곳은 `mode.svelte.ts` 하나뿐이다 — 이 모듈은 다른 `[app]` 키와

@@ -10,4 +10,4 @@
 export const DEV_INSTANCE: boolean = import.meta.env.DEV;
 
 /** 사람에게 보이는 앱 이름 — OS 알림 제목 앞머리 등. 창 제목(`instance.rs` 의 `WINDOW_TITLE`)과 같은 글자. */
-export const APP_TITLE = DEV_INSTANCE ? "AYNX (dev)" : "AYNX";
+export const APP_TITLE = DEV_INSTANCE ? "Aynx (dev)" : "Aynx";

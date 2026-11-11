@@ -140,7 +140,7 @@ pub(crate) async fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str) -> 
     tauri::async_runtime::spawn_blocking(move || {
         let url = WebviewUrl::External(tauri::Url::parse("about:blank").map_err(|e| e.to_string())?);
         WebviewWindowBuilder::new(&app, &label, url)
-            .title("AYNX remote")
+            .title("Aynx remote")
             .visible(false)
             .skip_taskbar(true)
             .focused(false)

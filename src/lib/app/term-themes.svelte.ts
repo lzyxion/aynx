@@ -43,7 +43,7 @@ function toUser(e: TermThemeEntry): UserTermTheme {
   return { id: e.id, name: e.name, theme: { ...e.colors } };
 }
 
-/** 목록을 다시 읽는다 — 실패는 콘솔로만(이미 고른 `user:` 키는 그동안 같은 모드의 AYNX 로 그려진다) */
+/** 목록을 다시 읽는다 — 실패는 콘솔로만(이미 고른 `user:` 키는 그동안 같은 모드의 Aynx 로 그려진다) */
 export async function loadUserTermThemes(): Promise<void> {
   try {
     setUserTermThemes((await invoke<TermThemeEntry[]>("term_theme_list")).map(toUser));
@@ -195,9 +195,9 @@ export async function renameUserTermTheme(id: string, raw: string): Promise<void
 }
 
 /**
- * 지우기(확인 뒤). 그 테마를 쓰고 있었으면 **그 테마 배경의 모드에 맞는 AYNX**(`aynx-dark` · `aynx-light`)로 돌리고 그 한 칸을
+ * 지우기(확인 뒤). 그 테마를 쓰고 있었으면 **그 테마 배경의 모드에 맞는 Aynx**(`aynx-dark` · `aynx-light`)로 돌리고 그 한 칸을
  * 저장한다(다른 미저장 편집은 싣지 않는다 — `replaceTermPresetAndSave`). 테마 프로필에 적힌 키는 고치지 않는다 — 그 프로필을
- * 적용하면 그릴 때 같은 모드의 AYNX 로 떨어진다.
+ * 적용하면 그릴 때 같은 모드의 Aynx 로 떨어진다.
  */
 export async function removeUserTermTheme(id: string): Promise<void> {
   const cur = settings.userTermThemes.find((u) => u.id === id);

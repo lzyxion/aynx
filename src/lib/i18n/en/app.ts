@@ -1636,7 +1636,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "ai.gauge.locked": "{name} (locked)",
   "dbai.title": "AI permission",
   "dbai.note":
-    "What AI (a local AI tile launched by AYNX) may do with this connection. AI only uses its own read-only connection, separate from query tiles, and this is independent of the jump host's AI permission.",
+    "What AI (a local AI tile launched by Aynx) may do with this connection. AI only uses its own read-only connection, separate from query tiles, and this is independent of the jump host's AI permission.",
   "dbai.info.aria": "More about AI permission",
   "dbai.aria": "AI permission level of the database connection",
   "dbai.level.schema": "Schema",

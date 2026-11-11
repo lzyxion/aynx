@@ -419,12 +419,12 @@ describe("옛 프리셋 키 (`canonicalPreset` — 걷은 Luna 프리셋)", () =
     expect((payload.terminal.dynamic as Record<string, string> | undefined)?.["before-theme"]).toBe("aynx-dark");
   });
 
-  it("걷은 Cyberpunk 프리셋(2026-10-24)은 버려지지 않고 같은 모드의 AYNX 로 접힌다", () => {
+  it("걷은 Cyberpunk 프리셋(2026-10-24)은 버려지지 않고 같은 모드의 Aynx 로 접힌다", () => {
     expect(normalizeSettings({ terminal: { theme: "cyber-neon-light" } }).terminal.theme).toBe("aynx-light");
     expect(normalizeSettings({ terminal: { theme: "cyber-2077-dark" } }).terminal.theme).toBe("aynx-dark");
   });
 
-  it("걷은 짝 없는 `light` 프리셋(2026-10-24)은 `theme` · `before-theme` 모두 AYNX Light 로 접힌다", () => {
+  it("걷은 짝 없는 `light` 프리셋(2026-10-24)은 `theme` · `before-theme` 모두 Aynx Light 로 접힌다", () => {
     const s = normalizeSettings({
       terminal: { theme: "light", dynamic: { background: "#101014", "before-theme": "light" } },
     });

@@ -19,7 +19,7 @@ import { TERM_PRESETS, isLightBackground, type FixedDynamicTerms } from "$lib/th
  * 목업 WWwoYFwjCfoq7V1FgSfYpf). 바탕까지 원천으로 진하게 물드는 Classic 과는 강조색 채도 · 바탕 세기로 갈린다.
  * 그 전 2026-10-24 에는 기본 하나뿐이었다(옛 Vibrant 변형 Luna · Aoi · Hikari · Sumire 와 Cyberpunk 계열을 걷었다. 그것을
  * 쓰던 파일은 여덟 칸이 그대로 남아 어느 칩도 켜지지 않고, MD3 역할은 강조색을 원천으로 본다 — [`appM3Spec`]. Cyberpunk
- * 터미널 프리셋도 같은 날 걷었다 — 옛 키는 `theme.ts` 의 `LEGACY_PRESETS` 가 AYNX 로 접는다).
+ * 터미널 프리셋도 같은 날 걷었다 — 옛 키는 `theme.ts` 의 `LEGACY_PRESETS` 가 Aynx 로 접는다).
  * Classic·사용자 색은 원천색에서 생성한 뒤 바탕 칸만 [`tintSurfaces`]로 더 물들인다(2026-10-13).
  * Monochrome은 같은 중성 크롬에 변형마다 다른 온도로 아주 옅게 물들인다([`MONO_TINT`] — 커서만 강조색).
  */

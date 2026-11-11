@@ -57,7 +57,7 @@
 //! 적는다([`AgentStates::record`] — 대화 id 가 바뀌면 옛 것을 놓고 새 것을 쥔다 · `session-end` 는 놓는다, [`AgentStates::forget`] 은
 //! 놓는다). 지난 대화 목록의 "열림 · 밖에서 열림" 과 이름 바꾸기 · 지우기의 문이 읽는다(서버 op `agent_conversation_links`).
 //!
-//! **띄우며 적은 연결**([`AgentStates::note_launch`] — 서버 op `agent_conversation_launched`): AYNX 가 재개 명령을 그 타일에 쓰는 순간 창이
+//! **띄우며 적은 연결**([`AgentStates::note_launch`] — 서버 op `agent_conversation_launched`): Aynx 가 재개 명령을 그 타일에 쓰는 순간 창이
 //! 알린다 — 신호를 기다리지 않는다. Codex 는 첫 질문 전에 대화 신호가 없는데 `codex resume` 은 뜨자마자 기록에 한 줄
 //! (`thread_settings_applied`)을 덧붙여, 질문 없이 닫은 타일의 대화가 2분 동안 "밖에서 열림" 이었다(2026-10-24 실측). 스트림이 쥔 대화 =
 //! 신호가 밝힌 것 ∪ 띄우며 적은 것([`AgentStates::held`]) — 둘 중 하나라도 쥐면 놓지 않는다. 띄우며 적은 것이 끝나는 때와 끝나지 않는 때는
@@ -392,7 +392,7 @@ impl AgentStates {
         self.settle(stream, &before, at_ms);
     }
 
-    /// **띄우며 적은 연결** — AYNX 가 그 스트림에 대화 `(agent, id)` 를 여는 명령(재개 autorun)을 쓴다 — 쓰기 직전에 창이 알린다. 신호를
+    /// **띄우며 적은 연결** — Aynx 가 그 스트림에 대화 `(agent, id)` 를 여는 명령(재개 autorun)을 쓴다 — 쓰기 직전에 창이 알린다. 신호를
     /// 기다리지 않고 곧바로 쥔다. 다음 `C` 하나가 그 명령 자신이다. 같은 스트림의 옛 것은 갈아 치운다.
     pub(crate) fn note_launch(&mut self, stream: &str, agent: &'static str, id: &str, at_ms: u64) {
         let before = self.held(stream);

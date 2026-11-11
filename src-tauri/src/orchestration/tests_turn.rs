@@ -19,7 +19,7 @@ const CODEX_STDERR: &str = include_str!("turn_fixtures/codex-stderr.txt");
 
 const S1: &str = "11111111-2222-4333-8444-555555555555";
 const MCP: &str = "aynx-sessions-dev";
-const PROMPT: &str = "[AYNX · worker att-1 · Task task-1]\nSECRET-PROMPT-BODY";
+const PROMPT: &str = "[Aynx · worker att-1 · Task task-1]\nSECRET-PROMPT-BODY";
 
 fn scratch(tag: &str) -> PathBuf {
     static SEQ: AtomicU64 = AtomicU64::new(0);

@@ -288,8 +288,8 @@ pub(crate) fn str_of(v: &Value) -> Option<String> {
 /// 대화를 `thread/fork` 하며 실은 `developerInstructions` 는 서지 않았다). 갈라 온 Codex 프로듀서의 **첫 사람 글 앞**에 붙는 앱 고정 글의 앞 · 뒤 —
 /// 사이에는 프로듀서 고정 지침(`server::producer::launch::fork_brief` — 짓는 곳 하나)만 든다. 사람 · AI 글은 넣지 않는다. 깨움 틀
 /// (`orchestration::wake::PREFIX`)과 다른 글자로 시작한다(기록 판독이 섞지 않게). 읽기는 [`parse_producer_brief`].
-pub(crate) const BRIEF_OPEN: &str = "[AYNX producer brief — fixed app text for this chat, not from the person]\n";
-pub(crate) const BRIEF_CLOSE: &str = "\n[end of AYNX producer brief — the person's message follows]\n\n";
+pub(crate) const BRIEF_OPEN: &str = "[Aynx producer brief — fixed app text for this chat, not from the person]\n";
+pub(crate) const BRIEF_CLOSE: &str = "\n[end of Aynx producer brief — the person's message follows]\n\n";
 
 /// **프로듀서 지침 머리글 읽기**(기록 보기) — 글이 [`BRIEF_OPEN`] 으로 **맨 앞에서** 시작하고 [`BRIEF_CLOSE`] 가 있으면 머리글 뒤의 사람 글. 아니면 `None`.
 pub(crate) fn parse_producer_brief(text: &str) -> Option<&str> {

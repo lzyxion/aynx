@@ -749,28 +749,28 @@ describe("pinnedTitle — 프로젝트 탭의 제목은 타일 수에 흔들리�
   const two = () => split("row", leafOf(spec("p-a")), leafOf(spec("p-b")));
 
   it("타일이 둘 이상이어도 고정 제목이 합성 제목을 이긴다", () => {
-    const tab: TabSpec = { id: "t", title: "AYNX", pinnedTitle: "AYNX · feat-message", root: two() };
-    expect(tabDisplayTitle(tab, ko)).toBe("AYNX · feat-message");
+    const tab: TabSpec = { id: "t", title: "Aynx", pinnedTitle: "Aynx · feat-message", root: two() };
+    expect(tabDisplayTitle(tab, ko)).toBe("Aynx · feat-message");
   });
 
   it("고정 제목이 없으면 지금까지처럼 합성 제목이다 (옛 탭)", () => {
-    const tab: TabSpec = { id: "t", title: "AYNX", root: two() };
-    expect(tabDisplayTitle(tab, ko)).not.toBe("AYNX");
+    const tab: TabSpec = { id: "t", title: "Aynx", root: two() };
+    expect(tabDisplayTitle(tab, ko)).not.toBe("Aynx");
   });
 
   it("사용자 이름이 이기고, 비우면 고정 제목으로 돌아온다", () => {
-    expect(tabFixedTitle({ name: "배포", pinnedTitle: "AYNX" })).toBe("배포");
-    expect(tabFixedTitle({ name: "   ", pinnedTitle: "AYNX" })).toBe("AYNX");
-    expect(tabFixedTitle({ pinnedTitle: "AYNX" })).toBe("AYNX");
+    expect(tabFixedTitle({ name: "배포", pinnedTitle: "Aynx" })).toBe("배포");
+    expect(tabFixedTitle({ name: "   ", pinnedTitle: "Aynx" })).toBe("Aynx");
+    expect(tabFixedTitle({ pinnedTitle: "Aynx" })).toBe("Aynx");
     expect(tabFixedTitle({ pinnedTitle: "  " })).toBeNull();
     expect(tabFixedTitle({})).toBeNull();
   });
 
   it("복원과 창 이관이 고정 제목을 들고 간다", () => {
-    expect(restoredTab(leafOf(spec("p-3")), "AYNX", undefined, " AYNX ").pinnedTitle).toBe("AYNX");
-    expect("pinnedTitle" in restoredTab(leafOf(spec("p-4")), "AYNX")).toBe(false);
-    const tab: TabSpec = { id: "t", title: "AYNX", pinnedTitle: "AYNX", root: leafOf(spec("p-5")) };
-    expect(adoptTab(tab, () => undefined).pinnedTitle).toBe("AYNX");
+    expect(restoredTab(leafOf(spec("p-3")), "Aynx", undefined, " Aynx ").pinnedTitle).toBe("Aynx");
+    expect("pinnedTitle" in restoredTab(leafOf(spec("p-4")), "Aynx")).toBe(false);
+    const tab: TabSpec = { id: "t", title: "Aynx", pinnedTitle: "Aynx", root: leafOf(spec("p-5")) };
+    expect(adoptTab(tab, () => undefined).pinnedTitle).toBe("Aynx");
     const plain: TabSpec = { id: "t", title: "탭 1", root: leafOf(spec("p-6")) };
     expect("pinnedTitle" in adoptTab(plain, () => undefined)).toBe(false);
   });
@@ -1000,10 +1000,10 @@ describe("tabFromPane — 떼어 낸 타일의 새 탭은 원래 탭의 제목�
     const t = tabFromPane(local, {
       title: "탭 4",
       name: "배포",
-      pinnedTitle: "AYNX · feat",
+      pinnedTitle: "Aynx · feat",
       projectFolder: "C:/src/aynx",
     });
-    expect(t).toMatchObject({ title: "탭 4", name: "배포", pinnedTitle: "AYNX · feat", projectFolder: "C:/src/aynx" });
+    expect(t).toMatchObject({ title: "탭 4", name: "배포", pinnedTitle: "Aynx · feat", projectFolder: "C:/src/aynx" });
   });
 
   it("공백뿐인 이름·고정 제목은 없는 것으로 본다", () => {

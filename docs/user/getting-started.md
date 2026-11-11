@@ -2,17 +2,17 @@
 
 [한국어](getting-started.ko.md)
 
-This guide walks through a first session with AYNX: install it, open an AI agent, arrange tiles, add an SSH host and find your way around. Each step links to a detailed guide when you want more.
+This guide walks through a first session with Aynx: install it, open an AI agent, arrange tiles, add an SSH host and find your way around. Each step links to a detailed guide when you want more.
 
 The screenshots use light mode with colors extracted from a wallpaper, and the terminal kept on the dark palette of the same colors. Your colors follow the wallpaper and theme you pick.
 
 ## 1. Install
 
 1. Download the installer from the [latest release](https://github.com/lzyxion/aynx/releases/latest).
-   - `AYNX_<version>_x64-setup.exe` installs for the current user and needs no admin rights.
-   - `AYNX_<version>_x64_en-US.msi` installs for all users.
+   - `Aynx_<version>_x64-setup.exe` installs for the current user and needs no admin rights.
+   - `Aynx_<version>_x64_en-US.msi` installs for all users.
 2. The installers are unsigned, so Windows SmartScreen may warn on first run. Choose **More info → Run anyway**.
-3. To use AI tiles, install **Claude Code** or **Codex** natively on Windows (not inside WSL). AYNX finds them on its own. If neither is installed, the launcher dock shows an install entry that takes you to the setup links.
+3. To use AI tiles, install **Claude Code** or **Codex** natively on Windows (not inside WSL). Aynx finds them on its own. If neither is installed, the launcher dock shows an install entry that takes you to the setup links.
 
 ## 2. The first screen
 
@@ -28,7 +28,7 @@ The thin bar on the left is the **status bar**. Its rings show this PC's CPU and
 
 ## 3. Find the hidden docks
 
-At first the window looks almost empty. That's because AYNX keeps its menus in three **docks** that stay hidden until you call them. Move the mouse to an edge of the window and hold it there for a moment, or use the shortcut.
+At first the window looks almost empty. That's because Aynx keeps its menus in three **docks** that stay hidden until you call them. Move the mouse to an edge of the window and hold it there for a moment, or use the shortcut.
 
 ![Where the hidden docks open](../images/getting-started/hidden-docks.png)
 
@@ -55,7 +55,7 @@ Press `Ctrl+Shift+A`, pick **Claude Code** or **Codex**, and press `Enter`. You 
 
 ![A Claude Code tile](../images/getting-started/ai-tile.png)
 
-An AI tile is the agent's own terminal UI running inside AYNX, so you use it exactly as you would in a terminal. The tile header shows:
+An AI tile is the agent's own terminal UI running inside Aynx, so you use it exactly as you would in a terminal. The tile header shows:
 
 - the **folder** the agent works in (set the default in Settings › AI agents),
 - the **CPU and memory** the tile's processes use,
@@ -88,7 +88,7 @@ Open the launcher dock on its Hosts section (hover the left edge, or `Ctrl+Shift
 
 ![The host form](../images/getting-started/host-form.png)
 
-Fill in an alias, the address and the user. AYNX appends a new `Host` block to the end of your `~/.ssh/config` and changes nothing else. Hosts already in that file show up in the list without any setup.
+Fill in an alias, the address and the user. Aynx appends a new `Host` block to the end of your `~/.ssh/config` and changes nothing else. Hosts already in that file show up in the list without any setup.
 
 The **AI access** tab sets what AI agents may do on this host:
 
@@ -143,5 +143,5 @@ Every item on the settings screen is explained in the [Settings guide](settings.
 - [Files and documents](files.md)
 - [Query tile](query-tile.md) for databases
 - [Orchestration](orchestration.md): split a larger job across several agents
-- [Remote access](remote-web.md): open AYNX from your phone over Tailscale
+- [Remote access](remote-web.md): open Aynx from your phone over Tailscale
 - [All features](../features.md) · [Security notes](../security.md)

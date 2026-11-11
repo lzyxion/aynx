@@ -142,7 +142,7 @@ pub async fn producer_chat_set_effort(chat: String, effort: Option<String>) -> R
     call(Grade::Write, "producer_chat_set_effort", json!({ "chat": chat, "effort": effort })).await
 }
 
-/// **사람의 권한 결정** — 카드로 선 요청만(스튜디오 밖 Read · AYNX DB 읽기 도구 — 그 밖은 서버가 카드 없이 거절해 표에 없다).
+/// **사람의 권한 결정** — 카드로 선 요청만(스튜디오 밖 Read · Aynx DB 읽기 도구 — 그 밖은 서버가 카드 없이 거절해 표에 없다).
 #[tauri::command]
 pub async fn producer_chat_decide(
     chat: String,

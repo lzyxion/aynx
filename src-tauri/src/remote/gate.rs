@@ -222,7 +222,7 @@ fn shell(page: &str, extra: &str, icon: &str, title: &str, body: &str) -> String
     format!(
         "<!doctype html>\n<html lang=\"{lang}\"{mode}><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<meta name=\"robots\" content=\"noindex\"><title>AYNX</title>\
+<meta name=\"robots\" content=\"noindex\"><title>Aynx</title>\
 <link rel=\"stylesheet\" href=\"/remote/gate.css\"><link rel=\"stylesheet\" href=\"/remote/theme.css\">\
 <script src=\"/remote/gate.js\" defer></script></head>\
 <body data-page=\"{page}\"{extra}><main class=\"lock-card\"><span class=\"lock-badge\">{icon}</span>\

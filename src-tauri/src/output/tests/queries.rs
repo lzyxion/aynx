@@ -71,7 +71,7 @@ fn unattached_session_answers_terminal_queries() {
     assert_eq!(reply(TermQuery::Dsr), "\x1b[30;1R");
     assert_eq!(reply(TermQuery::Da1), "\x1b[?1;2c");
     assert_eq!(reply(TermQuery::Da2), "\x1b[>0;276;0c");
-    assert!(reply(TermQuery::XtVersion).starts_with("\x1bP>|AYNX("));
+    assert!(reply(TermQuery::XtVersion).starts_with("\x1bP>|Aynx("));
     assert!(reply(TermQuery::XtVersion).ends_with("\x1b\\"));
     assert_eq!(reply(TermQuery::Decrqm { private: true, mode: 2026 }), "\x1b[?2026;0$y");
     assert_eq!(reply(TermQuery::Decrqm { private: false, mode: 4 }), "\x1b[4;0$y");

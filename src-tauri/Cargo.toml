@@ -1,6 +1,6 @@
 [package]
 name = "aynx"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Hyprland-style workspace for AI coding agents."
 authors = ["lzyxion"]
 license = "MIT"
@@ -247,7 +247,7 @@ webview2-com = "0.38"
 # `Win32_System_Power` 는 잠자기 방지(`keep_awake.rs` — PowerCreateRequest · PowerSetRequest · PowerClearRequest) 하나다 — 게이트뿐.
 # `Win32_System_SystemInformation` 은 오케스트레이션 수락 전 검증(`server/os.rs` 의 `system_cmd`)이 신뢰된 셸 경로를
 # `GetSystemDirectoryW()\cmd.exe` 로 정하는 것 하나다(환경 `ComSpec` 를 믿지 않는다 — 통합 설계 5-3). 게이트뿐.
-# `Win32_System_ProcessStatus` 는 자원 모니터(`server/resources.rs`)가 AYNX 트리 프로세스의 전용 작업 집합을 읽는
+# `Win32_System_ProcessStatus` 는 자원 모니터(`server/resources.rs`)가 Aynx 트리 프로세스의 전용 작업 집합을 읽는
 # K32GetProcessMemoryInfo(PROCESS_MEMORY_COUNTERS_EX2) 하나다 — 게이트뿐.
 windows-sys = { version = "0.60", features = [
   "Wdk_System_Threading",

@@ -517,7 +517,7 @@ fn webhook_file_lives_in_the_config_root() {
 #[test]
 fn pending_lines_are_escaped_and_alert_is_an_embed() {
     let m = Message::with_lines(
-        "AYNX",
+        "Aynx",
         "원격 명령 승인 대기".into(),
         "제목".into(),
         vec!["AI 설명: <!everyone> **굵게** [링크](https://evil)".into(), "  ".into()],

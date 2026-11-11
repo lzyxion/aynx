@@ -76,14 +76,14 @@ describe("canonicalPreset", () => {
     expect(canonicalPreset("luna-light")).toBe("aynx-light");
   });
 
-  it("걷은 Cyberpunk 프리셋은 모드를 지켜 AYNX 로 접힌다", () => {
+  it("걷은 Cyberpunk 프리셋은 모드를 지켜 Aynx 로 접힌다", () => {
     expect(canonicalPreset("cyber-2077-dark")).toBe("aynx-dark");
     expect(canonicalPreset("cyber-neon-dark")).toBe("aynx-dark");
     expect(canonicalPreset("cyber-2077-light")).toBe("aynx-light");
     expect(canonicalPreset("cyber-neon-light")).toBe("aynx-light");
   });
 
-  it("걷은 짝 없는 light 프리셋은 밝은 쪽 기본(AYNX Light)으로 접힌다", () => {
+  it("걷은 짝 없는 light 프리셋은 밝은 쪽 기본(Aynx Light)으로 접힌다", () => {
     expect(canonicalPreset("light")).toBe("aynx-light");
   });
 

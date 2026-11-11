@@ -33,7 +33,7 @@ pub(crate) const SETTINGS_JSON: &str = r#"{"disableAllHooks":true}"#;
 /// `--mcp-config` 파일의 기본 본문 — MCP 없음(세션 서버의 MCP 포트가 없거나 채팅 토큰을 못 뽑았을 때).
 pub(crate) const MCP_CONFIG_EMPTY: &str = r#"{"mcpServers":{}}"#;
 
-/// `--mcp-config` 파일의 본문 — AYNX 세션 서버 하나 · **그 프로세스의 채팅 토큰**(5단계 — `crate::chat_token`). `--strict-mcp-config` 와 짝이라
+/// `--mcp-config` 파일의 본문 — Aynx 세션 서버 하나 · **그 프로세스의 채팅 토큰**(5단계 — `crate::chat_token`). `--strict-mcp-config` 와 짝이라
 /// 사용자 MCP 서버는 싣지 않는다. 순수(파일은 서버가 채팅 임시 자리에 쓴다 · 끝나면 지운다).
 pub(crate) fn mcp_config(name: &str, url: &str, token: &str) -> String {
     serde_json::json!({
@@ -43,7 +43,7 @@ pub(crate) fn mcp_config(name: &str, url: &str, token: &str) -> String {
 }
 
 /// `--mcp-config` 본문에 **사람이 사이드 채팅에 고른 외부 서버**(2026-10-25 — `agent_mcp::side_chat_servers` · 서버가 준비한 실행 모양)를
-/// 더한다. 그 밖의 서버(사용자 CLI 설정)는 `--strict-mcp-config` 가 막는다. 이미 있는 이름(AYNX 서버 — 외부 목록에서는 거절되는 이름)은 덮지
+/// 더한다. 그 밖의 서버(사용자 CLI 설정)는 `--strict-mcp-config` 가 막는다. 이미 있는 이름(Aynx 서버 — 외부 목록에서는 거절되는 이름)은 덮지
 /// 않는다. 순수.
 pub(crate) fn mcp_config_with(base: &str, external: &[crate::agent_mcp::McpServer]) -> String {
     let mut v: Value = serde_json::from_str(base).unwrap_or_else(|_| json!({"mcpServers": {}}));
@@ -84,7 +84,7 @@ pub(crate) struct Opts<'a> {
     pub mcp_config_file: &'a str,
     /// 지침 파일(검색 지침 + 전역 CLAUDE.md + `sidechat/CLAUDE.md` — `--append-system-prompt-file` · 서버는 늘 싣는다).
     pub append_file: Option<&'a str>,
-    /// 묻지 않고 부르는 AYNX MCP 도구(`mcp__<서버>__<도구>` — 5단계 읽기 도구 · `--allowedTools` 에 더한다). 비면 없음.
+    /// 묻지 않고 부르는 Aynx MCP 도구(`mcp__<서버>__<도구>` — 5단계 읽기 도구 · `--allowedTools` 에 더한다). 비면 없음.
     pub mcp_allowed: &'a [String],
 }
 
@@ -161,7 +161,7 @@ pub(crate) fn argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
 /// **프로듀서 채팅의 내장 도구**(오케스트레이션 2단계 단계 2 — 설계 1-2 · R9): 읽기 셋뿐(웹 · 쓰기 · 명령 없음).
 pub(crate) const PRODUCER_TOOLS: &str = "Read,Grep,Glob";
 
-/// **프로듀서 인자**(설계 1-2) — [`argv`] 와 같은 줄에서 내장 도구를 [`PRODUCER_TOOLS`] 로, 묻지 않음을 `Read(./**)` 하나(+ AYNX MCP 미리
+/// **프로듀서 인자**(설계 1-2) — [`argv`] 와 같은 줄에서 내장 도구를 [`PRODUCER_TOOLS`] 로, 묻지 않음을 `Read(./**)` 하나(+ Aynx MCP 미리
 /// 허용)로 바꾼다. `--setting-sources ""` · `--settings`(훅 끔) · `--strict-mcp-config` · 대화형 도구 막기는 그대로다(실측 P9 — 사용자 · 프로젝트
 /// 설정의 허용 규칙 · 훅 · MCP 가 새지 않는다). 순수.
 pub(crate) fn producer_argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
@@ -318,7 +318,7 @@ impl Claude {
         if subtype != "can_use_tool" {
             // 모르는 제어 요청 — 오류로 곧바로 답한다(CLI 가 영영 기다리지 않게).
             let line = json!({"type": "control_response", "response": {
-                "subtype": "error", "request_id": id, "error": format!("AYNX side chat does not handle {subtype}")}});
+                "subtype": "error", "request_id": id, "error": format!("Aynx side chat does not handle {subtype}")}});
             return Step {
                 evs: vec![Ev::Notice { code: "unsupported-request", detail: Some(one_line(subtype)) }],
                 stdin: vec![line.to_string()],

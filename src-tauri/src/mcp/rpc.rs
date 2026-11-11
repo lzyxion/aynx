@@ -264,7 +264,7 @@ fn tools_call(
             && (crate::orchestration::COORDINATOR_TOOLS.contains(&n) || crate::orchestration::TILE_TOOLS.contains(&n))
         {
             return tool_result(Err(format!(
-                "{}: coordination tools need an AYNX AI tile's own token — the shared token cannot coordinate a run",
+                "{}: coordination tools need an Aynx AI tile's own token — the shared token cannot coordinate a run",
                 crate::orchestration::NOT_A_TILE
             )));
         }
@@ -279,7 +279,7 @@ fn tools_call(
     if let (Caller::Producer { chat, proc }, Some(n)) = (caller, name) {
         if PRODUCER_PLAN_TOOLS.contains(&n) && !producer_plan_tools_now(chat, *proc, orch) {
             return tool_result(Err(format!(
-                "{PRODUCER_PLAN_TOOLS_OFF}: task plan tools are off for this studio's producer — the person turns them on in AYNX (orchestration settings); ask a person to plan it from an AI tile meanwhile"
+                "{PRODUCER_PLAN_TOOLS_OFF}: task plan tools are off for this studio's producer — the person turns them on in Aynx (orchestration settings); ask a person to plan it from an AI tile meanwhile"
             )));
         }
     }

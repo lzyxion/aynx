@@ -450,9 +450,9 @@ export const pane: Record<keyof typeof koPane, string> = {
   "setup.rerun": "Run again",
   "setup.launch": "Start {agent}",
   "setup.close": "Close",
-  "setup.prepareFailed": "[AYNX] Could not prepare the setup script: {reason}",
+  "setup.prepareFailed": "[Aynx] Could not prepare the setup script: {reason}",
   // Remote new worktree — after connecting, before the first input (docs/log/2026-09-29-remote-worktree-after-connect.md)
-  "worktree.preparing": "[AYNX] Preparing the worktree… ({path})",
+  "worktree.preparing": "[Aynx] Preparing the worktree… ({path})",
   "worktree.noCommit.head": "No first commit",
   "worktree.noCommit.hint": "{repo} has no commits, so a new worktree cannot branch off {branch}.",
   "worktree.noCommit.commit": "Make first commit and continue",

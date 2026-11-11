@@ -539,7 +539,7 @@ fn normalize_newlines(text: &str, newline: &str) -> String {
 fn managed_block(body: &str, dev: bool, newline: &str, terminated: bool) -> String {
     let name = crate::instance::instruction_marker_name(dev);
     // 사용자 파일에 적히는 고정 표식이다 — 표시 언어를 바꿔도 블록이 바뀌지 않는다(conventions).
-    format!("<!-- {name}:begin — 이 구간은 AYNX 가 덮어씁니다. 여기 고친 내용은 사라집니다 -->{newline}{}{newline}<!-- {name}:end -->{}",
+    format!("<!-- {name}:begin — 이 구간은 Aynx 가 덮어씁니다. 여기 고친 내용은 사라집니다 -->{newline}{}{newline}<!-- {name}:end -->{}",
         normalize_newlines(body.trim(), newline), if terminated { newline } else { "" })
 }
 

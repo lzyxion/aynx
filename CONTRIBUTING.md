@@ -1,4 +1,4 @@
-# Contributing to AYNX
+# Contributing to Aynx
 
 English · [한국어](CONTRIBUTING.ko.md)
 

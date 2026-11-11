@@ -131,7 +131,7 @@ export async function boot(): Promise<void> {
   await reapWindowSessions();
   await loadSettings();
   // 사용자 터미널 테마(`<설정 루트>/terminal-themes/`) — `user:` 키를 푸는 목록이라 설정 바로 뒤 · 타일이 뜨기 전에(실패는 삼킨다 —
-  // 그동안 같은 모드의 AYNX 로 그려진다).
+  // 그동안 같은 모드의 Aynx 로 그려진다).
   await loadUserTermThemes();
   // 아바타 라이브러리(사용자 그림의 썸네일 — 원격도 읽는다) — 탭 · 머리줄 · 아티스트가 `user-<12hex>` 를 풀 목록이라 타일이 뜨기 전에.
   // 기다리지 않는다(실패 · 늦음이면 그동안 기본 그림 — docs/log/2026-10-31-avatars.md).

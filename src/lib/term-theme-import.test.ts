@@ -388,7 +388,7 @@ describe("사용자 테마 키 · termThemeOf", () => {
       expect(isUserTermKey(bad), String(bad)).toBe(false);
     }
   });
-  it("있으면 그 팔레트 · 없으면 같은 모드의 AYNX", () => {
+  it("있으면 그 팔레트 · 없으면 같은 모드의 Aynx", () => {
     const theme = { background: "#123456" };
     const user = { themes: { mine: { id: "mine", name: "Mine", theme } } };
     expect(termThemeOf("user:mine", undefined, user)).toBe(theme);

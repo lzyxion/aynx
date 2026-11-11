@@ -884,7 +884,7 @@ export interface TabSpec {
   name?: string;
   /**
    * **이 탭이 무엇을 위해 만들어졌는가의 이름** — 프로젝트·워크트리를 새 탭으로 열 때 붙는 고정 제목
-   * (`AYNX` · `AYNX · feat-message` — `app/tabs.svelte.ts` 의 `openInNewTab` 이 적는 유일한 자리).
+   * (`Aynx` · `Aynx · feat-message` — `app/tabs.svelte.ts` 의 `openInNewTab` 이 적는 유일한 자리).
    *
    * [`title`](자동 제목)과 달리 타일이 늘어도 합성 제목에 밀리지 않는다 — 프로젝트 탭은 안에 셸·에이전트가
    * 몇 개 뜨든 그 프로젝트의 탭이다(사용자 요청 2026-09-27). [`name`](사용자 이름)과 달리 사람이 붙인 것이

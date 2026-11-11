@@ -1,6 +1,6 @@
-# AYNX 문서
+# Aynx 문서
 
-AYNX — Hyprland 감성의 AI 코딩 에이전트 작업 공간
+Aynx — Hyprland 감성의 AI 코딩 에이전트 작업 공간
 (Tauri 2 + Svelte 5 + xterm.js). 저장소 소개와 빌드 방법은 [README](../README.ko.md) 에 있다.
 
 ## 기능과 보안

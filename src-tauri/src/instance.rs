@@ -20,7 +20,7 @@
 //!   (옛 MCP 서버 이름)  (없음 — 다음 개명 때 채운다)
 //!   MCP 토큰 환경변수   AYNX_MCP_TOKEN                       AYNX_DEV_MCP_TOKEN  (AI 타일)
 //!   identifier          io.github.lzyxion.aynx               io.github.lzyxion.aynx-dev  (→ WebView2 폴더)
-//!   창 제목             AYNX                                AYNX (dev)
+//!   창 제목             Aynx                                Aynx (dev)
 //!   원격 관문 기본 포트 47821                                     47822  (127.0.0.1 — crate::remote)
 //! ```
 //!
@@ -133,9 +133,9 @@ pub const fn mcp_token_env(dev: bool) -> &'static str {
 /// 창 제목(작업 표시줄·Alt+Tab) — 두 창을 눈으로 가르게.
 pub const fn window_title(dev: bool) -> &'static str {
     if dev {
-        "AYNX (dev)"
+        "Aynx (dev)"
     } else {
-        "AYNX"
+        "Aynx"
     }
 }
 
@@ -196,7 +196,7 @@ fn asset_scope(dev: bool) -> Vec<PathBuf> {
 ///   개발 창은 따로 브라우저 프로세스를 띄운다(localStorage 가 섞이지 않고
 ///   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` 가 먹는다). 분리 창
 ///   (`handoff.rs`)도 같은 기본값을 타서 한 폴더를 같이 쓴다.
-/// - 창 제목 `AYNX (dev)`.
+/// - 창 제목 `Aynx (dev)`.
 /// - asset 스코프를 `$CONFIG/aynx-dev/` 의 월페이퍼 이름으로 — 월페이퍼가 개발 폴더에 있고, 개발 창이
 ///   릴리스 폴더를 asset 으로 읽을 이유가 없다.
 ///
@@ -319,8 +319,8 @@ mod tests {
         assert_eq!(app_dir_name(true), "aynx-dev");
         assert_eq!(home_dir_name(false), ".aynx");
         assert_eq!(home_dir_name(true), ".aynx-dev");
-        assert_eq!(window_title(false), "AYNX");
-        assert_eq!(window_title(true), "AYNX (dev)");
+        assert_eq!(window_title(false), "Aynx");
+        assert_eq!(window_title(true), "Aynx (dev)");
     }
 
     #[test]

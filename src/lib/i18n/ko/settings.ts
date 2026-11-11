@@ -475,12 +475,12 @@ export const settings = {
   // ── 터미널 프리셋 이름 (`theme.ts` 의 `TERM_PRESETS[…].labelKey`) ───────────
   //
   // 이름은 전부 두 언어에서 같은 글자다 — 고유명(Tokyo Night · Gruvbox …)은 제품 이름이라
-  // 번역하지 않고, AYNX 두 벌도 같은 글자로 맞췄다(2026-10-24). 그래도 키를 두는 이유는 그
+  // 번역하지 않고, Aynx 두 벌도 같은 글자로 맞췄다(2026-10-24). 그래도 키를 두는 이유는 그
   // 목록을 한 자리에서 보고, 번역되는 이름이 다시 생겨도 키 구조가 그대로이게 하기 위해서다.
-  "preset.aynx-dark": "AYNX Dark",
+  "preset.aynx-dark": "Aynx Dark",
   "preset.tokyo-night": "Tokyo Night",
   "preset.gruvbox-dark": "Gruvbox Dark",
-  "preset.aynx-light": "AYNX Light",
+  "preset.aynx-light": "Aynx Light",
   "preset.solarized-light": "Solarized Light",
   "preset.gruvbox-light": "Gruvbox Light",
 
@@ -639,7 +639,7 @@ export const settings = {
   "theme.statusbar.note": "왼쪽·오른쪽은 아이콘만 서는 세로 기둥입니다.",
   "theme.statusbar.resources.label": "자원 고리",
   "theme.statusbar.resources.summary": "상태바에 이 PC 전체의 CPU · 메모리 고리를 세웁니다",
-  "theme.statusbar.resources.note": "작업 관리자와 같은 숫자입니다. 올리면 AYNX 몫과 많이 쓰는 타일이, 누르면 자원 화면이 뜹니다.",
+  "theme.statusbar.resources.note": "작업 관리자와 같은 숫자입니다. 올리면 Aynx 몫과 많이 쓰는 타일이, 누르면 자원 화면이 뜹니다.",
   "theme.statusbar.usage.label": "사용량 고리",
   "theme.statusbar.usage.summary": "상태바에 AI CLI 사용 한도 고리를 세웁니다",
   "theme.statusbar.usage.note": "올리면 창별 사용량이, 누르면 사용량 화면이 뜹니다. 꺼도 사용량 화면은 그대로입니다.",
@@ -757,7 +757,7 @@ export const settings = {
   "terminal.theme.group.light": "라이트",
   // 사용자 터미널 테마 — 가져오기 · 관리 (dialogs/TermThemeDialog.svelte)
   "terminal.theme.group.user": "내 테마",
-  "terminal.theme.userMissing": "없는 테마 (AYNX 로 그림)",
+  "terminal.theme.userMissing": "없는 테마 (Aynx 로 그림)",
   "terminal.import.open": "테마 가져오기…",
   "terminal.import.manage": "내 테마 관리",
   "terminal.import.title": "터미널 테마 가져오기",
@@ -775,13 +775,13 @@ export const settings = {
   "terminal.import.done": "테마 {n}개를 가져와 첫 테마를 골랐습니다 — [저장] 해야 남습니다",
   "terminal.import.defaultName": "가져온 테마",
   "terminal.import.manageTitle": "내 테마",
-  "terminal.import.manageLead": "이름은 고치는 즉시 바뀝니다. 지운 테마를 쓰고 있었으면 같은 밝기의 AYNX 기본으로 돌아갑니다.",
+  "terminal.import.manageLead": "이름은 고치는 즉시 바뀝니다. 지운 테마를 쓰고 있었으면 같은 밝기의 Aynx 기본으로 돌아갑니다.",
   "terminal.import.manageEmpty": "가져온 테마가 없습니다.",
   "terminal.import.renameLabel": "{name} 이름",
   "terminal.import.removeLabel": "{name} 지우기",
   "terminal.import.close": "닫기",
   "terminal.import.remove.title": "내 테마 지우기",
-  "terminal.import.remove.body": "'{name}' 테마를 지울까요? 지금 쓰는 테마면 같은 밝기의 AYNX 기본으로 돌아갑니다.",
+  "terminal.import.remove.body": "'{name}' 테마를 지울까요? 지금 쓰는 테마면 같은 밝기의 Aynx 기본으로 돌아갑니다.",
   "terminal.import.remove.ok": "지우기",
   "terminal.import.error.empty": "내용이 비어 있습니다",
   "terminal.import.error.tooBig": "너무 큽니다 — {mb}MB 까지 받습니다",
@@ -1084,7 +1084,7 @@ export const settings = {
   "ai.endpoint.label": "엔드포인트 URL",
   "ai.endpoint.aria": "MCP 엔드포인트 URL",
   "ai.subhead": "AI 에이전트",
-  "ai.summary": "AYNX 가 띄우는 AI 에이전트(Claude Code · Codex)의 시작 폴더 · 사용 여부 · 훅 · 추가 인자를 정합니다.",
+  "ai.summary": "Aynx 가 띄우는 AI 에이전트(Claude Code · Codex)의 시작 폴더 · 사용 여부 · 훅 · 추가 인자를 정합니다.",
   "ai.note": "시작 폴더는 새 AI 타일이 열리는 폴더입니다. 추가 인자는 AI 타일 · 프로젝트 시작 화면 · 대화 재개처럼 앱이 띄우는 실행에만 붙고, 셸에서 직접 친 claude · codex 에는 붙지 않습니다. 훅은 에이전트의 상태(실행 중 · 권한 대기 · 완료)를 타일에 보여 주는 신호용입니다. 끈 에이전트는 새 AI 타일 · 프로젝트 · 사용량 칩에서 숨겨집니다.",
   "ai.footnote": "MCP 서버는 MCP 메뉴에서, 에이전트 지침은 지침 메뉴에서 정합니다.",
   "ai.common.subhead": "공통",
@@ -1114,7 +1114,7 @@ export const settings = {
   "credentials.db.direct": "직접",
   "ai.external.subhead": "MCP 서버",
   "ai.external.list.subhead": "서버",
-  "ai.external.note": "AYNX 세션 서버는 MCP 토큰을 받는 로컬 AI 타일에만 실립니다. 외부 서버는 앱 전체 또는 프로젝트별로 AYNX가 띄우는 로컬 에이전트에 적용되고, 사이드 채팅에는 대상에서 고른 서버만 실립니다. 환경변수 값은 볼트에 암호화 저장합니다. SSH·WSL과 직접 실행한 에이전트에는 싣지 않습니다. 저장하면 다음 AI 타일 · 사이드 채팅 실행부터 반영됩니다.",
+  "ai.external.note": "Aynx 세션 서버는 MCP 토큰을 받는 로컬 AI 타일에만 실립니다. 외부 서버는 앱 전체 또는 프로젝트별로 Aynx가 띄우는 로컬 에이전트에 적용되고, 사이드 채팅에는 대상에서 고른 서버만 실립니다. 환경변수 값은 볼트에 암호화 저장합니다. SSH·WSL과 직접 실행한 에이전트에는 싣지 않습니다. 저장하면 다음 AI 타일 · 사이드 채팅 실행부터 반영됩니다.",
   "ai.sessions.description": "AI 연결 · AI 읽기를 허용한 세션을 읽고 헤드리스 작업안을 올립니다(실행은 승인 후)",
   "ai.external.agent_on": "{name} · {agent} 에 싣기 — 켜짐",
   "ai.external.agent_off": "{name} · {agent} 에 싣기 — 꺼짐",
@@ -1125,7 +1125,7 @@ export const settings = {
   "ai.external.enabled_note": "끄면 어디에도 싣지 않습니다 — 고른 대상은 그대로 둡니다",
   "ai.external.targets": "대상",
   "ai.external.submit_add": "추가",
-  "ai.sessions.label": "AYNX 세션 서버",
+  "ai.sessions.label": "Aynx 세션 서버",
   "ai.sessions.note": "앱 전체 설정 · MCP 토큰을 받는 로컬 AI 타일에만 적용 · 저장 후 다음 실행부터",
   "ai.external.empty": "등록한 외부 MCP 서버가 없습니다.",
   "ai.external.add": "MCP 서버 추가",
@@ -1140,7 +1140,7 @@ export const settings = {
   "ai.sessions.view.activity_line": "{client} · {when}",
   "ai.sessions.view.client_unknown": "이름을 밝히지 않은 클라이언트",
   "ai.sessions.view.targets": "연결 대상",
-  "ai.sessions.view.targets_note": "MCP 토큰을 받는 로컬 AI 타일(AYNX 가 띄우는 타일)에만 실립니다. CLI 전역 설정에는 등록하지 않으므로 셸에서 직접 친 claude · codex 에는 실리지 않습니다. 저장 후 다음 실행부터 반영됩니다.",
+  "ai.sessions.view.targets_note": "MCP 토큰을 받는 로컬 AI 타일(Aynx 가 띄우는 타일)에만 실립니다. CLI 전역 설정에는 등록하지 않으므로 셸에서 직접 친 claude · codex 에는 실리지 않습니다. 저장 후 다음 실행부터 반영됩니다.",
   "ai.sessions.view.tools": "제공 도구",
   "ai.sessions.view.tools_note": "설명은 서버가 AI 에게 주는 도구 설명(영어)의 첫 문장입니다. 이 서버에는 명령을 실행하는 도구가 없습니다 — 실행은 사람이 앱에서 승인한 작업안만 합니다.",
   "ai.sessions.view.tools_count": "{count}개",
@@ -1240,7 +1240,7 @@ export const settings = {
   "ai.hooks.reinstall": "다시 설치…",
   "ai.hooks.remove": "제거",
   "ai.hooks.busy": "처리하는 중…",
-  "ai.hooks.note": "설치하면 AI 타일의 에이전트가 턴 시작·도구 사용·입력 대기·턴 끝을 이 앱에 직접 알려, 탭의 상태 점이 추정 대신 그 신호를 씁니다. AYNX 밖에서 띄운 에이전트에서는 아무 일도 하지 않습니다. 원격(SSH) 타일은 프로젝트 메뉴의 \"원격에 … 훅 설치…\" 로 그 서버에 따로 설치합니다.",
+  "ai.hooks.note": "설치하면 AI 타일의 에이전트가 턴 시작·도구 사용·입력 대기·턴 끝을 이 앱에 직접 알려, 탭의 상태 점이 추정 대신 그 신호를 씁니다. Aynx 밖에서 띄운 에이전트에서는 아무 일도 하지 않습니다. 원격(SSH) 타일은 프로젝트 메뉴의 \"원격에 … 훅 설치…\" 로 그 서버에 따로 설치합니다.",
   "ai.hooks.trust": "{agent} 는 새 훅을 바로 돌리지 않습니다 — 설치한 뒤 {agent} 안에서 /hooks 를 열어 한 번 승인하세요.",
   "ai.hooks.confirm.title": "{agent} 훅 설치",
   "ai.hooks.confirm.lead": "다음 두 가지를 씁니다. 다른 설정·훅은 그대로 두고, 여러 번 설치해도 한 벌입니다.",
@@ -1268,14 +1268,14 @@ export const settings = {
   "ai.codex_no_daemon.label": "타일마다 Codex 상태 신호 분리 (--no-daemon)",
   "ai.codex_no_daemon.note": "Codex 는 기본으로 여러 타일이 백그라운드 서버 하나를 같이 써서, 상태 신호가 다른 타일로 갈 수 있습니다. --no-daemon 으로 타일마다 따로 실행해 신호를 제 타일로 보냅니다.",
   "ai.claude_statusline.label": "Claude 요금제 한도 읽기 (mod)",
-  "ai.claude_statusline.note": "상태바·사용량 화면에 Claude 요금제 한도(5시간·7일 %)를 보려면 켜 두세요. AYNX 로컬 타일에서 뜨는 Claude 에 작은 mod 를 실어 그 값을 읽습니다. 쓰시던 상태줄은 건드리지 않습니다. Claude Code 2.1.287 이상이 필요하고, 다음에 여는 타일부터 적용됩니다.",
+  "ai.claude_statusline.note": "상태바·사용량 화면에 Claude 요금제 한도(5시간·7일 %)를 보려면 켜 두세요. Aynx 로컬 타일에서 뜨는 Claude 에 작은 mod 를 실어 그 값을 읽습니다. 쓰시던 상태줄은 건드리지 않습니다. Claude Code 2.1.287 이상이 필요하고, 다음에 여는 타일부터 적용됩니다.",
   // ── 에이전트 추가 인자 (docs/log/2026-09-27-agent-extra-args.md) — 칸은 Rust 의 에이전트 표로 그린다, `{agent}` = 제품 이름.
   "ai.args.label": "추가 인자",
   "ai.args.placeholder": "예: --model opus",
   "ai.args.preview": "실행될 명령:",
   "ai.args.invalid": "적용되지 않습니다 — {reason}",
-  "ai.args.danger": "권한 확인을 건너뛰는 옵션입니다 — AYNX 가 띄우는 모든 {agent} 에 적용됩니다",
-  "ai.args.note": "AYNX 가 띄우는 에이전트(AI 타일 · 셸 메뉴 · 프로젝트 시작 화면 · 재개 · 새 대화로 계속)에만 붙습니다 — 셸에 직접 친 명령은 친 그대로입니다. 공백으로 나누고 따옴표로 묶습니다. 셸 문법(; & | < > ` $)과 변수는 쓰지 않으며, 각 인자는 타일의 셸에 맞게 다시 인용됩니다.",
+  "ai.args.danger": "권한 확인을 건너뛰는 옵션입니다 — Aynx 가 띄우는 모든 {agent} 에 적용됩니다",
+  "ai.args.note": "Aynx 가 띄우는 에이전트(AI 타일 · 셸 메뉴 · 프로젝트 시작 화면 · 재개 · 새 대화로 계속)에만 붙습니다 — 셸에 직접 친 명령은 친 그대로입니다. 공백으로 나누고 따옴표로 묶습니다. 셸 문법(; & | < > ` $)과 변수는 쓰지 않으며, 각 인자는 타일의 셸에 맞게 다시 인용됩니다.",
   // ── 자동 승인 (AutomationSection) ──────────────────────────────────────────
   // 늘 보이는 위험 경고 한 줄 — `middle` 과 `middle2` 사이에 `<code>&&</code>` 가 들어간다.
   // 파이프(|) 허용(10-22 옵트인) — 설정 › 자동 승인의 한 줄

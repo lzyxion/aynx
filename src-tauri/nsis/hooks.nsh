@@ -1,4 +1,4 @@
-﻿; AYNX 설치기 훅 (③-4 — 설계 docs/internal/session-server-design-2026-10-08.md ③ "설치기").
+﻿; Aynx 설치기 훅 (③-4 — 설계 docs/internal/session-server-design-2026-10-08.md ③ "설치기").
 ;
 ; 설치(업데이트)·제거는 같은 이름의 프로세스(aynx.exe)를 모두 끝낸다 — **세션 서버(aynx session-server)도** 끝나고 그
 ; 안의 로컬 셸·SSH·AI 에이전트가 함께 닫힌다(③-0 실측: NSIS 는 이름+사용자로 TerminateProcess). 그래서 Tauri 의 "앱이 실행 중"
@@ -39,10 +39,10 @@
   Pop $R0
   IntCmp $R0 0 0 pl_done_${PLID} pl_done_${PLID}
   StrCmp $LANGUAGE "1042" 0 pl_en_${PLID}
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "AYNX 세션 서버가 실행 중입니다 — 살아 있는 세션 $R5개(로컬 셸·SSH·안의 AI 에이전트)가 닫힙니다.$\n$\n계속할까요?" IDOK pl_done_${PLID}
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Aynx 세션 서버가 실행 중입니다 — 살아 있는 세션 $R5개(로컬 셸·SSH·안의 AI 에이전트)가 닫힙니다.$\n$\n계속할까요?" IDOK pl_done_${PLID}
     Abort
   pl_en_${PLID}:
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "The AYNX session server is running — $R5 live session(s) (local shells, SSH and the AI agents in them) will be closed.$\n$\nContinue?" IDOK pl_done_${PLID}
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "The Aynx session server is running — $R5 live session(s) (local shells, SSH and the AI agents in them) will be closed.$\n$\nContinue?" IDOK pl_done_${PLID}
     Abort
   pl_done_${PLID}:
   !undef PLID

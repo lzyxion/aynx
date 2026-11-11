@@ -274,7 +274,7 @@ describe("팔레트 — 대화 접두사", () => {
 describe("실기 발견 (2026-09-26)", () => {
   it("같은 대화가 한 묶음에 두 번 와도 프로젝트 수 ≥ 워크트리 수, 오른쪽 줄 수 = 범위 수", () => {
     // 프로젝트 경로는 역슬래시, git 이 적은 주 워크트리는 슬래시 — 같은 폴더로 읽혀야 한다
-    const ps = [P("a", "AYNX", "C:\\src\\aynx")];
+    const ps = [P("a", "Aynx", "C:\\src\\aynx")];
     const wt = () => [W("C:/src/aynx", "main"), W("C:/src/aynx-wt/x", "x")];
     const dup = C("C:\\src\\aynx", 900, { agent: "codex" });
     const older = { ...dup, updatedAt: 100 };
@@ -289,7 +289,7 @@ describe("실기 발견 (2026-09-26)", () => {
     };
     const s = buildScopes(ps, wt, list, null);
     const count = (label: string) => s.rows.find((r) => r.label === label)?.count;
-    expect(count("AYNX")).toBe(3);
+    expect(count("Aynx")).toBe(3);
     expect(count("main")).toBe(2);
     for (const r of s.rows) expect(s.conversations.get(r.key)?.length ?? 0).toBe(r.count);
     expect(s.conversations.get(s.rows.find((r) => r.label === "main")!.key)?.[0].updatedAt).toBe(900);

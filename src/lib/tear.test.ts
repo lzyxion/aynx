@@ -446,7 +446,7 @@ describe("타일 이름 신호도 건너간다 (docs/log/2026-09-30-tear-title-a
       id: "old-tab",
       title: "탭 7",
       name: "배포",
-      pinnedTitle: "AYNX · feat",
+      pinnedTitle: "Aynx · feat",
       projectFolder: "C:/src/aynx",
       root: leafOf(pane),
     };
@@ -454,7 +454,7 @@ describe("타일 이름 신호도 건너간다 (docs/log/2026-09-30-tear-title-a
     const tab = restoreTab(wire!);
     expect(tab.title).toBe("탭 7");
     expect(tab.name).toBe("배포");
-    expect(tab.pinnedTitle).toBe("AYNX · feat");
+    expect(tab.pinnedTitle).toBe("Aynx · feat");
     expect(tab.projectFolder).toBe("C:/src/aynx");
   });
 });

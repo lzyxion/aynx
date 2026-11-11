@@ -31,7 +31,7 @@ pub(crate) use event::{Cli, Decision, Ev, Step, UserImage};
 /// 답변 지침(모델이 읽는 고정 글 · 두 CLI 공용 — 2026-11-01 사용자 승인 · 직업 · OS 를 가정하지 않는 범용 글). 검색 지침 **앞에** 싣는다
 /// ([`fixed_guide`]). 프로듀서 채팅에는 싣지 않는다(그쪽은 프로듀서 고정 지침).
 pub(crate) const ANSWER_GUIDE: &str = "\
-Answering (AYNX side chat):
+Answering (Aynx side chat):
 - Lead with the answer, then explain only as far as it helps.
 - Keep it concise and well structured: short paragraphs, lists when there are several items, no filler preamble, no restating the question, no closing summary.
 - Put code, commands, file paths and configuration in fenced code blocks with a language tag.
@@ -74,7 +74,7 @@ pub(crate) fn codex_instructions(person: Option<&str>) -> String {
 /// Codex 는 `thread/{start,resume,fork}.developerInstructions`. 도구 이름을 부르지 않는다 — Claude 의 검색은 제목 · 주소만 주고 페이지
 /// 읽기는 WebFetch(묻지 않음 — 10-25), Codex 의 내장 검색은 페이지를 연다.
 pub(crate) const SEARCH_GUIDE: &str = "\
-Web search (AYNX side chat):
+Web search (Aynx side chat):
 - For facts that may be recent, changing or uncertain (versions, releases, prices, news, APIs, schedules), search the web instead of answering from memory.
 - Use several short, focused queries and cross-check the results rather than trusting a single one.
 - Prefer primary and official sources (vendor docs, release notes, standards, original announcements) and confirm a specific detail there before stating it.

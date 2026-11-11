@@ -486,9 +486,9 @@ export const pane = {
   "setup.rerun": "다시 실행",
   "setup.launch": "{agent} 띄우기",
   "setup.close": "닫기",
-  "setup.prepareFailed": "[AYNX] 설정 스크립트를 준비하지 못했습니다: {reason}",
+  "setup.prepareFailed": "[Aynx] 설정 스크립트를 준비하지 못했습니다: {reason}",
   // 원격 새 워크트리 — 접속한 뒤 · 첫 입력 전 (docs/log/2026-09-29-remote-worktree-after-connect.md)
-  "worktree.preparing": "[AYNX] 워크트리 준비 중… ({path})",
+  "worktree.preparing": "[Aynx] 워크트리 준비 중… ({path})",
   "worktree.noCommit.head": "첫 커밋이 없습니다",
   "worktree.noCommit.hint": "{repo} 에 커밋이 없어 새 워크트리가 {branch} 에서 갈라질 수 없습니다.",
   "worktree.noCommit.commit": "첫 커밋 만들고 계속",

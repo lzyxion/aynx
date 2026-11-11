@@ -392,7 +392,7 @@ export function clearDynamicTheme() {
   settings.current.app.dynamic = undefined;
   settings.current.terminal.dynamic = undefined;
   // 기본 프리셋이거나 지금은 없는 키면 "안 정함" 으로 둔다 (기본값 추종 — setTermPreset 과 같은 규칙).
-  // 사용자 테마 키는 모양만 보고 되돌린다(파일이 없으면 그릴 때 같은 모드의 AYNX — `termThemeOf`).
+  // 사용자 테마 키는 모양만 보고 되돌린다(파일이 없으면 그릴 때 같은 모드의 Aynx — `termThemeOf`).
   // `dynamic` · 고정 밝기 어느 쪽이었든 같다 — 맵이 사라지니 둘 다 그릴 것이 없다.
   settings.current.terminal.theme =
     before && before !== DEFAULT_TERM_PRESET && (before in TERM_PRESETS || isUserTermKey(before)) ? before : undefined;

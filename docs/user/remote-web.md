@@ -1,6 +1,6 @@
 # Remote access guide (remote web client)
 
-**Remote access** opens the app on your main PC (the PC running AYNX) from a **browser** on another PC or phone. **Tailscale** is the only route. The app listens
+**Remote access** opens the app on your main PC (the PC running Aynx) from a **browser** on another PC or phone. **Tailscale** is the only route. The app listens
 only on `127.0.0.1`, and what exposes it inside the tailnet (your Tailscale devices) is `tailscale serve` on the main PC (started by [Connect] in Settings or by you).
 Tailscale also handles certificates and TLS.
 

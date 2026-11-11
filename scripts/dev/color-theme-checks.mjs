@@ -22,7 +22,7 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
   };
   const selected = () => ev(`document.querySelector('[data-color-theme][aria-pressed="true"]')?.dataset.colorTheme ?? null`);
   const current = () => ev(`JSON.stringify(window.__themeSettings.settings.current)`);
-  // AYNX 는 기본 하나(2026-10-24) — 그 밖의 고르기는 Classic 칩을 돈다
+  // Aynx 는 기본 하나(2026-10-24) — 그 밖의 고르기는 Classic 칩을 돈다
   const pick = async (id) => {
     const chip = id === 'aynx' ? '#app-color-prism' : '#app-color-classic';
     for (let i=0; i<8 && await selected() !== id; i++) await tap(chip);
@@ -50,8 +50,8 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
     }
     for (let i=0; i<2; i++) {
       await tap('#app-color-prism');
-      check(await selected() === 'aynx' && await ev(`document.querySelector('#app-color-prism').getAttribute('aria-label')==='AYNX'`) === true,
-        'AYNX 는 변형 하나 — 다시 눌러도 기본이고 순환 문구가 없다');
+      check(await selected() === 'aynx' && await ev(`document.querySelector('#app-color-prism').getAttribute('aria-label')==='Aynx'`) === true,
+        'Aynx 는 변형 하나 — 다시 눌러도 기본이고 순환 문구가 없다');
     }
     for (const [family, ids] of [
       ['classic', ['ocean','forest','sunset','lavender','rose','amber','slate','ocean']],
@@ -64,7 +64,7 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
     }
     // '사용자 색' 칩은 10-17 에 걷었다 — 저장된 사용자 색의 모델 동작은 app-color-themes.test.ts 가 본다.
     await tap('#app-color-prism');
-    check(await selected() === 'aynx', '다른 계열에서 AYNX 칩은 기본으로 간다');
+    check(await selected() === 'aynx', '다른 계열에서 Aynx 칩은 기본으로 간다');
     // [취소] — 설정 화면 바닥 줄의 둘째 단추(`SettingsModal.svelte` 의 `.actions > .btn-secondary` · 뿌리는 `.settings-view`)
     await tap('.settings-view .actions > .btn-secondary');
     check(await ev(`window.__themeSettings.settings.current.app.bg===undefined && !window.__themeSettings.settings.dirty`) === true, 'cancel restores original colors');
@@ -105,12 +105,12 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
 
     await pick('aynx');
     check(await ev(`!window.__themeSettings.settings.dynamicTheme && !window.__themeDynamic.dynamicTheme.error`) === true,
-      'AYNX 칩은 월페이퍼 추출·오류를 걷는다');
+      'Aynx 칩은 월페이퍼 추출·오류를 걷는다');
     check(await selected() === 'aynx', '월페이퍼에서 누르면 기본으로 돌아온다');
     await ev(`window.__themeSettings.settings.current.app.status_bar='right';window.__themeSettings.settings.current.app.opacity=75;window.__themeSettings.settings.current.app.language='en'`);
     await pick('aynx');
     check(await ev(`(()=>{const s=window.__themeSettings.settings;return !s.current.app.bg && s.current.app.dynamic==='off' && s.presetKey==='aynx-light' && s.current.app.status_bar==='right' && s.current.app.opacity===75 && s.current.app.language==='en';})()`) === true,
-      'AYNX palette resets only colors and preserves brightness, position, opacity and language');
+      'Aynx palette resets only colors and preserves brightness, position, opacity and language');
 
     await ev(`window.__themeSettings.settings.current.app.opacity=100;window.__themeWallpaper.wallpaper.src='';window.__themeSettings.settings.current.wallpaper.file=undefined`);
     await pick('lavender');

@@ -16,8 +16,8 @@ export interface TermPreset {
   /**
    * 설정 화면의 select 에 보이는 이름 — **문구 키**다 (`t()` 가 렌더 때 푼다).
    *
-   * 지금은 이름이 전부 두 언어에서 같은 글자다(고유명 Tokyo Night · Gruvbox 와 `AYNX Dark` ·
-   * `AYNX Light` — 2026-10-24 에 번역된 이름을 걷었다). 그래도 키는 남긴다 — 번역되는 이름이
+   * 지금은 이름이 전부 두 언어에서 같은 글자다(고유명 Tokyo Night · Gruvbox 와 `Aynx Dark` ·
+   * `Aynx Light` — 2026-10-24 에 번역된 이름을 걷었다). 그래도 키는 남긴다 — 번역되는 이름이
    * 다시 생길 때 그 한 벌만 예외로 기억하지 않게 **전부** 키로 통일한다 (docs/log/2026-09-17-i18n.md).
    */
   labelKey: Key;
@@ -40,7 +40,7 @@ export const DEFAULT_TERM_PRESET = "aynx-dark";
  * 이 객체가 아니라 [`termPresetGroups`] 가 정한다(짝 표에서 순서를 뽑는다) — 여기 순서는 읽는 사람을 위한 것이다.
  */
 export const TERM_PRESETS: Record<string, TermPreset> = {
-  // AYNX 기본: graphite-dark 21색에서 배경 두 칸(background·cursorAccent)만 파랑 쪽으로 물들이고
+  // Aynx 기본: graphite-dark 21색에서 배경 두 칸(background·cursorAccent)만 파랑 쪽으로 물들이고
   // 커서는 기본 강조색(파랑). CSS와 짝 검사로 지킨다(`app-color-themes.ts` 의 `defaultAppPalette`).
   // 2026-10-11 전에는 Luna 였고, 2026-10-13 까지는 배경도 graphite 그대로였다.
   "aynx-dark": {
@@ -165,7 +165,7 @@ export const TERM_PRESETS: Record<string, TermPreset> = {
   // 배경에서 "bright" 는 배경에서 더 멀어지는 = 밝아지는 방향이지만, 흰 배경에서 같은
   // 뜻은 **더 진해지는** 것이다. Solarized·Gruvbox 의 라이트 판이 모두 그렇게 되어 있다.
   //
-  // AYNX 기본 라이트: graphite-light 21색에서 배경 두 칸만 파랑 쪽으로 물들이고 커서는 기본 강조색(파랑).
+  // Aynx 기본 라이트: graphite-light 21색에서 배경 두 칸만 파랑 쪽으로 물들이고 커서는 기본 강조색(파랑).
   "aynx-light": {
     labelKey: "settings.preset.aynx-light",
     theme: {
@@ -447,7 +447,7 @@ export function termThemeOf(
   if (key === DYNAMIC_DARK_TERM_KEY) return fixed?.dark ?? termTheme;
   if (key === DYNAMIC_LIGHT_TERM_KEY) return fixed?.light ?? termTheme;
   if (isUserTermKey(key)) {
-    // 사용자 테마는 폴더의 파일이 진실이다 — 지워졌거나 아직 목록을 못 읽었으면 **같은 모드의 AYNX** 로 그린다
+    // 사용자 테마는 폴더의 파일이 진실이다 — 지워졌거나 아직 목록을 못 읽었으면 **같은 모드의 Aynx** 로 그린다
     // (설정 파일은 고쳐 쓰지 않는다 — 파일을 되살리면 아무것도 안 해도 돌아온다).
     return user?.themes[userTermId(key)]?.theme ?? TERM_PRESETS[user?.light ? "aynx-light" : DEFAULT_TERM_PRESET].theme;
   }
@@ -538,7 +538,7 @@ function luminance(hex: string): number {
   return 0.2126 * lin(m[1]) + 0.7152 * lin(m[2]) + 0.0722 * lin(m[3]);
 }
 
-/** 밝은 배경의 팔레트인가 — 배경 휘도 0.4 이상(지운 사용자 테마를 같은 모드의 AYNX 로 돌릴 때 · 가져오기의 bright 채우기) */
+/** 밝은 배경의 팔레트인가 — 배경 휘도 0.4 이상(지운 사용자 테마를 같은 모드의 Aynx 로 돌릴 때 · 가져오기의 bright 채우기) */
 export function isLightBackground(background: string | undefined): boolean {
   return !!background && luminance(background) >= 0.4;
 }

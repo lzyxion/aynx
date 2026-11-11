@@ -2117,13 +2117,13 @@ fn tmux_command_is_one_posix_sh_line() {
     assert_eq!(
         tmux_attach_command("aynx-1", false),
         "command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s 'aynx-1' \
-             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'"
+             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'"
     );
     // 재접속 — `-D` 로 낡은 클라이언트를 떼고 붙는다.
     assert_eq!(
         tmux_attach_command("aynx-2", true),
         "command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -D -s 'aynx-2' \
-             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'"
+             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'"
     );
     // 실제로 큐에 들어가는 것은 그 줄 + 엔터(`\r`) 하나뿐이다.
     assert_eq!(
@@ -2236,7 +2236,7 @@ fn project_start_rides_inside_the_tmux_session() {
         "command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s 'aynx-1' -c \"$HOME\"/'aynx' \
              'claude; if [ -f \"$HOME/.aynx/rc\" ] && [ \"${SHELL##*/}\" = bash ]; \
              then exec \"$SHELL\" --rcfile \"$HOME/.aynx/rc\" -i; else exec \"${SHELL:-/bin/sh}\" -l; fi' \
-             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; cd -- \"$HOME\"/'aynx' && claude; }"
+             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; cd -- \"$HOME\"/'aynx' && claude; }"
     );
     // 명령이 없으면 폴더만 — tmux 는 기본 셸을 그 폴더에서 띄운다.
     let only_dir = SshStart {
@@ -2249,7 +2249,7 @@ fn project_start_rides_inside_the_tmux_session() {
     assert_eq!(
         tmux_attach_command_with_start("aynx-2", true, &only_dir),
         "command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -D -s 'aynx-2' -c '/srv/app' \
-             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; cd -- '/srv/app'; }"
+             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; cd -- '/srv/app'; }"
     );
     // 명령 안의 따옴표도 한 낱말 안에 갇힌다.
     let quoted = SshStart {
@@ -2302,7 +2302,7 @@ fn worktree_start_only_enters_the_folder() {
         "command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s 'aynx-1' -c \"$HOME\"/'api-wt/feat-x' \
              'claude; if [ -f \"$HOME/.aynx/rc\" ] && [ \"${SHELL##*/}\" = bash ]; \
              then exec \"$SHELL\" --rcfile \"$HOME/.aynx/rc\" -i; else exec \"${SHELL:-/bin/sh}\" -l; fi' \
-             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; cd -- \"$HOME\"/'api-wt/feat-x' && claude; }"
+             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; cd -- \"$HOME\"/'api-wt/feat-x' && claude; }"
     );
     for line in [project_start_line(&st).unwrap(), tm] {
         assert!(!line.contains("git "), "{line}");
@@ -2346,7 +2346,7 @@ fn signal_env_is_exported_before_the_agent_command() {
              'export AYNX_MCP_URL='\\''http://127.0.0.1:41234'\\'' AYNX_SIGNAL_TOKEN='\\''0123abcd'\\'' \
              AYNX_STREAM='\\''s-1'\\''; claude; if [ -f \"$HOME/.aynx/rc\" ] && [ \"${SHELL##*/}\" = bash ]; \
              then exec \"$SHELL\" --rcfile \"$HOME/.aynx/rc\" -i; else exec \"${SHELL:-/bin/sh}\" -l; fi' \
-             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; \
+             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; \
              export AYNX_MCP_URL='http://127.0.0.1:41234' AYNX_SIGNAL_TOKEN='0123abcd' AYNX_STREAM='s-1'; \
              cd -- \"$HOME\"/'aynx' && claude; }"
     );
@@ -2377,7 +2377,7 @@ fn signal_env_is_exported_before_the_agent_command() {
              'export AYNX_MCP_URL='\\''http://127.0.0.1:41234'\\'' AYNX_SIGNAL_TOKEN='\\''0123abcd'\\'' \
              AYNX_STREAM='\\''s-1'\\''; if [ -f \"$HOME/.aynx/rc\" ] && [ \"${SHELL##*/}\" = bash ]; \
              then exec \"$SHELL\" --rcfile \"$HOME/.aynx/rc\" -i; else exec \"${SHELL:-/bin/sh}\" -l; fi' \
-             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; \
+             \\; set-option -t 'aynx-1' set-titles on \\; set-option -t 'aynx-1' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; \
              export AYNX_MCP_URL='http://127.0.0.1:41234' AYNX_SIGNAL_TOKEN='0123abcd' AYNX_STREAM='s-1'; \
              cd -- \"$HOME\"/'aynx'; }"
     );
@@ -2419,7 +2419,7 @@ fn plain_tiles_export_the_signal_env_into_the_new_shell() {
              'export AYNX_MCP_URL='\\''http://127.0.0.1:41234'\\'' AYNX_SIGNAL_TOKEN='\\''0123abcd'\\'' \
              AYNX_STREAM='\\''s-1'\\''; if [ -f \"$HOME/.aynx/rc\" ] && [ \"${SHELL##*/}\" = bash ]; \
              then exec \"$SHELL\" --rcfile \"$HOME/.aynx/rc\" -i; else exec \"${SHELL:-/bin/sh}\" -l; fi' \
-             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || { echo '[AYNX] tmux 가 없어 일반 셸로 남깁니다'; \
+             \\; set-option -t 'aynx-2' set-titles on \\; set-option -t 'aynx-2' set-titles-string '#T' || { echo '[Aynx] tmux 가 없어 일반 셸로 남깁니다'; \
              export AYNX_MCP_URL='http://127.0.0.1:41234' AYNX_SIGNAL_TOKEN='0123abcd' AYNX_STREAM='s-1'; }"
     );
     let line = signal_export_line(&env);

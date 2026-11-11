@@ -186,7 +186,7 @@ fn first_instruction_starts_with_bracket() {
         assert!(!body.contains('\r') && !body.contains('\u{1b}') && !body.contains('\u{7f}') && !body.contains('\u{9b}'), "{body:?}");
         // (3a) 이어지는 턴의 지시도 머리줄 `[` 로 시작하고 같은 정화를 지난다.
         let r = resume_instruction("att-1", 2, goal);
-        assert!(r.starts_with("[AYNX · coordinator → worker att-1 · turn 2]"), "{r:?}");
+        assert!(r.starts_with("[Aynx · coordinator → worker att-1 · turn 2]"), "{r:?}");
         assert!(!r.contains('\r') && !r.contains('\u{1b}') && !r.contains('\u{9b}'));
     }
     // 긴 명세 — 파일로 빼도 인자와 파일 본문 모두 `[` 로 시작한다.
@@ -215,7 +215,7 @@ fn first_instruction_starts_with_bracket() {
 #[test]
 fn instruction_headers_are_english() {
     for h in [header("att-1", "task-1"), resume_header("att-1", 2), reviewer_header("att-1", "task-1")] {
-        assert!(h.starts_with("[AYNX · "), "{h:?}");
+        assert!(h.starts_with("[Aynx · "), "{h:?}");
         assert!(!h.chars().any(|c| ('\u{ac00}'..='\u{d7a3}').contains(&c)), "{h:?}");
     }
 }
@@ -223,10 +223,10 @@ fn instruction_headers_are_english() {
 #[test]
 fn argv_options_then_double_dash_then_prompt() {
     for cli in [WorkerCli::Claude, WorkerCli::Codex] {
-        let a = argv_for(cli, "[AYNX · worker]\nhi");
+        let a = argv_for(cli, "[Aynx · worker]\nhi");
         let n = a.len();
         assert_eq!(a[n - 2], "--", "{cli:?} {a:?}");
-        assert_eq!(a[n - 1], "[AYNX · worker]\nhi");
+        assert_eq!(a[n - 1], "[Aynx · worker]\nhi");
         assert_eq!(a.iter().filter(|x| *x == "--").count(), 1, "`--` 는 하나 — 프롬프트 바로 앞");
         assert_eq!(a[0], "C:/bin/cli.exe");
     }
@@ -282,7 +282,7 @@ fn spawn_does_not_append_user_agent_args() {
 #[test]
 fn first_instruction_passed_as_argv_not_shell_line() {
     // 셸이 해석할 글자가 든 지시도 인자 하나로 **그대로** 간다(인용은 MSVC 표준 — 셸 줄을 짓지 않는다). 첫 턴 · resume 턴 모두.
-    let nasty = "[AYNX]\n\"quoted\" $env:PATH; & calc | !x %PATH% `n '; exit";
+    let nasty = "[Aynx]\n\"quoted\" $env:PATH; & calc | !x %PATH% `n '; exit";
     for cli in [WorkerCli::Claude, WorkerCli::Codex] {
         let a = argv_for(cli, nasty);
         assert_eq!(a.last().unwrap(), nasty);
@@ -313,7 +313,7 @@ fn first_instruction_survives_real_os_boundary() {
     };
     let dir = scratch("os-argv");
     let out = dir.join("argv.json");
-    let nasty = "[AYNX]\n\"quoted\" $env:PATH; & calc | !x %PATH% `n '; exit \\\" \\\\";
+    let nasty = "[Aynx]\n\"quoted\" $env:PATH; & calc | !x %PATH% `n '; exit \\\" \\\\";
     let script = "require('fs').writeFileSync(process.env.AYNX_TEST_OUT, JSON.stringify({argv: process.argv.slice(1), mark: process.env.AYNX_TEST_MARK}))";
     let exe = node.to_string_lossy().into_owned();
     let argv = vec![exe.clone(), "-e".into(), script.into(), "--".into(), nasty.into()];

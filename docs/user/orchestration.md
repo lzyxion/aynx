@@ -117,7 +117,7 @@ Under it is **Auto-merge when complete** (off by default, never carried over fro
 | Turn timeout (min) — the longest one artist turn can run; past it, the app ends the turn | 60 | 1–240 | **Fixed** |
 | Total verdicts | 6 | 1–20 | **Fixed** |
 | Rework limit — how many times the same track can be sent back to work after a rejection; past it, the producer cannot start it again | 3 | 0–10 | [Album permissions] |
-| Wake-ups between human messages ([AYNX woke the producer](#wake)) | 30 | 0–200 (0 = off) | [Album permissions] |
+| Wake-ups between human messages ([Aynx woke the producer](#wake)) | 30 | 0–200 (0 = off) | [Album permissions] |
 | Allow producer plan tools | Off | On · Off | [Album permissions] |
 
 If you turn on any of **Full auto · Run automatically (verification) · producer plan tools · auto-merge**, a risk box appears, and you must check **I understand the risks and delegate this scope for this repository** before you can send.
@@ -140,17 +140,17 @@ a name — the app adds the rest from the album configuration and the artist lis
 
 - **It is read-only.** A Claude producer has read tools only, and a Codex producer has a read-only sandbox only. File changes, wider command scope, external MCP and web search cannot be allowed
   even through a permission card — they are refused with no card, and one line appears: "The producer cannot change files or widen its command scope — hand that to a worker".
-- **Only two kinds of card can be [Allow]ed by a person**, and only for a Claude producer: reading files outside the album's repository, and AYNX DB reads. A Codex producer has no cards, and its DB query is allowed in advance — in either case, the connection's AI permission decides whether rows can be read.
+- **Only two kinds of card can be [Allow]ed by a person**, and only for a Claude producer: reading files outside the album's repository, and Aynx DB reads. A Codex producer has no cards, and its DB query is allowed in advance — in either case, the connection's AI permission decides whether rows can be read.
 - **Its lifetime is the album.** Going back to the library or closing the tab does not cut it off, and it carries on when you return. One chat belongs to only one album.
 - It ends with: **End producer** in the head (after confirmation — the album pauses coordination and artists keep running · [Take over](#adopt)) · the end of the album (it closes the moment it is idle, and is cut off and closed within 10 minutes at the latest) · a session server restart.
 - Messages sent during a reply wait in a **queue** (up to 3) and are delivered when the turn ends. **Stop reply** (✕) stops only the reply and holds the queue · **Interrupt and deliver** interrupts and sends the queued messages right away.
 - Click the model and effort in the head to change them during the conversation (from the next turn).
 
 <a id="wake"></a>
-### AYNX woke the producer
+### Aynx woke the producer
 
 When something happens in the album while the producer is idle (a report, a block, a verdict, an integration, a conflict, a verification failure, a person's acceptance, rejection or resume, a change to album permissions, and so on), **the app wakes the producer.** This appears in the middle of the chat
-as a dashed pill: "AYNX woke the producer · #1 reported".
+as a dashed pill: "Aynx woke the producer · #1 reported".
 
 - The app writes the wake-up text in a fixed form — it carries **only IDs, numbers and kind words**, with no free text such as titles, reports, conversations or commands. Kind words can be influenced by an AI's report, so they are not a person's instruction or approval.
 - The app wakes the producer only when the album is running, there is no hold and the producer is idle. It does not wake on pause, on hold or at the coordination limit.
@@ -413,7 +413,7 @@ Ended albums (completed · stopped · read-only) leave the library through the i
 - **End producer** — closes the producer chat and stops coordination. Artists keep running. This is how a person cuts off only the coordination, without ending the album, when they don't trust the producer.
 - **Stop** (playback bar ■ · **Stop album** in the ⋯ menu) — ends the album: blocks new artists and new turns, ends the processes of running turns and verification, withdraws any integration not yet committed (waits for the end if it is committing), and revokes the producer's coordination rights and the worker tokens. The producer chat and worktrees remain.
   **This is also how a person cuts things off when the producer no longer listens (runaway behavior, prompt injection).**
-- **Limits** — on top of the [album limits](#album-start), there are fixed limits: 50 tracks · 60 coordination calls per minute · 200 follow-up turns · verification (50 per album, 3 per report) · wake-ups ([AYNX woke the producer](#wake)). Reaching one refuses that request, and it shows in **Remaining**.
+- **Limits** — on top of the [album limits](#album-start), there are fixed limits: 50 tracks · 60 coordination calls per minute · 200 follow-up turns · verification (50 per album, 3 per report) · wake-ups ([Aynx woke the producer](#wake)). Reaching one refuses that request, and it shows in **Remaining**.
   When coordination time runs out, the album pauses, and 30 minutes after that, the app stops the album.
 
 <a id="adopt"></a>

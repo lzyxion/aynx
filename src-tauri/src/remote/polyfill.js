@@ -1,4 +1,4 @@
-// AYNX 원격 창 폴리필(R1a-3 — 설계 14.3) — 관문이 앱 셸(index.html)의 **첫 스크립트**로 끼운다(`/remote/polyfill.js`).
+// Aynx 원격 창 폴리필(R1a-3 — 설계 14.3) — 관문이 앱 셸(index.html)의 **첫 스크립트**로 끼운다(`/remote/polyfill.js`).
 //
 // 같은 앱 번들이 브라우저에서 돌도록 `window.__TAURI_INTERNALS__` 를 세운다 — `@tauri-apps/api/{core,event,window,webview,app,path}` 와
 // 플러그인 JS 는 이 표면만 쓰므로 **호출부를 고치지 않고** 관문의 ws(`/remote/ws`)로 간다. `window.__AYNX_REMOTE__ = true` 가
@@ -402,7 +402,7 @@
   function notify(a) {
     const o = (a && a.options) || a || {};
     try {
-      if (window.Notification && Notification.permission === "granted") new Notification(o.title || "AYNX", { body: o.body });
+      if (window.Notification && Notification.permission === "granted") new Notification(o.title || "Aynx", { body: o.body });
     } catch {}
     return Promise.resolve(null);
   }
@@ -469,7 +469,7 @@
     "drag|start_drag": () => Promise.reject(unsupportedFor("plugin:drag|start_drag")),
     // 앱 정보.
     "app|version": () => (version !== null ? Promise.resolve(version) : new Promise((r) => versionWaiters.push(r))),
-    "app|name": resolved("AYNX"),
+    "app|name": resolved("Aynx"),
     // 웹뷰 확대(설정의 UI 크기) → CSS zoom. 웹뷰 확대와 달리 CSS zoom 은 px 값에도 곱해지니, 화면에서 잰 높이를 쓰는 폰 배치가 되돌리게 계수를 함께 알린다.
     "webview|set_webview_zoom": (a) => {
       const factor = String(Number(a && a.value) || 1);

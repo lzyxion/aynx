@@ -3,7 +3,7 @@
 // `agent-banner-harness.mjs` 의 스텁 사본. `messenger_send` 를 스텁으로 받아 **프런트가 넘기는 것**을 본다 —
 // 진짜 전송(Discord)과 대화 파일 읽기(Rust)는 여기 없다(그쪽은 `cargo test` 의 `messenger::tests`).
 // AI 타일 하나를 등록 프로젝트의 워크트리 폴더에 두고 `agent-signal` 을 흉내 낸다:
-// ① start · tool-done ×3 · stop → `message` = 평문 구조 `{app, label:"AYNX · feat-message",
+// ① start · tool-done ×3 · stop → `message` = 평문 구조 `{app, label:"Aynx · feat-message",
 //   event:"Claude Code 작업이 끝났습니다", second:"<시간> · 도구 3회 · 파일 2개 변경"}`(마크다운 없음 — 서식은 Rust,
 //   docs/log/2026-09-28-messenger-channels.md) · `channels:["discord","slack"]`(stub 의 [messenger] 에 slack 칸이 없어 기본 켬 — 5a09c08) · 대화 가리킴 `{agent, id, event:"stop"}` ·
 //   도장은 시작·끝 두 번 · 대화 제목·발췌는 **없다**(그것은 Rust 가 붙인다) ·
@@ -88,7 +88,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
     list_group_meta: {}, list_host_meta: {},  load_snippets: null, 
      save_snippets: null,  save_settings: null,
     host_history_list: {},
-    projects_list: [{ id: 'p1', name: 'AYNX', host: null, path: ${JSON.stringify(REPO)}, shell: null, command: '', tmux: false, worktree_dir: null }],
+    projects_list: [{ id: 'p1', name: 'Aynx', host: null, path: ${JSON.stringify(REPO)}, shell: null, command: '', tmux: false, worktree_dir: null }],
     git_worktree_list: [
       { path: 'C:/w/aynx', branch: 'main', head: 'a', bare: false, detached: false, created_by_app: false },
       { path: 'C:/w/aynx-wt/feat-message', branch: 'feat-message', head: 'b', bare: false, detached: false, created_by_app: true },
@@ -167,7 +167,7 @@ await waitSent();
   check(sent.length === 1, `턴 끝 → 한 번 보냄 (${sent.length})`);
   const m = sent[0]?.message ?? {};
   console.log("message:", JSON.stringify(m), "channels:", JSON.stringify(sent[0]?.channels));
-  check(/^AYNX/.test(m.app ?? "") && m.label === "AYNX · feat-message", `이름표 = 프로젝트 · 워크트리 (${m.app} / ${m.label})`);
+  check(/^Aynx/.test(m.app ?? "") && m.label === "Aynx · feat-message", `이름표 = 프로젝트 · 워크트리 (${m.app} / ${m.label})`);
   check(m.event === "Claude Code 작업이 끝났습니다", `사건 = 평문 (${m.event})`);
   check(/^\d+\.\d초 · 도구 3회 · 파일 2개 변경$/.test(m.second ?? ""), `둘째 줄 = 시간 · 도구 3회 · 파일 2개 변경 (${m.second})`);
   check(!/\*\*/.test(JSON.stringify(m)), "서식 없음 — 마크다운은 Rust 가 입힌다");
@@ -236,7 +236,7 @@ await waitSent();
 {
   const sent = await calls("messenger_send");
   const label = sent[0]?.message?.label ?? "";
-  check(sent.length === 1 && !label.includes("AYNX"), `프로젝트 밖 → 탭 이름으로 (${label})`);
+  check(sent.length === 1 && !label.includes("Aynx"), `프로젝트 밖 → 탭 이름으로 (${label})`);
 }
 
 check(errors.length === 0, `콘솔 예외 0 (${errors.length}) ${errors.slice(0, 3).join(" | ")}`);

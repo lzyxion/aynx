@@ -125,7 +125,7 @@ pub(crate) fn term_reply(q: &TermQuery, rows: u16) -> Vec<u8> {
         TermQuery::DsrStart => b"\x1b[1;1R".to_vec(),
         TermQuery::Da1 => b"\x1b[?1;2c".to_vec(),
         TermQuery::Da2 => b"\x1b[>0;276;0c".to_vec(),
-        TermQuery::XtVersion => format!("\x1bP>|AYNX({})\x1b\\", env!("CARGO_PKG_VERSION")).into_bytes(),
+        TermQuery::XtVersion => format!("\x1bP>|Aynx({})\x1b\\", env!("CARGO_PKG_VERSION")).into_bytes(),
         TermQuery::Decrqm { private, mode } => format!("\x1b[{}{mode};0$y", if *private { "?" } else { "" }).into_bytes(),
         TermQuery::Color { which, st } => {
             let rgb = if *which == 10 { DEFAULT_FG } else { DEFAULT_BG };

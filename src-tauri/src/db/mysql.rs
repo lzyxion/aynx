@@ -206,7 +206,7 @@ pub(crate) fn opts_for(target: &NetTarget, addr: Option<std::net::SocketAddr>) -
         None => (target.host.clone(), target.port),
     };
     let mut attrs = HashMap::new();
-    attrs.insert("program_name".to_string(), "AYNX".to_string());
+    attrs.insert("program_name".to_string(), "Aynx".to_string());
     OptsBuilder::default()
         .ip_or_hostname(host)
         .tcp_port(port)

@@ -143,7 +143,7 @@ export const orch = {
   "new.failure.no-usable-artist": "편집 자동 이상 권한을 가진 작업형 아티스트가 한 명 이상 필요합니다.",
   "new.failure.too-many-runs": "진행 중인 앨범이 두 개입니다. 하나를 끝낸 뒤 다시 보내세요.",
   "new.failure.integration-failed": "앨범의 통합 브랜치를 준비하지 못했습니다. 저장소 상태를 확인한 뒤 다시 보내세요.",
-  "new.failure.producer-mcp-unavailable": "프로듀서가 AYNX에 연결할 수 없습니다. 세션 서버 연결을 확인한 뒤 다시 보내세요.",
+  "new.failure.producer-mcp-unavailable": "프로듀서가 Aynx에 연결할 수 없습니다. 세션 서버 연결을 확인한 뒤 다시 보내세요.",
   "new.failure.spawn-failed": "프로듀서를 실행하지 못했습니다. 선택한 CLI가 설치되어 있는지 확인한 뒤 다시 보내세요.",
   "new.failure.cli-not-found": "프로듀서 CLI 의 실행 파일(.exe)을 PATH 에서 찾지 못했습니다. npm 으로 설치한 .cmd 판은 쓰지 않습니다 — 설치를 확인한 뒤 다시 보내세요.",
   "new.failure.not-a-tile": "앨범이 열리기 전에 프로듀서가 끝났습니다. 다시 보내세요.",

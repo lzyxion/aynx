@@ -53,14 +53,14 @@ pub(crate) struct Opts<'a> {
     pub mcp_names: &'a [String],
     /// `initialize.clientInfo.version`(앱 버전 — 기록의 originator 옆에 남는다).
     pub client_version: &'a str,
-    /// AYNX 세션 서버(5단계 — 채팅 토큰은 그 프로세스의 환경 변수 `token_env` 에만 · 서버가 넣는다). `None` = MCP 없음.
+    /// Aynx 세션 서버(5단계 — 채팅 토큰은 그 프로세스의 환경 변수 `token_env` 에만 · 서버가 넣는다). `None` = MCP 없음.
     pub mcp: Option<Mcp<'a>>,
     /// 사람이 사이드 채팅에 고른 **외부 MCP 서버**(2026-10-25 — 서버가 저장된 설정에서 읽어 실행 모양을 준비한 것). `mcp_names` 와 같은
     /// 이름은 싣지 않는다(사용자 표와 합쳐지면 그쪽 칸이 섞인다 — 서버는 미리 빼고 알린다).
     pub external: &'a [crate::agent_mcp::McpServer],
 }
 
-/// AYNX MCP 재료 — 주소 · 토큰을 담은 환경 변수 이름 · 묻지 않고 부르는 도구(작업자 턴의 `-c mcp_servers.*` 와 같은 꼴).
+/// Aynx MCP 재료 — 주소 · 토큰을 담은 환경 변수 이름 · 묻지 않고 부르는 도구(작업자 턴의 `-c mcp_servers.*` 와 같은 꼴).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Mcp<'a> {
     pub name: &'a str,
@@ -119,7 +119,7 @@ pub(crate) fn argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
         a.push(format!("mcp_servers.{n}.enabled=false"));
     }
     a.extend(["-c".into(), "web_search=\"live\"".into(), "-c".into(), "tools.web_search.context_size=\"high\"".into()]);
-    // AYNX 세션 서버 하나만 켠다(5단계) — 주소 · 토큰 환경 변수 이름 · 읽기 도구 미리 허용. 값에 작은따옴표가 들 수 없게 거른다.
+    // Aynx 세션 서버 하나만 켠다(5단계) — 주소 · 토큰 환경 변수 이름 · 읽기 도구 미리 허용. 값에 작은따옴표가 들 수 없게 거른다.
     if let Some(m) = o.mcp {
         let plain = |s: &str| !s.is_empty() && !s.contains('\'') && !s.chars().any(char::is_control);
         if !mcp_name_ok(m.name) || !plain(m.url) || !mcp_name_ok(m.token_env) || !m.tools.iter().all(|t| mcp_name_ok(t)) {
@@ -464,7 +464,7 @@ impl Codex {
             _ => {
                 // `item/tool/requestUserInput` · 권한 묶음 · 인증 갱신 · 모르는 것 — 곧바로 오류로 답한다.
                 let line = json!({"jsonrpc": "2.0", "id": raw_id, "error": {"code": UNSUPPORTED,
-                    "message": format!("AYNX side chat does not handle {method} — ask in plain text")}})
+                    "message": format!("Aynx side chat does not handle {method} — ask in plain text")}})
                 .to_string();
                 return Step {
                     evs: vec![Ev::Notice { code: "unsupported-request", detail: Some(one_line(method)) }],
@@ -666,7 +666,7 @@ impl Adapter for Codex {
     }
 
     fn handshake(&mut self) -> Vec<String> {
-        let params = json!({"clientInfo": {"name": "aynx", "title": "AYNX", "version": self.client_version},
+        let params = json!({"clientInfo": {"name": "aynx", "title": "Aynx", "version": self.client_version},
             "capabilities": {"experimentalApi": false}});
         vec![self.request(Purpose::Initialize, "initialize", params)]
     }

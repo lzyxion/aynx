@@ -434,7 +434,7 @@ If the session server is an earlier version (version 9), [Run script] does not a
 <a id="ai"></a>
 ## Showing a database to the AI
 
-**Local AI tiles** started by AYNX (Claude Code, Codex) can read databases through the app's MCP server (`aynx-sessions`), **only when a person has turned on AI permission for that connection**. The default is off, and connections that are off are not even in the AI's list. The AI in a remote tile has no MCP token, so it has no DB tools either.
+**Local AI tiles** started by Aynx (Claude Code, Codex) can read databases through the app's MCP server (`aynx-sessions`), **only when a person has turned on AI permission for that connection**. The default is off, and connections that are off are not even in the AI's list. The AI in a remote tile has no MCP token, so it has no DB tools either.
 
 **Where to turn it on**: The **AI access** tab of the DB connection form (the dock's DB section right-click › Edit…, or edit in the picker modal), or the chip in the query tile header described below. The right-click menu of the dock's DB section has no AI permission item. View and clear in the **Databases with AI permission** table in Settings › Security. The AI (MCP) cannot change this permission.
 

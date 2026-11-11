@@ -310,7 +310,7 @@ async fn pg_tx_verdicts() {
         let mut gone = false;
         for _ in 0..50 {
             if pg_count(&a, "SELECT count(*) FROM txs6_t WHERE id = 40").await == 0
-                && pg_count(&a, "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'AYNX' AND state LIKE 'idle in transaction%'").await == 0
+                && pg_count(&a, "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'Aynx' AND state LIKE 'idle in transaction%'").await == 0
             {
                 gone = true;
                 break;

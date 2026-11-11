@@ -178,8 +178,8 @@ const key = async (code, modifiers, k) => { const vk = code.startsWith("Key") ? 
 /** 앱이 이미 올린 것과 **같은 모듈 인스턴스** (`?t=` 질의까지 그대로 — README 의 keygen 절) */
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 // OS 알림 제목 앞머리 = 앱이 쓰는 `APP_TITLE`(`src/lib/app/instance.ts`). vite 개발 서버에서는
-// `import.meta.env.DEV` 라 `AYNX (dev)` 다(릴리스 번들이면 `AYNX`) — docs/log/2026-09-26-dev-release-isolation.md.
-const appTitle = async () => { const t = await ev(`(async () => (await ${importApp("app/instance.ts")}).APP_TITLE)()`); if (t !== "AYNX (dev)" && t !== "AYNX") throw new Error(`unexpected APP_TITLE: ${t}`); return t; };
+// `import.meta.env.DEV` 라 `Aynx (dev)` 다(릴리스 번들이면 `Aynx`) — docs/log/2026-09-26-dev-release-isolation.md.
+const appTitle = async () => { const t = await ev(`(async () => (await ${importApp("app/instance.ts")}).APP_TITLE)()`); if (t !== "Aynx (dev)" && t !== "Aynx") throw new Error(`unexpected APP_TITLE: ${t}`); return t; };
 const projectRowIds = () => ev(`[...document.querySelectorAll('[data-project-dock] [data-project-id]')].map(e => e.getAttribute('data-project-id')).join('|')`);
 const projectDockShown = () => ev(`(() => { const el = document.querySelector('[data-project-dock]'); return !!el && el.offsetParent !== null; })()`);
 // 런처 독(호스트 · 프로젝트)은 머리줄 이름 대신 칸 막대를 세운다 — 고른 칸의 이름을 읽는다

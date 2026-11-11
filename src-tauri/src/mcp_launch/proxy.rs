@@ -70,7 +70,7 @@ pub(super) enum Unavailable {
 impl Unavailable {
     fn body(self) -> &'static str {
         match self {
-            Unavailable::Locked => "vault locked — open AYNX and unlock it (볼트가 잠겼습니다 — AYNX 에서 잠금을 해제하세요)",
+            Unavailable::Locked => "vault locked — open Aynx and unlock it (볼트가 잠겼습니다 — Aynx 에서 잠금을 해제하세요)",
             Unavailable::Missing => "MCP secret unavailable (MCP 비밀 값을 쓸 수 없습니다)",
         }
     }

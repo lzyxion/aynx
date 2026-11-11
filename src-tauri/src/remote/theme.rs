@@ -2,7 +2,7 @@
 //!
 //! 집 PC 주 창이 색을 칠할 때마다(`applySettings` 끝 — `src/lib/gate-theme.ts`) 원천 토큰의 **계산된 값**과 모드를
 //! [`remote_gate_theme_set`](super::remote_gate_theme_set)으로 넘긴다. 여기는 그것을 **메모리에만** 두고(영속 없음 — 첫 창이
-//! 뜨기 전에는 gate.css 의 기본 AYNX), 관문이 `/remote/theme.css` 로 내보낸다(gate.css 뒤 — `gate.rs` 의 `shell`).
+//! 뜨기 전에는 gate.css 의 기본 Aynx), 관문이 `/remote/theme.css` 로 내보낸다(gate.css 뒤 — `gate.rs` 의 `shell`).
 //!
 //! - 명령은 **집 PC 전용**(`deny.rs` `HOME_ONLY`) — 원격 창은 이 기기 밝기 사본을 칠할 수 있어 보내지 않는다(프런트도 건너뛴다).
 //! - **CSS 주입 방어**: 이름은 [`TOKENS`] 허용 목록만, 값은 [`MAX_VALUE`] 글자 안의 허용 문자(`#` 영숫자 `( ) , . % -` 공백 `/`)만 —

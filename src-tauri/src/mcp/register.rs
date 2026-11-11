@@ -72,8 +72,8 @@ pub fn spawn_unregister_migration(app: tauri::AppHandle) {
             return;
         }
         let message = tr!(
-            ko: "AYNX 세션 서버 전역 등록을 해제했습니다 — 이제 AYNX 가 띄우는 에이전트에만 실립니다",
-            en: "Removed the global AYNX session server registration — it now loads only for agents launched by AYNX"
+            ko: "Aynx 세션 서버 전역 등록을 해제했습니다 — 이제 Aynx 가 띄우는 에이전트에만 실립니다",
+            en: "Removed the global Aynx session server registration — it now loads only for agents launched by Aynx"
         );
         if let Ok(mut slot) = app.state::<McpState>().notice.lock() {
             *slot = Some(message.clone());

@@ -720,7 +720,7 @@ fn argv_with(cli: WorkerCli, model_args: &[String], append: Option<&str>) -> Vec
         model_args,
         append_file: if cli == WorkerCli::Claude { append } else { None },
         developer_instructions: None,
-        prompt: "[AYNX · reviewer att-1 · Task task-1]\nreview",
+        prompt: "[Aynx · reviewer att-1 · Task task-1]\nreview",
     })
 }
 
@@ -755,7 +755,7 @@ fn reviewer_argv_fixed_claude() {
         "mcp__aynx-sessions-dev__get_diff",
         "mcp__aynx-sessions-dev__report_review",
         "--",
-        "[AYNX · reviewer att-1 · Task task-1]\nreview",
+        "[Aynx · reviewer att-1 · Task task-1]\nreview",
     ];
     assert_eq!(argv_of(WorkerCli::Claude), expected);
 }
@@ -802,7 +802,7 @@ fn reviewer_argv_fixed_codex() {
         "-C",
         "C:/data/orchestration/run-1/review-bbbbbbbb",
         "--",
-        "[AYNX · reviewer att-1 · Task task-1]\nreview",
+        "[Aynx · reviewer att-1 · Task task-1]\nreview",
     ]);
     assert_eq!(argv_of(WorkerCli::Codex), expected);
 }
