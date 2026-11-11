@@ -459,6 +459,83 @@ describe("타일 이름 신호도 건너간다 (docs/log/2026-09-30-tear-title-a
   });
 });
 
+describe("저장 안 한 문서의 초안도 건너간다 (doc-draft.ts · 2026-11-11)", () => {
+  // 편집 중인 글은 그 웹뷰의 편집기에만 있고 받는 문서 타일은 파일을 다시 읽는다 — 짐에 싣지 않으면 글이 말없이 사라진다.
+  const doc: PaneSpec = { id: "old-doc", kind: "doc", path: "C:/notes/a.md" };
+  const term: PaneSpec = { id: "old-term", kind: "local" };
+  const draft = {
+    text: "고친 글\r\n둘째 줄\r\n",
+    baseVersion: "123:456",
+    eol: "\r\n" as const,
+    selection: { ranges: [{ anchor: 3, head: 3 }], main: 0 },
+    scrollPos: 0,
+    history: { done: [{ changes: [] }], undone: [] },
+  };
+  const tabOf2 = (): TabSpec => ({
+    id: "old-tab",
+    title: "탭",
+    root: { type: "split", dir: "row", ratio: 0.5, a: leafOf(term), b: leafOf(doc) },
+  });
+  const roundTrip = (draftOf?: (id: string) => unknown) =>
+    parseTear(
+      JSON.stringify(
+        buildTear(
+          tabOf2(),
+          [term, doc],
+          () => null,
+          () => false,
+          () => [],
+          undefined,
+          undefined,
+          draftOf as ((id: string) => typeof draft | null) | undefined,
+        ),
+      ),
+    )!;
+
+  it("초안은 명세(`pane`)가 아니라 짐의 타일 칸에만 실린다 — 배치 파일에 글이 적히지 않는다", () => {
+    const payload = buildTear(tabOf2(), [term, doc], () => null, () => false, () => [], undefined, undefined, (id) =>
+      id === doc.id ? draft : null,
+    );
+    const carried = payload.panes.find((p) => p.pane.id === doc.id)!;
+    expect(carried.docDraft).toEqual(draft);
+    expect(JSON.stringify(carried.pane)).not.toContain("고친 글");
+    expect(JSON.stringify(serialize([payload.tab], payload.tab.id))).not.toContain("고친 글");
+    // 저장 안 한 것이 없는 타일에는 칸 자체가 없다(옛 짐과 같은 모양)
+    expect("docDraft" in payload.panes.find((p) => p.pane.id === term.id)!).toBe(false);
+  });
+
+  it("JSON 왕복 뒤 새 문서 타일 id 로 초안을 건다", () => {
+    const seen: [string, unknown][] = [];
+    const tab = restoreTab(roundTrip((id) => (id === doc.id ? draft : null)), undefined, undefined, undefined, (id, d) =>
+      seen.push([id, d]),
+    );
+    const moved = listPanes(tab.root).find((p) => p.kind === "doc")!;
+    expect(moved.id).not.toBe(doc.id);
+    expect(seen).toEqual([[moved.id, draft]]);
+  });
+
+  it("모양이 틀린 초안 · 문서가 아닌 타일의 초안 · 옛 짐은 아무것도 걸지 않는다", () => {
+    const seen: unknown[] = [];
+    const on = (id: string, d: unknown) => seen.push([id, d]);
+    restoreTab(roundTrip((id) => (id === doc.id ? { ...draft, text: 42 } : null)), undefined, undefined, undefined, on);
+    restoreTab(roundTrip((id) => (id === doc.id ? { ...draft, eol: "\r" } : null)), undefined, undefined, undefined, on);
+    restoreTab(roundTrip((id) => (id === term.id ? draft : null)), undefined, undefined, undefined, on);
+    restoreTab(roundTrip(), undefined, undefined, undefined, on);
+    expect(seen).toEqual([]);
+  });
+
+  it("받는 쪽 정화는 맞지 않는 칸만 버린다 — 깨진 기록 · 글 밖 선택은 빠지고 글은 남는다", () => {
+    const payload = roundTrip((id) =>
+      id === doc.id ? { ...draft, history: "깨짐", selection: { ranges: [{ anchor: 0, head: 9999 }], main: 0 } } : null,
+    );
+    const got = payload.panes.find((p) => p.pane.kind === "doc")!.docDraft!;
+    expect(got.text).toBe(draft.text);
+    expect(got.baseVersion).toBe(draft.baseVersion);
+    expect(got.history).toBeUndefined();
+    expect(got.selection).toBeUndefined();
+  });
+});
+
 describe("workspace tear metadata and persistent restore spec", () => {
   it("타일 떼기 짐에 원래 탭 키와 같은 타일 키를 담되 받는 탭 키는 새로 싣는다", async () => {
     const pane: PaneSpec = { id: "old-1", kind: "local", tileKey: "tile-persistent" };

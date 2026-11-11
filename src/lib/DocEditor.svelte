@@ -9,10 +9,15 @@
    * `{#key}` 로 이 컴포넌트를 새로 세운다 — 되돌리기 기록 · 줄 끝 판정이 새 글에서 다시 시작한다.
    *
    * 저장 · dirty 판정의 기준 글은 편집기 안에 있고, 상위는 [`getText`] · [`markSaved`] 로만 묻고 알린다.
+   *
+   * 다른 창에서 옮겨 온 초안(`doc-draft.ts`)이면 상위가 [`restore`] 를 준다 — 줄 끝 · 기준 글(모르면 `null` = 저장할 때까지 dirty) ·
+   * 선택 · 화면 맨 위 줄 · 실행 취소 기록을 되살려 선다. 편집기가 **실제로 섰을 때만** [`onready`] 를 부른다(지연 로딩이 실패하면
+   * 부르지 않는다 — 상위가 초안을 놓지 않게). 창을 넘길 때는 상위가 [`draft`] 로 지금 상태를 뜬다.
    */
   import { onDestroy, onMount, untrack } from "svelte";
   import { loadEditor } from "$lib/doc-editor-loader";
-  import type { EditorHandle } from "$lib/doc-editor-cm";
+  import type { EditorHandle, EditorSnapshot } from "$lib/doc-editor-cm";
+  import type { DocEditorRestore } from "$lib/doc-draft";
   import type { DocFormat } from "$lib/doc-format";
   import { detectEol, detectIndent, editorLangOf } from "$lib/doc-edit";
   import { tooLargeToHighlight } from "$lib/highlight-size";
@@ -28,6 +33,8 @@
     oncursor,
     onviewport,
     onfailed,
+    restore,
+    onready,
   }: {
     /** 편집을 시작할 글(처음 한 번만 읽는다) */
     text: string;
@@ -47,6 +54,10 @@
     onviewport?: (top: number, bottom: number) => void;
     /** 편집기 모듈을 받지 못했다 */
     onfailed?: (message: string) => void;
+    /** 되살릴 편집 상태(옮겨 온 초안 — 처음 한 번만 읽는다) */
+    restore?: DocEditorRestore | null;
+    /** 편집기가 섰다(지연 로딩 성공 · 처음 글을 들였다) */
+    onready?: () => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -76,12 +87,13 @@
   onMount(() => {
     const initial = untrack(() => text);
     const p = untrack(() => path);
+    const r = untrack(() => restore) ?? null;
     loadEditor().then(
       (kit) => {
         if (gone || !host) return;
         handle = kit.createEditor(host, {
           text: initial,
-          eol: detectEol(initial),
+          eol: r ? r.eol : detectEol(initial),
           indent: detectIndent(initial),
           lang: editorLangOf(p),
           plain: tooLargeToHighlight(initial),
@@ -91,9 +103,13 @@
           onchange: () => onchange?.(),
           oncursor: (line) => oncursor?.(line),
           onviewport: (top, bottom) => onviewport?.(top, bottom),
+          ...(r
+            ? { baseText: r.baseText, restore: { selection: r.selection, scrollPos: r.scrollPos, history: r.history } }
+            : {}),
         });
         ready = true;
         if (autofocus) handle.focus();
+        onready?.();
       },
       (e: unknown) => {
         if (gone) return;
@@ -111,6 +127,21 @@
   /** 지금 글 — 편집기가 아직 서지 않았으면 처음 받은 글 그대로다 */
   export function getText(): string {
     return handle ? handle.getText() : text;
+  }
+
+  /** 창을 넘길 편집 상태 — 편집기가 아직 서지 않았으면 `null`(뜰 수 없다 = 상위가 창 넘기기를 거절한다) */
+  export function draft(): EditorSnapshot | null {
+    return handle ? handle.snapshot() : null;
+  }
+
+  /** 지금 글의 정체(바뀌면 다른 값) — 편집기가 아직 서지 않았으면 `null` */
+  export function docRef(): object | null {
+    return handle ? handle.docRef() : null;
+  }
+
+  /** 잠시 읽기 전용 — 편집기가 아직 서지 않았으면 아무것도 하지 않는다 */
+  export function setFrozen(on: boolean): void {
+    handle?.setFrozen(on);
   }
 
   /** 이 글을 저장했다 */

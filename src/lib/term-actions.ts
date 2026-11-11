@@ -82,6 +82,13 @@ export interface TermActions {
    * 동시 입력을 타지 않는다 — 사람이 고른 이 타일 하나에만 넣는다(`$lib/ask-ai` 의 `pasteBytes`).
    */
   insertText(text: string): "ok" | "no-bracketed" | "closed";
+  /**
+   * **문서 코드 블록을 셸 입력 줄에 넣는다 — 실행하지 않는다**(문서 타일의 [터미널에 넣기] — `$lib/code-to-term` 의 `codeInsertBytes`).
+   * [`insertText`] 와 달리 **한 줄**은 괄호 붙여넣기 모드가 꺼져 있어도 글자 그대로 넣는다(줄바꿈이 없으니 실행되지 않는다). 여러 줄인데
+   * 모드가 꺼져 있으면 넣지 않고(`"multiline"`), 넣을 글이 없으면 `"empty"`, 세션이 없으면(끊김 · 재연결 중) `"closed"`.
+   * 동시 입력을 타지 않는다 — 사람이 고른 이 타일 하나에만 넣는다.
+   */
+  insertCode(code: string): "ok" | "multiline" | "empty" | "closed";
   /** 이 터미널에 키보드 포커스를 준다 */
   focus(): void;
   /**

@@ -68,6 +68,8 @@ import { openNextAgentBanner } from "$lib/app/agent-banners.svelte.js";
 import { openBranchGraphHere } from "$lib/app/branch-graph.svelte.js";
 import { closeDbWriteConfirm, dbPickerVisible, dbWriteConfirmVisible, escapeDbPicker, openDbPicker } from "$lib/app/query.svelte.js";
 import { askAiAboutLastBlock, askPickerOpen, closeAskPicker } from "$lib/app/ask-ai.svelte.js";
+import { closeCodeTermPicker, codeTermPickerOpen } from "$lib/app/code-to-term.svelte.js";
+import { closeNewDoc, newDocBoxOpen } from "$lib/app/new-doc.svelte.js";
 import { aiLaunchPickerOpen, closeAiLaunchPicker, openAiLaunchPicker } from "$lib/app/ai-launch.svelte.js";
 import {
   cheatSheetVisible,
@@ -170,6 +172,10 @@ export function anyModalOpen(): boolean {
     // 블록을 AI 타일에 넘기는 고르기 상자 — 포커스를 쥐고 제 키(↑↓ · Enter · Esc)를 스스로 다룬다
     // (docs/log/2026-09-28-ask-ai-block.md).
     askPickerOpen() ||
+    // 문서 코드 블록을 셸 타일에 넣는 고르기 상자 — 같은 결(`app/code-to-term.svelte.ts`)
+    codeTermPickerOpen() ||
+    // 문서 타일 [새 문서…]의 이름 상자 — 칸에 글자를 치는 상자(`app/new-doc.svelte.ts`). Escape 는 상자가 먼저 잡아 끊는다.
+    newDocBoxOpen() ||
     // AI CLI 고르기 상자(`ai-panel`) — 같은 결(포커스를 쥐고 제 키 — 숫자 · ↑↓ · Enter · Esc · 같은 조합 — 를 스스로 다룬다).
     aiLaunchPickerOpen() ||
     // 검색 오버레이는 화면을 **덮지 않는다** — 범위 모드에서는 하이라이트된 타일이 보이도록
@@ -784,6 +790,18 @@ export function onWindowKeydown(ev: KeyboardEvent): void {
     if (askPickerOpen()) {
       ev.preventDefault();
       closeAskPicker("source");
+      return;
+    }
+    // 코드 블록 → 셸 타일 고르기 상자 — 같은 결(그물이다 — 상자 안의 Escape 는 상자가 먼저 잡아 전파를 끊는다).
+    if (codeTermPickerOpen()) {
+      ev.preventDefault();
+      closeCodeTermPicker("source");
+      return;
+    }
+    // 문서 타일 [새 문서…]의 이름 상자 — 같은 결(그물이다 — 상자 안의 Escape 는 상자가 먼저 잡아 전파를 끊는다).
+    if (newDocBoxOpen()) {
+      ev.preventDefault();
+      closeNewDoc("source");
       return;
     }
     // AI CLI 고르기 상자 — 같은 결(그물이다 — 상자 안의 Escape 는 상자가 먼저 잡아 전파를 끊는다).

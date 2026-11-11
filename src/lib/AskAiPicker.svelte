@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import AiGlyph from "$lib/AiGlyph.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import Keys from "$lib/Keys.svelte";
@@ -54,11 +53,19 @@
     pos = { left, top };
   });
 
-  /** 자리를 잡은 뒤 포커스 — 숨은(측정 전) 상자는 포커스를 받지 않는다 (ShellMenu 와 같은 이유) */
+  /**
+   * 자리를 잡은 뒤 포커스 — 숨은(측정 전) 상자는 포커스를 받지 않는다 (ShellMenu 와 같은 이유).
+   *
+   * `tick` 이 아니라 **rAF** 인 까닭(`CodeTermPicker` 와 같다): 활성이 아닌 타일의 단추(터미널의 블록 단추 · 쿼리 타일의 [AI에게 묻기])를
+   * 누르면 pointerdown 이 그 타일을 활성으로 바꾸고, 그 활성화가 rAF 안에서 포커스를 준다(터미널 = `Terminal` 의 보임 효과의
+   * `term.focus()` · 세션 없는 타일 = `routeTileFocus`). 그 rAF 가 click 보다 늦게 돌면 상자의 포커스를 빼앗는다 — 이 rAF 는 click 뒤에
+   * 걸리므로 그 뒤에 돈다.
+   */
   $effect(() => {
     const node = el;
     if (!node || pos === null) return;
-    void tick().then(() => node.focus({ preventScroll: true }));
+    const raf = requestAnimationFrame(() => node.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(raf);
   });
 
   /** 바깥 클릭으로 닫는다 */

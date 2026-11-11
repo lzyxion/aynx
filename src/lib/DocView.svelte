@@ -49,7 +49,8 @@
    * 아닐 때)만 선다. 누르면 몸통이 `DocEditor`(CodeMirror — 늦게 받는다)로 바뀌고, 미리 보기였으면 **고정**된다.
    * 저장은 사람이 누른 저장뿐(`Ctrl+S` · [저장])이고, 편집을 시작할 때의 `version` 을 기대값으로 보내 디스크가
    * 그사이 바뀌었으면 쓰지 않고 충돌 띠를 세운다([덮어쓰기]만 기대값 없이 쓴다). 편집 중 자동 새로고침은 **글을
-   * 바꾸지 않고** 띠만 세운다. 띠의 전이는 `doc-edit.ts` 의 순수 함수다. 저장 안 한 변경은 `app/doc-dirty` 에
+   * 바꾸지 않고** 띠만 세운다. 띠의 전이는 `doc-edit.ts` 의 순수 함수다. 충돌 · 바뀜 띠의 [비교]는 디스크를 따로 읽어 내 편집과
+   * 나란히 보여 준다(읽기 전용 — `doc-compare.ts` · `doc/DocCompareView.svelte`, 편집 면은 가리기만 한다). 저장 안 한 변경은 `app/doc-dirty` 에
    * 적고(닫기 가드 · 머리줄 ● 가 읽는다), 저장 함수도 거기 등록한다 — 둘 다 [`paneId`] 가 있을 때만.
    *
    * 마크다운이면 편집 중에도 그린 결과를 본다. 넓은 타일(`isWideEdit` — 900px 이상)은 도구줄 맨 앞 세 칸 묶음
@@ -79,6 +80,10 @@
    * 스크롤하고(제목의 `data-slug` — GitHub 식 이름), 경로(`other.md` · `./docs/a.md#절`)면 [`onopenlink`] 로 올린다 —
    * 푸는 일 · 확인 · 자리 잡기는 상위(`openDocLink`)가 한다. 그렇게 연 타일이 받은 한 번짜리 [`anchor`] 는 글을 그린
    * 뒤 그 제목으로 스크롤하고 [`onanchordone`] 으로 돌려준다(못 찾아도 — 다시 시도하지 않는다).
+   *
+   * 같은 모양의 한 번짜리 [`line`] 은 터미널의 `파일:12` Ctrl+클릭에서 온다 — 코드 보기는 그 줄, 그린 마크다운은 그 줄이 든
+   * 최상위 블록으로 스크롤하고 2초 강조한 뒤 [`onlinedone`] 으로 돌려준다(편집 중이면 아무것도 하지 않고 돌려준다 · 규칙은
+   * `doc-line-jump.ts`).
    *
    * 각주(`[^id]`)의 위첨자 ↔ 글 끝 각주 항목 오가기는 **그냥 클릭**이고(근거는 `MarkdownBlocks` 머리말) 앵커와 같은 손잡이로
    * 그 상자(읽기 본문 · 편집 중 미리 보기)만 민다.
@@ -120,7 +125,8 @@
   import DocEditPane from "$lib/doc/DocEditPane.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { LOCAL_KEY, TEXT_VIEW_MAX_BYTES, type FsBackend } from "$lib/fs-backend";
-  import { DOC_TILE_MD, parseMarkdown } from "$lib/markdown";
+  import { DOC_TILE_MD, blockStartLines, parseMarkdown } from "$lib/markdown";
+  import { LINE_FLASH_MS, blockAtLine, jumpLineIndex } from "$lib/doc-line-jump";
   import { tooLargeToHighlight } from "$lib/highlight-size";
   import { autoRefreshOn, readAgo, pollIntervalOf } from "$lib/doc-refresh";
   import { isMarkdown, langOf } from "$lib/doc-lang";
@@ -135,6 +141,7 @@
     clampDocSplit,
     isWideEdit,
     narrowTabOf,
+    sectionAt,
     sectionLines,
     splitAt,
     syncTarget,
@@ -145,7 +152,20 @@
   import { DOC_ZOOM_DEFAULT, wheelDocZoom } from "$lib/doc-zoom";
   import { provideDocZoom } from "$lib/doc-zoom-context";
   import { editBlockOf } from "$lib/doc-edit";
+  import { compareTexts, type CompareResult } from "$lib/doc-compare";
+  import DocCompareView from "$lib/doc/DocCompareView.svelte";
+  import { stripReason } from "$lib/error-reason";
   import { registerDocSaver, setDocDirty } from "$lib/app/doc-dirty.svelte";
+  import {
+    dropDocDraft,
+    hasPendingDocDraft,
+    pendingDocDraft,
+    registerDocDraft,
+    type DraftCapture,
+  } from "$lib/app/doc-drafts.svelte.js";
+  import { fitDocDraft, type DocDraft, type DraftSelection } from "$lib/doc-draft";
+  import { writeClipboard } from "$lib/clipboard";
+  import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
   import { registerTileFind } from "$lib/app/tile-find";
   import DomFindBar from "$lib/DomFindBar.svelte";
   import { DirtyBinding } from "$lib/doc-dirty-table";
@@ -157,6 +177,8 @@
   import type { DocEditView, DocMode } from "$lib/session";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { paneHeadShown, setPaneTools } from "$lib/pane/pane-tools.svelte.js";
+  import { codeToTerminal } from "$lib/app/code-to-term.svelte.js";
+  import { newDocState } from "$lib/app/new-doc.svelte.js";
   import { docHeadSpan, OUTLINE_PANEL_W } from "$lib/pane/head-span";
 
   let {
@@ -182,6 +204,10 @@
     onopenlink,
     anchor,
     onanchordone,
+    line,
+    onlinedone,
+    editOnce = false,
+    oneditoncedone,
     onmenu,
   }: {
     /** 이 타일의 id — 저장 안 한 변경(`app/doc-dirty`)과 저장 함수를 이 이름으로 적는다. 없으면 적지 않는다 */
@@ -230,6 +256,14 @@
     anchor?: string;
     /** [`anchor`] 를 썼다(스크롤했거나 못 찾았다) — 상위가 지운다 */
     onanchordone?: () => void;
+    /** 글을 그린 뒤 한 번 찾아갈 줄(1 기준 — 터미널의 `파일:12`) — 저장되지 않는 한때 값(`app/doc-anchors`) */
+    line?: number;
+    /** [`line`] 을 썼다(스크롤했거나 못 찾았다 · 편집 중이었다) — 상위가 지운다 */
+    onlinedone?: () => void;
+    /** 글을 읽은 뒤 한 번 편집을 시작한다([새 문서…]로 만들어 연 타일) — 저장되지 않는 한때 값(`app/doc-anchors`) */
+    editOnce?: boolean;
+    /** [`editOnce`] 를 썼다(편집을 시작했거나 · 막혔거나 · 읽기가 실패했다) — 상위가 지운다 */
+    oneditoncedone?: () => void;
     /**
      * 본문 우클릭 — 커서 자리에 타일 메뉴(`PaneMenu` — 터미널 본문 우클릭과 같은 상자)를 연다. 줄은 `doc-menu.ts` 가 짓고, 누른 줄의 열쇠는
      * `run` 으로 이 타일에 돌아온다(통로는 `PaneHost` 의 `runTileMenu` → `runOnMenu`). 없으면(상위가 넘기지 않음) 우클릭에 아무것도 뜨지 않는다
@@ -311,7 +345,8 @@
     return t("files.doc.edit");
   }
 
-  // 저장 안 한 변경 표(`app/doc-dirty`) — 표는 늘 `(paneId, editing && dirty)` 와 같다(`DirtyBinding`).
+  // 저장 안 한 변경 표(`app/doc-dirty`) — 표는 늘 `(paneId, editing && dirty || 걸어 둔 초안)` 과 같다(`DirtyBinding`).
+  // 걸어 둔 초안(다른 창에서 옮겨 와 아직 편집기에 들이지 못한 글 — `app/doc-drafts`)도 저장 안 한 변경이다.
   // - 효과는 **정리 함수가 없다**: 정리 함수로 지우면 상위가 같은 타일을 다시 내려 줄 때(포커스 이동) 지운 뒤 다시
   //   적지 않아 ● 가 꺼지고 닫기가 묻지 않았다(편집 유실 — docs/log/2026-09-27-doc-edit.md). 지우기는 id 가 값으로
   //   바뀔 때(옛 id)와 `onDestroy` 뿐.
@@ -319,7 +354,7 @@
   const dirtyBinding = new DirtyBinding(setDocDirty);
   $effect(() => {
     const id = paneId;
-    const value = dc.editing && dc.dirty;
+    const value = (dc.editing && dc.dirty) || (!!id && hasPendingDocDraft(id));
     untrack(() => dirtyBinding.sync(id, value));
   });
 
@@ -328,8 +363,115 @@
   $effect(() => {
     const id = paneId;
     if (!id) return;
-    return untrack(() => registerDocSaver(id, () => dc.save()));
+    return untrack(() =>
+      registerDocSaver(id, () => {
+        // 걸어 둔 초안이 아직 편집기에 들지 않았다 — 저장할 글이 편집기에 없으니 "저장했다" 고 하면 닫기가 글을 버린다
+        if (hasPendingDocDraft(id)) {
+          onnotice?.(t("files.doc.draft.saveBlocked"));
+          return Promise.resolve(false);
+        }
+        return dc.save();
+      }),
+    );
   });
+
+  // ── 창을 넘는 초안 (`doc-draft.ts` · `app/doc-drafts`) ──────────────────────────
+  //
+  // 보내는 쪽: 이관 짐을 만드는 순간(`app/tear` — 동기) 편집기의 글 · 커서 · 기록을 뜬다. 편집 중 · 저장 안 한 변경 · 편집기가 섰을
+  // 때만이고, 글이 상한을 넘으면 `null`(창 넘기기 거절). `still` 은 뜬 뒤 글이 그대로인가 — 원본을 내리기 직전에 다시 묻는다.
+  // 받는 쪽: 걸어 둔 초안이 있으면 파일을 읽은 뒤 [편집]과 같은 문으로 그 글을 들인다(`dc.startEditFromDraft`). 편집기가 **실제로
+  // 섰을 때만** 초안을 내린다 — 읽기 실패 · 편집할 수 없음 · 끊김 · 편집기 지연 로딩 실패면 초안을 쥔 채 띠로 말하고(다시 시도 ·
+  // 초안 복사 · 초안 버리기), 그동안도 저장 안 한 변경으로 보인다(닫기 가드 · ●).
+
+  function captureDraft(): DraftCapture | null {
+    const ed = editor;
+    if (!dc.editing || !dc.dirty || !ed) return null;
+    const snap = ed.draft();
+    const ref = ed.docRef();
+    if (!snap || !ref) return null;
+    const draft = fitDocDraft({
+      text: snap.text,
+      baseVersion: dc.baseVersion,
+      eol: snap.eol,
+      selection: snap.selection as DraftSelection | undefined,
+      scrollPos: snap.scrollPos,
+      history: snap.history,
+    });
+    if (!draft) return null;
+    return {
+      draft,
+      still: () => editor === ed && dc.editing && ed.docRef() === ref,
+      freeze: (on) => ed.setFrozen(on),
+    };
+  }
+
+  $effect(() => {
+    const id = paneId;
+    if (!id) return;
+    return untrack(() => registerDocDraft(id, captureDraft));
+  });
+
+  /** 걸어 둔 초안 — 다른 창에서 옮겨 와 아직 편집기에 들이지 않은 글 */
+  const heldDraft = $derived(paneId ? pendingDocDraft(paneId) : undefined);
+  /** 초안으로 세우던 편집기가 지연 로딩에 실패했다 — 저절로 다시 세우지 않는다([다시 시도]가 푼다) */
+  let draftStalled = $state(false);
+  /** 지금 편집기로 들이는 중인 초안 — 편집기가 서면 그것만 내린다 */
+  let applyingDraft: DocDraft | null = null;
+
+  /** 초안을 들이지 못하는 까닭 — 없으면 `null`(들일 수 있다 · 들이는 중 · 초안 없음) */
+  const draftBlock = $derived.by<"wait" | "read" | "noedit" | "readonly" | "offline" | "editor" | null>(() => {
+    if (!heldDraft || dc.editing) return null;
+    if (draftStalled) return "editor";
+    if (dc.file === null) return dc.error !== null ? "read" : "wait";
+    if (dc.editBlock !== null) return "noedit";
+    if (!backend.canWrite) return "readonly";
+    if (offline) return "offline";
+    return null;
+  });
+
+  // 들일 수 있게 되면(읽었다 · 다시 이어졌다) 한 번 — 편집 중이 아니고 막는 까닭이 없을 때
+  $effect(() => {
+    const d = heldDraft;
+    if (!d || dc.editing || draftBlock !== null) return;
+    untrack(() => {
+      if (dc.startEditFromDraft(d)) applyingDraft = d;
+    });
+  });
+
+  /** 편집기가 섰다 — 들이던 초안을 내린다(그 글은 이제 편집기에 있다) */
+  function editorReady() {
+    const d = applyingDraft;
+    applyingDraft = null;
+    if (d && paneId) dropDocDraft(paneId, d);
+  }
+
+  /** 편집기를 받지 못했다 — 초안으로 세우던 중이면 초안은 쥔 채 멈춘다(저절로 다시 받지 않는다) */
+  function onEditorFailed(message: string) {
+    if (applyingDraft) {
+      applyingDraft = null;
+      draftStalled = true;
+    }
+    dc.editorFailed(message);
+  }
+
+  /** 띠의 [다시 시도] — 읽기부터(읽지 못했으면) 또는 편집기 받기부터 */
+  function retryDraft() {
+    draftStalled = false;
+    if (dc.file === null || dc.error !== null) void dc.load();
+  }
+
+  async function copyDraft() {
+    const d = heldDraft;
+    if (!d) return;
+    if (!(await writeClipboard(d.text))) onnotice?.(t("files.doc.menu.copy.fail"));
+  }
+
+  async function discardDraft() {
+    const d = heldDraft;
+    if (!d || !paneId) return;
+    const ok = await askConfirm(t("files.doc.draft.discard.confirm"), { kind: "warning", danger: true });
+    if (ok && paneId) dropDocDraft(paneId, d);
+  }
 
   onDestroy(() => {
     dirtyBinding.dispose();
@@ -427,6 +569,21 @@
   }
 
   /**
+   * 코드 블록 머리 띠의 [터미널에 넣기](`DocCodeBlock`) — 셸 타일의 입력 줄에 넣기만(`app/code-to-term`). 문서 **타일**일 때만
+   * (`paneId` — 새 터미널이 이 옆에 선다). 상자는 단추 아래 · 오른쪽 맞춤
+   */
+  const codeActions = $derived.by(() => {
+    const id = paneId;
+    if (!id) return undefined;
+    return {
+      onterm: (code: string, button: HTMLElement) => {
+        const r = button.getBoundingClientRect();
+        codeToTerminal(id, code, { x: r.right, y: r.bottom + 4, align: "right" }, button);
+      },
+    };
+  });
+
+  /**
    * 그 앵커의 제목으로 스크롤 — 본문 상자만 민다(`scrollIntoView` 는 조상의 넘침 숨김 상자까지 밀어 타일 배치를
    * 흔들 수 있다). 못 찾으면 `false`.
    */
@@ -473,6 +630,106 @@
       });
     });
   });
+
+  // ── 편집으로 한 번 ([새 문서…] — `app/new-doc`) ─────────────────────────────────
+  // 앵커 · 줄과 같은 한 번짜리다: 글을 읽으면 [편집] 단추와 같은 문(`dc.startEdit` — 막혔으면 아무것도 하지 않는다)으로 한 번 들어가고 돌려준다.
+  // 읽기가 실패했으면 그냥 돌려준다. 편집기 지연 로딩이 실패하면 편집 면이 스스로 읽기 보기로 물러선다(`dc.editorFailed`).
+  $effect(() => {
+    if (!editOnce) return;
+    if (dc.file === null) {
+      if (dc.error !== null) untrack(() => oneditoncedone?.());
+      return;
+    }
+    untrack(() => {
+      if (!dc.editing) dc.startEdit();
+      oneditoncedone?.();
+    });
+  });
+
+  // ── 이 줄로 (터미널의 `파일:12` — `doc-line-jump.ts`) ─────────────────────────────
+  // 앵커와 같은 한 번짜리다: 글이 들어와 그려진 뒤 한 번 가고 돌려준다(못 찾아도 · 다시 시도하지 않는다). 편집 중이면
+  // 편집기를 건드리지 않고 그냥 돌려준다. 코드 보기는 그 줄에 `CodeView` 의 판을, 그린 마크다운은 그 줄이 든 최상위 블록에
+  // 판(`.line-flash`)을 잠깐 깐다 — 커서 절 강조(`.sync-hl`)처럼 그린 요소에 클래스를 다는 방식이다.
+
+  /** 코드 보기에서 강조 중인 줄(0 기준) — `CodeView` 의 `flashLine` */
+  let codeFlash = $state<number | null>(null);
+  /** 그린 마크다운에서 강조 중인 요소 */
+  let flashEl: HTMLElement | null = null;
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function stopLineFlash() {
+    clearTimeout(flashTimer);
+    flashTimer = undefined;
+    codeFlash = null;
+    flashEl?.classList.remove("line-flash");
+    flashEl = null;
+  }
+
+  onDestroy(stopLineFlash);
+
+  $effect(() => {
+    const n = line;
+    if (n === undefined) return;
+    if (dc.editing) {
+      untrack(() => onlinedone?.());
+      return;
+    }
+    if (dc.file === null) {
+      if (dc.error !== null) untrack(() => onlinedone?.());
+      return;
+    }
+    void blocks;
+    void text;
+    untrack(() => {
+      void tick().then(async () => {
+        await jumpToLine(n);
+        onlinedone?.();
+      });
+    });
+  });
+
+  /** 그 줄(1 기준)로 스크롤하고 잠깐 강조 — 못 찾으면 아무것도 하지 않는다 */
+  async function jumpToLine(n: number) {
+    const file = dc.file;
+    if (!bodyEl || !file || file.binary || dc.editing) return;
+    const idx = jumpLineIndex(n, text, file.truncated);
+    if (idx === null) return;
+    stopLineFlash();
+    if (rendered) {
+      const el = renderedBlockAt(idx);
+      if (!el) return;
+      scrollBoxToEl(bodyEl, el);
+      el.classList.add("line-flash");
+      flashEl = el;
+    } else {
+      // 판을 다시 세운다(같은 줄이어도 애니메이션이 처음부터) — 그려진 뒤 그 판 자리로 민다
+      await tick();
+      codeFlash = idx;
+      await tick();
+      const box = scroller();
+      const band = box?.querySelector<HTMLElement>("[data-line-flash]");
+      if (!box || !band) return;
+      box.scrollTo({ top: Math.max(0, band.offsetTop - box.clientHeight / 3) });
+    }
+    flashTimer = setTimeout(stopLineFlash, LINE_FLASH_MS);
+  }
+
+  /**
+   * 그린 마크다운에서 그 줄(0 기준)이 든 최상위 블록의 요소. `MarkdownBlocks` 는 최상위 블록마다 요소 하나를 뿌리(`.md`)의
+   * 자식으로 그린다 — 개수가 맞을 때만 번호로 고른다. 어긋나면(그리는 모양이 바뀌었다 — 고칠 버그) 그 줄이 든 절의 제목으로
+   * 물러선다(`sectionAt`). 그것도 없으면 `null`.
+   */
+  function renderedBlockAt(idx: number): HTMLElement | null {
+    const root = pageEl?.querySelector<HTMLElement>(":scope > [data-markdown]");
+    if (!root) return null;
+    if (root.children.length === blocks.length) {
+      const bi = blockAtLine(blockStartLines(text, DOC_TILE_MD), idx);
+      const el = bi === null ? null : root.children[bi];
+      return el instanceof HTMLElement ? el : null;
+    }
+    const slug = sectionAt(sectionLines(text, blocks, DOC_TILE_MD), idx);
+    return slug === null ? null : root.querySelector<HTMLElement>(`[data-slug="${CSS.escape(slug)}"]`);
+  }
 
   /** 지금 스크롤하는 상자 — 코드 보기는 `CodeView` 자신(`fill`)이, 그린 마크다운은 본문 상자가 민다 */
   function scroller(): HTMLElement | null {
@@ -571,15 +828,77 @@
     oc.dispose();
   });
 
+  // ── 띠의 [비교] (2026-11-11) ─────────────────────────────────────────────────
+  //
+  // `conflict` · `changed` 띠에만 선다. 누르는 순간 디스크를 **따로** 읽고(`dc.load` · `accept` 와 섞지 않는다 — 편집 상태 · 띠 ·
+  // 기준 version 은 그대로) 편집기의 지금 글과 견준다(`doc-compare.ts`). 보기는 편집 면을 가리기만 한다(`DocEditPane` 의
+  // `covered` — 편집기는 내리지 않는다). 띠가 사라지거나 `unsaved` 로 바뀌면 · 편집이 끝나면 닫는다.
+
+  /** 비교 결과 — 서 있으면 비교 보기 */
+  let compare = $state<CompareResult | null>(null);
+  /** 디스크를 읽는 중 */
+  let compareBusy = $state(false);
+  /** 늦게 온 읽기가 닫은 뒤 · 새 [비교] 뒤에 보기를 세우지 않게 */
+  let compareSeq = 0;
+  /** 비교 보기의 스크롤 상자 — 찾기가 훑는다 */
+  let compareEl = $state<HTMLDivElement | null>(null);
+
+  /** [비교]를 띄울 띠인가 */
+  function compareBand(): boolean {
+    const b = dc.bands.band;
+    return dc.editing && b !== null && b.kind !== "unsaved";
+  }
+
+  async function openCompare() {
+    if (!compareBand() || compareBusy || offline || !backend.readText) return;
+    const my = ++compareSeq;
+    compareBusy = true;
+    try {
+      const got = await backend.readText(path);
+      if (my !== compareSeq || !compareBand() || !editor) return;
+      if (got.binary || got.truncated) {
+        onnotice?.(t("files.doc.compare.unreadable"));
+        return;
+      }
+      compare = compareTexts(got.text, editor.getText());
+    } catch (e) {
+      if (my !== compareSeq) return;
+      onnotice?.(t("files.doc.compare.failed", { message: stripReason(e instanceof Error ? e.message : String(e)) }));
+    } finally {
+      if (my === compareSeq) compareBusy = false;
+    }
+  }
+
+  /** 비교 보기를 닫는다 — `focus` 면 편집기로(돌아가기 · `Esc` · 보기 안에 포커스가 있었을 때) */
+  function closeCompare(focus: boolean) {
+    compareSeq++;
+    compareBusy = false;
+    compare = null;
+    if (focus) void tick().then(() => editor?.focus());
+  }
+
+  // 띠가 내려갔다(저장 성공 · [무시] · [취소] · 편집 종료) · 저장 못 함 띠로 바뀌었다 — 비교 보기도 닫는다
+  $effect(() => {
+    if (compareBand()) return;
+    untrack(() => {
+      if (compare === null && !compareBusy) return;
+      const inside = compareEl?.contains(document.activeElement) ?? false;
+      closeCompare(dc.editing && inside);
+    });
+  });
+
   // ── 문서 안 검색 (Ctrl+F) ────────────────────────────────────────────────────
 
   /** 찾기 띠 — 훑기 · 칠 · 키는 `DomFindBar`(이 파일에서 떼어 냈다 — 대화 면 · diff 패치가 같이 쓴다) */
   let finder = $state<ReturnType<typeof DomFindBar> | null>(null);
-  /** 찾을 글이 보이는가 — 읽은 글자 파일 · 편집 중이 아님 */
-  const findable = $derived(!dc.editing && dc.file !== null && !dc.file.binary && text !== "");
+  /** 찾을 글이 보이는가 — 읽은 글자 파일 · 편집 중이 아님, 또는 편집 중 비교 보기 */
+  const findable = $derived(
+    (dc.editing && compare !== null) || (!dc.editing && dc.file !== null && !dc.file.binary && text !== ""),
+  );
 
-  /** `find` 액션 — 편집 중이면 편집기의 검색 패널, 아니면 띠. 찾을 글이 없으면 `false`(터미널 검색으로 넘어간다) */
+  /** `find` 액션 — 편집 중이면 편집기의 검색 패널(비교 보기가 서 있으면 그 보기의 띠), 아니면 띠. 찾을 글이 없으면 `false`(터미널 검색으로 넘어간다) */
   function openFind(): boolean {
+    if (dc.editing && compare !== null) return finder?.show() ?? false;
     if (dc.editing) {
       if (!editor) return false;
       editor.openSearch();
@@ -626,13 +945,23 @@
       onmenu(ev.clientX, ev.clientY, { rows, run: (key) => runEditMenu(ed, key, sel, dc.save) });
       return;
     }
-    const box = (dc.editing ? previewPageEl : rendered ? pageEl : bodyEl?.querySelector("[data-code-view]")) ?? bodyEl;
+    const box = (compare !== null ? compareEl : dc.editing ? previewPageEl : rendered ? pageEl : bodyEl?.querySelector("[data-code-view]")) ?? bodyEl;
     if (!box) return;
     const link = target.closest("[data-href]")?.getAttribute("data-href") ?? null;
     const sel = selectionIn(box);
     const canEdit = !dc.editing && dc.file !== null && editBlockOf(dc.file) === null && backend.canWrite && !offline;
     const rows = docMenuItems(
-      { mode: "read", link, hasSelection: sel !== "", canFind: findable, canEdit, markdown: false, canUndo: false, canRedo: false },
+      {
+        mode: "read",
+        link,
+        hasSelection: sel !== "",
+        canFind: findable,
+        canEdit,
+        markdown: false,
+        canUndo: false,
+        canRedo: false,
+        newDoc: paneId ? newDocState(paneId) : null,
+      },
       t,
     );
     onmenu(ev.clientX, ev.clientY, { rows, run: (key) => runReadMenu(key, { box, link, sel }, readActions) });
@@ -1131,10 +1460,10 @@
   <!-- 문서 안 검색 띠 — 열기는 `openFind`(앱의 `find` 액션), 닫으면 키보드는 본문으로 -->
   <DomFindBar
     bind:this={finder}
-    root={bodyEl}
-    {scroller}
+    root={compare !== null ? compareEl : bodyEl}
+    scroller={() => (compare !== null ? compareEl : scroller())}
     label={t("files.doc.find")}
-    onclose={() => rootEl?.focus({ preventScroll: true })}
+    onclose={() => (compare !== null ? compareEl : rootEl)?.focus({ preventScroll: true })}
   />
 
   {#if oc.outlineDrop}
@@ -1175,21 +1504,45 @@
     {#if band.kind === "conflict" || band.kind === "changed"}
       <p class="banner wait" role="alert">
         <span class="err-text">{t("files.doc.conflict")}</span>
-        <button type="button" class="retry" disabled={offline || dc.loading} onclick={() => void dc.reloadForEdit()}
-          >{t("files.doc.conflict.reload")}</button
-        >
-        {#if band.kind === "conflict"}
-          <button type="button" class="retry" disabled={offline || dc.saving} onclick={() => void dc.save(true)}
-            >{t("files.doc.conflict.overwrite")}</button
+        <span class="acts">
+          <!-- [비교] — 디스크를 따로 읽어 내 편집과 나란히(읽기 전용). 비교 보기가 서 있어도 다시 누르면 새로 읽는다 -->
+          <button
+            type="button"
+            class="retry primary"
+            disabled={offline || compareBusy || !backend.readText}
+            aria-busy={compareBusy}
+            onclick={() => void openCompare()}
+            >{compareBusy ? t("files.doc.compare.busy") : t("files.doc.compare")}</button
           >
-          <button type="button" class="retry" onclick={dc.dismissBand}
-            >{t("files.doc.conflict.cancel")}</button
+          <!-- 띠의 단추를 누르면 비교 보기는 닫힌다(포커스는 옮기지 않는다 — 다시 불러오기는 새 편집기가 가져간다) -->
+          <button
+            type="button"
+            class="retry"
+            disabled={offline || dc.loading}
+            onclick={() => {
+              closeCompare(false);
+              void dc.reloadForEdit();
+            }}>{t("files.doc.conflict.reload")}</button
           >
-        {:else}
-          <button type="button" class="retry" onclick={dc.ignoreBand}
-            >{t("files.doc.conflict.ignore")}</button
-          >
-        {/if}
+          {#if band.kind === "conflict"}
+            <button
+              type="button"
+              class="retry"
+              disabled={offline || dc.saving}
+              onclick={() => {
+                closeCompare(false);
+                void dc.save(true);
+              }}>{t("files.doc.conflict.overwrite")}</button
+            >
+            <button type="button" class="retry" onclick={dc.dismissBand}
+              >{t("files.doc.conflict.cancel")}</button
+            >
+          {:else}
+            <button type="button" class="retry" onclick={dc.ignoreBand}
+              >{t("files.doc.conflict.ignore")}</button
+            >
+          {/if}
+        </span>
       </p>
     {:else}
       <p class="banner err" role="alert">
@@ -1213,6 +1566,20 @@
   {:else if offline}
     <p class="banner wait">
       {alias ? t("files.browser.offline.alias", { alias }) : t("files.browser.offline")}
+    </p>
+  {/if}
+
+  <!-- 다른 창에서 옮겨 온 저장 안 한 글 — 편집기에 들이기 전(읽는 중 · 막힘). 들일 수 있게 되면 저절로 편집으로 이어지고 띠는 사라진다 -->
+  {#if heldDraft && !dc.editing}
+    <p class="banner {draftBlock === 'wait' || draftBlock === 'offline' || draftBlock === null ? 'wait' : 'err'}" role="alert">
+      <span class="err-text">{t(`files.doc.draft.${draftBlock ?? "wait"}`)}</span>
+      <span class="acts">
+        {#if draftBlock === "read" || draftBlock === "editor"}
+          <button type="button" class="retry" disabled={offline} onclick={retryDraft}>{t("files.browser.retry")}</button>
+        {/if}
+        <button type="button" class="retry" onclick={() => void copyDraft()}>{t("files.doc.draft.copy")}</button>
+        <button type="button" class="retry" onclick={() => void discardDraft()}>{t("files.doc.draft.discard")}</button>
+      </span>
     </p>
   {/if}
 
@@ -1264,7 +1631,9 @@
           bind:previewEl
           bind:previewPageEl
           editGen={dc.editGen}
-          text={dc.file.text}
+          text={dc.editText}
+          restore={dc.editRestore}
+          onready={editorReady}
           {path}
           {editShown}
           {splitRatio}
@@ -1278,7 +1647,7 @@
           {editorChanged}
           oncursor={(line) => (cursorLine = line)}
           onviewport={(top, bottom) => (edView = { top, bottom })}
-          editorFailed={dc.editorFailed}
+          editorFailed={onEditorFailed}
           {startSplitDrag}
           {moveSplitDrag}
           {endSplitDrag}
@@ -1287,7 +1656,13 @@
           {openLink}
           {openPreviewDocLink}
           onjump={(el) => previewEl && scrollBoxToEl(previewEl, el)}
+          {codeActions}
+          covered={compare !== null}
         />
+        {#if compare !== null}
+          <!-- 띠의 [비교] — 편집 면을 가리기만 한다(편집기는 위에 숨은 채 산다). 좁은 타일은 한 칸 -->
+          <DocCompareView bind:scrollEl={compareEl} result={compare} wide={wideEdit} onback={() => closeCompare(true)} />
+        {/if}
       {:else if dc.file === null}
         {#if dc.loading}<p class="note">{t("files.doc.loading")}</p>{/if}
       {:else if dc.file.binary}
@@ -1314,10 +1689,11 @@
             diagrams
             tasks={readTasks}
             {images}
+            {codeActions}
           />
         </div>
       {:else}
-        <CodeView code={text} {lang} lineNumbers fill />
+        <CodeView code={text} {lang} lineNumbers fill flashLine={codeFlash} />
       {/if}
     </div>
   </div>
@@ -1439,9 +1815,11 @@
     background: var(--accent-soft);
   }
 
+  /* 좁은 타일 — 문구 옆에 단추가 들어갈 자리가 없으면 단추(무리)가 문구 아래 줄로 내려간다(`.err-text` 의 바탕 폭 · `.acts`) */
   .banner,
   .band {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
@@ -1471,10 +1849,24 @@
     background: var(--surface-hover);
   }
 
+  /*
+   * 문구 — 바탕 폭(16em)을 두어 줄 나눔이 "문구 16em + 단추" 가 한 줄에 드는가로 정해지게 한다. 들면 지금처럼 한 줄(문구가 남는 폭을
+   * 채운다), 안 들면 단추가 아래 줄로 가고 문구는 한 줄을 다 쓴다. 바탕 폭 없이(`auto`) 줄지 않게만 하면 긴 문구가 넓은 타일에서도
+   * 단추를 밀어 내리고, 줄 나눔 없이 줄게만 두면 `overflow-wrap: anywhere` 탓에 한 글자 폭까지 눌린다(긴 경로 · 오류 글을 꺾으려 둔 값).
+   */
   .err-text {
-    flex: 1 1 auto;
+    flex: 1 1 16em;
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+
+  /* 단추 무리 — 아래 줄로 갈 때 한 덩이로 간다. 그 줄에서도 넘치면 안에서 줄을 바꾼다 */
+  .acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
   }
 
   .retry {
@@ -1496,6 +1888,17 @@
   .retry:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  /* 띠의 먼저 볼 단추([비교]) — 강조색 채움 */
+  .retry.primary {
+    color: var(--on-accent);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .retry.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
   }
 
   /*
@@ -1598,6 +2001,32 @@
     font-size: calc(var(--t-sm) * var(--doc-zoom, 1));
     line-height: 1.6;
     color: var(--fg-1);
+  }
+
+  /* "이 줄로" 의 블록 강조 — 커서 절 강조(`.sync-hl`)와 같은 둥근 판이되 선택 줄 색(`--accent-soft`), 2초에 걸쳐 사라진다.
+     판을 가진 블록(코드 · 표)은 제 판이 덮으므로 바깥 고리(그림자)로도 보인다. 움직임 줄이기면 전환 없이 있다가 걷힌다 */
+  .md-page :global(.line-flash) {
+    border-radius: var(--radius);
+    animation: doc-line-flash 2s ease-out forwards;
+  }
+
+  @keyframes -global-doc-line-flash {
+    from {
+      background-color: var(--accent-soft);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    to {
+      background-color: transparent;
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .md-page :global(.line-flash) {
+      animation: none;
+      background-color: var(--accent-soft);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
   }
 
   .note {

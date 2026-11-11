@@ -707,21 +707,47 @@ export const DOC_TILE_MD: Readonly<MdOptions> = { frontmatter: true, math: true 
 
 /** 글 → 블록들 */
 export function parseMarkdown(src: string, opts: MdOptions = {}): MdBlock[] {
+  return parseWithStarts(src, opts, null);
+}
+
+/**
+ * **최상위 블록마다 원문 몇째 줄에서 시작하나** — [`parseMarkdown`] 이 돌려주는 최상위 블록과 **같은 순서 · 같은 길이**의
+ * 0 기준 줄 번호(`\r\n` 도 한 줄 끝). 머리말은 0, 글 끝 각주 구역은 원문 자리가 없어 `null` 이다.
+ *
+ * 문서 타일의 "이 줄로"(터미널의 `파일:12` 링크 — `doc-line-jump.ts`)가 그 줄이 든 블록을 찾는 데 쓴다. 블록 타입에 줄 칸을
+ * 싣지 않고 따로 돌려주는 것은 [`headingLines`] 와 같은 까닭이다(블록의 모양을 그대로 둔다). 다만 따로 훑지 않고 **같은
+ * 파서를 한 번 더 돌리며** 시작 줄만 옆에 적으므로 갈래가 어긋날 일이 없다.
+ */
+export function blockStartLines(src: string, opts: MdOptions = {}): (number | null)[] {
+  const starts: (number | null)[] = [];
+  parseWithStarts(src, opts, starts);
+  return starts;
+}
+
+/** [`parseMarkdown`] 의 몸 — `starts` 가 있으면 최상위 블록의 시작 줄을 같은 순서로 적는다([`blockStartLines`]) */
+function parseWithStarts(src: string, opts: MdOptions, starts: (number | null)[] | null): MdBlock[] {
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
   const fm = opts.frontmatter ? takeFrontmatter(lines) : null;
   const footnotes: FootnoteCtx = { defs: takeFootnoteDefs(lines), order: [] };
   const math = !!opts.math;
   const ctx: InlineCtx = { refs: takeRefDefs(lines), footnotes, math };
+  const top: number[] | undefined = starts ? [] : undefined;
   const blocks = parseLines(
     lines,
     lines.map((_, k) => k),
     0,
     (s) => parseInline(s, ctx),
     math,
+    top,
   );
   if (fm) blocks.unshift(fm);
   const fns = footnoteBlock(footnotes, ctx);
   if (fns) blocks.push(fns);
+  if (starts && top) {
+    if (fm) starts.push(0);
+    starts.push(...top);
+    if (fns) starts.push(null);
+  }
   return blocks;
 }
 
@@ -902,16 +928,23 @@ function takeRefDefs(lines: string[]): Map<string, string> {
 /** 인라인 파서 — 참조 정의를 물고 있다 */
 type Inl = (src: string) => MdInline[];
 
-/** `at[i]` 는 `lines[i]` 의 원문 줄 번호다 — 인용 속으로 내려가도 원문 기준([`scanHeadings`] 와 같은 셈) */
-function parseLines(lines: string[], at: number[], depth: number, inl: Inl, math = false): MdBlock[] {
+/**
+ * `at[i]` 는 `lines[i]` 의 원문 줄 번호다 — 인용 속으로 내려가도 원문 기준([`scanHeadings`] 와 같은 셈).
+ * `starts` 가 있으면 내놓는 블록마다 그 시작 줄(`at`)을 같은 순서로 적는다 — 한 바퀴는 블록을 많아야 하나 내놓으므로
+ * 바퀴 머리(와 끝)에서 모자란 만큼 앞 바퀴의 시작 줄로 채운다(갈래마다 손대지 않는다 — [`blockStartLines`])
+ */
+function parseLines(lines: string[], at: number[], depth: number, inl: Inl, math = false, starts?: number[]): MdBlock[] {
   const out: MdBlock[] = [];
   let i = 0;
+  let from = 0;
   while (i < lines.length) {
+    if (starts) while (starts.length < out.length) starts.push(from);
     const line = lines[i];
     if (isBlank(line)) {
       i++;
       continue;
     }
+    from = at[i];
     const fence = FENCE.exec(line);
     if (fence) {
       const mark = fence[1];
@@ -1038,6 +1071,7 @@ function parseLines(lines: string[], at: number[], depth: number, inl: Inl, math
     const inlines = inl(setext ? body.map((l) => l.trim()).join("\n") : body.join("\n"));
     out.push(setext ? { kind: "h", level: setext, inlines } : { kind: "p", inlines });
   }
+  if (starts) while (starts.length < out.length) starts.push(from);
   return out;
 }
 

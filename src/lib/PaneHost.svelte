@@ -16,7 +16,7 @@
   import { openBranchGraphOfPane } from "$lib/app/branch-graph.svelte.js";
   import { noteTileMenuPane, registerTileMenuOpener } from "$lib/app/tile-menu-bridge.svelte.js";
   import QueryView from "$lib/QueryView.svelte";
-  import { clearDocAnchor, docAnchorOf } from "$lib/app/doc-anchors.svelte.js";
+  import { clearDocAnchor, clearDocEdit, clearDocLine, docAnchorOf, docEditOf, docLineOf } from "$lib/app/doc-anchors.svelte.js";
   import SplitView from "$lib/SplitView.svelte";
   import StartPage from "$lib/StartPage.svelte";
   import ProjectStart from "$lib/ProjectStart.svelte";
@@ -952,6 +952,10 @@
             onopenlink={(link, anchor) => ondoclink?.(item.tab.id, item.pane.id, link, anchor)}
             anchor={docAnchorOf(item.pane.id)}
             onanchordone={() => clearDocAnchor(item.pane.id)}
+            line={docLineOf(item.pane.id)}
+            onlinedone={() => clearDocLine(item.pane.id)}
+            editOnce={docEditOf(item.pane.id)}
+            oneditoncedone={() => clearDocEdit(item.pane.id)}
             onmenu={(x, y, doc) => {
               // 본문 우클릭 — 터미널 본문 우클릭과 같은 상자를 커서 자리에(줄은 문서 타일이 지어 온다 · 되돌릴 버튼은 없다)
               tmc.tileMenuTrigger = null;
@@ -1022,7 +1026,7 @@
               {oncommand}
               onbroadcast={(data) => broadcast(item.tab, item.pane.id, data)}
               onrequestedit={() => oneditremote?.(item.tab.id, item.pane.id)}
-              onopenpath={(target) => onopenpath?.(item.tab.id, item.pane.id, target)}
+              onopenpath={(target, line) => onopenpath?.(item.tab.id, item.pane.id, target, line)}
               onmenu={(x, y, ctx) => {
                 // 터미널 본문 우클릭 — 헤더 우클릭과 **같은 메뉴 한 벌**을 커서 자리에 연다
                 // (docs/log/2026-09-05-terminal-context-menu.md). 되돌릴 버튼은 없다.

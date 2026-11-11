@@ -712,7 +712,9 @@ export const app: Record<keyof typeof koApp, string> = {
   "dbTx.close.noDialog": "The confirmation dialog would not open, so nothing was closed (there is an uncommitted transaction).",
   "unsaved.saveFailed": "Could not save, so nothing was closed — {name}",
   "unsaved.noDialog": "The confirmation dialog would not open, so nothing was closed (there are unsaved changes).",
-  "unsaved.tear": "A document with unsaved changes can't move to another window — save or revert it first.",
+  "unsaved.tearChanged": "The document changed while moving, so it wasn't moved.",
+  "unsaved.tearKept": "The document changed while moving, so it was also kept in the original window.",
+  "unsaved.tear": "Can't move an unsaved document — save it first.",
   "tabs.unsaved": "Has unsaved changes",
 
 

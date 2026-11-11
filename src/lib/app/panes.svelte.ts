@@ -38,7 +38,7 @@ import { resolveDocLink } from "$lib/doc-links";
 import { DOC_SPLIT_DEFAULT, clampDocSplit } from "$lib/doc-edit-preview";
 import { DOC_ZOOM_DEFAULT, clampDocZoom } from "$lib/doc-zoom";
 import { isTextLike } from "$lib/doc-lang";
-import { setDocAnchor } from "$lib/app/doc-anchors.svelte.js";
+import { setDocAnchor, setDocLine } from "$lib/app/doc-anchors.svelte.js";
 import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
 import {
   activeTab,
@@ -319,6 +319,20 @@ export async function openAiPaneBeside(
   const pane = newAiPane(cli.command, cwd);
   if (!openPaneBeside(tabId, paneId, pane, "row")) return null;
   void ensureAiCliReady(cli);
+  return pane.id;
+}
+
+/**
+ * **그 타일 오른쪽에** 이 창의 기본 셸 타일을 연다 — 문서 코드 블록 [터미널에 넣기]의 "새 터미널 열기"(`app/code-to-term`).
+ * [`openDefaultShell`] 과 같은 셸 · 같은 시작 폴더 규칙인데 자리만 사람이 누른 타일 옆(좌우 분할)이다([`openAiPaneBeside`] 와 같은 결).
+ * 돌려주는 것은 새 타일의 id — 탭이나 타일이 사라졌으면 `null`.
+ */
+export async function openShellPaneBeside(tabId: string, paneId: string): Promise<string | null> {
+  const tab = residentWindowTabs().find((x) => x.id === tabId) ?? null;
+  const shell = (await defaultShellId()) ?? undefined;
+  const cwd = await startDirHere("shell", { tab, focused: tab ? findPane(tab.root, paneId) : null });
+  const pane = withCwd(newLocalPane(shell), cwd);
+  if (!openPaneBeside(tabId, paneId, pane, "row")) return null;
   return pane.id;
 }
 
@@ -640,11 +654,13 @@ export function openDocFrom(tabId: string, browserPaneId: string, path: string):
  * 경로는 이미 풀려 온다(`path-links.ts` — 셸 폴더 기준 · WSL 옮김). `home` 갈래면 여기서 그 백엔드의 홈을 물어 잇는다.
  * 여는 것은 **파일이 확인될 때만**이다(`stat`): 터미널 글자는 무엇이든 될 수 있어서, 없는 파일 · 폴더면 토스트 한 줄로
  * 물러선다(빈 문서 타일을 세워 오류를 보이는 것보다 덜 시끄럽다). 로컬 셸은 이 컴퓨터, ssh 셸은 그 세션(SFTP)으로 본다.
+ * `line`(꼬리 `:12` — 1 기준)이 있으면 연(또는 포커스만 옮긴) 타일에 한 번짜리 "이 줄로" 를 건다(`doc-anchors` — 저장되지 않는다).
  */
 export async function openPathFromTerminal(
   tabId: string,
   paneId: string,
   target: { path: string } | { home: string },
+  line?: number,
 ): Promise<void> {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   const pane = tab ? findPane(tab.root, paneId) : null;
@@ -672,7 +688,8 @@ export async function openPathFromTerminal(
     showNotice(t("app.doc.open.missing", { path }));
     return;
   }
-  openDoc({ tabId, nearPaneId: paneId, path, source: remote ? { paneId: pane.id, alias: pane.alias ?? "" } : undefined });
+  const opened = openDoc({ tabId, nearPaneId: paneId, path, source: remote ? { paneId: pane.id, alias: pane.alias ?? "" } : undefined });
+  if (opened !== null && line !== undefined) setDocLine(opened, line);
 }
 
 /**

@@ -37,6 +37,7 @@ import {
   type TermMenuCtx,
 } from "$lib/pane/pane-menu";
 import { openSnippetSave } from "$lib/app/snippets.svelte.js";
+import { newDocState, openNewDoc } from "$lib/app/new-doc.svelte.js";
 import { openFolderConversations } from "$lib/app/folder-conversations.svelte.js";
 import { termActionsOf } from "$lib/term-actions";
 import { FLYOUT_EST_WIDTH, FLYOUT_GAP } from "$lib/menu-flyout";
@@ -180,6 +181,8 @@ export function createTileMenu(h: TileMenuHost) {
       // 문서 타일의 "경로 복사"(10-20) — 문서가 받는 그 경로 · 별칭(`DocView` 의 `path` · `alias` 프롭과 같은 칸)
       docPath:
         menuBox.pane.kind === "doc" ? { path: menuBox.pane.path ?? "", alias: menuBox.pane.alias ?? "" } : null,
+      // 문서 타일의 [새 문서…](2026-11-11) — 파일을 보이고 그 백엔드에 쓸 수 있을 때(판정은 `app/new-doc` 하나 — 본문 우클릭도 같은 것)
+      docNew: menuBox.pane.kind === "doc" ? newDocState(menuBox.pane.id) : null,
       // 폰 배치 — 분할 둘 · 새 창으로 분리를 그리지 않는다(위 띠 ⋯ · 길게 누르기 모두 — `PaneMenuCtx.solo`)
       solo: h.solo,
       // 오케스트레이션 탭(2026-10-29 — 노트 D11 · 0-3 Q1=B): 그 탭의 타일이면 분할 · 분리를 그리지 않고, 탭 밖의 로컬 AI 타일이면
@@ -351,6 +354,10 @@ export function createTileMenu(h: TileMenuHost) {
         // 둘 다 그 타일의 xterm 버퍼·세션이 대상이라 터미널 창구로 돌려보낸다.
         // (**로그 폴더**는 2026-09-17 에 이 메뉴를 떠났다 — 앱 전역 한 자리라 타일마다 같은
         // 줄이 설 이유가 없었다. 지금은 설정 › 터미널과 호스트 폼이 그 문이다.)
+        // 문서 타일의 [새 문서…](2026-11-11) — 타일 ⋯ 와 본문 우클릭(줄 액션이 `tool:` 이 아니라 위 문서 갈래를 지나지 않는다)이 같은 칸이다.
+        // 메뉴가 서 있던 자리에 이름 상자를 연다(AI 권한 · tmux 세션… 과 같은 "메뉴를 닫고 상자를 연다" 몸짓)
+        case "new-doc":
+          return openNewDoc(m.pane.id, at === null ? null : { x: at.left, y: at.top });
         case "save-scrollback":
           return termActionsOf(m.pane.id)?.saveScrollback();
         case "session-log":

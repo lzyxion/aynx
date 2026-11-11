@@ -25,6 +25,7 @@ import { invoke } from "./ipc";
 import { exportHistory, importHistory, type CommandBlock } from "$lib/block-history";
 import { adoptTab, type PaneSpec, type TabSpec, type TermSize } from "$lib/session";
 import { sanitizeAgentLink, type AgentLink } from "$lib/agent-sessions";
+import { sanitizeDocDraft, type DocDraft } from "$lib/doc-draft";
 import type { MarkerDistance } from "$lib/shell-integration";
 import { currentZoom, screenToLogical } from "$lib/ui-scale";
 
@@ -175,6 +176,7 @@ export function isHandoff(paneId: string): boolean {
  * | [`shared`] | **이미 있던 버그.** `ai.svelte.ts` 의 공유 옵트인을 `buildTear` 가 읽지 않고 `restoreTab` 이 다시 세우지 않아, 공유 중인 타일을 뜯어내면 **말없이 공유가 꺼졌다** |
  * | [`agentLink`] | 넘어간 타일에서 도는 Claude 대화가 받는 창의 지난 대화 목록에 "열림" 대신 "밖에서 열림" 으로 섰다 — 다음 훅 신호까지(2026-09-26) |
  * | [`titles`] | 넘어간 로컬 타일의 이름이 **"로컬"** 로 떨어졌다 — 셸 이름·OSC 제목·도는 명령이 모두 받는 창에 없어서, 여러 타일 탭의 합성 제목(`PowerShell 7 · Claude Code`)까지 `로컬 · 로컬` 이 됐다(2026-09-30) |
+ * | [`docDraft`] | 저장 안 한 문서의 글이 받는 창에서 **말없이 사라졌다**(받는 타일이 파일을 다시 읽는다) — 그래서 예전에는 저장 안 한 문서가 창을 넘지 못했다(2026-11-11 에 실었다) |
  */
 export interface TearPane {
   /** 원본 명세 (`id` 는 소스 창의 것 — 받는 쪽이 새로 매긴다) */
@@ -218,6 +220,12 @@ export interface TearPane {
    * 세션이 산 채 건너가므로 신호도 함께 간다. 없으면 없다(옛 짐도).
    */
   titles?: PaneTitleSignals | null;
+  /**
+   * **저장 안 한 문서의 초안**([`DocDraft`] — 글 · 기준 version · 줄 끝 · 커서 · 스크롤 · 한도 안의 실행 취소 기록). 문서 타일이
+   * 편집 중 저장 안 한 변경을 들고 있을 때만 있다. **명세(`pane`)가 아니라 여기**다 — 명세는 배치 · 워크스페이스 파일에 적히고
+   * 초안은 사서함(메모리)과 받는 창의 메모리 표(`app/doc-drafts`)에만 산다. 받는 쪽은 [`parseTear`] 가 모양을 거른다.
+   */
+  docDraft?: DocDraft | null;
 }
 
 /**
@@ -280,6 +288,7 @@ export function buildTear(
   markersOf: (paneId: string) => MarkerDistance[],
   agentLinkOf?: (paneId: string) => AgentLink | null,
   titlesOf?: (paneId: string) => PaneTitleSignals | null,
+  draftOf?: (paneId: string) => DocDraft | null,
 ): TearPayload {
   return {
     ...(tab.workspaceId ? { workspaceId: tab.workspaceId } : {}),
@@ -306,6 +315,8 @@ export function buildTear(
         agentLink: agentLinkOf?.(pane.id) ?? null,
         // 이름 신호도 함수로 받는다 — 저장소가 반응형 모듈이라(`sharedOf` 와 같은 이유).
         titles: titlesOf?.(pane.id) ?? null,
+        // 초안 — 부르는 쪽이 드래그 시작에서 **이미 떠 둔** 것(못 뜨면 이 짐은 애초에 만들지 않는다 — `app/tear` 의 `startTear`)
+        ...draftField(draftOf?.(pane.id) ?? null),
       };
     }),
   };
@@ -321,10 +332,26 @@ export function parseTear(raw: string): TearPayload | null {
     const t = tab as TabSpec;
     if (typeof t.id !== "string" || !t.root) return null;
     const meta = o as TearPayload;
-    return { tab: t, panes: panes as TearPane[], workspaceId: meta.workspaceId, workspace: meta.workspace };
+    return { tab: t, panes: (panes as TearPane[]).map(sanitizePaneDraft), workspaceId: meta.workspaceId, workspace: meta.workspace };
   } catch {
     return null;
   }
+}
+
+/** 초안이 있을 때만 칸을 단다(없으면 칸 자체가 없다 — 옛 짐과 같은 모양) */
+function draftField(draft: DocDraft | null): { docDraft?: DocDraft } {
+  return draft ? { docDraft: draft } : {};
+}
+
+/**
+ * 짐의 타일 하나에서 초안 칸을 **모양이 맞을 때만** 남긴다(`sanitizeDocDraft` — 타입 · 길이 상한 · 모르는 모양은 버림).
+ * 문서 타일이 아니면 버린다. 칸이 없으면 그대로(옛 짐).
+ */
+function sanitizePaneDraft(rec: TearPane): TearPane {
+  if (!rec || typeof rec !== "object" || !("docDraft" in rec)) return rec;
+  const { docDraft, ...rest } = rec;
+  const draft = rest.pane?.kind === "doc" ? sanitizeDocDraft(docDraft) : null;
+  return { ...rest, ...draftField(draft) };
 }
 
 /**
@@ -382,12 +409,15 @@ function sanitizeSize(raw: unknown): TermSize | undefined {
  * `onShared` 는 함수로 받는다 — [`buildTear`] 의 `sharedOf` 와 같은 이유다. `onAgentLink`(대화 연결)도 같다 —
  * 그리고 **산 세션을 데려온 타일에만** 부른다: 붙일 세션이 없는 타일(`sessionId: null`)은 새 셸이라 그 대화가 없다.
  * `onTitles`(이름 신호 — [`PaneTitleSignals`])도 같은 규칙이다: 그 신호는 데려온 세션의 것이다.
+ * `onDocDraft`(저장 안 한 문서의 초안 — [`TearPane.docDraft`])는 세션과 무관하다 — 문서 타일이면 부른다([`parseTear`] 가 이미 걸렀다).
+ * 이것도 마운트 **전**이라 문서 타일이 처음 그릴 때부터 초안을 본다(받는 쪽 표가 그 순간 "저장 안 한 변경 있음" 을 적는다).
  */
 export function restoreTab(
   payload: TearPayload,
   onShared?: (paneId: string, shared: boolean) => void,
   onAgentLink?: (paneId: string, link: AgentLink) => void,
   onTitles?: (paneId: string, titles: PaneTitleSignals) => void,
+  onDocDraft?: (paneId: string, draft: DocDraft) => void,
 ): TabSpec {
   const byId = new Map(payload.panes.map((p) => [p.pane?.id, p]));
   return adoptTab(
@@ -427,6 +457,7 @@ export function restoreTab(
         if (link) onAgentLink?.(newId, link);
         const titles = typeof rec.sessionId === "number" ? sanitizeTitleSignals(rec.titles) : null;
         if (titles) onTitles?.(newId, titles);
+        if (rec.docDraft && rec.pane?.kind === "doc") onDocDraft?.(newId, rec.docDraft);
       }
     },
   );
@@ -608,9 +639,10 @@ export function beginTear(
   agentLinkOf?: (paneId: string) => AgentLink | null,
   titlesOf?: (paneId: string) => PaneTitleSignals | null,
   workspace?: Omit<TearWorkspace, "savedTab">,
+  draftOf?: (paneId: string) => DocDraft | null,
 ): number {
   const token = newToken();
-  const payload = buildTear(tab, panes, sessionOf, sharedOf, markersOf, agentLinkOf, titlesOf);
+  const payload = buildTear(tab, panes, sessionOf, sharedOf, markersOf, agentLinkOf, titlesOf, draftOf);
   if (workspace) {
     const saved = serialize([tab], tab.id).workspaces[0];
     payload.workspace = { ...workspace, savedTab: { ...saved, tabKey: tab.tabKey!, placement: { kind: "main" }, root: assignTileKeys(saved.root) } };
@@ -639,9 +671,10 @@ export function beginPaneTear(
   agentLinkOf?: (paneId: string) => AgentLink | null,
   titlesOf?: (paneId: string) => PaneTitleSignals | null,
   workspace?: Omit<TearWorkspace, "savedTab">,
+  draftOf?: (paneId: string) => DocDraft | null,
 ): number {
   const token = newToken();
-  const payload = buildTear(tab, [pane], sessionOf, sharedOf, markersOf, agentLinkOf, titlesOf);
+  const payload = buildTear(tab, [pane], sessionOf, sharedOf, markersOf, agentLinkOf, titlesOf, draftOf);
   if (workspace) {
     const saved = serialize([tab], tab.id).workspaces[0];
     // 원래 탭은 sourceTabKey로 찾고, savedTab은 같은 tileKey를 담은 새 탭으로 옮긴다.

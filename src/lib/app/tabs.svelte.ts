@@ -19,6 +19,7 @@ import { settings } from "$lib/settings.svelte.js";
 import { CLOSE_SLIDE_DELAY_MS, noteTileClosing, withLayoutAnim } from "$lib/layout-anim.svelte.js";
 import { displayCombo, effectiveCombo } from "$lib/keybindings";
 import { isDocDirty, setDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { dropDocDraft } from "$lib/app/doc-drafts.svelte.js";
 import { confirmUnsavedClose } from "$lib/app/unsaved-docs";
 import { confirmDbTxClose, dbTxPanes, hasOpenDbTx } from "$lib/app/db-tx";
 import { unsavedVerdict } from "$lib/unsaved-guard";
@@ -506,9 +507,12 @@ export function closeTab(id: string): void {
   const currentIndex = currentWorkspaceTabs().findIndex((t) => t.id === id);
   // 탭이 빠지면 전역 패널 목록에서 그 탭의 패널들만 사라지고(keyed each 의 항목 제거),
   // 각 Terminal 이 close invoke + dispose 를 돈다. 다른 탭의 패널은 키가 그대로다.
-  // 저장 안 한 문서 표시도 함께 거둔다 — 여기 오기 전에 물었거나(`closeTabAsked`) 창을 넘긴 것이다
-  // (넘기기는 저장 안 한 문서가 있으면 애초에 거절된다 — `startTear`).
-  for (const p of listPanes(tabs[i].root)) setDocDirty(p.id, false);
+  // 저장 안 한 문서 표시와 걸어 둔 초안(`app/doc-drafts`)도 함께 거둔다 — 여기 오기 전에 물었거나(`closeTabAsked`) 창을 넘긴
+  // 것이다(넘기기는 초안을 짐에 실었을 때만 된다 — `startTear` · 실을 수 없으면 거절).
+  for (const p of listPanes(tabs[i].root)) {
+    setDocDirty(p.id, false);
+    dropDocDraft(p.id);
+  }
   tabs.splice(i, 1);
   delete activePane[id];
   delete hasActivity[id];
@@ -1000,6 +1004,7 @@ function closePaneNow(tabId: string, paneId: string): void {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   if (!tab || !findPane(tab.root, paneId)) return;
   setDocDirty(paneId, false);
+  dropDocDraft(paneId);
   unzoom(tab); // 최대화 중이었으면 남는 타일들이 보이는 상태에서 자리를 채운다
   const next = closePane(tab.root, paneId);
   if (next === null) {

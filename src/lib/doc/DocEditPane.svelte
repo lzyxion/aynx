@@ -16,6 +16,7 @@
   import type { DocImageCache } from "$lib/doc-images.svelte";
   import { DOC_SPLIT_DEFAULT } from "$lib/doc-edit-preview";
   import type { DocEditView } from "$lib/session";
+  import type { DocEditorRestore } from "$lib/doc-draft";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { ComponentProps } from "svelte";
 
@@ -44,6 +45,10 @@
     openLink,
     openPreviewDocLink,
     onjump,
+    codeActions,
+    covered = false,
+    restore = null,
+    onready,
     editor = $bindable(null),
     splitEl = $bindable(null),
     previewEl = $bindable(null),
@@ -81,6 +86,14 @@
     openPreviewDocLink: (href: string) => void;
     /** 각주 오가기 — 미리 보기 상자를 그 요소로 */
     onjump: (el: HTMLElement) => void;
+    /** 미리 보기 코드 블록의 [복사] · [터미널에 넣기] — 읽기 보기와 같은 것(`MarkdownBlocks` 의 `codeActions`) */
+    codeActions?: ComponentProps<typeof MarkdownBlocks>["codeActions"];
+    /** 비교 보기(`DocCompareView`)가 이 자리에 섰다 — 면 전체를 숨기기만 한다(편집기 · 되돌리기 기록 · 커서가 산다) */
+    covered?: boolean;
+    /** 옮겨 온 초안을 되살릴 것(`DocEditor` 의 `restore` — 그 편집기가 처음 설 때 한 번 읽는다) */
+    restore?: DocEditorRestore | null;
+    /** 편집기가 섰다(`DocEditor` 의 `onready`) */
+    onready?: () => void;
     editor?: ReturnType<typeof DocEditor> | null;
     splitEl?: HTMLDivElement | null;
     previewEl?: HTMLDivElement | null;
@@ -90,7 +103,7 @@
 
 <!-- 편집 줄 — 편집기는 보기를 바꿔도 내리지 않고 숨긴다(되돌리기 기록 · 커서가 산다). 마크다운이면 곁에
      경계와 미리 보기(나란히) 또는 미리 보기만 -->
-<div class="edit" bind:this={splitEl}>
+<div class="edit" class:hidden={covered} bind:this={splitEl}>
   <div
     class="edit-src"
     class:hidden={editShown === "preview"}
@@ -109,6 +122,8 @@
         {oncursor}
         {onviewport}
         onfailed={editorFailed}
+        {restore}
+        {onready}
       />
     {/key}
   </div>
@@ -146,6 +161,7 @@
           diagrams
           {tasks}
           {images}
+          {codeActions}
         />
       </div>
     </div>
@@ -169,6 +185,10 @@
     display: flex;
     height: 100%;
     min-height: 0;
+  }
+
+  .edit.hidden {
+    display: none;
   }
 
   .edit-src {

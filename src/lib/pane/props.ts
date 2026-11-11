@@ -250,8 +250,9 @@ export interface PaneHostProps {
    * 터미널이 **파일 경로를 Ctrl+클릭**했다(화면 글자 · 로컬 타일의 OSC 8 `file://`) — 문서 보기로 연다
    * (docs/log/2026-09-27-doc-tile.md "A — 여는 길"). 경로는 그 셸의 폴더 기준으로 이미 풀려 있고(`home` 이면 홈 기준
    * 나머지), 파일인지 확인 · 자리 잡기(그 터미널 곁 · 미리 보기 규칙)는 받는 쪽(`openPathFromTerminal`)이 한다.
+   * `line` 은 화면 글자의 꼬리 `:12`(1 기준) — 있으면 연 문서에 한 번짜리 "이 줄로" 를 건다.
    */
-  onopenpath?: (tabId: string, paneId: string, target: { path: string } | { home: string }) => void;
+  onopenpath?: (tabId: string, paneId: string, target: { path: string } | { home: string }, line?: number) => void;
   /** 문서 타일의 [원문]/[보기] — 상위가 `PaneSpec.docMode` 에 적는다 (기본값이면 키를 지운다) */
   ondocmode?: (paneId: string, mode: DocMode) => void;
   /** 문서 타일의 [목차] — 상위가 `PaneSpec.docOutline` 에 적는다 (끄면 키를 지운다 · 미리 보기는 그대로) */

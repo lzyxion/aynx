@@ -15,7 +15,8 @@
    * - 코드 블록은 `CodeView`(판 있음) — 펜스의 언어로 강조, 모르면 평문. `diagrams` 를 받았으면 ```mermaid 는
    *   다이어그램(`MermaidView`) — 문서 보기 타일 · 사이드 채팅의 대화 면(2026-10-23 — `TranscriptBody` 의 `diagrams`)이 켠다
    *   (기록 보기 시트 · 타일 대화 면 · 명령 블록은 원문 그대로). 같은 `diagrams` 에서 ```svg 는 그림(`SvgView` — `<img>` 하나 ·
-   *   512 KB 상한 · 못 그리면 원문, 2026-10-24).
+   *   512 KB 상한 · 못 그리면 원문, 2026-10-24). `codeActions` 를 받았으면(문서 타일만) 그림이 아닌 코드 블록은 머리 띠(언어가 있을 때만 —
+   *   없으면 떠 있는 단추) + [복사] · [터미널에 넣기](`DocCodeBlock` — 블록 하나 = 뿌리 요소 하나 그대로)다.
    * - 링크는 글자 + (글자와 다르면) 흐린 주소. 배지 링크(`[![alt](img)](url)`)는 대체 글자만 — 주소는 툴팁(`linkUrlTail`). `onlink` 를 받았고 주소가 `http`/`https` 일 때만 **Ctrl(⌘)+클릭**
    *   으로 연다(터미널 OSC 8 과 같은 규칙 — 그 판정은 `isWebUrl` 하나). `onlink` 가 없으면 그냥 글자다.
    *   대화 면(`TranscriptBody` — 사이드 채팅 · 타일 대화 면 · 기록 보기, 2026-10-25 사용자 결정)은 `linkClick="plain"` 으로 **그냥 클릭**에
@@ -56,6 +57,7 @@
    *   복사, 2026-10-24). 파일 그림은 `images.source` 가 원본을 알려 줄 때만 선다. 판정 · 일은 `image-menu.ts` · `image-actions.ts`.
    */
   import CodeView from "$lib/CodeView.svelte";
+  import DocCodeBlock from "$lib/DocCodeBlock.svelte";
   import MermaidView from "$lib/MermaidView.svelte";
   import SvgView from "$lib/SvgView.svelte";
   import MathView from "$lib/MathView.svelte";
@@ -85,6 +87,7 @@
     linkClick = "ctrl",
     linkStyle = "inline",
     onjump,
+    codeActions,
   }: {
     blocks: MdBlock[];
     /** 링크 열기 — 주소는 이미 `isWebUrl` 을 통과했다. 없으면 링크는 글자일 뿐이다 */
@@ -126,7 +129,15 @@
      * 밀어 타일 배치를 흔든다). 없으면 각주는 오가지 않는다
      */
     onjump?: (el: HTMLElement) => void;
+    /**
+     * 코드 블록의 머리 띠 — [복사] · (셸 계열 언어면) [터미널에 넣기](`DocCodeBlock` · 문서 타일만). `onterm` 은 블록 글과 누른 단추를
+     * 받는다. 없으면 코드 블록은 예전 그대로(`CodeView` 판 + 떠 있는 복사 단추). 그림으로 그리는 블록(mermaid · svg · math)에는 서지 않는다
+     */
+    codeActions?: { onterm: (code: string, button: HTMLElement) => void };
   } = $props();
+
+  /** ```math 펜스 — 수식 블록이다(파서가 `math` 로 나누지 않은 글에서도 머리 띠를 세우지 않는다) */
+  const isMathFence = (lang: string | undefined) => (lang ?? "").trim().toLowerCase() === "math";
 
   /** 각주 번호 → 위첨자 툴팁(각주 글의 평문). 각주 구역은 늘 최상위 맨 끝 블록이다 */
   const fnTips = $derived.by(() => {
@@ -331,6 +342,8 @@
       <MermaidView code={b.text} />
     {:else if b.kind === "code" && diagrams && isSvgLang(b.lang)}
       <SvgView code={b.text} onmenu={(ev, code, el) => openImgMenu(ev, { kind: "svg", code }, el)} />
+    {:else if b.kind === "code" && codeActions && !isMermaidLang(b.lang) && !isSvgLang(b.lang) && !isMathFence(b.lang)}
+      <DocCodeBlock code={b.text} lang={b.lang || null} onterm={codeActions.onterm} />
     {:else if b.kind === "code"}
       <CodeView code={b.text} lang={b.lang || null} framed />
     {:else if b.kind === "math"}

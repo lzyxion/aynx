@@ -17,6 +17,7 @@ import { settings } from "$lib/settings.svelte.js";
 import { setStickyCtrl, stickyCtrl } from "$lib/app/mobile.svelte.js";
 import { bandKeyBytes, type BandKey } from "$lib/mobile/keys";
 import { pasteBytes } from "$lib/ask-ai";
+import { codeInsertBytes } from "$lib/code-to-term";
 import type { AskAnchor } from "$lib/ask-ai";
 import { snapshotScreen } from "$lib/screen-thumb";
 import { scrollbackLines } from "$lib/scrollback";
@@ -100,6 +101,15 @@ export function createTermActions(h: TermActionsHost): TermActions {
       const bytes = pasteBytes(text, t.modes.bracketedPasteMode);
       if (bytes === null) return "no-bracketed";
       h.writeInput(bytes, "paste");
+      t.scrollToBottom();
+      return "ok";
+    },
+    // 문서 코드 블록 → 셸 입력 줄(`$lib/code-to-term`) — 위와 같은 길(이 타일에만 · 출처 `paste`)이되 한 줄은 모드 없이도 글자 그대로
+    insertCode: (code: string) => {
+      if (!h.session || h.reconnecting) return "closed";
+      const plan = codeInsertBytes(code, t.modes.bracketedPasteMode);
+      if (!plan.ok) return plan.why;
+      h.writeInput(plan.bytes, "paste");
       t.scrollToBottom();
       return "ok";
     },

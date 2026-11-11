@@ -32,6 +32,7 @@
     lineNumbers = false,
     framed = false,
     fill = false,
+    flashLine = null,
   }: {
     /** 보일 글 */
     code: string;
@@ -43,6 +44,11 @@
     framed?: boolean;
     /** 부모 높이를 채우고 스스로 세로로도 스크롤한다 — 파일 하나를 통째로 보일 때 */
     fill?: boolean;
+    /**
+     * 잠깐 강조할 줄(0 기준) — 문서 타일의 "이 줄로"(`doc-line-jump.ts`). 그 줄 자리에 판 하나(`data-line-flash`)를 깔고
+     * 서서히 지운다. 스크롤 · 언제 걷을지는 부르는 쪽 몫. `fill` 일 때만 뜻이 있다
+     */
+    flashLine?: number | null;
   } = $props();
 
   /** 끝의 줄바꿈 하나는 빈 줄로 세지 않는다(파일은 대개 `\n` 으로 끝난다) */
@@ -103,6 +109,7 @@
 
 {#snippet view()}
   <div class="cv" class:framed class:fill data-code-view>
+    {#if fill && flashLine !== null}<div class="flash" aria-hidden="true" style:--line={flashLine} data-line-flash></div>{/if}
     {#if lineNumbers}<pre class="gutter" aria-hidden="true">{gutter}</pre>{/if}
     <pre class="src"><code
         >{#if tree}{#each tree.children as n, i (i)}{#if n.type === "text" || n.type === "element"}{@render node(n)}{/if}{/each}{:else}{shown}{/if}</code
@@ -180,7 +187,40 @@
   }
 
   .cv.fill {
+    position: relative;
     height: 100%;
+  }
+
+  /* "이 줄로" 의 판 — 글(`.src`) 밑에 깐다: 둘 다 자리 잡힌 상자라 문서 순서대로 그려져 글이 위다. 줄 높이는 `.cv` 의
+     `line-height: 1.5`, 위 여백은 `.src` 의 것과 같다. 색은 기존 토큰(선택 줄 판), 강조는 2초에 걸쳐 사라진다 */
+  .cv.fill .src {
+    position: relative;
+  }
+
+  .flash {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--space-2) + var(--line) * 1.5em);
+    height: 1.5em;
+    background: var(--accent-soft);
+    pointer-events: none;
+    animation: line-flash 2s ease-out forwards;
+  }
+
+  @keyframes line-flash {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flash {
+      animation: none;
+    }
   }
 
   .cv.framed {

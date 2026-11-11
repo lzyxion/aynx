@@ -3,7 +3,8 @@
 //
 // 쥐는 것: 마지막으로 읽은 파일 · 읽는 중 · 오류 · 읽기 차례(`seq`) · 도장(`stamp`) · 자동 새로고침 박자(`poll` — 묻고, 바뀌었으면 읽고, 다르면
 // 들인다 `accept`) · 편집 중인가 · 더러움 · 저장(`save` — 기대 version · [덮어쓰기]) · "저장됨" 반짝임 · 편집 띠(충돌 · 디스크 바뀜 · 저장 못 함 —
-// 전이는 순수 `doc-edit.ts`) · 다시 불러오기 · 편집 때문에 고정했는가 · 읽기 보기 체크박스 쓰기(차례로) · 외부로 열기 · 외부 편집기.
+// 전이는 순수 `doc-edit.ts`) · 다시 불러오기 · 편집 때문에 고정했는가 · 읽기 보기 체크박스 쓰기(차례로) · 외부로 열기 · 외부 편집기 ·
+// 다른 창에서 옮겨 온 초안으로 편집 시작(`startEditFromDraft` — 편집기의 처음 글 · 되살릴 것은 `editText` · `editRestore`).
 //
 // **편집 미리 보기의 한때 값(미리 보기 글 · 좁은 타일 탭 · 커서 줄 · 편집기 화면 범위 · 미리 보기 타이머)은 `DocView` 에 남는다** — 편집 시작 ·
 // 다시 불러오기 · 편집 종료가 그 값을 만지던 자리는 같은 순서로 `onEditStart` · `onEditReload` · `stopPreviewTimer` 를 부른다.
@@ -27,6 +28,7 @@ import {
 import { isSessionGone } from "$lib/sftp-browser";
 import { stripReason } from "$lib/error-reason";
 import { t } from "$lib/i18n/i18n.svelte.js";
+import type { DocDraft, DocEditorRestore } from "$lib/doc-draft";
 
 /** 저장이 편집기에 묻고 알리는 것 — `DocEditor` 의 두 함수 */
 export interface DocSaveEditor {
@@ -96,6 +98,11 @@ export function createDocDocument(host: DocDocumentHost) {
   let baseVersion = "";
   /** 편집 중 띠(충돌 · 디스크 바뀜 · 저장 못 함) */
   let bands = $state<BandState>(NO_BAND);
+  /**
+   * 옮겨 온 초안으로 선 편집이면 편집기의 처음 글과 되살릴 것(`startEditFromDraft`) — 아니면 `null`(처음 글 = 읽은 파일).
+   * 편집 시작 · 다시 불러오기 · 편집 종료가 지운다. 큰 글이라 반응형 프록시로 감싸지 않는다(`$state.raw`)
+   */
+  let seed = $state.raw<{ text: string; restore: DocEditorRestore } | null>(null);
 
   /** 편집을 막는 사정 — 파일이 없으면 `null`(단추가 서지 않는다) */
   const editBlock = $derived<EditBlock | null>(file ? editBlockOf(file) : null);
@@ -113,14 +120,47 @@ export function createDocDocument(host: DocDocumentHost) {
     bands = NO_BAND;
     dirty = false;
     savedFlash = false;
+    seed = null;
     editGen++;
     host.onEditStart(file.text);
     editing = true;
   }
 
+  /**
+   * **다른 창에서 옮겨 온 초안으로 편집을 잇는다**(`doc-draft.ts` · `app/doc-drafts`) — [편집]과 같은 문(막는 사정도 같다)이되
+   * 편집기의 글 = 초안의 글, 기준 version = 초안의 것이다. 읽은 디스크가 그 version 과 다르면 평소의 "디스크가 바뀌었습니다" 띠가
+   * 선다(`bandOnDisk` — 그냥 저장은 기대 version 이 달라 덮어쓰지 않는다 · 충돌 규칙 그대로). 같으면 읽은 글이 곧 기준 글이라 되돌려
+   * 원래 글이 되면 dirty 가 꺼진다 — 다르면 기준 글을 모르므로 저장할 때까지 dirty 다. dirty 는 편집기가 서며 알린다.
+   * 막혔으면 `false` — 부르는 쪽(`DocView`)이 초안을 쥔 채 띠로 말한다.
+   */
+  function startEditFromDraft(d: DocDraft): boolean {
+    if (!file || editBlockOf(file) !== null || !host.backend.canWrite || host.offline) return false;
+    keptForEdit = host.preview;
+    if (host.preview) host.onkeep();
+    baseVersion = d.baseVersion;
+    bands = bandOnDisk(NO_BAND, d.baseVersion, file.version);
+    dirty = false;
+    savedFlash = false;
+    seed = {
+      text: d.text,
+      restore: {
+        eol: d.eol,
+        baseText: file.version === d.baseVersion ? file.text : null,
+        selection: d.selection,
+        scrollPos: d.scrollPos,
+        history: d.history,
+      },
+    };
+    editGen++;
+    host.onEditStart(d.text);
+    editing = true;
+    return true;
+  }
+
   /** [되돌리기] · [편집 종료] — 변경을 버리고 읽기 보기로. 편집 중 멈춰 둔 디스크의 새 글을 들인다 */
   function endEdit() {
     editing = false;
+    seed = null;
     host.stopPreviewTimer();
     if (keptForEdit) host.onunkeep();
     keptForEdit = false;
@@ -201,6 +241,7 @@ export function createDocDocument(host: DocDocumentHost) {
         return;
       }
       baseVersion = got.version;
+      seed = null;
       editGen++;
       host.onEditReload(got.text);
     } catch (e) {
@@ -457,6 +498,18 @@ export function createDocDocument(host: DocDocumentHost) {
     get bands() {
       return bands;
     },
+    /** 편집의 기준 version — 창을 넘길 초안에 싣는다 */
+    get baseVersion() {
+      return baseVersion;
+    },
+    /** 편집기의 처음 글 — 옮겨 온 초안이면 그 글, 아니면 읽은 파일의 글 */
+    get editText() {
+      return seed?.text ?? file?.text ?? "";
+    },
+    /** 편집기가 되살릴 것(옮겨 온 초안) — 아니면 `null` */
+    get editRestore() {
+      return seed?.restore ?? null;
+    },
     get editBlock() {
       return editBlock;
     },
@@ -479,6 +532,7 @@ export function createDocDocument(host: DocDocumentHost) {
       bands = bandOnIgnore(bands);
     },
     startEdit,
+    startEditFromDraft,
     endEdit,
     save,
     reloadForEdit,

@@ -5,6 +5,7 @@
  * 두 모양 — 무리 순서는 다른 우클릭 메뉴와 같은 규칙(링크 → 클립보드 → 찾기 → 이 문서의 일):
  *
  * - **읽기**(그린 문서 · 원문 · 코드 파일 · 편집 중 미리 보기): 링크 열기 · 링크 주소 복사(링크 위) ─ 복사(고른 글) · 모두 선택 ─ 찾기 ─ 편집(편집할 수 있을 때)
+ *   ─ 새 문서…(타일 ⋯ 와 같은 줄 `new-doc` — `tool:` 이 아니라 `tile-menu-controller` 의 배선 칸으로 간다)
  * - **편집**(편집기 안): 실행 취소 · 다시 실행 ─ 잘라내기 · 복사(고른 글) · 붙여넣기 · 모두 선택 ─ 서식 ▸ · 단락 ▸ · 삽입 ▸(마크다운만) ─ 찾기 · 바꾸기 ─ 저장
  *
  * 옆목록 셋(마크다운만 — 바꾸는 일은 `doc-format.ts`):
@@ -13,7 +14,7 @@
  * - **삽입 ▸** 링크 · 코드 블록
  */
 
-import type { PaneMenuItem, PaneMenuRow } from "$lib/pane/pane-menu";
+import { newDocItem, type PaneMenuItem, type PaneMenuRow } from "$lib/pane/pane-menu";
 import type { DocFormat } from "$lib/doc-format";
 import type { Tr } from "$lib/session";
 
@@ -49,6 +50,8 @@ export interface DocMenuCtx {
   markdown: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /** 읽기: [새 문서…] — `true` 눌림 · `false` 흐리게 · `null`/없음 줄 없음(`app/new-doc` 의 `newDocState` — 타일 ⋯ 와 같은 판정) */
+  newDoc?: boolean | null;
 }
 
 const item = (key: DocMenuKey, label: string, icon: string | null, extra: Partial<PaneMenuItem> = {}): PaneMenuItem => ({
@@ -128,6 +131,7 @@ export function docMenuItems(ctx: DocMenuCtx, tr: Tr): PaneMenuRow[] {
     rows.push(item("select-all", tr("pane.menu.select_all"), "select-all", { separator: s && !ctx.hasSelection, hint: "Ctrl+A" }));
     if (ctx.canFind) rows.push(item("find", tr("files.doc.menu.find"), "search", { separator: true, hint: "Ctrl+F" }));
     if (ctx.canEdit) rows.push(item("edit", tr("files.doc.edit"), "edit", { separator: true }));
+    if (ctx.newDoc != null) rows.push(newDocItem(ctx.newDoc, tr));
     return rows;
   }
   rows.push(

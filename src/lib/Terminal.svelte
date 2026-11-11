@@ -298,8 +298,9 @@
      * **파일 경로를 Ctrl+클릭했다** — 문서 보기로 열어 달라 (docs/log/2026-09-27-doc-tile.md "A — 여는 길").
      * 화면 글자의 경로(`term-path-links.ts`)와 로컬 타일의 OSC 8 `file://` 링크가 이리로 온다. 경로는 이 셸의 폴더
      * 기준으로 이미 풀려 있고(`home` 이면 홈 기준 나머지), 파일인지 확인하고 자리를 잡는 일은 위(`openPathFromTerminal`).
+     * `line` 은 화면 글자의 꼬리 `:12`(1 기준) — 있으면 연 문서가 그 줄로 한 번 스크롤한다. OSC 8 링크에는 없다.
      */
-    onopenpath?: (target: NonNullable<ResolvedPath>) => void;
+    onopenpath?: (target: NonNullable<ResolvedPath>, line?: number) => void;
     /**
      * **터미널 본문을 우클릭했다** — 그 자리에 메뉴를 열어 달라
      * (docs/log/2026-09-05-terminal-context-menu.md).
@@ -3125,7 +3126,7 @@
     //
     // **web-links 뒤에 건다** — 등록 순서가 우선순위라 트리거 · URL 이 경로를 이긴다. 같은 Ctrl+클릭 규칙이고,
     // 여는 것은 브라우저가 아니라 문서 보기 타일이다(위로 올려 보낸다 — 파일인지 확인 · 자리 잡기는 그쪽).
-    pathLinks = attachPathLinks(t, pathPlace, (target) => onopenpath?.(target));
+    pathLinks = attachPathLinks(t, pathPlace, (target, line) => onopenpath?.(target, line));
 
     // ── 검색 애드온 — **`t.open` 뒤에 붙인다** (데코레이션은 렌더러가 서 있어야 생긴다 · `term/search.ts` `attach`) ──
     termSearch.attach(t);

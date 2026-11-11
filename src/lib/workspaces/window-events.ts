@@ -6,8 +6,9 @@ export type WindowAction =
   | { kind: "inspect" }
   | { kind: "saveDocs"; ids: string[] }
   | { kind: "hostAliases"; aliases: string[]; to?: string }
-  | { kind: "pause" }
-  | { kind: "resume" }
+  /** `token` — 창 이관에서 받는 창이 짐을 꺼내기 직전·물러설 때(보낸 창이 실은 초안을 확인 · 잠금 · 풀기 — `app/tear` 의 `holdTearSource`) */
+  | { kind: "pause"; token?: number }
+  | { kind: "resume"; token?: number }
   /** 앱 전체 종료 직전 — 이 창의 세션 타일을 체크포인트와 함께 놓는다(세션은 서버에 산다 · ③-2) */
   | { kind: "leaveSessions" }
   | { kind: "release"; token: number }

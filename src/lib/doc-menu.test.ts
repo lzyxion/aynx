@@ -34,6 +34,26 @@ describe("docMenuItems — 읽기", () => {
   });
 });
 
+describe("docMenuItems — 새 문서…(타일 ⋯ 와 같은 줄)", () => {
+  it("읽기 맨 끝에 선 하나 뒤 — 액션은 `tool:` 이 아닌 `new-doc` · 흐리면 까닭을 말한다", () => {
+    const rows = docMenuItems({ ...read, newDoc: true }, tr);
+    expect(ids(rows)).toEqual(["select-all", "find", "edit", "new-doc"]);
+    const row = rows[rows.length - 1];
+    expect(rowId(row)).toBe("new-doc");
+    expect(row.separator).toBe(true);
+    expect(isGroup(row) ? null : row.disabled).toBeFalsy();
+    const off = docMenuItems({ ...read, newDoc: false }, tr).at(-1)!;
+    expect(isGroup(off) ? null : [off.disabled, off.title]).toEqual([true, "files.doc.edit.block.offline"]);
+    expect(UI_ICONS).toHaveProperty("plus");
+  });
+
+  it("`null` · 없음이면 줄이 없고 · 편집 모양에는 서지 않는다", () => {
+    expect(ids(docMenuItems({ ...read, newDoc: null }, tr))).not.toContain("new-doc");
+    expect(ids(docMenuItems(read, tr))).not.toContain("new-doc");
+    expect(ids(docMenuItems({ ...edit, newDoc: true }, tr))).not.toContain("new-doc");
+  });
+});
+
 describe("docMenuItems — 편집", () => {
   it("실행 취소 → 클립보드 → 서식 ▸ → 찾기 · 바꾸기 → 저장", () => {
     const rows = docMenuItems({ ...edit, hasSelection: true }, tr);

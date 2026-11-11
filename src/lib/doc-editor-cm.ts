@@ -26,7 +26,7 @@
  * 맞춘다(`clipboardInputFilter`). 끝 개행은 마지막 빈 줄로 들고 있어 그대로 나간다.
  */
 
-import { Compartment, EditorState, type Extension, type Range, StateEffect, StateField, Text } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type Range, StateEffect, StateField, Text } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -42,7 +42,18 @@ import {
   lineNumbers,
   type KeyBinding,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab, redo, redoDepth, selectAll, undo, undoDepth } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyField,
+  historyKeymap,
+  indentWithTab,
+  redo,
+  redoDepth,
+  selectAll,
+  undo,
+  undoDepth,
+} from "@codemirror/commands";
 import {
   HighlightStyle,
   StreamLanguage,
@@ -53,6 +64,7 @@ import {
 } from "@codemirror/language";
 import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { tags } from "@lezer/highlight";
+import { mdTags } from "$lib/doc-editor-md-tags";
 import { normalizeEol, type Eol } from "$lib/doc-edit";
 import { docFormatEdit, type DocFormat } from "$lib/doc-format";
 import { lineMarks, type RunMark, type StmtStatus } from "$lib/query/run-panel";
@@ -97,6 +109,26 @@ export interface EditorOptions {
    * 붙인다(없는 편집기는 그 청크를 받지 않는다). 키는 그 모듈 머리말 — 목록이 떠 있을 때의 `Enter` · `Tab` · `Esc` 가 `keys` 보다 먼저다
    */
   complete?: CompleteFn;
+  /**
+   * 저장해 둔 글(dirty 의 기준) — 주지 않으면(`undefined`) 처음 글이 기준이다(예전 그대로). `null` 이면 **기준을 모른다** — 저장할
+   * 때까지 늘 dirty 다(다른 창에서 옮겨 온 초안 — 디스크가 초안의 기준 version 과 달라 그 글을 모를 때 · `doc-draft.ts`).
+   */
+  baseText?: string | null;
+  /**
+   * 되살릴 편집 상태(다른 창에서 옮겨 온 초안) — 선택 · 화면 맨 위 줄 · 실행 취소 기록(`historyField` JSON). 기록이 깨졌거나 이
+   * 글과 맞지 않으면 기록 없이, 선택도 맞지 않으면 선택 없이 선다(글은 늘 [`text`] 그대로).
+   */
+  restore?: { selection?: unknown; scrollPos?: number; history?: unknown };
+}
+
+/** 창을 넘길 때 뜨는 편집 상태 — `doc-draft.ts` 의 `DocDraft` 에 기준 version 만 빠진 것 */
+export interface EditorSnapshot {
+  text: string;
+  eol: Eol;
+  selection: unknown;
+  scrollPos: number;
+  /** 실행 취소 기록(`historyField` JSON) — 못 떴으면 `null` */
+  history: unknown;
 }
 
 export interface EditorHandle {
@@ -152,6 +184,15 @@ export interface EditorHandle {
   selectedText(): string;
   /** 마크다운 서식을 주 선택에 건다(`doc-format.ts` — 한 덩어리 · 되돌리기 한 번) */
   format(kind: DocFormat): void;
+  /** 창을 넘길 편집 상태를 뜬다(글 · 줄 끝 · 선택 · 화면 맨 위 줄 · 실행 취소 기록) — **동기** */
+  snapshot(): EditorSnapshot;
+  /** 지금 글의 정체 — 글이 바뀌면 다른 값이다(CodeMirror 의 `Text` 는 바뀌지 않는 값). 뜬 뒤 그대로인가를 견준다 */
+  docRef(): object;
+  /**
+   * 잠시 읽기 전용(받는 창이 짐을 꺼내는 사이 — `app/tear`) — 사람 입력도, 이 손잡이의 고치기(`setText` · `insertText` · `insertAt` ·
+   * `replaceInLine` · `format` · 실행 취소)도 막는다. 고르기 · 복사는 된다
+   */
+  setFrozen(on: boolean): void;
   destroy(): void;
 }
 
@@ -329,6 +370,13 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
   { tag: [tags.strong, tags.heading], fontWeight: "var(--fw-semibold)" },
+  // 마크다운의 수식 · 각주(`doc-editor-md-tags`) — 수식 본문 `--tertiary` · TeX 명령어는 그보다 한 단계 글자색 쪽 · 여닫는 `$` 는 흐리게,
+  // 각주 참조는 강조색 글자 + 옅은 강조 바탕(선택 바탕 `--accent-soft` 와 겹쳐도 보이게 반투명 섞음) · 정의 줄 머리는 강조색 글자만
+  { tag: mdTags.math, color: "var(--tertiary)" },
+  { tag: mdTags.texCommand, color: "color-mix(in srgb, var(--tertiary) 65%, var(--fg))" },
+  { tag: mdTags.mathMark, color: "var(--fg-muted)" },
+  { tag: mdTags.footnoteRef, color: "var(--accent)", backgroundColor: "color-mix(in srgb, var(--accent) 14%, transparent)", borderRadius: "3px" },
+  { tag: mdTags.footnoteDef, color: "var(--accent)" },
 ]);
 
 /** 편집기 겉모습 — 앱 토큰만. 거터는 `CodeView` 와 같은 바탕·선·글자색 */
@@ -421,12 +469,53 @@ function takesAppKey(b: KeyBinding): boolean {
   return keys.some((k) => /(^|-)Alt-/.test(k) && /Arrow/.test(k) && !/(^|-)(Mod|Ctrl)-/.test(k));
 }
 
+/**
+ * 잠시 읽기 전용 — 가장 높은 우선으로 건다(`readOnly` 는 우선이 가장 높은 값 하나를 쓴다 — 쿼리 타일의 `readOnly: false` 를 이긴다).
+ * 사람의 DOM 입력은 `readOnly` 에서 버려지고(`@codemirror/view` 의 `DOMChange`), 포커스 · 고르기 · 복사는 그대로다
+ */
+const frozenExt: Extension = Prec.highest(EditorState.readOnly.of(true));
+
+/**
+ * 처음 상태 — 되살릴 것(`restore` — 옮겨 온 초안)이 있으면 기록 · 선택과 함께, 맞지 않으면 한 겹씩 내려놓는다: 기록 + 선택 →
+ * 선택만 → 글만. 글은 어느 갈래에서나 `text` 그대로다(기록 · 선택 때문에 글을 잃지 않는다).
+ */
+function initialState(
+  text: string,
+  extensions: () => Extension[],
+  restore: EditorOptions["restore"],
+): EditorState {
+  const selection = restore?.selection;
+  if (restore?.history !== undefined && restore.history !== null) {
+    try {
+      return EditorState.fromJSON(
+        { doc: text, selection: selection ?? EditorSelection.single(0).toJSON(), history: restore.history },
+        { extensions: extensions() },
+        { history: historyField },
+      );
+    } catch {
+      // 기록이 깨졌거나 이 글과 맞지 않는다 — 기록 없이
+    }
+  }
+  if (selection !== undefined && selection !== null) {
+    try {
+      return EditorState.create({ doc: text, selection: EditorSelection.fromJSON(selection), extensions: extensions() });
+    } catch {
+      // 선택이 글 밖이다 — 선택 없이
+    }
+  }
+  return EditorState.create({ doc: text, extensions: extensions() });
+}
+
 export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandle {
   const language = new Compartment();
   const completion = new Compartment();
   // 받아 온 자동완성 확장 — 바꿔 끼운 글(`switchDoc`)의 새 상태에도 그대로
   let completeExt: Extension = [];
-  let base: Text = Text.empty;
+  // 저장해 둔 글 — `null` 이면 기준을 모른다(옮겨 온 초안 · [`EditorOptions.baseText`]): 저장할 때까지 늘 dirty
+  let base: Text | null = Text.empty;
+  // 잠시 읽기 전용([`EditorHandle.setFrozen`]) — 사람 입력은 칸(`freezeSlot`)이, 이 손잡이의 고치기는 이 값이 막는다
+  const freezeSlot = new Compartment();
+  let frozen = false;
   let dirty = false;
   let lastCursor = 0;
 
@@ -435,7 +524,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
     dirty = d;
     o.ondirty(d);
   };
-  const measure = (doc: Text) => setDirty(doc.length !== base.length || !doc.eq(base));
+  const measure = (doc: Text) => setDirty(base === null || doc.length !== base.length || !doc.eq(base));
 
   const saveKey: KeyBinding = {
     key: "Mod-s",
@@ -447,6 +536,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
   };
 
   const extensions = (): Extension[] => [
+    freezeSlot.of(frozen ? frozenExt : []),
     lineNumbers(),
     o.runMarks ? runExtensions() : [],
     highlightActiveLineGutter(),
@@ -484,8 +574,18 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
     }),
   ];
 
-  const view = new EditorView({ parent, state: EditorState.create({ doc: o.text, extensions: extensions() }) });
-  base = view.state.doc;
+  const view = new EditorView({ parent, state: initialState(o.text, extensions, o.restore) });
+  if (o.baseText === undefined) base = view.state.doc;
+  else {
+    // 옮겨 온 초안 — 기준은 받은 디스크 글(같은 version 일 때) 또는 모름. 처음부터 dirty 를 잰다
+    base = o.baseText === null ? null : view.state.toText(o.baseText);
+    measure(view.state.doc);
+  }
+  // 옮겨 온 화면 맨 위 줄 — 위치가 글 안일 때만(보이지 않는 타일이면 재지 못해 그냥 지나간다)
+  const scrollPos = o.restore?.scrollPos;
+  if (typeof scrollPos === "number" && scrollPos > 0 && scrollPos <= view.state.doc.length) {
+    view.dispatch({ effects: EditorView.scrollIntoView(scrollPos, { y: "start" }) });
+  }
 
   // 보이는 줄 범위 — 스크롤 사건마다 재지 않고 그림 틀에 한 번. 같은 범위면 알리지 않는다
   let viewFrame = 0;
@@ -562,6 +662,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       return doc.line(line + 1).text;
     },
     replaceInLine(line: number, from: number, to: number, insert: string) {
+      if (frozen) return false;
       const doc = view.state.doc;
       if (!Number.isInteger(line) || line < 0 || line >= doc.lines) return false;
       const l = doc.line(line + 1);
@@ -582,6 +683,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       return view.state.sliceDoc(m.from, m.to);
     },
     format(kind: DocFormat) {
+      if (frozen) return;
       const m = view.state.selection.main;
       const e = docFormatEdit(view.state.doc.toString(), m.anchor, m.head, kind);
       view.focus();
@@ -597,6 +699,7 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       return { from: m.anchor, to: m.head };
     },
     setText(text: string) {
+      if (frozen) return;
       const insert = normalizeEol(text, o.eol);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert },
@@ -606,9 +709,11 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       });
     },
     insertText(text: string) {
+      if (frozen) return;
       view.dispatch(view.state.replaceSelection(normalizeEol(text, o.eol)), { userEvent: "input", scrollIntoView: true });
     },
     insertAt(pos: number, text: string) {
+      if (frozen) return;
       const at = Math.max(0, Math.min(pos, view.state.doc.length));
       const insert = normalizeEol(text, o.eol);
       view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input", scrollIntoView: true });
@@ -643,6 +748,30 @@ export function createEditor(parent: HTMLElement, o: EditorOptions): EditorHandl
       }
       const s = stash.get(key);
       if (s && s.field(runField, false) !== undefined) stash.set(key, s.update({ effects: setRun.of(marks) }).state);
+    },
+    snapshot(): EditorSnapshot {
+      // 글 · 선택 · 기록을 한 상태에서 뜬다(`toJSON` 의 `doc` 은 `sliceDoc()` — 줄 끝 보존). 기록을 못 뜨면 기록 없이
+      const state = view.state;
+      let json: { doc: string; selection: unknown; history?: unknown };
+      try {
+        json = state.toJSON({ history: historyField }) as typeof json;
+      } catch {
+        json = { doc: state.sliceDoc(), selection: state.selection.toJSON() };
+      }
+      const top = view.scrollDOM.getBoundingClientRect().top - view.documentTop;
+      let scrollPos = 0;
+      try {
+        scrollPos = view.lineBlockAtHeight(Math.max(0, top)).from;
+      } catch {
+        scrollPos = 0;
+      }
+      return { text: json.doc, eol: o.eol, selection: json.selection, scrollPos, history: json.history ?? null };
+    },
+    docRef: () => view.state.doc,
+    setFrozen(on: boolean) {
+      if (on === frozen) return;
+      frozen = on;
+      view.dispatch({ effects: freezeSlot.reconfigure(on ? frozenExt : []) });
     },
     destroy() {
       destroyed = true;

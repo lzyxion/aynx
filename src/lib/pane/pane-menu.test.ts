@@ -162,6 +162,22 @@ describe("menuItemsFor — 종류별 항목 표", () => {
     expect(docPathShown({ path: "/srv/a", alias: "" })).toBe("/srv/a");
   });
 
+  it("문서 타일의 '새 문서…' 는 경로 복사 아래 선 하나 뒤 — 흐리면 까닭 · `null` 이면 없음 · 다른 종류에는 없다", () => {
+    const local = { ...off, docPath: { path: "C:/notes/a.md", alias: "" }, docNew: true };
+    expect(actionsOf("doc", local)).toEqual(["split-row", "split-col", "copy-path", "new-doc", "detach", "close"]);
+    const item = itemOf("doc", "new-doc", local);
+    expect(item?.label).toBe("새 문서…");
+    expect(item?.separator).toBe(true);
+    expect(item?.disabled).toBeFalsy();
+    const blocked = itemOf("doc", "new-doc", { ...local, borrowed: true, docNew: false });
+    expect(blocked?.disabled).toBe(true);
+    expect(blocked?.title).toBe("연결이 없어 편집할 수 없습니다");
+    expect(actionsOf("doc", { ...local, docNew: null })).not.toContain("new-doc");
+    for (const kind of ["localfs", "sftp", "local", "ssh", "query"] as const) {
+      expect(actionsOf(kind, local)).not.toContain("new-doc");
+    }
+  });
+
   it("'경로 복사' 는 문서 타일 · 경로가 있을 때만 — 빈 경로 · 다른 종류에는 없다", () => {
     expect(actionsOf("doc", { ...off, docPath: { path: "", alias: "" } })).not.toContain("copy-path");
     expect(actionsOf("doc", { ...off, docPath: null })).not.toContain("copy-path");

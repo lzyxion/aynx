@@ -802,7 +802,9 @@ export const app = {
   "dbTx.close.noDialog": "확인 창을 열지 못해 닫지 않았습니다 (커밋하지 않은 트랜잭션 작업이 있습니다).",
   "unsaved.saveFailed": "저장하지 못해 닫지 않았습니다 — {name}",
   "unsaved.noDialog": "확인 창을 열지 못해 닫지 않았습니다 (저장하지 않은 변경이 있습니다).",
-  "unsaved.tear": "저장하지 않은 변경이 있는 문서는 창을 넘길 수 없습니다 — 저장하거나 되돌린 뒤 옮기세요.",
+  "unsaved.tearChanged": "옮기는 사이 문서가 바뀌어 옮기지 않았습니다.",
+  "unsaved.tearKept": "옮기는 사이 문서가 바뀌어 원래 창에도 남겼습니다.",
+  "unsaved.tear": "저장하지 않은 문서를 옮길 수 없습니다 — 저장한 뒤 옮기세요.",
   "tabs.unsaved": "저장하지 않은 변경이 있습니다",
 
 

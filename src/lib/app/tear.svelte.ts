@@ -13,7 +13,8 @@ import { paneMarkerDistances } from "$lib/shell-integration";
 import { tearToken } from "$lib/app/window.svelte.js";
 import { sessionOf } from "$lib/app/sessions.svelte.js";
 import { adoptAgentLink, agentLinkOf } from "$lib/app/agent-sessions.svelte.js";
-import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { isDocDirty, setDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { captureDocDraft, dropDocDraft, holdDocDraft, type DraftCapture } from "$lib/app/doc-drafts.svelte.js";
 import {
   oscTitleOf,
   reportOscTitle,
@@ -111,16 +112,24 @@ function adoptTitles(paneId: string, s: PaneTitleSignals): void {
   if (s.runningCommand !== undefined) reportRunningCommand(paneId, s.runningCommand);
 }
 
-/** 짐 → 이 창의 탭 — 부속 상태(공유 · 대화 연결 · 이름 신호)를 함께 심는 한 문 */
+/** 짐 → 이 창의 탭 — 부속 상태(공유 · 대화 연결 · 이름 신호 · 저장 안 한 문서의 초안)를 함께 심는 한 문 */
 function restore(payload: TearPayload): TabSpec {
-  return restoreTab(payload, setShared, adoptAgentLink, adoptTitles);
+  return restoreTab(payload, setShared, adoptAgentLink, adoptTitles, holdDocDraft);
 }
 
 // ---------------------------------------------------------------------------
-// 저장 안 한 문서는 창을 넘지 않는다 (docs/log/2026-09-27-doc-edit.md "F2")
+// 저장 안 한 문서는 **초안을 싣고** 창을 넘는다 (docs/log/2026-09-27-doc-edit.md "F2" · `doc-draft.ts`)
 //
-// 편집 중인 글은 그 타일의 편집기 메모리에만 있다 — 짐(사서함)에 실리지 않고, 받는 창의 문서 타일은 파일을
-// **다시 읽는다**. 그래서 넘기면 글이 말없이 사라진다. 묻지 않고 거절한다(`unsavedVerdict("move-window")`).
+// 편집 중인 글은 그 타일의 편집기 메모리에만 있고 받는 창의 문서 타일은 파일을 **다시 읽는다**. 그래서 드래그 시작(동기)에서 저장
+// 안 한 문서마다 편집기의 글 · 커서 · 기록을 떠(`app/doc-drafts` 의 `captureDocDraft`) 짐에 싣는다(`TearPane.docDraft`). 하나라도
+// 뜨지 못하면(편집기 로딩 중 · 글이 상한을 넘음) 예전처럼 **거절**한다(`unsavedVerdict("move-window", …, canCarry)`).
+//
+// 원본(= 글의 유일한 사본)을 내리는 것은 언제나 **받는 창이 짐을 꺼낸 뒤의 release ACK** 에서다(`releaseWorkspaceTear`). 그 사이
+// 원본에서 글을 더 고치면 넘어간 초안이 낡는다 — 그래서 두 번 묻는다:
+// - 받는 창이 꺼내기 직전(`pause` — [`holdTearSource`]): 뜬 뒤 글이 바뀌었으면 **거절**한다(받는 창은 꺼내지 않고 물러선다 —
+//   원본은 그대로). 아니면 원본 편집기를 잠시 읽기 전용으로 잠근다(release · resume 또는 [`FREEZE_MS`] 뒤에 풀린다).
+// - 원본을 내리기 직전(release): 그래도 바뀌었으면(잠금이 풀린 뒤 등) 원본을 **내리지 않는다**(두 창에 다 남는 쪽이 글을 잃는
+//   쪽보다 낫다).
 //
 // 거절은 드래그 **시작**에서 한다(`startTear`·`startPaneTear` 가 `null` — 창 안 이동은 그대로 된다). 그 순간에
 // 안내를 띄우면 탭 순서만 바꾸려던 사람에게도 뜨므로, 안내는 **창 밖에 놓았을 때**([`noticeTearRefused`])와
@@ -130,8 +139,72 @@ function restore(payload: TearPayload): TabSpec {
 /** 마지막 드래그 시작이 저장 안 한 문서 때문에 창 넘기기를 거절했는가 (다음 시작이 덮는다) */
 let refusedForUnsaved = false;
 
-function refusesMove(paneIds: readonly string[]): boolean {
-  return unsavedVerdict("move-window", paneIds, isDocDirty).kind === "refuse";
+/** 이 창이 내놓은 짐에 실은 초안들 — 번호 → 뜬 타일마다의 확인 손잡이 · 잠금 시계. 글 자체는 쥐지 않는다(짐에 있다) */
+const carried = new Map<number, { at: number; caps: DraftCapture[]; thaw?: ReturnType<typeof setTimeout> }>();
+/** 아무도 꺼내지 않은 기록의 수명 — 사서함 시한(5분)과 같다 */
+const CARRIED_TTL_MS = 300_000;
+/** 받는 창이 꺼내는 동안 원본 편집기를 잠그는 상한 — release · resume 이 오지 않아도(받는 창이 죽었다) 풀린다 */
+const FREEZE_MS = 15_000;
+
+/**
+ * 저장 안 한 문서마다 초안을 뜬다 — 하나라도 못 뜨면 `null`(= 창 넘기기 거절). 저장 안 한 것이 없으면 빈 표.
+ * 판정은 순수 `unsavedVerdict("move-window")` 이고 뜨기가 곧 `canCarry` 다.
+ */
+function carryDrafts(paneIds: readonly string[]): Map<string, DraftCapture> | null {
+  const caps = new Map<string, DraftCapture>();
+  const verdict = unsavedVerdict("move-window", paneIds, isDocDirty, (id) => {
+    const cap = captureDocDraft(id);
+    if (cap) caps.set(id, cap);
+    return cap !== null;
+  });
+  return verdict.kind === "refuse" ? null : caps;
+}
+
+function forgetCarried(token: number): void {
+  const c = carried.get(token);
+  if (!c) return;
+  // 이 기록이 잠근 편집기만 푼다(같은 타일의 다른 짐이 잠근 것은 건드리지 않는다)
+  if (c.thaw !== undefined) thawTearSource(token);
+  carried.delete(token);
+}
+
+function rememberCarried(token: number, caps: Map<string, DraftCapture>): void {
+  const now = Date.now();
+  for (const [t, c] of carried) if (now - c.at >= CARRIED_TTL_MS) forgetCarried(t);
+  if (caps.size > 0) carried.set(token, { at: now, caps: [...caps.values()] });
+}
+
+/** 실은 초안이 모두 뜬 그대로인가(실은 것이 없으면 참) */
+function carriedStill(token: number): boolean {
+  return carried.get(token)?.caps.every((cap) => cap.still()) ?? true;
+}
+
+/**
+ * 받는 창이 짐을 꺼내기 직전(`pause` 요청 — `adoptTear`) — 뜬 뒤 원본의 글이 바뀌었으면 `false`(받는 창이 꺼내지 않는다 · 한 줄 알림),
+ * 아니면 원본 편집기를 잠시 잠그고 `true`. 번호가 없거나 이 창의 초안이 실린 짐이 아니면 그냥 `true`.
+ */
+export function holdTearSource(token: number | undefined): boolean {
+  if (token === undefined) return true;
+  const c = carried.get(token);
+  if (!c) return true;
+  if (!carriedStill(token)) {
+    showNotice(t("app.unsaved.tearChanged"));
+    return false;
+  }
+  for (const cap of c.caps) cap.freeze(true);
+  clearTimeout(c.thaw);
+  c.thaw = setTimeout(() => thawTearSource(token), FREEZE_MS);
+  return true;
+}
+
+/** 받는 창이 물러섰다(`resume`) · 잠금 상한이 지났다 — 원본 편집기를 푼다(기록은 남긴다 — 다시 시도할 수 있다) */
+export function thawTearSource(token: number | undefined): void {
+  if (token === undefined) return;
+  const c = carried.get(token);
+  if (!c) return;
+  clearTimeout(c.thaw);
+  c.thaw = undefined;
+  for (const cap of c.caps) cap.freeze(false);
 }
 
 /**
@@ -162,13 +235,14 @@ export function startTear(tabId: string): number | null {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   refusedForUnsaved = false;
   if (!tab) return null;
-  if (refusesMove(listPanes(tab.root).map((p) => p.id))) {
+  const drafts = carryDrafts(listPanes(tab.root).map((p) => p.id));
+  if (!drafts) {
     refusedForUnsaved = true;
     return null;
   }
   ensureWorkspaceKeys(tab, tab.workspaceId ?? currentWorkspaceId());
   const snap = $state.snapshot(tab) as TabSpec;
-  return beginTear(
+  const token = beginTear(
     snap,
     listPanes(snap.root),
     (paneId) => sessionOf(paneId),
@@ -182,7 +256,11 @@ export function startTear(tabId: string): number | null {
     // 타일 이름 신호 — 안 실으면 받는 창에서 로컬 타일이 전부 "로컬" 이 된다(위 절).
     titlesOf,
     { workspaceId: tab.workspaceId!, workspaceName: currentWorkspace()?.name ?? "", sourceWindow: currentWindowLabel(), sourceTabKey: tab.tabKey! },
+    // 저장 안 한 문서의 초안 — 위에서 이미 떴다(못 뜬 것이 있으면 여기 오지 않는다)
+    (paneId) => drafts.get(paneId)?.draft ?? null,
   );
+  rememberCarried(token, drafts);
+  return token;
 }
 
 /**
@@ -206,11 +284,12 @@ export function startPaneTear(paneId: string): number | null {
   refusedForUnsaved = false;
   if (!tab) return null;
   const pane = findPane(tab.root, paneId);
-  if (pane && refusesMove([pane.id])) {
+  if (!pane || borrowsSession(pane) || pane.kind === "start") return null;
+  const drafts = carryDrafts([pane.id]);
+  if (!drafts) {
     refusedForUnsaved = true;
     return null;
   }
-  if (!pane || borrowsSession(pane) || pane.kind === "start") return null;
   // `startTear` 와 같은 이유로 프록시를 벗긴다 — 이 창을 떠나는 값이다.
   ensureWorkspaceKeys(tab, tab.workspaceId ?? currentWorkspaceId());
   const snap = $state.snapshot(pane) as PaneSpec;
@@ -219,7 +298,7 @@ export function startPaneTear(paneId: string): number | null {
   incoming.projectId = tab.projectId;
   // 새 창에서는 이 타일 하나가 탭이 된다. 제목은 **떼어 낸 탭의 것을 이어받는다**(`tabFromPane` —
   // 같은 창의 새 탭 승격과 같은 규칙 · docs/log/2026-09-30-tear-title-and-agent-handoff.md).
-  return beginPaneTear(
+  const token = beginPaneTear(
     incoming,
     snap,
     (id) => sessionOf(id),
@@ -228,7 +307,10 @@ export function startPaneTear(paneId: string): number | null {
     agentLinkOf,
     titlesOf,
     { workspaceId: tab.workspaceId!, workspaceName: currentWorkspace()?.name ?? "", sourceWindow: currentWindowLabel(), sourceTabKey: tab.tabKey! },
+    (id) => drafts.get(id)?.draft ?? null,
   );
+  rememberCarried(token, drafts);
+  return token;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +347,9 @@ async function releasePane(paneId: string): Promise<void> {
   if (!tab) return;
   markHandoff([paneId]);
   detachPaneLeavingStart(tab, paneId);
+  // 저장 안 한 표시 · 걸어 둔 초안도 거둔다(초안은 이미 짐에 실려 받는 창에 있다 — 탭째 넘기기의 `closeTab` 과 같다)
+  setDocDirty(paneId, false);
+  dropDocDraft(paneId);
   await tick();
   releaseHandoff([paneId]);
 }
@@ -284,6 +369,7 @@ export async function tearOut(screenX: number, screenY: number): Promise<boolean
   try {
     if (!(await p.stashed)) {
       claimTear(p.token);
+      forgetCarried(p.token);
       toast.error(t("app.tear.tab.stashFailed"));
       return false;
     }
@@ -296,6 +382,7 @@ export async function tearOut(screenX: number, screenY: number): Promise<boolean
     // 이 와서 이 탭을 뺀다 — 안내를 띄우면 거짓말이 된다.
     if (!(await discardStash(p.token))) return true;
     claimTear(p.token);
+    forgetCarried(p.token);
     toast.error(
       t("app.tear.tab.failed", { error: e instanceof Error ? e.message : String(e) }),
     );
@@ -316,6 +403,7 @@ export async function tearOutPane(screenX: number, screenY: number): Promise<voi
   try {
     if (!(await p.stashed)) {
       claimTear(p.token);
+      forgetCarried(p.token);
       toast.error(t("app.tear.pane.stashFailed"));
       return;
     }
@@ -324,6 +412,7 @@ export async function tearOutPane(screenX: number, screenY: number): Promise<voi
   } catch (e) {
     if (!(await discardStash(p.token))) return; // 다른 창이 가져갔다 = 실패가 아니다
     claimTear(p.token);
+    forgetCarried(p.token);
     toast.error(
       t("app.tear.pane.failed", { error: e instanceof Error ? e.message : String(e) }),
     );
@@ -378,7 +467,8 @@ async function adoptTear(token: number, merge?: TearMerge): Promise<TabSpec | nu
   const source = peek.workspace.sourceWindow;
   let consumed = false;
   try {
-    if (source !== currentWindowLabel() && await requestWindow(source, { kind: "pause" }) !== true) return null;
+    // 번호를 싣는다 — 보낸 창이 실은 초안이 그사이 낡았으면 거절하고, 아니면 꺼내는 동안 원본 편집기를 잠근다(`holdTearSource`)
+    if (source !== currentWindowLabel() && await requestWindow(source, { kind: "pause", token }) !== true) return null;
     const payload = await takeHandoff(token, workspaceId, merge);
     if (!payload) { showNotice(t("app.workspaces.changeFailed")); return null; }
     consumed = true;
@@ -389,7 +479,7 @@ async function adoptTear(token: number, merge?: TearMerge): Promise<TabSpec | nu
     }
     return incoming;
   } finally {
-    if (!consumed && source !== currentWindowLabel()) await requestWindow(source, { kind: "resume" });
+    if (!consumed && source !== currentWindowLabel()) await requestWindow(source, { kind: "resume", token });
     // caller가 동기 insert/place를 끝내기 전에는 대상 스냅숏을 쓰지 않는다.
     if (!consumed) {
       if (action === "switch" && previousWorkspaceId) switchWorkspace(previousWorkspaceId);
@@ -467,6 +557,16 @@ export async function bootTear(): Promise<void> {
 }
 
 export async function releaseWorkspaceTear(token: number): Promise<boolean> {
+  // 넘어간 초안보다 새 글이 원본에 있다(잠금이 풀린 뒤 고쳤다 등) — 원본을 내리지 않는다. 두 창에 다 남는 쪽이 글을 잃는 쪽보다
+  // 낫다(받는 창은 "바꾸지 못했습니다" 를 알린다)
+  if (!carriedStill(token)) {
+    forgetCarried(token);
+    claimTear(token);
+    showNotice(t("app.unsaved.tearKept"));
+    resumeWorkspaceSave();
+    return false;
+  }
+  forgetCarried(token);
   const p = claimTear(token);
   if (!p) return false;
   if (p.paneId !== undefined) await releasePane(p.paneId);

@@ -70,6 +70,8 @@
   import { workspaceSwitcherVisible } from "$lib/app/workspaces.svelte.js";
   import ProfileSwitcher from "$lib/ProfileSwitcher.svelte";
   import AskAiPicker from "$lib/AskAiPicker.svelte";
+  import CodeTermPicker from "$lib/CodeTermPicker.svelte";
+  import NewDocBox from "$lib/doc/NewDocBox.svelte";
   import AiLaunchPicker from "$lib/AiLaunchPicker.svelte";
   import { profileSwitcherVisible } from "$lib/app/profile-switcher.svelte.js";
   import { filePickerVisible } from "$lib/app/file-picker.svelte.js";
@@ -777,7 +779,7 @@
         onfileview={noteFileView}
         onfileui={noteFileUi}
         onopendoc={openDocFrom}
-        onopenpath={(tabId, paneId, target) => void openPathFromTerminal(tabId, paneId, target)}
+        onopenpath={(tabId, paneId, target, line) => void openPathFromTerminal(tabId, paneId, target, line)}
         ondocmode={noteDocMode}
         ondocoutline={noteDocOutline}
         ondoceditview={noteDocEditView}
@@ -1001,6 +1003,10 @@
   마운트해 두고, 고를 것이 있을 때만 스스로 상자를 그린다(상태는 `app/ask-ai.svelte.ts` 에 있다).
 -->
 <AskAiPicker />
+<!-- 문서 코드 블록 [터미널에 넣기]의 셸 타일 고르기 상자 — 같은 규약(상태는 `app/code-to-term.svelte.ts`) -->
+<CodeTermPicker />
+<!-- 문서 타일 [새 문서…]의 이름 상자 — 같은 규약(상태는 `app/new-doc.svelte.ts`) -->
+<NewDocBox />
 <!-- AI CLI 고르기 상자(`Ctrl+Shift+A` · `ai-panel`) — 같은 규약(상태는 `app/ai-launch.svelte.ts`) -->
 <AiLaunchPicker />
 

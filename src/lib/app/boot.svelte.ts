@@ -59,7 +59,7 @@ import { bootMirror } from "$lib/app/mirror.svelte.js";
 import { startMirrorRequests, startRemoteLayoutRequests } from "$lib/app/mirror-requests.svelte.js";
 import { openDetachedList, refreshDetached, startDetached } from "$lib/app/detached.svelte.js";
 import { bootSideChats, closeLegacySideChatSessions } from "$lib/app/side-chats.svelte.js";
-import { bootTear, releaseWorkspaceTear } from "$lib/app/tear.svelte.js";
+import { bootTear, holdTearSource, releaseWorkspaceTear, thawTearSource } from "$lib/app/tear.svelte.js";
 import {
   applyStoredLanguage,
   loadSettings,
@@ -75,6 +75,7 @@ import { mountProjects } from "$lib/app/projects.svelte.js";
 import { listenAgentSignals, syncAgentStates } from "$lib/app/agent-status.svelte.js";
 import { mountAgentSeen } from "$lib/app/agent-seen.svelte.js";
 import { watchAiFocus } from "$lib/app/ask-ai.svelte.js";
+import { watchShellFocus } from "$lib/app/code-to-term.svelte.js";
 import { listenDelegationChanged, orphanDelegationTargets, refreshDelegationTargets } from "$lib/app/delegation.svelte.js";
 import { refreshDbAi } from "$lib/app/db-ai.svelte.js";
 import { ensureDbConns } from "$lib/app/db-conns.svelte.js";
@@ -502,8 +503,14 @@ export function mountAppListeners(): () => void {
       noteWorkspaceHostAliases(action.aliases, action.to);
       return true;
     }
-    if (action.kind === "pause") return pauseWorkspaceSave();
-    if (action.kind === "resume") { resumeWorkspaceSave(); return true; }
+    if (action.kind === "pause") {
+      // 창 이관이면 실은 초안이 낡지 않았는지 먼저 — 낡았으면 받는 창이 꺼내지 않는다(원본 그대로)
+      if (!holdTearSource(action.token)) return false;
+      const ok = await pauseWorkspaceSave();
+      if (!ok) thawTearSource(action.token);
+      return ok;
+    }
+    if (action.kind === "resume") { thawTearSource(action.token); resumeWorkspaceSave(); return true; }
     if (action.kind === "leaveSessions") { await leaveWindowSessions(); return true; }
     if (action.kind === "release") return releaseWorkspaceTear(action.token);
     // 보조 창의 작업안 부탁(2026-10-25 — 작업안은 주 창의 채팅 독 갈래 · `app/plans.svelte.ts` 머리말)
@@ -631,6 +638,8 @@ export function mountAppListeners(): () => void {
   // 블록을 AI 타일에 넘기는 고르기 상자의 "마지막에 씀" — 포커스된 AI 타일의 시각을 적어 둔다
   // (docs/log/2026-09-28-ask-ai-block.md).
   const unwatchAiFocus = watchAiFocus();
+  // 문서 코드 블록 [터미널에 넣기] 상자의 "마지막에 씀" — 포커스된 셸 타일의 시각(같은 결 — `app/code-to-term.svelte.ts`).
+  const unwatchShellFocus = watchShellFocus();
 
   return () => {
     void workspaceStatus.then((un) => un());
@@ -660,6 +669,7 @@ export function mountAppListeners(): () => void {
     void remoteHooksAuto.then((un) => un());
     void delegationChanged.then((un) => un());
     unwatchAiFocus();
+    unwatchShellFocus();
   };
 }
 

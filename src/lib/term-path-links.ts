@@ -15,11 +15,14 @@ import { findPathLinks, resolvePathLink, type PathLinkPlace, type ResolvedPath }
  *
  * `place()` 는 호버마다 부른다 — 셸이 `cd` 하면 다음 호버부터 새 폴더가 기준이다. `null` 이면 링크를 걸지 않는다.
  * 우클릭 메뉴의 "링크 열기"(`hoveredLink`)에는 적지 않는다 — 그쪽은 브라우저로 여는 주소의 자리다.
+ *
+ * 꼬리 `:12` 가 있으면 그 줄(1 기준)을 `open` 의 둘째 인자로 같이 올린다 — 여는 쪽이 문서 타일에 한 번짜리 "이 줄로" 를
+ * 건다(`app/doc-anchors`). 꼬리가 없으면 `undefined` 이고 동작은 예전 그대로다.
  */
 export function attachPathLinks(
   term: XTerm,
   place: () => PathLinkPlace | null,
-  open: (target: NonNullable<ResolvedPath>) => void,
+  open: (target: NonNullable<ResolvedPath>, line?: number) => void,
 ): IDisposable {
   return term.registerLinkProvider({
     provideLinks(bufferLine, callback) {
@@ -50,7 +53,7 @@ export function attachPathLinks(
           decorations: { pointerCursor: true, underline: true },
           activate(ev: MouseEvent) {
             if (!ev.ctrlKey && !ev.metaKey) return;
-            open(target);
+            open(target, m.line);
           },
         });
       }

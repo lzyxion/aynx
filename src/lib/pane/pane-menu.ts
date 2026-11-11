@@ -16,8 +16,8 @@
  * | `local` | 분할 2 · **출력 ▸** · AI 권한… · 동시 입력 · 분리 · 닫기 (7) |
  * | `query` | 분할 2 · AI 권한… · 분리 · 닫기 (5) — DB 연결 하나의 단계(10-14) |
  * | `settings`·`localfs`·`branches`·`diff`·`plans` | 분할 2 · 분리 · 닫기 (4) |
- * | `doc` (로컬 파일) | 분할 2 · 경로 복사 · 분리 · 닫기 (5) |
- * | `doc` (원격 — `ctx.borrowed`) | 분할 2 · 경로 복사 · 닫기 (4) — **분리가 빠진다** |
+ * | `doc` (로컬 파일) | 분할 2 · 경로 복사 · 새 문서… · 분리 · 닫기 (6) |
+ * | `doc` (원격 — `ctx.borrowed`) | 분할 2 · 경로 복사 · 새 문서… · 닫기 (5) — **분리가 빠진다** · 끊기면 새 문서…는 흐리게 |
  * | `sftp` | 분할 2 · 닫기 (3) — **분리가 빠진다** |
  * | `start` | 분할 2 · 닫기 (3) — 애초에 헤더가 붙지 않는다 |
  *
@@ -129,6 +129,11 @@ export type PaneMenuAction =
    * 이 줄의 말풍선이 경로를 보여 준다([`PaneMenuCtx.docPath`]). 파일 타일 우클릭의 "경로 복사" 와 같은 이름 · 같은 알림.
    */
   | "copy-path"
+  /**
+   * **문서 타일만**(2026-11-11) — 지금 문서와 같은 폴더 · 같은 백엔드에 새 문서를 만드는 이름 상자를 연다(`app/new-doc`). 타일 ⋯ 와 본문 우클릭(읽기
+   * 모양 — `doc-menu.ts`)이 같은 줄([`newDocItem`])을 쓰고, 배선은 `tile-menu-controller` 의 한 칸이다([`PaneMenuCtx.docNew`]).
+   */
+  | "new-doc"
   | "toggle-sync"
   | "detach"
   | "close"
@@ -334,6 +339,22 @@ export interface PaneMenuCtx {
    * 경로 글자와 같은 값 — 복사되는 것은 별칭 없는 `path`). 문서 타일에서만 넘긴다 — 없거나 `path` 가 비면 줄이 없다.
    */
   docPath?: { path: string; alias: string } | null;
+  /**
+   * **문서 타일의 [새 문서…]**(2026-11-11) — `true` 면 줄이 서고 눌린다, `false` 면 흐리게(끊긴 원격 · 원본을 잃은 원격 — 편집 단추와 같은 까닭 글),
+   * `null` · 없음이면 줄이 없다(파일을 보이지 않는 문서 타일 · 다른 종류). 부르는 쪽이 `app/new-doc` 의 `newDocState` 로 정한다.
+   */
+  docNew?: boolean | null;
+}
+
+/** [새 문서…] 줄 하나 — 타일 ⋯ 와 문서 본문 우클릭이 같이 쓴다(`enabled` 가 거짓이면 흐리게 · 까닭은 말풍선) */
+export function newDocItem(enabled: boolean, tr: Tr): PaneMenuItem {
+  return {
+    action: "new-doc",
+    label: tr("files.doc.new"),
+    icon: "plus",
+    separator: true,
+    ...(enabled ? {} : { disabled: true, title: tr("files.doc.edit.block.offline") }),
+  };
 }
 
 /** 문서 경로의 보이는 글 — 원격이면 `별칭:경로`(예전 문서 도구줄의 경로 글자와 같은 꼴) */
@@ -627,6 +648,8 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
       separator: true,
     });
   }
+  // 문서 타일의 [새 문서…](2026-11-11) — 경로 복사 아래 선 하나(대상이 이 문서가 아니라 그 폴더의 새 파일이다)
+  if (kind === "doc" && ctx.docNew != null) items.push(newDocItem(ctx.docNew, tr));
 
   // 헤더를 창 밖으로 끄는 몸짓과 같은 결과다. 몸짓을 모르는 사람에게 그 기능이 존재한다는
   // 사실을 알리는 자리이기도 하다. 혼자 떼면 뜻이 깨지는 타일에서는 항목 자체를 그리지 않는다.
