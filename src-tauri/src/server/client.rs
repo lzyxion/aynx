@@ -232,6 +232,19 @@ pub(crate) fn stop_reconnecting() {
     STOPPING.store(true, Ordering::SeqCst);
 }
 
+/// [`STOPPING`] 을 걷고 연결 고리를 깨운다 — 업데이트 설치기를 못 띄웠을 때(`updater::update_install`) 앱이 다시 서버를 띄워 붙는다.
+pub(crate) fn resume_reconnecting() {
+    STOPPING.store(false, Ordering::SeqCst);
+    CLIENT.kick.notify_one();
+}
+
+/// 재연결이 멈춘 동안 연결 고리를 세워 둔다([`resume_reconnecting`] 이 깨운다).
+async fn park_while_stopping() {
+    while STOPPING.load(Ordering::SeqCst) {
+        CLIENT.kick.notified().await;
+    }
+}
+
 struct Client {
     status: Mutex<Status>,
     conn: Mutex<Option<Arc<Conn>>>,
@@ -281,6 +294,7 @@ enum Fail {
 async fn run_loop() {
     let mut backoff = BACKOFF_START;
     loop {
+        park_while_stopping().await;
         match connect_once().await {
             Ok((conn, welcome, reader)) => {
                 backoff = BACKOFF_START;
@@ -322,9 +336,8 @@ async fn run_loop() {
                 tauri::async_runtime::spawn(super::ai_proxy::push_reviewing());
                 let _ = reader.await;
                 set_conn(None);
-                if STOPPING.load(Ordering::SeqCst) {
-                    return;
-                }
+                // 재연결을 멈춘 동안(모든 세션 종료 · 업데이트 설치)은 새 서버를 띄우지 않고 풀릴 때까지 기다린다.
+                park_while_stopping().await;
                 set_status(|s| {
                     s.connected = false;
                     s.last_error = Some("connection closed".into());
@@ -604,6 +617,29 @@ pub async fn session_server_close_all() -> Result<u64, String> {
 /// 판이 어긋난 서버에도 통한다(`shutdown` 은 판에 무관한 op — `frame` 머리말).
 #[tauri::command]
 pub async fn session_server_restart() -> Result<Status, String> {
+    let old_pid = shutdown_and_wait().await?;
+    set_status(|s| {
+        s.mismatch = false;
+        s.connected = false;
+        s.last_error = None;
+    });
+    CLIENT.kick.notify_one();
+    // 새 서버가 붙을 때까지 잠깐 기다린다(띄우기 + 찾기 파일 최대 3초).
+    for _ in 0..80 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let st = lock(&CLIENT.status).clone();
+        if st.connected && st.server_pid != old_pid {
+            return session_server_status().await;
+        }
+    }
+    session_server_status().await
+}
+
+/// **서버를 끝내고 그 pid 가 사라지기를 기다린다**(다시 띄우지 않는다) — [다시 시작](`session_server_restart`)과 업데이트 설치
+/// (`updater::update_install` — 판이 다른 옛 서버를 새 GUI 가 스스로 갈지 않으므로 설치 전에 끝내 둔다)가 같이 쓴다. 붙어 있지
+/// 않으면(판 불일치 등) 따로 붙어 hello 없이 보낸다. 서버가 없었으면 `Ok(None)`, 끝낸 서버의 pid 면 `Ok(Some(pid))`.
+/// 재연결을 막는 것은 부르는 쪽의 몫이다(업데이트는 [`stop_reconnecting`] 을 먼저 부른다).
+pub(crate) async fn shutdown_and_wait() -> Result<Option<u32>, String> {
     let old_pid = lock(&CLIENT.status).server_pid.or_else(|| launch::live_discovery().map(|d| d.pid));
     let sent = match request(Grade::Write, "shutdown", json!({})).await {
         Ok(_) => Ok(()),
@@ -623,21 +659,7 @@ pub async fn session_server_restart() -> Result<Status, String> {
             return Err(format!("session server pid {pid} did not exit"));
         }
     }
-    set_status(|s| {
-        s.mismatch = false;
-        s.connected = false;
-        s.last_error = None;
-    });
-    CLIENT.kick.notify_one();
-    // 새 서버가 붙을 때까지 잠깐 기다린다(띄우기 + 찾기 파일 최대 3초).
-    for _ in 0..80 {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let st = lock(&CLIENT.status).clone();
-        if st.connected && st.server_pid != old_pid {
-            return session_server_status().await;
-        }
-    }
-    session_server_status().await
+    Ok(old_pid)
 }
 
 async fn shutdown_fresh() -> Result<(), String> {

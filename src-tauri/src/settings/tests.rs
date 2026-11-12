@@ -204,6 +204,7 @@ fn sample() -> AppSettings {
         plans: PlansPrefs {
             exec_sort: Some("oldest".to_string()),
         },
+        updates: UpdatesPrefs { auto_check: Some(false) },
         messenger: MessengerPrefs {
             when: Some("always".to_string()),
             agent_stop: Some(false),
@@ -2081,6 +2082,28 @@ fn plans_exec_sort_is_kept_verbatim_and_absent_when_unset() {
     assert!(std::fs::read_to_string(&path).unwrap().contains("exec_sort = \"oldest\""));
     let json = serde_json::to_string(&sample()).expect("JSON");
     assert!(json.contains("\"plans\":{\"exec_sort\":\"oldest\"}"), "{json}");
+}
+
+/// 업데이트 자동 확인 — `[updates] auto_check`(2026-11-12). 끌 때만 적고, 안 정하면 `[updates]` 섹션 자체가 없다(= 켬).
+#[test]
+fn updates_auto_check_round_trips_and_is_absent_when_unset() {
+    let tmp = TempDir::new("업데이트확인");
+
+    let path = tmp.path("unset.toml");
+    save_at(&path, &AppSettings::default()).expect("저장");
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("[updates]"));
+
+    let path = tmp.path("off.toml");
+    std::fs::write(&path, "[updates]
+auto_check = false
+").expect("쓰기");
+    assert_eq!(load_at(&path).updates.auto_check, Some(false));
+
+    let path = tmp.path("roundtrip.toml");
+    save_at(&path, &sample()).expect("저장");
+    assert!(std::fs::read_to_string(&path).unwrap().contains("auto_check = false"));
+    let json = serde_json::to_string(&sample()).expect("JSON");
+    assert!(json.contains("\"updates\":{\"auto_check\":false}"), "{json}");
 }
 
 /// 상태바 모양 — `[app] status_bar_style`. `status_bar`(자리)와 완전히 같은 **"보관만"**

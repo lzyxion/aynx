@@ -138,6 +138,7 @@ export function emptySettings(): AppSettings {
     projects: {},
     dock: {},
     plans: {},
+    updates: {},
     messenger: {},
     remote: {},
   };
@@ -186,6 +187,7 @@ export function cloneSettings(s: AppSettings): AppSettings {
     projects: { ...s.projects },
     dock: { ...s.dock },
     plans: { ...s.plans },
+    updates: { ...s.updates },
     messenger: { ...s.messenger },
     remote: { ...s.remote },
   };
@@ -278,6 +280,7 @@ export function sameSettings(a: AppSettings, b: AppSettings): boolean {
     a.projects.start_screen === b.projects.start_screen &&
     a.dock.layout === b.dock.layout &&
     a.plans.exec_sort === b.plans.exec_sort &&
+    a.updates.auto_check === b.updates.auto_check &&
     a.messenger.when === b.messenger.when &&
     a.messenger.agent_stop === b.messenger.agent_stop &&
     a.messenger.agent_permission === b.messenger.agent_permission &&
@@ -523,6 +526,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     dock: { layout: known((src.dock ?? {}).layout, DOCK_LAYOUTS) },
     // 작업안 실행 목록 정렬 — 모르는 키는 버린다 = 기본(newest) 추종.
     plans: { exec_sort: known((src.plans ?? {}).exec_sort, EXEC_SORTS) },
+    // 업데이트 자동 확인은 불리언만 받는다(끈 값만 의미가 있다 — 기본 켬, `files.auto_refresh` 와 같은 규칙).
+    updates: { auto_check: typeof (src.updates ?? {}).auto_check === "boolean" ? (src.updates ?? {}).auto_check : undefined },
     messenger: normalizeMessenger(src.messenger),
     remote: normalizeRemote(src.remote),
   };

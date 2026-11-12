@@ -667,6 +667,14 @@ export interface PlansPrefs {
 }
 
 /**
+ * Rust `UpdatesPrefs` 와 1:1 (`[updates]`) — 앱 안 업데이트의 **자동 확인 한 칸**(2026-11-12 · `app/updater`). 파일에는 **끌 때만**
+ * 적는다(기본 켬 — `files.auto_refresh` 와 같은 규칙). 건너뛴 판 · 알린 판은 설정이 아니라 Rust `updater.json` 에 산다.
+ */
+export interface UpdatesPrefs {
+  auto_check?: boolean | null;
+}
+
+/**
  * Rust `MessengerPrefs` 와 1:1 (`[messenger]`) — **메신저 알림의 취향만**
  * (docs/log/2026-09-27-discord-notify.md · docs/log/2026-09-28-messenger-channels.md). 사건 규칙은 채널이 함께
  * 쓰고 채널마다 보내기 칸(`discord` · `slack`)이 있다. 웹훅 URL 은 여기 없다 — 비밀이라 백엔드의 채널별 자기 파일에 살고
@@ -722,6 +730,8 @@ export interface AppSettings {
   dock: DockPrefs;
   /** 작업안 실행 목록 정렬 (`settings.toml` 의 `[plans]`) */
   plans: PlansPrefs;
+  /** 앱 업데이트 자동 확인 (`settings.toml` 의 `[updates]`) */
+  updates: UpdatesPrefs;
   /** 메신저(Discord) 알림 (`settings.toml` 의 `[messenger]`) — URL 은 없다 */
   messenger: MessengerPrefs;
   /** 원격 웹 클라이언트 관문 (`settings.toml` 의 `[remote]`) */

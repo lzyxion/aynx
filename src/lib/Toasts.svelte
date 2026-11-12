@@ -108,13 +108,54 @@
       <!-- `|global` — 기둥은 `{#if}` 안이라 **첫 토스트는 기둥과 함께 서고 마지막 토스트는
            기둥과 함께 진다**. 지역 전이는 부모 블록이 함께 서고 질 때 돌지 않으므로, 그대로
            두면 정작 가장 흔한 판(혼자 뜨고 혼자 지는 한 줄)이 미끄러지지 않는다. -->
+      <!-- 상자는 하나다(`animate:` 는 each 의 외동 자식이어야 한다) — 몸만 둘로 갈린다: **알림 카드**(`ToastNotice` — 2026-11-12
+           업데이트 알림 목업 · 아이콘 | 제목 · 흐린 줄 · 단추 줄(주 동작 채움 · 나머지 테) + 오른쪽 위 ×, `row` 면 한 줄)와 보통 토스트 -->
       <div
-        class="toast glass-raised {t.kind}"
+        class="toast glass-raised {t.notice ? 'notice' : t.kind}"
+        class:row={t.notice?.row}
         data-toast={t.tag ?? null}
         in:slideIn|global
         out:slideOut|global
         animate:flip={{ duration: flipMs() }}
       >
+        {#if t.notice}
+          <span class="n-icon {t.notice.tone}" aria-hidden="true"><UiIcon name={t.notice.icon} size={t.notice.row ? 16 : 20} /></span>
+          <span class="n-body">
+            <span class="n-title">{t.notice.title}</span>
+            {#if t.notice.sub}<span class="n-sub">{t.notice.sub}</span>{/if}
+            {#if !t.notice.row && t.actions.length > 0}
+              <span class="n-acts">
+                {#each t.actions as act (act.label)}
+                  <button
+                    type="button"
+                    class="btn btn-sm {act.primary ? 'btn-primary' : 'btn-ghost outline'}"
+                    data-toast-action={act.id ?? null}
+                    onclick={() => {
+                      act.run();
+                      dismiss(t.id);
+                    }}>{act.label}</button
+                  >
+                {/each}
+              </span>
+            {/if}
+          </span>
+          {#if t.notice.row}
+            {#each t.actions as act (act.label)}
+              <button
+                type="button"
+                class="act btn btn-sm {act.primary ? 'btn-primary' : 'btn-ghost outline'}"
+                data-toast-action={act.id ?? null}
+                onclick={() => {
+                  act.run();
+                  dismiss(t.id);
+                }}>{act.label}</button
+              >
+            {/each}
+          {/if}
+          <button type="button" class="x" aria-label={tr("app.toast.dismiss")} onclick={() => dismiss(t.id)}
+            ><UiIcon name="close" size={13} /></button
+          >
+        {:else}
         <!-- 결의 표식 — 둥근 원 안의 아이콘. 원 자신이 테두리라 **원을 품은 아이콘**
              (`circle-check`·`info`)은 고르지 않는다(원이 두 겹이 된다). -->
         <span class="mark" aria-hidden="true">
@@ -160,6 +201,7 @@
         <button type="button" class="x" aria-label={tr("app.toast.dismiss")} onclick={() => dismiss(t.id)}
           ><UiIcon name="close" size={13} /></button
         >
+        {/if}
       </div>
     {/each}
   </div>
@@ -301,6 +343,80 @@
      토스트는 화면의 주 동작 자리가 아니다). 여기서는 줄지 않게만 */
   .act {
     flex: none;
+  }
+
+  /* 알림 카드(`ToastNotice`) — 340px 카드: 아이콘 | 제목 · 흐린 줄 · 단추 줄, × 는 오른쪽 위. `row` 는 한 줄 */
+  .toast.notice {
+    position: relative;
+    align-items: flex-start;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: min(340px, calc(100vw - 24px));
+    max-width: none;
+    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+    border-radius: var(--radius-surface);
+  }
+  .toast.notice.row {
+    align-items: center;
+    gap: var(--space-2);
+    width: auto;
+    max-width: 460px;
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  }
+  .n-icon {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--n-tone);
+    background: color-mix(in srgb, var(--n-tone) 16%, transparent);
+  }
+  .n-icon.accent {
+    --n-tone: var(--accent);
+  }
+  .n-icon.ok {
+    --n-tone: var(--ok);
+  }
+  .toast.notice.row .n-icon {
+    width: 24px;
+    height: 24px;
+  }
+  .n-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .n-title {
+    font-weight: var(--fw-semibold);
+    overflow-wrap: anywhere;
+  }
+  .toast.notice.row .n-title {
+    font-weight: var(--fw-regular);
+    white-space: nowrap;
+  }
+  .n-sub {
+    font-size: var(--t-xs);
+    color: var(--fg-2);
+  }
+  .n-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+  /* 테 두른 단추 — 전역 `.btn-ghost` 에 선 하나(주 동작은 `.btn-primary` 채움) */
+  .toast.notice .outline {
+    color: var(--fg-1);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  .toast.notice:not(.row) .x {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
   }
 
   .x {

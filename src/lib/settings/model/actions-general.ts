@@ -96,6 +96,11 @@ export function setFileAutoRefresh(on: boolean) {
   settings.current.files.auto_refresh = on ? undefined : false;
 }
 
+/** 업데이트 자동 확인 켬/끔 — 켜는 것이 기본이라 켤 때는 칸을 지운다(`setFileAutoRefresh` 와 같은 결) · [저장] 이 쓴다 */
+export function setAutoCheckUpdates(on: boolean) {
+  settings.current.updates.auto_check = on ? undefined : false;
+}
+
 /**
  * 프로젝트 시작 화면을 언제 세울지 고른다 — 미리보기 계약 그대로(고르는 즉시 걸리고 [저장] 이 쓴다).
  * 기본(`auto`)을 고르면 칸을 비운다. 이미 열려 있는 시작 화면은 그대로 둔다 — 다음에 여는 것부터다.

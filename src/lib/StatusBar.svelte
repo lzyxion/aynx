@@ -19,6 +19,7 @@
   import { resourceOutdated, resourcePulledAt, resourceRing, watchResources } from "$lib/app/resources.svelte.js";
   import { formatMemPair, lastSystemSample, resourceRings, type ResourceMetric, type ResourceRingValue } from "$lib/resource-status";
   import RemoteChip from "$lib/RemoteChip.svelte";
+  import UpdateChip from "$lib/UpdateChip.svelte";
   import { slide } from "svelte/transition";
   import { keepAwakeOn } from "$lib/app/keep-awake.svelte.js";
   import { TOOLTIP_DELAY_MS, type TooltipRect } from "$lib/tooltip";
@@ -710,6 +711,8 @@
         **원격 칩**(R1a-5) — 집 PC 창은 원격으로 쓰는 기기가 있을 때만 "원격 접속 중 (N)"(끌 수 없다), 원격 창은 늘
         "원격 — <기기 이름>" + 잠그기. 상태 · 상자는 칩 컴포넌트가 앱 모듈에서 직접 읽는다(알림 상자와 같은 모양).
       -->
+      <!-- **업데이트 칩**(2026-11-12) — 후미 묶음의 맨 앞(원격 칩 앞). 후미는 그대로 붙어 있고 칩만 바깥쪽으로 자란다 · 새 판이 없으면 없다 -->
+      <UpdateChip {vertical} />
       <RemoteChip {position} {vertical} />
       {#if onchat}
         <!-- 폰 사이드 채팅(2026-11-01) — 알림 알약과 같은 판 · 점은 종의 점 자리(오른쪽 위 모서리) -->

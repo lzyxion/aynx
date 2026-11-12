@@ -63,6 +63,7 @@ import {
 } from "$lib/app/profile-switcher.svelte.js";
 import { raiseVeil } from "$lib/app/veil.svelte.js";
 import { openQuitDialog, quitDialogOpen } from "$lib/app/quit-dialog.svelte.js";
+import { updateCardOpen } from "$lib/app/updater.svelte.js";
 import { isRemote } from "$lib/app/window.svelte.js";
 import { openNextAgentBanner } from "$lib/app/agent-banners.svelte.js";
 import { openBranchGraphHere } from "$lib/app/branch-graph.svelte.js";
@@ -156,6 +157,8 @@ export function anyModalOpen(): boolean {
     dockKind() === "settings" ||
     // 끝내기 모달(독의 끝내기 단추 — 2026-10-28) — 판에 포커스를 쥐고 Esc 를 스스로 다룬다.
     quitDialogOpen() ||
+    // 업데이트 카드(2026-11-12) — 단추에 포커스를 쥐고 Esc 를 스스로 다룬다(`dialogs/UpdateDialog`).
+    updateCardOpen() ||
     paletteVisible() ||
     // 이 폴더의 지난 대화 — 팔레트 자리에 뜨는 고르는 목록(입력칸에 포커스를 쥐고 자기 키를 스스로 다룬다 ·
     // docs/log/2026-09-27-folder-conversations.md).

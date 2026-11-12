@@ -3,7 +3,13 @@
 #
 # - 태그 · package.json · tauri.conf.json · Cargo.toml 의 버전이 하나라도 다르면 멈춘다.
 # - 러너에서 빌드하므로 설치 파일에 로컬 사용자 경로가 들어가지 않는다.
-# - 무서명(코드 서명 · 업데이터 서명 없음) — createUpdaterArtifacts 는 false 그대로.
+# - 코드 서명은 없다(SmartScreen 안내는 노트에). **업데이터 서명은 있다**(2026-11-12 — 앱 안 업데이트): 이 빌드만
+#   `createUpdaterArtifacts` 를 켜고(`--config src-tauri/tauri.updater.conf.json` 덮어쓰기 — tauri.conf.json 은 false 그대로라 로컬 `npm run tauri build` 는
+#   키 없이 된다) 비밀 `TAURI_SIGNING_PRIVATE_KEY` · `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 로 설치 파일 둘에 `.sig` 를 만든다.
+# - `latest.json` — 앱이 읽는 업데이트 피드(`releases/latest/download/latest.json` — 초안 · 미리보기 릴리스는 보이지 않는다).
+#   설치 종류마다 열쇠 하나(`windows-x86_64-nsis` · `windows-x86_64-msi`) — 앱이 제 설치 종류의 열쇠만 읽어 같은 종류로 갱신한다.
+#   종류 없는 `windows-x86_64` 는 일부러 두지 않는다(src-tauri/src/updater.rs 머리말). `notes` 는 비워 둔다 — "What's new" 는
+#   공개 전에 사람이 쓰므로, 카드에도 보이게 하려면 공개 전에 고친 latest.json 을 `gh release upload --clobber` 로 다시 올린다.
 name: Release
 
 on:
@@ -14,7 +20,46 @@ permissions:
   contents: read
 
 jobs:
+  # 사전 점검(1분) — 게이트 · 빌드(합쳐 30분 남짓)를 돌리기 전에 업데이터 서명 준비를 본다. 공개키가 자리표시자면 Tauri 가
+  # 빌드 끝의 서명 단계에서야 "failed to decode pubkey" 로 멈춘다(2026-11-12 로컬 재현).
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: updater public key is real
+        run: |
+          node -e '
+            const conf = require("./src-tauri/tauri.conf.json");
+            const key = (conf.plugins?.updater?.pubkey ?? "").trim();
+            let text = "";
+            try { text = Buffer.from(key, "base64").toString("utf8"); } catch {}
+            const lines = text.split(/\r?\n/);
+            const ok = key !== "" && !key.startsWith("REPLACE_") && lines[0]?.startsWith("untrusted comment:") && /^[A-Za-z0-9+/=]{40,}$/.test((lines[1] ?? "").trim());
+            if (!ok) {
+              console.log("::error::src-tauri/tauri.conf.json plugins.updater.pubkey is not a real minisign public key — paste the contents of the .key.pub file before tagging");
+              process.exit(1);
+            }
+            console.log("updater pubkey: " + lines[0]);
+          '
+
+      - name: signing secrets are set
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$KEY" ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY"
+          [ -n "$PASSWORD" ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::repository secret(s) not set:$missing"
+            exit 1
+          fi
+          echo "signing secrets are set"
+
   gate:
+    needs: preflight
     uses: ./.github/workflows/ci.yml
 
   build:
@@ -59,8 +104,18 @@ jobs:
 
       - run: npm ci
 
-      # beforeBuildCommand 가 npm run build 를 부른다.
-      - run: npm run tauri build
+      # beforeBuildCommand 가 npm run build 를 부른다. 업데이터 산출물(.sig)은 이 빌드에서만 켠다 — 키가 없으면 멈춘다.
+      - name: build (signed updater artifacts)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::secret TAURI_SIGNING_PRIVATE_KEY is not set — the updater signature cannot be made"
+            exit 1
+          fi
+          # 덮어쓰기는 파일로 준다(인라인 JSON 은 npm 이 Windows 셸로 넘기며 따옴표가 깨질 수 있다 — 경로는 공식 문서의 꼴 그대로).
+          npm run tauri build -- --config src-tauri/tauri.updater.conf.json
 
       - name: collect installers
         id: files
@@ -69,12 +124,36 @@ jobs:
           b=src-tauri/target/release/bundle
           exe="$b/nsis/Aynx_${v}_x64-setup.exe"
           msi="$b/msi/Aynx_${v}_x64_en-US.msi"
-          for f in "$exe" "$msi"; do
+          for f in "$exe" "$msi" "$exe.sig" "$msi.sig"; do
             [ -f "$f" ] || { echo "::error::missing $f"; ls -R "$b"; exit 1; }
           done
-          mkdir -p out
+          mkdir -p out sig
           cp "$exe" "$msi" out/
+          cp "$exe.sig" "$msi.sig" sig/
           (cd out && sha256sum Aynx_* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      # 업데이트 피드 — 설치 종류마다 주소 · 서명(.sig 파일의 글자 그대로). 주소는 이 태그의 내려받기 경로다.
+      - name: updater feed (latest.json)
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          V="$v" BASE="$base" PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" node -e '
+            const fs = require("fs");
+            const v = process.env.V, base = process.env.BASE;
+            const sig = (f) => fs.readFileSync("sig/" + f + ".sig", "utf8").trim();
+            const exe = `Aynx_${v}_x64-setup.exe`, msi = `Aynx_${v}_x64_en-US.msi`;
+            const feed = {
+              version: v,
+              notes: "",
+              pub_date: process.env.PUB_DATE,
+              platforms: {
+                "windows-x86_64-nsis": { url: `${base}/${exe}`, signature: sig(exe) },
+                "windows-x86_64-msi": { url: `${base}/${msi}`, signature: sig(msi) },
+              },
+            };
+            fs.writeFileSync("out/latest.json", JSON.stringify(feed, null, 2) + "\n");
+          '
+          cat out/latest.json
 
       - name: release notes skeleton
         run: |
@@ -110,4 +189,4 @@ jobs:
             --draft --verify-tag \
             --title "Aynx $v" \
             --notes-file out/notes.md \
-            "out/Aynx_${v}_x64-setup.exe" "out/Aynx_${v}_x64_en-US.msi"
+            "out/Aynx_${v}_x64-setup.exe" "out/Aynx_${v}_x64_en-US.msi" "out/latest.json"

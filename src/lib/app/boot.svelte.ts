@@ -1,7 +1,7 @@
 import { listenWorkspaceStatus, requestWorkspaceStatus } from "$lib/app/workspace-status.svelte.js";
 import { invoke, listen } from "../ipc";
 import { askChoice } from "$lib/app/confirm-dialog.svelte.js";
-import { quitAll, type QuitChoice, type UnsavedWindow } from "$lib/workspaces/quit";
+import { quitAll, type QuitChoice, type QuitIO, type UnsavedWindow } from "$lib/workspaces/quit";
 import { listenWindowRequests, requestWindow } from "$lib/workspaces/window-events";
 import { currentWindowLabel } from "$lib/context";
 import { requestDocSave } from "$lib/app/doc-dirty.svelte.js";
@@ -22,6 +22,7 @@ import { startOperationNotify } from "$lib/app/operation-notify.svelte.js";
 import { startRemotePair } from "$lib/app/remote-pair.svelte.js";
 import { installRemoteUi } from "$lib/app/remote-dialog.svelte.js";
 import { startRemoteAccess } from "$lib/app/remote-access.svelte.js";
+import { startUpdater } from "$lib/app/updater.svelte.js";
 import { startOrchestrationNotify } from "$lib/app/orchestration-notify.svelte.js";
 import { startOrchCoordinators } from "$lib/app/orch-coordinators.svelte.js";
 import { startOrchTabRepair } from "$lib/app/orch-tab-repair.svelte.js";
@@ -224,6 +225,8 @@ export async function boot(): Promise<void> {
   if (isMainWindow) void startMirrorRequests();
   // 원격 접속 중 표시(R1a-5 — 상태바 원격 칩 · 끌 수 없다) — 주 창만(`remote-sessions` 는 주 창 대상)
   if (isMainWindow) startRemoteAccess();
+  // 앱 안 업데이트(2026-11-12) — 상태바 칩 · 알림 · 카드는 주 창 한 곳(원격 창은 명령이 모두 거절된다 — `remote/deny.rs`).
+  if (isMainWindow) startUpdater({ leave: quitForUpdate });
   // 오케스트레이션 감독 사건(리뷰 F11) — 서버가 사건 id 와 함께 만든 것을 주 창 한 곳이 한 번 보인다.
   if (isMainWindow) startOrchestrationNotify();
   // 오케스트레이션 — 앨범 목록 요약(탭 · 독 막대의 재료) · AI 가 연 앨범의 탭 자동 배치(Q3 — 그 프로듀서 채팅의 탭을 가진 창 하나가 서버 장부로
@@ -325,27 +328,70 @@ async function runQuit(mode: "exit" | "endSessions" | "tray" | null): Promise<vo
   if (closeAsking) return;
   closeAsking = true;
   try {
-    const ok = await quitAll({
-      windows: () => invoke<string[]>("workspace_windows"),
-      inspect: async (label) => {
-        const reply = await requestWindow(label, { kind: "inspect" });
-        return reply && typeof reply === "object" ? reply : null;
-      },
-      confirm: confirmQuitAll,
-      save: async (label, ids) => await requestWindow(label, { kind: "saveDocs", ids }) === true,
-      flush: async (label) => await requestWindow(label, { kind: "pause" }) === true,
-      resume: async (label) => { await requestWindow(label, { kind: "resume" }); },
-      // 끊기 전에 창마다 세션을 체크포인트와 함께 놓는다(③-2 — 세션은 서버에 살고, 다시 켜면 그 화면부터 붙는다).
-      // 끝나기를 기다린다(창당 3초 상한) — `pagehide` 의 detach 는 앱 종료에서 닿지 않는다(실기 10-09).
-      exit: async () => {
-        const labels = await invoke<string[]>("workspace_windows").catch(() => [] as string[]);
-        await Promise.all(labels.map((label) => requestWindow(label, { kind: "leaveSessions" }, 3000)));
+    const ok = await quitAll(
+      quitIO(async () => {
+        await leaveAllWindowSessions();
         await invoke("workspace_exit_app", { mode });
-      },
-    });
+      }),
+    );
     if (!ok) leaveConfirmed = false;
   } catch { showNotice(t("app.workspaces.saveFailed")); }
   finally { closeAsking = false; }
+}
+
+/**
+ * **업데이트를 위해 떠나기**(2026-11-12 — `app/updater` 의 [다시 시작]) — [`runQuit`] 과 같은 길(저장 안 한 문서 묻기 · 창마다 세션을
+ * 체크포인트와 함께 놓기)을 지나 마지막만 `update_install` 이다(세션 서버를 끝내고 설치기를 띄운 뒤 GUI 가 끝난다 — Rust
+ * `updater.rs`). 돌아오면 취소됐거나(`error: null`) 설치기를 못 띄운 것이다(창들은 다시 저장을 잇는다 — `quitAll`).
+ */
+export async function quitForUpdate(): Promise<{ ok: boolean; error: string | null }> {
+  if (closeAsking) return { ok: false, error: null };
+  closeAsking = true;
+  let error: string | null = null;
+  try {
+    const ok = await quitAll(
+      quitIO(async () => {
+        await leaveAllWindowSessions();
+        leaveConfirmed = true;
+        try {
+          await invoke("update_install");
+        } catch (e) {
+          error = String(e);
+          throw e;
+        }
+      }),
+    );
+    if (!ok) leaveConfirmed = false;
+    return { ok, error };
+  } catch (e) {
+    leaveConfirmed = false;
+    return { ok: false, error: error ?? String(e) };
+  } finally {
+    closeAsking = false;
+  }
+}
+
+/** 끊기 전에 창마다 세션을 체크포인트와 함께 놓는다(③-2 — 세션은 서버에 살고, 다시 켜면 그 화면부터 붙는다). 창당 3초 상한 —
+ * `pagehide` 의 detach 는 앱 종료에서 닿지 않는다(실기 10-09). */
+async function leaveAllWindowSessions(): Promise<void> {
+  const labels = await invoke<string[]>("workspace_windows").catch(() => [] as string[]);
+  await Promise.all(labels.map((label) => requestWindow(label, { kind: "leaveSessions" }, 3000)));
+}
+
+/** [`quitAll`] 의 IO — 마지막 한 걸음(`exit`)만 부르는 쪽이 고른다 */
+function quitIO(exit: () => Promise<void>): QuitIO {
+  return {
+    windows: () => invoke<string[]>("workspace_windows"),
+    inspect: async (label) => {
+      const reply = await requestWindow(label, { kind: "inspect" });
+      return reply && typeof reply === "object" ? reply : null;
+    },
+    confirm: confirmQuitAll,
+    save: async (label, ids) => await requestWindow(label, { kind: "saveDocs", ids }) === true,
+    flush: async (label) => await requestWindow(label, { kind: "pause" }) === true,
+    resume: async (label) => { await requestWindow(label, { kind: "resume" }); },
+    exit,
+  };
 }
 
 /**

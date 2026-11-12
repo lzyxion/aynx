@@ -219,6 +219,12 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 # (Windows ReadDirectoryChangesW · Linux inotify · macOS FSEvents)을 한 API 로 덮어 OS 를 타는 코드를 우리가 짜지 않는다.
 # 8.2.0 = 2025-08-03 게시(9.x 는 아직 rc). 기본 기능(macOS FSEvents)만 — 폴링 감시(PollWatcher)는 쓰지 않는다.
 notify = "8.2.0"
+# 앱 안 업데이트(2026-11-12 — `updater.rs`). 2.12 에 묶는다 — 2.13 부터 tauri ^2.12 를 요구해 tauri · wry 가 한꺼번에 오른다
+# (CLI 짝도 같이 올려야 한다). 기능은 **모두 끈다**: `rustls-tls` 는 ring 공급자를 끌어오고(이 잠금에 ring 이 없다 — 위 TLS 줄들),
+# 위 `reqwest` 가 이미 켠 `rustls`(aws-lc-rs)가 기능 통합으로 그대로 쓰인다. `zip`(Tauri v1 압축 산출물)·`system-proxy` 도 쓰지 않는다
+# (산출물은 설치 파일 그대로 — `createUpdaterArtifacts: true`). 새로 받는 크레이트는 minisign-verify · tar · filetime · xattr ·
+# (macOS 전용) osakit 무리뿐이다.
+tauri-plugin-updater = { version = "~2.12", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # 트레이(③-4 — `tray.rs`): Tauri 의 `tray-icon` 기능을 **Windows 대상에만** 켠다(같은 의존성의 기능은 대상 표끼리 합쳐진다).

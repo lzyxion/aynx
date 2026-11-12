@@ -266,6 +266,19 @@ export const settings = {
   "general.idle.minutes": "{min}분",
   // 세션 서버 (③-2 — src-tauri/src/server.rs) — 상태 한 줄 + [모든 세션 종료] · [다시 시작]. 로컬 세션은 서버에 산다(SSH 는 아직 앱 안).
   "general.server.heading": "세션 서버",
+  // 앱 업데이트(2026-11-12 — `settings/UpdatesRows.svelte` · 일반의 끝)
+  "general.updates.heading": "업데이트",
+  "general.updates.auto.label": "업데이트 자동 확인",
+  "general.updates.auto.tip": "시작할 때와 6시간마다. 알리기만 합니다 — 고르기 전에는 아무것도 내려받거나 설치하지 않습니다. GitHub Releases 의 업데이트 목록만 읽고 이 PC 에 대해서는 아무것도 보내지 않습니다. 업데이트는 실행 전에 Aynx 서명 키로 확인합니다.",
+  "general.updates.version.available": "{version} 이 나왔습니다",
+  "general.updates.version.latest": "최신",
+  "general.updates.version.checked": "{when} 확인",
+  "general.updates.version.checking": "확인하는 중…",
+  "general.updates.check": "지금 확인",
+  "general.updates.see": "{version} 보기",
+  "general.updates.skipped": "건너뛴 버전 {version}",
+  "general.updates.skipped.tip": "이 버전은 다시 알리지 않습니다. 더 새 버전은 그대로 보입니다.",
+  "general.updates.undo": "되돌리기",
   // 창을 모두 닫으면 트레이에 남기(③-4) — GUI 의 수명 한 칸
   "general.tray.label": "창을 모두 닫으면 트레이에 남기",
   "general.tray.summary": "켜면 마지막 창을 닫아도 앱이 트레이에 남아 작업안 결과 알림·메신저가 계속 돕니다. 끄면 창을 닫을 때 앱이 끝나고, 세션은 어느 쪽이든 세션 서버에서 계속 삽니다.",

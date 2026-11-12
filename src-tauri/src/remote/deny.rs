@@ -10,7 +10,7 @@
 //!
 //! | 표 | 원격에서 | 무엇 |
 //! | --- | --- | --- |
-//! | [`HOME_ONLY`] | 거절 "집 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 |
+//! | [`HOME_ONLY`] | 거절 "집 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) |
 //! | [`REAUTH`] | 그 순간 마스터 암호 재확인(마스터가 없으면 그대로 통과) | 작업안 승인 · 대상 고치기 · AI 권한 올리기 |
 //! | [`UNSUPPORTED`] | 거절 "원격에서 지원하지 않음" | 집 PC 의 OS 창·편집기·UAC 를 여는 것 · 창 모양 |
 //! | [`ALLOW`] | 그대로 | 나머지 전부(설정·호스트·스니펫·볼트 값 넣기·파일·소스 컨트롤·DB·앱 종료 · 사이드 채팅(2026-11-01) …) |
@@ -87,6 +87,14 @@ pub(crate) const HOME_ONLY: &[&str] = &[
     // 끝내기 모달의 [GUI 종료](2026-10-28) — 집 PC 화면을 끝내는 것도 집 PC 사람의 결정이다.
     "app_quit_gui",
     "app_hide_to_tray",
+    // 앱 안 업데이트(2026-11-12 · 전문 13) — 원격 기기가 집 PC 를 업데이트시키지 못한다(찾기 · 받기 · 설치 · 건너뛰기 · 알림 표시까지
+    // 전부 — 원격 창에는 칩도 카드도 없다).
+    "update_state",
+    "update_check",
+    "update_download",
+    "update_install",
+    "update_skip",
+    "update_mark_toasted",
 ];
 
 /// 그 순간 마스터 암호를 다시 확인(설계 3절 단계 3) — 마스터가 없으면 그대로 통과.
@@ -323,6 +331,9 @@ pub(crate) fn command_label(cmd: &str) -> String {
         "app_end_all_sessions" => tr!(ko: "모든 세션 종료", en: "ending all sessions"),
         "app_quit_gui" => tr!(ko: "GUI 종료", en: "quitting the GUI"),
         "app_hide_to_tray" => tr!(ko: "트레이로 숨기기", en: "hiding to the tray"),
+        "update_state" | "update_check" | "update_download" | "update_install" | "update_skip" | "update_mark_toasted" => {
+            tr!(ko: "Aynx 업데이트", en: "updating Aynx")
+        }
         "side_chats_load" => tr!(ko: "사이드 채팅 목록 읽기", en: "reading the side chats"),
         "side_chats_save" => tr!(ko: "사이드 채팅 목록 저장", en: "saving the side chats"),
         "side_chat_dir" => tr!(ko: "사이드 채팅 폴더 만들기", en: "creating a side chat folder"),
@@ -517,6 +528,11 @@ mod tests {
         assert_eq!(class_of("orchestration_close_orphaned"), Class::Unknown);
         assert_eq!(class_of("producer_album_start_basic"), Class::Unknown);
         assert_ne!(command_label("orchestration_album_widen"), "orchestration_album_widen");
+        // 앱 안 업데이트(2026-11-12) — 원격 창은 찾기 · 받기 · 설치 · 건너뛰기 어느 것도 못 한다.
+        for command in ["update_state", "update_check", "update_download", "update_install", "update_skip", "update_mark_toasted"] {
+            assert_eq!(class_of(command), Class::HomeOnly, "{command}");
+            assert_ne!(command_label(command), command);
+        }
         // Tailscale 연결 — tailnet 노출을 바꾸는 CLI 실행이라 원격 창에서는 셋 다 거절.
         for command in ["remote_serve_status", "remote_serve_connect", "remote_serve_off"] {
             assert_eq!(class_of(command), Class::HomeOnly, "{command}");

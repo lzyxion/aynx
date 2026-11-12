@@ -456,6 +456,8 @@ class SettingsStore {
    * 감시 수명 하나(원격 타일은 감시가 없다 — ⟳).
    */
   fileAutoRefresh = $derived(this.current.files.auto_refresh ?? true);
+  /** 앱 업데이트를 시작 · 6시간마다 저절로 확인하나(기본 켬 — 알리기만 한다). 읽는 곳은 `app/updater` 의 자동 확인 하나 */
+  autoCheckUpdates = $derived(this.current.updates.auto_check ?? true);
   /**
    * 프로젝트 시작 화면을 언제 세우나 (모르는 키·빈 값이면 `auto`). 읽는 곳은 프로젝트를 여는 길
    * (`app/agent-sessions` 의 `projectStartPaneFor`) 하나다.

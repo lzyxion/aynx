@@ -241,6 +241,8 @@ const WANTED = [
   ["info", "material-symbols:info-outline-rounded"],
   /** 경고 한 줄 앞의 `⚠` */
   ["warning", "material-symbols:warning-outline-rounded"],
+  /** 맨 느낌표 `!` — 업데이트 실패 칩(`UpdateChip`). 삼각형 경고 표지판은 경보처럼 무거워 보였다(2026-11-12 사용자) */
+  ["exclaim", "material-symbols:priority-high-rounded"],
   /** 폴더 고르개를 여는 "찾아보기…" — 닫힌 `folder` 와 갈라 둔다 (여는 몸짓이다) */
   ["folder-open", "material-symbols:folder-open-outline-rounded", { filled: "folder-open-rounded" }],
 

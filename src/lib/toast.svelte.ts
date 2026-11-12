@@ -30,6 +30,22 @@ export interface ToastAction {
   run: () => void;
   /** 단추의 `data-toast-action` 값 — 하네스(CDP)가 문구 대신 잡는 손잡이. 없으면 속성이 없다 */
   id?: string;
+  /** 주 동작(채운 단추) — 없으면 테 두른 단추. 알림 카드(`ToastNotice`)에서만 뜻이 있다 */
+  primary?: boolean;
+}
+
+/**
+ * **알림 카드 몸**(2026-11-12 — 업데이트 알림 목업) — 한 줄 토스트 대신 아이콘 · 굵은 제목 · 흐린 둘째 줄 · 단추 줄을 세운다.
+ * 자리 · 시계 · 호버 멈춤 · 닫기는 다른 토스트와 같다(같은 기둥에 쌓인다). `row` 면 한 줄(아이콘 · 제목 · 단추)이다.
+ */
+export interface ToastNotice {
+  /** `UiIcon` 이름 */
+  icon: string;
+  /** 아이콘 색 — `accent`(강조) · `ok`(초록) */
+  tone: "accent" | "ok";
+  title: string;
+  sub?: string;
+  row?: boolean;
 }
 
 /**
@@ -60,6 +76,8 @@ export interface ToastItem {
   text: string;
   /** 두 줄짜리 몸 — 없으면 `text` 한 줄로 그린다 */
   detail?: ToastDetail;
+  /** 알림 카드 몸 — 있으면 `detail` · `sub` 보다 앞선다 */
+  notice?: ToastNotice;
   /** `text` 아래 흐린 보조 줄 — 없으면 한 줄 그대로 (`ToastOpts.sub`) */
   sub?: string;
   /** 이 항목이 살아 있을 총 시간(ms) — 호버 중에는 줄지 않는다 */
@@ -84,6 +102,8 @@ export interface ToastOpts {
   actions?: readonly ToastAction[];
   /** 두 줄짜리 몸 (`ToastDetail`) — 주면 `text` 대신 이 모양으로 그린다 */
   detail?: ToastDetail;
+  /** 알림 카드 몸 (`ToastNotice`) */
+  notice?: ToastNotice;
   /**
    * `text` 아래 **흐린 보조 줄** 하나 — 백틱으로 감싼 구간은 인라인 코드 모양(`codeSpans`,
    * HTML 은 해석하지 않는다). 첫 소비자: git 신원 없음 알림(docs/log/2026-09-28-project-create.md).
@@ -176,6 +196,7 @@ function push(kind: ToastKind, text: string, opts?: ToastOpts): number {
   const actions = opts?.actions ?? (opts?.action ? [opts.action] : []);
   const item: ToastItem = { id, kind, text, ms, actions };
   if (opts?.detail) item.detail = opts.detail;
+  if (opts?.notice) item.notice = opts.notice;
   if (opts?.sub) item.sub = opts.sub;
   if (opts?.tag) item.tag = opts.tag;
   toasts.unshift(item);

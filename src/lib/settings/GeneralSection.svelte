@@ -27,6 +27,7 @@
   import ValueSlider from "$lib/settings/ValueSlider.svelte";
   import { clearHostHistory } from "$lib/app/host-history.svelte.js";
   import SessionServerRow from "$lib/settings/SessionServerRow.svelte";
+  import UpdatesRows from "$lib/settings/UpdatesRows.svelte";
   import { invoke } from "../ipc";
   import { onMount } from "svelte";
 
@@ -361,6 +362,9 @@
   <p class="lead" role="note" data-tray-unsupported>{t("settings.general.tray.unsupported")}</p>
 {/if}
 <SessionServerRow />
+
+<!-- 앱 업데이트(2026-11-12) — 일반의 끝 소제목(새 섹션 없음): 자동 확인 · 판 · 건너뛴 판 · 출처 각주. 몸은 `UpdatesRows` -->
+<UpdatesRows />
 
 <style>
   /* 앱 글꼴 칸 — 줄의 오른쪽 손잡이라 `settings.css` 의 `.value`(width:100%)를 그대로 두면 라벨과

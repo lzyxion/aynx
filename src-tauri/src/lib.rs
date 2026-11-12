@@ -109,6 +109,7 @@ mod tile_permission;
 mod tile_token;
 mod token;
 mod tray;
+mod updater;
 mod webview_crash;
 mod vault;
 mod wallpaper;
@@ -323,6 +324,9 @@ pub fn run() {
         // `navigator.clipboard.readText()` 는 WebView2 의 "클립보드 보기 허용/차단" 창을 띄운다
         // (docs/log/2026-09-28-clipboard-plugin.md). 권한은 read-text 하나만 연다(capabilities).
         .plugin(tauri_plugin_clipboard_manager::init())
+        // 앱 안 업데이트(2026-11-12) — 플러그인의 JS 명령 · 권한은 웹뷰에 열지 않는다(capabilities 에 `updater:*` 없음). 찾기 ·
+        // 받기 · 설치는 `updater.rs` 의 Tauri 명령만 거친다(원격 창은 `remote/deny.rs` 의 HOME_ONLY).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // 원격 창(`remote-*` 숨은 웹뷰)의 Channel 전송을 모두 그 원격 브라우저의 ws 로 돌린다(`remote::bridge` — 다른 창은 손대지
         // 않는다). Builder 에 가로채기는 **하나**뿐이다 — 다른 용도가 생기면 이 함수 안에서 합친다.
         .channel_interceptor(remote::channel_interceptor)
@@ -367,6 +371,13 @@ pub fn run() {
             server::client::session_server_status,
             server::client::session_server_restart,
             server::client::session_server_close_all,
+            // 앱 안 업데이트(2026-11-12) — 알리기만 하고, 받기 · 설치는 사람이 고를 때만(`updater.rs` 머리말).
+            updater::update_state,
+            updater::update_check,
+            updater::update_download,
+            updater::update_install,
+            updater::update_skip,
+            updater::update_mark_toasted,
             // 침묵한 타일 진단 — 로컬·SSH 공용 (docs/log/2026-09-05-silent-session-selfheal.md).
             session_commands::session_stats,
             // 세션 로그를 **읽는** 두 문 — 지금까지 쓰기만 하고 열 길이 없었다

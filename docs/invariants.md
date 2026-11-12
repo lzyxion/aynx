@@ -214,7 +214,7 @@
   `tailscale serve` 가 한다(앱 실행은 고정 인자 · Funnel 길 없음 · 집 PC 전용 — `remote/serve.rs` · Funnel 이 그 포트를 내보내면 열지 않는다). 신원은 **집 PC 사람이 6자리 코드를 보고 [허용] 한 기기 페어링
   토큰**(Tailscale 헤더는 참고), 원격 창은 자기 가림막을 걷고 연결된 동안만 창으로 센다(마스터 암호는 선택 — 없으면 단추). 원격 창은
   집 PC 창과 동등하되 **앱 명령의 문은 `remote/deny.rs` 하나**(표 넷 — 명령마다 정확히 하나, 시험이 `generate_handler!` 와 맞춘다):
-  집 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 · 기기 페어링 답 · 자동 승인 정책(`[automation]`) · `tailscale serve` 걸기·끄기 · 원격 접속 켜기·이름·포트(끄기·기기
+  집 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 · 기기 페어링 답 · 앱 업데이트(`update_*` — 찾기 · 받기 · 설치 · 건너뛰기) · 자동 승인 정책(`[automation]`) · `tailscale serve` 걸기·끄기 · 원격 접속 켜기·이름·포트(끄기·기기
   폐기는 원격도 된다) / 재확인 = 작업안 승인·AI 권한 올리기는 **마스터가 있으면 그 순간 다시 묻는다**(1회용 표 — 암호는 HTTP 몸으로만,
   ws·로그에 없음) / 프로듀서 채팅 명령(`producer_chat_*`)은 ALLOW(사람의 말 · 결정 · 끊기 — `decide` 는 허용 목록 두 카드에만 뜻 · 앨범 시작 `producer_album_start` · 앨범 권한 넓힘 `orchestration_album_widen` 은 REAUTH ·
   앨범 영구 삭제 `orchestration_delete_archived` · 앨범 병합 `orchestration_merge` 는 REAUTH(병합 미리 보기는 ALLOW) · 넓힘 없는 변경 `orchestration_album_set` · 기본값 읽기 · 아티스트 명령 · 이름 변경 · `producer_fork_probe` 는 ALLOW — 서버가 다시 판정) / 사이드 채팅 명령(`side_chat_*` · `side_chats_*`)도 ALLOW(권한 카드 `side_chat_decide` 포함 · 재확인 없음 → [docs/log/2026-11-01-remote-side-chat.md](log/2026-11-01-remote-side-chat.md)). 플러그인은 `capabilities/remote.json` ACL 이 막고, 그 ACL 이 연 **이벤트 emit 은 이름으로 다시 거른다**(`deny::REMOTE_EMIT`

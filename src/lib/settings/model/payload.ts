@@ -333,6 +333,8 @@ export function toPayload(s: AppSettings): AppSettings {
     dock: s.dock.layout && s.dock.layout !== DEFAULT_DOCK_LAYOUT ? { layout: s.dock.layout } : {},
     // 기본(newest)이면 적지 않는다 — 백엔드도 비면 `[plans]` 를 아예 안 쓴다.
     plans: s.plans.exec_sort && s.plans.exec_sort !== DEFAULT_EXEC_SORT ? { exec_sort: s.plans.exec_sort } : {},
+    // 업데이트 자동 확인은 끌 때만 적는다(기본 켬).
+    updates: s.updates.auto_check === false ? { auto_check: false } : {},
     messenger: messengerToPayload(s.messenger),
     // 정한 칸만 — 다 비면 백엔드가 `[remote]` 를 아예 안 쓴다.
     remote: {

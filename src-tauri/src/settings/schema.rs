@@ -74,6 +74,10 @@ pub struct AppSettings {
     /// 기본값이면 `[dock]` 과 같은 규칙으로 파일에 아예 안 쓴다.
     #[serde(default, skip_serializing_if = "PlansPrefs::is_default")]
     pub plans: PlansPrefs,
+    /// 앱 업데이트 (`[updates]`) — 자동 확인 한 칸(2026-11-12 · 끌 때만 적는다). 읽는 쪽은 프런트(`app/updater`)뿐이고 여기는 왕복만
+    /// 한다. 건너뛴 판 · 알린 판은 설정이 아니라 `updater.json`(`crate::updater`)이다. 기본값이면 `[plans]` 와 같은 규칙으로 안 쓴다.
+    #[serde(default, skip_serializing_if = "UpdatesPrefs::is_default")]
+    pub updates: UpdatesPrefs,
     /// 메신저 알림 (`[messenger]`) — Discord 웹훅으로 무엇을 언제 보낼지의 **취향만**
     /// (docs/log/2026-09-27-discord-notify.md). 웹훅 URL 자체는 여기 없다 — 비밀이라 자기 파일에
     /// 산다([`crate::messenger`]). 기본값이면 `[projects]` 와 같은 규칙으로 파일에 아예 안 쓴다.
@@ -104,6 +108,7 @@ impl Default for AppSettings {
             projects: ProjectsPrefs::default(),
             dock: DockPrefs::default(),
             plans: PlansPrefs::default(),
+            updates: UpdatesPrefs::default(),
             messenger: MessengerPrefs::default(),
             remote: RemotePrefs::default(),
         }
@@ -215,6 +220,20 @@ impl DockPrefs {
 ///
 /// `exec_sort` 는 문자열을 **보관만** 한다(`[hosts] sort` 와 같은 분담) — 후보 둘(`newest` · `oldest`)을 아는 쪽은
 /// 프런트이고, 모르는 값이면 거기서 기본(`newest` — 최근 먼저)으로 떨어진다.
+/// 앱 업데이트의 `[updates]` 섹션 — **자동 확인 한 칸**(2026-11-12). 없으면 켬(시작 · 6시간마다 찾고 알리기만 한다).
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct UpdatesPrefs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_check: Option<bool>,
+}
+
+impl UpdatesPrefs {
+    /// 기본값과 같은가 — `skip_serializing_if` 가 이걸 보고 `[updates]` 를 생략한다.
+    pub fn is_default(&self) -> bool {
+        *self == UpdatesPrefs::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct PlansPrefs {
     #[serde(default, skip_serializing_if = "Option::is_none")]

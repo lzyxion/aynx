@@ -60,6 +60,7 @@ describe("기본값 왕복", () => {
       projects: {},
       dock: {},
       plans: {},
+      updates: {},
       messenger: {},
       remote: {},
     });

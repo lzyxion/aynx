@@ -102,6 +102,8 @@ function settingsFixture(): AppSettings {
     dock: { layout: "launcher-right" },
     // 모양이 아닌 것 — 작업안 실행 목록 정렬도 프로필에 담기면 안 된다
     plans: { exec_sort: "oldest" },
+    // 모양이 아닌 것 — 업데이트 자동 확인도 프로필에 담기면 안 된다
+    updates: { auto_check: false },
     // 모양이 아닌 것 — 메신저 알림도 프로필에 담기면 안 된다
     messenger: { when: "always" },
     // 원격 관문도 모양이 아니다

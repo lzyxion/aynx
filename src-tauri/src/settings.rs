@@ -105,6 +105,9 @@
 //! [plans]               # 작업안 (채팅 독의 작업안 갈래 — 2026-11-01)
 //! exec_sort = "oldest"  # newest(기본 — 최근 먼저) | oldest — 실행 목록 정렬. 문자열을 보관만 한다
 //!
+//! [updates]             # 앱 업데이트 (2026-11-12 — `updater.rs`)
+//! auto_check = false    # 시작 · 6시간마다 새 판 확인(기본 켬 — 끌 때만 적는다 · 알리기만 하고 받기 · 설치는 사람이 고를 때만)
+//!
 //! [messenger]           # 메신저 알림 — 웹훅 채널 (docs/log/2026-09-27-discord-notify.md · 2026-09-28-messenger-channels.md). URL 은 여기 없다
 //! discord = false       # Discord 채널로 보내는가 (기본 켬 — 웹훅이 등록돼 있을 때)
 //! slack = false         # Slack 채널로 보내는가 (기본 켬 — 웹훅이 등록돼 있을 때)
@@ -169,7 +172,7 @@ use persistence::{load_at, save_at, settings_path};
 #[allow(unused_imports)]
 pub use schema::{
     AiPrefs, AppSettings, DockPrefs, FilesPrefs, HostsPrefs, MessengerPrefs, PlansPrefs, ProjectsPrefs, RemotePrefs, ShellPrefs,
-    VaultPrefs,
+    UpdatesPrefs, VaultPrefs,
 };
 #[cfg(test)]
 use appearance::default_triggers;

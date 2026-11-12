@@ -106,6 +106,7 @@
   import HostKeyDialog from "$lib/dialogs/HostKeyDialog.svelte";
   import VaultUnlockDialog from "$lib/dialogs/VaultUnlockDialog.svelte";
   import QuitDialog from "$lib/dialogs/QuitDialog.svelte";
+  import UpdateDialog from "$lib/dialogs/UpdateDialog.svelte";
   import MasterPromptDialog from "$lib/dialogs/MasterPromptDialog.svelte";
   import AppIconCropDialog from "$lib/dialogs/AppIconCropDialog.svelte";
   import TermThemeDialog from "$lib/dialogs/TermThemeDialog.svelte";
@@ -1032,6 +1033,8 @@
 <VaultUnlockDialog />
 <!-- 끝내기 모달 — 독의 끝내기 단추(2026-10-28) -->
 <QuitDialog />
+<!-- 업데이트 카드 — 상태바 업데이트 칩 · 새 판 알림이 연다(2026-11-12 · 주 창에서만 상태가 선다) -->
+<UpdateDialog />
 <!-- 마스터 암호 — 독(설정)보다 **나중에 그려지므로** 같은 z-index 에서도 위에 온다 -->
 <MasterPromptDialog />
 <!-- 사용자 앱 아이콘 자르기 — 설정 › 앱 테마 의 [＋] 가 연다. 마스터 암호 모달과 같은 까닭으로 독보다 뒤 -->
