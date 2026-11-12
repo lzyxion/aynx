@@ -159,6 +159,10 @@ export const settings = {
   //
   // ⓘ 설명(`note`)은 한두 문장만 둔다 — 긴 설명은 docs/user/settings.md 에 산다
   // (docs/log/2026-09-28-settings-note-popover.md). `note` 가 없는 줄은 ⓘ 도 없다.
+  // 일반의 소제목 넷 — 화면 · 시작과 접속 · 파일 타일 · 세션 서버(`general.server.heading`)
+  "general.display.heading": "화면",
+  "general.startup.heading": "시작과 접속",
+  "general.files.heading": "파일 타일",
   "general.language.label": "언어",
   "general.language.summary": "고르는 즉시 적용됩니다",
   "general.language.note": "자동은 OS 표시 언어를 따릅니다.",
@@ -186,13 +190,13 @@ export const settings = {
   "general.history.clear.confirm": "정말 지우기",
   "general.history.clear.done": "지웠습니다",
   "general.history.clear.failed": "접속 이력을 지우지 못했습니다: {error}",
-  "general.files_view.label": "파일 타일 기본 보기",
+  "general.files_view.label": "기본 보기",
   "general.files_view.summary": "새 파일 타일이 폴더를 보여 주는 방식",
   "general.files_view.note": "새 타일은 툴바에서 마지막으로 고른 보기로 열립니다. 여기서 고르면 다시 이 값으로 열립니다.",
   "general.files_view.option.icons": "아이콘",
   "general.files_view.option.compact": "간단히",
   "general.files_view.option.details": "자세히",
-  "general.files_refresh.label": "로컬 파일 타일 자동 새로고침",
+  "general.files_refresh.label": "로컬 폴더 자동 새로고침",
   "general.files_refresh.summary": "보이는 폴더가 바뀌면 ⟳ 없이 목록에 반영합니다",
   "general.files_refresh.note":
     "원격 파일 타일은 ⟳ 로 새로고침합니다. 네트워크 드라이브 · WSL 폴더도 ⟳ 로 읽습니다.",
@@ -256,7 +260,7 @@ export const settings = {
   "messenger.operation_pending.note": "AI 가 원격 명령 · DB 쓰기 승인을 요청하면 · 자동 승인된 것은 보내지 않음 · 승인은 앱(또는 원격 웹)에서만",
   "messenger.include_summary.label": "AI 설명 싣기",
   "messenger.include_summary.note": "끄면 앱 분석 한 줄과 대상 · 만료만 보냅니다",
-  "general.privacy.heading": "프라이버시",
+  // 무입력 자동 잠금 — 보안 섹션이 그린다(가림막이 곧 볼트 잠금 · 키 이름은 옛 `general.` 그대로)
   "general.idle.label": "무입력 자동 잠금",
   "general.idle.summary": "입력이 없으면 화면을 가리고 볼트를 잠급니다 — ",
   "general.idle.summary.term": "기본은 꺼짐",
@@ -335,7 +339,7 @@ export const settings = {
   // 안에 서므로 키를 셋으로 쪼갠다 · docs/conventions.md 의 "문자열에 HTML 을 넣지 않는다").
   // 잠금 = 가림막 하나(2026-10-21) — {combo} 는 `toggle-veil` 의 지금 조합(안 걸렸으면 "(없음)")
   "credentials.lead.veil.before": "볼트는 가림막과 함께 잠기고, 가림막을 걷으면 열립니다 — 가림막은 {combo}, 무입력 자동 잠금 시간은 ",
-  "credentials.lead.veil.link": "일반 › 프라이버시의 무입력 자동 잠금",
+  "credentials.lead.veil.link": "아래 무입력 자동 잠금",
   "credentials.lead.veil.after": "에서 정합니다.",
 
   "credentials.state.label": "상태",

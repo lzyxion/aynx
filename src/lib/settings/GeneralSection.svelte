@@ -8,7 +8,6 @@
     setLanguage,
     setAutoReconnect,
     setTrayOnClose,
-    setIdleLockMin,
     setUiScale,
     setUiFontFamily,
     setFileDefaultView,
@@ -18,7 +17,6 @@
     PROJECT_START_SCREENS,
   } from "$lib/settings.svelte.js";
   import { DEFAULT_UI_FONT_FAMILY, UI_SCALES } from "$lib/ui-scale";
-  import { comboText } from "$lib/settings/combo";
   import { optionEntries, t } from "$lib/i18n/i18n.svelte.js";
   import Toggle from "$lib/Toggle.svelte";
   import SettingRow from "$lib/settings/SettingRow.svelte";
@@ -32,7 +30,9 @@
   import { onMount } from "svelte";
 
   /**
-   * **일반** 섹션 — 앱 **전체**에 걸치는 값: 언어 · UI 크기 · 앱 글꼴 · 시작 동작 · 프라이버시.
+   * **일반** 섹션 — 앱 **전체**에 걸치는 값. 소제목 넷(2026-11-12 — 사용자 결정): **화면**(언어 · UI 크기 · 앱 글꼴) ·
+   * **시작과 접속**(SSH 자동 재접속 · 접속 이력 · 프로젝트 시작 화면 · 트레이) · **파일 타일**(기본 보기 · 자동 새로고침) ·
+   * **세션 서버**(상태 · [다시 시작] · [모든 세션 종료]).
    *
    * **UI 크기·앱 글꼴이 여기 있는 이유** (docs/log/2026-09-25-ui-scale-font.md): 둘 다 어느
    * 한 화면이 아니라 앱의 **모든 글자**에 먹고, 언어와 같은 "앱을 어떻게 읽는가" 층이다.
@@ -48,12 +48,12 @@
    * **탭(workspace)·잠금(lock) 섹션이 여기로 접혔다** (docs/log/2026-09-17-settings-general.md).
    * 둘 다 손잡이가 하나뿐이라 사이드 내비 한 칸씩을 쓰면서 정작 화면은 거의 비어 있었다.
    * 둘의 공통점이 "어느 한 화면이 아니라 앱이 켜지고 자리를 비우는 동안의 동작" 이라 일반이
-   * 제자리다. 프라이버시 쪽만 소제목으로 묶는다 — 시작 동작과 층이 다르다.
+   * 제자리였다. 잠금 쪽(무입력 자동 잠금)은 2026-11-12 에 **보안** 섹션으로 옮겼다 — 아래 볼트 절.
    *
    * **볼트 묶음은 반대로 여기서 나갔다** (2026-09-19 밤) — 보안 섹션
-   * (`CredentialsSection`)을 받았다. 프라이버시의 **무입력 자동 잠금은 남는다**: 그 칸은
-   * 화면 가림막의 시점이고(볼트가 같은 시점에 함께 잠길 뿐이다), 볼트 섹션의 머리말이 그
-   * 사실과 이 칸으로 오는 길을 적는다.
+   * (`CredentialsSection`)을 받았다. 그때 **무입력 자동 잠금은 남았지만**(화면 가림막의 시점이라), 가림막이 곧 볼트
+   * 잠금이고 걷는 것이 곧 볼트를 여는 것이라(docs/invariants.md 2절) 2026-11-12 에 그 칸도 보안 섹션 끝으로 따라갔다.
+   * 줄 id(`lock-idle`)는 그대로다.
    *
    * 값은 `settings.svelte.ts` 의 모듈 상태에 있고 여기서는 setter 만 부른다 (`SettingsModal`
    * 의 미리보기 계약: 고르는 즉시 화면에 걸리고, 파일에는 [저장]이 쓴다).
@@ -103,18 +103,6 @@
     }
   }
 
-  /**
-   * 자동 잠금 슬라이더의 후보 — **분**. `0` 은 끄기(자동 잠금 안 함), 나머지는 흔한 자리비움
-   * 시간. 간격이 고르지 않아 슬라이더는 이 목록의 인덱스를 움직인다(`ValueSlider` 의 `steps`).
-   * 파일에 손으로 적은 다른 값(1~240)은 손잡이가 가장 가까운 후보에 서고 글자는 그 값 그대로다.
-   */
-  const IDLE_MINUTES: number[] = [0, 1, 3, 5, 10, 15, 30];
-
-  /** 항목의 표시 이름 — `0` 만 다른 말이고 나머지는 숫자를 끼운 한 문장이다 */
-  function idleLabel(min: number): string {
-    return min === 0 ? t("settings.general.idle.off") : t("settings.general.idle.minutes", { min });
-  }
-
   /** UI 크기 슬라이더의 글자 (`110%`) */
   function uiScaleLabel(pct: number): string {
     return t("settings.general.ui_scale.option", { pct });
@@ -136,6 +124,13 @@
   **후보 슬라이더**(`ValueSlider.svelte` 의 `steps`)다. 옛 섹션 머리말(lead)은 섹션 일반 설명이라 걷었다.
   **지금의 상태**(접속 이력 지우기 실패)는 도움말이 아니라서 줄 밑에 그대로 보인다.
 -->
+
+<!--
+  **소제목 넷**(2026-11-12 — 사용자 결정): 화면 · 시작과 접속 · 파일 타일 · 세션 서버. 줄 id(=설정 색인 anchor)는 옮기기 전
+  그대로다 — 바뀐 것은 자리뿐이다. 옛 "프라이버시" 소제목의 무입력 자동 잠금은 **보안** 섹션으로 갔다(가림막이 곧 볼트 잠금 —
+  docs/invariants.md 2절).
+-->
+<h4 class="subhead first">{t("settings.general.display.heading")}</h4>
 
 <!--
   언어 (docs/log/2026-09-17-i18n.md).
@@ -207,6 +202,8 @@
   {/snippet}
 </SettingRow>
 
+<h4 class="subhead">{t("settings.general.startup.heading")}</h4>
+
 <!--
   시작 시 SSH 자동 재접속 (옛 **탭** 섹션 — docs/log/2026-09-03-workspace-restore.md).
 
@@ -225,7 +222,6 @@
     <Toggle id="app-auto-reconnect" checked={settings.autoReconnect} onchange={setAutoReconnect} />
   {/snippet}
 </SettingRow>
-
 
 <!-- 접속 이력 — 호스트별 마지막 접속·실패 시각 (docs/log/2026-09-23-host-history.md) -->
 <SettingRow
@@ -254,9 +250,53 @@
 {/if}
 
 <!--
+  프로젝트 시작 화면 (docs/log/2026-09-26-project-start-screen.md) — 자동(기본: 그 폴더에 지난 대화가 있으면
+  셸 대신 시작 화면) · 끔(늘 곧장 셸). 프로젝트 독·launcher·팔레트의 "열기" 전부에 걸리는 값이라 "일반" 이
+  제자리다. 고르는 즉시 걸리고(다음에 여는 것부터) [저장] 이 쓴다. 칩 이름은 짧게, 뜻은 툴팁에.
+-->
+<SettingRow
+  id="project-start-screen"
+  label={t("settings.general.project_start.label")}
+  tip={tipOf(t("settings.general.project_start.summary"), t("settings.general.project_start.note"))}
+>
+  {#snippet control()}
+    <ChoiceChips
+      id="project-start-screen"
+      label={t("settings.general.project_start.label")}
+      entries={PROJECT_START_ENTRIES}
+      icons={PROJECT_START_ICONS}
+      value={settings.projectStartScreen}
+      onpick={setProjectStartScreen}
+    />
+  {/snippet}
+</SettingRow>
+
+<!-- 창을 모두 닫으면 트레이에 남기(③-4) — GUI 의 수명 한 칸. 세션은 어느 쪽이든 세션 서버에 산다 -->
+<SettingRow
+  id="app-tray-on-close"
+  label={t("settings.general.tray.label")}
+  tip={tipOf(t("settings.general.tray.summary"), t("settings.general.tray.note"))}
+>
+  {#snippet control()}
+    <Toggle
+      id="app-tray-on-close"
+      checked={traySupported && settings.trayOnClose}
+      disabled={!traySupported}
+      onchange={setTrayOnClose}
+    />
+  {/snippet}
+</SettingRow>
+{#if !traySupported}
+  <p class="lead" role="note" data-tray-unsupported>{t("settings.general.tray.unsupported")}</p>
+{/if}
+
+<h4 class="subhead">{t("settings.general.files.heading")}</h4>
+
+<!--
   파일 타일의 기본 보기 (docs/log/2026-10-07-file-tile-dolphin.md) — 아이콘 · 간단히 · 자세히(기본). 로컬과 원격 파일
   타일이 함께 쓰는 값이라 어느 한 섹션(터미널)이 아니라 앱 전체의 "일반" 이 제자리다. 타일 툴바에서
-  따로 고른 타일(`PaneSpec.fileView`)은 이 값을 따르지 않는다. 고르는 즉시 걸리고 [저장] 이 쓴다.
+  따로 고른 타일(`PaneSpec.fileView`)은 이 값을 따르지 않는다. 고르는 즉시 걸리고 [저장] 이 쓴다. 이름은 소제목("파일 타일")
+  아래라 짧다(`기본 보기`).
 -->
 <SettingRow
   id="files-default-view"
@@ -290,77 +330,10 @@
 </SettingRow>
 
 <!--
-  프로젝트 시작 화면 (docs/log/2026-09-26-project-start-screen.md) — 자동(기본: 그 폴더에 지난 대화가 있으면
-  셸 대신 시작 화면) · 끔(늘 곧장 셸). 프로젝트 독·launcher·팔레트의 "열기" 전부에 걸리는 값이라 "일반" 이
-  제자리다. 고르는 즉시 걸리고(다음에 여는 것부터) [저장] 이 쓴다. 칩 이름은 짧게, 뜻은 툴팁에.
--->
-<SettingRow
-  id="project-start-screen"
-  label={t("settings.general.project_start.label")}
-  tip={tipOf(t("settings.general.project_start.summary"), t("settings.general.project_start.note"))}
->
-  {#snippet control()}
-    <ChoiceChips
-      id="project-start-screen"
-      label={t("settings.general.project_start.label")}
-      entries={PROJECT_START_ENTRIES}
-      icons={PROJECT_START_ICONS}
-      value={settings.projectStartScreen}
-      onpick={setProjectStartScreen}
-    />
-  {/snippet}
-</SettingRow>
-
-<!--
-  프라이버시 (옛 **잠금** 섹션).
-
-  손잡이는 "무입력 몇 분 뒤에 화면을 흐릴 것인가" 하나뿐이다. 수동으로 켜는 길
-  (`toggle-veil`)은 툴팁 안에 있다.
--->
-<h4 class="subhead">{t("settings.general.privacy.heading")}</h4>
-
-<SettingRow
-  id="lock-idle"
-  label={t("settings.general.idle.label")}
-  tip={tipOf(
-    t("settings.general.idle.summary") + t("settings.general.idle.summary.term"),
-    t("settings.general.idle.note") + comboText("toggle-veil", settings.keybindings),
-  )}
->
-  {#snippet control()}
-    <ValueSlider
-      id="lock-idle"
-      steps={IDLE_MINUTES}
-      value={settings.idleLockMin}
-      format={idleLabel}
-      onchange={setIdleLockMin}
-    />
-  {/snippet}
-</SettingRow>
-
-<!--
-  세션 서버 (③-1 — src-tauri/src/server.rs) — 창을 모두 닫을 때의 동작(트레이 — ③-4) 한 칸과, 설정값이 아닌 **지금의
-  상태**·[모든 세션 종료]·[다시 시작]. 정보·디버그 화면이 따로 없어 앱 전체의 "일반" 끝에 둔다.
+  세션 서버 (③-1 — src-tauri/src/server.rs) — 설정값이 아닌 **지금의 상태**·[모든 세션 종료]·[다시 시작]. 정보·디버그 화면이
+  따로 없어 앱 전체의 "일반" 끝에 둔다. (트레이 칸은 "시작과 접속" 으로 갔다 — 창을 닫을 때 앱이 어떻게 남는가의 일이다.)
 -->
 <h4 class="subhead">{t("settings.general.server.heading")}</h4>
-<!-- 창을 모두 닫으면 트레이에 남기(③-4) — GUI 의 수명 한 칸. 세션은 어느 쪽이든 세션 서버에 산다 -->
-<SettingRow
-  id="app-tray-on-close"
-  label={t("settings.general.tray.label")}
-  tip={tipOf(t("settings.general.tray.summary"), t("settings.general.tray.note"))}
->
-  {#snippet control()}
-    <Toggle
-      id="app-tray-on-close"
-      checked={traySupported && settings.trayOnClose}
-      disabled={!traySupported}
-      onchange={setTrayOnClose}
-    />
-  {/snippet}
-</SettingRow>
-{#if !traySupported}
-  <p class="lead" role="note" data-tray-unsupported>{t("settings.general.tray.unsupported")}</p>
-{/if}
 <SessionServerRow />
 
 <!-- 앱 업데이트(2026-11-12) — 일반의 끝 소제목(새 섹션 없음): 자동 확인 · 판 · 건너뛴 판 · 출처 각주. 몸은 `UpdatesRows` -->

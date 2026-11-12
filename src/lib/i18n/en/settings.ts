@@ -160,7 +160,11 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "row.note": "About {label}",
   "info.more": "Show details",
 
-  // ── General (app-wide values — language, startup, privacy) ────────────────
+  // ── General (app-wide values — display, startup, file tiles, session server) ────────────────
+  // The four General subheadings — Display · Startup & connections · File tiles · Session server (`general.server.heading`)
+  "general.display.heading": "Display",
+  "general.startup.heading": "Startup & connections",
+  "general.files.heading": "File tiles",
   "general.language.label": "Language",
   "general.language.summary": "Applies as soon as you pick it",
   "general.language.note": "Auto follows the OS display language.",
@@ -187,13 +191,13 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "general.history.clear.confirm": "Really clear",
   "general.history.clear.done": "Cleared",
   "general.history.clear.failed": "Could not clear the connection history: {error}",
-  "general.files_view.label": "File tile default view",
+  "general.files_view.label": "Default view",
   "general.files_view.summary": "How new file tiles show folders",
   "general.files_view.note": "New tiles open in the view you last picked from a toolbar. Choosing here makes them open in this view again.",
   "general.files_view.option.icons": "Icons",
   "general.files_view.option.compact": "Compact",
   "general.files_view.option.details": "Details",
-  "general.files_refresh.label": "Auto-refresh local file tiles",
+  "general.files_refresh.label": "Auto-refresh local folders",
   "general.files_refresh.summary": "Update the list when a folder on screen changes, without pressing ⟳",
   "general.files_refresh.note": "Remote file tiles refresh with ⟳. Network drives and WSL folders also need ⟳.",
   "general.project_start.label": "Project start screen",
@@ -253,7 +257,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "messenger.operation_pending.note": "When an AI asks to approve a remote command or a database write · auto-approved plans are not sent · approve only in the app (or its remote web)",
   "messenger.include_summary.label": "Include the AI summary",
   "messenger.include_summary.note": "When off, sends only the app's analysis line, targets and expiry",
-  "general.privacy.heading": "Privacy",
+  // Idle auto-lock — drawn by Settings › Security (the keys keep their old `general.` names)
   "general.idle.label": "Auto-lock when idle",
   "general.idle.summary": "Covers the screen and locks the vault when there is no input — ",
   "general.idle.summary.term": "off by default",
@@ -319,7 +323,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "credentials.lead":
     "Vault, master password, stored credentials — keep passwords and key passphrases in this app and the next connection stops asking. These rows do not wait for [Save]; they apply right away.",
   "credentials.lead.veil.before": "The vault locks with the privacy veil and opens when you lift it — the veil is {combo}, and the idle auto-lock time is set by ",
-  "credentials.lead.veil.link": "General › Privacy › Idle auto-lock",
+  "credentials.lead.veil.link": "Auto-lock when idle below",
   "credentials.lead.veil.after": ".",
 
   "credentials.state.label": "Status",

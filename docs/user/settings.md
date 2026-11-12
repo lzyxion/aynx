@@ -13,6 +13,8 @@ description (rows that a one-line summary covers have no ⓘ). Circumstances, ex
 
 ## General
 
+The rows are grouped under four headings: **Display** · **Startup & connections** · **File tiles** · **Session server**.
+
 <a id="app-language"></a>
 ### Language
 
@@ -60,17 +62,6 @@ Stores each host's last connection time and last failure time on this PC only (`
 - No passwords, key paths or commands are stored.
 - Headless connections (AI permission) and quick connections are not recorded.
 
-<a id="files-default-view"></a>
-### File tile default view
-
-How newly opened file tiles (both This PC and remote) show folders. The default is **Details**.
-
-- **Icons** is a grid of large pictures (size is set with the slider in the tile's status line or `Ctrl+wheel`).
-- **Compact** fills from top to bottom, and columns grow sideways.
-- **Details** is a list with size, date and permission columns. Folders expand in place.
-- A tile whose view you changed with the toolbar's view buttons (`Ctrl+1/2/3`) remembers its own view. A new tile opens in the view last picked from a toolbar on this device, and uses this value if there is none. Picking a value here clears the last-picked view, so new tiles open in this value again.
-- The old values "tree" and "navigate" are read as **Details** (the old strings in settings files and layout files still load).
-
 <a id="project-start-screen"></a>
 ### Project start screen
 
@@ -86,17 +77,6 @@ Decides whether opening a project or worktree shows a **start screen** first ins
 - Remote projects and existing remote worktrees behave the same way (conversations are read through an SSH tile attached to that host). When you **create** a new remote worktree,
   the first input is what creates it, so an SSH tile appears immediately. See the [projects guide](projects.md#project-start) for details.
 
-<a id="lock-idle"></a>
-### Auto-lock when idle
-
-Brings down the **privacy veil** when there has been no key press, click or scroll for the set time. **Off by default.**
-
-- The veil blurs the screen so terminal output cannot be read over your shoulder while you are away. Sessions keep running behind it.
-- When the veil comes down, **the vault locks with it.** Lifting the veil is what opens the vault: if you set a master password
-  you type it, and if you did not, you press Enter once.
-- To cover the screen right now, press the veil shortcut (default `Ctrl+Shift+B`).
-- A short time covers the screen as soon as you leave, but it can also blur while you are only reading for a moment. Pick a time that fits how you step away.
-
 <a id="app-tray-on-close"></a>
 ### Stay in the tray when all windows close
 
@@ -111,6 +91,17 @@ local shells, SSH and the AI CLIs inside them keep running in the session server
 - Pre-set policy **auto-approval** is run by the session server even while the app is closed. Runs that finished while the app was closed are reported the next time you start the app in one line:
   "N task plan run(s) finished while the app was closed".
 - In environments without a tray, this row is dimmed and closing the window quits the app.
+
+<a id="files-default-view"></a>
+### File tile default view
+
+How newly opened file tiles (both This PC and remote) show folders. The default is **Details**.
+
+- **Icons** is a grid of large pictures (size is set with the slider in the tile's status line or `Ctrl+wheel`).
+- **Compact** fills from top to bottom, and columns grow sideways.
+- **Details** is a list with size, date and permission columns. Folders expand in place.
+- A tile whose view you changed with the toolbar's view buttons (`Ctrl+1/2/3`) remembers its own view. A new tile opens in the view last picked from a toolbar on this device, and uses this value if there is none. Picking a value here clears the last-picked view, so new tiles open in this value again.
+- The old values "tree" and "navigate" are read as **Details** (the old strings in settings files and layout files still load).
 
 ---
 
@@ -970,6 +961,19 @@ The list of hosts given AI permission (`~/.aynx/delegation.toml`). Each row show
   remote tile's header. See [AI permission of a host](hosts.md#host-ai).
 - Permission applies **to the tiles a person opens and to headless sessions together** for that host.
 - A row with an alias not in `~/.ssh/config` is marked "Not in config — needs tidying". It will never connect, so delete it.
+
+<a id="lock-idle"></a>
+### Auto-lock when idle
+
+At the end of the Security section (it used to be under General › Privacy).
+
+Brings down the **privacy veil** when there has been no key press, click or scroll for the set time. **Off by default.**
+
+- The veil blurs the screen so terminal output cannot be read over your shoulder while you are away. Sessions keep running behind it.
+- When the veil comes down, **the vault locks with it.** Lifting the veil is what opens the vault: if you set a master password
+  you type it, and if you did not, you press Enter once.
+- To cover the screen right now, press the veil shortcut (default `Ctrl+Shift+B`).
+- A short time covers the screen as soon as you leave, but it can also blur while you are only reading for a moment. Pick a time that fits how you step away.
 
 <a id="remote"></a>
 ## Remote access

@@ -37,7 +37,7 @@ export const SETTINGS_SECTIONS = [
   { id: "theme", labelKey: "settings.nav.theme", icon: "palette" },
   // 아바타(2026-10-31 — docs/log/2026-10-31-avatars.md 4절)는 왼쪽 메뉴 칸이 아니라 **테마 안의 하위 화면**이다 — 요약의
   // "아바타" 줄([설정 ›])이 연다. 색인 줄은 아래 테마 묶음에 있고 `AppThemeSection.expandForAnchor` 가 그 화면을 연다.
-  // 일반 — 여기 있는 값은 어느 한 화면의 것이 아니라 앱 전부에 걸린다(언어·시작 동작·프라이버시 —
+  // 일반 — 여기 있는 값은 어느 한 화면의 것이 아니라 앱 전부에 걸린다(화면·시작과 접속·파일 타일·세션 서버 —
   // docs/log/2026-09-17-i18n.md). **옛 `workspace`(탭)·`lock`(잠금) 칸이 여기로 접혔다**
   // (docs/log/2026-09-17-settings-general.md) — 손잡이가 하나뿐인 섹션이 내비 한 칸씩을
   // 쓰면서 정작 화면은 거의 비어 있었다. 바깥에서 그 id 로 들어오던 딥링크는 없다.
@@ -158,17 +158,17 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   row("theme", "settings.avatars.slot.claude", "avatar-claude", "settings.theme.avatars.label"),
   row("theme", "settings.avatars.slot.codex", "avatar-codex", "settings.theme.avatars.label"),
 
-  // 일반
+  // 일반 — 화면 · 시작과 접속 · 파일 타일 · 세션 서버 순(2026-11-12). 소제목은 이름이 홀로 서지 못하는 파일 타일 줄에만 단다
+  // ("기본 보기"). 무입력 자동 잠금(`lock-idle`)은 보안으로 갔다 — 아래 보안 묶음.
   row("general", "settings.general.language.label", "app-language"),
   row("general", "settings.general.ui_scale.label", "app-ui-scale"),
   row("general", "settings.general.ui_font.label", "app-ui-font"),
   row("general", "settings.general.reconnect.label", "app-auto-reconnect"),
   row("general", "settings.general.history.label", "app-host-history"),
-  row("general", "settings.general.files_view.label", "files-default-view"),
-  row("general", "settings.general.files_refresh.label", "files-auto-refresh"),
   row("general", "settings.general.project_start.label", "project-start-screen"),
-  row("general", "settings.general.idle.label", "lock-idle", "settings.general.privacy.heading"),
-  row("general", "settings.general.tray.label", "app-tray-on-close", "settings.general.server.heading"),
+  row("general", "settings.general.tray.label", "app-tray-on-close"),
+  row("general", "settings.general.files_view.label", "files-default-view", "settings.general.files.heading"),
+  row("general", "settings.general.files_refresh.label", "files-auto-refresh", "settings.general.files.heading"),
 
   // 터미널
   row("terminal", "settings.terminal.shell.label", "default-shell"),
@@ -253,6 +253,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   row("credentials", "settings.credentials.items.label", "vault-items"),
   row("credentials", "settings.credentials.delegation.label", "delegation-targets"),
   row("credentials", "settings.credentials.dbai.label", "db-ai-targets"),
+  // 무입력 자동 잠금 — 옛 일반 › 프라이버시(2026-11-12 이 섹션 끝으로 · anchor 그대로). 가림막이 곧 볼트 잠금이다
+  row("credentials", "settings.general.idle.label", "lock-idle"),
 
   // 원격 접속
   row("remote", "settings.remote.enabled.label", "remote-enabled"),

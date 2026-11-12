@@ -1,11 +1,13 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { settings, settingsNav } from "$lib/settings.svelte.js";
+  import { settings, setIdleLockMin } from "$lib/settings.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { isRemote } from "$lib/ipc";
   import UiIcon from "$lib/UiIcon.svelte";
   import TipName, { tipOf } from "$lib/settings/TipName.svelte";
   import StateRow from "$lib/settings/StateRow.svelte";
+  import SettingRow from "$lib/settings/SettingRow.svelte";
+  import ValueSlider from "$lib/settings/ValueSlider.svelte";
   import { comboText } from "$lib/settings/combo";
   import SubViewStack from "$lib/settings/SubViewStack.svelte";
   import VaultItemsView from "$lib/settings/VaultItemsView.svelte";
@@ -66,10 +68,10 @@
    * 관문 뒤로 미뤘다가 통과하면 그 자리로 간다. 이것은 **자리를 비운 사이 남이 앉은 경우**를 위한 확인이지 같은 계정의 프로세스를
    * 막는 경계가 아니다(볼트 위협 모델 그대로).
    *
-   * ## 여기 있는 손잡이는 [저장]·[취소] 바깥이다
+   * ## 여기 있는 손잡이는 [저장]·[취소] 바깥이다 (끝의 무입력 자동 잠금 한 칸만 빼고)
    *
    * 설정 화면의 다른 값은 미리보기 계약을 탄다(고르면 화면에 걸리고 파일에는 [저장]이 쓴다).
-   * 이 섹션은 통째로 예외다 — 마스터 걸기·항목 지우기는 누르는 즉시 디스크를 바꾸고
+   * 이 섹션은 그 예외다 — 무입력 자동 잠금(`settings.toml` 의 값이라 계약을 그대로 탄다)을 빼면, 마스터 걸기·항목 지우기는 누르는 즉시 디스크를 바꾸고
    * 되돌릴 [취소]가 없다(일반의 "복원 정보 지우기" 와 같은 부류). 상태 줄의 툴팁이 그 사실을
    * 말하고, 배선은 전부 `app/vault.svelte.ts` 에 있다.
    *
@@ -78,8 +80,9 @@
    * 볼트는 프라이버시 가림막과 같은 시점에 잠기고, 가림막을 걷는 것이 곧 볼트를 여는 것이다(docs/log/2026-09-19-vault.md 의
    * "가림막과 함께 잠긴다"). 그래서 사용자에게 잠금은 **가림막 하나**다 — 예전 상태 줄의 [잠그기] · [잠금 해제…](화면은 열어
    * 둔 채 볼트만 잠그는 길)는 걷었다. 무인 접속만 막고 싶으면 그 손잡이는 볼트가 아니라 호스트 AI 권한과 '볼트의 키 암호구
-   * 사용'(호스트 폼의 AI 칸)이다. 잠그는 시점을 정하는 칸은 **일반 › 프라이버시의 무입력 자동 잠금** 하나뿐이고, 머리말이
-   * 가림막 단축키(`toggle-veil` 의 지금 조합)와 함께 그리로 가는 길을 준다. 상태 줄은 단추 없이 **글자 안내**로 남는다 —
+   * 사용'(호스트 폼의 AI 칸)이다. 잠그는 시점을 정하는 칸은 **무입력 자동 잠금** 하나뿐이고, 2026-11-12 부터 이 섹션의 끝에
+   * 선다(옛 자리 = 일반 › 프라이버시 · 줄 id `lock-idle` 그대로 — 가림막이 곧 볼트 잠금이라 docs/invariants.md 2절). 머리말이
+   * 가림막 단축키(`toggle-veil` 의 지금 조합)와 함께 그 줄로 내려가는 길을 준다. 상태 줄은 단추 없이 **글자 안내**로 남는다 —
    * 볼트의 등급(마스터 없음 = 이 PC 의 내 계정)은 화면이 늘 밝혀야 하는 사실이다.
    */
 
@@ -244,14 +247,26 @@
   });
 
   /**
-   * 머리말의 **일반 › 프라이버시로 가는 길** — 섹션 하나를 건너뛰는 링크다.
-   *
-   * 배관은 바깥에서 들어오는 딥링크와 **같은 게시판 한 칸**이다(`settingsNav.want` —
-   * 치트시트의 "설정에서 바꾸기" 가 쓰는 것). 설정 화면은 이미 떠 있으므로 여는 일은 없고,
-   * `SettingsModal` 의 `$effect` 가 그 칸을 읽어 섹션을 갈아 끼운 뒤 곧바로 비운다.
+   * 머리말의 **무입력 자동 잠금으로 가는 길** — 같은 섹션 끝의 그 줄로 내려가 포커스를 준다(예전에는 일반 › 프라이버시로
+   * 섹션을 건너뛰는 링크였다 — 2026-11-12 그 칸이 이 섹션으로 왔다). 머리말은 관문 뒤에만 그려지니 줄은 늘 있다.
    */
-  function goPrivacy(): void {
-    settingsNav.want = "general";
+  function goIdleLock(): void {
+    const el = panel()?.querySelector<HTMLElement>("#lock-idle");
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.focus({ preventScroll: true });
+  }
+
+  /**
+   * 무입력 자동 잠금 슬라이더의 후보 — **분**. `0` 은 끄기(자동 잠금 안 함), 나머지는 흔한 자리비움
+   * 시간. 간격이 고르지 않아 슬라이더는 이 목록의 인덱스를 움직인다(`ValueSlider` 의 `steps`).
+   * 파일에 손으로 적은 다른 값(1~240)은 손잡이가 가장 가까운 후보에 서고 글자는 그 값 그대로다.
+   */
+  const IDLE_MINUTES: number[] = [0, 1, 3, 5, 10, 15, 30];
+
+  /** 항목의 표시 이름 — `0` 만 다른 말이고 나머지는 숫자를 끼운 한 문장이다 */
+  function idleLabel(min: number): string {
+    return min === 0 ? t("settings.general.idle.off") : t("settings.general.idle.minutes", { min });
   }
 
   /**
@@ -306,7 +321,7 @@
   <DbAiTargetsView onback={() => void closeSub(true)} />
 {:else}
 <p class="lead">
-  {t("settings.credentials.lead.veil.before", { combo: comboText("toggle-veil", settings.keybindings) })}<button type="button" class="link" onclick={goPrivacy}
+  {t("settings.credentials.lead.veil.before", { combo: comboText("toggle-veil", settings.keybindings) })}<button type="button" class="link" onclick={goIdleLock}
     >{t("settings.credentials.lead.veil.link")}</button
   >{t("settings.credentials.lead.veil.after")}
 </p>
@@ -479,6 +494,31 @@
     </button>
   </div>
 </div>
+
+<!--
+  무입력 자동 잠금 (옛 일반 › 프라이버시 · 그 앞은 **잠금** 섹션 — 2026-11-12 이 섹션 끝으로 왔다). 손잡이는 "무입력 몇 분 뒤에
+  가림막을 내릴 것인가" 하나이고, 가림막이 곧 볼트 잠금이다(docs/invariants.md 2절). 값은 다른 섹션처럼 미리보기 계약을 탄다
+  (고르면 걸리고 파일에는 [저장]이 쓴다) — 이 섹션의 "[저장] 바깥" 손잡이들과 다르다. 수동으로 내리는 길(`toggle-veil`)은 툴팁 안.
+  줄 id `lock-idle` 은 옛 자리 그대로(설정 색인 anchor).
+-->
+<SettingRow
+  id="lock-idle"
+  label={t("settings.general.idle.label")}
+  tip={tipOf(
+    t("settings.general.idle.summary") + t("settings.general.idle.summary.term"),
+    t("settings.general.idle.note") + comboText("toggle-veil", settings.keybindings),
+  )}
+>
+  {#snippet control()}
+    <ValueSlider
+      id="lock-idle"
+      steps={IDLE_MINUTES}
+      value={settings.idleLockMin}
+      format={idleLabel}
+      onchange={setIdleLockMin}
+    />
+  {/snippet}
+</SettingRow>
 {/if}
 </SubViewStack>
 {/if}

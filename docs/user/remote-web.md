@@ -55,7 +55,7 @@ The default device name is **the device name known to Tailscale · browser** (`M
 The name is only for display and is not used to establish identity (what counts is the [Allow] of the person who compared the two codes). You can change it later.
 
 The status bar of a remote window always shows **Remote · <device name>** — clicking it locks this remote window (to the unlock side; the main PC is unaffected).
-It locks by itself after the idle auto-lock time (Settings › General › Privacy, 15 minutes if unset) or the 12-hour upper limit.
+It locks by itself after the idle auto-lock time (Settings › Security, 15 minutes if unset) or the 12-hour upper limit.
 
 ## What the main PC shows
 

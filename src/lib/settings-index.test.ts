@@ -176,6 +176,14 @@ describe("설정 색인", () => {
     expect(sectionIds.has("avatars")).toBe(false);
     const claudeAvatar = SETTINGS_INDEX.find((e) => e.anchor === "avatar-claude")!;
     expect(settingPath(claudeAvatar, tr)).toEqual(["테마", "아바타", "Claude Code"]);
+    // 일반의 소제목(2026-11-12) — 파일 타일 줄은 짧은 이름이라 소제목을 단다 · 무입력 자동 잠금은 보안에 있다
+    const fileView = SETTINGS_INDEX.find((e) => e.anchor === "files-default-view")!;
+    expect(settingPath(fileView, tr)).toEqual(["일반", "파일 타일", "기본 보기"]);
+    const tray = SETTINGS_INDEX.find((e) => e.anchor === "app-tray-on-close")!;
+    expect(settingPath(tray, tr)).toEqual(["일반", "창을 모두 닫으면 트레이에 남기"]);
+    const idle = SETTINGS_INDEX.filter((e) => e.anchor === "lock-idle");
+    expect(idle.map((e) => e.section)).toEqual(["credentials"]);
+    expect(settingPath(idle[0], tr)).toEqual(["보안", "무입력 자동 잠금"]);
     const keys = SETTINGS_INDEX.find((e) => e.section === "keys" && !e.anchor)!;
     expect(settingPath(keys, tr)).toEqual(["단축키"]);
   });
