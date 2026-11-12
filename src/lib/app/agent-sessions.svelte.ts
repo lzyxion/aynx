@@ -15,6 +15,7 @@ import {
   renameBlock,
   parseConversationLinks,
   registeredCwds,
+  resumeAutorunFor,
   resumedConversationOf,
   scopeLabelOf,
   switchesConversation,
@@ -418,7 +419,23 @@ function setLink(paneId: string, agent: string, id: string, pending: boolean, la
   const l = { agent, id: id.toLowerCase(), pending, launch };
   links[paneId] = l;
   persistLink(paneId, l);
+  if (!pending) persistResumeAutorun(paneId, agent, id);
   scheduleLinksRefresh();
+}
+
+/**
+ * 로컬 AI 타일의 연결이 **확정**됐다 — autorun 을 그 대화의 재개 줄로 고쳐 적는다(2026-11-12 — 앱 · 세션 서버가 다시 떠 새 셸이
+ * autorun 을 다시 돌리면 마지막 대화로). 줄은 순수 층 [`resumeAutorunFor`] 가 고정 낱말 · UUID 모양 id · 그 autorun 의 추가 인자로만
+ * 짓는다(AI 문자열 → PTY 길 없음 — 전문 4). 에이전트 실행 줄이 아니면 손대지 않는다. 원격 타일은 복원에서 autorun 을 다시 돌리지 않아
+ * 하지 않고, 원격 창(폰)은 집 PC 의 명세를 고치지 않는다. 창 이관으로 넘어온 타일은 저장되는 재시작 명세(`restart`)가 그 자리다.
+ */
+function persistResumeAutorun(paneId: string, agent: string, id: string): void {
+  if (isRemote) return;
+  const p = findPaneAnywhere(paneId);
+  if (!p || p.kind !== "local") return;
+  const holder = p.restart ?? p;
+  const next = resumeAutorunFor(holder.autorun, agent, id);
+  if (next !== null) holder.autorun = next;
 }
 
 function dropLink(paneId: string): void {
@@ -440,6 +457,8 @@ function dropLink(paneId: string): void {
 export function seedAgentLink(pane: PaneSpec): void {
   if (pane.id in links || !pane.agentLink) return;
   links[pane.id] = { agent: pane.agentLink.agent, id: pane.agentLink.id.toLowerCase(), pending: false, launch: false };
+  // 명세 사본도 확정된 연결이다 — 이 기능 전에 저장된 타일(autorun `claude` + 연결 사본)도 새 셸이면 그 대화로 뜬다
+  persistResumeAutorun(pane.id, pane.agentLink.agent, pane.agentLink.id);
 }
 
 /**

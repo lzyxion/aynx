@@ -20,6 +20,8 @@ import {
   renameBlock,
   renameDraft,
   resumedConversationOf,
+  resumeAutorunFor,
+  freshLaunchOf,
   sanitizeAgentLink,
   scopeLabelForPath,
   scopeLabelOf,
@@ -449,5 +451,67 @@ describe("삭제", () => {
     expect(deleteBlock({ open: false, sideChat: false, elsewhere: true, forks: 3 })).toBe("elsewhere");
     expect(deleteBlock({ open: false, sideChat: false, elsewhere: false, forks: 1 })).toBe("forks");
     expect(deleteBlock({ open: false, sideChat: false, elsewhere: false, forks: 0 })).toBeNull();
+  });
+});
+
+describe("로컬 AI 타일 autorun → 마지막 대화의 재개 줄 (resumeAutorunFor · 2026-11-12)", () => {
+  const U = "11111111-2222-4333-8444-000000000001";
+  const W = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  it("새로 뜬 타일 · 추가 인자는 그대로 · id 는 소문자", () => {
+    expect(resumeAutorunFor("claude", "claude", U)).toBe(`claude --resume ${U}`);
+    expect(resumeAutorunFor("claude --model opus", "claude", U.toUpperCase())).toBe(`claude --resume ${U} --model opus`);
+    expect(resumeAutorunFor("codex", "codex", U)).toBe(`codex resume ${U}`);
+    expect(resumeAutorunFor("codex -m o3 --search", "codex", U)).toBe(`codex resume -m o3 --search ${U}`);
+  });
+  it("대화가 바뀌면 새 id 로 · 같으면 바꿀 것 없음", () => {
+    expect(resumeAutorunFor(`claude --resume ${U} --model opus`, "claude", W)).toBe(`claude --resume ${W} --model opus`);
+    expect(resumeAutorunFor(`codex resume -m o3 ${U}`, "codex", W)).toBe(`codex resume -m o3 ${W}`);
+    expect(resumeAutorunFor(`claude --resume ${U}`, "claude", U)).toBeNull();
+    expect(resumeAutorunFor(`codex resume ${U}`, "codex", U.toUpperCase())).toBeNull();
+  });
+  it("포크 줄은 갈라진 제 id 의 재개로 (--fork-session · codex fork 는 남지 않는다)", () => {
+    expect(resumeAutorunFor(`claude --resume ${U} --fork-session --model opus`, "claude", W)).toBe(`claude --resume ${W} --model opus`);
+    expect(resumeAutorunFor(`codex fork ${U}`, "codex", W)).toBe(`codex resume ${W}`);
+  });
+  it("UUID 모양이 아닌 id 는 autorun 을 바꾸지 않는다 (AI 문자열 → PTY 길 없음)", () => {
+    for (const id of ["x; rm -rf /", `${U}; rm -rf /`, `${U} --dangerously-skip-permissions`, "not-a-uuid", "", `$(${U})`, `${U}\nrm`]) {
+      expect(resumeAutorunFor("claude", "claude", id)).toBeNull();
+      expect(resumeAutorunFor(`claude --resume ${U}`, "claude", id)).toBeNull();
+      expect(resumeAutorunFor("codex", "codex", id)).toBeNull();
+    }
+  });
+  it("에이전트 실행 줄이 아니면 손대지 않는다 — 다른 명령 · 다른 에이전트 · 셸 글자 · 다른 대화를 고르는 옵션", () => {
+    for (const [autorun, agent] of [
+      ["npm run dev", "claude"],
+      ["claude", "codex"],
+      ["codex", "claude"],
+      ["gemini", "gemini"],
+      ["claude; rm -rf /", "claude"],
+      ["claude && echo hi", "claude"],
+      ["claude --continue", "claude"],
+      ["claude --session-id x", "claude"],
+      ["codex --last", "codex"],
+      ["codex --remote ws://x", "codex"],
+      ["codex fix-the-bug", "codex"],
+      ["npx claude", "claude"],
+      ["", "claude"],
+    ] as const) {
+      expect(resumeAutorunFor(autorun, agent, U)).toBeNull();
+    }
+    expect(resumeAutorunFor(undefined, "claude", U)).toBeNull();
+    expect(resumeAutorunFor(null, "claude", U)).toBeNull();
+  });
+  it("지은 줄은 같은 대화로 읽힌다 (resumedConversationOf)", () => {
+    for (const autorun of ["claude", "claude --model opus", "codex", "codex -m o3"]) {
+      const agent = autorun.split(" ")[0];
+      expect(resumedConversationOf(resumeAutorunFor(autorun, agent, U))).toEqual({ agent, id: U });
+    }
+  });
+  it("freshLaunchOf — 분할 복제는 재개 줄을 새 대화의 실행 줄로 · 그 밖은 그대로", () => {
+    expect(freshLaunchOf(`claude --resume ${U} --model opus`)).toBe("claude --model opus");
+    expect(freshLaunchOf(`codex resume -m o3 ${U}`)).toBe("codex -m o3");
+    expect(freshLaunchOf("claude --model opus")).toBe("claude --model opus");
+    expect(freshLaunchOf(`claude --resume ${U} --fork-session`)).toBe(`claude --resume ${U} --fork-session`);
+    expect(freshLaunchOf("npm run dev")).toBe("npm run dev");
   });
 });

@@ -467,6 +467,11 @@ export interface OpenOptions {
    */
   onExit?: (reason: SessionExitReason) => void;
   /**
+   * **로컬 전용 · 이 열기 한 번의 시작 폴더** — 있으면 `PaneSpec.cwd` 대신 이 폴더에서 셸을 띄운다. 붙을 세션이 없어 새 셸을 여는
+   * 첫 열기가 타일의 마지막 폴더(`PaneSpec.lastCwd` · `session/last-cwd`)를 싣는다.
+   */
+  localCwd?: string;
+  /**
    * **SSH 전용 · 첫 접속에만** — 원격 프로젝트 타일의 시작 폴더와 시작 명령
    * (docs/log/2026-09-24-projects.md). 실어 보내는 것은 `Terminal.svelte` 의 첫 열기 하나이고
    * (재연결은 싣지 않는다 — 1회용), 한 줄로 조립하는 것은 Rust 다(`ssh::project_start_line`).

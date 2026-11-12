@@ -760,6 +760,33 @@ describe("restoreNode — SSH 는 연결 대기로 뜬다", () => {
     expect(clonePane(ai).agentLink).toBeUndefined();
   });
 
+  it("셸 타일의 마지막 폴더(lastCwd)가 저장·복원을 넘는다 · cwd 와 따로 · 복제는 떨군다", () => {
+    const shell = { ...newLocalPane("pwsh"), cwd: "C:/proj", lastCwd: "C:/proj/src" };
+    const saved = saveNode(leafOf(shell));
+    expect(saved).toMatchObject({ cwd: "C:/proj", lastCwd: "C:/proj/src" });
+    const back = listPanes(restoreNode(parseNode(JSON.parse(JSON.stringify(saved)))!))[0];
+    expect(back.cwd).toBe("C:/proj");
+    expect(back.lastCwd).toBe("C:/proj/src");
+    // 옛 파일(칸 없음) · 빈 값 = 없음
+    expect(listPanes(restoreNode({ kind: "local" }))[0].lastCwd).toBeUndefined();
+    expect(parseNode({ kind: "local", lastCwd: "  " })).toEqual({ kind: "local" });
+    // SSH 잎에는 싣지 않는다(원격 복원은 첫 입력을 싣지 않는다)
+    expect(saveNode(leafOf({ ...newSshPane("dev-01"), lastCwd: "/home/me" }))).not.toHaveProperty("lastCwd");
+    const copy = clonePane(shell);
+    expect(copy.lastCwd).toBeUndefined();
+    expect(copy.cwd).toBe("C:/proj");
+  });
+
+  it("분할 복제는 재개 줄 autorun 을 새 대화의 실행 줄로 받는다", () => {
+    const id = "0123abcd-0000-4000-8000-000000000001";
+    expect(clonePane(newAiPane(`claude --resume ${id} --model opus`)).autorun).toBe("claude --model opus");
+    expect(clonePane(newAiPane("claude")).autorun).toBe("claude");
+    const torn = { ...newLocalPane(), restart: { autorun: `codex resume ${id}` } };
+    const copy = clonePane(torn);
+    expect(copy.restart).toEqual({ autorun: "codex" });
+    expect(torn.restart.autorun).toBe(`codex resume ${id}`);
+  });
+
   it("localfs 는 저장해 둔 폴더에서 시작한다", () => {
     expect(listPanes(restoreNode({ kind: "localfs", path: "C:/work" }))[0].path).toBe("C:/work");
     expect(listPanes(restoreNode({ kind: "localfs" }))[0].path).toBeUndefined();

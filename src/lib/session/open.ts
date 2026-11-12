@@ -563,7 +563,7 @@ export async function openSession(pane: PaneSpec, opts: OpenOptions): Promise<Se
       opts,
       pane.shell,
       pane.injectMcpToken,
-      pane.cwd,
+      opts.localCwd ?? pane.cwd,
       sessionStreamOf(pane),
       pane.injectMcpToken === true && isCodexLine(pane.autorun),
     ),

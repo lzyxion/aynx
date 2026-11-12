@@ -19,3 +19,4 @@ export * from "./session/drag";
 export * from "./session/errors";
 export * from "./session/open";
 export * from "./session/ssh-gates";
+export * from "./session/last-cwd";

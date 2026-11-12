@@ -8,6 +8,7 @@ import { quickConnectLabel, type QuickConnectTarget as AdhocTarget } from "$lib/
 import { canonQueryTabs, hasSession, storedRowLimit, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
 import { listPanes } from "./tree";
 import { parseOrchMark } from "$lib/orchestration/orch-tab";
+import { freshLaunchOf } from "$lib/agent-sessions";
 
 let tabSeq = 0;
 let paneSeq = 0;
@@ -568,6 +569,12 @@ export function clonePane(src: PaneSpec): PaneSpec {
   delete copy.docPreview;
   // 대화 연결 사본도 떨군다 — 복제본은 새 셸 · 새 대화다(`agentLink` 머리말).
   delete copy.agentLink;
+  // 같은 이유로 재개 줄의 autorun 은 새 대화로 뜨는 실행 줄로 — AI 타일의 autorun 은 마지막 대화의 재개 줄로 바뀌어 산다
+  // (`resumeAutorunFor`). 물려주면 두 타일이 한 대화를 이어 쓴다. 창 이관 재시작 명세(`restart`)도 새 객체로(나눠 들지 않게).
+  if (copy.autorun) copy.autorun = freshLaunchOf(copy.autorun);
+  if (copy.restart) copy.restart = { ...copy.restart, ...(copy.restart.autorun ? { autorun: freshLaunchOf(copy.restart.autorun) } : {}) };
+  // 마지막 폴더도 떨군다 — 복제본은 시작 폴더 규칙(`cwd`)으로 선다(`lastCwd` 머리말).
+  delete copy.lastCwd;
   // 쿼리 타일의 주소는 **새 객체로** — 같은 객체를 두 타일이 나눠 들면 한쪽의 초안이 다른 쪽에 적힌다. 연결은 새로 연다
   // (영속 키 `tileKey` 를 위에서 떨궜으니 세션 서버의 DB 연결 표에서도 다른 열쇠다).
   if (copy.query) copy.query = { ...copy.query };

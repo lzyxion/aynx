@@ -666,6 +666,13 @@ export interface PaneSpec {
    * 대화 id 와 에이전트 이름뿐이다(제목 · 본문 없음). [`clonePane`] 은 떨군다(복제는 새 대화다).
    */
   agentLink?: { agent: string; id: string };
+  /**
+   * **로컬 셸 타일 · 자동 실행 없음** — 셸이 마지막으로 알려 준 폴더(OSC 7 · 9;9 — 이 PC 의 경로, WSL 은 옮긴 값 · 2026-11-12).
+   * 앱 · 세션 서버가 다시 떠 **붙을 세션이 없을 때** 새 셸을 이 폴더에서 연다(`Terminal` 의 첫 열기 — 규칙은 `last-cwd.ts`).
+   * [`cwd`] 와 따로 산다(그 칸은 프로젝트 시작 폴더이기도 하다). 저장 · 창 이관에 실리고 [`clonePane`] 은 떨군다(복제는 시작 폴더 규칙).
+   * 없는 폴더면 백엔드가 조용히 홈으로 떨어뜨린다(`spawn_cwd`).
+   */
+  lastCwd?: string;
   // (3차 6단계) 오케스트레이션 조정자 타일 표식(`orchestrationRunId` — 2b)은 걷었다: 어느 AI 타일이든 `start_run` · `adopt_run` 으로 조정자가
   // 되고(묶음은 서버 표) 명세에는 표식이 없다. 옛 `tabs.json` 의 그 칸은 읽지 않는다(`tabs.ts` — 복원된 타일은 평범한 AI 타일).
   /**

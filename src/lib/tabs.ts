@@ -152,6 +152,11 @@ export interface SavedLeaf {
    * 타일 ↔ 대화 연결의 사본(`PaneSpec.agentLink` — 2026-10-17). 대화 id 와 에이전트 이름뿐이다. 없는 옛 파일 = 연결 없음.
    */
   agentLink?: { agent: string; id: string };
+  /**
+   * 로컬 셸 타일이 마지막으로 있던 폴더([`PaneSpec.lastCwd`] — 2026-11-12). 세션 서버까지 다시 떠 붙을 세션이 없으면 새 셸이
+   * 이 폴더에서 뜬다. 모양은 검사하지 않는다(`cwd` 와 같은 이유 — 없는 폴더면 백엔드가 홈으로).
+   */
+  lastCwd?: string;
   /** 호스트별 스크롤백 (`sessions.toml` 에서 온 값) */
   scrollback?: number;
   /**
@@ -333,6 +338,7 @@ function saveLeaf(pane: PaneSpec, workspaceKeys: boolean): SavedLeaf {
   if (pane.cwd) out.cwd = pane.cwd;
   if (pane.injectMcpToken) out.injectMcpToken = true;
   if (pane.agentLink) out.agentLink = { agent: pane.agentLink.agent, id: pane.agentLink.id };
+  if (pane.kind === "local" && pane.lastCwd) out.lastCwd = pane.lastCwd;
   if (typeof pane.scrollback === "number") out.scrollback = pane.scrollback;
   if (pane.path) out.path = pane.path;
   if (pane.fileView) out.fileView = pane.fileView;
@@ -566,6 +572,7 @@ function parseLeaf(raw: Record<string, unknown>): SavedLeaf | null {
   if (raw.injectMcpToken === true) out.injectMcpToken = true;
   const link = parseAgentLink(raw.agentLink);
   if (link) out.agentLink = link;
+  if (typeof raw.lastCwd === "string" && raw.lastCwd.trim() !== "") out.lastCwd = raw.lastCwd.trim();
   const lines = clampScrollback(typeof raw.scrollback === "number" ? raw.scrollback : undefined);
   if (lines !== undefined) out.scrollback = lines;
   // 경로는 **모양을 검사하지 않는다** — 절대/상대·구분자 방향·존재 여부의 판정은 전부
@@ -813,6 +820,8 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
       if (leaf.cwd) pane.cwd = leaf.cwd;
       // autorun 과 함께 되살린다 — 복원된 AI 타일이 첫 세션에서 토큰을 주입하게 (codex 인증).
       if (leaf.injectMcpToken) pane.injectMcpToken = true;
+      // 마지막 폴더 — 붙을 세션이 없으면 새 셸이 거기서 뜬다(`session/last-cwd`)
+      if (leaf.lastCwd) pane.lastCwd = leaf.lastCwd;
       const lines = clampScrollback(leaf.scrollback);
       if (lines !== undefined) pane.scrollback = lines;
       if (leaf.historyStreamId) pane.historyStreamId = leaf.historyStreamId;

@@ -44,7 +44,9 @@
     describeSessionError,
     openErrorHint,
     openErrorHintOf,
+    freshStartCwd,
     hasSession,
+    lastCwdToKeep,
     paneName,
     reconnectDelayMs,
     sessionErrorOf,
@@ -1842,7 +1844,8 @@
     });
   }
 
-  async function startSession(interactive: boolean): Promise<Attempt> {
+  /** `localCwd` — 이 열기 한 번의 로컬 시작 폴더(첫 열기의 마지막 폴더 · `OpenOptions.localCwd`). 없으면 명세의 `cwd` */
+  async function startSession(interactive: boolean, localCwd?: string): Promise<Attempt> {
     const t = term;
     if (!t) return { ok: false, error: null };
     try {
@@ -1869,6 +1872,7 @@
         promptPassword: interactive ? promptPassword : undefined,
         promptPassphrase: interactive ? promptPassphrase : undefined,
         onExit: handleExit,
+        localCwd,
         // 원격 타일의 에이전트 신호는 세션 서버가 정한다(앱이 띄운 AI · 호스트의 에이전트 활성화 — Rust `signal_stream`).
         start: sshStart ?? undefined,
       });
@@ -1946,9 +1950,10 @@
     for (let i = 0; ; i++) {
       const attached = await attachDetached();
       if (attached) return { ...attached, attached: attached.ok };
-      // 붙을 세션이 없다 — 새 셸이 뜬다(로컬 AI 타일이면 프롬프트 · autorun 줄을 덮는다)
+      // 붙을 세션이 없다 — 새 셸이 뜬다(로컬 AI 타일이면 프롬프트 · autorun 줄을 덮는다). 자동 실행 없는 셸 타일은 마지막 폴더에서
+      // (앱 · 세션 서버가 다시 떴다 — `session/last-cwd`)
       beginAiVeil();
-      const result = await startSession(true);
+      const result = await startSession(true, freshStartCwd(pane));
       if (result.ok || disposed || i >= OPEN_RETRIES) return result;
       if (!isLiveSessionConflict(result.error)) return result;
       await new Promise((r) => setTimeout(r, OPEN_RETRY_MS));
@@ -3024,6 +3029,10 @@
           // (원격은 그 서버의 폴더 — 그 서버의 대화를 고른다: docs/log/2026-09-27-remote-conversations.md).
           oncwd: (cwd) => {
             if (pane.kind === "local" || pane.kind === "ssh") noteReportedCwd(pane.id, cwd);
+            // 자동 실행 없는 로컬 셸은 명세에도 적는다 — 다시 뜬 앱이 새 셸을 그 폴더에서 연다(`lastCwd`). `cd` 때만 오고 같은 값은
+            // 쓰지 않아 배치 저장(디바운스)이 헛돌지 않는다.
+            const keep = lastCwdToKeep(pane, cwd);
+            if (keep !== null && pane.lastCwd !== keep) pane.lastCwd = keep;
           },
           // 실패 줄의 [AI에게 묻기] — 단추 아래에 상자가 선다(오른쪽 맞춤). 조합은 사용자가 바꾼 그대로 적는다.
           // 블록 줄의 [리치하게 보기] — 카드가 그 줄에서 커진다(`term/BlockView.svelte`)

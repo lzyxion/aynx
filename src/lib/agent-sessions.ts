@@ -256,6 +256,58 @@ export function resumedConversationOf(autorun: string | null | undefined): Agent
 }
 
 /**
+ * 에이전트 실행 줄(`autorun`)을 에이전트와 **사람이 적은 추가 인자**로 — `claude [추가…]` · `claude --resume <id> [--fork-session] [추가…]` ·
+ * `codex [추가…]` · `codex resume|fork [추가…] <id>`. 그 밖의 꼴(다른 명령 · 셸 글자 · 다른 대화를 고르는 옵션)이면 `null`.
+ */
+function launchParts(autorun: string): { agent: "claude" | "codex"; extras: string[] } | null {
+  const argv = autorun.trim().split(/\s+/);
+  if (argv[0] === "claude") {
+    const resumed = argv[1] === "--resume" && argv.length >= 3 && uuidShaped(argv[2]);
+    const extras = resumed ? argv.slice(3).filter((t) => t !== "--fork-session") : argv.slice(1);
+    return extrasOk(extras, CLAUDE_NOT_EXTRA) ? { agent: "claude", extras } : null;
+  }
+  if (argv[0] === "codex") {
+    const resumed = (argv[1] === "resume" || argv[1] === "fork") && argv.length >= 3 && uuidShaped(argv[argv.length - 1]);
+    const extras = resumed ? argv.slice(2, -1) : argv.slice(1);
+    return extrasOk(extras, CODEX_NOT_EXTRA) ? { agent: "codex", extras } : null;
+  }
+  return null;
+}
+
+/**
+ * 로컬 AI 타일의 대화가 정해졌다(훅 신호로 확정된 연결 — 2026-11-12) — 그 타일의 autorun 을 **그 대화의 재개 줄**로. 앱 · 세션 서버가
+ * 다시 떠 새 셸이 autorun 을 다시 돌리면 마지막 대화가 이어진다(`claude` 로 뜬 타일 · `/clear` · `/resume` · Codex `/new` 뒤의 타일도).
+ * 바꿀 것이 없거나 바꾸면 안 되면 `null`.
+ *
+ * **AI 문자열 → PTY 길을 만들지 않는다**(docs/invariants.md 전문 4): 이 줄은 나중에 셸에 쳐진다. 그래서 새 줄의 재료는 고정 낱말
+ * (`claude --resume` · `codex resume` — Rust `agent_sessions::resume_argv` 와 같은 꼴) · **UUID 모양을 지난** id(소문자) · 그 타일의
+ * autorun 에 이미 있던(사람이 적은) 추가 인자뿐이다. 신호의 다른 글자는 싣지 않는다. autorun 이 그 에이전트의 실행 줄이 아니면
+ * (사람의 다른 명령 · 다른 에이전트) 손대지 않는다. 포크 줄(`--fork-session` · `codex fork`)은 갈라진 뒤 제 id 가 있어 그 id 의 재개로 바꾼다.
+ * 지은 줄이 [`resumedConversationOf`] 로 같은 대화로 읽혀야만 돌려준다(추가 인자 자리 규칙도 그쪽 하나).
+ */
+export function resumeAutorunFor(autorun: string | null | undefined, agent: string, id: string): string | null {
+  if (!autorun || !uuidShaped(id)) return null;
+  const parts = launchParts(autorun);
+  if (!parts || parts.agent !== agent) return null;
+  const want = id.toLowerCase();
+  const argv = parts.agent === "claude" ? ["claude", "--resume", want, ...parts.extras] : ["codex", "resume", ...parts.extras, want];
+  const line = argv.join(" ");
+  const back = resumedConversationOf(line);
+  if (!back || back.agent !== parts.agent || back.id !== want) return null;
+  return line === autorun.trim() ? null : line;
+}
+
+/**
+ * 분할 복제가 물려받을 autorun — 재개 줄이면 **새 대화로 뜨는 실행 줄**(에이전트 + 추가 인자)로 되돌린다(같은 대화를 두 타일이
+ * 쥐지 않게 — [`resumeAutorunFor`] 가 AI 타일의 autorun 을 재개 줄로 바꾸므로). 그 밖은 그대로.
+ */
+export function freshLaunchOf(autorun: string): string {
+  if (!resumedConversationOf(autorun)) return autorun;
+  const parts = launchParts(autorun);
+  return parts ? [parts.agent, ...parts.extras].join(" ") : autorun;
+}
+
+/**
  * 창 이관 짐에서 온 연결 — **모양이 맞을 때만**(에이전트는 로고 이름 모양 · id 는 UUID). 짐은 JSON 이라 옛 앱이
  * 내놓은 것(필드 없음)이나 망가진 것이 올 수 있다. 아니면 `null`(연결 없이 연다 — 다음 훅 신호가 다시 적는다).
  */
