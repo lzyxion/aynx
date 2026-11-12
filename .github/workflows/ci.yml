@@ -1,0 +1,64 @@
+# 커밋 전 게이트를 Windows 러너에서 그대로 돌린다 — CLAUDE.md "커밋 전 게이트" 와 같은 순서.
+#
+# - main 에 push 하면 돈다(사후 확인). PR 에도 돈다.
+# - release.yml 이 태그 빌드 전에 이 워크플로를 불러 같은 게이트를 먼저 통과시킨다(workflow_call).
+# - CDP 하네스(scripts/dev/)는 앱 창이 필요해 여기에 넣지 않는다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    concurrency:
+      group: gate-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # 저장소를 만들어 커밋하는 시험이 있다 — 러너에는 git 사용자 정보가 없다.
+      - name: git identity for tests
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@example.invalid"
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm test
+      - run: npm run check:cycles
+      # 방금 만든 build/ 를 읽는다 — build 뒤에 둔다.
+      - run: npm run check:bundle
+
+      # tauri 의 generate_context! 가 build/ 를 싣는다 — 프런트 빌드 뒤에 돈다.
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings

@@ -1,0 +1,111 @@
+# 태그 `vX.Y.Z` 를 push 하면 게이트(ci.yml)를 통과시킨 뒤 설치 파일 둘을 빌드해
+# GitHub Release **초안**으로 올린다. 공개는 사람이 "What's new" 를 채우고 누른다.
+#
+# - 태그 · package.json · tauri.conf.json · Cargo.toml 의 버전이 하나라도 다르면 멈춘다.
+# - 러너에서 빌드하므로 설치 파일에 로컬 사용자 경로가 들어가지 않는다.
+# - 무서명(코드 서명 · 업데이터 서명 없음) — createUpdaterArtifacts 는 false 그대로.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: gate
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: versions match the tag
+        id: ver
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          pkg=$(node -p "require('./package.json').version")
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          echo "tag=$ver package.json=$pkg tauri.conf.json=$conf Cargo.toml=$cargo"
+          if [ "$ver" != "$pkg" ] || [ "$ver" != "$conf" ] || [ "$ver" != "$cargo" ]; then
+            echo "::error::version mismatch — bump all three to $ver before tagging"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # beforeBuildCommand 가 npm run build 를 부른다.
+      - run: npm run tauri build
+
+      - name: collect installers
+        id: files
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          b=src-tauri/target/release/bundle
+          exe="$b/nsis/Aynx_${v}_x64-setup.exe"
+          msi="$b/msi/Aynx_${v}_x64_en-US.msi"
+          for f in "$exe" "$msi"; do
+            [ -f "$f" ] || { echo "::error::missing $f"; ls -R "$b"; exit 1; }
+          done
+          mkdir -p out
+          cp "$exe" "$msi" out/
+          (cd out && sha256sum Aynx_* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: release notes skeleton
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          {
+            echo "## What's new"
+            echo
+            echo "- _(write before publishing)_"
+            echo
+            echo "## Install"
+            echo
+            echo "| File | Installs for |"
+            echo "|---|---|"
+            echo "| \`Aynx_${v}_x64-setup.exe\` | the current user (no admin rights needed) |"
+            echo "| \`Aynx_${v}_x64_en-US.msi\` | all users |"
+            echo
+            echo "- **Windows 11 only** (WebView2). Linux and macOS support is undecided."
+            echo "- The installers are **unsigned**, so Windows SmartScreen may warn on first run. Choose **More info → Run anyway**."
+            echo
+            echo "## SHA-256"
+            echo
+            echo '```'
+            cat out/SHA256SUMS.txt
+            echo '```'
+          } > out/notes.md
+
+      - name: draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          gh release create "$GITHUB_REF_NAME" \
+            --draft --verify-tag \
+            --title "Aynx $v" \
+            --notes-file out/notes.md \
+            "out/Aynx_${v}_x64-setup.exe" "out/Aynx_${v}_x64_en-US.msi"
