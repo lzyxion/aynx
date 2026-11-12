@@ -1,7 +1,7 @@
 # 커밋 전 게이트를 Windows 러너에서 그대로 돌린다 — CLAUDE.md "커밋 전 게이트" 와 같은 순서.
 #
 # - main 에 push 하면 돈다(사후 확인). PR 에도 돈다.
-# - release.yml 이 태그 빌드 전에 이 워크플로를 불러 같은 게이트를 먼저 통과시킨다(workflow_call).
+# - release.yml 은 이 워크플로를 다시 돌리지 않고, 태그 커밋에서 이 워크플로(main push)가 성공했는지만 본다.
 # - CDP 하네스(scripts/dev/)는 앱 창이 필요해 여기에 넣지 않는다.
 name: CI
 
@@ -10,7 +10,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read

@@ -51,8 +51,8 @@ cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
 릴리스 빌드: `npm run tauri build` → `src-tauri/target/release/bundle/{nsis,msi}/` (무서명 ·
 NSIS 는 현재 사용자 설치).
 CI: main push · PR 마다 `.github/workflows/ci.yml` 이 위 게이트를 Windows 러너에서 돌린다. 공개 릴리스는 태그 `vX.Y.Z` push →
-`release.yml` 이 게이트 · 버전 대조(package.json · tauri.conf.json · Cargo.toml) 뒤 설치 파일 둘 + SHA-256 을 **초안**으로 올린다 —
-"What's new" 를 채우고 사람이 공개한다.
+`release.yml` 이 사전 점검(태그 커밋의 main CI 성공 · 업데이터 공개키 · 서명 Secret) · 버전 대조(package.json · tauri.conf.json · Cargo.toml) 뒤
+설치 파일 둘 + SHA-256 + 서명된 `latest.json` 을 **초안**으로 올린다 — "What's new" 를 채우고 사람이 공개한다. 태그는 CI 가 돈 커밋(push 의 끝)에 붙인다.
 
 ## 작업 방식
 

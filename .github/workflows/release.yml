@@ -1,6 +1,8 @@
-# 태그 `vX.Y.Z` 를 push 하면 게이트(ci.yml)를 통과시킨 뒤 설치 파일 둘을 빌드해
+# 태그 `vX.Y.Z` 를 push 하면 사전 점검(그 커밋의 main CI 가 초록인지 · 서명 준비) 뒤 설치 파일 둘을 빌드해
 # GitHub Release **초안**으로 올린다. 공개는 사람이 "What's new" 를 채우고 누른다.
 #
+# - 게이트(ci.yml)를 여기서 다시 돌리지 않는다(2026-11-12 — 같은 커밋을 두 번 검사하던 15분). 태그 커밋은 main 에 있고
+#   그 커밋의 main push CI 가 성공했어야 한다 — 여러 커밋을 한 번에 push 하면 CI 는 맨 끝 커밋에서만 도니 태그는 거기에 붙인다.
 # - 태그 · package.json · tauri.conf.json · Cargo.toml 의 버전이 하나라도 다르면 멈춘다.
 # - 러너에서 빌드하므로 설치 파일에 로컬 사용자 경로가 들어가지 않는다.
 # - 코드 서명은 없다(SmartScreen 안내는 노트에). **업데이터 서명은 있다**(2026-11-12 — 앱 안 업데이트): 이 빌드만
@@ -20,13 +22,42 @@ permissions:
   contents: read
 
 jobs:
-  # 사전 점검(1분) — 게이트 · 빌드(합쳐 30분 남짓)를 돌리기 전에 업데이터 서명 준비를 본다. 공개키가 자리표시자면 Tauri 가
-  # 빌드 끝의 서명 단계에서야 "failed to decode pubkey" 로 멈춘다(2026-11-12 로컬 재현).
+  # 사전 점검 — 빌드(15분 남짓)를 돌리기 전에 본다. ① 태그 커밋이 main 에 있고 그 커밋의 main CI 가 성공했는가(돌고 있으면
+  # 끝날 때까지 기다린다) ② 업데이터 서명 준비 — 공개키가 자리표시자면 Tauri 가 빌드 끝의 서명 단계에서야
+  # "failed to decode pubkey" 로 멈춘다(2026-11-12 로컬 재현).
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: tag commit is on main and its CI passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main — merge to main first, then tag"
+            exit 1
+          fi
+          q="repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&branch=main"
+          for i in $(seq 1 70); do
+            r=$(gh api "$q" --jq '.workflow_runs | sort_by(.created_at) | last | if . == null then "none" else "\(.status) \(.conclusion) \(.html_url)" end')
+            echo "CI for ${GITHUB_SHA:0:8}: $r"
+            case "$r" in
+              "completed success "*) exit 0 ;;
+              completed*) echo "::error::main CI for this commit did not pass — fix main first"; exit 1 ;;
+              none) if [ "$i" -ge 4 ]; then echo "::error::no main CI run for ${GITHUB_SHA:0:8} — tag the commit CI ran on (the tip of the push)"; exit 1; fi ;;
+            esac
+            sleep 30
+          done
+          echo "::error::timed out waiting for main CI"
+          exit 1
 
       - name: updater public key is real
         run: |
@@ -58,12 +89,8 @@ jobs:
           fi
           echo "signing secrets are set"
 
-  gate:
-    needs: preflight
-    uses: ./.github/workflows/ci.yml
-
   build:
-    needs: gate
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
