@@ -1,0 +1,6 @@
+# 로컬 · CI · 릴리스 빌드가 같은 컴파일러를 쓰게 고정한다.
+# 올릴 때는 이 숫자를 바꾸고, 새 clippy 경고를 같은 커밋에서 고친다.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy"]
+profile = "minimal"

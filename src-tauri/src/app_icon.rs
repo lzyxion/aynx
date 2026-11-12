@@ -286,7 +286,7 @@ mod win {
         let (w, h) = (img.width(), img.height());
         // 32bpp 색 비트는 BGRA(알파가 그대로 쓰인다). AND 마스크(1bpp, 행은 WORD 정렬)는 전부 0 — 알파가 투명을 맡는다.
         let mut bgra = img.rgba().to_vec();
-        for px in bgra.chunks_exact_mut(4) {
+        for px in bgra.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         let mask = vec![0u8; w.div_ceil(16) as usize * 2 * h as usize];
