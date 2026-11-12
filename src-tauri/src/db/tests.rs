@@ -2593,7 +2593,7 @@ mod tx_unit {
         db.set_write(true).unwrap();
         db.tx_begin().unwrap();
         let plan = script::plan(
-            "INSERT INTO t(name) VALUES ('first'); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3000000) SELECT count(*) FROM n",
+            "INSERT INTO t(name) VALUES ('first'); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20000000) SELECT count(*) FROM n",
             Dialect::Sqlite,
             ScriptMode::InWork,
         )
@@ -2602,8 +2602,10 @@ mod tx_unit {
         let ctl = Ctl::new(Arc::clone(&cancel), 60_000, Duration::from_secs(60));
         let c2 = Arc::clone(&cancel);
         // 끊기(interrupt) 없이 깃발만 — 마지막 문장은 성공으로 끝난다.
+        // 깃발은 첫 INSERT 가 끝난 뒤에 서야 한다 — 느린 CI 러너에서 INSERT 가 187ms 걸려 50ms 로는 앞질렀다.
+        // 마지막 문장을 길게(2천만 줄) 두고 500ms 에 세운다.
         let t = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(500));
             c2.store(true, Ordering::SeqCst);
         });
         let run = db.script(&plan, ScriptMode::InWork, 10, &ctl).unwrap();

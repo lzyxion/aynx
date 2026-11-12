@@ -41,6 +41,13 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # 러너의 기본 TEMP 는 8.3 짧은 이름(C:\Users\RUNNER~1\…)이라 git 이 돌려주는 긴 경로와
+      # 글자 비교가 어긋난다 — 긴 이름 폴더(D:\a\_temp)로 돌린다.
+      - name: long-name temp dir
+        run: |
+          echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       # 저장소를 만들어 커밋하는 시험이 있다 — 러너에는 git 사용자 정보가 없다.
       - name: git identity for tests
         run: |
