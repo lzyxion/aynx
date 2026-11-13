@@ -12,6 +12,13 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+### What's new
+
+- **Review card [Later]**: move the review card out of the way to check your tiles first. Waiting plans stay in the chat dock's task plans branch, and a new plan brings the card back.
+- **Task plans in a remote window** open in the remote window's chat dock, the same as on the main PC, instead of covering the tiles.
+- **Clearing task plans**: the bottom row of task plans has **[Clear finished runs]** (Active) and **[Clear history]** (History). In History, **×** on a row clears one run, and with a filter set
+  the button clears only the rows you see. Cleared rows slide out like alerts. History is cleared from the screen only — the audit log is kept.
+
 ## [0.1.2] - 2026-11-12
 
 **Install this version by hand once.** 0.1.1 can't update itself. From 0.1.2 on, Aynx tells you when a new version is out and updates from inside the app.

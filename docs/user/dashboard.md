@@ -74,7 +74,7 @@ and clicking it closes the dock and opens the session sheet.
 ## Task plans
 
 This is where you review, approve and reject **task plans** the AI proposed through MCP (run this command on these targets), and see the results. It lives in the main window's chat dock,
-and opening it from an auxiliary window moves to the main window. A remote window does not change the main PC's layout and shows it as an overlay within its own window.
+and opening it from an auxiliary window moves to the main window. A remote window shows it in its own chat dock the same way (a phone shows it full screen) — the main PC's layout does not change.
 There are two views — **Active** (awaiting review · current and recent runs) and **History** (past runs). The audit pill on the right of the head row says whether the audit log is recording and how many
 records it holds.
 
@@ -113,7 +113,7 @@ whether it matches the AI's summary. Below it stand the title, AI summary, comma
 
 - **[Cancel]** is cooperative — it stops the run on the app side, but **a command already started on the remote may keep running** (SSH does not guarantee a standard signal to kill a running
   process).
-- **[Dismiss]** · **[Clear completed runs]** clear finished runs **from the screen only**. The records in the audit log stay.
+- **×** on a finished run, or **[Clear finished runs]** in the bottom row, clears finished runs **from the screen only**. Running and approved runs stay. The records in the audit log stay.
 
 <a id="plan-history"></a>
 ### History
@@ -122,6 +122,8 @@ Past runs are read from the **audit log** and shown — they survive an app rest
 method, and find by command or title. [Plan history] in the dock's Alerts section opens this view directly.
 
 - Selecting a row expands its details in place. In the per-target table, failed rows come first — this table and the host and result filters show which hosts stood out.
+- **Clearing history** — hover a row and press **×** to clear that run. **[Clear history]** in the bottom row clears everything up to now; while a filter or search is set, it becomes
+  **[Clear shown]** and clears only the rows you see. Both clear **from the screen only** — the audit log files stay until Settings › Auto-approval › Audit log retention.
 - **[Copy]** copies that run as Markdown (time · description · command · per-target results · saved output).
 - **No end record** — a run with no finished line in the audit log. It is still running, or the app closed before the run ended.
 - **Output** in the details — only runs after turning on Settings › Auto-approval › Save run output excerpts keep an output tail. If it is off, "Output was not saved" appears with
@@ -170,6 +172,8 @@ increase `cleanupPeriodDays` in the Claude Code settings.
 
 When an AI requests review, a review card appears at the bottom center of the screen and stays until no plans are waiting (it can be collapsed but not closed).
 On the card, you can [Approve run] · [Reject] right away, or open the task plan with [View in Plans]. With several plans, ‹ › moves between them.
+**[Later]** moves the card out of the way so you can read your tiles first. The plans waiting at that moment stay in the chat dock's task plans branch (its badge shows how many);
+a new plan brings the card back with only the new one.
 
 - The card steps aside while task plans are already visible (the chat dock's task plans branch). It appears only in the main window.
 - **(first)** mark — the first target (canary) of several targets. It must succeed here before spreading to the rest.
