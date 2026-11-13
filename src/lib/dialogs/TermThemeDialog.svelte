@@ -312,10 +312,6 @@
     gap: var(--space-2);
   }
 
-  .row input[type="checkbox"] {
-    accent-color: var(--accent);
-  }
-
   /* 견본 — 팔레트 배경 위의 점들(설정 › 터미널의 견본과 같은 모양) */
   .swatch {
     flex: 0 0 auto;

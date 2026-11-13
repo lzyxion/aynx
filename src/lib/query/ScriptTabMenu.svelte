@@ -4,7 +4,8 @@
 
   /**
    * **스크립트 탭의 우클릭 메뉴**(2026-11-10) — 머리 = 탭 이름 · [이름 바꾸기](두 번 누르기와 같다) · [.sql 로 저장…](`Ctrl+S` 와 같다 —
-   * 늘 다른 이름으로) · 구분선 · [닫기](`Ctrl+W` 와 같다 — 마지막 하나는 못 닫아 흐림). 데이터 탭(`data`)은 이름 바꾸기 · 저장이 없어 닫기만.
+   * 늘 다른 이름으로) · 구분선 · [닫기](`Ctrl+W` 와 같다 — 마지막 하나도 닫혀 빈 화면이 된다) · [다른 탭 닫기] · [오른쪽 탭 닫기](11-13 — 앱 탭 줄 메뉴와
+   * 같다, 닫을 것이 없으면 흐림). 데이터 탭(`data`)은 이름 바꾸기 · 저장이 없어 닫기 셋만.
    *
    * 상자 모양 · 그리는 자리는 스키마 트리 메뉴(`TreeMenu`)와 같다 — `.menu-*` 한 벌 · 투명 백드롭 · 타일 컨테이너(`container: qtile`) **밖**
    * (부르는 쪽 `QueryView` 가 `.query` 의 형제로 둔다). 항목 핸들러는 통로 하나를 지난다(`$lib/browser/menu-runner` · docs/conventions.md 의
@@ -14,25 +15,30 @@
     n,
     title,
     data,
-    canClose,
     x,
     y,
     onclose,
     onrename,
     onsave,
     onclosetab,
+    canCloseOthers,
+    canCloseRight,
+    onclosearound,
   }: {
     n: number;
     title: string;
     /** 데이터 탭인가 — 닫기만 선다 */
     data: boolean;
-    canClose: boolean;
     x: number;
     y: number;
     onclose: () => void;
     onrename: (n: number) => void;
     onsave: (n: number) => void;
     onclosetab: (n: number) => void;
+    canCloseOthers: boolean;
+    canCloseRight: boolean;
+    /** [다른 탭 닫기] · [오른쪽 탭 닫기] */
+    onclosearound: (n: number, which: "others" | "right") => void;
   } = $props();
 
   let menuEl = $state<HTMLElement | null>(null);
@@ -88,11 +94,31 @@
     type="button"
     class="ctx-item menu-row"
     role="menuitem"
-    disabled={!canClose}
     data-query-tab-action="close"
     onclick={() => runOnMenu(() => n, onclose, onclosetab)}
   >
     <span class="lbl">{t("pane.query.tab.menu.close")}</span><kbd class="menu-kbd">Ctrl+W</kbd>
+  </button>
+  <!-- 닫을 것이 없으면(탭 하나 · 맨 오른쪽 탭) 숨기지 않고 끈다 — 앱 탭 줄 메뉴와 같다 -->
+  <button
+    type="button"
+    class="ctx-item menu-row"
+    role="menuitem"
+    disabled={!canCloseOthers}
+    data-query-tab-action="close-others"
+    onclick={() => runOnMenu(() => n, onclose, (m) => onclosearound(m, "others"))}
+  >
+    <span class="lbl">{t("pane.query.tab.menu.closeOthers")}</span>
+  </button>
+  <button
+    type="button"
+    class="ctx-item menu-row"
+    role="menuitem"
+    disabled={!canCloseRight}
+    data-query-tab-action="close-right"
+    onclick={() => runOnMenu(() => n, onclose, (m) => onclosearound(m, "right"))}
+  >
+    <span class="lbl">{t("pane.query.tab.menu.closeRight")}</span>
   </button>
 </div>
 

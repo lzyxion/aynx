@@ -258,7 +258,7 @@
           <UiIcon name="plus" size={13} />{t(transport === "stdio" ? "settings.ai.external.env_add" : "settings.ai.external.headers_add")}
         </button>
         {#if secrets.length > 0}
-          <label class="env-consent"><input type="checkbox" bind:checked={storeEnv} disabled={busy} />{t(transport === "stdio" ? "settings.ai.external.env_store" : "settings.ai.external.headers_store")}</label>
+          <label class="env-consent"><Toggle bind:checked={storeEnv} disabled={busy} />{t(transport === "stdio" ? "settings.ai.external.env_store" : "settings.ai.external.headers_store")}</label>
         {/if}
       </div>
 
@@ -326,8 +326,6 @@
   .env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; align-items: center; gap: var(--space-1); }
   .env-row input { min-width: 0; width: 100%; }
   .fields .env-consent { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-2); white-space: normal; }
-  .fields .env-consent input { flex: none; width: 14px; height: 14px; padding: 0; margin: 1px 0 0; box-shadow: none; }
-
   .fields {
     display: grid;
     grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);

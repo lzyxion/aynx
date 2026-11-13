@@ -48,6 +48,11 @@ export interface DbOpenDeps<T = DbOpened> {
   target: DbPasswordTarget;
   /** DB 접속 모달의 "이 앱에 저장" 을 숨긴다(연결 테스트 — 없으면 보인다) */
   noSave?: boolean;
+  /**
+   * **폼에 친 비밀번호**(연결 폼의 [연결 테스트] — 2026-11-13). 주면 첫 시도에 싣고, DB 가 거절하면 모달로 묻지 않고 그 실패로 끝낸다
+   * (사람이 칸에 친 값이 틀렸다 — 칩이 "인증 실패" 를 보인다).
+   */
+  formPassword?: string;
   /** 볼트가 켜져 있고 잠겨 있으면 먼저 열게 한다(아니면 곧바로) */
   ensureUnlocked: () => Promise<void>;
   /** 접속이 섰다 — 모달에서 저장을 켠 값을 담는다 */
@@ -84,7 +89,7 @@ export async function openDbFlow<T = DbOpened>(deps: DbOpenDeps<T>): Promise<DbO
     }
   }
   await deps.ensureUnlocked();
-  let password: string | undefined;
+  let password: string | undefined = deps.formPassword;
   let attempts = 0;
   for (;;) {
     try {
@@ -110,6 +115,10 @@ export async function openDbFlow<T = DbOpened>(deps: DbOpenDeps<T>): Promise<DbO
       }
       const m = errorMessage(e);
       const kind = classifyDbError(m);
+      if (kind === "password" && deps.formPassword !== undefined) {
+        deps.dropSaves();
+        return { ok: false, kind: "error", message: stripReason(m), raw: m };
+      }
       if (kind === "password" && attempts < MAX_PASSWORD_ATTEMPTS) {
         attempts += 1;
         const entered = await deps.askPassword({

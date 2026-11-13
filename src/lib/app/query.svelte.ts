@@ -48,7 +48,8 @@ import {
   type ConnTestState,
 } from "$lib/query/conn-test";
 import { openDbFlow, type DbOpenOutcome } from "$lib/query/open-flow";
-import { dbConns, ensureDbConns, findDbConn, reloadDbConns, removeDbConn, saveDbConns } from "$lib/app/db-conns.svelte.js";
+import * as vault from "$lib/vault";
+import { dbConns, dbPasswordsChanged, ensureDbConns, findDbConn, reloadDbConns, removeDbConn, saveDbConns } from "$lib/app/db-conns.svelte.js";
 import {
   confirmHostKey,
   dropVaultSaves,
@@ -56,6 +57,7 @@ import {
   flushVaultSaves,
   promptPassphrase,
   promptPassword,
+  refreshVaultUi,
 } from "$lib/app/prompts.svelte.js";
 import { dbAiFormWrite, dbAiNeedsConfirm, formAiLevel, formDbHeadless, sameDbTarget, setDbAi, type DbAiLevel } from "$lib/db-ai";
 import { confirmApproveAll } from "$lib/app/approve-all-confirm";
@@ -256,8 +258,67 @@ export const dbPicker = $state<{
   headlessTouched: false,
 });
 
+/**
+ * **폼의 비밀번호 칸**(2026-11-13 — 목업 "DB 연결 폼 비밀번호"). 친 값(`text`)은 이 상태와 서버로 가는 한 번의 호출(테스트 · 저장)에만
+ * 살고 폼을 열고 닫을 때 비운다. 볼트의 값은 **받지 않는다** — `stored` 는 있다 · 없다만(`vault_has_db_password`, 잠겨 있으면 모름 =
+ * `false`).
+ *
+ * [저장] 이 선 뒤([`applyFormPassword`]): 체크 + 친 값 → 볼트에 바로(인증 확인 없이 — 사용자 결정, 틀리면 접속 모달이 다시 묻는다 ·
+ * 볼트가 아직 없으면 접속 모달의 "이 앱에 저장" 과 같이 마스터 없이 만든다 — `flushVaultSaves`) · 체크 끔 → 볼트에서 지운다(멱등) ·
+ * 체크 + 빈 칸 → 그대로.
+ */
+export const connPw = $state<{ text: string; save: boolean; stored: boolean }>({
+  text: "",
+  save: true,
+  stored: false,
+});
+
+function resetFormPw(orig: DbConn | null): void {
+  connPw.text = "";
+  connPw.save = true;
+  connPw.stored = false;
+  if (orig)
+    void vault.hasDbPassword(orig.id).then((has) => {
+      if (dbPicker.aiOrig === orig) connPw.stored = has;
+    });
+}
+
+/** 비밀번호 칸을 고쳤다 — [연결 테스트] 칩은 다른 칸처럼 지운다 */
+export function setConnPassword(v: string): void {
+  connPw.text = v;
+  clearConnTest();
+}
+
+/** [저장] 이 선 뒤 비밀번호를 볼트에 담거나 지운다 — 실패는 알림 한 줄(연결 저장은 이미 섰다) */
+async function applyFormPassword(id: string, sqlite: boolean): Promise<void> {
+  const text = connPw.text;
+  connPw.text = "";
+  if (sqlite) return;
+  const put = connPw.save && text !== "";
+  if (!put && connPw.save) return; // 체크 + 빈 칸 — 그대로
+  try {
+    const st = await vault.status();
+    if (put) {
+      if (st.state === "absent") await vault.create(null);
+      else await ensureVaultUnlocked();
+      await vault.storeDbPassword(id, text);
+    } else {
+      // 끔 — 볼트가 없거나, 열린 볼트에 없다고 알면 할 일이 없다(잠긴 볼트는 모르니 열고 지운다 · 지우기는 멱등)
+      if (st.state === "absent" || (st.state === "unlocked" && !connPw.stored)) return;
+      await ensureVaultUnlocked();
+      await vault.remove("db_password", id);
+    }
+    refreshVaultUi();
+    dbPasswordsChanged();
+  } catch (e) {
+    // 지우기는 잠긴 볼트를 건너뛴 경우뿐이다 — 담기 실패만 알린다
+    if (put) showNotice(t("app.query.form.password.notSaved", { why: stripReason(errorMessage(e)) }));
+  }
+}
+
 /** 폼의 AI 칸을 그 연결의 지금 값으로(새 연결이면 끔) — 사본을 다시 읽은 뒤 한 번 더 맞춘다(만지기 전일 때만) */
 function resetFormAi(orig: DbConn | null): void {
+  resetFormPw(orig);
   dbPicker.aiOrig = orig;
   dbPicker.aiTouched = false;
   dbPicker.ai = orig ? dbAiLevelOf(orig.id) : "off";
@@ -347,6 +408,7 @@ export function closeDbPicker(): void {
   if (dbPicker.busy) return;
   // 도는 [연결 테스트] 는 버린다 — 닫힌 폼 위로 비밀번호 창이 뜨지 않게.
   clearConnTest();
+  connPw.text = "";
   dbPicker.open = false;
   dbPicker.view = "list";
   dbPicker.formError = null;
@@ -454,7 +516,8 @@ export function cancelConnTest(): void {
 
 /**
  * **[연결 테스트]** — 폼 값을 저장과 같은 꼴(`connOfRow`)로 만들어 한 번 붙어 본다. 폼이 틀렸으면 저장과 같은 문구를 보이고 서버에
- * 가지 않는다. 비밀번호는 서버가 청할 때만 묻고(타일과 같은 모달 — 저장 칸 없음) 볼트에 담지 않는다. 늦게 온 답 · 회차가 바뀐 뒤의
+ * 가지 않는다. 폼의 비밀번호 칸에 친 값이 있으면 그 값으로(거절되면 칩 — 묻지 않는다), 없으면 서버가 청할 때만 묻고(타일과 같은 모달 —
+ * 저장 칸 없음) 볼트에 담지 않는다. 늦게 온 답 · 회차가 바뀐 뒤의
  * 물음은 버린다(묻는 창도 띄우지 않는다).
  */
 export async function startConnTest(): Promise<void> {
@@ -467,6 +530,7 @@ export async function startConnTest(): Promise<void> {
   }
   dbPicker.formError = null;
   const draft = r.conn;
+  const typed = draft.engine === "sqlite" ? "" : connPw.text;
   connTestUi.state = beginConnTest(connTestUi.state, connFormKey(dbPicker.form), Date.now());
   const gen = connTestUi.state.gen;
   const live = () => connTestUi.state.gen === gen;
@@ -485,8 +549,11 @@ export async function startConnTest(): Promise<void> {
     askPassword: (p) => (live() ? promptPassword(p) : Promise.resolve(null)),
     noSave: true,
     target: { id: draft.id, name: draft.name, who, via },
+    // 폼에 친 비밀번호가 있으면 그 값으로 — 볼트를 열 일도, 모달로 물을 일도 없다(거절되면 칩이 "인증 실패").
+    ...(typed !== "" ? { formPassword: typed } : {}),
     // 볼트를 쓸 수 있는 테스트(저장된 연결 · 대상 그대로)만 잠긴 볼트를 열어 달라고 한다 — 판단의 진실은 서버다.
-    ensureUnlocked: () => (connTestMayUseVault(dbPicker.aiOrig, draft) ? ensureVaultUnlocked() : Promise.resolve()),
+    ensureUnlocked: () =>
+      typed === "" && connTestMayUseVault(dbPicker.aiOrig, draft) ? ensureVaultUnlocked() : Promise.resolve(),
     // 테스트는 볼트에 아무것도 담지 않는다(저장 칸이 없어 적어 둔 값도 없다).
     flushSaves: () => {},
     dropSaves: () => {},
@@ -551,6 +618,7 @@ export async function submitConn(ev?: Event): Promise<void> {
   });
   try {
     await saveDbConns(r.list);
+    await applyFormPassword(id, dbPicker.form.engine === "sqlite");
     if (aiWrite !== null) {
       try {
         await setDbAi(id, aiWrite.level, aiWrite.headless);

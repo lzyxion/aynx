@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Toggle from "$lib/Toggle.svelte";
   // 개인키 암호구 묻기 — 비밀번호 모달과 같은 모양, 대상은 내 디스크의 키 파일. 값은 `app/prompts` 의 `pp` 에 있다.
   // (2026-09-30 `+page.svelte` 에서 마크업을 그대로 옮겼다 — id·클래스·`bind:`·i18n 키·주석 불변. 스타일은 스코프라 베껴 왔다.)
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -95,7 +96,7 @@
         <!-- DB 연결 폼의 [연결 테스트] 가 묻을 때(`noSave`)는 숨긴다 — 테스트는 볼트에 아무것도 담지 않는다 -->
         {#if !ppPrompt.noSave}
           <label class="saveopt">
-            <input type="checkbox" bind:checked={pp.save} />
+            <Toggle bind:checked={pp.save} data-pp-save />
             <span>
               {t("app.save.label")}
               <span class="note">
@@ -225,11 +226,6 @@
     font-size: var(--t-sm);
     color: var(--fg-1);
     cursor: pointer;
-  }
-
-  .saveopt input {
-    margin: 2px 0 0;
-    flex: none;
   }
 
   .saveopt .note {

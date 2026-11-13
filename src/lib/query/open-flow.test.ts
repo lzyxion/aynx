@@ -108,6 +108,17 @@ describe("쿼리 타일 연결 열기 고리", () => {
     expect(d.flushSaves).not.toHaveBeenCalled();
   });
 
+  it("폼에 친 비밀번호 — 첫 시도에 싣고, 거절되면 모달로 묻지 않고 그 실패로 끝난다 (2026-11-13)", async () => {
+    const ok = deps([], { formPassword: "typed" });
+    expect(await openDbFlow(ok.d)).toEqual({ ok: true, opened: OPENED });
+    expect(ok.calls[0].password).toBe("typed");
+    const wrong = "[db-auth] DB 비밀번호가 맞지 않습니다: x [SQLSTATE 28P01]";
+    const bad = deps([wrong], { formPassword: "typed" });
+    expect(await openDbFlow(bad.d)).toEqual({ ok: false, kind: "error", message: "DB 비밀번호가 맞지 않습니다: x [SQLSTATE 28P01]", raw: wrong });
+    expect(bad.d.askPassword).not.toHaveBeenCalled();
+    expect(bad.calls).toHaveLength(1);
+  });
+
   it("모달 취소 · SSH 관문 취소는 cancelled(연결 안 됨) — 적어 둔 값은 버린다", async () => {
     const a = deps(["[db-password] x"], { askPassword: vi.fn(async () => null) });
     expect(await openDbFlow(a.d)).toEqual({ ok: false, kind: "cancelled", message: "pane.query.connect.cancelled" });

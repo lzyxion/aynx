@@ -111,6 +111,7 @@
             { key: "Escape", run: () => oncancel() },
           ],
         });
+        if (wantFocus) handle.focus();
       },
       (e: unknown) => {
         if (!gone) failed = e instanceof Error ? e.message : String(e);
@@ -189,8 +190,11 @@
     handle.focus();
   }
 
+  // 편집기가 뜨기 전(늦게 받는 CodeMirror)에 포커스를 바랐으면 뜨자마자 준다 — 데이터 탭으로 연 타일에서 처음 [+] 를 누른 경우
+  let wantFocus = false;
   export function focus(): void {
-    handle?.focus();
+    if (handle) handle.focus();
+    else wantFocus = true;
   }
 
   /** 그 범위를 고르고 보이게 — 스크립트 결과에서 문장을 짚을 때(글은 바꾸지 않는다) */

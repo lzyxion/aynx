@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Toggle from "$lib/Toggle.svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { invoke, isRemote } from "$lib/ipc";
@@ -207,7 +208,7 @@
           <label>{t("orch.new.rework")}<input class="num-input" type="number" min="0" max="10" data-new-rework bind:value={draft.accept.maxRework} oninput={changed} /></label>
           <label>{t("orch.new.wakeLabel")}<input class="num-input" type="number" min="0" max="200" data-new-wake bind:value={draft.wakeMax} /></label>
         </div>
-        <label class="check"><input type="checkbox" data-new-plan-tools bind:checked={draft.planTools} onchange={changed} />{t("orch.new.planTools")}</label>
+        <label class="check"><Toggle data-new-plan-tools bind:checked={draft.planTools} onchange={changed} />{t("orch.new.planTools")}</label>
       </AlbumCard>
       {#if risk}<AlbumRisk full={draft.members.some((m) => m.grade === "full")} verify={draft.verify.auto && !!draft.verify.command.trim()} planTools={draft.planTools} autoMerge={autoMergeOn(draft)} bind:confirmed={draft.riskConfirmed} />{/if}
       {#if isRemote}<p class="remote" data-new-remote><UiIcon name="shield-check" size={14} />{t("orch.new.remote")}</p>{/if}

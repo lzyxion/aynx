@@ -397,6 +397,20 @@
     else if (sub === "ddl") ddl = null;
   }
 
+  /**
+   * 지금 보이는 하위 탭의 ↻ 와 같다 — DB 타일의 F5(`QueryView`)도 이것을 부른다. 데이터는 걸린 조건 · 쪽 그대로 다시 읽고(WHERE 칸을
+   * 고쳐 두었으면 그 조건으로 1쪽부터 — 단추와 같다), 단추가 꺼져 있을 때(읽는 중 · 트랜잭션 작업 · 연결 없음)는 아무것도 하지 않는다.
+   */
+  export function refresh() {
+    if (sub !== "data") {
+      if (!waiting) refreshSub();
+      return;
+    }
+    if (running || busy || inWork || !opened) return;
+    if (whereDirty) applyWhere();
+    else reload();
+  }
+
   // ── WHERE 칸 자동완성 — 이 표의 열(구조를 읽었으면 그 형 · 아니면 결과 열) + 조건 키워드. 추가 조회 없음 ──────────────
 
   const whereCols = $derived<DbColumn[]>(
@@ -472,7 +486,7 @@
       <button
         type="button"
         class="tbtn"
-        title={t("pane.query.data.refresh")}
+        title={t("pane.query.data.refresh.title")}
         aria-label={t("pane.query.data.refresh")}
         disabled={waiting}
         onclick={refreshSub}><UiIcon name="refresh" size={12} /></button
@@ -508,10 +522,10 @@
         <button
           type="button"
           class="tbtn"
-          title={t("pane.query.data.refresh")}
+          title={t("pane.query.data.refresh.title")}
           aria-label={t("pane.query.data.refresh")}
           disabled={busy || inWork || !opened}
-          onclick={() => (whereDirty ? applyWhere() : reload())}
+          onclick={refresh}
           data-query-data-refresh><UiIcon name="refresh" size={12} /></button
         >
       {/if}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QUERY_DRAFT_MAX, QUERY_SCRIPTS_MAX, canonQueryTabs } from "$lib/session";
-import { addTab, closeTab, moveTab, renameTab, savedText, setTabText, tabDirty, tabsFromSpec, toScripts, type ScriptTab } from "./script-tabs";
+import { NO_TAB, addTab, closeTab, closeTabsN, tabsToCloseN, moveTab, renameTab, savedText, setTabText, tabDirty, tabsFromSpec, toScripts, type ScriptTab } from "./script-tabs";
 
 const tab = (n: number, text = "", title?: string): ScriptTab => ({ n, text, ...(title ? { title } : {}) });
 
@@ -73,8 +73,10 @@ describe("탭 조작", () => {
     expect(addTab(Array.from({ length: QUERY_SCRIPTS_MAX }, (_, i) => tab(i + 1)))).toBeNull();
   });
 
-  it("마지막 하나는 닫지 못한다", () => {
-    expect(closeTab([tab(1)], 1, 1)).toBeNull();
+  it("마지막 하나도 닫힌다 — 빈 줄 · 고른 탭 없음, 다음 새 탭은 쿼리 1", () => {
+    expect(closeTab([tab(3)], 3, 3)).toEqual({ tabs: [], active: NO_TAB });
+    expect(addTab([])).toEqual({ tabs: [tab(1)], n: 1 });
+    expect(toScripts([])).toEqual([]);
   });
 
   it("고른 탭을 닫으면 오른쪽, 없으면 왼쪽", () => {
@@ -82,6 +84,23 @@ describe("탭 조작", () => {
     expect(closeTab([tab(1), tab(2), tab(3)], 3, 3)).toEqual({ tabs: [tab(1), tab(2)], active: 2 });
     expect(closeTab([tab(1), tab(2)], 1, 2)).toEqual({ tabs: [tab(1)], active: 1 });
     expect(closeTab([tab(1), tab(2)], 1, 9)).toBeNull();
+  });
+
+  it("다른 탭 · 오른쪽 탭 — 닫을 번호(탭 줄 순서) · 대상이 없으면 빈 배열", () => {
+    const ts = [tab(3), tab(1), tab(2)];
+    expect(tabsToCloseN(ts, 1, "others")).toEqual([3, 2]);
+    expect(tabsToCloseN(ts, 1, "right")).toEqual([2]);
+    expect(tabsToCloseN(ts, 2, "right")).toEqual([]);
+    expect(tabsToCloseN([tab(1)], 1, "others")).toEqual([]);
+    expect(tabsToCloseN(ts, 9, "others")).toEqual([]);
+  });
+
+  it("여러 탭 닫기 — 대상은 남고, 고른 탭이 닫히면 대상이 고른 탭", () => {
+    const ts = [tab(1), tab(2), tab(3)];
+    expect(closeTabsN(ts, 3, 1, [2, 3])).toEqual({ tabs: [tab(1)], active: 1 });
+    expect(closeTabsN(ts, 1, 2, [3])).toEqual({ tabs: [tab(1), tab(2)], active: 1 });
+    expect(closeTabsN(ts, 1, 2, [2])).toBeNull();
+    expect(closeTabsN(ts, 1, 9, [1])).toBeNull();
   });
 
   it("이름 바꾸기 — 빈칸 걷기 · 비면 기본 이름", () => {

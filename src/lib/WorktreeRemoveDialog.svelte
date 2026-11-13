@@ -189,13 +189,9 @@
     cursor: default;
   }
 
-  .check input {
-    margin: 0;
-    accent-color: var(--accent);
-  }
-
   .hint {
-    margin: var(--space-1) 0 var(--space-4) 22px;
+    /* 앱 체크박스(18px) + 간격 만큼 들여 라벨 글자와 맞춘다 */
+    margin: var(--space-1) 0 var(--space-4) calc(18px + var(--space-2));
     font-size: var(--t-xs);
     line-height: 1.5;
     color: var(--fg-2);

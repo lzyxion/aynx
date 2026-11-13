@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Toggle from "$lib/Toggle.svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { invoke, isRemote } from "$lib/ipc";
@@ -76,13 +77,13 @@
       <!-- 검증 — 명령 글자는 시작 때 고정(한 줄), 방식(사람 확인 ↔ 자동 실행)만 바꾼다 -->
       <div class="verify" class:changed={draft.verifyAuto !== base.album?.verifyAuto} title={t("orch.perm.verifyFixed")}>
         <span>{t("orch.new.verify")} <code data-perm-verify-command>{base.verify?.command || t("orch.perm.noVerify")}</code> · {t(draft.verifyAuto ? "orch.new.auto" : "orch.new.confirm")} — {t("orch.perm.fixedAtStart")}</span>
-        {#if base.verify?.command}<label class="toggle"><input type="checkbox" data-perm-verify-auto bind:checked={draft.verifyAuto} onchange={changed} />{t("orch.new.auto")}</label>{/if}
+        {#if base.verify?.command}<label class="toggle"><Toggle data-perm-verify-auto bind:checked={draft.verifyAuto} onchange={changed} />{t("orch.new.auto")}</label>{/if}
       </div>
       <div class:changed={!!draft.autoMerge !== !!base.album?.autoMerge} class="auto-merge"><AutoMergeField tag="perm" enabled={!!base.verify?.command} bind:checked={draft.autoMerge} onchange={changed} /></div>
       <!-- 기타(작업안 도구 · 깨움 상한)는 늘 보이는 칸, 시작 때 고정된 한도는 늘 보이는 작은 칩(목업 V3FoldA — ▶ 펼침 없음) -->
       <div class="more" data-perm-more>
         <span class="group">{t("orch.new.other")}</span>
-        <label class="row" class:changed={draft.planTools !== base.album?.planTools}><input type="checkbox" data-perm-plan-tools bind:checked={draft.planTools} onchange={changed} />{t("orch.new.planTools")}</label>
+        <label class="row" class:changed={draft.planTools !== base.album?.planTools}><Toggle data-perm-plan-tools bind:checked={draft.planTools} onchange={changed} />{t("orch.new.planTools")}</label>
         <label class="row" class:changed={draft.wakeMax !== base.album?.wakeMax}>{t("orch.new.wakeLabel")}<input class="field" type="number" min="0" max="200" data-perm-wake bind:value={draft.wakeMax} oninput={changed} /></label>
       </div>
       <div class="more" data-perm-fixed>

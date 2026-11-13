@@ -15,7 +15,7 @@ import * as vault from "$lib/vault";
 import { stripReason } from "$lib/error-reason";
 import { currentWorkspaceId } from "$lib/app/workspaces.svelte.js";
 import { openPaneLocations, revealProjectLocation } from "$lib/app/project-locations.svelte.js";
-import { dbConns, forgetDbFavorites, forgetDbPasswords, reloadDbConns, saveDbConns } from "$lib/app/db-conns.svelte.js";
+import { dbConns, forgetDbFavorites, forgetDbPasswords, onDbPasswordsChanged, reloadDbConns, saveDbConns } from "$lib/app/db-conns.svelte.js";
 import { dbDragEmpty, removeDbItems, type DbDockDrag } from "$lib/db-folders";
 import { showNotice } from "$lib/app/notice";
 import { errorMessage } from "$lib/query/query-backend";
@@ -49,6 +49,9 @@ export async function refreshDbDockSaved(): Promise<void> {
   const items = await vault.list().catch(() => []);
   savedIds = new Set(items.filter((i) => i.kind === "db_password").map((i) => i.target));
 }
+
+// 연결 폼이 비밀번호를 담거나 지웠다 — 자물쇠를 다시 읽는다(폼은 이 모듈을 부르지 못한다: 이 모듈이 `app/query` 를 부른다)
+onDbPasswordsChanged(() => void refreshDbDockSaved());
 
 /** 칸이 보이게 될 때 — 연결 목록(파일) · 폴더 곁 파일 · 볼트 표식을 다시 읽는다 */
 export function refreshDbDock(): void {

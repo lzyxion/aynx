@@ -86,6 +86,19 @@ export function forgetDbFavorites(ids: readonly string[]): void {
   for (const id of ids) removeFavorite({ kind: "db", id });
 }
 
+const pwListeners = new Set<() => void>();
+
+/** 볼트의 DB 비밀번호가 바뀌면 부를 것을 단다(독의 자물쇠 — `app/db-dock`). 떼는 함수를 돌려준다 */
+export function onDbPasswordsChanged(fn: () => void): () => void {
+  pwListeners.add(fn);
+  return () => pwListeners.delete(fn);
+}
+
+/** 볼트의 DB 비밀번호를 담았다 · 지웠다(연결 폼 저장 — 2026-11-13) — 단 것들을 부른다 */
+export function dbPasswordsChanged(): void {
+  for (const f of pwListeners) f();
+}
+
 /**
  * 사라진 DB 연결의 볼트 항목을 걷는다(멱등 — 없던 것도 성공). **실패는 조용히 넘긴다**: 볼트가 없거나 잠겨 있으면 걷지 못한
  * 항목이 남는데, 그 id 는 파일에서 이미 사라져 아무 연결도 그 값을 쓰지 않고(id 는 다시 뽑히지 않는다), 설정 › 보안 목록에서

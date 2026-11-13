@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Toggle from "$lib/Toggle.svelte";
   // SSH 비밀번호 묻기 — 대기열은 `app/prompts` 에 있고, 칸 값·저장 체크는 `pw` 에 있다.
   // 쿼리 타일의 **DB 접속 모달**도 이 모달이다(`prompt.db` — 쿼리 타일 7단계): 문구 · 대상 줄만 DB 의 것으로 바뀌고 저장 규칙은 같다
   // (인증이 선 뒤에만 볼트 `db_password` 로 — `app/prompts` `resolvePassword` · `query/open-flow`).
@@ -109,7 +110,7 @@
         <!-- DB 연결 폼의 [연결 테스트] 가 묻을 때(`noSave`)는 숨긴다 — 테스트는 볼트에 아무것도 담지 않는다 -->
         {#if !pwPrompt.noSave}
           <label class="saveopt">
-            <input type="checkbox" bind:checked={pw.save} />
+            <Toggle bind:checked={pw.save} data-pw-save />
             <span>
               {t("app.save.label")}
               <span class="note">
@@ -243,11 +244,6 @@
     font-size: var(--t-sm);
     color: var(--fg-1);
     cursor: pointer;
-  }
-
-  .saveopt input {
-    margin: 2px 0 0;
-    flex: none;
   }
 
   .saveopt .note {

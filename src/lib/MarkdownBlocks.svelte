@@ -635,10 +635,14 @@
     list-style: none;
   }
 
+  /* 할 일 상자는 글자에 맞춘다(2026-11-13 목업) — 글자 크기의 0.86배 · 모서리 4px · 기준선(글자 아래로 살짝) */
   .task input {
+    /* 입력 요소는 브라우저가 글자 크기를 따로 준다(≈13.3px) — 물려받아야 `em` 이 본문 글자 기준이 된다 */
+    font-size: inherit;
+    --checkbox-size: 0.86em;
     margin: 0 var(--space-1) 0 calc(-1 * var(--space-4));
-    vertical-align: -2px;
-    accent-color: var(--accent);
+    vertical-align: -0.04em;
+    border-radius: 4px;
   }
 
   .task input.live:not(:disabled) {

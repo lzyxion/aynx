@@ -7,7 +7,9 @@
  *   나란히 들고, 고칠 때마다 저장 모양(`toScripts`)으로 내려 보낸다(디바운스는 부르는 쪽).
  * - 탭 번호 `n` 은 타일 안에서 겹치지 않고 다시 쓰지 않는다(새 탭 = 지금 가장 큰 번호 + 1) — 기본 이름 "쿼리 {n}" 과 결과 · 거터의
  *   열쇠다. 이름을 바꾸면 `title`.
- * - 마지막 탭 하나는 닫지 못한다. 닫으면 오른쪽 이웃, 없으면 왼쪽 이웃이 고른 탭이 된다.
+ * - 닫으면 오른쪽 이웃, 없으면 왼쪽 이웃이 고른 탭이 된다. **마지막 탭도 닫힌다**(2026-11-13 — 빈 화면: [새 쿼리] · [SQL 파일 열기…]).
+ *   빈 상태는 저장하지 않는다 — 저장 모양(`canonQueryTabs`)이 빈 줄을 기본 상태로 접어, 다시 뜨면 "쿼리 1" 하나로 시작한다.
+ * - 우클릭 [다른 탭 닫기] · [오른쪽 탭 닫기](2026-11-13 — 앱 탭 줄과 같은 규칙)는 가리킨 탭을 남기고, 고른 탭이 닫히면 가리킨 탭이 고른 탭.
  * - **데이터 탭**(2026-11-10 — `data` 칸, 화면은 `query/data-tab`)도 같은 줄 · 같은 번호 규칙에 선다. 글 · 이름이 없고(이름 바꾸기 없음 ·
  *   ● 없음 · 닫을 때 묻지 않음) **객체 하나에 탭 하나**(`findDataTab` — 스키마 · 이름이 같으면 같은 탭).
  * - ● = **저장 안 된 변경** — 살아 있는 글이 명세에 적힌 초안과 다르다(디바운스 중 · 초안 상한 32 KiB 를 넘어 저장하지 못함).
@@ -98,14 +100,48 @@ export function setTabData(tabs: readonly ScriptTab[], n: number, data: QueryDat
   return tabs.map((x) => (x.n === n && x.data ? { ...x, data } : x));
 }
 
-/** 탭 닫기 — 마지막 하나면 `null`. 고른 탭을 닫으면 오른쪽 이웃(없으면 왼쪽)이 고른 탭 */
+/** 탭이 하나도 없을 때의 "고른 탭" 번호 — 탭 번호는 1부터라 겹치지 않는다 */
+export const NO_TAB = 0;
+
+/**
+ * 탭 닫기 — 없는 탭이면 `null`. 고른 탭을 닫으면 오른쪽 이웃(없으면 왼쪽)이 고른 탭, 마지막 하나였으면 빈 줄과 [`NO_TAB`]
+ * (빈 화면 — 2026-11-13).
+ */
 export function closeTab(tabs: readonly ScriptTab[], active: number, n: number): { tabs: ScriptTab[]; active: number } | null {
-  if (tabs.length <= 1) return null;
   const i = tabs.findIndex((x) => x.n === n);
   if (i < 0) return null;
   const next = tabs.filter((x) => x.n !== n);
+  if (next.length === 0) return { tabs: [], active: NO_TAB };
   if (active !== n) return { tabs: next, active };
   return { tabs: next, active: (next[i] ?? next[i - 1]).n };
+}
+
+/**
+ * 우클릭 메뉴 **"다른 탭 닫기" · "오른쪽 탭 닫기"** 가 닫을 탭 번호 — 탭 줄 순서 그대로(앱 탭 줄의 `tabsToClose` 와 같은 규칙).
+ * `others` 는 대상만 빼고 전부, `right` 는 대상 **뒤**의 탭들. 대상이 없으면 빈 배열(메뉴 항목이 꺼진다).
+ */
+export function tabsToCloseN(tabs: readonly ScriptTab[], n: number, which: "others" | "right"): number[] {
+  const at = tabs.findIndex((x) => x.n === n);
+  if (at < 0) return [];
+  const picked = which === "right" ? tabs.slice(at + 1) : tabs.filter((x) => x.n !== n);
+  return picked.map((x) => x.n);
+}
+
+/**
+ * 여러 탭을 한 번에 닫는다 — 대상 `keep` 은 늘 남는다. 고른 탭이 닫히면(또는 `others`) `keep` 이 고른 탭이 된다(앱 탭 줄과 같다).
+ * 닫을 것이 없으면 `null`.
+ */
+export function closeTabsN(
+  tabs: readonly ScriptTab[],
+  active: number,
+  keep: number,
+  ns: readonly number[],
+): { tabs: ScriptTab[]; active: number } | null {
+  if (!tabs.some((x) => x.n === keep)) return null;
+  const drop = new Set(ns.filter((m) => m !== keep));
+  const next = tabs.filter((x) => !drop.has(x.n));
+  if (next.length === tabs.length) return null;
+  return { tabs: next, active: next.some((x) => x.n === active) ? active : keep };
 }
 
 /** 이름 바꾸기 — 앞뒤 빈칸은 걷고 상한에서 자른다. 비면 기본 이름으로 */

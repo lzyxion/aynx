@@ -17,6 +17,10 @@
   import { dataSelectSql, pageSizeOf } from "$lib/query/data-tab";
   import TreeMenu from "$lib/query/TreeMenu.svelte";
   import ScriptTabMenu from "$lib/query/ScriptTabMenu.svelte";
+  import { NO_TAB, tabsToCloseN } from "$lib/query/script-tabs";
+  import { tileRefreshOf } from "$lib/query/tile-refresh";
+  import { focusedPane } from "$lib/app/tabs.svelte.js";
+  import { anyModalOpen } from "$lib/app/keys.svelte.js";
   import { sqlDropAccepts, sqlSaveName } from "$lib/query/sql-file";
   import { dropSources, openSqlSources, pickSqlSources, saveSqlText } from "$lib/query/sql-file-io";
   import { sameTarget } from "$lib/query/definition";
@@ -71,7 +75,7 @@
    * **연결 · 쓰기 모드 · 자동 커밋 · 트랜잭션 작업은 연결 하나에 하나**라 모든 탭이 같이 쓰고, 실행 줄의 상태 표시는 탭을 바꿔도 같다.
    * 도는 실행도 연결에 하나다(서버는 연결당 쿼리 하나) — 다른 탭에서 [취소] 할 수 있고, 결과는 실행을 보낸 탭에 내린다.
    * ● = 저장 안 된 변경(살아 있는 글이 명세의 초안과 다르다 — 디바운스 중 · 32 KiB 초과). 추가 [+] · `Ctrl+T`, 닫기 × · 가운데 누르기 ·
-   * `Ctrl+W`(마지막 하나는 못 닫음 · 글이 있으면 OS 확인), 이름 두 번 누르기 · `F2`, 순서는 끌기. `Ctrl+T`/`Ctrl+W` 는 **이 타일에 포커스가
+   * `Ctrl+W`(마지막 하나도 닫혀 빈 화면 · 글이 있으면 확인), 이름 두 번 누르기 · `F2`, 순서는 끌기. `Ctrl+T`/`Ctrl+W` 는 **이 타일에 포커스가
    * 있을 때만**이고, 사용자가 같은 조합을 전역 단축키에 묶었으면 전역이 이긴다(앱 기본 전역은 `Ctrl+Shift+T`/`W` 라 겹치지 않는다).
    *
    * ## 데이터 탭(2026-11-10 — Beekeeper Studio 식 · 규칙 `query/data-tab` · 그림 `query/DataTab.svelte`)
@@ -343,7 +347,7 @@
    */
   function selectInto(obj: TreeRelation) {
     const sql = selectStarSql(dialect, obj.schema, obj.name);
-    if (activeData) {
+    if (activeData || noTab) {
       sc.openSql(sql);
       return;
     }
@@ -352,7 +356,44 @@
   }
 
   // ── 데이터 탭(머리말) ─────────────────────────────────────────────────────
-  const activeData = $derived(sc.activeTab.data ?? null);
+  const activeData = $derived(sc.activeTab?.data ?? null);
+  /** 탭이 하나도 없다(마지막 탭을 닫았다 — 빈 화면, 2026-11-13). 편집기는 숨은 채 산다(데이터 탭과 같다) */
+  const noTab = $derived(sc.tabs.length === 0);
+  /** SQL 칸(편집기 · 실행 줄 · 결과)을 숨긴다 — 데이터 탭이 보이거나 탭이 없을 때 */
+  const sqlHidden = $derived(activeData !== null || noTab);
+  let emptyNewBtn = $state<HTMLButtonElement | null>(null);
+  // 마지막 탭을 닫은 순간 이 타일이 선택된 타일이면 [새 쿼리] 로 포커스를 옮긴다 — 닫은 ×/탭은 사라져 포커스가 `body` 로 빠지고,
+  // 그러면 타일의 `Ctrl+T` · `Ctrl+O` 가 닿지 않는다. 다른 타일을 보고 있으면 포커스를 빼앗지 않는다.
+  $effect(() => {
+    if (!noTab || !emptyNewBtn) return;
+    if (untrack(() => focusedPane()?.id === pane.id)) emptyNewBtn.focus();
+  });
+  /**
+   * 탭을 닫은 뒤 포커스를 타일에 되돌린다(11-13) — 닫은 탭의 화면(데이터 탭 · ×)이 DOM 에서 빠지면 포커스가 `body` 로 떨어져 다음
+   * `Ctrl+W` · `Ctrl+T` 가 타일에 닿지 않았다. 이 타일이 선택된 타일이고 포커스가 `body`(또는 이 타일 안)에 있을 때만 — 다른 곳으로
+   * 간 포커스는 건드리지 않는다. 남은 탭이 SQL 이면 편집기, 데이터 탭이면 타일 뿌리, 빈 화면이면 위 효과가 [새 쿼리] 로.
+   */
+  function refocusAfterClose() {
+    void tick().then(() => {
+      if (!rootEl || noTab || focusedPane()?.id !== pane.id) return;
+      const a = document.activeElement;
+      if (a && a !== document.body && !rootEl.contains(a)) return;
+      if (activeData) {
+        // 보이는 데이터 탭 안에 포커스가 있을 때만 그대로 — SQL 탭을 닫고 온 경우 포커스는 아직 **숨은 편집기** 안에 남아 있다가
+        // 브라우저가 곧 `body` 로 뺀다(편집기는 `.gone` 으로 숨을 뿐 DOM 에 산다). 그래서 "타일 안" 이 아니라 "보이는 탭 안" 으로 가른다.
+        const shown = dataEl?.querySelector<HTMLElement>(".data-tab.on");
+        if (!shown?.contains(a)) rootEl.focus({ preventScroll: true });
+      } else editor?.focus();
+    });
+  }
+  async function closeTabHere(n: number) {
+    await sc.closeTabN(n);
+    refocusAfterClose();
+  }
+  /** 편집기에 쓰는 입구(이름 넣기 · SELECT 문 넣기 · DDL 보기)가 빈 화면에서 오면 새 쿼리 탭부터 연다 */
+  function ensureSqlTab() {
+    if (noTab) sc.newTab();
+  }
   /** 한 번 보인 데이터 탭 — 숨어도 산다(쪽 · 결과 유지). 닫힌 탭은 목록에서 빠지니 저절로 사라진다 */
   let dataSeen = $state<number[]>([]);
   $effect(() => {
@@ -363,6 +404,7 @@
 
   /** 함수 · 시퀀스 같은 잎 — 편집기 커서 자리에 이름만 넣는다(글을 바꿔 치우지 않는다) */
   function insertName(text: string) {
+    ensureSqlTab();
     editor?.insert(text);
   }
 
@@ -431,6 +473,21 @@
   }
   const closeTabMenu = () => (tabMenu = null);
 
+  // F5 — 이 타일이 선택된 타일이면 앱 새로고침 대신 이 타일의 ↻(규칙 · 까닭은 `query/tile-refresh`)
+  const dataRefs: Record<number, ReturnType<typeof DataTab> | undefined> = {};
+  function onWindowF5(ev: KeyboardEvent) {
+    const what = tileRefreshOf(ev, {
+      selected: visible && focusedPane()?.id === pane.id,
+      modal: anyModalOpen(),
+      dataTab: activeData !== null,
+    });
+    if (!what) return;
+    ev.preventDefault();
+    if (ev.repeat) return;
+    if (what === "data") dataRefs[sc.activeN]?.refresh();
+    else tree?.refresh();
+  }
+
   // 끌어 놓기 — 받을 수 있는 끌기(`sqlDropAccepts` — OS 파일 · 파일 타일 짐만)일 때만 놓을 곳을 그린다. **캡처 단계**에서 받는다: 편집기
   // (CodeMirror)가 놓인 파일을 제 글에 끼워 넣기 전에. `dragover` 는 전파를 끊지 않는다 — 타일 층(`PaneHost`)이 다른 타일에 그린
   // 하이라이트를 거두게(쿼리 타일 위 OS 파일은 그 층이 양보한다 — `pane/drop-rules`). 앱의 다른 끌기는 손대지 않는다.
@@ -462,6 +519,7 @@
   function defineFromTree(d: DbDefinitionTarget) {
     const fromDrop = treeDrop !== null;
     closeTreeDrop();
+    ensureSqlTab();
     void showDefinition(d);
     if (fromDrop) editor?.focus();
   }
@@ -706,7 +764,7 @@
       ev.preventDefault();
       ev.stopPropagation();
       if (combo === TAB_NEW) sc.newTab();
-      else void sc.closeTabN(sc.activeN);
+      else void closeTabHere(sc.activeN);
       return;
     }
     // 데이터 탭이 보이는 중의 `Ctrl+S` 는 받지 않는다(창 키가 브라우저 기본 동작만 끊는다)
@@ -815,12 +873,14 @@
     pickTab={sc.pickTab}
     startRename={sc.startRename}
     endRename={sc.endRename}
-    closeTabN={sc.closeTabN}
+    closeTabN={closeTabHere}
     onTabKey={sc.onTabKey}
     newTab={sc.newTab}
     tabMenu={openTabMenu}
   />
 {/snippet}
+
+<svelte:window onkeydown={onWindowF5} />
 
 <!-- data-* 는 하네스 손잡이(상태 · 다시 붙었나 · 핸들) — 값이 아니라 표식이다. keydown 은 "AI 에 묻기" · 탭 단축키(diff 타일과 같은 꼴) -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -891,6 +951,7 @@
           {#each dataTabs as x (x.n)}
             <div class="data-tab" class:on={x.n === sc.activeN}>
               <DataTab
+                bind:this={dataRefs[x.n]}
                 n={x.n}
                 data={x.data!}
                 {dialect}
@@ -914,11 +975,11 @@
           {/each}
         </div>
       {/if}
-      <div class="ed" style:height="{editorPct}%" class:gone={activeData !== null}>
+      <div class="ed" style:height="{editorPct}%" class:gone={sqlHidden}>
         <SqlEditor
           bind:this={editor}
-          docKey={docKey(sc.activeTab.n)}
-          initial={sc.activeTab.text}
+          docKey={docKey(sc.activeTab?.n ?? NO_TAB)}
+          initial={sc.activeTab?.text ?? ""}
           lang={sqlLang}
           onrun={() => void completer.idle().then(() => ses.run())}
           onscript={() => void completer.idle().then(() => ses.runScript())}
@@ -931,7 +992,7 @@
       <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
       <div
         class="hsplit"
-        class:gone={activeData !== null}
+        class:gone={sqlHidden}
         role="separator"
         aria-orientation="horizontal"
         aria-label={t("pane.query.split.resize")}
@@ -942,7 +1003,7 @@
         onpointerdown={dragSplit}
         onkeydown={(ev) => splitKey(ev, "split")}
       ></div>
-      {#if !activeData}
+      {#if !sqlHidden}
       <RunBar
         pill={ses.pill}
         {fit}
@@ -972,7 +1033,7 @@
         run={() => completer.idle().then(() => ses.run())}
       />
       {/if}
-      {#if definition && !activeData}
+      {#if definition && !sqlHidden}
         <div class="out-tabs" role="tablist" aria-label={t("pane.query.def.tabs")}>
           <button
             type="button"
@@ -1001,7 +1062,7 @@
           </span>
         </div>
       {/if}
-      <div class="out" class:gone={activeData !== null} bind:this={outEl}>
+      <div class="out" class:gone={sqlHidden} bind:this={outEl}>
         {#if ses.note && !(definition && outTab === "definition")}
           <!-- 결과가 없는 연결 사건(작업 종료 사유) — 결과 칸 머리 줄(머리말 "알림") -->
           <div
@@ -1025,7 +1086,7 @@
         {:else if runShown}
           <RunResults
             shown={runShown}
-            name={sc.tabLabel(sc.activeTab)}
+            name={sc.activeTab ? sc.tabLabel(sc.activeTab) : ""}
             limit={rowLimit}
             begin={ses.txb.begin.shown ? { disabled: ses.txb.begin.disabled, onclick: () => void ses.txCall("begin") } : null}
             onlocate={ses.locate}
@@ -1056,8 +1117,23 @@
         {/if}
       </div>
       <!-- 결과 패널이 없을 때(실행 전 · 취소 · 할 것 없음)도 행 상한은 바꿀 수 있다 — 결과 패널은 자기 아래 줄에 그린다 -->
-      {#if !(definition && outTab === "definition") && !runShown && !activeData}
+      {#if !(definition && outTab === "definition") && !runShown && !sqlHidden}
         <RowLimit {...rowLimit} line />
+      {/if}
+      {#if noTab}
+        <!-- 빈 화면(2026-11-13 목업 A) — 마지막 탭을 닫았다. 저장하지 않는다(다시 뜨면 "쿼리 1") -->
+        <div class="empty" data-query-empty>
+          <p class="empty-title">{t("pane.query.empty.title")}</p>
+          <div class="empty-acts">
+            <button type="button" class="empty-btn primary" bind:this={emptyNewBtn} onclick={sc.newTab} data-query-empty-new
+              ><UiIcon name="plus" size={13} /><span>{t("pane.query.empty.new")}</span><span class="empty-kbd">Ctrl+T</span></button
+            >
+            <button type="button" class="empty-btn" onclick={() => void pickSqlFiles()} data-query-empty-open
+              ><span>{t("pane.query.empty.open")}</span><span class="empty-kbd">Ctrl+O</span></button
+            >
+          </div>
+          <p class="empty-hint">{t("pane.query.empty.hint")}</p>
+        </div>
       {/if}
     </div>
   </div>
@@ -1108,13 +1184,15 @@
     n={tabMenu.n}
     title={tabMenu.title}
     data={tabMenu.data}
-    canClose={sc.tabs.length > 1}
     x={tabMenu.x}
     y={tabMenu.y}
     onclose={closeTabMenu}
     onrename={sc.startRename}
     onsave={saveTabSql}
-    onclosetab={(n) => void sc.closeTabN(n)}
+    onclosetab={(n) => void closeTabHere(n)}
+    canCloseOthers={tabsToCloseN(sc.tabs, tabMenu.n, "others").length > 0}
+    canCloseRight={tabsToCloseN(sc.tabs, tabMenu.n, "right").length > 0}
+    onclosearound={(n, which) => void sc.closeTabsAround(n, which).then(refocusAfterClose)}
   />
 {/if}
 
@@ -1503,6 +1581,78 @@
     font-weight: normal;
     white-space: pre-wrap;
     color: var(--fg-2);
+  }
+
+  /* 빈 화면(탭이 하나도 없다) — 작업 칸 가운데 */
+  .empty {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .empty-title,
+  .empty-hint {
+    margin: 0;
+  }
+
+  .empty-title {
+    font-size: var(--t-sm);
+    color: var(--fg-2);
+  }
+
+  .empty-hint {
+    font-size: var(--t-xs);
+    color: var(--fg-3);
+  }
+
+  .empty-acts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+
+  .empty-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-family: var(--font-ui);
+    font-size: var(--t-sm);
+    color: var(--fg);
+    background: var(--surface-field);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .empty-btn:hover {
+    background: var(--bg-hover);
+  }
+
+  .empty-btn.primary {
+    color: var(--on-accent);
+    background: var(--accent);
+    border-color: transparent;
+  }
+
+  .empty-btn.primary:hover {
+    background: color-mix(in srgb, var(--accent) 88%, var(--fg));
+  }
+
+  .empty-btn:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .empty-kbd {
+    opacity: 0.7;
+    font-size: var(--t-xs);
   }
 
   .out-note {

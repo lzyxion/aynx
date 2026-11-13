@@ -48,6 +48,8 @@
     connTestUi,
     noteConnFormChanged,
     startConnTest,
+    connPw,
+    setConnPassword,
   } from "$lib/app/query.svelte.js";
 
   let modalEl = $state<HTMLElement | null>(null);
@@ -337,6 +339,26 @@
 
               <label for="dbp-user">{t("app.query.form.field.user")}</label>
               <input id="dbp-user" bind:value={dbPicker.form.user} autocomplete="off" spellcheck="false" placeholder={t("app.query.form.field.optional")} />
+
+              <!-- 비밀번호(2026-11-13) — 저장된 값은 받지 않는다: 있으면 점 8개 자리표시뿐(길이도 드러나지 않음) · 비워 두면 그대로 -->
+              <label for="dbp-pw">{t("app.query.form.field.password")}</label>
+              <div class="stack">
+                <input
+                  id="dbp-pw"
+                  type="password"
+                  value={connPw.text}
+                  oninput={(ev) => setConnPassword((ev.currentTarget as HTMLInputElement).value)}
+                  autocomplete="new-password"
+                  spellcheck="false"
+                  placeholder={connPw.stored ? "••••••••" : t("app.query.form.field.optional")}
+                  data-db-password
+                  data-db-password-stored={connPw.stored ? "" : undefined}
+                />
+                <div class="pwsave" data-db-password-save>
+                  <Toggle id="dbp-pw-save" bind:checked={connPw.save} />
+                  <label for="dbp-pw-save">{t("app.query.form.password.save")}</label>
+                </div>
+              </div>
 
               <label for="dbp-tls">{t("app.query.form.field.tls")}</label>
               <div class="stack">
@@ -982,7 +1004,8 @@
     white-space: nowrap;
   }
 
-  .fields input {
+  /* 글 칸만 — 체크박스(비밀번호 저장)는 빼야 칸 모양(너비 100% · 높이 · 바탕)을 입지 않는다 */
+  .fields input:not([type="checkbox"]) {
     width: 100%;
     box-sizing: border-box;
     height: var(--field-height);
@@ -997,11 +1020,11 @@
     box-shadow: var(--glass-ctl-edge, none);
   }
 
-  .fields input:hover:not(:disabled, :focus) {
+  .fields input:not([type="checkbox"]):hover:not(:disabled, :focus) {
     background: var(--control-bg-hover);
   }
 
-  .fields input:focus-visible {
+  .fields input:not([type="checkbox"]):focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
   }
@@ -1049,6 +1072,20 @@
     font-size: var(--t-xs);
     line-height: 1.45;
     color: var(--fg-3);
+  }
+
+  /* 비밀번호 칸 아래 "비밀번호 저장" — 앱 스위치(`Toggle` — 켬/끔은 토글, 2026-11-13 사용자 결정) · 설명 줄 없음 */
+  .pwsave {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: 2px;
+  }
+
+  .fields .pwsave label {
+    line-height: 1.4;
+    cursor: pointer;
   }
 
   .note.tls-warn {

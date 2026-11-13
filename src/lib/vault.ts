@@ -155,8 +155,8 @@ export async function storePassphrase(path: string, value: string): Promise<void
 /**
  * 쿼리 타일 DB 연결의 비밀번호를 담는다 — 대상은 `db-connections.json` 연결의 **고정 `id`**(호스트 별칭이 아니다 —
  * 호스트 이름을 바꿔도 같은 열쇠). id 가 8~32자 `[A-Za-z0-9_-]` 가 아니면 백엔드가 거절한다.
- * 부르는 자리는 SSH 와 같이 **접속 모달의 "이 앱에 저장" 하나**다(인증 성공 뒤 — DB 모달은 쿼리 타일 연결 단계라 아직 없다).
- * 호스트 폼은 담지 않는다(지우기뿐).
+ * 부르는 자리는 둘 — **접속 모달의 "이 앱에 저장"**(인증 성공 뒤 — SSH 와 같다) · **DB 연결 폼의 "비밀번호 저장"**(2026-11-13 — [저장] 하면
+ * 바로, 인증 확인 없이 · `app/query` 의 `applyFormPassword`). 호스트 폼은 담지 않는다(지우기뿐).
  */
 export async function storeDbPassword(id: string, value: string): Promise<void> {
   await invoke("vault_store_db_password", { id, value });

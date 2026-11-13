@@ -394,7 +394,7 @@ check((await ev(`!!document.querySelector('[data-project-form]')`)) === false, "
 // Delete = 제거 확인 상자 (취소면 안 지운다) — 네이티브 확인이 아니라 "브랜치도 삭제" 칸이 있는 앱 상자다
 const bDel = await ev(`window.__calls.length`);
 await key("Delete", 0, "Delete"); await sleep(500);
-const removeBox = () => ev(`(() => { const d = document.querySelector('[data-worktree-remove]'); if (!d) return null; const c = d.querySelector('[data-worktree-remove-branch]'); return { box: c ? { checked: c.checked, disabled: c.disabled, label: c.parentElement.textContent.trim() } : null, hint: d.querySelector('[data-worktree-remove-hint]')?.textContent.trim() ?? null, focus: document.activeElement?.hasAttribute('data-worktree-remove-submit') ?? false }; })()`);
+const removeBox = () => ev(`(() => { const d = document.querySelector('[data-worktree-remove]'); if (!d) return null; const c = d.querySelector('[data-worktree-remove-branch]'); return { box: c ? { checked: c.checked, disabled: c.disabled, label: c.closest('label').textContent.trim() } : null, hint: d.querySelector('[data-worktree-remove-hint]')?.textContent.trim() ?? null, focus: document.activeElement?.hasAttribute('data-worktree-remove-submit') ?? false }; })()`);
 const box0 = await removeBox();
 console.log("remove dialog:", JSON.stringify(box0));
 check(box0?.box?.checked === true && box0.box.disabled === false && box0.box.label === "브랜치 feat-x 도 삭제", `Delete (로컬 워크트리) → 제거 확인 상자 · '브랜치 feat-x 도 삭제' 가 **켜진 채** (${JSON.stringify(box0)})`);
@@ -1258,7 +1258,7 @@ check((await dotClass()) === "none", `세션 종료 → 끝남 = 점 없음 (${a
   /** 그 cwd 의 로컬 타일 하나를 새 탭으로 — (탭 id, 타일 id) */
   const openAt = (cwd) => ev(`(async () => { const w = await ${tabsM}; const f = await ${factM}; const p = f.newLocalPane('pwsh'); p.cwd = ${JSON.stringify(cwd)}; w.openInNewTab(p, 'wt-test'); return JSON.stringify({ tab: w.residentWindowTabs().find(t => JSON.stringify(t.root).includes(p.id)).id, pane: p.id }); })()`).then(JSON.parse);
   const tabAlive = (id) => ev(`(async () => (await ${tabsM}).residentWindowTabs().some(t => t.id === '${id}'))()`);
-  const tabsBox = () => ev(`(() => { const d = document.querySelector('[data-worktree-remove]'); if (!d) return null; const c = d.querySelector('[data-worktree-remove-tabs]'); return { tabs: c ? { checked: c.checked, label: c.parentElement.textContent.trim() } : null, hint: d.querySelector('[data-worktree-remove-tabs-hint]')?.textContent.trim() ?? null, mixed: d.querySelector('[data-worktree-remove-mixed]')?.textContent.trim() ?? null }; })()`);
+  const tabsBox = () => ev(`(() => { const d = document.querySelector('[data-worktree-remove]'); if (!d) return null; const c = d.querySelector('[data-worktree-remove-tabs]'); return { tabs: c ? { checked: c.checked, label: c.closest('label').textContent.trim() } : null, hint: d.querySelector('[data-worktree-remove-tabs-hint]')?.textContent.trim() ?? null, mixed: d.querySelector('[data-worktree-remove-mixed]')?.textContent.trim() ?? null }; })()`);
   const openRemove = async () => { await showProjects(); await openWtMenu(FX); await ev(`document.querySelector('[data-worktree-action="remove"]').click()`); await sleep(400); };
   // 앞 시나리오가 남긴 feat-x 탭들(워크트리 탭 · 에이전트 타일)도 셈에 든다 — 먼저 지금 수를 읽는다.
   await openRemove();

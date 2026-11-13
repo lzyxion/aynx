@@ -135,19 +135,17 @@
           <span class="stab-dirty" role="img" aria-label={t("pane.query.tab.dirty")} title={t("pane.query.tab.dirty")} data-query-tab-dirty
           ></span>
         {/if}
-        {#if tabs.length > 1}
-          <button
-            type="button"
-            class="stab-x"
-            tabindex="-1"
-            title={t("pane.query.tab.close.title", { key: "Ctrl+W" })}
-            aria-label={t("pane.query.tab.close")}
-            onclick={(ev) => {
-              ev.stopPropagation();
-              void closeTabN(x.n);
-            }}><UiIcon name="close" size={10} /></button
-          >
-        {/if}
+        <button
+          type="button"
+          class="stab-x"
+          tabindex="-1"
+          title={t("pane.query.tab.close.title", { key: "Ctrl+W" })}
+          aria-label={t("pane.query.tab.close")}
+          onclick={(ev) => {
+            ev.stopPropagation();
+            void closeTabN(x.n);
+          }}><UiIcon name="close" size={10} /></button
+        >
       </div>
     {/each}
     <button

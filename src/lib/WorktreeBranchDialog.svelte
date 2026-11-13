@@ -139,11 +139,6 @@
     cursor: pointer;
   }
 
-  .pick input {
-    margin: 0;
-    accent-color: var(--accent);
-  }
-
   .list {
     display: flex;
     flex-direction: column;

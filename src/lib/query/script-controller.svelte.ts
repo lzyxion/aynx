@@ -7,6 +7,7 @@
 // `$effect` · 리스너는 없다. **연결 · 실행 · 트랜잭션 · 결과(`outcomes`) · 알림(`notes`)은 `QueryView` 에 있다** — 탭을 닫을 때 그 탭의
 // 결과 · 알림을 걷는 일은 부모의 `dropResults(n)` 를 원래 자리(편집기 문서 버리기 뒤 · 저장 앞)에서 부른다.
 // 언마운트의 남은 저장은 부모의 `onDestroy` 가 `flushPending()` 으로 원래 자리에서 부른다.
+import { tick } from "svelte";
 import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
 import { noteQueryTabs } from "$lib/app/query.svelte.js";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -15,7 +16,9 @@ import { QUERY_SCRIPTS_MAX, type PaneSpec, type QueryDataTab } from "$lib/sessio
 import {
   addTab,
   closeTab,
+  closeTabsN,
   findDataTab,
+  tabsToCloseN,
   setTabData,
   moveTab,
   renameTab,
@@ -56,7 +59,8 @@ export function createScriptTabs(h: ScriptTabsHost) {
   const initTabs = tabsFromSpec(h.pane.query ?? {});
   let tabs = $state<ScriptTab[]>(initTabs.tabs);
   let activeN = $state(initTabs.active);
-  const activeTab = $derived(tabs.find((x) => x.n === activeN) ?? tabs[0]);
+  /** 고른 탭 — 탭이 하나도 없으면(빈 화면) `null` */
+  const activeTab = $derived<ScriptTab | null>(tabs.find((x) => x.n === activeN) ?? tabs[0] ?? null);
   // 데이터 탭은 객체 이름(스키마는 말풍선 — `ScriptTabs`)
   const tabLabel = (x: ScriptTab) => (x.data ? x.data.name : (x.title ?? t("pane.query.tab.name", { n: x.n })));
 
@@ -89,6 +93,16 @@ export function createScriptTabs(h: ScriptTabsHost) {
     flushTabs();
   }
 
+  /**
+   * 편집기로 포커스 — **화면이 바뀐 뒤에**(`tick`). 데이터 탭 · 빈 화면에서 오면 이 순간 편집기는 아직 `display: none`(`.gone`)이라
+   * 곧바로 `focus()` 하면 포커스가 들어가지 않는다(11-13 — 새 탭에 바로 쓸 수 없던 까닭).
+   */
+  function focusEditor() {
+    void tick().then(() => {
+      if (!h.disposed) h.editor?.focus();
+    });
+  }
+
   function newTab() {
     const r = addTab(tabs);
     if (!r) {
@@ -97,7 +111,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     }
     tabs = r.tabs;
     pickTab(r.n);
-    h.editor?.focus();
+    focusEditor();
   }
 
   /**
@@ -154,7 +168,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     }
     tabs = r.tabs;
     pickTab(r.n);
-    h.editor?.focus();
+    focusEditor();
   }
 
   /**
@@ -166,7 +180,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     if (!r) return false;
     tabs = r.tabs;
     pickTab(r.n);
-    h.editor?.focus();
+    focusEditor();
     return true;
   }
 
@@ -185,7 +199,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
 
   async function closeTabN(n: number) {
     const x = tabs.find((y) => y.n === n);
-    if (!x || tabs.length <= 1) return;
+    if (!x) return;
     // 데이터 탭은 잃을 글이 없다 — 묻지 않는다
     const text = x.data ? "" : (h.editor?.textOf(docKey(n)) ?? x.text);
     if (text.trim() !== "") {
@@ -213,6 +227,51 @@ export function createScriptTabs(h: ScriptTabsHost) {
     }
     h.editor?.dropDoc(docKey(n));
     h.dropResults(n);
+    flushTabs();
+  }
+
+  /**
+   * 우클릭 [다른 탭 닫기] · [오른쪽 탭 닫기] — 글이 있는 탭이 하나라도 있으면 **한 번만** 묻고, 취소하면 하나도 닫지 않는다
+   * (앱 탭 줄의 `closeTabsAsked` 와 같다). 묻는 동안 바뀐 탭 줄은 닫기 직전에 다시 고른다.
+   */
+  async function closeTabsAround(n: number, which: "others" | "right") {
+    const pick = () => tabsToCloseN(tabs, n, which).map((m) => tabs.find((y) => y.n === m)!);
+    const first = pick();
+    if (first.length === 0) return;
+    const withText = first.filter((x) => !x.data && (h.editor?.textOf(docKey(x.n)) ?? x.text).trim() !== "");
+    if (withText.length > 0) {
+      let ok = false;
+      try {
+        ok = await askConfirm(
+          withText.length === 1
+            ? t("pane.query.tab.confirm.body", { name: tabLabel(withText[0]) })
+            : t("pane.query.tab.confirm.many.body", { n: withText.length }),
+          {
+            title: t(withText.length === 1 ? "pane.query.tab.confirm.title" : "pane.query.tab.confirm.many.title"),
+            kind: "warning",
+            okLabel: t("pane.query.tab.confirm.ok"),
+            cancelLabel: t("pane.query.tab.confirm.cancel"),
+            danger: true,
+          },
+        );
+      } catch {
+        ok = false;
+      }
+      if (!ok || h.disposed) return;
+    }
+    const ns = pick().map((x) => x.n);
+    const r = closeTabsN(tabs, activeN, n, ns);
+    if (!r) return;
+    const wasActive = activeN;
+    tabs = r.tabs;
+    if (r.active !== wasActive) {
+      activeN = r.active;
+      h.editor?.switchTo(docKey(r.active), tabs.find((y) => y.n === r.active)?.text ?? "");
+    }
+    for (const m of ns) {
+      h.editor?.dropDoc(docKey(m));
+      h.dropResults(m);
+    }
     flushTabs();
   }
 
@@ -275,7 +334,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     } else if (ev.key === "Enter" || ev.key === " ") {
       ev.preventDefault();
       pickTab(n);
-      h.editor?.focus();
+      focusEditor();
     }
   }
 
@@ -316,6 +375,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     liveText,
     setData,
     closeTabN,
+    closeTabsAround,
     startRename,
     endRename,
     tabDragStart,

@@ -271,6 +271,13 @@
     filterEl?.select();
   }
 
+  /** ↻ 단추 · DB 타일의 F5(SQL 탭 — `QueryView`) — 읽는 중이면 아무것도 하지 않는다 */
+  export function refresh() {
+    if (busy || loading) return;
+    spinning = true;
+    void load();
+  }
+
   /** 앱의 `find` 조합인가(사용자가 다시 묶었을 수 있다 · 끈 조합은 아무것과도 같지 않다) */
   function isFindCombo(ev: KeyboardEvent): boolean {
     const combo = comboFromEvent(ev);
@@ -515,14 +522,11 @@
       class="tbtn refresh"
       class:spinning
       disabled={busy || loading}
-      title={t("pane.query.schema.refresh")}
+      title={t("pane.query.schema.refresh.title")}
       aria-label={t("pane.query.schema.refresh")}
       aria-busy={loading}
       data-query-schema-refresh
-      onclick={() => {
-        spinning = true;
-        void load();
-      }}
+      onclick={refresh}
       onanimationiteration={() => {
         if (!loading) spinning = false;
       }}><UiIcon name="refresh" size={12} /></button
