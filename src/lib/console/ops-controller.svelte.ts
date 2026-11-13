@@ -27,6 +27,7 @@ import { SvelteSet } from "svelte/reactivity";
 import { showNotice } from "$lib/app/notice";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { Key } from "$lib/i18n/keys";
+import type { ExitSide } from "$lib/dock-alert-exit";
 
 /**
  * Rust 저장소는 별도 스레드(MCP)가 채우므로 반응형이 아니다 — 대시보드이 열려 있는 동안
@@ -103,6 +104,18 @@ export const TARGET_LABEL: Record<TargetState, Key> = {
  * 를 부른다 — 효과의 순서와 수명(열린 동안만)이 나누기 전과 같다.
  */
 export class OpsController {
+  /**
+   * 지우기(×  · 머리줄 🗑)를 마지막으로 누른 시각 — 그 직후에 빠지는 줄만 밀려 나간다(`row-exit.ts` 의 문 · 2026-11-13). 아무도 그리지 않아
+   * `$state` 가 아니다. `exitSide` 는 감싸는 독이 붙은 쪽(`PlansView` 가 채운다).
+   */
+  lastDismissAt = 0;
+  exitSide: ExitSide = "right";
+
+  /** 끝난(치울 수 있는) 실행 수 — 머리줄 🗑 가 켜질지 본다 */
+  get finishedCount(): number {
+    return this.execList.filter((ex) => !EXEC_ACTIVE.has(ex.state)).length;
+  }
+
   operations = $state<Operation[]>([]);
 
   /** 검토 대기 개수 — 세그먼트/헤더 배지와 빈 상태 판정에 쓴다 */
@@ -341,6 +354,7 @@ export class OpsController {
 
   #dismiss(operationIds: readonly string[]): void {
     if (operationIds.length === 0) return;
+    this.lastDismissAt = Date.now();
     dismissRuns(operationIds);
     const next = { ...this.executions };
     for (const id of operationIds) {

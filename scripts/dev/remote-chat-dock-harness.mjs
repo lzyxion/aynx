@@ -4,8 +4,8 @@
 // (`chat-a` — 서버 표에서 턴이 돌고 권한 카드 하나가 기다린다), 통로(`side_chat_subscribe`)는 Channel id 를 쥐어 사건을 손으로 흘린다.
 // 보는 것:
 // ① 원격 데스크톱 폭(1400x900) — 채팅 독이 마운트 · `toggleChatDock`(open-chat-dock) 으로 열림 · 작업안 몸통(`[data-chat-dock-plans]`)은
-//    없다 · 머리줄 ▾ 점 = 권한 · 권한 카드가 선다
-// ② 원격 독의 작업안 칸 → 원격 작업안 판(`PlansCover`)이 열린다(갈래는 채팅 그대로)
+//    숨어 있다 · 머리줄 ▾ 점 = 권한 · 권한 카드가 선다
+// ② 원격 독의 작업안 칸 → 주 창과 같이 독의 작업안 갈래로 바뀐다(2026-11-13 — 예전엔 캔버스를 덮는 판 `PlansCover`)
 // ③ 다른 창이 먼저 답한 권한 카드(`[unknown-request]`) — 오류 줄 · 오류 토스트 없이 삼킨다
 // ④ 다른 창이 보낸 사람 글(`userAccepted{text}`) — 곧바로 말풍선
 // ⑤ 원격 폰(390x844) — 독 없음 · 상태줄 말풍선(점 = 권한) → 전체 화면 덮개 · 포커스는 뒤로 단추(입력 칸 아님) · 입력 칸
@@ -213,24 +213,24 @@ await waitFor(`!!document.querySelector('[data-side-chat-perm="r1"]')`);
 await sleep(600);
 const D = JSON.parse(await ev(`JSON.stringify({
   open: document.querySelector('[data-chat-dock]').classList.contains('open'),
-  plansBody: !!document.querySelector('[data-chat-dock-plans]'),
+  plansBody: !!document.querySelector('[data-chat-dock-plans]:not([hidden])'),
   headDot: document.querySelector('[data-chat-dock-list] .dot')?.dataset.dot ?? null,
   perm: !!document.querySelector('[data-side-chat-perm="r1"] [data-side-chat-allow]'),
   title: document.querySelector('[data-chat-dock-list] .title')?.textContent.trim(),
   subscribed: window.__sideChan !== null,
 })`));
-check("① open-chat-dock → 열림 · 작업안 몸통 없음 · ▾ 점 = 권한 · 카드 · 제목 · 통로", D, {
+check("① open-chat-dock → 열림 · 작업안 몸통 숨음 · ▾ 점 = 권한 · 카드 · 제목 · 통로", D, {
   open: true, plansBody: false, headDot: "permission", perm: true, title: "디스크 점검", subscribed: true,
 });
 await shot("remote-dock.png");
 
-// ── ② 작업안 칸 → 원격 작업안 판 ─────────────────────────────────────────────────
+// ── ② 작업안 칸 → 독의 작업안 갈래(주 창과 같다 · 덮는 판 없음) ─────────────────────
 await ev(`document.querySelector('[data-dock-section="plans"]').click()`);
 await sleep(900);
-check("② 작업안 칸 → 작업안 판(PlansCover) · 갈래는 채팅 그대로",
-  JSON.parse(await ev(`JSON.stringify([!!document.querySelector('[data-plans-cover]:not([hidden]) [data-plans-view]'), document.querySelector('[data-dock-section="chat"]').getAttribute('aria-pressed'), !document.querySelector('[data-chat-dock-body]').hidden])`)),
-  [true, "true", true]);
-await ev(`(async () => (await ${importApp("app/usage-view.svelte.ts")}).closeCoverView())()`);
+check("② 작업안 칸 → 독의 작업안 갈래 · 덮는 판 없음",
+  JSON.parse(await ev(`JSON.stringify([!!document.querySelector('[data-chat-dock-plans]:not([hidden]) [data-plans-view]'), document.querySelector('[data-dock-section="plans"]').getAttribute('aria-pressed'), document.querySelector('[data-chat-dock-body]').hidden, !!document.querySelector('[data-plans-cover]')])`)),
+  [true, "true", true, false]);
+await ev(`document.querySelector('[data-dock-section="chat"]').click()`);
 await sleep(400);
 
 // ── ③ 다른 창이 먼저 답한 카드 — 조용히 삼킨다 ──────────────────────────────────────

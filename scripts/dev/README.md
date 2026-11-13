@@ -580,15 +580,15 @@ PAGE_PORT=1441 node scripts/dev/run-history-harness.mjs <outdir> 9273
 
 `run-history-harness.mjs` 의 스텁 그대로(작업안 대기 둘을 먹인다). 러너로만 돌린다:
 `node scripts/dev/run-harness.mjs plans-dock-harness.mjs <outdir> --size 1400x900`
-→ `dock-plans.png` · `dock-chat.png` · `phone-plans.png` · `remote-plans-cover.png`.
+→ `dock-plans.png` · `dock-chat.png` · `phone-plans.png` · `remote-plans-dock.png`.
 
 - ① `openPlans` → 채팅 독 + 작업안 갈래(탭 트리에 작업안 타일 없음) · 갈래 칸(독 폭 전체 알약 · 34px · 고른 칸 `--accent-soft`) ·
   작업안 칸 배지 = 승인 대기 수(aria-label 에도) · 머리줄 '작업안' · 📌 · ✕ 만 · 검토 카드는 물러난다
 - ② 채팅 갈래 — 머리줄(제목 ▾ · +) · 작업안 배지는 남음 · `plansShown` 거짓 · `aynx:dock` 의 `chatSection`
 - ③ `togglePlans` · `toggleChatDock` 의 갈래 규칙 · ④ `openPlansAt` → 작업안 갈래의 그 카드
 - ⑤ 원격 폰 흉내(`sessionStorage` 표식 → `window.__AYNX_REMOTE__` · 390x844) — 전체 화면 덮개 · 보기 탭 두 칸 반반 · 거절/승인 44 ·
-  휴대폰 '뒤로'(`history.back`) = 닫기 · 시트의 작업안 줄 → 덮개 · ⑥ 원격 데스크톱 폭 — 작업안 판(독 안에 작업안 몸통 없음 — 11-01 부터
-  원격에도 채팅 독이 선다) · ⑦ 예외 0(`stub:` 거절 제외)
+  휴대폰 '뒤로'(`history.back`) = 닫기 · 시트의 작업안 줄 → 덮개 · ⑥ 원격 데스크톱 폭 — 주 창과 같은 채팅 독의 작업안 갈래(덮는 판 없음 —
+  2026-11-13) · ⑦ 예외 0(`stub:` 거절 제외)
 
 ## remote-chat-dock-harness.mjs — 원격 웹 창의 사이드 채팅 (2026-11-01)
 
@@ -596,8 +596,8 @@ PAGE_PORT=1441 node scripts/dev/run-history-harness.mjs <outdir> 9273
 `side_chat_subscribe` 의 Channel id 로 사건을 손으로 흘린다). 러너로만 돌린다(개발 앱 · 1420 포트를 쓰지 않는다):
 `node scripts/dev/run-harness.mjs remote-chat-dock-harness.mjs <outdir> --size 1400x900` → `remote-dock.png` · `phone-chat.png`.
 
-- ① 원격 데스크톱 폭 — 채팅 독 마운트 · `toggleChatDock` 으로 열림 · 독 안 작업안 몸통 없음 · ▾ 점 = 권한 · 권한 카드
-- ② 독의 작업안 칸 → 원격 작업안 판(`PlansCover`) · 갈래는 채팅 그대로
+- ① 원격 데스크톱 폭 — 채팅 독 마운트 · `toggleChatDock` 으로 열림 · 독 안 작업안 몸통 숨음 · ▾ 점 = 권한 · 권한 카드
+- ② 독의 작업안 칸 → 독의 작업안 갈래(주 창과 같다 · 덮는 판 없음 — 2026-11-13)
 - ③ 다른 창이 먼저 답한 카드(`[unknown-request]`) — 오류 줄 · 대괄호 낱말 없이 삼키고 다시 맞춘다
 - ④ 다른 창이 보낸 사람 글(`userAccepted{text}`) — 곧바로 말풍선
 - ⑤ 원격 폰(390x844) — 독 없음 · 상태줄 말풍선(점 = 권한) → 전체 화면 덮개 · 포커스 = 뒤로 단추 · `enterkeyhint="enter"` · 그림 고르기 ·

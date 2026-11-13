@@ -14,10 +14,10 @@
  */
 
 /**
- * 캔버스를 덮는 판의 종류 — `plans` 는 **원격 창(데스크톱 폭)의 작업안**(2026-10-25 — 작업안은 집 PC 주 창의 채팅 독 갈래에 살고,
- * 원격 창은 집 PC 레이아웃을 바꾸지 않고 제 창 안에서 이 판으로 본다 · `app/plans.svelte.ts` 의 `openPlans` 원격 갈래).
+ * 캔버스를 덮는 판의 종류. (2026-10-25 ~ 11-13 에는 원격 창의 작업안 판 `plans` 도 있었다 — 이제 원격도 채팅 독의 작업안 갈래다 ·
+ * `app/plans.svelte.ts`.)
  */
-export type CoverView = "usage" | "resources" | "plans";
+export type CoverView = "usage" | "resources";
 
 let view = $state<CoverView | null>(null);
 
@@ -45,16 +45,6 @@ export function coverViewOpen(): boolean {
 /** 사용량 화면이 떠 있는가 */
 export function usageViewOpen(): boolean {
   return view === "usage";
-}
-
-/** 원격 창의 작업안 판이 떠 있는가 */
-export function plansCoverOpen(): boolean {
-  return view === "plans";
-}
-
-/** 원격 창의 작업안 판을 연다 */
-export function openPlansCover(): void {
-  openCover("plans");
 }
 
 /** 자원 화면이 떠 있는가 */

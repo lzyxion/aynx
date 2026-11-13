@@ -259,8 +259,8 @@ check("② 메타 줄 — 대상 · 경로 · 검증", one.meta, { targets: "대
 check("② 한 건이면 ‹ › 가 없다", one.pos, null);
 check("② 안전 명령 — 실패색 띠 · 테두리가 없다", [one.tone, one.danger], ["neutral", false]);
 check("② 대상 둘 · 첫 대상에 (먼저)", [one.tcount, one.chips.length, one.canary], ["대상 2", 2, 1]);
-check("② 단추 — 접기 · 전체 보기(이유가 있다) · 작업안에서 보기 · 거절 · 실행 승인",
-  one.buttons, ["접기", "전체 보기", "작업안에서 보기", "거절", "실행 승인"]);
+check("② 단추 — 접기 · 전체 보기(이유가 있다) · 작업안에서 보기 · 나중에 · 거절 · 실행 승인",
+  one.buttons, ["접기", "전체 보기", "작업안에서 보기", "나중에", "거절", "실행 승인"]);
 check("② 승인은 채운 강조", one.approve.cls.includes("btn-primary"), true);
 check("② aria-live 는 끈다", [one.role, one.live], ["group", "off"]);
 check("② z-index 95", one.z, "95");
@@ -422,6 +422,19 @@ const folded = await readCard();
 check("⑧ 접으면 한 줄 — 개수 · [펼치기]", [folded.count, folded.buttons, folded.cmd], ["검토 대기 1건", ["펼치기"], null]);
 await feed([plan({ operationId: "op-new", title: "새 요청", command: "uptime" }), plan({ operationId: "op-s", title: "안전", command: "uptime" })]);
 check("⑧ 새 머리가 서면 다시 펴진다", [(await readCard()).title, (await readCard()).pos], ["새 요청", "1 / 2"]);
+
+// ── ⑧-b [나중에] — 지금 대기를 모두 카드에서 치운다 · 새 작업안만 다시 세운다 (2026-11-13) ──────────────
+await resetCalls();
+await mouseClick(btn("나중에"));
+check("⑧-b [나중에] → 카드 없음 · 승인 · 거절은 나가지 않았다",
+  [await ev(`document.querySelectorAll('.rcard').length`), (await calls("approve_operation")).length, (await calls("reject_operation")).length], [0, 0, 0]);
+await feed([plan({ operationId: "op-new", title: "새 요청", command: "uptime" }), plan({ operationId: "op-s", title: "안전", command: "uptime" }), plan({ operationId: "op-late", title: "그다음 요청", command: "uptime" })]);
+const late = await readCard();
+check("⑧-b 새 작업안이 오면 그것만 카드로 선다(치운 둘은 빠짐)", [late?.title, late?.pos], ["그다음 요청", null]);
+// 되돌림 — 대기가 비면 치운 표도 비고, 같은 둘이 다시 오면 카드가 선다(⑨ 의 앞 상태)
+await feed([]);
+await feed([plan({ operationId: "op-new", title: "새 요청", command: "uptime" }), plan({ operationId: "op-s", title: "안전", command: "uptime" })]);
+check("⑧-b 대기가 비었다 다시 오면 치운 표가 남지 않는다", (await readCard())?.title, "새 요청");
 
 // ── ⑨ 작업안 — 채팅 독의 작업안 갈래가 보이면 물러난다 (2026-10-25 — 작업안 타일이 독의 갈래가 됐다 · `plansShown`) ──
 const plansMod = importApp("app/plans.svelte.ts");

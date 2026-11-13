@@ -29,7 +29,7 @@ export const board = {
   "usageView.subtitle": "토큰 · 요금제 한도",
   // 자원 화면(2026-10-17 — 로컬 자원 모니터 `ResourceView.svelte` · 몸통 `console/ResourceBoard.svelte`)
   "resources.title": "자원",
-  // 원격 창의 작업안 판 · 폰 작업안 덮개의 제목(2026-10-25 — `PlansCover.svelte` · `mobile/MobilePlans.svelte`)
+  // 폰 작업안 덮개의 제목(2026-10-25 — `mobile/MobilePlans.svelte`)
   "plans.title": "작업안",
   "resources.subtitle": "CPU · 메모리 — 지난 30분",
   "resources.system": "이 PC 전체",
@@ -302,7 +302,7 @@ export const board = {
   "exec.cancel.title": "이미 시작된 원격 명령은 계속 돌 수 있습니다",
   "exec.dismiss": "지우기",
   "exec.dismiss.title": "화면에서만 치웁니다 (기록은 남습니다)",
-  "exec.dismissFinished": "완료된 실행 모두 지우기",
+  "exec.dismissFinished": "완료된 실행 지우기",
   "exec.sort.newest": "최근 먼저",
   "exec.sort.oldest": "오래된 먼저",
   "exec.exit.title": "종료 코드",
@@ -337,6 +337,12 @@ export const board = {
   "history.approval.manual": "수동",
   "history.approval.auto": "자동",
   "history.search": "명령 · 제목 찾기",
+  "history.clear": "기록 지우기",
+  "foot.finished": "완료된 실행 {n}건",
+  "foot.history": "기록 {n}건",
+  "foot.historyShown": "보이는 기록 {n}건",
+  "history.clearShown": "보이는 기록 지우기",
+  "history.del": "이 기록 지우기",
   "history.sum.runs": "실행",
   "history.sum.failed": "실패 포함",
   "history.sum.targets": "대상 실행",

@@ -13,6 +13,7 @@
   import { opStateKind, targetKind, type StateKind } from "$lib/console/exec-rows";
   import { relativeTime } from "$lib/notifications";
   import UiIcon from "$lib/UiIcon.svelte";
+  import { EXIT_WINDOW_MS, makeRowExit } from "$lib/row-exit";
   import { EXEC_SORTS, setExecSort, settings } from "$lib/settings.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { Key } from "$lib/i18n/keys";
@@ -32,7 +33,14 @@
     return EXEC_ACTIVE.has(state);
   }
 
-  const finishedCount = $derived(ops.execList.filter((ex) => !isActive(ex.state)).length);
+  /**
+   * 끝난 줄의 나가기 — 지우기(× · 작업안 머리줄 🗑) 직후에 빠질 때만 밀려 나간다(독 알림 칸과 같은 움직임 · `row-exit.ts`).
+   * 묶음이 통째로 내려가도 움직임이 돌게 `|global` 이다 — 다른 까닭으로 빠지면(보기 전환 등) 문이 닫혀 곧바로 빠진다.
+   */
+  const rowExit = makeRowExit(
+    () => ops.exitSide,
+    () => Date.now() - ops.lastDismissAt < EXIT_WINDOW_MS,
+  );
 
   /** 접힌 줄의 이름 — 제목, 없으면 명령 첫 줄, 다른 창이 시작한 실행이면 그 말 */
   function rowTitle(ex: (typeof ops.execList)[number]): string {
@@ -147,15 +155,6 @@
     <h3 class="heading" id="ops-exec-h">
       {t("board.exec.heading")}<span class="count">{ops.execList.length}</span>
     </h3>
-    {#if finishedCount > 0}
-      <button
-        type="button"
-        class="clear-all"
-        data-exec-clear-finished
-        title={t("board.exec.dismiss.title")}
-        onclick={() => ops.dismissFinished()}>{t("board.exec.dismissFinished")}</button
-      >
-    {/if}
     <!-- 정렬 — 런처 독의 정렬 단추와 같은 모양. 지금 순서의 그림 · 이름을 보인다(누르면 반대). 도는 · 승인된 실행은 늘 위 -->
     <button
       type="button"
@@ -177,7 +176,7 @@
         {@const open = ops.expandedExecs.has(ex.id)}
         {@const at = ex.op ? (ex.op.requestedAt ?? ex.op.createdAt) : null}
         <!-- 완료된 실행 — 한 줄(▸ 제목 · 상태 · 시각 · ✕). 누르면 그 자리에서 명령 · 결과 줄 -->
-        <li class="op row" class:open class:pulse={pulsing === ex.id} data-operation-id={ex.id} data-exec-row>
+        <li class="op row" class:open class:pulse={pulsing === ex.id} data-operation-id={ex.id} data-exec-row out:rowExit|global>
           <div class="rline">
             <button type="button" class="rtoggle" aria-expanded={open} onclick={() => ops.toggleExec(ex.id)}>
               <span class="chev" class:open aria-hidden="true"><UiIcon name="chevron" size={14} /></span>
@@ -368,25 +367,6 @@
     flex: 1 1 auto;
   }
 
-  .clear-all {
-    flex: 0 0 auto;
-    height: 24px;
-    padding: 0 var(--space-2);
-    font-family: var(--font-ui);
-    font-size: var(--t-xs);
-    font-weight: var(--fw-semibold);
-    color: var(--accent);
-    background: transparent;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-  }
-
-  .clear-all:hover {
-    background: var(--control-ghost-hover);
-  }
-
-  .clear-all:focus-visible,
   .rtoggle:focus-visible,
   .rdismiss:focus-visible {
     outline: 2px solid var(--focus-ring);

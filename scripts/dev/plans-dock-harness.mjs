@@ -7,10 +7,10 @@
 // ③ `togglePlans`(open-plans) — 채팅 갈래면 작업안으로, 작업안이 보이면 닫기 · `toggleChatDock`(open-chat-dock) = 채팅 갈래로
 // ④ `openPlansAt` — 작업안 갈래 · 그 카드
 // ⑤ 원격 폰(390x844 · `__AYNX_REMOTE__`) — 전체 화면 덮개 · 넓은 두 칸 보기 탭 · 거절/승인 44 · 휴대폰 '뒤로' = 닫기 · 시트의 작업안 줄
-// ⑥ 원격 데스크톱 폭 — 캔버스를 덮는 작업안 판(독 안에 작업안 몸통 없음) · ⑦ 예외 0
+// ⑥ 원격 데스크톱 폭 — 주 창과 같이 채팅 독의 작업안 갈래(덮는 판 없음 · 2026-11-13) · ⑦ 예외 0
 //
 // usage: node scripts/dev/run-harness.mjs plans-dock-harness.mjs <outdir> --size 1400x900
-//   → <outdir>/dock-plans.png · dock-chat.png · phone-plans.png · remote-plans-cover.png
+//   → <outdir>/dock-plans.png · dock-chat.png · phone-plans.png · remote-plans-dock.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -345,17 +345,17 @@ if (phoneReady) {
   await sleep(500);
 }
 
-// ── ⑥ 원격 데스크톱 폭 — 캔버스를 덮는 판(집 PC 레이아웃 그대로) ─────────────────────
+// ── ⑥ 원격 데스크톱 폭 — 채팅 독의 작업안 갈래(주 창과 같다 · 2026-11-13) ─────────────
 await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
 await send("Page.reload", { ignoreCache: true });
 await sleep(4000);
 await ev(`(async () => (await ${plansMod}).openPlans())()`);
 await sleep(900);
-// 2026-11-01 — 원격 데스크톱 폭에도 채팅 독이 선다(사이드 채팅). 작업안 몸통은 판 하나뿐이다(독 안에 없다)
-check("⑥ 원격 데스크톱 — 작업안 판(덮개)이 선다 · 독 안에 작업안 몸통 없음",
-  JSON.parse(await ev(`JSON.stringify([!!document.querySelector('[data-plans-cover]:not([hidden]) [data-plans-view]'), !!document.querySelector('[data-chat-dock-plans]')])`)),
+// 2026-11-13 — 원격 데스크톱 폭도 채팅 독의 작업안 갈래로 연다(예전엔 타일을 가리는 판 `PlansCover` — 걷음)
+check("⑥ 원격 데스크톱 — 독의 작업안 갈래가 선다 · 덮는 판 없음",
+  JSON.parse(await ev(`JSON.stringify([!!document.querySelector('[data-chat-dock-plans]:not([hidden]) [data-plans-view]'), !!document.querySelector('[data-plans-cover]')])`)),
   [true, false]);
-await shot("remote-plans-cover.png");
+await shot("remote-plans-dock.png");
 await ev(`sessionStorage.removeItem('aynx-h-remote')`);
 
 if (errors.length) console.log("ERRORS\n  " + errors.join("\n  "));

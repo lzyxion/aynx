@@ -49,7 +49,6 @@
   import ChatDock from "$lib/ChatDock.svelte";
   import UsageView from "$lib/UsageView.svelte";
   import ResourceView from "$lib/ResourceView.svelte";
-  import PlansCover from "$lib/PlansCover.svelte";
   import {
     openUsageView,
     resourceViewOpen,
@@ -689,13 +688,6 @@
       (`app/usage-view.svelte.ts`).
     -->
     <ResourceView />
-    <!--
-      **원격 창의 작업안 판**(2026-10-25) — 작업안은 집 PC 주 창의 채팅 독 갈래에 산다. 원격 창(데스크톱 폭)은 집 PC 레이아웃을 바꾸지 않고
-      이 판으로 본다(폰 배치는 `MobileBar` 의 폰 덮개) — 작업안 몸통이 한 창에 둘 서지 않게 여기서만 마운트한다.
-    -->
-    {#if isRemote && !mobileLayout()}
-      <PlansCover />
-    {/if}
     <!--
       **세션 목록 판** — 캔버스 위쪽 가장자리에서 내려오는 덮개(`open-console` · 상태바 세션 칸 ·
       `app/session-sheet.svelte.ts`). 타일 크기를 바꾸지 않는다. 모달 · 가림막이 서면 스스로 접힌다.

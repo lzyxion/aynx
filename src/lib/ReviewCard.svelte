@@ -125,6 +125,15 @@
   let selectedId = $state<string | null>(null);
 
   /**
+   * **[나중에]로 치운 작업안 id** (2026-11-13 사용자 요청 — 카드가 타일을 가리는 동안 타일 내용을 보고 싶다). 누른 그 순간 대기 중이던
+   * 작업안을 **모두** 담는다 — 한 건만 치우면 다음 건이 같은 자리에 곧바로 떠 목적이 막힌다. 치운 것은 채팅 독의 작업안 칸(배지 수)에서
+   * 승인 · 거절한다. **새 작업안은 여기 없으므로 카드가 다시 선다** — "새 요청은 한 번은 보여야 한다"(아래 접힘 주석)는 그대로다.
+   * 창마다 · 이번 페이지 동안만(저장하지 않는다). 목록을 떠난 id 는 아래 효과가 버린다.
+   */
+  let deferred = $state<ReadonlySet<string>>(new Set());
+  const shownPlans = $derived(pendingPlans().filter((o) => !deferred.has(o.operationId)));
+
+  /**
    * **작업안이 보이는 동안에는 물러난다** (2026-10-07 작업안 타일 → 2026-10-25 채팅 독의 작업안 갈래 · 원격은 제 덮개).
    *
    * 작업안은 이 카드가 말하려던 것을 이미 더 크게 보여 준다 — 명령 전문 · 위험 배지 · 대상 목록 ·
@@ -135,7 +144,7 @@
   const model = $derived(
     plansShown()
       ? ({ kind: "hidden" } as const)
-      : reviewCardModel(pendingPlans(), veilVisible(), now, autoRefusals(), selectedId, (id) => findDbConn(id)?.via),
+      : reviewCardModel(shownPlans, veilVisible(), now, autoRefusals(), selectedId, (id) => findDbConn(id)?.via),
   );
 
   /** DB 엔진 글자 → 이름(모르는 글자는 그대로) */
@@ -157,7 +166,8 @@
 
   /**
    * 접힘 — 이 컴포넌트만의 상태다(저장하지 않는다). **영구 닫기는 없다**: 대기가 남아 있는
-   * 동안 화면에서 지울 수 있으면 이 기능의 존재 이유가 사라진다.
+   * 동안 화면에서 지울 수 있으면 이 기능의 존재 이유가 사라진다. ([나중에] — 위 `deferred` — 는 그 대기를 채팅 독의 작업안 칸
+   * 배지로 넘길 뿐이고 새 작업안은 다시 카드를 세운다 · 2026-11-13 사용자 결정.)
    *
    * 머리 작업안이 바뀌면 **다시 펴진다**. 접어 둔 채 새 요청이 오면 사람은 "1건" 이 "2건" 이
    * 된 것만 보고 무엇이 왔는지는 못 본다 — 새 요청은 한 번은 보여야 한다.
@@ -215,10 +225,26 @@
   // 고른 것이 목록을 떠났으면(승인·거절·만료) 쥐고 있던 id 도 버린다 — 모델은 이미 맨 앞으로
   // 떨어졌지만(순수 함수의 몫), 쥔 채로 두면 같은 id 가 되살아날 일은 없어도 상태가 거짓말을 한다.
   $effect(() => {
-    if (selectedId !== null && !pendingPlans().some((o) => o.operationId === selectedId)) {
+    if (selectedId !== null && !shownPlans.some((o) => o.operationId === selectedId)) {
       selectedId = null;
     }
   });
+
+  // 치운 것 중 목록을 떠난 id(승인 · 거절 · 만료)는 버린다 — 집합이 끝없이 자라지 않게.
+  $effect(() => {
+    if (deferred.size === 0) return;
+    const live = new Set(pendingPlans().map((o) => o.operationId));
+    if ([...deferred].some((id) => !live.has(id))) {
+      deferred = new Set([...deferred].filter((id) => live.has(id)));
+    }
+  });
+
+  /** [나중에] — 지금 대기 중인 작업안을 모두 카드에서 치운다(위 `deferred` 주석). 포커스도 놓는다(머리말 3) */
+  function later(): void {
+    armedId = null;
+    dropFocus();
+    deferred = new Set([...deferred, ...pendingPlans().map((o) => o.operationId)]);
+  }
 
   /** 승인·거절이 날아가는 동안 — 두 단추를 함께 막는다(두 번 보내지 않는다) */
   let busy = $state(false);
@@ -238,7 +264,7 @@
   /** ‹ › — 목록 안에서 한 칸 옮긴다(끝에서 멈춘다 · 돌지 않는다) */
   function step(delta: number): void {
     if (model.kind !== "card") return;
-    const list = pendingPlans();
+    const list = shownPlans;
     const next = model.index + delta;
     if (next < 0 || next >= list.length) return;
     selectedId = list[next].operationId;
@@ -538,6 +564,13 @@
         >
         <button
           type="button"
+          class="later btn btn-ghost btn-sm"
+          title={t("app.review.later.title")}
+          data-review-later
+          onclick={later}>{t("app.review.later")}</button
+        >
+        <button
+          type="button"
           class="reject btn btn-ghost btn-sm"
           disabled={busy}
           onclick={() => void reject()}>{t("app.review.reject")}</button
@@ -701,7 +734,7 @@
     color: var(--err);
   }
 
-  .foot .reject {
+  .foot .later {
     margin-left: auto;
   }
 
@@ -710,6 +743,7 @@
     화면 폭을 쓰고 아래 키 띠 바로 위에 앉는다.
   */
   @media (pointer: coarse) {
+    .foot .later,
     .foot .reject,
     .foot .approve,
     .foot .link {
@@ -722,11 +756,13 @@
     width: calc(100% - 16px);
     bottom: 8px;
   }
+  :global(.app.mobile) .foot .later,
   :global(.app.mobile) .foot .reject,
   :global(.app.mobile) .foot .approve {
     min-height: 44px;
     padding-inline: 16px;
   }
+  .later,
   .reject,
   .approve,
   .expand {

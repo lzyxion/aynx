@@ -108,6 +108,8 @@ export const app: Record<keyof typeof koApp, string> = {
   "review.plans": "View in Plans",
   "review.count": "{n} awaiting review",
   "review.collapse": "Collapse",
+  "review.later": "Later",
+  "review.later.title": "Hide card for now",
   "review.expand": "Expand",
   "review.autoRefused": "Not auto-approved",
 

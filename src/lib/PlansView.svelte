@@ -4,7 +4,9 @@
   import { plansView, setPlansView, takePlansRequest, plansRequestPending, type OpsView } from "$lib/app/plans.svelte.js";
   import { windowTargetLookup } from "$lib/console/window-rows";
   import RunHistory from "$lib/console/RunHistory.svelte";
-  import { openRunInHistory } from "$lib/app/run-history.svelte.js";
+  import { clearHistoryView, hideRuns, openRunInHistory } from "$lib/app/run-history.svelte.js";
+  import UiIcon from "$lib/UiIcon.svelte";
+  import type { ExitSide } from "$lib/dock-alert-exit";
   import PlanList from "$lib/console/PlanList.svelte";
   import { OPERATION_POLL_MS, OpsController } from "$lib/console/ops-controller.svelte";
   import { listen, type UnlistenFn } from "./ipc";
@@ -15,7 +17,7 @@
 
   // ---------------------------------------------------------------------------
   // **작업안의 몸통** — 2026-10-07 전체 화면 대시보드의 작업안 칸 → 작업안 타일(`kind:"plans"`) → 2026-10-25 **채팅 독의 작업안 갈래**
-  // (`ChatDock.svelte`). 원격 창에서는 제 덮개 안에서 그린다(데스크톱 폭 `PlansCover.svelte` · 폰 `mobile/MobilePlans.svelte`).
+  // (`ChatDock.svelte`). 원격 창도 데스크톱 폭이면 채팅 독 안에서, 폰 배치면 제 덮개(`mobile/MobilePlans.svelte`) 안에서 그린다.
   // 앞선 판: docs/log/2026-09-25-dashboard.md · docs/log/2026-09-09-management-view.md · docs/log/2026-10-25-plans-tile-refresh.md.
   //
   // AI 가 저장한 작업안의 검토 · 승인 · 실행 결과를 보기 둘(진행 · 기록)로 그린다. 승인은 진행 보기의
@@ -35,7 +37,16 @@
   // 바탕은 칠하지 않는다 — 감싸는 판(독 · 덮개)이 칠한다. `phone` 이면 보기 탭이 넓은 두 칸 · 거절 · 승인 단추가 터치 크기(44)다.
   // ---------------------------------------------------------------------------
 
-  let { visible = true, phone = false }: { visible?: boolean; phone?: boolean } = $props();
+  let {
+    visible = true,
+    phone = false,
+    exitSide = "right",
+  }: {
+    visible?: boolean;
+    phone?: boolean;
+    /** 지운 줄이 밀려 나갈 화면 가장자리 — 감싸는 독이 붙은 쪽(채팅 독 · 폰 덮개는 오른쪽) */
+    exitSide?: ExitSide;
+  } = $props();
 
   let panelEl = $state<HTMLElement | null>(null);
 
@@ -52,6 +63,36 @@
 
   /** 작업안 · 실행 관리의 상태와 손잡이 — 이 타일과 수명이 같다 */
   const ops = new OpsController();
+
+  /** 기록 보기가 지금 보이는 실행 수 · 거르기가 걸렸나 · 보이는 id(`RunHistory` 가 채운다) */
+  let historyCount = $state(0);
+  let historyFiltered = $state(false);
+  let historyShownIds = $state<string[]>([]);
+
+  /**
+   * **바닥 줄의 [지우기]** (2026-11-13 — 런처 독 알림 칸의 바닥 줄 · [알림 지우기] 와 같은 모양). 진행 = 완료된 실행 지우기(도는 · 승인된
+   * 실행은 남는다), 기록 = 지금까지의 기록을 **화면에서만** 지우기(감사 파일은 그대로 — `app/run-history` 의 `clearHistoryView`).
+   * 지운 줄은 밀려 나간다(`row-exit.ts`). 할 일이 없으면 흐려진다.
+   */
+  const isHistory = $derived(opsView === "history");
+  const clearCount = $derived(isHistory ? historyCount : ops.finishedCount);
+  /** 기록 보기에서 거르기가 걸려 있으면 **보이는 것만** 지운다(골라 지우기 · 2026-11-13) — 아니면 지금까지 전부(지운 시각) */
+  const clearKey = $derived(
+    isHistory ? (historyFiltered ? "board.history.clearShown" : "board.history.clear") : "board.exec.dismissFinished",
+  );
+  const clearLabel = $derived(t(clearKey));
+  const countKey = $derived(
+    isHistory ? (historyFiltered ? "board.foot.historyShown" : "board.foot.history") : "board.foot.finished",
+  );
+  function clearView(): void {
+    if (!isHistory) ops.dismissFinished();
+    else if (historyFiltered) hideRuns(historyShownIds);
+    else clearHistoryView();
+  }
+  $effect(() => {
+    ops.exitSide = exitSide;
+  });
+
 
   /** 경과 시계 — 30 초마다 한 칸, 보일 때만 돈다(진행 보기 카드의 "N분 전 · 만료까지") */
   const ELAPSED_TICK_MS = 30_000;
@@ -223,7 +264,11 @@
   <div class="body" data-view={opsView}>
     {#if opsView === "history"}
       <!-- 기록 보기 — 감사 로그의 장부. 이름은 감사 스냅샷이 먼저, 그다음 이 창의 타일 표(`targetLookup`). -->
-      <RunHistory live={(id) => targetLookup.get(id)?.label ?? null} />
+      <RunHistory live={(id) => targetLookup.get(id)?.label ?? null} {exitSide}
+        bind:count={historyCount}
+        bind:filtered={historyFiltered}
+        bind:shownIds={historyShownIds}
+      />
     {:else}
       <!--
         진행(목록) 보기 — 검토 대기 카드 + 실행 묶음 (`console/PlanList.svelte`). 승인은 확인 한 단계(위험 명령은
@@ -231,6 +276,21 @@
       -->
       <PlanList {ops} {targetLookup} {now} {pulsing} />
     {/if}
+  </div>
+
+  <div class="foot" data-plans-foot={opsView}>
+    <span class="hint" data-plans-clear-count={clearCount}
+      >{t(countKey, { n: clearCount })}</span
+    >
+    <button
+      type="button"
+      class="foot-btn"
+      data-plans-clear={opsView}
+      disabled={clearCount === 0}
+      title={clearLabel}
+      aria-label={clearLabel}
+      onclick={clearView}><UiIcon name="trash" size={16} /><span class="label">{clearLabel}</span></button
+    >
   </div>
 </div>
 
@@ -310,6 +370,73 @@
   .seg-btn:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
+  }
+
+  /*
+   * 바닥 줄(2026-11-13) — 런처 독 알림 칸의 바닥 줄(`Dock.svelte` 의 `.foot` · `.foot-btn.icon`)과 같은 높이 · 글자 · 알약.
+   * 왼쪽 = 지울 수 있는 수, 오른쪽 끝 = [지우기]. 좁으면 알약은 아이콘만(이름은 title · aria-label 에 남는다).
+   */
+  .foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    height: 48px;
+    padding: 0 var(--space-3) 0 var(--space-4);
+    font-family: var(--font-ui);
+    font-size: var(--t-xs);
+    color: var(--control-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    background: var(--glass-inner, transparent);
+    container: plans-foot / inline-size;
+  }
+  .foot .hint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .foot-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 32px;
+    margin-left: auto;
+    padding: 0 var(--space-4) 0 var(--space-3);
+    font-family: var(--font-ui);
+    font-size: var(--t-xs);
+    font-weight: 500;
+    color: var(--control-sel-fg);
+    background: var(--control-sel-bg);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .foot-btn:hover:not(:disabled) {
+    background: var(--control-sel-bg-hover);
+  }
+  .foot-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .foot-btn:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  @container plans-foot (max-width: 240px) {
+    .foot-btn {
+      width: 32px;
+      padding: 0;
+      justify-content: center;
+    }
+    .foot-btn .label {
+      display: none;
+    }
+  }
+  .plans.phone .foot-btn {
+    height: 44px;
   }
 
   /* 진행 단추의 대기 수 — 강조색 채움(입력 대기 = 강조색이 서는 자리) */

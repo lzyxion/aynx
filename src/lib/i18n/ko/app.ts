@@ -65,6 +65,8 @@ export const app = {
   "review.plans": "작업안에서 보기",
   "review.count": "검토 대기 {n}건",
   "review.collapse": "접기",
+  "review.later": "나중에",
+  "review.later.title": "카드 잠시 치우기",
   "review.expand": "펼치기",
   // 자동 승인이 허용 목록을 지나고도 게이트에 걸린 이유 한 줄 — 토스트였던 것을 카드로
   // 옮겼다 (2026-09-22 · docs/log/2026-09-22-review-card.md).

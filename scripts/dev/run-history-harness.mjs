@@ -267,7 +267,7 @@ const barWidths = async () =>
 const readDetail = async () =>
   JSON.parse(await ev(`(() => { const d = document.querySelector('[data-history-detail]'); if (!d) return 'null'; return JSON.stringify({
     id: d.dataset.historyDetail,
-    after: d.previousElementSibling?.dataset.runId ?? null,
+    after: (d.previousElementSibling?.querySelector?.("[data-run-id]") ?? d.previousElementSibling)?.dataset.runId ?? null,
     meta: [...d.querySelectorAll('.dhead .meta span')].map((s) => s.textContent.trim()),
     result: d.querySelector('[data-detail-result]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null,
     cmd: d.querySelector('pre.cmd').textContent,
@@ -490,6 +490,14 @@ await ev(`document.querySelector('li[data-exec-row][data-operation-id="op-live"]
 await sleep(200);
 check("⑫ 줄을 누르면 결과 줄이 펼쳐진다", JSON.parse(await ev(liveRow)), ["지금 돈 실행", "전체 성공", 1, "true"]);
 await shot("plans-exec.png");
+// 바닥 줄 [완료된 실행 지우기] (2026-11-13 — 런처 독 알림 칸의 바닥 줄 모양). 줄이 밀려 나간 뒤 빠지고 다음 폴링에 되살아나지 않는다
+check("⑫ 🗑 — 완료된 실행이 있으면 켜져 있다", await ev(`document.querySelector('[data-plans-clear="list"]')?.disabled ?? null`), false);
+await ev(`document.querySelector('[data-plans-clear="list"]').click()`);
+await sleep(60);
+check("⑫ 🗑 → 완료된 줄이 나가는 중", await ev(`!!document.querySelector('li[data-exec-row][data-operation-id="op-live"][inert]')`), true);
+await sleep(2600);
+check("⑫ 🗑 → 줄이 빠지고 폴링 뒤에도 돌아오지 않는다 · 🗑 꺼짐",
+  [await ev(`!!document.querySelector('li[data-exec-row][data-operation-id="op-live"]')`), await ev(`document.querySelector('[data-plans-clear="list"]')?.disabled ?? null`)], [false, true]);
 // ── ⑮ 좁은 독(채팅 독 기본 380px — 작업안 갈래)에서 기록 목록이 가로로 넘치지 않고 제목 칸이 넉넉하다
 // (2026-10-25 — 예전 두 칸(목록 | 상세)은 이 폭에서 목록이 "we…" 로 잘렸다) ─────────────
 {
@@ -527,6 +535,37 @@ await ev(`document.querySelector('[data-history-state="error"] button').click()`
 await sleep(600);
 check("⑬ [다시 읽기] → 목록", await listIds(), ["op-nginx", "op-logs"]);
 
+// ── ⑬-b 바닥 줄 [기록 지우기] — 기록을 화면에서만 지운다 · 줄이 밀려 나간 뒤 빈 상태 (2026-11-13) ─────────────────
+check("⑬-b 🗑 — 기록 보기에서 켜져 있다", await ev(`(() => { const b = document.querySelector('[data-plans-clear="history"]'); return b ? (b.disabled ? 'off' : 'on') : 'none'; })()`), "on");
+// 줄마다 차례 지연(25ms 간격 · 상한 220) — Svelte 5 는 지연을 "빈 키프레임 · 지연만큼의 길이" 애니메이션으로 건다. 그것을 엿들어 줄마다 적는다
+await ev(`(() => { window.__exitDelays = []; const orig = Element.prototype.animate; Element.prototype.animate = function (k, o) { if (this.hasAttribute('data-exit-row') && Array.isArray(k) && k.length === 0) window.__exitDelays.push(o?.duration ?? 0); return orig.call(this, k, o); }; return 1; })()`);
+await ev(`document.querySelector('[data-plans-clear="history"]').click()`);
+await sleep(60);
+{
+  const d = JSON.parse(await ev(`JSON.stringify(window.__exitDelays)`));
+  console.log(`     exit delays: ${JSON.stringify(d)}`);
+  check("⑬-b 실행 줄 · 날짜 머리줄이 하나씩 차례로 나간다(여러 줄 · 지연이 늘어난다)",
+    [d.length > 2, d.slice(1).every((x, k) => x >= d[k]), d[d.length - 1] > d[0]], [true, true, true]);
+}
+await sleep(1200);
+check("⑬-b 다 나간 뒤 — 빈 상태 · 🗑 꺼짐 · 저장된 시각 · audit_runs 는 그대로 줄을 준다",
+  [await ev(`document.querySelector('[data-history-state]')?.dataset.historyState ?? null`), await ev(`document.querySelector('[data-plans-clear="history"]').disabled`), await ev(`Number(localStorage.getItem('aynx:run-history-cleared-at')) > 0`), await ev(`window.__auditRuns.length`)],
+  ["empty", true, true, 2]);
+// 다시 읽어도 지운 것은 돌아오지 않는다
+await ev(`document.querySelector('[data-ops-view="list"]').click()`);
+await sleep(200);
+await ev(`document.querySelector('[data-ops-view="history"]').click()`);
+await sleep(700);
+check("⑬-b 보기를 다시 열어도 빈 상태", await ev(`document.querySelector('[data-history-state]')?.dataset.historyState ?? null`), "empty");
+// 되돌림 — 지운 시각을 비우고 다시 연다
+await ev(`(async () => (await ${historyMod}).clearHistoryView(0))()`);
+await ev(`document.querySelector('[data-ops-view="list"]').click()`);
+await sleep(200);
+check("⑬-b 진행 보기의 [지우기] — 끝난 실행이 없으면 꺼짐", await ev(`document.querySelector('[data-plans-clear="list"]')?.disabled ?? null`), true);
+await ev(`document.querySelector('[data-ops-view="history"]').click()`);
+await sleep(700);
+check("⑬-b 지운 시각을 비우면 목록이 돌아온다", await listIds(), ["op-nginx", "op-logs"]);
+
 // ── ⑯ 제목 없는 긴 한 줄 명령 · 25ms 실행 (2026-09-28 실기 다듬기) ──────────────────
 // 실기의 AI 작업안 대부분은 제목이 없고 명령이 긴 한 줄이다 — 목록 줄은 명령을 **한 번만**(mono 한 줄),
 // 상세 머리는 **한 줄**(말줄임, mono), 줄 높이는 제목 있는 줄과 같다. 25ms 는 `0.1초 미만`.
@@ -557,6 +596,41 @@ check("⑯ 명령 전문 판은 그대로", UD.cmd, LONG);
 check("⑯ 25ms — `0.1초 미만` (머리 meta · 대상 표)",
   [UD.meta.includes("0.1초 미만"), UD.targets.some((row) => row.some((cell) => cell.endsWith("0.1초 미만")))], [true, true]);
 await shot("polish-untitled.png");
+// ── ⑬-c 골라 지우기 (2026-11-13) — 줄의 × 하나 · 거른 채 [보이는 기록 지우기] = 보이는 것만 ─────────────────
+{
+  await ev(`window.__auditRuns = ${JSON.stringify(RUNS)}`);
+  await ev(`(async () => { const h = await ${historyMod}; h.setHistoryPeriod(30); h.setHistoryFilter({ host: null, result: "all", approval: "all", query: "" }); })()`);
+  await ev(`document.querySelector('[data-ops-view="list"]').click()`);
+  await sleep(200);
+  await ev(`document.querySelector('[data-ops-view="history"]').click()`);
+  await sleep(900);
+  const before = await listIds();
+  const first = before[0];
+  await ev(`document.querySelector('[data-run-del="${first}"]').click()`);
+  await sleep(60);
+  check("⑬-c × → 그 줄만 나가는 중", await ev(`document.querySelectorAll('.entry[data-exit-row][inert]').length`), 1);
+  await sleep(900);
+  const afterOne = await listIds();
+  check("⑬-c × → 그 줄만 빠지고 나머지는 그대로 · 저장 · 지운 시각은 안 건드림",
+    [afterOne.includes(first), before.filter((x) => x !== first).every((x) => afterOne.includes(x)), await ev(`JSON.parse(localStorage.getItem('aynx:run-history-hidden') ?? '[]').includes('${first}')`), await ev(`Number(localStorage.getItem('aynx:run-history-cleared-at') ?? 0) > 0`)],
+    [false, true, true, false]);
+  await ev(`(async () => (await ${historyMod}).setHistoryFilter({ result: "bad" }))()`);
+  await sleep(500);
+  const bad = await listIds();
+  check("⑬-c 거르면 바닥 줄 = [보이는 기록 지우기] · 보이는 수",
+    JSON.parse(await ev(`JSON.stringify([document.querySelector('[data-plans-clear="history"]').getAttribute('aria-label'), document.querySelector('[data-plans-clear-count]').textContent.trim().startsWith('보이는 기록')])`)),
+    ["보이는 기록 지우기", true]);
+  await ev(`document.querySelector('[data-plans-clear="history"]').click()`);
+  await sleep(1200);
+  await ev(`(async () => (await ${historyMod}).setHistoryFilter({ result: "all" }))()`);
+  await sleep(500);
+  const rest = await listIds();
+  check("⑬-c 보이는 기록만 지웠다 — 실패 줄은 없고 나머지는 남는다 · 지운 시각은 여전히 없음",
+    [bad.length > 0, rest.some((x) => bad.includes(x)), rest.length > 0, await ev(`Number(localStorage.getItem('aynx:run-history-cleared-at') ?? 0) > 0`), await ev(`document.querySelector('[data-plans-clear="history"]').getAttribute('aria-label')`)],
+    [true, false, true, false, "기록 지우기"]);
+  await shot("run-history-select-clear.png");
+}
+
 // ── ⑭ 오류 0 ─────────────────────────────────────────────────────────────────
 if (errors.length) console.log("ERRORS\n  " + errors.join("\n  "));
 check("⑭ 잡히지 않은 예외·콘솔 오류 0", errors.length, 0);

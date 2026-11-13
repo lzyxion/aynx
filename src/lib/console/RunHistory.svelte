@@ -6,7 +6,11 @@
   import { SvelteSet } from "svelte/reactivity";
   import { listen, type UnlistenFn } from "../ipc";
   import {
+    hiddenRuns,
+    hideRuns,
+    historyClearedAt,
     historyFilter,
+    historyJustCleared,
     historyPeriod,
     historyRequestPending,
     setHistoryFilter,
@@ -15,6 +19,8 @@
   } from "$lib/app/run-history.svelte.js";
   import { openSettingsAt } from "$lib/app/overlays.svelte.js";
   import { auditRuns, type AuditRun, type OperationStateEvent } from "$lib/operations";
+  import { EXIT_WINDOW_MS, exitingWithin, makeEmptyIn, makeRowExit } from "$lib/row-exit";
+  import type { ExitSide } from "$lib/dock-alert-exit";
   import { formatDuration } from "$lib/finish-notify";
   import { isFinishedRun, runDurationMs, type LabelOf } from "$lib/operation-notify";
   import {
@@ -67,9 +73,23 @@
   interface Props {
     /** 지금 창이 아는 대상 이름(대시보드의 `targetLookup`) — 감사 스냅샷에 없을 때만 쓴다 */
     live: LabelOf;
+    /** 지금 보이는 실행 수(지운 것 · 거른 것 뺌) — 작업안 바닥 줄의 수 · [기록 지우기] 가 켜질지 본다(`PlansView`) */
+    count?: number;
+    /** 거르기가 걸려 있나(호스트 · 결과 · 승인 · 찾기) — 그러면 바닥 줄은 "보이는 기록" 만 지운다 */
+    filtered?: boolean;
+    /** 지금 보이는 실행 id(거른 결과) — 바닥 줄의 [보이는 기록 지우기] 가 이것을 지운다 */
+    shownIds?: string[];
+    /** 지운 줄이 밀려 나갈 화면 가장자리 — 감싸는 독이 붙은 쪽 */
+    exitSide?: ExitSide;
   }
 
-  let { live }: Props = $props();
+  let {
+    live,
+    count = $bindable(0),
+    filtered = $bindable(false),
+    shownIds = $bindable([]),
+    exitSide = "right",
+  }: Props = $props();
 
   let runs = $state<AuditRun[]>([]);
   let status = $state<"loading" | "ready" | "error">("loading");
@@ -139,7 +159,7 @@
   $effect(() => {
     const id = wanted;
     if (id === null || status !== "ready") return;
-    const hit = runs.find((r) => r.operationId === id);
+    const hit = kept.find((r) => r.operationId === id);
     if (hit) {
       wanted = null;
       void selectAndReveal(hit);
@@ -152,11 +172,47 @@
     wanted = null;
   });
 
-  const shown = $derived(filterRuns(runs, filter, live));
+  /**
+   * **화면에서 지운 것을 뺀** 실행(2026-11-13 — 머리줄 🗑 · `app/run-history` 의 `clearHistoryView`). 지운 시각 이전에 승인된 실행은
+   * 그리지 않는다(감사 파일은 그대로). 아래 목록 · 요약 · 호스트 고르기 · 딥링크가 모두 이것을 본다.
+   */
+  const kept = $derived.by(() => {
+    const cut = historyClearedAt();
+    const gone = hiddenRuns();
+    return cut > 0 || gone.size > 0 ? runs.filter((r) => r.approvedAt > cut && !gone.has(r.operationId)) : runs;
+  });
+
+  /** 지우기 직후에 빠지는 날 카드만 밀려 나간다 — 보기 전환 · 거르기 · 기간 바꾸기로 빠질 때는 곧바로(`row-exit.ts` 의 문) */
+  const justCleared = () => historyJustCleared(EXIT_WINDOW_MS);
+  /**
+   * 지운 줄은 알림 칸처럼 **실행 줄마다** 차례로 나간다 — 날짜 머리줄도 한 줄로 끼어(문서 순서 · 날짜 카드를 건너 하나로 센다).
+   * 줄이 날짜 카드마다 흩어져 있어 차례는 목록 상자(`.days`) 안의 `[data-exit-row]` 로 매긴다. 날짜 카드는 줄이 다 나간 뒤 빠진다
+   * (카드에 여백이 없어 줄이 다 접히면 높이가 0 이다).
+   */
+  const EXIT_ROWS = "[data-exit-row]";
+  const rowExit = makeRowExit(
+    () => exitSide,
+    justCleared,
+    (node) => exitingWithin(node.closest(".days"), EXIT_ROWS),
+  );
+  // 목록 상자는 빈 상태로 바뀌는 순간 `bind:this` 가 비울 수 있다 — 나가는 중인 그 상자를 따로 쥐어 빈 문구가 마지막 줄 뒤에 들어오게 한다.
+  let lastListEl: HTMLElement | null = null;
+  $effect(() => {
+    if (listEl) lastListEl = listEl;
+  });
+  const emptyIn = makeEmptyIn(() => exitingWithin(listEl ?? lastListEl, EXIT_ROWS), justCleared);
+
+  const shown = $derived(filterRuns(kept, filter, live));
+  // 바닥 줄(`PlansView`)에 넘긴다 — 거르기가 걸려 있으면 보이는 것만 지운다(골라 지우기 · 2026-11-13)
+  $effect(() => {
+    count = shown.length;
+    filtered = filter.host !== null || filter.result !== "all" || filter.approval !== "all" || filter.query.trim() !== "";
+    shownIds = shown.map((r) => r.operationId);
+  });
   const groups = $derived(groupByDay(shown, new Date()));
   const summary = $derived(summarize(shown));
   const ratio = $derived(ratioPercents(summary));
-  const hosts = $derived(hostOptions(runs, live));
+  const hosts = $derived(hostOptions(kept, live));
 
   function dayOpen(g: DayGroup, index: number): boolean {
     return (index < OPEN_DAYS) !== toggledDays.has(g.key);
@@ -486,8 +542,8 @@
       </div>
     </div>
 
-    {#if runs.length === 0}
-      <p class="empty" data-history-state="empty">{t("board.history.empty", { n: period })}</p>
+    {#if kept.length === 0}
+      <p class="empty" data-history-state="empty" in:emptyIn>{t("board.history.empty", { n: period })}</p>
     {:else if shown.length === 0}
       <p class="empty" data-history-state="filtered">{t("board.history.empty.filtered")}</p>
     {:else}
@@ -500,6 +556,8 @@
             <button
               type="button"
               class="day"
+              data-exit-row
+              out:rowExit|global
               data-day={g.key}
               aria-expanded={isOpen}
               onclick={() => toggleDay(g.key)}
@@ -516,7 +574,8 @@
                   {@const names = runTargetNames(run, live)}
                   {@const nm = runName(run)}
                   {@const open = selectedId === run.operationId}
-                  <div class="entry" class:open>
+                  <div class="entry" class:open data-exit-row out:rowExit|global>
+                    <div class="irow">
                     <button
                       type="button"
                       class="item"
@@ -563,6 +622,16 @@
                         {/if}
                       </span>
                     </button>
+                    <!-- 이 실행만 지우기(2026-11-13 — 화면에서만 · 진행 보기 · 알림 칸의 × 와 같은 손동작). 줄에 올리면 보인다 -->
+                    <button
+                      type="button"
+                      class="rdel"
+                      data-run-del={run.operationId}
+                      aria-label={t("board.history.del")}
+                      title={t("board.history.del")}
+                      onclick={() => hideRuns([run.operationId])}><UiIcon name="close" size={14} /></button
+                    >
+                    </div>
 
                     {#if open && detail && detail.run.operationId === run.operationId}
                       {@const d = detail}
@@ -927,6 +996,55 @@
     overflow: hidden;
     background: var(--control-tile-bg);
     border-radius: var(--radius-surface-inner); /* 독 · 덮개 안의 카드(2026-10-25) */
+  }
+
+  /* 줄 + 그 줄의 × — × 는 줄 오른쪽 끝에 겹쳐 서고 올렸을 때(키보드 포커스 · 손가락 화면은 늘)만 보인다. 그동안 결과 칸이 비켜 선다 */
+  .irow {
+    position: relative;
+  }
+  .rdel {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: var(--fg-3);
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(-50%);
+    transition: opacity 120ms ease;
+  }
+  .rdel:hover {
+    color: var(--fg-1);
+    background: var(--control-ghost-hover);
+  }
+  .rdel:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  .irow:hover .rdel,
+  .irow:focus-within .rdel {
+    opacity: 1;
+  }
+  .irow:hover .item,
+  .irow:focus-within .item {
+    padding-right: 44px;
+  }
+  @media (pointer: coarse) {
+    .rdel {
+      opacity: 1;
+    }
+    .item {
+      padding-right: 44px;
+    }
   }
 
   .entry + .entry {

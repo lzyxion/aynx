@@ -8,8 +8,6 @@
   import type { ToolbarMenuRow } from "$lib/browser/toolbar-tools";
   import PlansView from "$lib/PlansView.svelte";
   import { pendingCount } from "$lib/app/pending-plans.svelte.js";
-  import { openPlans } from "$lib/app/plans.svelte.js";
-  import { isRemote } from "$lib/app/window.svelte.js";
   import { joinListedSideChats, removeSideChat, sideChatsHeadDot } from "$lib/app/side-chat-surface.svelte.js";
   import {
     chatDockOpen,
@@ -91,8 +89,8 @@
   // `[dock] layout`(`dockSides`), 열림 · 고정 · 갈래는 `app/chat-dock.svelte.ts`. 사람 창의 데스크톱 폭에서 마운트된다(`+page` — 집 PC 주 창 ·
   // 원격 웹 창의 데스크톱 폭 · 2026-11-01. 원격 폰 배치는 독 대신 폰 덮개 `mobile/MobileChat`).
   //
-  // **원격 창**: 작업안 갈래의 몸통(`PlansView`)을 세우지 않는다 — 원격의 작업안은 제 판(`PlansCover`)이고 한 창에 작업안 몸통이 둘 서면
-  // 안 된다(`+page` 의 원격 판 머리말). 그래서 원격 독의 작업안 칸은 갈래를 바꾸지 않고 그 판을 연다(`openPlans` — 원격 갈래).
+  // **원격 창**(데스크톱 폭)도 주 창과 같이 작업안 갈래의 몸통(`PlansView`)을 세운다(2026-11-13 — 예전엔 캔버스를 덮는 판 `PlansCover` 를
+  // 열어 타일을 가렸다 · 사용자 버그 보고). 원격 폰 배치는 독이 없고 제 덮개(`mobile/MobilePlans`)다.
   //
   // **갈래 [채팅 | 작업안]**(2026-10-25 — docs/log/2026-10-25-plans-tile-refresh.md) — 독 맨 위 폭 전체의 알약 두 칸(아이콘뿐 — 채팅 =
   // 지금 채팅의 CLI 로고 · 작업안 = 체크리스트 + 승인 대기 수). 그 줄 오른쪽 끝에 독 단위의 📌 · ✕(2026-10-27 — 갈래를 바꿔도 그대로).
@@ -785,8 +783,8 @@
   // 갈래 [채팅 | 작업안] (2026-10-25)
   // ---------------------------------------------------------------------------
 
-  /** 지금 갈래 — 원격 창은 늘 채팅(작업안은 제 판이다 — 위 머리말) */
-  const section = $derived(isRemote ? "chat" : chatDockSection());
+  /** 지금 갈래 */
+  const section = $derived(chatDockSection());
   const plansWaiting = $derived(pendingCount());
   let plansEl = $state<HTMLElement | null>(null);
   let headEl = $state<HTMLElement | null>(null);
@@ -812,10 +810,6 @@
 
   /** 갈래를 고른다 — 고른 갈래의 첫 자리로 포커스(채팅 = 입력 칸 · 작업안 = 보기 단추) */
   function pickSection(next: "chat" | "plans"): void {
-    if (isRemote && next === "plans") {
-      openPlans();
-      return;
-    }
     if (next === "chat") listOpen = false;
     setChatDockSection(next);
     void focusHome();
@@ -1075,11 +1069,9 @@
   </div>
 
   <!-- 작업안 갈래 — 옛 작업안 타일의 몸통 그대로(보기 · 감사 알약 · 진행 · 기록). 보일 때만 폴링 · 구독 -->
-  {#if !isRemote}
-    <div class="plans-body" data-chat-dock-plans hidden={section !== "plans"} bind:this={plansEl}>
-      <PlansView visible={open && section === "plans"} />
-    </div>
-  {/if}
+  <div class="plans-body" data-chat-dock-plans hidden={section !== "plans"} bind:this={plansEl}>
+    <PlansView visible={open && section === "plans"} exitSide={side} />
+  </div>
 
   {#if chipOpen && chipBtn}
     <ToolbarMenu label={t("app.chatDock.chip.menu")} rows={chipRows} trigger={chipBtn} align="left" onpick={pickChip} onclose={closeChip} />

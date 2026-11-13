@@ -13,15 +13,15 @@
  * - 주 창 — 채팅 독의 작업안 갈래(`app/chat-dock.svelte.ts` 의 `openChatDockAt("plans")`). 독은 주 창에만 마운트된다.
  * - 보조 창 — 독이 없다. 주 창에 부탁하고(`requestWindow("main", {kind:"plans"})` — 받는 쪽은 `boot.svelte.ts` 의 창 요청 처리)
  *   주 창을 앞으로(`focus_window`) — 워크스페이스 전환 · 프로젝트 위치가 쓰는 같은 패턴.
- * - 원격 창 — 집 PC 레이아웃을 바꾸지 않고 **제 창 안의 덮개**로 본다: 폰 배치면 전체 화면 덮개(`app/mobile-sheets` 의 `plans` ·
- *   `MobilePlans.svelte` — 휴대폰 '뒤로' = 닫기), 데스크톱 폭이면 캔버스를 덮는 판(`app/usage-view` 의 `plans` · `PlansCover.svelte`).
+ * - 원격 창 — 집 PC 레이아웃을 바꾸지 않고 **제 창 안에서** 본다: 폰 배치면 전체 화면 덮개(`app/mobile-sheets` 의 `plans` ·
+ *   `MobilePlans.svelte` — 휴대폰 '뒤로' = 닫기), 데스크톱 폭이면 주 창과 같은 **제 창의 채팅 독 작업안 갈래**(2026-11-13 — 예전엔
+ *   캔버스를 덮는 판 `PlansCover` 였다. 채팅 독이 원격에 붙은 11-01 뒤에도 남아 타일을 가린 채 승인하게 했다 · 사용자 버그 보고).
  *   승인은 원격 재확인 규칙 그대로다(새 명령 없음).
  */
 
 import { invoke, isRemote } from "../ipc";
 import { requestWindow } from "$lib/workspaces/window-events";
 import { chatDockAvailable, chatDockOpen, chatDockSection, closeChatDock, openChatDockAt } from "$lib/app/chat-dock.svelte.js";
-import { closeCoverView, openPlansCover, plansCoverOpen } from "$lib/app/usage-view.svelte.js";
 import { closeMobileOverlay, mobileOverlay, openMobilePlans } from "$lib/app/mobile-sheets.svelte.js";
 import { mobileLayout } from "$lib/app/mobile.svelte.js";
 
@@ -52,7 +52,7 @@ export interface PlansAsk {
   view?: OpsView;
 }
 
-/** 이 창에서 작업안을 그릴 수 있나 — 주 창(채팅 독이 붙어 있다) · 원격 창(제 덮개) */
+/** 이 창에서 작업안을 그릴 수 있나 — 주 창 · 원격 데스크톱 폭(채팅 독이 붙어 있다) · 원격 폰(제 덮개) */
 export function plansOpenableHere(): boolean {
   return isRemote || chatDockAvailable();
 }
@@ -65,33 +65,31 @@ export function forwardPlans(ask: PlansAsk): void {
 }
 
 /**
- * 작업안이 **지금 보이는가** — 주 창이면 채팅 독이 열려 있고 작업안 갈래다 · 원격 창이면 제 덮개(폰 · 판)가 떠 있다. 화면 아래 검토 카드
+ * 작업안이 **지금 보이는가** — 채팅 독이 열려 있고 작업안 갈래다(주 창 · 원격 데스크톱 폭) · 원격 폰이면 제 덮개가 떠 있다. 화면 아래 검토 카드
  * (같은 작업안의 승인 단추가 두 벌이 되지 않게)와 실행 결과 토스트(결과가 이미 눈앞이다)가 물러날 조건이다. 보조 창은 늘 거짓.
  */
 export function plansShown(): boolean {
-  if (isRemote) return plansCoverOpen() || mobileOverlay() === "plans";
+  if (isRemote && mobileOverlay() === "plans") return true;
   return chatDockAvailable() && chatDockOpen() && chatDockSection() === "plans";
 }
 
 /** 작업안을 **연다** — 위 머리말의 "창마다 여는 자리". 보기는 지금 보기 그대로다 */
 export function openPlans(): void {
-  if (isRemote) {
-    if (mobileLayout()) openMobilePlans();
-    else openPlansCover();
+  if (isRemote && mobileLayout()) {
+    openMobilePlans();
     return;
   }
   if (chatDockAvailable()) {
     openChatDockAt("plans");
     return;
   }
-  forwardPlans({ view });
+  if (!isRemote) forwardPlans({ view });
 }
 
-/** 작업안을 닫는다 — 그 창의 자리에 맞게(독 · 덮개) */
+/** 작업안을 닫는다 — 그 창의 자리에 맞게(독 · 폰 덮개) */
 function closePlans(): void {
-  if (isRemote) {
-    if (mobileOverlay() === "plans") closeMobileOverlay();
-    if (plansCoverOpen()) closeCoverView();
+  if (isRemote && mobileOverlay() === "plans") {
+    closeMobileOverlay();
     return;
   }
   closeChatDock();

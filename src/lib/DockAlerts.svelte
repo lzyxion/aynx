@@ -1,8 +1,8 @@
 <script lang="ts">
   import UiIcon from "$lib/UiIcon.svelte";
   import AiGlyph from "$lib/AiGlyph.svelte";
-  import type { TransitionConfig } from "svelte/transition";
-  import { exitDelay, exitDuration, exitFrame, exitSpan, type ExitSide } from "$lib/dock-alert-exit";
+  import type { ExitSide } from "$lib/dock-alert-exit";
+  import { exitingIn, makeEmptyIn, makeRowExit } from "$lib/row-exit";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
   import { relativeTime, type NotificationEntry } from "$lib/notifications";
@@ -225,45 +225,14 @@
     el?.focus({ preventScroll: true });
   }
 
-  /** 상태줄 알약(`StatusBar.svelte` 의 `reducedMotion`)과 같은 판정 — 나가기를 시작하는 그 순간에 본다 */
-  const reducedMotion = () =>
-    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
-  /** 지금 나가는 중인 형제 줄(Svelte 가 outro 동안 `inert` 를 건다) */
-  const exitingIn = (parent: Element | null): Element[] =>
-    parent ? Array.from(parent.children).filter((c) => (c as HTMLElement).inert) : [];
-
   /**
-   * 지운 줄의 나가기 — 밀려 나감 → 높이 접힘(머리말). 함수를 돌려주는 **지연 설정**이라 Svelte 가 한 마이크로태스크 뒤에 부른다 —
-   * 그때는 함께 지워진 줄이 모두 `inert` 이므로 "함께 나가는 줄 가운데 몇 번째" 로 차례 지연을 정한다(× 한 줄이면 0).
-   * 높이 · 틈은 이 순간 잰다.
+   * 지운 줄의 나가기 — 밀려 나감 → 높이 접힘(머리말). 몸은 공용 `row-exit.ts`(작업안 진행 · 기록 지우기와 같다 · 2026-11-13).
    */
-  function rowExit(node: HTMLElement): () => TransitionConfig {
-    return () => {
-      const reduced = reducedMotion();
-      const index = exitingIn(node.parentElement).indexOf(node);
-      const height = node.getBoundingClientRect().height;
-      const gap = node.parentElement ? parseFloat(getComputedStyle(node.parentElement).rowGap) || 0 : 0;
-      return {
-        delay: exitDelay(index, reduced),
-        duration: exitDuration(reduced),
-        css: (t) => exitFrame(1 - t, { side, height, gap, reduced }),
-      };
-    };
-  }
+  const rowExit = makeRowExit(() => side);
 
   /** 빈 상태 문구 — 마지막 줄까지 다 나간 뒤에 흐릿하게 들어온다(줄이 나가는 동안 "알림 없음" 이 먼저 서지 않게) */
   let historyRows = $state<HTMLElement | null>(null);
-  function emptyIn(_node: HTMLElement): () => TransitionConfig {
-    return () => {
-      const reduced = reducedMotion();
-      return {
-        delay: exitSpan(exitingIn(historyRows).length, reduced),
-        duration: 150,
-        css: (t) => `opacity: ${t};`,
-      };
-    };
-  }
+  const emptyIn = makeEmptyIn(() => exitingIn(historyRows));
 
   /** ↑↓·Home/End 로 돈다 — Escape 는 받지 않는다(독이 닫는다 — 머리말) */
   function onKey(ev: KeyboardEvent): void {
