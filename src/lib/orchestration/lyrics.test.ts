@@ -253,15 +253,15 @@ describe("파일 줄 · 이웃 · 부제", () => {
     const a = att("w", "t", { turns: [turn(2, "running", NOW, { model: "sonnet", args: { cli: "claude", grade: "edit", settingsControl: "restricted", effort: "high" } })] });
     expect(artistSubline(a, { roles: [] }, tr)).toEqual([
       tr("orch.kind.write"),
-      "sonnet",
-      tr("orch.artist.effort", { effort: "high" }),
+      "Sonnet",
+      tr("orch.artist.effort", { effort: "High" }),
       tr("orch.artist.grade", { grade: tr("orch.grade.edit") }),
       tr("orch.turn.no", { n: 2 }),
     ]);
     const judge = att("j", "t", { kind: "judge", role: "reviewer", roleId: "review", turns: [] });
     expect(artistSubline(judge, { roles: [{ id: "review", name: "review", kind: "judge", cli: "codex", model: "gpt", usable: true, permission: "read-only" }] }, tr)).toEqual([
       tr("orch.kind.judge"),
-      "gpt",
+      "GPT",
       tr("orch.artist.grade", { grade: "read-only" }),
     ]);
   });

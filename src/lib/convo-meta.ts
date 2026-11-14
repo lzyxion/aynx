@@ -1,5 +1,6 @@
 import { pathKey, type AgentConversation } from "$lib/agent-sessions";
 import { folderNameOf } from "$lib/pane-chips";
+import { modelLabel } from "$lib/model-order";
 
 /**
  * **지난 대화 줄의 아래 칩들** — 상태줄 지난 대화(`FolderConversations`)와 프로젝트 시작 화면(`ProjectStart`)이 같은
@@ -41,7 +42,7 @@ export function convoMetaChips(
   if (folder !== "" && (branch === null || pathKey(folder) !== pathKey(branch))) out.push({ kind: "folder", text: folder });
   if (branch !== null) out.push({ kind: "branch", text: branch });
   const model = s.model?.trim();
-  if (model) out.push({ kind: "model", text: model });
+  if (model) out.push({ kind: "model", text: modelLabel(model) });
   if (input.tokens) out.push({ kind: "tokens", text: input.tokens });
   if (s.forkedFrom) out.push({ kind: "forked", text: input.forkedLabel });
   return out;

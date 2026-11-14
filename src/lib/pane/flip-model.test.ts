@@ -12,26 +12,12 @@ import {
   codexReasoningFor,
   codexSlugOk,
   flipEffortLevels,
-  flipModelLabel,
   flipModelLocked,
   slashEffortLine,
   slashModelLine,
   tuiInputLeftover,
   type CodexModelList,
 } from "./flip-model";
-
-describe("flipModelLabel", () => {
-  it("Claude 전체 이름은 짧게 — claude- 떼기 · 등급 대문자 · 버전 점 · 날짜 꼬리 버림", () => {
-    expect(flipModelLabel("claude", "claude-opus-5-5")).toBe("Opus 5.5");
-    expect(flipModelLabel("claude", "claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
-    expect(flipModelLabel("claude", "claude-haiku-5")).toBe("Haiku 5");
-    expect(flipModelLabel("claude", "claude-opus-5-5[1m]")).toBe("Opus 5.5");
-    expect(flipModelLabel("claude", "opus")).toBe("Opus");
-  });
-  it("Codex 는 목록 줄과 같은 modelLabel", () => {
-    expect(flipModelLabel("codex", "gpt-6-astra")).toBe("GPT-6-astra");
-  });
-});
 
 describe("claudeTierOf", () => {
   it("전체 이름 · 별칭에서 등급 — 모르면 null", () => {

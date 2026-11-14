@@ -29,6 +29,7 @@
   import { clock } from "../board/format";
   import EqBars from "../EqBars.svelte";
   import ArtistAvatar from "./ArtistAvatar.svelte";
+  import { effortLabel, modelLabel } from "$lib/model-order";
   import type { ArtistProfile } from "../artist-form";
 
   let {
@@ -75,7 +76,7 @@
     const last = lastTurnOf;
     const model = last?.model ?? last?.args?.model ?? (roleOf?.model || null);
     const grade = last?.args?.grade ?? null;
-    const parts = [artistName, model ? `${art.name} ${model}` : art.name];
+    const parts = [artistName, model ? `${art.name} ${modelLabel(model)}` : art.name];
     if (grade) parts.push(keyText(GRADE_KEY, grade, t));
     else if (roleOf?.permission) parts.push(roleOf.permission);
     parts.push(t("orch.player.attempt", { n: attemptNo }));
@@ -85,7 +86,7 @@
   const subTitle = $derived.by(() => {
     const effort = lastTurnOf?.args?.effort ?? (roleOf?.effort || null);
     const kind = t(judge ? "orch.kind.judge" : "orch.kind.write");
-    return effort ? `${kind} · ${t("orch.artist.effort", { effort })}` : kind;
+    return effort ? `${kind} · ${t("orch.artist.effort", { effort: effortLabel(effort) })}` : kind;
   });
   /** 곁 카드의 보고 — 판정형은 검토 대상, 쓰기형은 제 보고(늦은 것은 뒤로) */
   const report = $derived.by<ReportView | null>(() => {

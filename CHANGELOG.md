@@ -12,8 +12,21 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and file upload stays blocked until it restarts.
+
 ### What's new
 
+- **Upload file**: the **[+]** menu in the side chat and in AI tiles now says **Upload file** (with a paperclip icon) and takes any file, not just images.
+  - Up to 8 files per message, 10 MB each. The AI reads them without asking for permission.
+  - Side chat copies are kept in that chat's own folder and are removed when you delete the chat. A chat continued from a tile doesn't write anything into the tile's folder.
+  - In the chat history, an attached file shows as a file chip, and an image you just sent shows as the image itself.
+- **Side chat composer**: one row with **[+]** (upload file · link a tile · MCP) and a model menu: switch between Claude Code and Codex, pick a model, and set effort on a slider. The remote web client and the phone have the same menu.
+  - **[+] › MCP** lists the MCP servers the chat will load, even before your first message.
+  - Seeing a side chat alert in one window clears it in the others.
+- **Model and effort in AI tiles**: the chat view of an AI tile shows the current model and effort and updates as soon as you change them. Changing them from the menu asks first with a **Switch model** or **Change effort** card.
+- **Copy and export**: messages have **[Copy]** (tool output is left out). Agent replies also have **[Export to document]**, which asks for a name and folder and never overwrites an existing file. In the side chat the folder starts at your home folder.
+- **Model names** are written the same way everywhere: the chat list, past conversations, the session board's usage and the orchestration player show `Opus 5.5` or `GPT-6.1-Sol` instead of the raw id, and effort shows as `High`.
+- **Alert banners** show only the tile or chat name in the title. The logo already says which agent it is.
 - **New shortcuts for the chat dock**: the chat dock now opens with **Ctrl+Shift+[** (it was Ctrl+Shift+'), and the task plans branch with **Ctrl+Shift+]** (it had no default). Both work inside the document and SQL editors too, and Ctrl+[ still goes to the shell as Esc. If you set your own key in **Settings › Shortcuts**, it stays as it was.
 - **Image tile**: double-click an image in a file tile (local or SFTP) to open it inside Aynx. Image paths in the terminal, in documents and in the side chat open there too.
   - Fit or 1:1, zoom with the wheel around the pointer, drag to pan, and double-click to switch between fit and 1:1.

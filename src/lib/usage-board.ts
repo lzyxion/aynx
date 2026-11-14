@@ -9,6 +9,7 @@
  */
 import type { Tr } from "$lib/session";
 import type { Tokens } from "$lib/agent-usage";
+import { modelLabel } from "$lib/model-order";
 
 /** 하루 — Rust `UsageDay` */
 export interface UsageDay {
@@ -113,13 +114,11 @@ function tokensAdd(a: Tokens, b: Tokens): Tokens {
 export const ZERO_TOKENS: Tokens = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
 
 /**
- * 모델 이름을 짧게 — `claude-` 앞머리와 끝의 날짜(8자리 이상 숫자)를 뗀다. 빈 이름은 빈 글자(화면이 "모델 미상").
+ * 모델 이름의 표시 글자 — 앱 공용 `modelLabel`(`claude-opus-5-20260101` → `Opus 5` · `gpt-6-codex` → `GPT-6-Codex`).
+ * 빈 이름은 빈 글자(화면이 "모델 미상"). 칸 키 · 색은 원래 id 로 센다 — 이것은 글자만.
  */
 export function shortModel(model: string): string {
-  return model
-    .trim()
-    .replace(/^claude-/, "")
-    .replace(/-\d{8,}$/, "");
+  return modelLabel(model);
 }
 
 // ---------------------------------------------------------------------------

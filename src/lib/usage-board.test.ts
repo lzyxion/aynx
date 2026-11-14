@@ -52,11 +52,11 @@ function summary(n: number, totals: number[], extra: Partial<UsageSummary> = {})
 }
 
 describe("shortModel", () => {
-  it("claude- 앞머리와 끝의 날짜를 뗀다", () => {
-    expect(shortModel("claude-opus-5-20260101")).toBe("opus-5");
-    expect(shortModel("claude-sonnet-4-5-20250929")).toBe("sonnet-4-5");
-    expect(shortModel("gpt-6-codex")).toBe("gpt-6-codex");
-    expect(shortModel("model-1234567")).toBe("model-1234567");
+  it("공용 modelLabel 과 같은 글자 — Claude 전체 id 는 등급 + 버전 · 그 밖은 낱말 첫 글자 대문자", () => {
+    expect(shortModel("claude-opus-5-20260101")).toBe("Opus 5");
+    expect(shortModel("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
+    expect(shortModel("gpt-6-codex")).toBe("GPT-6-Codex");
+    expect(shortModel("model-1234567")).toBe("Model-1234567");
     expect(shortModel("")).toBe("");
   });
 });
@@ -240,7 +240,7 @@ describe("토큰 구성 · 모델 표", () => {
     });
     const rows = modelTable(s);
     expect(rows.map((r) => [r.label, r.total, r.share, r.output, r.inputWrite, r.conversations])).toEqual([
-      ["opus-5", 80, 0.8, 5, 5, 3],
+      ["Opus 5", 80, 0.8, 5, 5, 3],
       ["", 20, 0.2, 5, 10, 1],
     ]);
     expect(pctText(0.004)).toBe("<1%");

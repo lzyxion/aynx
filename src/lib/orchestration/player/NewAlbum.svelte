@@ -13,7 +13,7 @@
   import { createArtistLoader } from "../artist-loader.svelte.js";
   import { artistList, runSnapshot } from "../api";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
-  import { modelLabel, orderModels } from "$lib/model-order";
+  import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
   import Combobox from "$lib/Combobox.svelte";
   import Dropdown from "$lib/Dropdown.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -61,7 +61,7 @@
   const repoName = $derived(repoProjects.find((p) => p.path === draft.repo)?.name ?? draft.repo.split(/[\\/]/).filter(Boolean).pop() ?? "");
   /** 표지 = 들인 아티스트 얼굴 둘을 흐리게 겹친다(아직 앨범이 아니다) */
   const coverFaces = $derived(draft.members.map((m) => artists.list.find((a) => a.id === m.artist)).filter((a) => !!a).slice(0, 2));
-  const cliSub = (id: string) => draft.cli === id ? [draft.model || t("orch.new.cliDefault"), draft.effort].filter(Boolean).join(" · ") : t("orch.new.cliDefault");
+  const cliSub = (id: string) => draft.cli === id ? [draft.model ? modelLabel(draft.model) : t("orch.new.cliDefault"), effortLabel(draft.effort)].filter(Boolean).join(" · ") : t("orch.new.cliDefault");
 
   $effect(() => { if (visible) return artists.subscribe(); });
   $effect(() => {

@@ -8,6 +8,7 @@
   import { createArtistLoader } from "../artist-loader.svelte.js";
   import type { ArtistProfile } from "../artist-form";
   import ArtistAvatar from "./ArtistAvatar.svelte";
+  import { modelLabel } from "$lib/model-order";
   import { requestArtistNew, requestArtistPick } from "./Artists.svelte";
   let { visible }: { visible: boolean } = $props();
   const artists = createArtistLoader();
@@ -50,7 +51,7 @@
     {#each artists.list as artist (artist.id)}
       <button type="button" class="card" class:judge={artist.kind === "judge"} data-library-artist={artist.id} onclick={() => open(artist)}>
         <ArtistAvatar cli={artist.cli} profile={artist} size={44} />
-        <span class="text"><b>{artist.name}</b><small>{cliName(artist.cli)} · {artist.model || t("orch.artists.defaultModelShort")} · {kindName(artist)}</small></span>
+        <span class="text"><b>{artist.name}</b><small>{cliName(artist.cli)} · {artist.model ? modelLabel(artist.model) : t("orch.artists.defaultModelShort")} · {kindName(artist)}</small></span>
       </button>
     {:else}<p class="lead">{t("orch.artists.empty")}</p>{/each}
   {/if}

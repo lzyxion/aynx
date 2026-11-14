@@ -16,6 +16,7 @@ import type { AttemptView, ReportFileView, ReportView, RunDetail, WipFileView } 
 import { GRADE_KEY, KIND_KEY, TURN_OUTCOME_KEY } from "./worker";
 import { OUTCOME_KEY, isReviewer } from "./review";
 import { judgeOf, turnRunning, writerOf } from "./album";
+import { effortLabel, modelLabel } from "$lib/model-order";
 
 /** 가사로 들고 있는 대화 항목 상한(끝에서) */
 export const LYRIC_CAP = 400;
@@ -343,9 +344,9 @@ export function artistSubline(a: AttemptView, d: Pick<RunDetail, "roles">, tr: T
   const kind = a.kind === "judge" || a.kind === "write" ? a.kind : isReviewer(a) ? "judge" : "write";
   const parts = [keyText(KIND_KEY, kind, tr)];
   const model = last?.model ?? last?.args?.model ?? (role?.model || null);
-  if (model) parts.push(model);
+  if (model) parts.push(modelLabel(model));
   const effort = last?.args?.effort ?? (role?.effort || null);
-  if (effort) parts.push(tr("orch.artist.effort", { effort }));
+  if (effort) parts.push(tr("orch.artist.effort", { effort: effortLabel(effort) }));
   const grade = last?.args?.grade ?? null;
   if (grade) parts.push(tr("orch.artist.grade", { grade: keyText(GRADE_KEY, grade, tr) }));
   else if (role?.permission) parts.push(tr("orch.artist.grade", { grade: role.permission }));

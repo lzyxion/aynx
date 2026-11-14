@@ -50,6 +50,7 @@
   import type { OverridePin, VerifyPin } from "../confirm-pin";
   import { clock } from "../board/format";
   import InfoNote from "$lib/settings/InfoNote.svelte";
+  import { modelLabel } from "$lib/model-order";
 
   /** 판정 이력에 늘 보이는 줄 수 — 나머지는 "n개 더" ⓘ 팝오버 */
   const JUDGED_SHOWN = 4;
@@ -377,7 +378,7 @@
       {#if rturn}
         <p class={rturn.phase === "failed" ? "meta blocked" : "meta"} data-review-turn={rturn.phase} title={t("orch.reviewer.turn.title")}>
           {keyText(REVIEW_TURN_KEY, rturn.phase, t, { reason: rturn.reason ?? "" })}
-          {#if rturn.model}<span class="chip faint mono" data-review-turn-model>{t("orch.reviewer.turn.model", { model: rturn.model })}</span>{/if}
+          {#if rturn.model}<span class="chip faint" data-review-turn-model title={rturn.model}>{t("orch.reviewer.turn.model", { model: modelLabel(rturn.model) })}</span>{/if}
         </p>
       {/if}
       {#if rvw}

@@ -75,7 +75,7 @@
   } from "../model/producer";
   import { artistOf } from "../artists";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
-  import { modelLabel, orderModels } from "$lib/model-order";
+  import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
   import { producerClis, rememberProducer } from "$lib/app/orch-start.svelte.js";
   import ArtistAvatar from "./ArtistAvatar.svelte";
   import EqBars from "../EqBars.svelte";
@@ -154,8 +154,10 @@
     rest: "orch.producer.act.rest",
   };
 
-  const modelText = $derived(st?.model || st?.ready?.models?.[0] || target.model || t("orch.producer.model.default"));
-  const effortText = $derived(st?.effort || target.effort || t("orch.producer.effort.default"));
+  const modelRaw = $derived(st?.model || st?.ready?.models?.[0] || target.model || "");
+  const modelText = $derived(modelRaw ? modelLabel(modelRaw) : t("orch.producer.model.default"));
+  const effortRaw = $derived(st?.effort || target.effort || "");
+  const effortText = $derived(effortRaw ? effortLabel(effortRaw) : t("orch.producer.effort.default"));
 
   // ── 꼬리 → 줄 ────────────────────────────────────────────────────────────
 

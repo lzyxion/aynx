@@ -6,6 +6,7 @@
   import type { AlbumAccept, AlbumMemberInput } from "../album-draft";
   import type { AlbumConfigView } from "../album-permissions";
   import ArtistAvatar from "./ArtistAvatar.svelte";
+  import { modelLabel } from "$lib/model-order";
 
   let { members = $bindable(), accept = $bindable(), adding = $bindable(false), artists, original = null, tag = "new", rework = true, onchange = () => {}, status = () => "" }: {
     members: AlbumMemberInput[]; accept: AlbumAccept; adding?: boolean; artists: ArtistProfile[];
@@ -18,7 +19,7 @@
   const GRADES = ["read", "edit", "full"] as const;
   const gradeKey = (grade: string) => grade === "read" ? "orch.new.grade.read" : grade === "edit" ? "orch.config.perm.edit" : "orch.config.perm.full";
   const cliName = (cli: string) => cli === "claude" ? "Claude" : cli === "codex" ? "Codex" : cli;
-  const meta = (a: ArtistProfile | undefined) => a ? [cliName(a.cli), a.model, t(a.kind === "judge" ? "orch.kind.judge" : "orch.kind.write")].filter(Boolean).join(" · ") : "";
+  const meta = (a: ArtistProfile | undefined) => a ? [cliName(a.cli), modelLabel(a.model ?? ""), t(a.kind === "judge" ? "orch.kind.judge" : "orch.kind.write")].filter(Boolean).join(" · ") : "";
   const data = (name: string, value: string | boolean = "") => ({ [`data-${tag}-${name}`]: value });
   function toggle(id: string) {
     if (members.some((m) => m.artist === id)) {

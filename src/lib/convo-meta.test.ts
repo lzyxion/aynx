@@ -20,7 +20,7 @@ describe("convoMetaChips — 지난 대화 줄의 아래 칩", () => {
     expect(convoMetaChips({ ...base, branch: "feat/b" }, { ...input, mixed: true })).toEqual([
       { kind: "folder", text: "feat-a" },
       { kind: "branch", text: "feat/b" },
-      { kind: "model", text: "claude-opus-5-5" },
+      { kind: "model", text: "Opus 5.5" },
       { kind: "tokens", text: "182k 토큰" },
     ]);
     expect(convoMetaChips({ ...base, branch: null }, { ...input, mixed: true })[0]).toEqual({ kind: "folder", text: "feat-a" });

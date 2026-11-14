@@ -167,7 +167,6 @@
     codexMenuModels,
     codexModelLine,
     flipEffortLevels,
-    flipModelLabel,
     flipModelLocked,
     slashEffortLine,
     slashModelLine,
@@ -569,7 +568,7 @@
     if (cli === null) return null;
     const last = lastModel;
     const name = aiDisplayName(cli) ?? cli;
-    const label = last ? flipModelLabel(cli, last.model) : null;
+    const label = last ? modelLabel(last.model) : null;
     const effort = last?.effort ?? "";
     const head = label === null ? `${name} · ${t("pane.flip.model.unknown")}` : `${name} · ${label}${effort ? ` · ${t("app.chatDock.effort.chip", { e: effortName(effort) })}` : ""}`;
     return {

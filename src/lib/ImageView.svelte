@@ -36,8 +36,8 @@
    * 도구줄은 머리줄에 맡긴다(`setPaneTools` — 머리줄이 없으면 몸 위에 그린다): [‹] `3 / 12` [›] · [맞춤 | 1:1] · 배율 `42% ▾`(`image/ZoomMenu` —
    * 포커스가 목록 밖으로 나가면 닫힌다 · 그림이 없으면 `—`) · 다시 읽기. 지금 그림이 "파일 없음"이 되면 `3 / 12` 는 비우고(사라진 그림을 세지
    * 않는다) 이전/다음은 남은 이웃으로 간다(`withoutCurrent`). 그 그림은 캐시된 폴더 목록에서도 빠져 다른 그림으로 옮겨도 다시 세지 않는다
-   * (`withoutEntry` — 다음에 폴더를 다시 읽으면 그 목록이 대신한다). 머리줄 안에서 포커스 밖이면 이 도구줄은 통째로 접힌다(`data-head-act` — 이름만 남는다). 이름 뒤에 폴더를 두지 않는다(문서 타일과 같다 — 전체 경로는 이름 말풍선 · ⋯ [경로 복사]). 가운데 칸이 모자라면(이름 길이에 따라
-   * 같은 타일 폭에서도 다르다 — 도구줄 상자의 폭을 펼친 머리줄 기준으로 잰다: 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭은 빼고 센다 · `expandedSlot`) 다시 읽기 → [맞춤 | 1:1] → 이전/다음 순서로 빠지고(`image/bar-fit`), 이전/다음이 빠지면
+   * (`withoutEntry` — 다음에 폴더를 다시 읽으면 그 목록이 대신한다). 머리줄 안에서 포커스 밖이면 이 도구줄은 통째로 접힌다(`data-head-act` — 이름만 남는다). 이름 뒤에 폴더를 두지 않는다(문서 타일과 같다 — 전체 경로는 이름 말풍선 · ⋯ [경로 복사]). 가운데 칸이 모자라면(펼친 머리줄 · 이름이 최대 폭(40%)까지 가져간 때로 센다:
+   * 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭 · 이름이 덜 가져간 폭은 빼고 센다 · `expandedSlot` — 같은 타일에서 넘겨도 판정이 바뀌지 않는다) 다시 읽기 → [맞춤 | 1:1] → 이전/다음 순서로 빠지고(`image/bar-fit`), 이전/다음이 빠지면
    * 좁은 타일과 같은 길(그림 위 양옆 단추 · 칩 앞 `3 / 12` · 칩은 아래 가운데 — `navOut`)로 간다. 좁은 타일은 배율만 남고 이전/다음은 그림 위 양옆 단추, `3 / 12 · 해상도` 칩은 아래 가운데로 간다(이전/다음이 도구줄에 있으면 칩은 왼쪽 아래). 칩 앞 `3 / 12` 는 머리줄 도구줄과 **같은 조건**으로 포커스 밖이면 접힌다(해상도 · 크기 · 형식은 늘 — 아래 `.facts .pos`). 본문 우클릭은 그림 메뉴
    * (`ImageMenu` — `imageMenuActions` 규칙 그대로, 앞에 맞춤 · 원래 크기, 뒤에 기본 앱 · 외부 편집기 · 폴더에서 보기)이고 메뉴 통로(`runOnMenu`)를 지난다.
    *
@@ -65,7 +65,7 @@
     type ImageSiblings,
   } from "$lib/image/neighbors";
   import { imageKeyAction, type ImageKeyAction } from "$lib/image/keys";
-  import { expandedSlot, fitBar } from "$lib/image/bar-fit";
+  import { counterMinCss, expandedSlot, fitBar, widestCounter, type NameBox } from "$lib/image/bar-fit";
   import {
     aboveFit,
     canPan,
@@ -648,10 +648,34 @@
   const pressed = $derived(zoomPressed(natural !== null, fit, view.scale));
   const inHead = $derived(paneHeadShown(paneId));
   /**
-   * 도구줄 상자의 폭 — 머리줄이면 가운데 칸의 폭(이름 길이에 따라 같은 타일에서도 다르다) · 그 안에 든 것(`image/bar-fit`). **펼친 머리줄의 폭**으로
-   * 센다(`expandedSlot` — 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭 · 접힘 움직임 중의 폭을 그대로 쓰면 판정이 바뀌어 이전/다음이 튄다)
+   * 도구줄 상자의 폭 — 머리줄이면 가운데 칸의 폭(이름 길이에 따라 같은 타일에서도 다르다) · 그 안에 든 것(`image/bar-fit`). **펼친 머리줄 ·
+   * 이름이 최대 폭까지 가져간 때의 폭**으로 센다(`expandedSlot` — 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭 · 접힘 움직임 중의 폭을 그대로 쓰면
+   * 판정이 바뀌어 이전/다음이 튄다 · 이름 길이가 다른 그림으로 넘길 때 다시 읽기 · 세그먼트가 들어갔다 빠져 이전/다음이 좌우로 움직인다)
    */
   let barW = $state(0);
+
+  /**
+   * 머리줄 이름 묶음(`.pane-ident`)의 지금 폭 · 최대 폭 — 판정을 "이름이 최대 폭까지 가져간 때" 로 세려고(`expandedSlot` 의 `name` — 넘길 때
+   * 이름 길이로 판정이 바뀌어 이전/다음이 움직이지 않게). 최대 폭은 CSS 의 `max-width`(도구줄이 선 머리줄은 `40%` = 머리줄 안쪽 폭의 비율)를
+   * 그대로 읽는다. 묶음이 없거나(파일 타일 `.gone`) 최대가 없으면(쿼리 타일 무리 고정 `none`) 깎지 않는다.
+   */
+  function nameBox(head: HTMLElement): NameBox | null {
+    const ident = head.querySelector<HTMLElement>(".pane-ident");
+    if (!ident) return null;
+    const cs = getComputedStyle(ident);
+    if (cs.display === "none") return null;
+    let maxWidth: number;
+    if (cs.maxWidth.endsWith("%")) {
+      const hs = getComputedStyle(head);
+      const inner = head.clientWidth - (parseFloat(hs.paddingLeft) || 0) - (parseFloat(hs.paddingRight) || 0);
+      maxWidth = (inner * parseFloat(cs.maxWidth)) / 100;
+    } else if (cs.maxWidth.endsWith("px")) {
+      maxWidth = parseFloat(cs.maxWidth);
+    } else {
+      return null;
+    }
+    return { width: ident.getBoundingClientRect().width, maxWidth };
+  }
 
   function measureBar(node: HTMLElement) {
     const head = node.closest<HTMLElement>(".pane-head");
@@ -662,7 +686,7 @@
             marginLeft: parseFloat(getComputedStyle(b).marginLeft) || 0,
           }))
         : [];
-      barW = expandedSlot(node.getBoundingClientRect().width, heads);
+      barW = expandedSlot(node.getBoundingClientRect().width, heads, head ? nameBox(head) : null);
     };
     const ro = new ResizeObserver(read);
     ro.observe(node);
@@ -670,8 +694,15 @@
     return { destroy: () => ro.disconnect() };
   }
   const counterText = $derived(counter ? `${counter.at} / ${counter.total}` : null);
-  /** 안쪽 여백을 뺀 폭 — 머리줄 안 `.bar.inhead` 는 왼쪽 4, 몸 위 `.bar` 는 양옆 6. 이전/다음만 남은 때(지금 그림이 없어졌다)는 가운데 글자 없이 센다 */
-  const fits = $derived(fitBar(barW > 0 ? barW - (inHead ? 4 : 12) : 0, hasNav ? (counterText ?? "") : null, pct));
+  /** 안쪽 여백을 뺀 폭 — 머리줄 안 `.bar.inhead` 는 왼쪽 4, 몸 위 `.bar` 는 양옆 6. 이전/다음만 남은 때(지금 그림이 없어졌다)는 가운데 글자 없이 센다 ·
+   *  `3 / 12` 는 지금 글자가 아니라 그 폴더의 가장 넓은 글자(`widestCounter`)로 센다(`9 / 12` → `10 / 12` 에 판정이 바뀌지 않게) */
+  const fits = $derived(
+    fitBar(
+      barW > 0 ? Math.max(1, barW - (inHead ? 4 : 12)) : 0,
+      hasNav ? (counter ? widestCounter(counter.total) : "") : null,
+      pct,
+    ),
+  );
   /** 이전/다음 · `3 / 12` 가 도구줄 밖(그림 위 양옆 · 아래 칩)에 서는가 — 좁은 타일이거나 도구줄에 안 들어갈 때 */
   const navOut = $derived(narrow || !fits.nav);
 
@@ -781,7 +812,9 @@
           onclick={act(() => go(-1))}><UiIcon name="chevron-left" size={14} /></button
         >
         <!-- 지금 그림이 없어졌으면 빈 칸(사라진 그림을 세지 않는다 — 자리 폭은 그대로) -->
-        <span class="count" data-image-counter>{counterText ?? ""}</span>
+        <span class="count" data-image-counter style:min-width={counter ? counterMinCss(counter.total) : null}
+          >{counterText ?? ""}</span
+        >
         <button
           type="button"
           class="btn ico"
@@ -825,7 +858,11 @@
       title={t("files.image.zoom")}
       aria-label={t("files.image.zoom.aria", { pct })}
       data-image-zoom
-      onclick={openZoomMenu}>{pct}<UiIcon name="chevron-down" size={12} /></button
+      onclick={openZoomMenu}
+      ><span class="pct-txt"><span>{pct}</span><span class="pct-sizer" aria-hidden="true">100%</span></span><UiIcon
+        name="chevron-down"
+        size={12}
+      /></button
     >
     {#if !narrow && fits.reload}
       <button
@@ -1130,9 +1167,27 @@
     padding: 0;
   }
 
+  /* 배율 글자 칸은 늘 `100%` 만큼 넓다 — 넘길 때 배율 글자(`42%` ↔ `100%` · `—`)로 단추 폭이 바뀌어 이전/다음이 움직이지 않게.
+     보이지 않는 `100%`(`.pct-sizer`)와 같은 격자 칸에 겹쳐 놓아 칸 폭 = 둘 중 넓은 쪽(글꼴 어림 없음 · 1000% 이상만 넓어진다).
+     (예전의 `min-width: calc(2.8em + 14px)` 는 단추가 UA 기본 border-box 라 안쪽 여백 · 테두리까지 먹어 `100%` 보다 좁았다.)
+     폭을 바꾸면 `image/bar-fit` 의 `PCT_TEXT_MIN` 도 함께 */
   .btn.pct {
     padding: 0 4px 0 6px;
     font-variant-numeric: tabular-nums;
+  }
+
+  .pct-txt {
+    display: inline-grid;
+    justify-items: end;
+  }
+
+  .pct-txt > span {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+  }
+
+  .pct-sizer {
+    visibility: hidden;
   }
 
   .seg .btn {

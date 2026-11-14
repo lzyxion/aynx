@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelLabel, orderModels } from "./model-order";
+import { effortLabel, modelLabel, orderModels } from "./model-order";
 
 describe("orderModels", () => {
   it("Claude 등급 순 — fable > opus > sonnet > haiku", () => {
@@ -96,22 +96,44 @@ describe("orderModels", () => {
   });
 });
 
-describe("modelLabel", () => {
-  it("Claude — 첫 글자만 대문자", () => {
+describe("modelLabel — 앱의 모든 자리의 모델 표시 글자", () => {
+  it("Claude 별칭 — 첫 글자 대문자", () => {
     expect(["opus", "fable", "sonnet", "haiku"].map(modelLabel)).toEqual(["Opus", "Fable", "Sonnet", "Haiku"]);
-    expect(modelLabel("claude-opus-5-5")).toBe("Claude-opus-5-5");
   });
 
-  it("Codex — 머리 gpt 는 GPT, 나머지 조각은 그대로", () => {
-    expect(modelLabel("gpt-6.1-sol")).toBe("GPT-6.1-sol");
-    expect(modelLabel("gpt-reserve")).toBe("GPT-reserve");
-    expect(modelLabel("codex-auto-review")).toBe("Codex-auto-review");
+  it("Claude 전체 id — 등급 + 버전(하이픈 → 점) · 날짜 꼬리 · 꼬리 괄호 버림", () => {
+    expect(modelLabel("claude-opus-5-5")).toBe("Opus 5.5");
+    expect(modelLabel("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
+    expect(modelLabel("claude-opus-4-20250514")).toBe("Opus 4");
+    expect(modelLabel("claude-haiku-5")).toBe("Haiku 5");
+    expect(modelLabel("claude-opus-5-5[1m]")).toBe("Opus 5.5");
+    expect(modelLabel("claude-fable")).toBe("Fable");
+    expect(modelLabel("claude-3-5-sonnet-20241022")).toBe("Sonnet 3.5");
+    expect(modelLabel(" claude-opus-5-5 ")).toBe("Opus 5.5");
   });
 
-  it("모르는 이름 · 직접 입력 · 빈 값", () => {
+  it("Codex — 머리 gpt 는 GPT, 알파벳 낱말마다 첫 글자 대문자, 숫자 낱말은 그대로", () => {
+    expect(modelLabel("gpt-6.1-sol")).toBe("GPT-6.1-Sol");
+    expect(modelLabel("gpt-6-astra")).toBe("GPT-6-Astra");
+    expect(modelLabel("gpt-6.1-luna")).toBe("GPT-6.1-Luna");
+    expect(modelLabel("gpt-reserve")).toBe("GPT-Reserve");
+    expect(modelLabel("codex-auto-review")).toBe("Codex-Auto-Review");
+  });
+
+  it("모르는 이름 · 직접 입력 · 빈 값 — 같은 낱말 규칙(나머지 글자는 그대로)", () => {
     expect(modelLabel("default")).toBe("Default");
-    expect(modelLabel("gpteam-x")).toBe("Gpteam-x");
-    expect(modelLabel("My-model")).toBe("My-model");
+    expect(modelLabel("gpteam-x")).toBe("Gpteam-X");
+    expect(modelLabel("My-model")).toBe("My-Model");
+    expect(modelLabel("myModel-xL")).toBe("MyModel-XL");
+    expect(modelLabel("claude-")).toBe("Claude-");
     expect(modelLabel("")).toBe("");
+    expect(modelLabel("  ")).toBe("");
+  });
+});
+
+describe("effortLabel", () => {
+  it("첫 글자만 대문자 · 빈 값은 빈 글", () => {
+    expect(["low", "high", "xhigh", "max"].map(effortLabel)).toEqual(["Low", "High", "Xhigh", "Max"]);
+    expect(effortLabel("")).toBe("");
   });
 });

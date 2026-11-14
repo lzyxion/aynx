@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { BAR_GAP, HEAD_BTN_W, RELOAD_W, SEG_W, expandedSlot, fitBar, navWidth, pctWidth } from "./bar-fit";
+import {
+  BAR_GAP,
+  HEAD_BTN_W,
+  PCT_TEXT_MIN,
+  RELOAD_W,
+  SEG_W,
+  counterMinCss,
+  expandedSlot,
+  fitBar,
+  navWidth,
+  pctWidth,
+  widestCounter,
+} from "./bar-fit";
 
-// `4 / 4` · `100%` 의 폭 — 배율 52.4 · 이전/다음 91.2(가운데 최소 35.2) · 세그먼트 75 · 다시 읽기 26, 칸마다 앞 간격 4
+// `4 / 4` · `100%` 의 폭 — 배율 55.8(글자 칸 29.8) · 이전/다음 87.2(가운데 최소 35.2) · 세그먼트 75 · 다시 읽기 24, 칸마다 앞 간격 4
 const PCT = BAR_GAP + pctWidth("100%");
 const NAV = BAR_GAP + navWidth("4 / 4");
 const SEG = BAR_GAP + SEG_W;
@@ -26,7 +38,7 @@ describe("fitBar", () => {
   });
 
   it("앞의 것이 빠지면 더 작은 뒤의 것도 넣지 않는다(순서를 지킨다)", () => {
-    // 이전/다음(91) 은 안 들어가도 세그먼트(75)는 들어갈 폭 — 그래도 세그먼트를 넣지 않는다
+    // 이전/다음(87) 은 안 들어가도 세그먼트(75)는 들어갈 폭 — 그래도 세그먼트를 넣지 않는다
     const slot = Math.floor(PCT + NAV) - 1;
     expect(slot - PCT).toBeGreaterThan(SEG);
     expect(fitBar(slot, "4 / 4", "100%").seg).toBe(false);
@@ -42,9 +54,21 @@ describe("fitBar", () => {
     expect(pctWidth("3200%")).toBeGreaterThan(pctWidth("42%"));
   });
 
-  it("그림이 없을 때의 `—` 는 한 자지만 두 자로 센다(숫자보다 넓다)", () => {
-    expect(pctWidth("—")).toBe(pctWidth("1%"));
-    expect(pctWidth("—")).toBeLessThan(pctWidth("100%"));
+  it("배율 단추는 `100%` 까지 같은 폭(CSS 최소 폭) — `—` 도 · 1000% 이상만 넓다", () => {
+    for (const p of ["—", "5%", "42%", "100%"]) expect(pctWidth(p)).toBe(10 + 2 + PCT_TEXT_MIN + 2 + 12);
+    expect(pctWidth("3200%")).toBeGreaterThan(pctWidth("100%"));
+  });
+
+  it("`3 / 12` 는 폴더의 가장 넓은 글자로 센다 — `9 / 12` 와 `10 / 12` 의 판정 재료가 같다", () => {
+    expect(widestCounter(12)).toBe("12 / 12");
+    expect(navWidth(widestCounter(12))).toBeGreaterThanOrEqual(navWidth("10 / 12"));
+    expect(counterMinCss(12)).toBe("max(3.2em, calc(4ch + 1em))");
+    expect(counterMinCss(120)).toBe("max(3.2em, calc(6ch + 1em))");
+  });
+
+  it("넘길 때 배율 글자만 다르면(42% ↔ 100%) 판정이 같다", () => {
+    for (const slot of [120, 160, 200, 240, 280])
+      expect(fitBar(slot, "3 / 12", "42%")).toEqual(fitBar(slot, "3 / 12", "100%"));
   });
 });
 
@@ -66,5 +90,44 @@ describe("expandedSlot — 펼친 머리줄의 폭으로 센다", () => {
   });
   it("머리줄이 없으면(몸 위 도구줄) 잰 폭 그대로", () => {
     expect(expandedSlot(300, [])).toBe(300);
+  });
+});
+
+describe("expandedSlot — 이름이 최대 폭까지 가져간 때로 센다", () => {
+  const open = { width: HEAD_BTN_W, marginLeft: 0 };
+  // 머리줄 안쪽 600 → 이름 묶음 최대 240(40%). 도구줄 칸 + 이름 묶음 = 400 (다른 칸 · 간격을 뺀 몫)
+  const SUM = 400;
+  const MAX = 240;
+  const at = (nameW: number) => expandedSlot(SUM - nameW, [open, open, open], { width: nameW, maxWidth: MAX });
+
+  it("이름이 최대 폭이면 잰 폭 그대로", () => {
+    expect(at(MAX)).toBe(SUM - MAX);
+  });
+
+  it("같은 머리줄 폭 · 이름만 다른 두 그림 → 같은 폭 · 같은 판정(이전/다음이 움직이지 않는다)", () => {
+    expect(at(60)).toBe(at(200));
+    // 이름이 짧은 그림에서는 다 들어갈 실제 칸이지만, 긴 그림과 같은 판정이다
+    const short = 60;
+    const long = 230;
+    expect(fitBar(SUM - short, "3 / 12", "100%")).not.toEqual(fitBar(SUM - long, "3 / 12", "100%"));
+    expect(fitBar(at(short), "3 / 12", "42%")).toEqual(fitBar(at(long), "3 / 12", "100%"));
+  });
+
+  it("접힌 단추와 함께 깎는다", () => {
+    const shut = { width: 0, marginLeft: -8 };
+    expect(expandedSlot(160 + 96, [shut, shut, shut], { width: 100, maxWidth: MAX })).toBe(160 - 140);
+  });
+
+  it("최대보다 넓게 잴 일은 없지만 그래도 더하지 않는다", () => {
+    expect(expandedSlot(200, [], { width: 260, maxWidth: MAX })).toBe(200);
+  });
+
+  it("깎아서 0 이하가 되어도 '모름'(0)이 아니라 1 — 다 넣지 않고 배율만 남긴다", () => {
+    expect(expandedSlot(50, [], { width: 20, maxWidth: MAX })).toBe(1);
+    expect(fitBar(1, "3 / 12", "100%")).toEqual({ nav: false, seg: false, reload: false });
+  });
+
+  it("아직 재지 않았으면(0) 0 그대로", () => {
+    expect(expandedSlot(0, [], { width: 0, maxWidth: MAX })).toBe(0);
   });
 });

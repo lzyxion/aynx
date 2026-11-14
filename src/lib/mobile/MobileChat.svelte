@@ -41,6 +41,7 @@
   import { aiDisplayName, aiIconName } from "$lib/pane-icons";
   import { settings } from "$lib/settings.svelte.js";
   import { relativeTime } from "$lib/notifications";
+  import { effortLabel, modelLabel } from "$lib/model-order";
   import { showNotice } from "$lib/app/notice";
   import { stripReason } from "$lib/error-reason";
 
@@ -120,8 +121,8 @@
   }
 
   function rowSub(c: SideChat): string {
-    const parts = [c.model || t("app.chatDock.cliDefault")];
-    if (c.effort) parts.push(c.effort);
+    const parts = [c.model ? modelLabel(c.model) : t("app.chatDock.cliDefault")];
+    if (c.effort) parts.push(effortLabel(c.effort));
     parts.push(relativeTime(Math.max(c.usedAt, c.createdAt), now, t));
     return parts.join(" · ");
   }

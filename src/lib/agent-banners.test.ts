@@ -8,6 +8,7 @@ import {
   addBanner,
   awaitsActivity,
   bannerBadge,
+  bannerAria,
   bannerTitle,
   bannerView,
   collapseDue,
@@ -235,9 +236,16 @@ describe("bannerBadge · bannerTitle", () => {
     expect(bannerBadge(EMPTY_BANNERS)).toEqual({ count: 0, urgent: false });
   });
 
-  it("머리줄 = 에이전트 · 이름 (모르는 에이전트는 일반 이름)", () => {
-    expect(bannerTitle({ agent: "Codex", label: "aynx · feat" }, "AI")).toBe("Codex · aynx · feat");
-    expect(bannerTitle({ agent: null, label: "x" }, "AI 에이전트")).toBe("AI 에이전트 · x");
+  it("보이는 머리줄 = 이름만 (에이전트는 로고가 말한다 · 모르는 에이전트도 같다)", () => {
+    const codex = { agent: "Codex", label: "aynx · feat" };
+    const unknown = { agent: null, label: "x" };
+    expect(bannerTitle(codex)).toBe("aynx · feat");
+    expect(bannerTitle(unknown)).toBe("x");
+  });
+
+  it("aria-label = 에이전트 · 이름 (로고는 소리로 읽히지 않는다 · 모르는 에이전트는 일반 이름)", () => {
+    expect(bannerAria({ agent: "Codex", label: "aynx · feat" }, "AI")).toBe("Codex · aynx · feat");
+    expect(bannerAria({ agent: null, label: "x" }, "AI 에이전트")).toBe("AI 에이전트 · x");
   });
 });
 

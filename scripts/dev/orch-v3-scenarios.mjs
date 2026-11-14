@@ -52,7 +52,7 @@ export async function runOrchV3(h, only) {
   };
   const until = async (expr) => {
     if (!await h.until(expr)) {
-      const diagnostic = await h.ev(`({ rows: [...document.querySelectorAll('.pane-box:not(.hidden) [data-orch-recent-row]')].map(e => e.dataset.orchRecentRow), snapshot: window.__answers?.orchestration_snapshot?.map(r => r.runId), calls: window.__calls?.slice(-12).map(([cmd]) => cmd), text: document.querySelector('.pane-box:not(.hidden) [data-run-board]')?.textContent?.slice(0, 1200) })`);
+      const diagnostic = await h.ev(`({ rows: [...document.querySelectorAll('.pane-box:not(.hidden) [data-orch-recent-row], .pane-box:not(.hidden) [data-orch-album-card]')].map(e => e.dataset.orchRecentRow ?? e.dataset.orchAlbumCard), snapshot: window.__answers?.orchestration_snapshot?.map(r => r.runId), calls: window.__calls?.slice(-12).map(([cmd]) => cmd), text: document.querySelector('.pane-box:not(.hidden) [data-run-board]')?.textContent?.slice(0, 1200) })`);
       await shot(only + '-timeout.png');
       throw new Error(`${only}: 준비 조건 시간 초과: ${expr}\n현재 탭: ${JSON.stringify(await tabState())}\n화면/스텁: ${JSON.stringify(diagnostic)}`);
     }
@@ -60,6 +60,8 @@ export async function runOrchV3(h, only) {
   };
   const H = '.pane-box:not(.hidden):not(.leaving)';
   const q = (selector) => `${H} ${selector}`;
+  // 앨범 목록은 보기(카드 · 줄)에 따라 표식이 다르다 — 카드 `data-orch-album-card` · 줄 `data-orch-recent-row`. 수 세기는 둘 다로.
+  const ALBUMS = `${H} [data-orch-album-card], ${H} [data-orch-recent-row]`;
   const click = async (selector) => ev(`document.querySelector(${JSON.stringify(q(selector))}).click()`);
   const input = async (selector, value) => ev(`(() => { const e = document.querySelector(${JSON.stringify(q(selector))}); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const idleBar = async (view) => check(`F2-c: ${view} 빈 막대는 꺼진 회색 ▶`, await ev(`(() => {
@@ -81,7 +83,7 @@ export async function runOrchV3(h, only) {
   // 설정 시나리오가 이미 빈 라이브러리를 열었다. 응답 객체 교체만으로는 로더가 다시 읽지 않는다.
   await click('[data-orch-filter="all"]');
   await ev(`window.__emit('orchestration-artists-changed', null); window.__emit('orchestration-changed', { runId: 'run-v3-live', seq: 2 })`);
-  await until(`document.querySelectorAll('${q('[data-orch-recent-row]')}').length === 2`);
+  await until(`document.querySelectorAll('${ALBUMS}').length === 2`);
 
   if (['v3-new-album', 'v3-new-album-fail', 'v3-new-album-rich', 'v3-new-remote-reauth', 'v3-fork', 'v3-adopt'].includes(only)) {
     await runF2({ ...h, ev, until, click, input, route, q, artist, live, done, idleBar }, only);
@@ -99,19 +101,23 @@ export async function runOrchV3(h, only) {
 
   if (only === 'v3-library') {
     await idleBar('라이브러리');
-    await until(`document.querySelectorAll('${q('[data-orch-recent-row]')}').length === 2`);
+    await until(`document.querySelectorAll('${ALBUMS}').length === 2`);
     check('v3-library: 라이브러리는 플레이어 한 잎', [(await tabState()).orch, (await tabState()).leaves.map((p) => p.kind)], [{ view: 'library' }, ['run']]);
     await until(`document.querySelectorAll('${q('[data-library-artist]')}').length === 1`);
     check('v3-library: 아티스트 칸 머리의 [+ 새 아티스트] 알약 하나 · 관리 · 아래 점선 카드 없음 · 새 앨범 진입', await ev(`(() => { const a = document.querySelector('${q('[data-library-artists]')}'); const c = a.querySelectorAll('[data-artists-create]'); return [c.length, !!c[0]?.closest('header'), c[0]?.textContent.trim(), !!a.querySelector('[data-artists-manage]'), a.querySelectorAll('.card.add').length, document.querySelector('${q('[data-library-new-album]')}')?.disabled]; })()`), [1, true, '새 아티스트', false, 0, false]);
     check('v3-library: 스튜디오 카드는 목록에서 수집', await ev(`[...document.querySelectorAll('${q('[data-library-repo]')}')].map((e) => e.dataset.libraryRepo)`), ['C:/work/api', 'C:/work/docs']);
     check('v3-library: 카드의 재생 표시 = 산 앨범이 있는 스튜디오만', await ev(`[...document.querySelectorAll('${q('[data-library-repo]')}')].map((e) => [e.dataset.libraryRepo, e.hasAttribute('data-studio-live'), !!e.querySelector('[data-eq="playing"]')])`), [['C:/work/api', true, true], ['C:/work/docs', false, false]]);
+    // 아래 줄 검사는 줄 보기에서 — 기본은 카드다. 라이브러리로 돌아오면 카드로 되돌린다(보기는 localStorage 에 남아 뒤 장면에 번진다).
+    await click('[data-library-view="rows"]');
+    await until(`document.querySelectorAll('${q('[data-orch-recent-row]')}').length === 2`);
     check('v3-library: 앨범 줄 작은 글에 스튜디오 이름 · 따로 저장소 칸 없음', await ev(`[document.querySelector('${q('[data-orch-recent-row="run-v3-done"] small')}')?.textContent.startsWith('docs · '), !!document.querySelector('${q('[data-orch-recent-row] .repo')}')]`), [true, false]);
     // 카드 → 스튜디오 화면(걸러지기만 하지 않는다) · 빵부스러기 · 머리 · 범위
     await click('[data-library-repo="C:/work/docs"]');
     await until(`!!document.querySelector('${q('[data-studio-head]')}')`);
     check('v3-studio: 경로 · 한 잎', [(await tabState()).orch, (await tabState()).leaves.map((p) => p.kind)], [{ view: 'studio', repo: 'C:/work/docs' }, ['run']]);
     check('v3-studio: 빵부스러기 라이브러리 › docs · 카드 칸 없음 · 그 스튜디오 앨범만 · 작은 글에 이름 없음', await ev(`[document.querySelector('${q('[data-orch-crumb="studio"]')}')?.textContent, !!document.querySelector('${q('[data-library-repos]')}'), [...document.querySelectorAll('${q('[data-orch-recent-row]')}')].map((e) => e.dataset.orchRecentRow), document.querySelector('${q('[data-orch-recent-row] small')}')?.textContent.includes('docs')]`), ['docs', false, ['run-v3-done'], false]);
-    check('v3-studio: 머리 경로 · 수 · 진행 중 없으면 이어서 듣기 숨김', await ev(`[document.querySelector('${q('[data-studio-path]')}')?.textContent, document.querySelector('${q('[data-studio-summary]')}')?.textContent, !!document.querySelector('${q('[data-orch-continue]')}')]`), ['C:/work/docs', '앨범 1 · 진행 중 0', false]);
+    // 최근 칸(옛 이어서 듣기)은 도는 앨범이 없어도 최근에 움직인 끝난 앨범을 싣는다 — 앨범 칸과 겹칠 수 있음은 알고 둠(library.ts recentAlbums)
+    check('v3-studio: 머리 경로 · 수 · 최근 칸 = 그 스튜디오의 끝난 앨범', await ev(`[document.querySelector('${q('[data-studio-path]')}')?.textContent, document.querySelector('${q('[data-studio-summary]')}')?.textContent, [...document.querySelectorAll('${q('[data-orch-continue] [data-orch-album]')}')].map((e) => e.dataset.orchAlbum)]`), ['C:/work/docs', '앨범 1 · 진행 중 0', ['run-v3-done']]);
     check('v3-studio: 표지 104px · 판 가로 넘침 없음', await ev(`(() => { const c = document.querySelector('${q('.studio-cover')}').getBoundingClientRect(); const l = document.querySelector('${q('[data-orch-library]')}'); return [Math.round(c.width), Math.round(c.height), l.scrollWidth <= l.clientWidth + 1]; })()`), [104, 104, true]);
     await shot('v3-studio.png');
     // 스튜디오 경유 앨범: 빵부스러기 세 칸 · ← = 스튜디오
@@ -141,6 +147,8 @@ export async function runOrchV3(h, only) {
     await click('[data-orch-back]');
     await until(`!!document.querySelector('${q('[data-library-repos]')}')`);
     check('v3-studio: 스튜디오 ← = 라이브러리', (await tabState()).orch, { view: 'library' });
+    await click('[data-library-view="cards"]');
+    await until(`document.querySelectorAll('${q('[data-orch-album-card]')}').length === 2`);
     // 진행 중이면 그 필터에 앨범이 없는 스튜디오는 카드가 사라진다
     await click('[data-orch-filter="live"]');
     await until(`!document.querySelector('${q('[data-library-repo="C:/work/docs"]')}')`);
@@ -149,14 +157,14 @@ export async function runOrchV3(h, only) {
     check('v3-library: 직각 단추 없음', await squareButtons(), []);
     check('F1 다듬기: 표지 물음표·상태 목록점 없음', await ev(`[...document.querySelectorAll('${q('[data-orch-library]')}')].every(e => !e.textContent.includes('?') && !e.textContent.includes('•'))`), true);
     check('F1 다듬기: 안쪽 라이브러리는 글래스 판을 겹치지 않음', await ev(`!document.querySelector('${q('[data-orch-library]')}').classList.contains('glass-mid')`), true);
-    // 목업 대조용 풍성한 판 — 아티스트 넷(작업형 · 검토형) · 이어서 듣기 둘(재생 · 이어받기) · 참여 얼굴 · 내보낸 브랜치.
+    // 목업 대조용 풍성한 판 — 아티스트 넷(작업형 · 검토형) · 최근 셋(재생 · 이어받기 · 끝난 앨범) · 참여 얼굴 · 내보낸 브랜치.
     // latestSeq 를 올려 둬 뒤 시나리오의 준비(latestSeq 1)가 라이브러리 상세 캐시를 다시 읽게 한다.
     const crew = [artist, { ...artist, id: 'a-22222222', name: '수리공', icon: 'codex', cli: 'codex', model: '', effort: '' }, { ...artist, id: 'a-33333333', name: '검토자', icon: 'gpt', cli: 'codex', kind: 'judge', model: '', effort: '' }, { ...artist, id: 'a-44444444', name: '문서 정리가', icon: 'gemini', model: 'haiku', effort: '' }];
     const richLive = { ...live, latestSeq: 5, taskCount: 5, taskStates: { accepted: 1 }, running: { write: 1, judge: 0 }, album: { rev: 1, members: [{ artist: 'a-12345678', name: '구현가' }, { artist: 'a-22222222', name: '수리공' }], planTools: false } };
     const richPaused = { ...sum('run-v3-paused', '로그 형식 통일', 'paused', 'C:/work/api'), latestSeq: 5, taskCount: 3, coordinatorAttached: false, pauseReason: 'coordinator-exited', adoptable: { restore: true, autoResume: true, why: null }, running: { write: 0, judge: 0 }, album: { rev: 1, members: [{ artist: 'a-22222222', name: '수리공' }], planTools: false } };
     const richDone = { ...done, latestSeq: 5, taskCount: 4, running: { write: 0, judge: 0 }, integration: { exportedHead: 'abc1234', exportBranch: 'orch-7c1e-int' }, album: { rev: 1, members: [{ artist: 'a-44444444', name: '문서 정리가' }], planTools: false } };
     await ev(`(() => { window.__answers.orchestration_artist_list = ${JSON.stringify(crew)}; window.__answers.orchestration_snapshot = ${JSON.stringify([richLive, richPaused, richDone])}; Object.assign(window.__details, { 'run-v3-live': ${JSON.stringify(richLive)}, 'run-v3-paused': ${JSON.stringify(richPaused)}, 'run-v3-done': ${JSON.stringify(richDone)} }); window.__emit('orchestration-artists-changed', null); window.__emit('orchestration-changed', { runId: 'run-v3-live', seq: 5 }); })()`);
-    await until(`document.querySelectorAll('${q('[data-library-artist]')}').length === 4 && document.querySelectorAll('${q('[data-orch-album]')}').length === 2`);
+    await until(`document.querySelectorAll('${q('[data-library-artist]')}').length === 4 && [...document.querySelectorAll('${q('[data-orch-continue] [data-orch-album]')}')].map((e) => e.dataset.orchAlbum).sort().join() === 'run-v3-done,run-v3-live,run-v3-paused'`);
     check('v3-library: 필터가 맨 위 · 스튜디오 카드는 그 아래', await ev(`(() => { const a = document.querySelector('${q('[data-orch-filter="all"]')}').getBoundingClientRect(); const b = document.querySelector('${q('[data-library-repo="C:/work/api"]')}').getBoundingClientRect(); return b.top >= a.bottom; })()`), true);
     check('v3-library: 이어받기는 원형 ▶ 단추', await ev(`(() => { const b = document.querySelector('${q('[data-orch-adopt="run-v3-paused"]')}'); const r = b.getBoundingClientRect(); return [Math.round(r.width) === Math.round(r.height), !!b.getAttribute('aria-label')]; })()`), [true, true]);
     await shot('v3-library.png');
@@ -580,9 +588,10 @@ async function runF3(h, only) {
     await ev(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))`);
     check('권한 패널: 제목 한 줄·머리 가로 넘침 없음·작은 표지·얼굴 안쪽', await ev(`(${compactAlbumHead.toString()})()`), [true, true, true, true]);
     await noAlbumGap(h, only);
-    check('이름 바꾸기: 앱의 stroke 연필 SVG·접근 이름·기본 흐림', await ev(`(() => {
+    // 11-04 아이콘 통일 뒤 UiIcon 은 Material Rounded — 선이 아니라 면(fill) path 다
+    check('이름 바꾸기: 앱의 연필 아이콘 SVG·접근 이름·기본 흐림', await ev(`(() => {
       const button = document.querySelector('${q('[data-album-rename]')}'); const icon = button.querySelector('.rename-icon');
-      return [!!button.querySelector('svg path[stroke="currentColor"]'), button.getAttribute('aria-label')?.includes('이름 바꾸기') === true, parseFloat(getComputedStyle(icon).opacity) < 1];
+      return [!!icon?.querySelector('svg path[fill="currentColor"]'), button.getAttribute('aria-label')?.includes('이름 바꾸기') === true, parseFloat(getComputedStyle(icon).opacity) < 1];
     })()`), [true, true, true]);
   };
 
@@ -698,8 +707,8 @@ async function runF3(h, only) {
     await shot('v3-album-done.png');
     await click('[data-album-menu]');
     await until(`!!document.querySelector('[data-toolbar-menu]')`);
-    check('[⋯] 메뉴: 대화 기록 · 새 탭 · 병합 명령 복사 · worktree 정리 · 앨범 정보', await ev(`[...document.querySelectorAll('[data-toolbar-menu] [data-menu-key]')].map((e) => e.dataset.menuKey + ':' + e.textContent.trim())`),
-      ['log:프로듀서 대화 기록', 'newtab:새 탭으로 열기', 'merge:병합 명령 복사', 'cleanup:worktree 정리', 'info:앨범 정보']);
+    check('[⋯] 메뉴: 대화 기록 · 새 탭 · 병합 명령 복사 · 앨범 정보 · worktree 정리 · 앨범 보관', await ev(`[...document.querySelectorAll('[data-toolbar-menu] [data-menu-key]')].map((e) => e.dataset.menuKey + ':' + e.textContent.trim())`),
+      ['log:프로듀서 대화 기록', 'newtab:새 탭으로 열기', 'merge:병합 명령 복사', 'info:앨범 정보', 'cleanup:worktree 정리', 'archive:앨범 보관']);
     await shot('v3-album-done-menu.png');
     await ev(`document.querySelector('[data-toolbar-menu] [data-menu-key="log"]').click()`);
     await until(`!!document.querySelector('${q('[data-producer-log-close]')}') && !document.querySelector('.host.sliding, .host.anim')`);

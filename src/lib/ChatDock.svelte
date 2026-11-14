@@ -46,6 +46,7 @@
   import { offeredAiClis, type AiCli } from "$lib/session";
   import { aiDisplayName, aiIconName } from "$lib/pane-icons";
   import { relativeTime } from "$lib/notifications";
+  import { effortLabel, modelLabel } from "$lib/model-order";
   import { stripReason } from "$lib/error-reason";
   import { dockSides } from "$lib/dock";
   import { createEdgeHover } from "$lib/chrome/edge-dock";
@@ -221,14 +222,10 @@
     return offered?.find((c) => c.id === id)?.name ?? aiDisplayName(id) ?? id;
   }
 
-  function modelLabel(model: string): string {
-    return model || t("app.chatDock.cliDefault");
-  }
-
   /** 목록 줄의 아랫줄 — 모델 · (고른 강도) · 시각 */
   function rowSub(c: SideChat): string {
-    const parts = [modelLabel(c.model)];
-    if (c.effort) parts.push(c.effort);
+    const parts = [c.model ? modelLabel(c.model) : t("app.chatDock.cliDefault")];
+    if (c.effort) parts.push(effortLabel(c.effort));
     parts.push(relativeTime(Math.max(c.usedAt, c.createdAt), now, t));
     return parts.join(" · ");
   }

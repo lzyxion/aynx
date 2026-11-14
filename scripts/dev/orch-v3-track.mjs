@@ -235,7 +235,7 @@ const FULL = {
   })()`), [true, 'diff 보기', ['transcript', 'stop', 'more'], true]);
   check("F4 상세 — 앨범 판 자리 · 트랙 줄 없음", await ev(`[!!document.querySelector('[data-artist-detail="a2"]'), !!document.querySelector('[data-run-tracks]')]`), [true, false]);
   check('F4 머리 — 이웃은 시도가 아닌 트랙 번호', await ev(`[document.querySelector('[data-track-prev]')?.dataset.trackPrev, document.querySelector('[data-track-next]')?.dataset.trackNext]`), ['t1', 't3']);
-  check("F4 부제 — 아티스트 · CLI 모델 · 권한 · 시도 · 턴(목업 한 줄)", await ev(`document.querySelector('[data-artist-sub]')?.textContent.trim()`), "구현가 · Claude sonnet · 편집 자동 · 시도 2 · 턴 1");
+  check("F4 부제 — 아티스트 · CLI 모델 · 권한 · 시도 · 턴(목업 한 줄)", await ev(`document.querySelector('[data-artist-sub]')?.textContent.trim()`), "구현가 · Claude Sonnet · 편집 자동 · 시도 2 · 턴 1");
   check("F4 머리 — TRACK 2 · 지금 재생 중", await ev(`document.querySelector('[data-track-status-note]')?.textContent.trim()`), "TRACK 2 · 지금 재생 중");
   check("F4 가사 — 마지막 줄이 지금(크게 · 이퀄라이저) · 지금 도구 경과", await ev(`(() => { const ls = [...document.querySelectorAll('[data-artist-lyrics] .line')]; const last = ls[ls.length - 1]; return [last.classList.contains('now'), !!last.querySelector('.eq [data-eq="playing"]'), last.textContent.includes('Edit src/log.rs'), (document.querySelector('[data-artist-doing]')?.textContent.trim() ?? '').endsWith('째')]; })()`), [true, true, true, true]);
   check("F4 가사 — 거절 줄(호박) · 턴 시작 줄", await ev(`[!!document.querySelector('[data-artist-lyrics] .line[data-kind="denied"]'), !!document.querySelector('[data-artist-lyrics] .line[data-kind="turn"]')]`), [true, true]);

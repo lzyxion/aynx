@@ -3,8 +3,7 @@
 // `[CLI 로고] 모델 [Effort 막대] ⌄` 의 글자와, 메뉴에서 고른 것을 그 타일 터미널에 보낼 **고정 줄**을 만든다.
 //
 // - **표시**: 값은 그 대화 기록의 마지막 답(`TranscriptPage.last` — Claude 답 줄의 `message.model` · `effort`, Codex `turn_context`).
-//   Claude 의 전체 이름은 짧게(`claude-opus-5-5` → `Opus 5.5` — `claude-` 떼기 · 등급 첫 글자 대문자 · 버전 하이픈 → 점 · 날짜 꼬리 버림),
-//   Codex 는 목록 줄과 같은 `modelLabel`. 메뉴로 바꾼 값은 **CLI 가 화면에 받았다고 알린 뒤에만** 곧바로 보인다(`flip-model-ack.ts` — 거절 · 시간 초과면 다음 답까지 기록 값).
+//   글자는 앱의 모든 자리와 같은 `modelLabel`(`model-order.ts` — `claude-opus-5-5` → `Opus 5.5` · `gpt-6-astra` → `GPT-6-Astra`). 메뉴로 바꾼 값은 **CLI 가 화면에 받았다고 알린 뒤에만** 곧바로 보인다(`flip-model-ack.ts` — 거절 · 시간 초과면 다음 답까지 기록 값).
 //   **한계**: 기록에는 "실제로 쓴 값" 만 있다 — 사람이 고정한 값인지 모델 기본값인지(Claude `/effort auto` · `/model default` 뒤)는 기록만으로
 //   가를 수 없다. 그래서 메뉴의 Default 줄 · 고리는 기록으로 고르지 않는다(Effort 를 아예 모를 때만 고리).
 // - **보내기(불변식 4 "AI 문자열→PTY 길은 없다")**: 터미널로 가는 글은 **이 파일의 고정 허용 목록 낱말로만** 짓는다.
@@ -53,9 +52,6 @@ export interface CodexModelList {
   levels?: Readonly<Record<string, { levels: readonly string[]; default: string | null }>>;
 }
 
-/** 날짜 꼬리(`20250514`)부터는 버전이 아니다 */
-const DATE_DIGITS = 8;
-
 /** Claude 전체 이름의 조각 — `[1m]` 같은 꼬리 괄호 · `claude-` 머리는 뗀다 */
 function claudeParts(model: string): string[] {
   return model
@@ -70,21 +66,6 @@ function claudeParts(model: string): string[] {
 /** Claude 모델의 등급 별칭(`claude-opus-5-5` → `opus`) — 허용 목록 밖이면 `null`. 메뉴의 ✓ 자리 */
 export function claudeTierOf(model: string): string | null {
   return claudeParts(model).find((p) => CLAUDE_MODEL_ALIASES.includes(p)) ?? null;
-}
-
-/**
- * 키워드의 모델 글자. Claude: `claude-opus-5-5` → `Opus 5.5` · `claude-sonnet-4-5-20250929` → `Sonnet 4.5` · `opus` → `Opus`
- * (등급 낱말을 못 찾으면 `modelLabel`). Codex: `modelLabel`(`gpt-6-astra` → `GPT-6-astra`).
- */
-export function flipModelLabel(cli: string, model: string): string {
-  const m = model.trim();
-  if (cli !== "claude" && !/^claude-/i.test(m)) return modelLabel(m);
-  const parts = claudeParts(m);
-  const tier = parts.find((p) => /^[a-z]+$/.test(p));
-  if (!tier) return modelLabel(m);
-  const version = parts.filter((p) => /^\d+$/.test(p) && p.length < DATE_DIGITS);
-  const name = tier.charAt(0).toUpperCase() + tier.slice(1);
-  return version.length > 0 ? `${name} ${version.join(".")}` : name;
 }
 
 /** Codex slug 모양 — 소문자 · 숫자 · `.` · `-` 만(셸 줄에 실릴 값이라 좁게 · 64자) */

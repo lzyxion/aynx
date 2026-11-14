@@ -26,6 +26,7 @@
   } from "$lib/orchestration/model";
   import { shortPath } from "../board/format";
   import ArtistAvatar from "./ArtistAvatar.svelte";
+  import { modelLabel } from "$lib/model-order";
   import InfoNote from "$lib/settings/InfoNote.svelte";
 
   let {
@@ -144,7 +145,7 @@
       <span class="chip faint">{t("orch.turn.no", { n: wl.turnNo })}</span>
       {#if wl.lastTool}<span class="mono" data-attempt-last-tool={wl.lastTool}>{t("orch.turn.tool", { tool: wl.lastTool })}</span>{/if}
       {#if wl.denials > 0}<span class="chip warn" data-attempt-denials={wl.denials}>{t("orch.turn.denials", { n: wl.denials })}</span>{/if}
-      {#if wl.model}<span class="chip faint mono" data-attempt-model={wl.model}>{t("orch.reviewer.turn.model", { model: wl.model })}</span>{/if}
+      {#if wl.model}<span class="chip faint" data-attempt-model={wl.model} title={wl.model}>{t("orch.reviewer.turn.model", { model: modelLabel(wl.model) })}</span>{/if}
       <span data-attempt-elapsed>{formatDuration(wl.elapsedMs)}</span>
     </p>
     {#if wl.args}<p class="meta mono" data-attempt-turn-args title={t("orch.turn.args.title")}>{wl.args}</p>{/if}

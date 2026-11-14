@@ -363,7 +363,15 @@ export function bannerBadge(state: BannerState): { count: number; urgent: boolea
   return { count: state.active.length, urgent: state.active.some((b) => b.kind === "permission") };
 }
 
-/** 배너 머리줄 — `{에이전트} · {이름}` */
-export function bannerTitle(item: Pick<BannerItem, "agent" | "label">, generic: string): string {
+/**
+ * 배너 머리줄(보이는 제목) — `{이름}` 만. 에이전트는 옆의 CLI 로고(모르면 일반 ai 아이콘)가 이미 말한다.
+ * 화면 읽기 프로그램은 로고를 읽지 않으므로 이름표는 [`bannerAria`] 가 에이전트까지 붙인다.
+ */
+export function bannerTitle(item: Pick<BannerItem, "label">): string {
+  return item.label;
+}
+
+/** 배너 카드의 aria-label — `{에이전트} · {이름}` (모르는 에이전트는 일반 이름) */
+export function bannerAria(item: Pick<BannerItem, "agent" | "label">, generic: string): string {
   return `${item.agent || generic} · ${item.label}`;
 }

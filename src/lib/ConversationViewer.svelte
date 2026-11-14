@@ -55,6 +55,7 @@
     type ConversationView,
   } from "$lib/app/conversation-viewer.svelte.js";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
+  import { modelLabel } from "$lib/model-order";
   import { workerTranscript } from "$lib/orchestration/api";
 
   /** 한 쪽의 항목 수 */
@@ -251,7 +252,7 @@
         {#if conv.branch}<span class="dotsep">·</span><span class="mono" data-viewer-branch
             ><span class="bglyph" aria-hidden="true">⎇</span> {conv.branch}</span
           >{/if}
-        {#if conv.model}<span class="dotsep">·</span><span data-viewer-model>{conv.model}</span>{/if}
+        {#if conv.model}<span class="dotsep">·</span><span data-viewer-model title={conv.model}>{modelLabel(conv.model)}</span>{/if}
         <span class="dotsep">·</span><span title={fmtAt(conv.updatedAt)}
           >{t("board.viewer.updated", { when: relativeTime(conv.updatedAt, now, t) })}</span
         >

@@ -36,7 +36,7 @@ import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
 import { sideChatCliOk, sideChatEffortChoices, sideChatModelChoices, sideChatModelOk, type SideChat } from "$lib/side-chat";
 import { linkTileName, linkTilePickLabel, type LinkChip, type LinkTile } from "$lib/side-chat-link";
 import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "$lib/orchestration/config";
-import { modelLabel, orderModels } from "$lib/model-order";
+import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
 import { targetOf } from "$lib/chat/chat-presentation";
 import type { AiCli } from "$lib/session";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -71,7 +71,7 @@ export function keywordModelLabel(model: string): string {
 
 /** 강도 이름의 보이는 글자 — 첫 글자만 대문자(값은 그대로 넘긴다). 빈 값 = "Default" */
 export function effortName(effort: string): string {
-  return effort ? effort.charAt(0).toUpperCase() + effort.slice(1) : t("app.chatDock.effort.default");
+  return effort ? effortLabel(effort) : t("app.chatDock.effort.default");
 }
 
 export class SideChatControls {

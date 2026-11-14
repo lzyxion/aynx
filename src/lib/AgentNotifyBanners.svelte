@@ -36,7 +36,7 @@
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { relativeTime } from "$lib/notifications";
-  import { bannerTitle, bannerView, type BannerItem } from "$lib/agent-banners";
+  import { bannerAria, bannerTitle, bannerView, type BannerItem } from "$lib/agent-banners";
   import { displayCombo, effectiveCombo } from "$lib/keybindings";
   import { settings } from "$lib/settings.svelte.js";
   import {
@@ -268,7 +268,7 @@
             class="card"
             class:permission={item.kind === "permission"}
             role="group"
-            aria-label={bannerTitle(item, t("app.agent.name.generic"))}
+            aria-label={bannerAria(item, t("app.agent.name.generic"))}
             onkeydown={(ev) => onKey(ev, item)}
           >
             <span class="logo" aria-hidden="true">
@@ -280,7 +280,7 @@
             </span>
             <span class="body">
               <span class="line1">
-                <strong class="title">{bannerTitle(item, t("app.agent.name.generic"))}</strong>
+                <strong class="title">{bannerTitle(item)}</strong>
                 {#if item.sideChatId !== undefined}
                   <!-- 채팅 칩 — 타일이 아니라 사이드 채팅에서 온 알림이다. 좁은 기둥에서는 아이콘만(이름은 title · aria-label) -->
                   <span

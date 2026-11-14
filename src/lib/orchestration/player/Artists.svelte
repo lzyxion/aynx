@@ -21,7 +21,7 @@
   import { artistIconChoices, isBuiltinArtistIcon } from "../artists";
   import { avatarLabel, refreshAvatars } from "$lib/avatars.svelte.js";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
-  import { modelLabel, orderModels } from "$lib/model-order";
+  import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
   import ArtistAvatar from "./ArtistAvatar.svelte";
 
   /** `crumb` — 판의 경로 줄(원형 ← · 라이브러리 › 아티스트). 목업대로 판 안 맨 위 한 줄(두 칸 위) */
@@ -65,7 +65,7 @@
   }
   function cliName(cli: string) { return cli === "claude" ? "Claude" : "Codex"; }
   function meta(a: ArtistProfile) {
-    return [cliName(a.cli), a.model || t("orch.artists.defaultModel"), ...(a.effort ? [t("orch.artists.effortMeta", { effort: a.effort })] : [])].join(" · ");
+    return [cliName(a.cli), a.model ? modelLabel(a.model) : t("orch.artists.defaultModel"), ...(a.effort ? [t("orch.artists.effortMeta", { effort: effortLabel(a.effort) })] : [])].join(" · ");
   }
   async function save() {
     if (busy || validation) return;
