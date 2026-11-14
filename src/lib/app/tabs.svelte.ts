@@ -887,11 +887,16 @@ export function splitActive(dir?: SplitDir, customize?: (fresh: PaneSpec) => voi
  * **가리킨 것이 곧 활성** 이라는 사실을 여기서 한 줄로 못 박는다 — 헤더를 누르면 포커스가
  * 그 타일로 옮기지만, 그 위임을 타지 않는 경로(키보드로 연 메뉴 등)에서도 어긋나지 않게.
  */
-/** 창 전체 타일 reveal의 공통 입구. 숨긴 workspace부터 전환한다. */
+/**
+ * 창 전체 타일 reveal의 공통 입구. 숨긴 workspace부터 전환한다. 그 탭에서 **다른 타일이 최대화 중이면 먼저 푼다**
+ * ([`unzoomFor`] — 검색 점프 · 알림 · 세션 판 · 리소스 보드 · diff/브랜치 타일 재사용이 숨은 타일에 포커스만 주지 않게).
+ * 최대화된 그 타일 자신으로 가면(포커스 복귀 등) 그대로 둔다.
+ */
 export function revealPane(paneId: string): boolean {
   return revealResidentPane(residentWindowTabs(), paneId, {
     switchWorkspace,
     select: (tab, id) => {
+      unzoomFor(tab, id);
       if (activeId !== tab.id) selectTab(tab.id);
       focusPane(tab.id, id);
       revealTile(id);
@@ -1277,6 +1282,16 @@ export function unzoom(tab: TabSpec | null | undefined): void {
   withLayoutAnim(() => {
     tab.zoomedPaneId = null;
   });
+}
+
+/**
+ * **이미 있는 칸을 보이게 하는 열기** 앞에 부른다 — 같은 파일 타일로 포커스만 옮기기 · 미리 보기 칸 갈아 끼우기(`app/panes` 의
+ * `openDoc` · `openImage`) · 이미 있는 타일로 가기의 공통 입구 [`revealPane`](= `focusTile`). 새 타일을 세우는 길은 [`placePane`] 이
+ * 이미 풀지만 이 셋은 그 출구를 지나지 않아, 다른 타일이 최대화 중이면 결과(포커스 · `:12` 줄 이동)가 숨은 타일에서 일어났다. 대상이 **최대화된 그 타일 자신**이면 그대로 둔다 — 이미 보이고, 최대화를 푸는
+ * 것은 같은 타일을 다시 누를 때뿐이라는 [`toggleZoom`] 의 결과 같다.
+ */
+export function unzoomFor(tab: TabSpec, paneId: string): void {
+  if ((tab.zoomedPaneId ?? null) !== paneId) unzoom(tab);
 }
 
 /**

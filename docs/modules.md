@@ -32,7 +32,7 @@ grep 없이 **고칠 파일을 찾고**, 고치기 전에 **그 파일의 불변
 | fs_atomic | 파일 한 장 원자 교체(같은 폴더 고유 임시 파일 + rename · 유닉스 권한 유지) — 설정·위임 표·`~/.ssh/config`·에이전트 지침 | `write_atomic` · `replace_through_link` | 인라인 |
 | fs_entry | 파일 브라우저 한 줄의 모양과 정렬(로컬·SFTP 공용) | `SftpEntry` · `sort_entries` | 인라인 |
 | fs_transfer | 파일 묶음 작업 뼈대 — 진행률·취소·충돌 정책·자동 이름 | `TransferProgress` · `decide` · `transfer_cancel` | tests.rs |
-| text_file | 문서 보기 타일이 받는 파일 한 장의 조립(로컬·원격 공용) | `TextFile` · `assemble` · `check_save_size` | 인라인 |
+| text_file | 문서 보기 타일이 받는 파일 한 장의 조립(로컬·원격 공용) · 이미지 타일의 큰 그림 상한(`IMAGE_MAX_BYTES` 1 GiB — 새 `*_read_image` 에만, 미리 보기 20 MB 는 그대로) | `TextFile` · `assemble` · `check_save_size` · `IMAGE_MAX_BYTES` | 인라인 |
 | cwd | 살아 있는 자식 프로세스의 작업 폴더를 OS 에 묻기(`#[cfg]` 본보기) | `child_cwd` | 인라인 |
 | fs_space | 볼륨의 남은 공간(파일 타일 상태 줄·장소 패널) — OS 분기는 `disk_space` 하나(Windows 만, 나머지 명시적 `None` 스텁) · 원격 짝은 `sftp_browser/browse.rs` `sftp_free_space` | `DiskSpace` · `disk_space` · `local_free_space` | 인라인 |
 | socks5 | 동적 포워드용 SOCKS5 최소 파서·응답 | `handshake` · `parse_greeting` | tests.rs |
@@ -248,11 +248,11 @@ GUI 는 **한 개**(single-instance 플러그인 — 둘째 실행은 첫 창을
 | sftp_browser | SFTP 파일 브라우저 — 부모 `sftp_browser.rs` 는 머리말·재수출만, 몸은 `sftp_browser/` 자식들(아래 여섯 줄 · 자식 표는 `sftp_browser.rs` 머리말). 바깥 진입은 Tauri 명령 + 지침 어댑터가 빌리는 홈·경로·저장 원시다(`lib.rs` 는 `sftp_browser::browse::sftp_list` 처럼 정의 경로) | `sftp_list` · `sftp_read_text` · `sftp_copy_between` | tests.rs |
 | sftp_browser/pure.rs · common.rs | 상수·순수 함수(종류·권한·경로 잇기·보호 판정) · 오류 한 줄(`fail` — 전송이 죽었으면 채널 캐시 버리기)·홈·절대 경로·심링크 해석 | `under_home` · `is_protected` · `fail` · `absolute` | (sftp_browser/tests.rs) |
 | sftp_browser/browse.rs · edit.rs | 둘러보기(홈·목록·`lstat`·남은 공간 `statvfs@openssh.com`) · 고치기(새 폴더·이름 바꾸기·지우기 — 루트·홈 보호) | `sftp_list` · `sftp_stat` · `sftp_free_space` · `sftp_rename` · `remove_at` | (sftp_browser/tests.rs) |
-| sftp_browser/text.rs | 미리 보기 패널의 원격 바이트(`sftp_read_preview` — 로컬 짝과 같은 상한) · 문서 타일의 원격 읽기·저장(version 확인 → 임시 파일 → rename, 안 되면 제자리) · 덮어쓰기 저장 원시 `save_target` · `overwrite_remote`(교체 먼저 · 제자리여도 자르기 전 같은 폴더 임시 파일에 새 내용 전부 — 외부 편집 되올리기 · 셸 통합 스니펫 · 지침 어댑터 공용) | `sftp_read_text` · `sftp_write_text` | (sftp_browser/tests.rs) |
+| sftp_browser/text.rs | 미리 보기 패널의 원격 바이트(`sftp_read_preview` — 로컬 짝과 같은 상한) · 이미지 타일의 큰 원격 그림(`sftp_read_image` — 조각 · `TransferProgress` 채널 · `op` 취소 깃발 · 상한 `IMAGE_MAX_BYTES`) · 문서 타일의 원격 읽기·저장(version 확인 → 임시 파일 → rename, 안 되면 제자리) · 덮어쓰기 저장 원시 `save_target` · `overwrite_remote`(교체 먼저 · 제자리여도 자르기 전 같은 폴더 임시 파일에 새 내용 전부 — 외부 편집 되올리기 · 셸 통합 스니펫 · 지침 어댑터 공용) | `sftp_read_text` · `sftp_write_text` | (sftp_browser/tests.rs) |
 | sftp_browser/download.rs | 파일 하나 다운로드(`.part` → rename · 누적 진행률) | `sftp_download` | (sftp_browser/tests.rs) |
 | sftp_browser/plan.rs · plan_between.rs · plan_upload.rs · plan_download.rs · prepare.rs | 묶음 작업 — 계획 모양(`Side`·`Step`·`Top`·`Plan`)·자리 정하기·`pump` · 방향별 훑기·실행(원격↔원격 · 로컬→원격 · 원격→로컬, 원격 이름 검증 F1) · 경로 준비 | `plan_between` · `run_upload` · `plan_download` · `prepare_remote` | (sftp_browser/tests.rs) |
 | sftp_browser/batch.rs · cross.rs | 묶음 명령(복사·이동·여럿 지우기·충돌 조회·경로 업/다운로드) · 서버 A→B 복사·이동 · 로컬↔원격 이동(원자성 단위 = 최상위 항목) | `sftp_copy` · `sftp_remove_many` · `sftp_move_between` · `sftp_to_local_move` | (sftp_browser/tests.rs) |
-| local_browser | 로컬 디스크 파일 브라우저 · 장소 패널의 붙박이 폴더(`dirs` — 홈·바탕 화면·문서·다운로드) · 미리 보기 바이트(`ipc::Response`, 상한 `text_file::PREVIEW_MAX_BYTES`) | `local_list` · `local_places` · `local_read_preview` · `local_read_text` · `local_write_text` | tests.rs |
+| local_browser | 로컬 디스크 파일 브라우저 · 장소 패널의 붙박이 폴더(`dirs` — 홈·바탕 화면·문서·다운로드) · 미리 보기 바이트(`ipc::Response`, 상한 `text_file::PREVIEW_MAX_BYTES`) · 이미지 타일의 큰 그림(`local_read_image` — 조각 · 진행률 채널 · 취소 깃발 · 상한 `IMAGE_MAX_BYTES`) | `local_list` · `local_places` · `local_read_preview` · `local_read_image` · `local_read_text` · `local_write_text` | tests.rs |
 | local_watch | 로컬 파일 타일 자동 새로고침 — 보이는 폴더(`cwd` + 펼친 폴더)의 OS 변경 알림(notify · 비재귀 · 폴링 없음 · 감시 못 서는 경로는 조용히 빠짐) · 타일 = 구독(Channel) · 경로별 참조 수로 OS 감시 공유 · 디바운스(멎고 300ms · 2초 상한 · 최소 2초 간격 — 순수 `Debounce`) · 리로드·창 파괴 때 창 단위로 걷기(`forget_window` ← `lib.rs`) | `local_watch_start` · `local_watch_set` · `local_watch_stop` | 인라인 |
 | file_index | 팔레트 "파일 열기…" 의 로컬 파일 목록 | `list_text_files` | 인라인 |
 

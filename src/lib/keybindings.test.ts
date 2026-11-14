@@ -41,10 +41,10 @@ function ev(
 }
 
 /**
- * **기본 조합 없이** 등록한 액션 — 겹칠 걱정 없는 키를 고를 수 없어 사용자가 설정에서 정한다(`keybindings.ts` 의
- * `open-plans` 주석). 기본 조합의 모양을 훑는 검사들은 이것들을 빼고 본다.
+ * **기본 조합 없이** 등록한 액션 — 사용자가 설정에서 정한다. 기본 조합의 모양을 훑는 검사들은 이것들을 빼고 본다.
+ * 지금은 없다(`open-plans` 는 2026-11-15 `Ctrl+Shift+]` 를 받았다) — 다시 생기면 여기에 적는다.
  */
-const UNBOUND_BY_DEFAULT: readonly string[] = ["open-plans"];
+const UNBOUND_BY_DEFAULT: readonly string[] = [];
 
 /** 기본 조합이 있는 액션 */
 const BOUND = ACTIONS.filter((a) => !UNBOUND_BY_DEFAULT.includes(a.id));
@@ -98,8 +98,10 @@ describe("기본 키맵 — 충돌 0건", () => {
       const resolved = resolveBindings({});
       expect(resolved.effective[id], id).toBeUndefined();
     }
-    // 사용자가 정하면 그 조합으로 걸린다
-    expect(resolveBindings({ "open-plans": "Ctrl+Shift+F9" }).global.get("Ctrl+Shift+F9")).toBe("open-plans");
+    // 사용자가 다른 조합으로 정하면 그 조합이 이기고 기본 조합은 풀린다
+    const moved = resolveBindings({ "open-plans": "Ctrl+Shift+F9" }).global;
+    expect(moved.get("Ctrl+Shift+F9")).toBe("open-plans");
+    expect(moved.has("Ctrl+Shift+BracketRight")).toBe(false);
   });
 
   /**
@@ -299,21 +301,56 @@ describe("레지스트리 모양", () => {
     expect(bypassesEditGuard("open-db-dock")).toBe(true);
   });
 
-  it("채팅 독(`open-chat-dock`)은 `Ctrl+Shift+'` 이고 그 조합의 유일한 액션이다 (2026-10-23)", () => {
+  it("채팅 독(`open-chat-dock`)은 `Ctrl+Shift+[` 이고 그 조합의 유일한 액션이다 (2026-10-23 · 2026-11-15 `'` → `[`)", () => {
     const chat = ACTIONS.find((a) => a.id === "open-chat-dock");
     expect(chat, "open-chat-dock").toBeDefined();
-    expect(chat?.def).toBe("Ctrl+Shift+Quote");
+    expect(chat?.def).toBe("Ctrl+Shift+BracketLeft");
     expect(chat?.scope).toBe("global");
     expect(translate("ko", actionLabel("open-chat-dock").key)).toBe("채팅 독");
     expect(translate("en", actionLabel("open-chat-dock").key)).toBe("Chat dock");
-    expect(ACTIONS.filter((a) => a.def.endsWith("Quote")).map((a) => a.id)).toEqual(["open-chat-dock"]);
-    expect(resolveBindings().global.get("Ctrl+Shift+Quote")).toBe("open-chat-dock");
+    expect(ACTIONS.filter((a) => a.def === "Ctrl+Shift+BracketLeft").map((a) => a.id)).toEqual(["open-chat-dock"]);
+    expect(resolveBindings().global.get("Ctrl+Shift+BracketLeft")).toBe("open-chat-dock");
+    // 옛 기본값 `'` 는 이제 어느 기본값도 아니다
+    expect(ACTIONS.filter((a) => a.def.endsWith("Quote")).map((a) => a.id)).toEqual([]);
     // 목업의 자리 표시 `Ctrl+Shift+L` 은 로컬 파일의 것이다 — 빼앗지 않았다
     expect(resolveBindings().global.get("Ctrl+Shift+KeyL")).toBe("open-localfs");
-    expect(isBrowserChromeCombo("Ctrl+Shift+Quote")).toBe(false);
-    expect(displayCombo(chat?.def)).toBe("Ctrl+Shift+'");
+    expect(isBrowserChromeCombo("Ctrl+Shift+BracketLeft")).toBe(false);
+    expect(displayCombo(chat?.def)).toBe("Ctrl+Shift+[");
+    // 한글 IME 가 켜져도 같은 물리 키 → 같은 조합
+    expect(comboFromEvent(ev("BracketLeft", { ctrl: true, shift: true }))).toBe("Ctrl+Shift+BracketLeft");
     // 토글이라 입력칸(다음 단계의 대화 입력) 안에서도 같은 키로 닫힌다.
     expect(bypassesEditGuard("open-chat-dock")).toBe(true);
+  });
+
+  it("작업안(`open-plans`)은 `Ctrl+Shift+]` — 채팅 독 `[` 와 괄호 한 쌍이고 그 조합의 유일한 액션이다 (2026-11-15)", () => {
+    const plans = ACTIONS.find((a) => a.id === "open-plans");
+    expect(plans?.def).toBe("Ctrl+Shift+BracketRight");
+    expect(plans?.scope).toBe("global");
+    expect(ACTIONS.filter((a) => a.def === "Ctrl+Shift+BracketRight").map((a) => a.id)).toEqual(["open-plans"]);
+    expect(resolveBindings().global.get("Ctrl+Shift+BracketRight")).toBe("open-plans");
+    // `Ctrl+Alt+…` 를 쓰는 기본값은 다시 화살표 넷(타일 크기)뿐이다
+    expect(ACTIONS.filter((a) => a.def.startsWith("Ctrl+Alt+") && !/Arrow/.test(a.def)).map((a) => a.id)).toEqual([]);
+    expect(isBrowserChromeCombo("Ctrl+Shift+BracketRight")).toBe(false);
+    expect(displayCombo(plans?.def)).toBe("Ctrl+Shift+]");
+    // 한글 IME 가 켜져도 같은 물리 키 → 같은 조합
+    expect(comboFromEvent(ev("BracketRight", { ctrl: true, shift: true }))).toBe("Ctrl+Shift+BracketRight");
+    expect(bypassesEditGuard("open-plans")).toBe(true);
+  });
+
+  it("괄호 두 키는 Shift 가 있을 때만 앱 몫 — `Ctrl+[`(ESC) · `Ctrl+]` 는 어느 층에도 없어 셸로 간다 · 편집기 안에서도 앱이 쥔다", () => {
+    const { global, terminal } = resolveBindings();
+    expect(comboFromEvent(ev("BracketLeft", { ctrl: true }))).toBe("Ctrl+BracketLeft");
+    expect(comboFromEvent(ev("BracketRight", { ctrl: true }))).toBe("Ctrl+BracketRight");
+    for (const c of ["Ctrl+BracketLeft", "Ctrl+BracketRight", "BracketLeft", "BracketRight", "Shift+BracketLeft", "Shift+BracketRight"]) {
+      expect(global.has(c), c).toBe(false);
+      expect(terminal.has(c), c).toBe(false);
+      expect(isBrowserChromeCombo(c), c).toBe(false);
+    }
+    // 문서 · SQL 편집기 안에서도 앱의 것(`Ctrl+Shift+…` — 묶였으니 편집기가 비켜 선다)
+    for (const c of ["Ctrl+Shift+BracketLeft", "Ctrl+Shift+BracketRight"]) {
+      expect(appKeepsInEditor(c, "Ctrl+Shift+KeyP"), c).toBe(true);
+      expect(terminal.has(c), c).toBe(false);
+    }
   });
 
   it("독 칸 id 는 `open-*-dock` 하나로 통일했다 — 옛 `open-hosts` · `open-projects` 는 없다 (2026-10-21 사용자 승인 예외)", () => {

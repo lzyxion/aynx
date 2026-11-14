@@ -6,7 +6,7 @@
  * | --- | --- |
  * | `localfs` | 보고 있는 폴더의 전체 경로("내 PC" 합성 루트면 없음) |
  * | `sftp` | 보고 있는 원격 경로 |
- * | `doc` | 파일 전체 경로 — 원격이면 `별칭:경로` |
+ * | `doc` · `image` | 파일 전체 경로 — 원격이면 `별칭:경로` |
  * | `diff` | 비교 범위(브랜치 전체 · 커밋 · 커밋 안 한 변경 · 두 커밋 사이) + 고른 파일 |
  * | `query` | 엔진 · 데이터베이스 · 경유 호스트 |
  * | 그 밖(브랜치 · 시작 · 오케스트레이션 · 세션 타일) | 없음 |
@@ -85,7 +85,7 @@ export function cellLink(pane: PaneSpec, src: LinkSources): CellLink | null {
     const live = src.queryLive(pane.id);
     return live ? { state: live.state, writable: live.state === "open" && live.writable } : null;
   }
-  const remote = pane.kind === "sftp" || (pane.kind === "doc" && !!pane.sourcePaneId);
+  const remote = pane.kind === "sftp" || ((pane.kind === "doc" || pane.kind === "image") && !!pane.sourcePaneId);
   if (!remote) return null;
   const s = pane.sourcePaneId ? src.sourceState(pane.sourcePaneId) : null;
   return { state: s === null || s === "off" ? "closed" : "open", writable: false };
@@ -100,7 +100,8 @@ export function cellDetail(pane: PaneSpec, tr: Tr, connOf: (id: string) => DbCon
     case "localfs":
     case "sftp":
       return path ? clipStart(path) : null;
-    case "doc": {
+    case "doc":
+    case "image": {
       if (!path) return null;
       const alias = pane.alias?.trim();
       return clipStart(alias ? `${alias}:${path}` : path);

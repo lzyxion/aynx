@@ -16,6 +16,13 @@ export type ImageKind = "file" | "svg" | "inline";
 
 export type ImageMenuAction = "download" | "saveAs" | "copyImage" | "copyLink" | "copySvg";
 
+/** 그림 메뉴 앞 · 뒤에 부르는 쪽이 세우는 줄 하나(`ImageMenu` 의 `before` · `after` — 이미지 타일 본문의 맞춤 · 기본 앱 …) */
+export interface ImageMenuExtra {
+  id: string;
+  label: string;
+  disabled?: boolean;
+}
+
 /** 메뉴에 설 항목들 — 순서 그대로 그린다 */
 export function imageMenuActions(kind: ImageKind, remote: boolean): ImageMenuAction[] {
   const out: ImageMenuAction[] = ["download"];

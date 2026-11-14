@@ -234,6 +234,10 @@ export function cheatSheetVisible(): boolean {
 
 export function closeCheatSheet(): void {
   cheatOpen = false;
+  // 치트시트는 나가는 전이(220ms) 동안 남는다 — 상자가 포커스를 쥔 채 남으면 돌려주기가 "누가 가져갔다" 로 읽고 물러서고,
+  // 전이가 끝나면 포커스가 `<body>` 로 떨어진다. 프로필 전환(`app/profile-switcher`)과 같은 처방 — 상자의 포커스를 먼저 놓는다.
+  const ae = typeof document === "undefined" ? null : document.activeElement;
+  if (ae instanceof HTMLElement && ae.closest("[data-cheat-sheet]")) ae.blur();
   returnFocus(FOCUS_CHEAT);
 }
 
@@ -259,7 +263,10 @@ export function toggleCheatSheet(): void {
  */
 export function openKeybindingSettings(): void {
   settingsNav.want = "keys";
-  closeCheatSheet();
+  // 갈 곳을 이 몸짓이 정했다(설정 독) — [`closeCheatSheet`] 를 타지 않는다: 그쪽이 포커스를 놓으면 독이 `<body>` 를
+  // 돌아갈 자리로 적어, 독을 닫을 때 포커스 타일로 가지 못한다(적어 둔 상자가 사라져야 독이 포커스 타일로 돌려준다).
+  cheatOpen = false;
+  forgetFocusOrigin(FOCUS_CHEAT);
   openDock("settings");
 }
 

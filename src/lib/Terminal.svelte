@@ -3275,7 +3275,12 @@
     // 넣지 않고 핸들러를 하나 더 다는 이유: `sendInput` 은 붙여넣기 확인·브래킷 감싸기·동시
     // 입력 분배가 얽힌 자리라 조기 반환이 여럿이고, 그 어느 갈래로 빠지든 "사용자가 뭔가를
     // 쳤다" 는 사실은 똑같다. 별도 구독이면 그 갈래들과 무관하게 언제나 정확히 한 번 돈다.
-    t.onData(() => termSearch.keptEvent("input"));
+    // 단 **사람의 입력일 때만** — xterm 이 스스로 내는 응답(`protocol`)은 친 것이 아니다. 셸(ConPTY 등)이 포커스 보고(`?1004`)를
+    // 켜 두면 점프가 타일에 포커스를 주는 순간 xterm 이 `ESC[I` 를 `onData` 로 내고, 그것이 방금 남긴 강조를 지웠다.
+    // 판정은 `sendInput` 의 출처와 같은 `classifyInput`(키 · 붙여넣기 중이면 내용과 상관없이 사람)이다.
+    t.onData((data) => {
+      if (classifyInput(data, { pasting: inputPasting, keyEvent: inputKeyEvent }) !== "protocol") termSearch.keptEvent("input");
+    });
     t.onData(sendInput);
 
     // ── 입력 중 스니펫 제안 (docs/log/2026-09-16-snippets.md) ─────────────────

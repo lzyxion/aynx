@@ -152,7 +152,7 @@ function placeOfPane(pane: PaneSpec | null, tabFolder: string | null): { project
   if (pane?.kind === "local") at = { host: null, start: pane.cwd?.trim() || null, current: localReportedFolder(pane) };
   else if (pane?.kind === "ssh" && !pane.adhoc && pane.alias?.trim())
     at = { host: pane.alias.trim(), start: pane.cwd?.trim() || null, current: reportedCwd(pane.id)?.trim() || null };
-  else if ((pane?.kind === "localfs" || pane?.kind === "doc" || pane?.kind === "sftp") && pane.path)
+  else if ((pane?.kind === "localfs" || pane?.kind === "doc" || pane?.kind === "image" || pane?.kind === "sftp") && pane.path)
     at = { host: pane.alias?.trim() || null, start: null, current: pane.path };
   const folders = projectFolders(projects(), worktreesOf, remoteHomeOf);
   const found =

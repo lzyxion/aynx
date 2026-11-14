@@ -16,7 +16,8 @@ import { focusPaneBody } from "$lib/pane/focus";
  *
  * 기록 보기(`app/conversation-viewer`)와 같은 방식으로 **스스로** 돌려준다: 열 때의 `document.activeElement` 를 적어
  * 두고, 닫은 뒤 포커스가 `<body>` 로 떨어졌을 때만 그 자리로 돌려준다. 하단 독 · 메뉴 안에서 열었으면 그 자리는
- * 곧 숨으므로(`inert`) 적지 않고 포커스 타일로 돌려준다. 줄을 골라 타일로 가는 닫기는 돌려주지 않는다.
+ * 곧 숨으므로(`inert`) 적지 않고 포커스 타일로 돌려준다. 줄을 골라 타일로 가는 닫기는 돌려주지 않는다. 어느 닫기든 판 안의
+ * 포커스는 닫는 순간 놓는다 — 나가는 전이 동안 남은 판이 쥐고 있으면 돌려주기 · `revealPane` 이 물러선다([`closeSessionSheet`]).
  */
 
 let open = $state(false);
@@ -49,7 +50,13 @@ export function closeSessionSheet(restore = true): void {
   open = false;
   const back = returnTo;
   returnTo = null;
-  if (!restore || typeof document === "undefined") return;
+  if (typeof document === "undefined") return;
+  // 판은 나가는 전이(200ms) 동안 남는다 — 칸 단추 · 판이 포커스를 쥔 채 남으면 아래 돌려주기와 `revealPane` 의 다음 프레임
+  // 판정이 "누가 가져갔다" 로 읽고 물러서, 전이가 끝나 판이 사라지는 순간 포커스가 `<body>` 로 떨어진다(지금 포커스 타일의 칸을
+  // 누르면 그 타일이 스스로 포커스를 가져가지도 않는다). 프로필 전환(`app/profile-switcher`)과 같은 처방 — 판 안의 포커스를 먼저 놓는다.
+  const ae = document.activeElement;
+  if (ae instanceof HTMLElement && ae.closest("[data-session-sheet]")) ae.blur();
+  if (!restore) return;
   void tick().then(() => {
     const el = document.activeElement;
     const lost = el === null || el === document.body || el === document.documentElement;

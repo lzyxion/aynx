@@ -14,7 +14,7 @@ import { runOnMenu } from "$lib/browser/menu-runner";
 import { canContinueInOrch, forkIntoOrchestration } from "$lib/app/orchestration.svelte.js";
 import { isOrchTab } from "$lib/orchestration/orch-tab";
 import { openBranchGraphOfPane } from "$lib/app/branch-graph.svelte.js";
-import { borrowsSession, type PaneSpec, type TabSpec } from "$lib/session";
+import { borrowsSession, isFileLeafKind, type PaneSpec, type TabSpec } from "$lib/session";
 import { paneHeadShown, paneToolsOf, TOOL_ACTION_PREFIX } from "$lib/pane/pane-tools.svelte.js";
 import { canFlipPane, flipViewOf, setFlipView } from "$lib/pane/ai-flip.svelte.js";
 import type { HostBox } from "$lib/pane/boxes";
@@ -178,9 +178,10 @@ export function createTileMenu(h: TileMenuHost) {
       sideChatFork: tileForkSource(menuBox.pane) !== null,
       // 원격 문서 타일 — "새 창으로 분리" 를 그리지 않는다(`startPaneTear` 와 같은 판정 하나)
       borrowed: borrowsSession(menuBox.pane),
-      // 문서 타일의 "경로 복사"(10-20) — 문서가 받는 그 경로 · 별칭(`DocView` 의 `path` · `alias` 프롭과 같은 칸)
-      docPath:
-        menuBox.pane.kind === "doc" ? { path: menuBox.pane.path ?? "", alias: menuBox.pane.alias ?? "" } : null,
+      // 문서 · 그림 타일의 "경로 복사"(10-20) — 그 타일이 받는 경로 · 별칭(`DocView` · `ImageView` 의 `path` · `alias` 프롭과 같은 칸)
+      docPath: isFileLeafKind(menuBox.pane.kind)
+        ? { path: menuBox.pane.path ?? "", alias: menuBox.pane.alias ?? "" }
+        : null,
       // 문서 타일의 [새 문서…](2026-11-11) — 파일을 보이고 그 백엔드에 쓸 수 있을 때(판정은 `app/new-doc` 하나 — 본문 우클릭도 같은 것)
       docNew: menuBox.pane.kind === "doc" ? newDocState(menuBox.pane.id) : null,
       // 폰 배치 — 분할 둘 · 새 창으로 분리를 그리지 않는다(위 띠 ⋯ · 길게 누르기 모두 — `PaneMenuCtx.solo`)

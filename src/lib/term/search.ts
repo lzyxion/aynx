@@ -1,11 +1,14 @@
 // 터미널 한 장의 검색 창구 — addon-search 와 질의·매치 번호·남긴 강조(`stepKept`) 상태, 창 전역 오버레이가 두드리는 `SearchTarget`.
 // `Terminal.svelte` 가 옛 상태 자리에서 하나 만들고 `mount()` 가 등록(`registerSearch`)·애드온 부착(`attach`)·정리(`dispose`)를 부른다.
 // 룬이 없어 평범한 `.ts` 다(`kept` 가 룬이 아닌 까닭은 아래 주석). 포커스를 잃으면 지우는 `$effect` 는 `Terminal` 에 있다.
-import type { Terminal } from "@xterm/xterm";
+// 현재 매치는 애드온의 데코레이션이 아니라 **이 파일이 위층(`layer: "top"`)에 따로 그린다**(`#paintActive` — 애드온이 거는 선택이 아래층을 덮는다).
+import type { IBufferRange, IDisposable, Terminal } from "@xterm/xterm";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import type { ShellIntegration } from "$lib/shell-integration";
 import { stepKept, type KeptEvent, type KeptState, type SearchHit, type SearchTarget } from "$lib/search-registry";
 import { matchesInLine } from "$lib/search-query";
+import { cellColumns } from "$lib/triggers";
+import { sameRange, searchColors, selectionRows, type SearchColors } from "./search-paint";
 
 /** 검색이 타일에서 읽는 것 — 게터라 그때그때의 값이다 */
 export interface SearchHost {
@@ -60,6 +63,16 @@ export class TermSearch {
    */
   #kept: KeptState = "idle";
 
+  /** 마지막 `#searchOptions` 가 푼 색 — 위층 현재 매치(`#paintActive`)가 같은 색을 쓴다 */
+  #colors: SearchColors | null = null;
+  /** 위층에 그린 현재 매치(마커 · 데코레이션) — 다음 매치로 가거나 지울 때 걷는다 */
+  #active: IDisposable[] = [];
+  /**
+   * 애드온이 현재 매치에 건 선택의 범위 — 지울 때 **지금 선택이 이것과 같을 때만** 선택을 푼다(`clearSearch`).
+   * 사람이 마우스로 다른 곳을 골랐으면 범위가 달라 그 선택은 남는다.
+   */
+  #searchSel: IBufferRange | null = null;
+
   /**
    * 남긴 강조의 사건 하나를 처리한다 — 규칙은 전부 순수 함수 [`stepKept`] 에 있고 여기서는
    * 그 판정을 **실행**만 한다 (`clear` 면 지운다).
@@ -87,19 +100,29 @@ export class TermSearch {
    * `--border` 는 라이트/다크와 **월페이퍼 추출 동적 테마**가 모두 갈아 끼우는 토큰이다.
    * 부를 때마다 다시 읽으면 테마가 바뀌어도 **다음 검색부터 저절로 따라온다** — 마운트 때 한 번
    * 읽어 두면 테마를 바꾼 뒤의 강조만 옛 색으로 남는다.
+   *
+   * **면 색 둘은 불투명 `#RRGGBB` 로 풀어 넘긴다**(`searchColors` — 까닭은 `term/search-paint.ts` 머리말): 현재 매치 = `--accent`
+   * 그대로 · 나머지 = `--accent` 를 **터미널 바탕에** 옅게 섞은 색. `--accent-soft` 토큰을 그대로 넘기지 않는다 — 크롬 면 위의
+   * 색이라 글래스에서는 반투명 `color-mix` 식이고(xterm 이 못 받는다), 크롬 라이트 · 터미널 다크면 밝은 면이 돼 현재 매치보다 눈에 띈다.
+   * 테두리 · 개요 눈금은 CSS 가 그대로 그리므로(outline · 캔버스 fillStyle) 토큰 그대로다.
    */
   #searchOptions(re: RegExp): ISearchOptions {
     const css = getComputedStyle(document.documentElement);
     const tok = (n: string, fb: string) => css.getPropertyValue(n).trim() || fb;
+    const colors = searchColors(
+      { accent: tok("--accent", "#22e0ff"), onAccent: tok("--on-accent", "#000000") },
+      this.#h.term?.options.theme?.background,
+    );
+    this.#colors = colors;
     return {
       regex: true, // `re.source` 는 언제나 정규식 문법이다
       caseSensitive: !re.flags.includes("i"), // `buildMatcher` 는 무시일 때만 `i` 를 붙인다
       wholeWord: false, // `\b` 는 이미 source 안에 들어 있다
       decorations: {
-        matchBackground: tok("--accent-soft", "#0e3450"),
+        matchBackground: colors.soft,
         matchBorder: tok("--border", "#1d2740"),
         matchOverviewRuler: tok("--accent", "#22e0ff"),
-        activeMatchBackground: tok("--accent", "#22e0ff"),
+        activeMatchBackground: colors.active,
         activeMatchBorder: tok("--accent", "#22e0ff"),
         activeMatchColorOverviewRuler: tok("--accent", "#22e0ff"),
       },
@@ -149,14 +172,80 @@ export class TermSearch {
     this.#searchIndex = 0;
     this.#searchCount = 0;
     this.#kept = "idle";
+    // 애드온이 현재 매치에 건 선택도 걷는다 — 남으면 강조가 사라진 뒤에도 그 글자가 골라진 채라 복사된다.
+    // **지금 선택이 그 범위 그대로일 때만**이다: 사람이 마우스로 다른 곳을 골랐으면 건드리지 않는다.
+    const t = this.#h.term;
+    if (t && !this.#h.disposed && sameRange(t.getSelectionPosition(), this.#searchSel)) t.clearSelection();
+    this.#searchSel = null;
+    this.#unpaintActive();
     this.#search?.clearDecorations();
     // 블록 띠도 함께 걷는다 — 같은 점프가 남긴 것이라 수명이 하나여야 한다
     // (`keptEvent("input")`·`("blur")` 가 이리로 오고, 오버레이의 `clear()` 도 그렇다).
     this.#h.shell?.clearBand();
   }
 
-  /** 하이라이트를 얹는다(`null` 이면 지운다). 돌려주는 값은 매치 수 */
-  #highlightSearch(re: RegExp | null): number {
+  /**
+   * 다음 `findNext` 가 `at`(버퍼 줄 · [`#scanBuffer`] 의 문자 인덱스)의 매치에서 서게 한다 — 결과 점프(`SearchTarget.highlight` 의 `at`).
+   *
+   * 애드온에는 "이 매치를 현재로" 라는 API 가 없고, `findNext` 는 **선택이 있으면 그 자리부터**(질의가 캐시와 다르면 선택 시작부터) 찾는다.
+   * 그래서 캐시된 질의를 비우고(`clearDecorations` — 같은 질의면 선택 **끝** 다음 매치로 건너뛴다) 그 매치의 첫 칸을 한 칸 선택해 둔다.
+   * 문자 인덱스는 셀 좌표가 아니라(넓은 글자 · 결합 문자) `cellColumns` 로 옮긴다. 그 줄이 사라졌으면(스크롤백 밖) 아무것도 하지 않는다 —
+   * 기본대로 맨 위부터다.
+   */
+  #startAt(at: { line: number; col: number }): void {
+    const t = this.#h.term;
+    const line = t?.buffer.active.getLine(at.line);
+    const x = line ? cellColumns(line)[at.col] : undefined;
+    if (!t || !this.#search || x === undefined) return;
+    this.#search.clearDecorations();
+    t.select(x, at.line, 1);
+  }
+
+  /**
+   * 현재 매치를 **위층**에 다시 그린다 — 애드온이 결과를 알릴 때마다(`onDidChangeResults` · 우리 `findNext`/`findPrevious` 와
+   * 출력 뒤 애드온 스스로의 다시 찾기 둘 다) 부른다.
+   *
+   * 애드온은 현재 매치를 `term.select()` 로 **고르고** 그 위에 아래층(`bottom`) 데코레이션을 얹는다. 그런데 두 렌더러 모두 선택을
+   * 아래층 데코레이션 **뒤에** 칠한다(WebGL `CellColorResolver` 는 선택 칸이면 데코레이션 바탕을 버리고 선택 색으로 · DOM
+   * `DomRendererRowFactory` 는 `top` 이 아니면 선택 색으로 덮는다). 그래서 `activeMatchBackground` 는 끝내 보이지 않고 현재 매치만
+   * 옅은 선택 색 + 테두리로 남았다. 선택을 걷을 수는 없다 — 애드온의 F3 · Shift+F3 · 출력 뒤 다시 찾기가 **선택 자리부터** 찾는다
+   * ([`#startAt`] 도 그 성질을 쓴다). 그래서 선택은 두고, 위층 데코레이션(선택보다 나중에 칠한다)으로 강조색 면 + 강조색 위 글자를 덮는다.
+   *
+   * 자리는 애드온이 방금 건 선택에서 읽는다(애드온은 현재 매치를 밖에 내주지 않는다 — 알림은 `select` 바로 뒤에 온다). `found` = 매치 수가 1 이상.
+   */
+  #paintActive(found: boolean): void {
+    this.#unpaintActive();
+    this.#searchSel = null;
+    const t = this.#h.term;
+    // 매치가 없으면 애드온은 고르지 않는다 — 그때 남은 선택은 사람의 것이라 현재 매치로 읽지 않는다
+    if (!found || !t || this.#h.disposed || !this.#searchQuery || !this.#colors) return;
+    const sel = t.getSelectionPosition() ?? null;
+    this.#searchSel = sel;
+    if (!sel) return;
+    const buf = t.buffer.active;
+    for (const r of selectionRows(sel, t.cols)) {
+      const marker = t.registerMarker(r.y - (buf.baseY + buf.cursorY));
+      if (!marker) continue;
+      this.#active.push(marker);
+      const d = t.registerDecoration({
+        marker,
+        x: r.x,
+        width: r.width,
+        backgroundColor: this.#colors.active,
+        foregroundColor: this.#colors.onActive,
+        layer: "top",
+      });
+      if (d) this.#active.push(d);
+    }
+  }
+
+  #unpaintActive(): void {
+    for (const d of this.#active) d.dispose();
+    this.#active = [];
+  }
+
+  /** 하이라이트를 얹는다(`null` 이면 지운다). 돌려주는 값은 매치 수 · `at` 이면 그 매치가 현재 매치([`#startAt`]) */
+  #highlightSearch(re: RegExp | null, at?: { line: number; col: number }): number {
     if (!this.#search || !this.#h.term || this.#h.disposed) return 0;
     if (re === null) {
       this.clearSearch();
@@ -171,6 +260,7 @@ export class TermSearch {
     // `bandBlock` 이 새 띠를 두른다 (오버레이가 highlight → reveal → band 순으로 부른다).
     this.#h.shell?.clearBand();
     this.#searchQuery = { term: re.source, opts };
+    if (at) this.#startAt(at);
     this.#search.findNext(re.source, opts);
     // `findNext` 는 `onDidChangeResults` 를 **동기로** 쏜다 — 이 시점의 `searchCount` 는 방금 값이다.
     return this.#searchCount;
@@ -198,7 +288,7 @@ export class TermSearch {
       // 값이 아니라 **함수**다 — 별칭이 바뀌면 결과 목록의 이름도 따라 바뀌어야 한다.
       name: info.name,
       scan: (re, limit) => this.#scanBuffer(re, limit),
-      highlight: (re) => this.#highlightSearch(re),
+      highlight: (re, at) => this.#highlightSearch(re, at),
       position: () => ({ index: this.#searchIndex, count: this.#searchCount }),
       next: () => this.#stepSearch(1),
       prev: () => this.#stepSearch(-1),
@@ -233,6 +323,7 @@ export class TermSearch {
     this.#searchResults = sa.onDidChangeResults(({ resultIndex, resultCount }) => {
       this.#searchIndex = resultIndex >= 0 ? resultIndex + 1 : 0;
       this.#searchCount = resultCount ?? 0;
+      this.#paintActive(this.#searchCount > 0);
     });
   }
 
@@ -245,5 +336,8 @@ export class TermSearch {
     this.#searchIndex = 0;
     this.#searchCount = 0;
     this.#kept = "idle"; // 남긴 강조의 기억도 버퍼와 함께 사라진다
+    this.#unpaintActive();
+    this.#searchSel = null;
+    this.#colors = null;
   }
 }

@@ -12,6 +12,10 @@ import {
   effectiveDefaultShellId,
   findDocPane,
   findNewDocPane,
+  findFilePane,
+  isFileLeafKind,
+  newImagePane,
+  planFileOpen,
   findPaneByStream,
   insertSubtree,
   leafOf,
@@ -968,6 +972,58 @@ describe("planDocOpen — 미리 보기 타일 재사용 (docs/log/2026-09-27-do
     const mine = leafOf(newSftpPane("p1", "web-01"));
     expect(planDocOpen(mine, "C:/c.md")).toEqual({ kind: "beside" });
     expect(planDocOpen(other, "C:/c.md").kind).toBe("replace");
+  });
+});
+
+describe("파일 한 장 타일 — 이미지 타일이 문서 타일과 함께 쓰는 판정(2026-11-14)", () => {
+  const web = { paneId: "p1", alias: "web-01" };
+  const ko: Tr = (key, params) => translate("ko", key, params);
+
+  it("isFileLeafKind · borrowsSession — 문서 · 그림만, 원격(별칭)이면 빌린다", () => {
+    expect(isFileLeafKind("doc")).toBe(true);
+    expect(isFileLeafKind("image")).toBe(true);
+    expect(isFileLeafKind("localfs")).toBe(false);
+    expect(borrowsSession(newImagePane("/a.png", web))).toBe(true);
+    expect(borrowsSession(newImagePane("C:/a.png"))).toBe(false);
+  });
+
+  it("findFilePane — 종류가 같아야 같다(같은 svg 의 문서 타일은 그림 타일이 아니다)", () => {
+    const doc = newDocPane("C:/a.svg");
+    const img = newImagePane("C:/a.svg");
+    const remote = newImagePane("/srv/a.png", web);
+    const root = split("row", leafOf(doc), split("col", leafOf(img), leafOf(remote)));
+    expect(findFilePane(root, "image", "C:/a.svg")).toBe(img);
+    expect(findFilePane(root, "doc", "C:/a.svg")).toBe(doc);
+    expect(findDocPane(root, "C:/a.svg")).toBe(doc);
+    expect(findFilePane(root, "image", "/srv/a.png", web)).toBe(remote);
+    expect(findFilePane(root, "image", "/srv/a.png")).toBeNull();
+  });
+
+  it("planFileOpen — 그림은 같은 그림이면 포커스, 아니면 옆(미리 보기 문서 칸을 갈아 끼우지 않는다)", () => {
+    const pv = { ...newDocPane("C:/b.md"), docPreview: true as const };
+    const img = newImagePane("C:/a.png");
+    const root = split("row", leafOf(pv), leafOf(img));
+    expect(planFileOpen(root, "image", "C:/a.png")).toEqual({ kind: "focus", paneId: img.id });
+    expect(planFileOpen(root, "image", "C:/c.png")).toEqual({ kind: "beside" });
+    // 문서 갈래는 예전 그대로(`planDocOpen` 과 같은 답)
+    expect(planFileOpen(root, "doc", "C:/c.md")).toEqual(planDocOpen(root, "C:/c.md"));
+    expect(planDocOpen(root, "C:/c.md")).toEqual({ kind: "replace", paneId: pv.id });
+  });
+
+  it("이름은 파일 이름(원격이면 · 별칭) — 탭 하나뿐이면 그 이름이 탭 제목", () => {
+    expect(paneName(newImagePane("C:\\pics\\cat.png"), ko)).toBe("cat.png");
+    expect(paneName(newImagePane("/srv/cat.png", web), ko)).toBe("cat.png · web-01");
+    expect(loneTileTitle(newImagePane("C:/pics/cat.png"), ko)).toBe("cat.png");
+  });
+
+  it("창 이관은 원본 터미널을 함께 옮기면 다시 잇고, 아니면 지운다(문서 · SFTP 와 같은 relink)", () => {
+    const ssh = newSshPane("web-01");
+    const img = newImagePane("/srv/a.png", { paneId: ssh.id, alias: "web-01" });
+    const moved = adoptTab(tabFromPane(img, { title: "t" }), () => undefined);
+    expect(listPanes(moved.root)[0].sourcePaneId).toBeUndefined();
+    const both = adoptTab({ id: "t", title: "t", root: split("row", leafOf(ssh), leafOf(img)) }, () => undefined);
+    const [s, i] = listPanes(both.root);
+    expect(i.sourcePaneId).toBe(s.id);
   });
 });
 

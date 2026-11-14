@@ -14,6 +14,16 @@ Write the next version's section before tagging it — the release workflow stop
 
 ### What's new
 
+- **New shortcuts for the chat dock**: the chat dock now opens with **Ctrl+Shift+[** (it was Ctrl+Shift+'), and the task plans branch with **Ctrl+Shift+]** (it had no default). Both work inside the document and SQL editors too, and Ctrl+[ still goes to the shell as Esc. If you set your own key in **Settings › Shortcuts**, it stays as it was.
+- **Image tile**: double-click an image in a file tile (local or SFTP) to open it inside Aynx. Image paths in the terminal, in documents and in the side chat open there too.
+  - Fit or 1:1, zoom with the wheel around the pointer, drag to pan, and double-click to switch between fit and 1:1.
+  - **←** and **→** step through the other images in the same folder. The image reloads when the file changes.
+  - A minimap shows where you are when zoomed in. Turn it on or off from the zoom menu or with **M**.
+  - Large images download with a progress bar and **[Cancel]**. Above 500 MB, Aynx asks first.
+  - **Open with default app** and **Edit externally** moved to the right-click menu.
+- **Search in the terminal**: the match you are on is now filled with the accent color and the other matches are tinted, so the current one stands out. Jumping from **Search all** lands on the exact line you picked and keeps it highlighted. Closing the search no longer leaves a selection behind.
+- **Maximized tiles**: opening a file, jumping from search, clicking an alert or picking a tile in the session board now un-maximizes the tab when the target tile was hidden behind it.
+- **Keyboard focus**: closing the session board, the shortcut sheet, settings or the chat dock returns the keys to the tile you were in, including terminal tiles. Switching between the chat and task plans branches keeps focus in the dock.
 - **Review card [Later]**: move the review card out of the way to check your tiles first. Waiting plans stay in the chat dock's task plans branch, and a new plan brings the card back.
 - **Task plans in a remote window** open in the remote window's chat dock, the same as on the main PC, instead of covering the tiles.
 - **Clearing task plans**: the bottom row of task plans has **[Clear finished runs]** (Active) and **[Clear history]** (History). In History, **×** on a row clears one run, and with a filter set

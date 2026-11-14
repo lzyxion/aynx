@@ -1,5 +1,5 @@
 // 패널·탭의 **모양** — `PaneKind`·`PaneSpec`·`PaneNode`·`TabSpec` 와 문구 함수 타입 `Tr`.
-// 값은 종류 판정(`hasSession`·`isDocMode`·`isDocEditView`·`isFileView`·`migrateFileView`)뿐이고 형제 파일을 값으로 부르지 않는다(잎 모듈).
+// 값은 종류 판정(`hasSession`·`isFileLeafKind`·`isDocMode`·`isDocEditView`·`isFileView`·`migrateFileView`)뿐이고 형제 파일을 값으로 부르지 않는다(잎 모듈).
 
 import type { Key } from "$lib/i18n/keys";
 // 빠른 접속 대상의 **모양**만 빌린다 (문법·파싱은 그쪽이 단일 진실이다).
@@ -56,6 +56,14 @@ export type SessionKind = "local" | "ssh";
  * 이름이 `"viewer"` 가 아닌 것은 편집(2단계)이 붙어도 거짓말이 되지 않게 — kind 는 배치 파일에
  * 글자 그대로 남는다.
  *
+ * ## `"image"` — 그림 파일 **한 장**을 보는 타일 (2026-11-14)
+ *
+ * png · jpg · gif · webp · bmp · svg · ico(판정은 `browser/preview.ts` 의 `imageMime` 표 하나)를 맞춤 · 1:1 · 확대로 본다(`ImageView`).
+ * 문서 타일과 **같은 무리**("파일 한 장 타일" — [`isFileLeafKind`])라 주소 칸이 같다: [`PaneSpec.path`] 가 그 파일의 절대 경로이고,
+ * `alias` 가 있으면 원격(원본 터미널의 세션을 빌린다 — [`PaneSpec.sourcePaneId`]), 없으면 로컬. 이미 열린 파일이면 포커스만 · 배치
+ * 저장/복원 · 창 이관 · 원본 다시 묶기는 문서 타일과 같은 함수를 지난다. **배율 · 이동 위치는 명세에 없다**(열 때마다 맞춤) —
+ * 같은 폴더의 이전/다음으로 옮기면 `path` 만 바뀐다. 미리 보기 갈아 끼우기(`docPreview`)는 문서 타일 몫이라 이 종류에는 없다.
+ *
  * ## `"start"` — 아직 아무것도 열지 않은 자리 (docs/log/2026-09-04-start-page.md)
  *
  * 새 탭은 **시작 타일 하나**로 뜬다 ([`newTab`]): 로고 아래에 바로가기와
@@ -106,7 +114,16 @@ export type SessionKind = "local" | "ssh";
  * 서버의 프로듀서 채팅 프로세스(`server/producer`)이고 상태는 `app/producer-chat.svelte.ts` 가 쥔다. 주소는 [`PaneSpec.producer`](채팅 id ·
  * CLI · 모델 · 강도 · 스튜디오) 하나 — 토큰은 없다. 아직 안 열었으면 "새 앨범" 칸(초안), 연 뒤는 채팅.
  */
-export type PaneKind = SessionKind | "sftp" | "localfs" | "start" | "doc" | "branches" | "diff" | "query" | "run" | "producer";
+export type PaneKind = SessionKind | "sftp" | "localfs" | "start" | "doc" | "image" | "branches" | "diff" | "query" | "run" | "producer";
+
+/**
+ * **파일 한 장 타일**인가 — 문서(`doc`) · 그림(`image`). 둘은 주소(`path` · `alias` · `sourcePaneId`)가 같고, 원격 세션 빌리기 ·
+ * 같은 파일이면 포커스만 · 배치 복원의 원본 다시 묶기 · 경로 없는 잎 버리기를 같은 함수로 지난다(종류마다 `||` 를 늘려 쓰지 않게 —
+ * [`hasSession`] 과 같은 긍정형 한 곳).
+ */
+export function isFileLeafKind(kind: PaneKind): kind is "doc" | "image" {
+  return kind === "doc" || kind === "image";
+}
 
 /** 쿼리 타일 초안(`QuerySpec.sql`)의 상한 — 넘으면 명세에 싣지 않는다(배치 파일이 부풀지 않게) */
 export const QUERY_DRAFT_MAX = 32 * 1024;
@@ -432,7 +449,7 @@ export interface PaneSpec {
    */
   adhoc?: AdhocTarget;
   /**
-   * **kind === `"sftp"` · 원격 `"doc"` 전용** — 이 브라우저가 세션을 빌려 쓰는 터미널 타일의 `pane.id`
+   * **kind === `"sftp"` · 원격 `"doc"` · 원격 `"image"` 전용** — 이 브라우저가 세션을 빌려 쓰는 터미널 타일의 `pane.id`
    * (docs/log/2026-09-03-sftp-browser-tile.md). 원격 문서 타일도 같은 뜻 · 같은 배선이다
    * (docs/log/2026-09-27-doc-tile.md).
    *
@@ -456,7 +473,7 @@ export interface PaneSpec {
   /**
    * **kind === `"localfs"` 전용** — 그 브라우저가 지금 보고 있는 폴더의 절대 경로
    * (docs/log/2026-09-03-local-fs-tile.md). 빈 문자열은 합성 루트("내 PC")다.
-   * (`"sftp"` 도 같은 뜻으로 쓰고, `"doc"` 에서는 **보고 있는 파일**의 절대 경로다 — 없으면 그 타일은
+   * (`"sftp"` 도 같은 뜻으로 쓰고, `"doc"` · `"image"` 에서는 **보고 있는 파일**의 절대 경로다 — 없으면 그 타일은
    * 뜻이 없어 배치 복원이 버린다.)
    *
    * 브라우저가 폴더를 옮길 때마다 갱신되고, 그 값이 그대로 배치 파일에 실린다

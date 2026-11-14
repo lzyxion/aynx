@@ -443,6 +443,7 @@ pub fn run() {
             sftp_browser::browse::sftp_free_space,
             sftp_browser::text::sftp_read_text,
             sftp_browser::text::sftp_read_preview,
+            sftp_browser::text::sftp_read_image,
             sftp_browser::text::sftp_write_text,
             sftp_browser::edit::sftp_mkdir,
             sftp_browser::edit::sftp_create_file,
@@ -476,6 +477,7 @@ pub fn run() {
             local_browser::local_stat,
             local_browser::local_read_text,
             local_browser::local_read_preview,
+            local_browser::local_read_image,
             local_browser::local_write_text,
             // 팔레트 "파일 열기…" 의 로컬 목록 (docs/log/2026-09-27-doc-tile.md "A — 여는 길")
             file_index::list_text_files,

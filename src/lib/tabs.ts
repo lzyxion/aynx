@@ -19,6 +19,8 @@ import {
   type QueryScript,
   type QueryRowLimit,
   newDocPane,
+  newImagePane,
+  isFileLeafKind,
   newLocalFsPane,
   newLocalPane,
   newSftpPane,
@@ -480,7 +482,9 @@ export function serialize(tabs: readonly TabSpec[], activeId: string | null): Ta
 // `"run"`(오케스트레이션 보드 — 2026-10-15 · 2b)도 같은 까닭으로 여기 있다.
 //
 // `"producer"`(프로듀서 채팅 잎 — 2026-10-30 · 2단계 단계 3)도 같은 까닭으로 여기 있다.
-const KNOWN_KINDS: readonly PaneKind[] = ["local", "ssh", "sftp", "localfs", "start", "doc", "branches", "diff", "query", "run", "producer"];
+//
+// `"image"`(이미지 타일 — 2026-11-14)도 같은 까닭으로 여기 있다.
+const KNOWN_KINDS: readonly PaneKind[] = ["local", "ssh", "sftp", "localfs", "start", "doc", "image", "branches", "diff", "query", "run", "producer"];
 
 // **걷은 종류** — 이 잎이 남은 파일을 버리지 않고 **잎만 조용히 뺀다**(형제가 자리를 차지한다 · 탭이 그 잎 하나뿐이었으면 시작 타일).
 // `"plans"`(작업안 타일 — 2026-10-07 ~ 10-25, 채팅 독의 갈래로 옮겼다 · docs/log/2026-10-25-plans-tile-refresh.md). 위 "모르는 kind =
@@ -874,6 +878,11 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
       if (leaf.docPreview === true) pane.docPreview = true;
       return pane;
     }
+    // 그림 보기 — 문서 보기와 같은 주소(로컬 그대로 · 원격은 [`rebindSftp`] 가 다시 묶는다). 배율 · 이동 위치는 저장하지 않는다.
+    case "image": {
+      const alias = leaf.alias?.trim();
+      return newImagePane(leaf.path ?? "", alias ? { paneId: "", alias } : undefined);
+    }
     // 브랜치 그래프 — 주소(프로젝트 id · 고른 브랜치)만 되살린다. 그래프는 타일이 뜨며 다시 읽는다. 주소가 없으면
     // 빈 id 로 두고 [`rebindSftp`] 가 뺀다.
     case "branches":
@@ -947,6 +956,7 @@ function nodeFrom(node: SavedNode, deferSsh: boolean): PaneNode {
  * 별칭이 있는 문서 타일은 SFTP 타일처럼 세션을 빌리므로 **같은 짝 찾기·같은 버리기**를 탄다. 별칭이 없는
  * 문서(로컬 파일)는 빌릴 것이 없어 그대로 두되, **경로가 없는 문서**는 무엇을 보여 줄지 모르는 타일이라
  * 여기서 뺀다(파싱 단계에서 버리면 파일 전체가 날아가므로 이 자리까지 미뤘다). 이름은 옛 그대로 둔다.
+ * 이미지 타일도 같은 무리(파일 한 장 타일 — `isFileLeafKind`)라 같은 규칙을 탄다.
  */
 function rebindSftp(root: PaneNode): PaneNode {
   const panes = listPanes(root);
@@ -968,12 +978,12 @@ function rebindSftp(root: PaneNode): PaneNode {
       if (!pane.query?.connId) orphans.push(pane.id);
       continue;
     }
-    if (pane.kind === "doc") {
+    if (isFileLeafKind(pane.kind)) {
       if (!pane.path) {
         orphans.push(pane.id);
         continue;
       }
-      if (!pane.alias?.trim()) continue; // 로컬 문서 — 빌릴 것이 없다
+      if (!pane.alias?.trim()) continue; // 로컬 문서 · 그림 — 빌릴 것이 없다
     } else if (pane.kind !== "sftp") {
       continue;
     }

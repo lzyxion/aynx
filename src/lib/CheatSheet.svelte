@@ -175,6 +175,8 @@
         // 독 세 칸 — 상태바 독 툴팁과 같은 접기(`Ctrl+Shift+H/J/K`)
         many(["open-hosts-dock", "open-projects-dock", "open-db-dock"], "commands.cheatsheet.open.dock", "/"),
         ...(chatDockAvailable() ? [reg("open-chat-dock")] : []),
+        // 작업안은 어느 창에서나 연다(보조 창은 주 창에 넘긴다 — `app/plans.svelte.ts`) · 조합을 비웠으면 `reg` 가 줄을 뺀다
+        reg("open-plans"),
         reg("open-sftp", "commands.cheatsheet.open.sftp"),
         reg("open-localfs", "commands.cheatsheet.open.localfs"),
         reg("open-file"),
@@ -320,6 +322,7 @@
     in:slide={{ duration: IN_MS, easing: cubicOut }}
     out:slide={{ duration: OUT_MS, easing: cubicIn }}
     role="dialog"
+    data-cheat-sheet
     aria-modal="true"
     aria-label={t("commands.cheatsheet.title")}
     tabindex="-1"

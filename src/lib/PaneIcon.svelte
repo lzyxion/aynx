@@ -115,6 +115,9 @@
 {:else if pane.kind === "doc"}
   <!-- 문서 보기 — 로컬이든 원격이든 같은 그림이다(어디의 파일인지는 이름의 별칭이 말한다) -->
   <UiIcon name="file-text" {size} />
+{:else if pane.kind === "image"}
+  <!-- 이미지 타일(2026-11-14) — 로컬 · 원격 같은 그림(어디의 파일인지는 이름의 별칭이 말한다) -->
+  <UiIcon name="image" {size} />
 {:else if pane.kind === "branches"}
   <!-- 브랜치 그래프 (docs/log/2026-09-29-branch-graph.md) -->
   <UiIcon name="git-branch" {size} />

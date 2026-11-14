@@ -488,6 +488,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "name.files.remote": "Remote",
   "name.doc": "Document",
   "name.doc.remote": "{file} · {alias}",
+  "name.image": "Image",
   "name.branches": "Branches",
   "name.branches.project": "Branches · {name}",
   "name.diff": "Changes",

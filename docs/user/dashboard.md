@@ -6,7 +6,7 @@ the flow, circumstances and exceptions are written here. The three screens open 
 | Screen | Where | How to open it |
 | --- | --- | --- |
 | **Session sheet** | An overlay that comes down from the top of the tile canvas | `Ctrl+Shift+M` · the **Sessions** row in the dock's Alerts section |
-| **Task plans** | The task plans branch of the chat dock | `Plans` as set in Settings › Shortcuts (no default combination) · the command palette · the branch button at the top of the chat dock (`Ctrl+Shift+'`) |
+| **Task plans** | The task plans branch of the chat dock | `Ctrl+Shift+]` (the pair of the chat dock's `Ctrl+Shift+[` — change it in Settings › Shortcuts) · the command palette · the branch button at the top of the chat dock (`Ctrl+Shift+[`) |
 | **Usage** | A panel that covers the tile canvas | The usage ring in the status bar · the usage row in the command palette |
 
 ---

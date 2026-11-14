@@ -48,7 +48,8 @@ use crate::fs_transfer::{
 };
 use crate::i18n::tr;
 use crate::text_file::{
-    assemble, preview_too_large, SavedFile, TextFile, PREVIEW_MAX_BYTES, VIEW_MAX_BYTES,
+    assemble, image_too_large, preview_too_large, SavedFile, TextFile, IMAGE_MAX_BYTES,
+    PREVIEW_MAX_BYTES, VIEW_MAX_BYTES,
 };
 
 #[cfg(windows)]
@@ -1357,6 +1358,73 @@ fn read_preview(path: &str) -> Result<Vec<u8>, String> {
     if bytes.len() as u64 > PREVIEW_MAX_BYTES {
         return Err(preview_too_large(&shown));
     }
+    Ok(bytes)
+}
+
+/// **이미지 타일**의 큰 그림 한 장 — [`local_read_preview`] 와 같은 원시 바이트(`ipc::Response`)이되 상한이
+/// [`IMAGE_MAX_BYTES`] 이고 [`CHUNK`] 씩 읽으며 진행률(`TransferProgress` — 파일 1개 · 누적 바이트)을 보낸다. 취소는
+/// 파일 묶음 작업과 같은 깃발(`op` → `transfer_cancel`)이라 다음 조각에서 멈추고 읽은 것은 버린다. 폴더면 오류다.
+/// 미리 보기 패널은 이 명령을 쓰지 않는다(그쪽 상한은 그대로).
+#[tauri::command]
+pub async fn local_read_image(
+    path: String,
+    op: u64,
+    on_progress: Channel<TransferProgress>,
+) -> Result<tauri::ipc::Response, String> {
+    blocking(move || read_image(&path, op, Some(on_progress), IMAGE_MAX_BYTES))
+        .await
+        .map(tauri::ipc::Response::new)
+}
+
+/// [`local_read_image`] 의 몸통 — `channel` 이 `None` 인 길과 `max` 를 낮춘 길은 테스트뿐이다.
+fn read_image(
+    path: &str,
+    op: u64,
+    channel: Option<Channel<TransferProgress>>,
+    max: u64,
+) -> Result<Vec<u8>, String> {
+    // 깃발을 먼저 집는다 — 부르자마자 누른 취소도 놓치지 않는다(`Cancel::claim`)
+    let cancel = Cancel::claim(op);
+    let full = absolute_input(path)?;
+    let shown = show(&full);
+    let meta = std::fs::metadata(&full).map_err(
+        |e| tr!(ko: "{shown} 을(를) 찾지 못했습니다: {e}", en: "Could not find {shown}: {e}"),
+    )?;
+    if meta.is_dir() {
+        return Err(
+            tr!(ko: "{shown} 은(는) 폴더라 내용을 볼 수 없습니다", en: "{shown} is a folder, so there is nothing to view"),
+        );
+    }
+    if meta.len() > max {
+        return Err(image_too_large(&shown));
+    }
+    let mut file = std::fs::File::open(&full).map_err(
+        |e| tr!(ko: "{shown} 을(를) 열지 못했습니다: {e}", en: "Could not open {shown}: {e}"),
+    )?;
+    let mut progress = match channel {
+        Some(channel) => Progress::new(op, channel, 1, meta.len()),
+        None => Progress::silent(),
+    };
+    progress.start(&shown);
+    let mut bytes: Vec<u8> = Vec::with_capacity(meta.len() as usize);
+    let mut buffer = vec![0u8; CHUNK];
+    loop {
+        cancel.check()?;
+        let read = file.read(&mut buffer).map_err(
+            |e| tr!(ko: "{shown} 을(를) 읽지 못했습니다: {e}", en: "Could not read {shown}: {e}"),
+        )?;
+        if read == 0 {
+            break;
+        }
+        // 그사이 파일이 커졌으면 상한에서 멈춘다(통째로 끌어오지 않는다)
+        if (bytes.len() + read) as u64 > max {
+            return Err(image_too_large(&shown));
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+        progress.advance(read as u64);
+    }
+    progress.file_done();
+    progress.finish();
     Ok(bytes)
 }
 

@@ -258,13 +258,19 @@
     void focusHome();
   }
 
-  /** 독의 키보드 집 — 지금 채팅의 입력 칸(채팅이 없으면 상자 자신) */
+  /**
+   * 독의 키보드 집 — **갈래마다 가장 먼저 쓸 곳**(열 때 · 갈래를 바꿀 때 둘 다 여기 — 2026-11-15). 못 찾으면 상자 자신.
+   * - 채팅 — 지금 채팅의 입력 칸.
+   * - 작업안 — 첫 검토 대기 카드 **자신**(`PlanList` 의 `data-plan-pending` · [승인] 단추가 아니다 — Enter 한 번에 승인되지 않게).
+   *   대기 카드가 없으면(빈 목록 · 실행 결과만 · 기록 보기) 목록의 스크롤 판(`PlansView` 의 `data-plans-body`).
+   */
   async function focusHome(): Promise<void> {
     await tick();
-    // 작업안 갈래 — 고른 보기 단추(입력 칸이 없다)
     const el =
       section === "plans"
-        ? (plansEl?.querySelector<HTMLElement>('[data-ops-view][aria-pressed="true"]') ?? null)
+        ? (plansEl?.querySelector<HTMLElement>("[data-plan-pending]") ??
+          plansEl?.querySelector<HTMLElement>("[data-plans-body]") ??
+          null)
         : (bodyEl?.querySelector<HTMLElement>("textarea[data-flip-input]") ?? null);
     (el ?? dockEl)?.focus({ preventScroll: true });
   }
@@ -417,7 +423,7 @@
     untrack(() => edgeHover.afterClose());
   });
 
-  /** 열리는 순간 키보드를 독 안으로 — 고른 채팅의 입력 칸(없으면 상자 자신) */
+  /** 열리는 순간 키보드를 독 안으로 — 지금 갈래의 첫 자리(`focusHome` · 없으면 상자 자신) */
   $effect(() => {
     if (!open) return;
     const raf = requestAnimationFrame(() => void focusHome());
@@ -527,7 +533,23 @@
     headEl?.animate([{ opacity: 0 }, { opacity: 1 }], opts);
   });
 
-  /** 갈래를 고른다 — 고른 갈래의 첫 자리로 포커스(채팅 = 입력 칸 · 작업안 = 보기 단추) */
+  /**
+   * 열린 채 갈래가 바뀌면(단축키 `Ctrl+Shift+[` · `]` · 딥링크 · [AI에게 묻기]) 새 갈래의 첫 자리로 — 포커스가 **독 안**이었을 때만.
+   * 숨는 몸통 안에 있던 포커스는 `<body>` 로 떨어지므로 `<body>` 도 "독 안" 으로 본다. 고정한 독 옆 타일에서 바꿨으면 그 타일의
+   * 포커스를 빼앗지 않는다. 닫힌 독을 여는 길은 위 "열리는 순간" 효과가 맡는다(여기는 그때 포커스가 아직 타일이라 건너뛴다).
+   */
+  let focusedSection: "chat" | "plans" | null = null;
+  $effect(() => {
+    const now = section;
+    const prev = focusedSection;
+    focusedSection = now;
+    if (prev === null || prev === now || !untrack(() => open)) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !dockEl?.contains(active)) return;
+    void focusHome();
+  });
+
+  /** 갈래를 고른다 — 고른 갈래의 첫 자리로 포커스(`focusHome` — 같은 갈래를 다시 눌러도) */
   function pickSection(next: "chat" | "plans"): void {
     if (next === "chat") listOpen = false;
     setChatDockSection(next);

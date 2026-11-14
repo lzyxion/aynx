@@ -1,4 +1,4 @@
-import { invoke } from "./ipc";
+import { Channel, invoke } from "./ipc";
 import { localWatch, type FsWatch } from "./fs-watch";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { editRemoteFile } from "$lib/sftp";
@@ -22,6 +22,7 @@ import {
   type Conflict,
   type OnConflict,
   type OnProgress,
+  type TransferProgress,
 } from "$lib/fs-ops";
 import {
   crumbsOf as posixCrumbsOf,
@@ -255,6 +256,12 @@ export interface FsBackend {
    * 허용 범위를 넓히지 않는 길이다. 상한(`browser/preview.ts` 의 `PREVIEW_MAX_BYTES`)을 넘거나 폴더면 실패한다.
    */
   readPreview(path: string): Promise<ArrayBuffer>;
+  /**
+   * **이미지 타일**의 큰 그림 한 장(2026-11-14) — [`readPreview`] 와 같은 원시 바이트이되 상한이 `image/read-plan.ts` 의 `IMAGE_MAX_BYTES`
+   * (Rust `text_file::IMAGE_MAX_BYTES`)이고, 조각마다 진행률(`TransferProgress` — 파일 1 · 누적 바이트)을 `onProgress` 로 흘린다.
+   * 취소는 같은 `op` 로 [`cancel`] — 백엔드가 다음 조각에서 멈추고 `[cancelled]` 로 실패한다. 두 백엔드 모두 있다(능력 플래그 없음).
+   */
+  readImage(path: string, op: number, onProgress: OnProgress | null): Promise<ArrayBuffer>;
   /** 파일 하나를 글자로 — 앞 2 MiB 까지 (`canView`). 폴더면 실패한다 */
   readText?(path: string): Promise<TextFile>;
   /**
@@ -559,6 +566,20 @@ async function sftpReadPreview(session: number, path: string): Promise<ArrayBuff
   }
 }
 
+/**
+ * 큰 그림 한 장을 조각으로 — 로컬 · 원격 공용 몸통(진행률 채널은 늘 만든다: 백엔드가 그 인자를 필수로 받는다).
+ * 실패는 감싸되 `[cancelled]` · `[session-gone]` 표식은 문구에 남는다(`errorOf` 는 백엔드 문구를 그대로 싣는다).
+ */
+async function readImageVia(command: string, args: Record<string, unknown>, path: string, onProgress: OnProgress | null): Promise<ArrayBuffer> {
+  const channel = new Channel<TransferProgress>();
+  if (onProgress) channel.onmessage = (p) => onProgress(p);
+  try {
+    return await invoke<ArrayBuffer>(command, { ...args, path, onProgress: channel });
+  } catch (e) {
+    throw errorOf(e, "files.ops.fail.open", { path });
+  }
+}
+
 async function localReadText(path: string): Promise<TextFile> {
   try {
     return await invoke<TextFile>("local_read_text", { path });
@@ -748,6 +769,7 @@ function makeRemote(session: number | null): FsBackend {
     readText: (path) => sftpReadText(sid(), path),
     // async — 세션 없음(`sid()` 의 던짐)도 거절된 약속으로 온다
     readPreview: async (path) => sftpReadPreview(sid(), path),
+    readImage: async (path, op, onProgress) => readImageVia("sftp_read_image", { session: sid(), op }, path, onProgress),
     // async — 세션 없음(`sid()` 의 던짐)도 **거절된 약속**으로 온다: 저장 쪽은 `.catch` 하나로 받는다.
     writeText: async (path, text, expectedVersion) =>
       sftpWriteText(sid(), path, text, expectedVersion),
@@ -828,6 +850,7 @@ const LOCAL: FsBackend = {
   },
   readText: (path) => localReadText(path),
   readPreview: (path) => localReadPreview(path),
+  readImage: (path, op, onProgress) => readImageVia("local_read_image", { op }, path, onProgress),
   writeText: (path, text, expectedVersion) => localWriteText(path, text, expectedVersion),
   watch: (onChange) => localWatch(onChange),
   parentOf: winParentOf,

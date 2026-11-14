@@ -537,6 +537,9 @@ const WANTED = [
   ["image-plus", "material-symbols:add-photo-alternate-outline-rounded"],
   // 사이드 채팅 `[+]` › 파일 업로드(2026-11-14 — 클립)
   ["attach-file", "material-symbols:attach-file-rounded"],
+  // 이미지 타일(2026-11-14) — 타일 아이콘 · 작은 지도(축소 그림 + 보는 사각형)
+  ["image", "material-symbols:image-outline-rounded"],
+  ["minimap", "material-symbols:picture-in-picture-outline-rounded"],
 ];
 
 /**

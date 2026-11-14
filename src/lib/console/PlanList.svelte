@@ -101,12 +101,18 @@
             {@const left = expiryLabel(op.expiresAt, now)}
             <!-- 명령 나눠 보기의 줄들(10-24 — 검토 카드와 같은 판정 `splitLines`) — 없으면 두 줄 접기 -->
             {@const split = splitLines(op)}
-            <!-- `data-operation-id` 는 딥링크가 찾아오는 손잡이다 (Console 의 `spotlight` 효과) -->
+            <!--
+              `data-operation-id` 는 딥링크가 찾아오는 손잡이다 (Console 의 `spotlight` 효과).
+              `data-plan-pending` + `tabindex="-1"` — 채팅 독 작업안 갈래의 키보드 첫 자리(`ChatDock` 의 `focusHome`)가
+              **카드 자신**이다. [승인] 단추가 아니어서 Enter 한 번에 승인되지 않고, Tab 이 카드 안 단추로 이어진다(2026-11-15).
+            -->
             <li
               class="op"
               class:danger={risk === "dangerous"}
               class:pulse={pulsing === op.operationId}
               data-operation-id={op.operationId}
+              data-plan-pending
+              tabindex="-1"
             >
               <!--
                 **판결 띠**(10-24 — 검토 카드와 같은 조각 `VerdictBand`) — 카드 맨 위 가장자리까지: 이 명령이 무엇인지 · AI 설명과 맞는지.
@@ -304,6 +310,15 @@
     padding: var(--space-3) var(--space-4) var(--space-4);
     background: var(--control-tile-bg);
     border-radius: var(--radius-surface-inner); /* 독 · 덮개 안의 카드(2026-10-25) */
+  }
+
+  /* 키보드 첫 자리로 받은 카드(`data-plan-pending`) — 마우스로 누른 때는 고리가 없다 */
+  .op:focus {
+    outline: none;
+  }
+  .op:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   /* 위험 작업안만 실패색 테두리 — 안쪽 그림자라 카드 크기가 흔들리지 않는다 */

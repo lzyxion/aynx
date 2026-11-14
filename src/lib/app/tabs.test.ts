@@ -31,8 +31,9 @@ import { noteTileClosing, withLayoutAnim } from "$lib/layout-anim.svelte.js";
 import {
   activeTabId, closePaneIn, detachPane, detachPaneLeavingStart, focusPane, isLoneStart,
   movePane, openTab, paneOf, promotePane, residentWindowTabs, syncPanes, toggleSync, toggleZoom,
-  restoreNotice,
+  restoreNotice, revealPane, unzoomFor,
 } from "./tabs.svelte.js";
+import { revealResidentPane } from "$lib/workspaces/runtime";
 
 afterAll(() => vi.unstubAllGlobals());
 beforeEach(() => {
@@ -128,6 +129,37 @@ it("여럿인 탭에서도 떼는 길은 최대화와 포커스·포함 집합�
   expect(listPanes(tab.root)).toEqual([remaining]);
   expect(paneOf(tab)).toBe(remaining.id);
   expect([...syncPanes.get(tab.id)!]).toEqual([remaining.id]);
+});
+
+it("포커스만 옮기는 열기(이미 있는 칸) — 다른 타일이 최대화 중이면 풀고, 최대화된 그 타일이면 그대로 둔다", () => {
+  const tab = singleTab();
+  const shell = listPanes(tab.root)[0];
+  const doc = newLocalPane();
+  tab.root = splitPane(tab.root, shell.id, "row", doc);
+  toggleZoom(tab.id, shell.id);
+  unzoomFor(tab, shell.id);
+  expect(tab.zoomedPaneId).toBe(shell.id);
+  unzoomFor(tab, doc.id);
+  expect(tab.zoomedPaneId).toBeNull();
+  unzoomFor(tab, doc.id); // 최대화가 없으면 아무 일도 없다
+  expect(tab.zoomedPaneId).toBeNull();
+});
+
+it("이미 있는 타일로 가기(revealPane) — 다른 타일로 가면 최대화를 풀고, 최대화된 그 타일 자신이면 유지한다", () => {
+  const tab = singleTab();
+  const shell = listPanes(tab.root)[0];
+  const doc = newLocalPane();
+  tab.root = splitPane(tab.root, shell.id, "row", doc);
+  // 워크스페이스 전환·탭 찾기는 `workspaces/runtime` 의 몫이다 — 여기서는 넘겨받은 `select` 만 그대로 부른다.
+  const select = (_tabs: readonly TabSpec[], id: string, cb: { select: (t: TabSpec, id: string) => void }) => { cb.select(tab, id); return true; };
+  vi.mocked(revealResidentPane).mockImplementationOnce(select).mockImplementationOnce(select);
+  toggleZoom(tab.id, shell.id);
+  revealPane(shell.id);
+  expect(tab.zoomedPaneId).toBe(shell.id);
+  expect(paneOf(tab)).toBe(shell.id);
+  revealPane(doc.id);
+  expect(tab.zoomedPaneId).toBeNull();
+  expect(paneOf(tab)).toBe(doc.id);
 });
 
 it("닫힘 유령은 사람이 타일 하나를 닫을 때만 — 떼어 내기 · 이관 · 마지막 타일(탭 닫기)에는 없다", () => {

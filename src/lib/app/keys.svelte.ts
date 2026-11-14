@@ -426,7 +426,7 @@ export function runAction(action: string): void {
     case "open-console":
       toggleSessionSheet();
       break;
-    // 작업안 — 채팅 독의 작업안 갈래를 열고, 이미 보이면 닫는다(기본 조합 없음 · 보조 창은 주 창에 넘긴다 · `app/plans`).
+    // 작업안 — 채팅 독의 작업안 갈래를 열고, 이미 보이면 닫는다(기본 `Ctrl+Shift+]` ·보조 창은 주 창에 넘긴다 · `app/plans`).
     case "open-plans":
       togglePlans();
       break;

@@ -167,13 +167,16 @@ export const ACTIONS: readonly ActionDef[] = [
   // `Ctrl+Alt+…` 규칙과도 겹치지 않는다. 토글이라 아래 `bypassesEditGuard` 에 든다.
   { id: "open-db-dock", scope: "global", def: "Ctrl+Shift+KeyK" },
   // **채팅 독** (2026-10-23 — docs/log/2026-10-23-side-chat-dock.md) — 런처 독의 반대쪽 창 끝에 서는 떠 있는 층을 여닫는다(주 창만).
-  // **`Ctrl+Shift+'`(Quote) 인 이유**: `Ctrl+Shift+글자` 는 V(붙여넣기 관례) · S(폐기된 배치 저장 — `BROWSER_CHROME_COMBOS` 가
-  // 삼키는 자리)를 빼고 전부 임자가 있고, 기호 중 `.`(파일 열기) · `;`(스니펫) · `/`(도움말) · `\`(대화 면 넘기기)도 찼다.
-  // `'` 는 이 앱의 기본값 어디에도 없고 Chromium 가속키도 아니며 막는 목록에도 없다 — `;` 바로 옆이라 홈 줄 오른손 끝에 닿는다
-  // (말풍선의 따옴표로 외운다). 한글 자판에서도 같은 물리 키라 `ev.code`(Quote)로 같다. Alt 가 없으니 `Ctrl+Alt+…` 규칙과도 무관하다.
-  // 목업의 `Ctrl+Shift+L` 은 자리 표시였다(L 은 `open-localfs`). 토글이라 아래 `bypassesEditGuard` 에 든다.
+  // **`Ctrl+Shift+[`(BracketLeft) 인 이유**(2026-11-15 사용자 결정 — 그 전에는 `Ctrl+Shift+'`): 아래 작업안 `Ctrl+Shift+]` 와 한 쌍의
+  // 괄호로 외운다 — 채팅 독의 두 갈래가 왼쪽 `[` 채팅 · 오른쪽 `]` 작업안(갈래 단추의 순서와 같다). `Ctrl+Shift+글자` 는 V(붙여넣기 관례) ·
+  // S(폐기된 배치 저장 — `BROWSER_CHROME_COMBOS` 가 삼키는 자리)를 빼고 전부 임자가 있고, 기호 중 `.`(파일 열기) · `;`(스니펫) ·
+  // `/`(도움말) · `\`(대화 면 넘기기)도 찼다. `[` 는 이 앱의 기본값 어디에도 없고 Chromium 가속키도 아니며 막는 목록에도 없다.
+  // **Shift 가 있어야 앱 몫이다** — `Ctrl+[`(Shift 없음)는 터미널에서 ESC 와 같은 키라 묶지 않는다: 조합 문자열이 Shift 를 가르므로
+  // (`comboFromEvent`) `Ctrl+BracketLeft` 는 표에 없어 그대로 셸로 간다. 문서 · SQL 편집기 안에서도 먹는다(`Ctrl+Shift+…` 는
+  // `appKeepsInEditor` — 편집기의 `Ctrl+Shift+[` 접기는 캡처 단계가 비켜 세운다). 한글 자판에서도 같은 물리 키라 `ev.code` 로 같다.
+  // Alt 가 없으니 `Ctrl+Alt+…` 규칙과도 무관하다. 토글이라 아래 `bypassesEditGuard` 에 든다.
   // id 는 `settings.toml` 키라 **바꾸지 않는다**.
-  { id: "open-chat-dock", scope: "global", def: "Ctrl+Shift+Quote" },
+  { id: "open-chat-dock", scope: "global", def: "Ctrl+Shift+BracketLeft" },
   // SFTP 브라우저는 **로컬 파일과 달리 "찾아서 포커스" 가 아니다** — 세션을 빌려 오는
   // 타일이라 "어느 터미널의 것인가" 가 정체성의 일부이고, 그래서 언제나 **포커스된 터미널
   // 옆에** 새로 열린다 (docs/log/2026-09-03-sftp-browser-tile.md).
@@ -210,10 +213,14 @@ export const ACTIONS: readonly ActionDef[] = [
   // `bypassesEditGuard` 에도 넣는다 — 같은 키로 열고 닫혀야 한다.
   { id: "open-console", scope: "global", def: "Ctrl+Shift+KeyM" },
   // **작업안** — 채팅 독의 작업안 갈래를 토글한다(2026-10-07 대시보드의 작업안 칸 → 작업안 타일 → 2026-10-25 채팅 독의 갈래 ·
-  // id 는 `settings.toml` 키라 그대로). **기본 조합이 없다**(`def: ""`): 남은 `Ctrl+Shift+글자` 는 위 `folder-conversations` ·
-  // `open-file` 주석이 적은 이유로 다 막혀 있어 겹칠 걱정 없는 키를 고를 수 없다 — 사용자가 설정 › 단축키에서 정한다.
-  // 팔레트 줄이 같은 몸통이다(`app/plans.svelte.ts` 의 `togglePlans`). 토글이라 `bypassesEditGuard` 에 든다(기록 보기의 검색 칸에서도 닫힌다).
-  { id: "open-plans", scope: "global", def: "" },
+  // id 는 `settings.toml` 키라 그대로). 팔레트 줄이 같은 몸통이다(`app/plans.svelte.ts` 의 `togglePlans`).
+  //
+  // **`Ctrl+Shift+]`(BracketRight) 인 이유**(2026-11-15 사용자 결정 — 그 전에는 잠깐 `Ctrl+Alt+Shift+'`, 더 전에는 기본 조합이 없었다):
+  // 작업안은 채팅 독의 갈래라 채팅 독 `Ctrl+Shift+[` 와 한 쌍의 괄호로 외운다 — 왼쪽 `[` 채팅 · 오른쪽 `]` 작업안. 수식 키는 셋까지
+  // (키 넷은 싫다 — 사용자). `]` 는 이 앱의 기본값 어디에도 없고 Chromium 가속키도 아니며 막는 목록에도 없다. 채팅 독 키와 같은 까닭으로
+  // `Ctrl+]`(Shift 없음 — 터미널의 0x1D, telnet 탈출 등)는 묶지 않아 그대로 셸로 가고, 문서 · SQL 편집기 안에서도 먹는다(`appKeepsInEditor`).
+  // 한글 자판에서도 같은 물리 키라 `ev.code` 로 같다. 토글이라 `bypassesEditGuard` 에 든다(기록 보기의 검색 칸에서도 닫힌다).
+  { id: "open-plans", scope: "global", def: "Ctrl+Shift+BracketRight" },
   // **이 폴더의 지난 대화** — 포커스된 타일이 있는 폴더(워크트리)의 지난 Claude · Codex 대화를 팔레트 자리에
   // 불러 **그 타일 옆에 분할로** 연다 (docs/log/2026-09-27-folder-conversations.md). 팔레트의 같은 이름 줄도 이
   // 액션이다. `Ctrl+Shift+Y` 인 이유: 남은 `Ctrl+Shift+…` 글자는 G·U·V·X·Y 뿐이고(J 는 프로젝트 독이 가져갔다)
@@ -508,7 +515,7 @@ export function bypassesEditGuard(action: string): boolean {
     // 세션 시트도 토글이라 여기 든다 — 입력칸을 품지는 않지만, 여는 키가 닫지 못하면
     // 토글이 아니다 (포커스가 어느 입력칸에 있든 같은 키로 닫혀야 한다).
     action === "open-console" ||
-    // 작업안도 같다 — 기록 보기의 검색 칸에 커서가 있어도 같은 키로 닫혀야 한다(기본 조합은 없다).
+    // 작업안도 같다 — 기록 보기의 검색 칸 · 채팅 독 입력 칸에 커서가 있어도 같은 키로 닫혀야 한다(채팅 독과 같은 기준).
     action === "open-plans" ||
     // 테마 프로필 전환도 같다 — 설정 독의 입력칸에 커서가 있어도 모양을 바꿀 수 있어야 하고, 어떤 입력칸도
     // 이 조합에 뜻을 두지 않는다 (docs/log/2026-09-28-profile-switcher.md).

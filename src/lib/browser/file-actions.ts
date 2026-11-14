@@ -1,4 +1,4 @@
-// 파일 타일의 항목 조작 — 열기(폴더 = 들어가기 · 텍스트 = 문서 타일 · 그 밖 = 편집/기본 앱) · 탐색기에서 보기 ·
+// 파일 타일의 항목 조작 — 열기(폴더 = 들어가기 · 그림 = 이미지 타일 · 텍스트 = 문서 타일 · 그 밖 = 편집/기본 앱) · 탐색기에서 보기 ·
 // 클립보드(복사·잘라내기·붙여넣기) · 업로드 파일 칸 · 경로 복사 · 터미널에서 cd. `SftpBrowser.svelte` 가 옛 자리에서
 // 하나 만들고, 메뉴(`FileMenu` — `runOnMenu` 통로)·키보드(`file-keys`)·목록(`FileList`)이 부른다. `$effect` 없음.
 import { broadcastInput } from "$lib/sync.svelte";
@@ -8,6 +8,7 @@ import { fsClip, setFsClip, type FsClipMode } from "$lib/fs-clipboard.svelte";
 import { writeClipboard } from "$lib/clipboard";
 import { isDirLike, type SftpEntry } from "$lib/sftp-browser";
 import { isTextLike } from "$lib/doc-lang";
+import { imageMime } from "$lib/browser/preview";
 import type { Transfers } from "$lib/browser/fs-transfer.svelte";
 import { failureOf, type FileListing } from "$lib/browser/file-listing.svelte";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -57,7 +58,8 @@ export class FileActions {
    *
    * **텍스트로 보이는 파일은 미리 보기가 먼저다** (docs/log/2026-09-27-doc-tile.md · 사용자 결정 2026-09-27) —
    * 판정은 `isTextLike`(이름·확장자 표) 하나이고, 모르는 확장자는 예전 그대로다(보수적). 외부 편집·기본 앱으로
-   * 열기는 우클릭 메뉴에 그대로 남는다.
+   * 열기는 우클릭 메뉴에 그대로 남는다. **그림 파일**(`imageMime` 표 하나 — svg 포함)도 같은 문(`onopendoc`)으로 올라가고, 위
+   * (`app/panes` 의 `openDocFrom`)가 이미지 타일로 연다(2026-11-14).
    */
   openEntry = (entry: SftpEntry) => {
     if (isDirLike(entry)) {
@@ -65,7 +67,7 @@ export class FileActions {
       return;
     }
     const onopendoc = this.#h.onopendoc;
-    if (onopendoc && this.#h.backend.canView && isTextLike(entry.name)) {
+    if (onopendoc && this.#h.backend.canView && (imageMime(entry.name) !== null || isTextLike(entry.name))) {
       onopendoc(entry.path);
       return;
     }

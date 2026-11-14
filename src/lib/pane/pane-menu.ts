@@ -638,8 +638,8 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
   }
 
   // 문서 타일의 "경로 복사"(10-20) — 머리줄에서 경로 글자를 걷은 대신 여기서 확인(말풍선)하고 가져간다. 대상이 타일이 아니라 그 문서라
-  // 분할(타일 배치) 묶음과 선으로 가른다.
-  if (kind === "doc" && ctx.docPath != null && ctx.docPath.path !== "") {
+  // 분할(타일 배치) 묶음과 선으로 가른다. 이미지 타일(2026-11-14)도 같은 파일 한 장 타일이라 같은 줄이 선다.
+  if ((kind === "doc" || kind === "image") && ctx.docPath != null && ctx.docPath.path !== "") {
     items.push({
       action: "copy-path",
       label: tr("files.menu.copypath"),

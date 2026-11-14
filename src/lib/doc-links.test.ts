@@ -136,7 +136,9 @@ describe("hrefPathLink — 대화 면 링크 주소의 파일 경로", () => {
     expect(hrefPathLink("mailto:a@b.c")).toBeNull();
     expect(hrefPathLink("file:///C:/a.md")).toBeNull();
     expect(hrefPathLink("#intro")).toBeNull();
-    expect(hrefPathLink("img/logo.png")).toBeNull();
+    expect(hrefPathLink("bin/app.exe")).toBeNull();
+    // 그림 파일은 2026-11-14 부터 걸린다(여는 쪽이 이미지 타일로 — `path-links` 의 `isOpenablePath`)
+    expect(hrefPathLink("img/logo.png")?.path).toBe("img/logo.png");
     expect(hrefPathLink("my%20notes/a.md")).toBeNull();
     expect(hrefPathLink("README")).toBeNull();
   });

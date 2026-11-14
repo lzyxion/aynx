@@ -37,6 +37,19 @@ pub(crate) fn preview_too_large(shown: &str) -> String {
     )
 }
 
+/// **이미지 타일**이 조각 단위로 받아 가는 그림의 상한(1 GiB) — `local_read_image` · `sftp_read_image` 에만 쓴다.
+/// 미리 보기 패널 · `*_read_preview` 의 [`PREVIEW_MAX_BYTES`] 는 그대로다. 프런트 `image/read-plan.ts` 의 `IMAGE_MAX_BYTES` 와
+/// 같은 값 — 넘으면 프런트가 묻지 않고, 여기서도 읽는 도중 한 번 더 막는다(그사이 파일이 커졌을 수 있다).
+pub(crate) const IMAGE_MAX_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// [`IMAGE_MAX_BYTES`] 를 넘은 그림의 거절 문구 (로컬 · 원격 공용)
+pub(crate) fn image_too_large(shown: &str) -> String {
+    tr!(
+        ko: "{shown} 은(는) 너무 커서 열지 않습니다",
+        en: "{shown} is too large to open",
+    )
+}
+
 /// 이진 판정에 보는 앞부분 (8 KiB) — 그 안에 NUL 이 있으면 이진 파일로 본다(git 과 같은 규칙).
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 

@@ -56,6 +56,15 @@ describe("터미널 입력의 출처 — 키 vs 터미널 응답", () => {
     expect(classifyInput("\x1b[I", { pasting: true, keyEvent: true })).toBe("paste");
   });
 
+  it("포커스 보고(?1004)는 사람 입력이 아니다 — 검색 점프가 남긴 강조를 지우지 않는다(Terminal 의 keptEvent(\"input\") 판정)", () => {
+    // 점프가 타일에 포커스를 줄 때 xterm 이 내는 것 — 키 이벤트 밖이라 protocol
+    expect(classifyInput("\x1b[I", idle)).toBe("protocol");
+    expect(classifyInput("\x1b[O", idle)).toBe("protocol");
+    // 사람이 친 첫 키는 지운다
+    expect(classifyInput("a", idle)).not.toBe("protocol");
+    expect(classifyInput("\x1b[I", { pasting: false, keyEvent: true })).not.toBe("protocol");
+  });
+
   it("묶어 보낼 때 — 하나라도 사람 것이면 사람", () => {
     expect(mergeSource(null, "protocol")).toBe("protocol");
     expect(mergeSource("protocol", "protocol")).toBe("protocol");

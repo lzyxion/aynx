@@ -10,6 +10,7 @@ import {
   newAdhocSshPane,
   newAiPane,
   newDocPane,
+  newImagePane,
   newLocalFsPane,
   newLocalPane,
   newSftpPane,
@@ -970,6 +971,47 @@ describe("rebindSftp — SFTP 패널을 새 세션에 다시 묶는 규칙", () 
     expect(JSON.stringify(saved)).not.toContain("pane-999");
     const panes = listPanes(restoreNode(saved));
     expect(panes.find((p) => p.kind === "sftp")?.sourcePaneId).not.toBe("pane-999");
+  });
+});
+
+describe("이미지 타일 — 저장과 복원(문서 타일과 같은 무리 · 2026-11-14)", () => {
+  it("로컬 그림은 경로만 담고 그대로 돌아온다 — 배율 · 이동 위치는 담지 않는다", () => {
+    const saved = saveNode(leafOf(newImagePane("C:/pics/a.png")));
+    expect(saved).toEqual({ kind: "image", path: "C:/pics/a.png" });
+    const parsed = parseNode(JSON.parse(JSON.stringify(saved)));
+    const [pane] = listPanes(restoreNode(parsed!));
+    expect(pane.kind).toBe("image");
+    expect(pane.path).toBe("C:/pics/a.png");
+    expect(pane.sourcePaneId).toBeUndefined();
+  });
+
+  it("원격 그림은 별칭만 담고 같은 별칭의 SSH 타일에 다시 묶인다 · 짝이 없으면 빠진다", () => {
+    const saved = saveNode(
+      split("row", leafOf(newSshPane("web-01")), leafOf(newImagePane("/srv/a.png", { paneId: "pane-999", alias: "web-01" }))),
+    );
+    expect(JSON.stringify(saved)).not.toContain("pane-999");
+    const panes = listPanes(restoreNode(parseNode(JSON.parse(JSON.stringify(saved)))!));
+    const ssh = panes.find((p) => p.kind === "ssh");
+    expect(panes.find((p) => p.kind === "image")?.sourcePaneId).toBe(ssh?.id);
+    expect(kinds(restoreNode({ dir: "row", ratio: 0.5, a: { kind: "local" }, b: { kind: "image", alias: "web-01", path: "/x.png" } }))).toEqual([
+      "local",
+    ]);
+  });
+
+  it("경로 없는 그림 잎은 그 잎만 빠지고, 알려진 종류라 파일 전체를 버리지 않는다", () => {
+    const file = mustParse(
+      JSON.stringify({
+        version: TAB_FILE_VERSION,
+        activeIndex: 0,
+        workspaces: [
+          { title: "작업", root: { dir: "row", ratio: 0.5, a: { kind: "local" }, b: { kind: "image" } } },
+          { title: "그림", root: { kind: "image", path: "C:/a.png" } },
+        ],
+      }),
+    );
+    const { tabs: restored } = deserialize(file);
+    expect(kinds(restored[0].root)).toEqual(["local"]);
+    expect(kinds(restored[1].root)).toEqual(["image"]);
   });
 });
 

@@ -528,6 +528,8 @@ export const pane = {
   // 문서 보기 타일 (docs/log/2026-09-27-doc-tile.md) — 이름은 파일 이름이고, 원격이면 별칭이 붙는다
   "name.doc": "문서",
   "name.doc.remote": "{file} · {alias}",
+  // 이미지 타일(2026-11-14) — 이름은 파일 이름(원격이면 위 `name.doc.remote` 꼴), 경로를 모를 때만 이것
+  "name.image": "그림",
   // 브랜치 그래프 타일 (docs/log/2026-09-29-branch-graph.md) — 프로젝트 이름을 알면 붙는다
   "name.branches": "브랜치",
   "name.branches.project": "브랜치 · {name}",

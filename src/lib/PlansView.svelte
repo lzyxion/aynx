@@ -261,7 +261,8 @@
     {/if}
   </div>
 
-  <div class="body" data-view={opsView}>
+  <!-- `data-plans-body` + `tabindex="-1"` — 검토 대기 카드가 없을 때 채팅 독의 키보드 첫 자리(스크롤 판 — 화살표 · PageDown 으로 훑는다) -->
+  <div class="body" data-view={opsView} data-plans-body tabindex="-1">
     {#if opsView === "history"}
       <!-- 기록 보기 — 감사 로그의 장부. 이름은 감사 스냅샷이 먼저, 그다음 이 창의 타일 표(`targetLookup`). -->
       <RunHistory live={(id) => targetLookup.get(id)?.label ?? null} {exitSide}
@@ -501,6 +502,11 @@
     min-height: 0;
     overflow: auto;
     padding: var(--space-1) var(--space-4) var(--space-4);
+  }
+
+  /* 판 전체를 두르는 고리는 시끄럽다 — 키보드 첫 자리로 받아도 고리 없이 스크롤만 받는다 */
+  .body:focus {
+    outline: none;
   }
 
   .body > :global(*) {

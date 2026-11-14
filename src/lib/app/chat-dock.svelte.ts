@@ -1,5 +1,5 @@
 import { isRemote } from "../ipc";
-import { routeTileFocus } from "$lib/pane/focus";
+import { focusPaneBody } from "$lib/pane/focus";
 import { activeTab, paneOf } from "$lib/app/tabs.svelte.js";
 import {
   CHAT_DOCK_SPEC,
@@ -105,12 +105,16 @@ export function closeChatDock(restore = true): void {
   const back = returnFocusTo;
   returnFocusTo = null;
   if (!restore || typeof document === "undefined") return;
-  if (back?.isConnected) {
+  if (back?.isConnected && back !== document.body) {
     back.focus({ preventScroll: true });
     return;
   }
+  // 적어 둔 요소가 사라졌거나(독을 연 팔레트 · 상자가 걷혔다 · 타일이 닫혔다) `<body>` 였으면 지금 포커스된 타일의
+  // **키보드 몸**으로 — 런처 독의 `closeDock` 과 같은 길이다(`focusPaneBody` — 터미널이면 xterm 의 textarea).
+  // `routeTileFocus` 는 `[data-tile-focus]` 만 봐서 터미널 타일에 닿지 못한다.
   const tab = activeTab();
-  if (tab) routeTileFocus(document.body, paneOf(tab));
+  const pane = tab ? paneOf(tab) : null;
+  if (pane) focusPaneBody(pane);
 }
 
 /**

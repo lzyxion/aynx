@@ -6,6 +6,8 @@
   import Terminal from "$lib/Terminal.svelte";
   import SftpBrowser from "$lib/SftpBrowser.svelte";
   import DocView from "$lib/DocView.svelte";
+  import ImageView from "$lib/ImageView.svelte";
+  import { noteImagePath } from "$lib/app/panes.svelte.js";
   import { DOC_ZOOM_DEFAULT } from "$lib/doc-zoom";
   import BranchGraph from "$lib/BranchGraph.svelte";
   import DiffView from "$lib/DiffView.svelte";
@@ -252,7 +254,7 @@
   }
 
   /**
-   * 문서 타일의 백엔드 — **별칭이 있으면 원격**이라 SFTP 타일과 같은 길(원본 터미널의 세션을 그때그때
+   * 문서 · 그림 타일(파일 한 장 타일)의 백엔드 — **별칭이 있으면 원격**이라 SFTP 타일과 같은 길(원본 터미널의 세션을 그때그때
    * 조회)이고, 없으면 로컬 디스크다 (docs/log/2026-09-27-doc-tile.md). 뷰어는 이 값 하나만 받는다.
    */
   const docBackend = (pane: PaneSpec) => (borrowsSession(pane) ? sftpBackend(pane) : localFs);
@@ -961,6 +963,20 @@
               tmc.tileMenuTrigger = null;
               openTileMenu(item, x, y, null, doc);
             }}
+          />
+        {:else if item.pane.kind === "image"}
+          <!--
+            이미지 타일(2026-11-14) — 문서 보기와 같은 백엔드 한 개(`docBackend` — 원격이면 원본 터미널의 세션을 빌린다)와 같은 배너 둘.
+            이전/다음은 `path` 만 바꿔 올린다(배율 · 이동 위치는 명세에 없다).
+          -->
+          <ImageView
+            paneId={item.pane.id}
+            path={item.pane.path ?? ""}
+            backend={docBackend(item.pane)}
+            alias={item.pane.alias ?? ""}
+            sourceGone={borrowsSession(item.pane) && !sftpSourceAlive(item.pane)}
+            onpath={(p) => noteImagePath(item.pane.id, p)}
+            onnotice={notice}
           />
         {:else if item.pane.kind === "branches"}
           <!--

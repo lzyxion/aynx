@@ -40,7 +40,7 @@
 At first the window looks almost empty: Aynx keeps its menus in three docks that open when you hover an edge of the window.
 
 - **Left edge**: the launcher dock with shells, Claude Code, Codex, hosts, projects and databases (`Ctrl+Shift+H`)
-- **Right edge**: the side chat (`Ctrl+Shift+'`)
+- **Right edge**: the side chat (`Ctrl+Shift+[`)
 - **Bottom center**: your favorites
 - Open an AI agent with `Ctrl+Shift+A`; `Ctrl+Shift+P` lists every command and its keys.
 

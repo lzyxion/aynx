@@ -544,7 +544,8 @@
     const target = searchTarget(paneId);
     if (!tab || !target) return; // 훑은 뒤에 닫힌 타일 — 아무 일도 하지 않는다
     focusTile(tab.id, paneId);
-    if (matcher) target.highlight(matcher);
+    // 현재 매치는 **고른 그 결과**다(`at`) — 없으면 버퍼 맨 위의 첫 매치(대개 같은 글을 친 명령 줄)가 진하게 칠해진다
+    if (matcher) target.highlight(matcher, { line: row.hit.line, col: row.hit.col });
     target.reveal(row.hit.line);
     closeSearchKeeping(paneId);
   }

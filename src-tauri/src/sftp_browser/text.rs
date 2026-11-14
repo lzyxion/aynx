@@ -7,10 +7,14 @@ use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use tauri::ipc::Channel;
+
+use crate::fs_transfer::{Cancel, Progress, TransferProgress};
 use crate::i18n::tr;
 use crate::sftp::{forget, is_transport_error, sftp_of};
 use crate::text_file::{
-    assemble, preview_too_large, SavedFile, TextFile, PREVIEW_MAX_BYTES, VIEW_MAX_BYTES,
+    assemble, image_too_large, preview_too_large, SavedFile, TextFile, IMAGE_MAX_BYTES,
+    PREVIEW_MAX_BYTES, VIEW_MAX_BYTES,
 };
 
 use super::*;
@@ -126,6 +130,86 @@ pub async fn sftp_read_preview(
     if bytes.len() as u64 > PREVIEW_MAX_BYTES {
         return Err(preview_too_large(&full));
     }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// **이미지 타일**의 큰 원격 그림 한 장 — 로컬 짝 `local_read_image` 와 같은 규칙(원시 바이트 · 상한 [`IMAGE_MAX_BYTES`] ·
+/// [`CHUNK`] 씩 읽으며 `TransferProgress` · 취소 깃발 `op` · 폴더 거절). 세션의 SFTP 채널 캐시를 그대로 탄다. 취소되면 다음 조각
+/// 앞에서 멈추고 핸들을 닫는다(읽은 것은 버린다). 미리 보기 패널의 `sftp_read_preview` 상한은 그대로다.
+#[tauri::command]
+pub async fn sftp_read_image(
+    app: tauri::AppHandle,
+    session: u32,
+    path: String,
+    op: u64,
+    on_progress: Channel<TransferProgress>,
+) -> Result<tauri::ipc::Response, String> {
+    // 깃발을 먼저 집는다 — 채널을 여는 사이 누른 취소도 놓치지 않는다(`Cancel::claim`)
+    let cancel = Cancel::claim(op);
+    let sftp = sftp_of(&app, session).await?;
+    let full = absolute(session, &sftp, &path).await?;
+    let meta = match sftp.metadata(full.clone()).await {
+        Ok(meta) => meta,
+        Err(e) => {
+            return Err(fail(
+                session,
+                e,
+                &tr!(ko: "{full} 을(를) 찾지 못했습니다", en: "Could not find {full}"),
+            )
+            .await)
+        }
+    };
+    if meta.file_type().is_dir() {
+        return Err(tr!(
+            ko: "{full} 은(는) 폴더라 내용을 볼 수 없습니다",
+            en: "{full} is a folder, so there is nothing to view",
+        ));
+    }
+    let total = meta.len();
+    if total > IMAGE_MAX_BYTES {
+        return Err(image_too_large(&full));
+    }
+    cancel.check()?;
+    let mut file = match sftp.open(full.clone()).await {
+        Ok(file) => file,
+        Err(e) => {
+            return Err(fail(
+                session,
+                e,
+                &tr!(ko: "{full} 을(를) 열지 못했습니다", en: "Could not open {full}"),
+            )
+            .await)
+        }
+    };
+    let mut progress = Progress::new(op, on_progress, 1, total);
+    progress.start(&full);
+    let mut bytes: Vec<u8> = Vec::with_capacity(total as usize);
+    let mut buffer = vec![0u8; CHUNK];
+    let outcome: Result<(), String> = loop {
+        if let Err(e) = cancel.check() {
+            break Err(e);
+        }
+        let read = match file.read(&mut buffer).await {
+            Ok(read) => read,
+            Err(e) => {
+                // 읽기 실패는 io::Error 로 감싸여 원인을 가릴 수 없다 — `sftp_read_text` 와 같이 캐시된 채널을 버린다
+                forget(session).await;
+                break Err(tr!(ko: "{full} 을(를) 읽지 못했습니다: {e}", en: "Could not read {full}: {e}"));
+            }
+        };
+        if read == 0 {
+            break Ok(());
+        }
+        if (bytes.len() + read) as u64 > IMAGE_MAX_BYTES {
+            break Err(image_too_large(&full));
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+        progress.advance(read as u64);
+    };
+    let _ = file.close().await;
+    outcome?;
+    progress.file_done();
+    progress.finish();
     Ok(tauri::ipc::Response::new(bytes))
 }
 

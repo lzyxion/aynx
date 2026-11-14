@@ -5,7 +5,7 @@
 // 빠른 접속 대상의 **모양**과 이름 짓기 하나만 빌린다 (문법·파싱은 그쪽이 단일 진실이다).
 // `quick-connect.ts` 는 import 가 하나도 없는 잎 모듈이라 순환이 생길 자리가 없다.
 import { quickConnectLabel, type QuickConnectTarget as AdhocTarget } from "$lib/quick-connect";
-import { canonQueryTabs, hasSession, storedRowLimit, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
+import { canonQueryTabs, hasSession, isFileLeafKind, storedRowLimit, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
 import { listPanes } from "./tree";
 import { parseOrchMark } from "$lib/orchestration/orch-tab";
 import { freshLaunchOf } from "$lib/agent-sessions";
@@ -237,6 +237,19 @@ export function newDocPane(path: string, source?: { paneId: string; alias: strin
 }
 
 /**
+ * **이미지 타일** 하나의 명세 (2026-11-14) — [`newDocPane`] 과 같은 주소(파일의 절대 경로 · 원격이면 빌릴 터미널 id 와 별칭)다.
+ * 둘은 "파일 한 장 타일"(`isFileLeafKind`)이라 복원 · 이관 · 원본 다시 묶기가 같은 길을 탄다. 배율 · 이동 위치는 싣지 않는다(열 때마다 맞춤).
+ */
+export function newImagePane(path: string, source?: { paneId: string; alias: string }): PaneSpec {
+  return {
+    id: nextPaneId(),
+    kind: "image",
+    path,
+    ...(source ? { sourcePaneId: source.paneId, alias: source.alias } : {}),
+  };
+}
+
+/**
  * **브랜치 그래프 타일** 하나의 명세 (docs/log/2026-09-29-branch-graph.md) — 프로젝트 id 와 (있으면) 고를 브랜치.
  * 값이 없는 칸은 키도 두지 않는다(자동 저장의 문자열 비교).
  */
@@ -297,7 +310,7 @@ export function newQueryPane(q: QuerySpec): PaneSpec {
 }
 
 /**
- * 이 타일이 **남의 세션을 빌려 쓰는가** — SFTP 타일, 그리고 별칭이 있는(원격) 문서 타일.
+ * 이 타일이 **남의 세션을 빌려 쓰는가** — SFTP 타일, 그리고 별칭이 있는(원격) 파일 한 장 타일(문서 · 그림 — `isFileLeafKind`).
  *
  * 그런 타일은 혼자 새 창으로 떼어 가면 그 자리에서 원본을 잃는다 — 창을 넘는 길은 원본과 **함께**
  * 가는 탭 티어아웃이다. 판정이 두 곳(`startPaneTear` · 타일 ⋯ 메뉴의 "새 창으로 분리")에서 갈리면
@@ -305,30 +318,49 @@ export function newQueryPane(q: QuerySpec): PaneSpec {
  */
 export function borrowsSession(pane: Pick<PaneSpec, "kind" | "alias">): boolean {
   if (pane.kind === "sftp") return true;
-  return pane.kind === "doc" && (pane.alias?.trim() ?? "") !== "";
+  return isFileLeafKind(pane.kind) && (pane.alias?.trim() ?? "") !== "";
 }
 
 /**
- * 이 트리에 **같은 파일을 보는 문서 타일**이 이미 있는가 — 있으면 그 명세, 없으면 `null` (순수 함수).
- *
- * "같다" 는 경로가 글자 그대로 같고, 원격이면 **같은 터미널(`sourcePaneId`)·같은 별칭**을 빌리는 것이다.
- * 로컬은 별칭이 없는 것끼리만 같다. 파일 타일에서 같은 파일을 두 번 열면 새 타일을 세우지 않고 이미
- * 있는 타일로 포커스를 옮기는 데 쓴다.
+ * 이 트리에 **같은 파일을 보는 문서 타일**이 이미 있는가 — 있으면 그 명세, 없으면 `null` (순수 함수 · [`findFilePane`] 의 문서 갈래).
  */
 export function findDocPane(
   root: PaneNode,
   path: string,
   source?: { paneId: string; alias: string },
 ): PaneSpec | null {
-  for (const p of listPanes(root)) if (isSameDocFile(p, path, source)) return p;
-  return null;
+  return findFilePane(root, "doc", path, source);
 }
 
-/** 이 타일이 그 파일을 보는 문서 타일인가 — [`findDocPane`] 의 "같다" 한 줄(순수 함수) */
-function isSameDocFile(p: PaneSpec, path: string, source?: { paneId: string; alias: string }): boolean {
-  if (p.kind !== "doc" || p.path !== path) return false;
+/**
+ * 이 타일이 그 파일을 보는 그 종류의 파일 한 장 타일인가 — [`findFilePane`] · [`findNewDocPane`] 의 "같다" 한 줄(순수 함수).
+ *
+ * "같다" 는 종류가 같고 경로가 글자 그대로 같고, 원격이면 **같은 터미널(`sourcePaneId`)·같은 별칭**을 빌리는 것이다.
+ * 로컬은 별칭이 없는 것끼리만 같다.
+ */
+function isSameFile(
+  p: PaneSpec,
+  kind: "doc" | "image",
+  path: string,
+  source?: { paneId: string; alias: string },
+): boolean {
+  if (p.kind !== kind || p.path !== path) return false;
   const alias = p.alias?.trim() ?? "";
   return source ? alias === source.alias.trim() && p.sourcePaneId === source.paneId : alias === "";
+}
+
+/**
+ * 이 트리에 **같은 파일을 보는 그 종류의 파일 한 장 타일**(문서 · 그림)이 이미 있는가 — 있으면 그 명세, 없으면 `null` (순수 함수).
+ * 파일 타일에서 같은 파일을 두 번 열면 새 타일을 세우지 않고 이미 있는 타일로 포커스를 옮기는 데 쓴다.
+ */
+export function findFilePane(
+  root: PaneNode,
+  kind: "doc" | "image",
+  path: string,
+  source?: { paneId: string; alias: string },
+): PaneSpec | null {
+  for (const p of listPanes(root)) if (isSameFile(p, kind, path, source)) return p;
+  return null;
 }
 
 /**
@@ -343,7 +375,7 @@ export function findNewDocPane(
   path: string,
   source?: { paneId: string; alias: string },
 ): PaneSpec | null {
-  for (const p of panes) if (!before.has(p.id) && isSameDocFile(p, path, source)) return p;
+  for (const p of panes) if (!before.has(p.id) && isSameFile(p, "doc", path, source)) return p;
   return null;
 }
 
@@ -368,10 +400,27 @@ export function planDocOpen(
   source?: { paneId: string; alias: string },
   isDirty: (paneId: string) => boolean = () => false,
 ): DocOpenPlan {
-  const same = findDocPane(root, path, source);
+  return planFileOpen(root, "doc", path, source, isDirty);
+}
+
+/**
+ * 파일 한 장 타일(문서 · 그림)을 **어디에** 열까 — [`planDocOpen`] 의 규칙을 종류로 넓힌 것(순수 함수).
+ * 같은 종류 · 같은 파일([`findFilePane`])이면 `focus`, 없으면 문서만 미리 보기 칸을 갈아 끼우고(`replace` — 위 규칙 그대로),
+ * 그림은 미리 보기 표식이 없어 늘 `beside` 다(이전/다음으로 같은 칸에서 훑는다).
+ */
+export function planFileOpen(
+  root: PaneNode,
+  kind: "doc" | "image",
+  path: string,
+  source?: { paneId: string; alias: string },
+  isDirty: (paneId: string) => boolean = () => false,
+): DocOpenPlan {
+  const same = findFilePane(root, kind, path, source);
   if (same) return { kind: "focus", paneId: same.id };
-  const preview = listPanes(root).find((p) => p.kind === "doc" && p.docPreview === true && !isDirty(p.id));
-  if (preview) return { kind: "replace", paneId: preview.id };
+  if (kind === "doc") {
+    const preview = listPanes(root).find((p) => p.kind === "doc" && p.docPreview === true && !isDirty(p.id));
+    if (preview) return { kind: "replace", paneId: preview.id };
+  }
   return { kind: "beside" };
 }
 

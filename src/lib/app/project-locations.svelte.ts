@@ -16,9 +16,9 @@ import { auxProjectLocations, focusAuxTile } from "./workspace-status.svelte.js"
 import { currentWorkspaceId, switchWorkspace, workspaceList, workspacePlacement, workspaceMainWindow } from "./workspaces.svelte.js";
 
 export function paneProjectLocation(pane: PaneSpec, projectFolder?: string): { host: string | null; folder: string | null; remoteHome: string | null } | null {
-  if (pane.adhoc || !["local", "ssh", "start", "localfs", "sftp", "doc", "branches", "diff"].includes(pane.kind)) return null;
+  if (pane.adhoc || !["local", "ssh", "start", "localfs", "sftp", "doc", "image", "branches", "diff"].includes(pane.kind)) return null;
   if (pane.kind === "start" && !pane.startProject) return null;
-  const host = pane.startProject?.host ?? ((pane.kind === "ssh" || pane.kind === "sftp" || (pane.kind === "doc" && pane.alias)) ? pane.alias ?? null : null);
+  const host = pane.startProject?.host ?? ((pane.kind === "ssh" || pane.kind === "sftp" || ((pane.kind === "doc" || pane.kind === "image") && pane.alias)) ? pane.alias ?? null : null);
   const reported = host ? reportedCwd(pane.id) : localReportedFolder(pane);
   const folder = reported || pane.startProject?.folder || pane.cwd || pane.restart?.cwd || (pane.kind === "localfs" || pane.kind === "sftp" ? pane.path : undefined) || (!host ? projectFolder : undefined);
   return { host, remoteHome: host ? remoteHomeOf(host) : null, folder: folder ? expandRemotePath(folder, host ? remoteHomeOf(host) : null) : null };

@@ -1089,3 +1089,37 @@ fn read_preview_returns_bytes_and_rejects_folders() {
     let _ = std::fs::remove_dir_all(&dir);
     const { assert!(PREVIEW_MAX_BYTES == 20 * 1024 * 1024) };
 }
+
+/// 이미지 타일의 조각 읽기 — 조각 경계를 넘는 파일도 바이트 그대로, 폴더 거절, 상한(낮춘 `max`)을 넘으면 거절,
+/// 미리 보기 상한은 그대로(새 상한은 새 명령에만)
+#[test]
+fn read_image_reads_in_chunks_and_rejects_folders_and_oversize() {
+    let dir = std::env::temp_dir().join(format!("aynx-image-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("big.png");
+    let body: Vec<u8> = (0..(CHUNK * 2 + 17)).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&file, &body).unwrap();
+    let path = file.to_string_lossy().into_owned();
+    assert_eq!(read_image(&path, 940_001, None, IMAGE_MAX_BYTES).unwrap(), body);
+    assert!(read_image(&dir.to_string_lossy(), 940_002, None, IMAGE_MAX_BYTES).is_err());
+    let too = read_image(&path, 940_003, None, body.len() as u64 - 1).unwrap_err();
+    assert!(too.contains("big.png"), "{too}");
+    assert!(read_image(&dir.join("none.png").to_string_lossy(), 940_004, None, IMAGE_MAX_BYTES).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+    const { assert!(IMAGE_MAX_BYTES > PREVIEW_MAX_BYTES && PREVIEW_MAX_BYTES == 20 * 1024 * 1024) };
+}
+
+/// 이미지 타일의 취소 — 읽기 전에 도착한 취소도 듣고(깃발을 먼저 집는다) 읽은 것을 돌려주지 않는다
+#[test]
+fn a_cancelled_image_read_returns_nothing() {
+    let dir = std::env::temp_dir().join(format!("aynx-image-cancel-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.png");
+    std::fs::write(&file, [1u8, 2, 3]).unwrap();
+    crate::fs_transfer::transfer_cancel(940_010).unwrap();
+    let error = read_image(&file.to_string_lossy(), 940_010, None, IMAGE_MAX_BYTES).unwrap_err();
+    assert_eq!(error, crate::errors::cancelled());
+    // 끝난 읽기의 깃발은 지워진다 — 같은 번호의 다음 읽기는 멀쩡하다
+    assert_eq!(read_image(&file.to_string_lossy(), 940_010, None, IMAGE_MAX_BYTES).unwrap(), vec![1, 2, 3]);
+    let _ = std::fs::remove_dir_all(&dir);
+}

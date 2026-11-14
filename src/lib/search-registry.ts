@@ -55,8 +55,15 @@ export interface SearchTarget {
   name(): string;
   /** 버퍼(화면 + 스크롤백)를 훑는다. `limit` 개까지만 모으고 멈춘다 */
   scan(re: RegExp, limit: number): SearchHit[];
-  /** addon-search 하이라이트를 얹는다(`null` 이면 지운다). 돌려주는 값은 매치 수 */
-  highlight(re: RegExp | null): number;
+  /**
+   * addon-search 하이라이트를 얹는다(`null` 이면 지운다). 돌려주는 값은 매치 수.
+   *
+   * `at`(결과 하나의 `line` · `col` — [`SearchHit`] 그대로)을 주면 **그 매치**가 현재 매치(진한 강조 · 선택)가 된다 — 전체 검색의
+   * 결과 점프가 쓴다. 없으면 애드온의 기본대로 버퍼 맨 위부터 첫 매치다(범위 모드 · 블록 점프). 같은 글이 명령 줄과 출력 줄에 둘 다
+   * 있을 때 `at` 없이 칠하면 고른 줄이 아니라 위쪽 명령 줄이 현재 매치가 되고, 이어지는 `reveal` 이 그 줄을 화면 위로 밀어내면 진한
+   * 강조가 아예 안 보였다(2026-11-15).
+   */
+  highlight(re: RegExp | null, at?: { line: number; col: number }): number;
   /**
    * 지금 몇 번째 매치인가 — `{ index, count }`, **1-기반**이고 없으면 둘 다 `0`.
    *

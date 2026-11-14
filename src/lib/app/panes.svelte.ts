@@ -6,14 +6,17 @@ import { settings } from "$lib/settings.svelte.js";
 import {
   effectiveDefaultShellId,
   borrowsSession,
+  isFileLeafKind,
   planDocOpen,
   findNewDocPane,
+  planFileOpen,
   findPane,
   listPanes,
   listAiClis,
   listShells,
   newAiPane,
   newDocPane,
+  newImagePane,
   newLocalFsPane,
   newLocalPane,
   newSftpPane,
@@ -40,6 +43,7 @@ import { resolveDocLink } from "$lib/doc-links";
 import { DOC_SPLIT_DEFAULT, clampDocSplit } from "$lib/doc-edit-preview";
 import { DOC_ZOOM_DEFAULT, clampDocZoom } from "$lib/doc-zoom";
 import { isTextLike } from "$lib/doc-lang";
+import { imageMime } from "$lib/browser/preview";
 import { setDocAnchor, setDocLine } from "$lib/app/doc-anchors.svelte.js";
 import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
 import { isRemote } from "$lib/app/window.svelte.js";
@@ -56,6 +60,7 @@ import {
   queueRemoteFileUi,
   selectTab,
   residentWindowTabs,
+  unzoomFor,
 } from "$lib/app/tabs.svelte.js";
 
 /**
@@ -608,15 +613,11 @@ export interface DocSource {
  * 탭이나 `nearPaneId` 가 사라졌으면 아무 일도 하지 않는다(고르는 사이 닫힌 경우). 돌려주는 값은 그 문서가 선
  * 타일의 id(포커스만 옮겼으면 그 타일) — 문서 안 링크의 `#절` 을 거기 걸려고([`openDocLink`]). 못 열었으면 `null`.
  */
-export function openDoc(o: { tabId: string; nearPaneId: string; path: string; source?: DocSource }): string | null {
-  const tab = residentWindowTabs().find((t) => t.id === o.tabId);
-  if (!tab || o.path === "" || !findPane(tab.root, o.nearPaneId)) return null;
+export function openDoc(o: FileOpenRequest): string | null {
+  const tab = fileOpenTab(o);
+  if (!tab) return null;
   const plan = planDocOpen(tab.root, o.path, o.source, isDocDirty);
-  if (plan.kind === "focus") {
-    focusPane(tab.id, plan.paneId);
-    selectTab(tab.id);
-    return plan.paneId;
-  }
+  if (plan.kind === "focus") return focusOpened(tab, plan.paneId);
   const pane = newDocPane(o.path, o.source);
   pane.docPreview = true;
   // 갈아 끼우는 칸의 목차 패널은 남긴다 — 보기(`docMode`)는 파일의 것이지만, 목차는 "이 칸에서 훑어보는 방식" 이다
@@ -626,6 +627,8 @@ export function openDoc(o: { tabId: string; nearPaneId: string; path: string; so
   if (old?.docEditView) pane.docEditView = old.docEditView;
   if (old?.docSplit !== undefined) pane.docSplit = old.docSplit;
   if (old?.docZoom !== undefined) pane.docZoom = old.docZoom;
+  // 다른 타일이 최대화 중이면 먼저 푼다 — 갈아 끼운 칸이 숨은 채로 남지 않게(못 갈아 끼우면 옆에 여는 길도 어차피 푼다)
+  if (plan.kind === "replace") unzoomFor(tab, plan.paneId);
   if (plan.kind === "replace" && replaceTile(tab.id, plan.paneId, pane)) {
     selectTab(tab.id);
     return pane.id;
@@ -633,16 +636,65 @@ export function openDoc(o: { tabId: string; nearPaneId: string; path: string; so
   return openPaneBeside(tab.id, o.nearPaneId, pane) ? pane.id : null;
 }
 
+/** 파일 한 장 타일(문서 · 그림)을 여는 요청 — 그 탭 · 곁에 설 타일 · 파일 경로 · (원격이면) 빌릴 터미널 */
+export interface FileOpenRequest {
+  tabId: string;
+  nearPaneId: string;
+  path: string;
+  source?: DocSource;
+}
+
+/** 여는 요청의 탭 — 탭이나 곁 타일이 사라졌거나 경로가 비면 `null`(고르는 사이 닫힌 경우 · [`openDoc`] · [`openImage`] 공용) */
+function fileOpenTab(o: FileOpenRequest): TabSpec | null {
+  const tab = residentWindowTabs().find((t) => t.id === o.tabId);
+  return !tab || o.path === "" || !findPane(tab.root, o.nearPaneId) ? null : tab;
+}
+
+/**
+ * 같은 파일을 이미 보는 타일로 포커스만 옮긴다(`planFileOpen` 의 `focus`) — 그 타일 id. 다른 타일이 최대화 중이면 먼저 푼다
+ * ([`unzoomFor`] — 숨은 타일에 포커스 · 줄 이동이 가지 않게. 같은 동기 흐름이라 뒤이어 거는 `:12` 는 보이는 타일이 받는다).
+ */
+function focusOpened(tab: TabSpec, paneId: string): string {
+  unzoomFor(tab, paneId);
+  focusPane(tab.id, paneId);
+  selectTab(tab.id);
+  return paneId;
+}
+
+/**
+ * **이미지 타일을 여는 문 하나**(2026-11-14) — 파일 타일의 그림 파일 · 터미널 경로 Ctrl+클릭 · 문서 안 그림 링크가 이리로 온다.
+ * 규칙은 [`openDoc`] 과 같은 판(`planFileOpen` — 같은 그림을 보는 이미지 타일이 있으면 포커스만, 없으면 `nearPaneId` 옆)이되
+ * 미리 보기 갈아 끼우기는 없다(이전/다음으로 같은 칸에서 훑는다). 돌려주는 값은 그 타일 id, 못 열었으면 `null`.
+ */
+export function openImage(o: FileOpenRequest): string | null {
+  const tab = fileOpenTab(o);
+  if (!tab) return null;
+  const plan = planFileOpen(tab.root, "image", o.path, o.source);
+  if (plan.kind === "focus") return focusOpened(tab, plan.paneId);
+  const pane = newImagePane(o.path, o.source);
+  return openPaneBeside(tab.id, o.nearPaneId, pane) ? pane.id : null;
+}
+
+/** 이미지 타일이 **같은 폴더의 이전/다음 그림으로 옮겼다** — 패널 명세의 `path` 만 바꾼다(배치 저장이 그 그림을 기억한다 · 배율은 명세에 없다) */
+export function noteImagePath(paneId: string, path: string): void {
+  for (const tab of residentWindowTabs()) {
+    const pane = findPane(tab.root, paneId);
+    if (!pane) continue;
+    if (pane.kind === "image" && path !== "" && pane.path !== path) pane.path = path;
+    return;
+  }
+}
+
 /**
  * 타일 하나가 **어디의 파일을 보는가** — 그 타일 곁에서 여는 문서의 [`DocSource`]. `undefined` = 로컬,
  * `null` = 열 곳이 없다(원본을 잃은 SFTP 타일).
  *
- * ssh 터미널은 자기 자신 · SFTP 타일은 빌리던 터미널 · 원격 문서는 그 문서가 빌리던 터미널(같은 서버의 다른 파일) ·
+ * ssh 터미널은 자기 자신 · SFTP 타일은 빌리던 터미널 · 원격 문서 · 그림은 그 타일이 빌리던 터미널(같은 서버의 다른 파일) ·
  * 그 밖(로컬 셸 · 로컬 파일 · 로컬 문서 · 시작 화면 …)은 로컬.
  */
 export function docSourceOf(pane: PaneSpec): DocSource | undefined | null {
   if (pane.kind === "ssh") return { paneId: pane.id, alias: pane.alias ?? "" };
-  if (pane.kind === "sftp" || (pane.kind === "doc" && borrowsSession(pane))) {
+  if (pane.kind === "sftp" || (isFileLeafKind(pane.kind) && borrowsSession(pane))) {
     return pane.sourcePaneId ? { paneId: pane.sourcePaneId, alias: pane.alias ?? "" } : null;
   }
   return undefined;
@@ -651,6 +703,7 @@ export function docSourceOf(pane: PaneSpec): DocSource | undefined | null {
 /**
  * 파일 타일에서 고른 파일을 문서로 — 우클릭 "미리 보기" · 텍스트 파일의 더블클릭/Enter (A3: 여는 문 [`openDoc`] 으로
  * 옮기기만 했다 · 동작은 1단계 그대로). 파일 타일 셋 중 `sftp`·`localfs` 만 이 길을 연다.
+ * **그림 파일**(`imageMime` 표 — svg 포함)이면 문서가 아니라 이미지 타일([`openImage`] — 2026-11-14)이다.
  */
 export function openDocFrom(tabId: string, browserPaneId: string, path: string): void {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
@@ -658,7 +711,8 @@ export function openDocFrom(tabId: string, browserPaneId: string, path: string):
   if (!browser || (browser.kind !== "sftp" && browser.kind !== "localfs")) return;
   const source = docSourceOf(browser);
   if (source === null) return;
-  openDoc({ tabId, nearPaneId: browserPaneId, path, source });
+  if (imageMime(path) !== null) openImage({ tabId, nearPaneId: browserPaneId, path, source });
+  else openDoc({ tabId, nearPaneId: browserPaneId, path, source });
 }
 
 /**
@@ -683,6 +737,11 @@ export async function openPathFromTerminal(
   const path = await openableFile(remote ? remoteBackend(sessionOf(pane.id)) : localBackend(), target);
   if (path === null) return;
   const source = remote ? { paneId: pane.id, alias: pane.alias ?? "" } : undefined;
+  // 그림이면 이미지 타일(2026-11-14) — 꼬리 줄(`:12`)은 뜻이 없어 버린다
+  if (imageMime(path) !== null) {
+    openImage({ tabId, nearPaneId: paneId, path, source });
+    return;
+  }
   const before = paneIdsNow();
   const opened = openDoc({ tabId, nearPaneId: paneId, path, source });
   if (opened !== null && line !== undefined) setLineOnOpened({ opened, before, path, source, line });
@@ -772,12 +831,18 @@ async function openableFile(backend: FsBackend, target: { path: string } | { hom
  * "파일 열기…"(`app/file-picker` 의 `pickFile`)와 같다 — **지금 탭의 포커스 타일** 곁에 여는 문 [`openDoc`](미리 보기 규칙 그대로). 지금 탭이
  * 없거나 그 자리에 못 열었으면 새 탭에 연다. 원격 창은 같은 함수들이 집 PC 에 요청으로 연다(`app/mirror-requests` — 줄은 집 PC 가 세운
  * 새 id 에 건다: [`setLineOnOpened`]). 열었으면 `true`.
+ * **그림 파일**(`imageMime` 표 — svg 포함)이면 문서가 아니라 이미지 타일([`openImage`] — 터미널 경로와 같은 규칙 · 2026-11-14)이고 꼬리 줄은
+ * 버린다. 이미 그 그림을 보는 타일이 있으면 포커스만 옮긴다. 원격 창도 같은 요청 길(`openBeside` · `newTab` — 타일 명세를 그대로 싣는다)을 탄다.
  */
 export async function openPathFromChat(target: { path: string } | { home: string }, line?: number): Promise<boolean> {
   const path = await openableFile(localBackend(), target);
   if (path === null) return false;
-  const before = paneIdsNow();
   const tab = activeTab();
+  if (imageMime(path) !== null) {
+    if ((tab ? openImage({ tabId: tab.id, nearPaneId: paneOf(tab), path }) : null) === null) openInNewTab(newImagePane(path));
+    return true;
+  }
+  const before = paneIdsNow();
   let opened = tab ? openDoc({ tabId: tab.id, nearPaneId: paneOf(tab), path }) : null;
   if (opened === null) {
     const pane = newDocPane(path);
@@ -814,8 +879,10 @@ export async function openDocLink(tabId: string, paneId: string, link: string, a
     showNotice(t("app.doc.open.missing", { path: link }));
     return;
   }
+  // 그림 파일을 가리키는 링크면 이미지 타일(2026-11-14 — 판정은 `imageMime` 표 하나, svg 도 그림이다)
+  const image = imageMime(path) !== null;
   if (path !== pane.path) {
-    if (!isTextLike(path)) {
+    if (!image && !isTextLike(path)) {
       showNotice(t("app.doc.open.notText", { path }));
       return;
     }
@@ -834,6 +901,10 @@ export async function openDocLink(tabId: string, paneId: string, link: string, a
       showNotice(t("app.doc.open.missing", { path }));
       return;
     }
+  }
+  if (image) {
+    openImage({ tabId, nearPaneId: paneId, path, source });
+    return;
   }
   const opened = openDoc({ tabId, nearPaneId: paneId, path, source });
   if (opened !== null && anchor) setDocAnchor(opened, anchor);

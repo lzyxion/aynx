@@ -203,6 +203,7 @@
     <button
       type="button"
       class="btn ico keep"
+      data-head-act
       title={t("files.doc.keep")}
       aria-label={t("files.doc.keep")}
       onclick={keep}><UiIcon name="pin" size={13} /></button
@@ -375,7 +376,8 @@
     cursor: default;
   }
 
-  /* 미리 보기의 [고정] — 점선 테두리가 "아직 임시다" 를 말한다(이름의 기울임과 같은 뜻, 좁아도 남는다) */
+  /* 미리 보기의 [고정] — 점선 테두리가 "아직 임시다" 를 말한다(이름의 기울임과 같은 뜻). 다른 조작처럼 포커스 밖에서는 접힌다 —
+     그때 임시임은 이름의 기울임이 말한다 */
   .btn.keep {
     border-style: dashed;
     border-color: var(--border);

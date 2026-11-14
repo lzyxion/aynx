@@ -2,7 +2,7 @@
 
 import type { Key } from "$lib/i18n/keys";
 import { defaultTabNumber, localFsName, tabTitleLabel } from "./factory";
-import type { PaneNode, PaneSpec, TabSpec, Tr } from "./spec";
+import { isFileLeafKind, type PaneNode, type PaneSpec, type TabSpec, type Tr } from "./spec";
 import { listPanes } from "./tree";
 
 // ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ export function paneName(pane: PaneSpec, tr: Tr): string {
     return pane.alias?.trim() || tr("pane.name.files.remote");
   }
   if (pane.kind === "localfs") return localFsName(pane.path, tr);
-  if (pane.kind === "doc") return docName(pane, tr);
+  if (isFileLeafKind(pane.kind)) return docName(pane, tr);
   if (pane.kind === "branches") {
     const name = pane.branchGraph?.name?.trim();
     return name ? tr("pane.name.branches.project", { name }) : tr("pane.name.branches");
@@ -104,11 +104,12 @@ export function paneName(pane: PaneSpec, tr: Tr): string {
  * 적어 둔 제목은 그 뒤 타일이 바뀌어도 남는다. 사용자 이름(`TabSpec.name`)은 늘 이것보다 앞선다.
  */
 export function loneTileTitle(pane: PaneSpec, tr: Tr): string | null {
-  return ["branches", "diff", "localfs", "sftp", "doc", "query", "run"].includes(pane.kind) ? paneName(pane, tr) : null;
+  return ["branches", "diff", "localfs", "sftp", "doc", "image", "query", "run"].includes(pane.kind) ? paneName(pane, tr) : null;
 }
 
 /**
- * 문서 타일의 표시 이름 — 파일 이름, 원격이면 `README.md · web-01` (docs/log/2026-09-27-doc-tile.md).
+ * 파일 한 장 타일(문서 · 그림)의 표시 이름 — 파일 이름, 원격이면 `README.md · web-01` (docs/log/2026-09-27-doc-tile.md).
+ * 경로가 비었을 때의 이름만 종류마다 다르다(`문서` · `그림`).
  *
  * 경로 전체가 아니라 **마지막 조각**인 이유는 [`localFsName`] 과 같다(좁아지면 앞부터 잘려 가장 중요한 것이
  * 먼저 사라진다). 원격은 별칭을 붙인다 — 같은 `README.md` 를 로컬과 서버에서 나란히 열어 두는 일이 흔하다.
@@ -116,7 +117,7 @@ export function loneTileTitle(pane: PaneSpec, tr: Tr): string | null {
 function docName(pane: PaneSpec, tr: Tr): string {
   const trimmed = (pane.path ?? "").replace(/[\\/]+$/, "");
   const file = trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1);
-  const name = file || tr("pane.name.doc");
+  const name = file || tr(pane.kind === "image" ? "pane.name.image" : "pane.name.doc");
   const alias = pane.alias?.trim();
   return alias ? tr("pane.name.doc.remote", { file: name, alias }) : name;
 }

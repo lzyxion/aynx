@@ -10,7 +10,7 @@ import {
   type DockKind,
   type DockSlot,
 } from "$lib/dock";
-import { routeTileFocus } from "$lib/pane/focus";
+import { focusPaneBody } from "$lib/pane/focus";
 import { activeTab, paneOf } from "$lib/app/tabs.svelte.js";
 
 /**
@@ -151,15 +151,18 @@ export function closeDock(restore = true): void {
   const back = returnFocusTo;
   returnFocusTo = null;
   if (!restore) return;
-  if (back?.isConnected) {
+  if (typeof document === "undefined") return;
+  if (back?.isConnected && back !== document.body) {
     back.focus({ preventScroll: true });
     return;
   }
-  // 적어 둔 요소가 사라졌으면(타일이 닫혔다·다시 그려졌다) 지금 포커스된 타일로 —
-  // `Alt+화살표` 가 쓰는 것과 **같은 길**이다 (`routeTileFocus`).
-  if (typeof document === "undefined") return;
+  // 적어 둔 요소가 사라졌거나(타일이 닫혔다·다시 그려졌다 · 치트시트의 [설정에서 바꾸기] 단추처럼 독을 연 상자가 걷혔다)
+  // `<body>` 였으면 지금 포커스된 타일의 **키보드 몸**으로 — 모달이 닫힐 때 돌려주는 것과 같은 길이다(`focusPaneBody`
+  // — 터미널이면 xterm 의 textarea, 세션 없는 타일이면 `[data-tile-focus]`). `routeTileFocus` 는 "옮겨 왔을 때" 의 효과라
+  // `[data-tile-focus]` 만 보고, 터미널 타일에서는 아무것도 하지 않아 포커스가 `<body>` 로 떨어졌다.
   const tab = activeTab();
-  if (tab) routeTileFocus(document.body, paneOf(tab));
+  const pane = tab ? paneOf(tab) : null;
+  if (pane) focusPaneBody(pane);
 }
 
 /**

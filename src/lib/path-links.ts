@@ -1,4 +1,5 @@
 import { isTextLike } from "$lib/doc-lang";
+import { imageMime } from "$lib/browser/preview";
 
 /**
  * **터미널 글자 속 파일 경로** — 순수 모듈 (docs/log/2026-09-27-doc-tile.md "A — 여는 길").
@@ -21,6 +22,8 @@ import { isTextLike } from "$lib/doc-lang";
  * **이름이 [`isTextLike`] 인 것만** 잡는다 — 오탐 억제이자 여는 길이 문서 보기뿐이라서다(이진 파일을 걸어 봐야
  * 열 곳이 없다). URL 과 겹치는 토막은 버린다(URL 이 이긴다 — `https://x/docs/a.md` 의 `/docs/a.md` 를 따로 걸지
  * 않는다). xterm 도 먼저 등록된 프로바이더(web-links)가 이기지만, 여기서 먼저 빼 두면 순서에 기대지 않는다.
+ * **그림 파일**(`browser/preview.ts` 의 `imageMime` 표 — png · jpg · gif · webp · bmp · svg · ico)도 잡는다(2026-11-14) — 여는 쪽이
+ * 이미지 타일로 연다([`isOpenablePath`]).
  *
  * 경로 안의 공백은 잡지 않는다(따옴표로 싼 경로 포함 — v1).
  */
@@ -47,6 +50,11 @@ const TRAILING_PUNCT = /[.,:;!?]+$/;
 const LINE_COL = /(?::(\d+)(?::(\d+)|-(\d+))?|#L(\d+)(?:-L?(\d+))?)$/;
 /** 글롭 글자가 섞이면 경로가 아니라 패턴이다 */
 const GLOB = /[*?]/;
+
+/** 앱 안에서 열 파일인가 — 문서 보기(`isTextLike`) 또는 이미지 타일(`imageMime`) */
+export function isOpenablePath(path: string): boolean {
+  return isTextLike(path) || imageMime(path) !== null;
+}
 
 /** 경로의 마지막 조각 */
 function baseName(path: string): string {
@@ -96,7 +104,7 @@ export function findPathLinks(text: string): PathMatch[] {
     if (form === null) continue;
     const name = baseName(path);
     if (name === "" || name === "." || name === "..") continue;
-    if (!isTextLike(path)) continue;
+    if (!isOpenablePath(path)) continue;
     out.push({ start, end, path, form, ...(line !== undefined ? { line } : {}), ...(col !== undefined ? { col } : {}) });
   }
   return out;
@@ -148,7 +156,9 @@ export function splitProsePaths(text: string): Array<{ text: string; path: boole
 /**
  * 경로를 풀 자리 — 그 터미널이 어디의 셸인가.
  *
- * - `local` — 이 컴퓨터의 셸. `cwd` 는 그 셸이 알려 준 폴더(OSC 7) 그대로.
+ * - `local` — 이 컴퓨터의 셸. `cwd` 는 그 셸이 **마지막으로** 알려 준 폴더(OSC 7) 그대로 — PowerShell 에서 `prompt` 함수를
+ *   새로 정의하면 앱의 훅(`integration.ps1` 의 `prompt` 감싸개)이 사라져 그 뒤의 `cd` 를 모른다. 그때 상대 경로(`..` 포함)는 옛
+ *   폴더 기준으로 풀려 없는 파일 토스트로 물러선다(`..` 의 판정 · 접기 자체는 `path-links.test.ts` 가 지킨다).
  * - `wsl` — 이 컴퓨터의 WSL 셸. 셸이 보여 주는 경로는 배포판 안의 POSIX 경로라 `toLocal`(보통
  *   `wslCwdToWindows`)로 이 컴퓨터의 경로로 옮긴다. `cwd` 도 POSIX 다.
  * - `remote` — SSH 셸. 경로는 원격의 POSIX 경로이고 윈도우 모양은 열 수 없다.
@@ -271,7 +281,7 @@ export function fileUrlToLocalPath(uri: string): string | null {
 
 /**
  * OSC 8 링크를 눌렀을 때 할 일 — `web`(http · https 만, 기존 동작) · `doc`(로컬 타일의 로컬 `file://` 이고 이름이
- * 텍스트로 보일 때) · `null`(아무것도 하지 않는다 — 그 밖의 스킴은 **원격이 보낸 바이트**라 여는 문을 두지 않는다:
+ * 텍스트 · 그림으로 보일 때 — 그림은 여는 쪽이 이미지 타일로) · `null`(아무것도 하지 않는다 — 그 밖의 스킴은 **원격이 보낸 바이트**라 여는 문을 두지 않는다:
  * docs/log/2026-09-23-osc52-osc8.md).
  */
 export type OscLinkAction = { kind: "web"; url: string } | { kind: "doc"; path: string } | null;
@@ -286,5 +296,5 @@ export function oscLinkAction(uri: string, localTile: boolean): OscLinkAction {
   if (protocol === "http:" || protocol === "https:") return { kind: "web", url: uri };
   if (protocol !== "file:" || !localTile) return null;
   const path = fileUrlToLocalPath(uri);
-  return path !== null && isTextLike(path) ? { kind: "doc", path } : null;
+  return path !== null && isOpenablePath(path) ? { kind: "doc", path } : null;
 }

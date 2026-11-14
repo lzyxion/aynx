@@ -2,10 +2,11 @@
   import { runOnMenu } from "$lib/browser/menu-runner";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { Key } from "$lib/i18n/keys";
-  import type { ImageMenuAction } from "$lib/image-menu";
+  import type { ImageMenuAction, ImageMenuExtra } from "$lib/image-menu";
 
   /**
-   * **그림 우클릭 메뉴**(2026-10-24) — 문서 보기 타일 · 사이드 채팅의 그림(`MarkdownBlocks` 가 연다). 항목 판정은 `image-menu.ts`,
+   * **그림 우클릭 메뉴**(2026-10-24) — 문서 보기 타일 · 사이드 채팅의 그림(`MarkdownBlocks` 가 연다) · 이미지 타일 본문(`ImageView` — 앞뒤에
+   * 제 줄을 더 세운다: `before` · `after` · 2026-11-14). 항목 판정은 `image-menu.ts`,
    * 하는 일은 `image-actions.ts`.
    *
    * 상자 모양은 스키마 트리 메뉴(`query/TreeMenu`)와 같은 한 벌(`.menu-*`)이다. 다른 점 하나 — 이 메뉴는 **`document.body` 로 옮겨
@@ -20,6 +21,9 @@
     y,
     onclose,
     onpick,
+    before = [],
+    after = [],
+    onextra,
   }: {
     actions: readonly ImageMenuAction[];
     x: number;
@@ -27,6 +31,13 @@
     onclose: () => void;
     /** 고른 항목 — 메뉴가 닫힌 **뒤** 불린다(스냅샷은 여기서 뜬다). 부르는 쪽 상태를 읽지 않는 손잡이여야 한다 */
     onpick: (action: ImageMenuAction) => void;
+    /**
+     * 그림 줄 **앞 · 뒤에 세울 부르는 쪽의 줄**(2026-11-14 — 이미지 타일 본문: 앞 = 맞춤 · 원래 크기, 뒤 = 기본 앱 · 외부 편집기 · 폴더에서 보기).
+     * 무리 사이에 선이 하나씩 선다. 고른 줄은 같은 통로로 닫힌 **뒤** `onextra(id)` 로 간다. 비면(기본) 예전 그대로다.
+     */
+    before?: readonly ImageMenuExtra[];
+    after?: readonly ImageMenuExtra[];
+    onextra?: (id: string) => void;
   } = $props();
 
   const LABEL: Record<ImageMenuAction, Key> = {
@@ -93,6 +104,17 @@
     bind:this={menuEl}
     onkeydown={menuKeydown}
   >
+    {#each before as row (row.id)}
+      <button
+        type="button"
+        class="ctx-item menu-row"
+        role="menuitem"
+        data-image-extra={row.id}
+        disabled={row.disabled === true}
+        onclick={() => runOnMenu(() => ({ id: row.id, run: onextra }), onclose, (m) => m.run?.(m.id))}>{row.label}</button
+      >
+    {/each}
+    {#if before.length > 0 && actions.length > 0}<div class="ctx-sep menu-sep" role="separator"></div>{/if}
     {#each actions as a, i (a)}
       <!-- 무리 둘 — 저장(다운로드 · 다른 이름으로) ─ 복사(그림 · 링크/SVG 코드) -->
       {#if a === "copyImage" && i > 0}<div class="ctx-sep menu-sep" role="separator"></div>{/if}
@@ -102,6 +124,17 @@
         role="menuitem"
         data-image-action={a}
         onclick={() => runOnMenu(() => ({ a, run: onpick }), onclose, (m) => m.run(m.a))}>{t(LABEL[a])}</button
+      >
+    {/each}
+    {#if after.length > 0}<div class="ctx-sep menu-sep" role="separator"></div>{/if}
+    {#each after as row (row.id)}
+      <button
+        type="button"
+        class="ctx-item menu-row"
+        role="menuitem"
+        data-image-extra={row.id}
+        disabled={row.disabled === true}
+        onclick={() => runOnMenu(() => ({ id: row.id, run: onextra }), onclose, (m) => m.run?.(m.id))}>{row.label}</button
       >
     {/each}
   </div>

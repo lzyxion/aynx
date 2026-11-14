@@ -53,8 +53,8 @@ describe("findPathLinks — 잡는 모양", () => {
       expect(m.col).toBeUndefined();
       expect(text.slice(m.start, m.end)).toBe(`src/lib/foo.ts${tail}`);
     }
-    // 꼬리를 뗀 경로가 규칙을 지나야 한다 — 그림 · 점 없는 낱말은 여전히 아니다
-    expect(paths("img/a.png#L3 README#L2 v1:12-20")).toEqual([]);
+    // 꼬리를 뗀 경로가 규칙을 지나야 한다 — 점 없는 낱말은 여전히 아니다(그림은 2026-11-14 부터 이미지 타일로 연다 · 꼬리는 버린다)
+    expect(paths("img/a.png#L3 README#L2 v1:12-20")).toEqual(["img/a.png"]);
     // 줄 꼬리가 아닌 `#` 은 경로의 일부라 텍스트 이름이 아니게 된다
     expect(paths("docs/a.md#intro")).toEqual([]);
   });
@@ -98,9 +98,23 @@ describe("findPathLinks — 잡는 모양", () => {
     expect(paths("--out=docs/a.md")).toEqual(["docs/a.md"]);
   });
 
-  it("텍스트로 보이지 않는 이름 · 폴더 · 글롭 · 점 없는 낱말은 잡지 않는다", () => {
-    expect(paths("img/logo.png bin/app.exe src/ docs/*.md README version 1.2.3 e.g.")).toEqual([]);
+  it("텍스트 · 그림으로 보이지 않는 이름 · 폴더 · 글롭 · 점 없는 낱말은 잡지 않는다", () => {
+    expect(paths("bin/app.exe src/ docs/*.md README version 1.2.3 e.g.")).toEqual([]);
     expect(paths("//comment.md")).toEqual([]);
+  });
+
+  it("그림 파일(`imageMime` 표)도 잡는다 — 여는 쪽이 이미지 타일로(2026-11-14)", () => {
+    expect(paths("img/logo.png C:\pics\a.JPG ~/shot.webp ./b.ico notes.pdf")).toEqual([
+      "img/logo.png",
+      "C:\pics\a.JPG",
+      "~/shot.webp",
+      "./b.ico",
+    ]);
+    expect(oscLinkAction("file:///C:/pics/a.png", true)).toEqual({ kind: "doc", path: "C:/pics/a.png" });
+    expect(oscLinkAction("file:///C:/pics/a.pdf", true)).toBeNull();
+    // 대화 면(사이드 채팅 · AI 타일)도 같은 판정 — 구분자가 있는 그림 경로는 걸고, 맨 이름은 터미널 밖에선 걸지 않는다
+    expect(codePathLink(String.raw`C:\shots\a.png`)).toMatchObject({ form: "abs" });
+    expect(prosePathLinks("saved to out/chart.svg and logo.png").map((m) => m.path)).toEqual(["out/chart.svg"]);
   });
 
   it("URL 과 겹치면 URL 이 이긴다", () => {
@@ -129,6 +143,36 @@ describe("resolvePathLink — 그 타일에서 열 경로", () => {
     expect(resolvePathLink({ path: "../x/./b.ts", form: "rel" }, local)).toEqual({ path: String.raw`C:\proj\x\b.ts` });
     expect(resolvePathLink({ path: String.raw`D:\z.txt`, form: "abs" }, local)).toEqual({ path: String.raw`D:\z.txt` });
     expect(resolvePathLink({ path: "~/n.md", form: "home" }, local)).toEqual({ home: "n.md" });
+  });
+
+  it("`..` 로 시작하는 상대 경로 — 찾기부터 풀기까지(PowerShell 의 OSC 7 폴더는 `C:/…` 슬래시 모양)", () => {
+    const ps: PathLinkPlace = { kind: "local", cwd: "C:/t/r5/w" };
+    const line = String.raw`./x.md ../y.txt ../../r5/w/code.md ..\..\a\b.md ..\c.txt:9`;
+    const found = findPathLinks(line);
+    expect(found.map((m) => [m.path, m.form])).toEqual([
+      ["./x.md", "rel"],
+      ["../y.txt", "rel"],
+      ["../../r5/w/code.md", "rel"],
+      [String.raw`..\..\a\b.md`, "rel"],
+      [String.raw`..\c.txt`, "rel"],
+    ]);
+    expect(found.map((m) => resolvePathLink(m, ps))).toEqual([
+      { path: String.raw`C:\t\r5\w\x.md` },
+      { path: String.raw`C:\t\r5\y.txt` },
+      { path: String.raw`C:\t\r5\w\code.md` },
+      { path: String.raw`C:\t\a\b.md` },
+      { path: String.raw`C:\t\r5\c.txt` },
+    ]);
+    expect(found[4].line).toBe(9);
+    // 원격 POSIX — `../x` · `../../a/b.md`
+    expect(findPathLinks("../x.md ../../a/b.md").map((m) => resolvePathLink(m, remote))).toEqual([
+      { path: "/srv/x.md" },
+      { path: "/a/b.md" },
+    ]);
+    // 대화 면도 `..` 경로를 건다(구분자가 있다) — 폴더를 모르면 상대 경로 없음 규칙은 그대로
+    const [chat] = prosePathLinks("see ../../a/b.md");
+    expect(chat).toMatchObject({ path: "../../a/b.md", form: "rel" });
+    expect(resolvePathLink(chat, { kind: "local", cwd: null })).toBeNull();
   });
 
   it("셸 폴더를 모르면 상대 경로는 걸지 않는다", () => {

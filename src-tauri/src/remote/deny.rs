@@ -171,12 +171,14 @@ pub(crate) const ALLOW: &[&str] = &[
     // 포워딩 · SFTP
     "add_forward", "list_forwards", "remove_forward", "list_edits", "stop_edit", "upload_file", "sftp_home", "sftp_list",
     "sftp_stat", "sftp_free_space", "sftp_read_text", "sftp_read_preview", "sftp_write_text", "sftp_mkdir", "sftp_create_file", "sftp_rename",
+    // 이미지 타일의 큰 그림(조각 · 진행 · 취소) — `sftp_read_preview` 와 같은 등급(그 세션 파일 하나를 바이트로 읽기만)
+    "sftp_read_image",
     "sftp_remove", "sftp_download", "sftp_copy", "sftp_move", "sftp_remove_many", "sftp_conflicts", "sftp_upload_paths",
     "sftp_download_paths", "sftp_copy_between", "sftp_move_between", "local_to_sftp_move", "sftp_to_local_move",
     "transfer_cancel",
     // 로컬 파일
     "local_home", "local_roots", "local_places", "local_free_space", "local_list", "local_stat", "local_read_text",
-    "local_read_preview", "local_write_text", "list_text_files", "local_mkdir", "local_create_file", "local_rename", "local_remove", "local_copy",
+    "local_read_preview", "local_read_image", "local_write_text", "list_text_files", "local_mkdir", "local_create_file", "local_rename", "local_remove", "local_copy",
     "local_move", "local_remove_many", "local_conflicts", "local_write_file", "stage_agent_attachment",
     "create_agent_attachment_dir", "write_text_file",
     // 로컬 파일 타일의 자동 새로고침 — 로컬 목록 읽기와 같은 등급(보이는 폴더의 바뀜 알림만 · 읽기 전용)
@@ -600,6 +602,10 @@ mod tests {
         }
         // tmux 세션 끄기 — 원격 창이 그 셸에서 칠 수 있는 일과 같은 등급(sftp_remove · ssh_git_branch_delete 와 같은 결).
         assert_eq!(class_of("ssh_tmux_kill"), Class::Allow);
+        // 이미지 타일의 큰 그림 읽기 — 미리 보기 읽기와 같은 취급(파일 하나를 바이트로 읽기만).
+        for (image, preview) in [("local_read_image", "local_read_preview"), ("sftp_read_image", "sftp_read_preview")] {
+            assert_eq!(class_of(image), class_of(preview), "{image}");
+        }
         assert_eq!(class_of("open_ssh_config"), Class::Unsupported);
         assert_eq!(class_of("no_such_command"), Class::Unknown);
         assert_eq!(class_of("plugin:dialog|open"), Class::Unknown);

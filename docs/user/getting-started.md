@@ -35,7 +35,7 @@ At first the window looks almost empty. That's because Aynx keeps its menus in t
 | Dock | Mouse | Keys | What's in it |
 |---|---|---|---|
 | **Launcher dock** | Hover the **left edge** | `Ctrl+Shift+H` · `J` · `K` | Launch buttons, alerts, hosts, projects, databases |
-| **Side chat** | Hover the **right edge** | `Ctrl+Shift+'` | A chat with an AI agent beside your work |
+| **Side chat** | Hover the **right edge** | `Ctrl+Shift+[` | A chat with an AI agent beside your work |
 | **Bottom dock** | Hover the **bottom center** | none | Your favorites and launch buttons |
 
 - Press `Esc` or click outside to close a dock.
@@ -106,7 +106,7 @@ Start with **Read** or **Ask**. Connect by selecting the host and pressing `Ente
 
 ## 7. Side chat
 
-Hover the right edge of the window or press `Ctrl+Shift+'` to open the side chat.
+Hover the right edge of the window or press `Ctrl+Shift+[` to open the side chat.
 
 ![The side chat](../images/getting-started/side-chat.png)
 

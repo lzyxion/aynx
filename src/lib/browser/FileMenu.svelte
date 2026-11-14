@@ -1,6 +1,7 @@
 <script lang="ts">
   import { baseNameOf, LOCAL_KEY, type FsBackend } from "$lib/fs-backend";
   import { isDirLike, type SftpEntry } from "$lib/sftp-browser";
+  import { imageMime } from "$lib/browser/preview";
   import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
   import type { InlineEdit } from "$lib/browser/inline-edit.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -309,8 +310,9 @@
     <!--
       미리 보기 — 파일에만, 글자로 읽을 수 있는 백엔드(`canView`)에서만. 이름으로 거르지 않는다(모르는 확장자도
       사람이 골랐으면 열어 본다 — 이진이면 타일이 그렇게 말한다). 통로는 다른 줄과 같은 `onEntry`.
+      그림 파일에는 세우지 않는다(2026-11-14) — [열기]가 곧 이미지 타일이라 같은 일을 하는 줄이 둘이 된다.
     -->
-    {#if !isDirLike(entry) && backend.canView && onpreview}
+    {#if !isDirLike(entry) && backend.canView && onpreview && imageMime(entry.name) === null}
       {@const preview = onpreview}
       <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => onEntry(preview)}>
         {t("files.doc.preview")}
