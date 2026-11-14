@@ -210,6 +210,23 @@ export type ErrorReason =
   /** 2026-11-03 첫 설치 점검: 사이드 채팅 · 프로듀서 · 작업자가 띄울 CLI 의 `.exe` 를 PATH 에서 못 찾음(Rust `orchestration::spawn::find_exe` — `.cmd` 는 받지 않는다). */
   | "cli-not-found"
   /**
+   * 사이드 채팅 보내기의 첨부 판정(Rust `server::side_chat` 의 `images_in` · `files_in` — 그림 2026-10-24 · 파일 판 32 2026-11-14): 합쳐 8개 넘음 ·
+   * 10 MB 넘음 · 그 밖(첨부 자리 밖 · 없음 · 파일 아님 · 그림 형식 아님 · 채팅 cwd 의 사본 자리를 쓸 수 없음 · 옮겨 적기 실패).
+   */
+  | "too-many-attachments"
+  | "too-many-images"
+  | "file-too-big"
+  | "image-too-big"
+  | "file-outside"
+  | "file-missing"
+  | "file-not-file"
+  | "file-dest"
+  | "file-copy"
+  | "image-outside"
+  | "image-missing"
+  | "image-not-file"
+  | "image-type"
+  /**
    * 2026-11-01 원격 사이드 채팅: 사이드 채팅 목록(`chats.json`)이 이 창이 읽은 뒤 다른 창(주 창 · 원격 창)에서 바뀌어 **쓰지 않았다** —
    * `app/side-chats` 가 다시 읽고 이 창의 바뀜을 다시 얹어 저장한다(사람에게 보이지 않는다).
    */
@@ -322,6 +339,19 @@ export const REASONS: readonly ErrorReason[] = [
   "bad-effort",
   "bad-link",
   "cli-not-found",
+  "too-many-attachments",
+  "too-many-images",
+  "file-too-big",
+  "image-too-big",
+  "file-outside",
+  "file-missing",
+  "file-not-file",
+  "file-dest",
+  "file-copy",
+  "image-outside",
+  "image-missing",
+  "image-not-file",
+  "image-type",
   "stale-list",
 ];
 

@@ -110,6 +110,22 @@ fn side_chat_stdin_only_human() {
     assert!(send.contains("let images = chat_images(&b.images, cli == Cli::Claude)?;"));
     assert_eq!(SRC.matches("chat_images(&").count(), 1, "그림을 싣는 곳은 op_send 하나");
     assert!(body_of(SRC, "fn chat_images(").contains("crate::agent_attachments::attachments_root()"));
+    // (2026-11-14 · 판 32) 그림 밖 파일도 같다 — 몸 칸 `b.files` 에서만 · 첨부 자리 안의 실제 파일만 · 사본 자리는 서버가 정한 채팅 자기 폴더 ·
+    // 글 끝의 경로 꼬리는 서버가 지은 사본 경로로만(`with_file_refs` — 이 몸에서 한 번).
+    assert!(send.contains("let attached = chat_files(&chat.id, &b.files)?;"));
+    assert!(send.contains("let text = with_file_refs(&text, &attached);"));
+    assert_eq!(SRC.matches("chat_files(&").count(), 1, "파일을 싣는 곳은 op_send 하나");
+    assert_eq!(SRC.matches("with_file_refs(&").count(), 1, "경로 꼬리를 붙이는 곳은 op_send 하나");
+    let files = body_of(SRC, "fn chat_files(");
+    // 사본 자리는 늘 채팅 자기 폴더 — 갈라 온 채팅의 기록된 cwd(사용자 저장소)에는 쓰지 않는다(2026-11-14 사용자 결정)
+    assert!(files.contains("crate::agent_attachments::attachments_root()") && files.contains("files_in(&root, &own, paths)"));
+    assert!(!files.contains("run_cwd(") && !files.contains("st.cwd"));
+    // 갈라 온 Claude 채팅만 그 폴더 하나의 읽기를 더한다 — `--add-dir` + `Read(//…/**)`(쓰기 · 실행 도구는 `--tools` 에 없다)
+    let prep = body_of(SRC, "fn prepare(");
+    assert!(prep.contains("let attach_dir = if st.cwd.is_some() { attach_read(id) } else { None };"));
+    assert!(prep.contains("a.extend([\"--add-dir\".to_string(), dir.clone()]);"));
+    assert!(body_of(SRC, "fn attach_read(").contains("crate::orchestration::spawn::claude_read_rule(Path::new(&dir))"));
+    assert_eq!(crate::side_chat::claude::TOOLS, "Read,Grep,Glob,WebSearch,WebFetch", "첨부 폴더 허용은 읽기뿐");
     // (5단계) 사람 글 앞의 **앱 고정 연결 머리글**도 이 몸에서만 붙는다 — 글 = 머리글(서버가 아는 연결 · 칩 이름 또는 거울 이름) + 사람 글,
     // 그 밖은 사람 글 그대로. 이름은 화면이 실어도 스트림은 서버 표의 것(`chat_token::link_of`)뿐이다.
     assert!(send.contains(
@@ -184,6 +200,47 @@ fn side_chat_stdin_only_human() {
     // 승인 등급 프레임은 여전히 `ops_approve` 하나 — 사이드 채팅 결정은 쓰기 등급이다.
     use super::ipc::{frame, Grade};
     assert_eq!(frame::required_grade("side_chat_decide"), Some(Grade::Write));
+}
+
+/// 사이드 채팅 파일 첨부(판 32) — 채팅 자기 폴더의 `attachments` 가 링크(정션)나 파일이면 쓰지 않는다(밖으로 새지 않게). 정션을 만드는 데
+/// `cmd` 가 필요해 여기 둔다(`side_chat.rs` 안에는 프로세스를 띄우는 글자가 없어야 한다 — `side_chat_spawns_only_from_the_send_op`).
+#[test]
+fn files_refuse_a_linked_destination() {
+    let base = std::env::temp_dir().join(format!("aynx-sidechat-dest-{}", crate::token::generate_token().unwrap()));
+    let root = base.join("attachments");
+    let dir = root.join("c".repeat(64));
+    let cwd = base.join("chat");
+    let elsewhere = base.join("elsewhere");
+    for d in [&dir, &cwd, &elsewhere] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let f = dir.join("a.txt");
+    std::fs::write(&f, b"a").unwrap();
+    let s = |p: &Path| p.to_string_lossy().into_owned();
+    let link = cwd.join("attachments");
+    #[cfg(windows)]
+    {
+        let st = std::process::Command::new("cmd")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(&link)
+            .arg(&elsewhere)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(st.success(), "mklink /J");
+    }
+    #[cfg(not(windows))]
+    std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
+    assert!(super::side_chat::files_in(&root, &cwd, &[s(&f)]).unwrap_err().message.contains("[file-dest]"));
+    assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0, "링크 너머에 쓰지 않는다");
+    #[cfg(windows)]
+    std::fs::remove_dir(&link).unwrap();
+    #[cfg(not(windows))]
+    std::fs::remove_file(&link).unwrap();
+    // 같은 이름의 파일이 있어도 쓰지 않는다
+    std::fs::write(&link, b"x").unwrap();
+    assert!(super::side_chat::files_in(&root, &cwd, &[s(&f)]).unwrap_err().message.contains("[file-dest]"));
+    std::fs::remove_dir_all(base).unwrap();
 }
 
 /// 설계 2절 `side_chat_env_uses_tile_scrub` — 사이드 채팅 CLI 의 환경은 헤드리스 턴과 같은 `turn::headless_env`(= `pty::scrub_env_names`
@@ -306,6 +363,7 @@ fn side_chat_ops_have_grades() {
         "side_chat_decide",
         "side_chat_close",
         "side_chat_link",
+        "side_chat_seen",
     ] {
         assert_eq!(frame::required_grade(op), Some(Grade::Write), "{op}");
         assert!(super::side_chat::is_side_chat_op(op));
@@ -454,13 +512,15 @@ mod live {
     struct Client {
         s: BoxStream,
         evs: VecDeque<Value>,
+        /// 완료 확인 방송(`side-chat-seen`) — 답보다 먼저 올 수 있어 `call` 이 모은다.
+        seen: VecDeque<Value>,
         id: u64,
     }
 
     impl Client {
         async fn connect(pipe: &str) -> Client {
             let (s, _) = connect_retry(pipe).await;
-            let mut c = Client { s, evs: VecDeque::new(), id: 0 };
+            let mut c = Client { s, evs: VecDeque::new(), seen: VecDeque::new(), id: 0 };
             ok_body(c.call(Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await);
             c
         }
@@ -481,6 +541,8 @@ mod live {
                     Frame::Event { name, body, .. } => {
                         if name == EVENT {
                             self.evs.push_back(body);
+                        } else if name == side_chat::SEEN_EVENT {
+                            self.seen.push_back(body);
                         }
                     }
                     f => return f,
@@ -597,6 +659,28 @@ mod live {
         assert!(evs[2]["ev"].get("files").is_none());
         assert!(k.contains(&"text".to_string()) && k.contains(&"textDelta".to_string()), "{k:?}");
         assert_eq!(evs.last().unwrap()["ev"]["outcome"], "ok");
+
+        // ── 완료 확인 공유(판 31) — 다른 세대 · 아직 없는 번호 · 없는 채팅은 방송하지 않고, 턴 끝 번호면 `side-chat-seen{chat, epoch, seq}` 하나
+        // (몸은 그 셋뿐 · 표는 그대로) ──
+        let end = evs.last().unwrap()["seq"].as_u64().unwrap();
+        for (c, ep, sq) in [(chat, e1 + 1000, end), (chat, e1, end + 1000), ("sc9999", e1, end)] {
+            let r = a.ok(Grade::Write, "side_chat_seen", json!({ "chat": c, "epoch": ep, "seq": sq })).await;
+            assert_eq!(r["sent"], false, "{c} {ep} {sq}");
+        }
+        assert_eq!(err_code(a.call(Grade::Read, "side_chat_seen", json!({ "chat": chat, "epoch": e1, "seq": end })).await), code::GRADE_MISMATCH);
+        assert!(a.seen.is_empty(), "낡은 확인은 방송하지 않는다: {:?}", a.seen);
+        assert_eq!(a.ok(Grade::Write, "side_chat_seen", json!({ "chat": chat, "epoch": e1, "seq": end })).await["sent"], true);
+        let seen = loop {
+            if let Some(b) = a.seen.pop_front() {
+                break b;
+            }
+            match a.read().await {
+                Frame::Event { name, body, .. } if name == side_chat::SEEN_EVENT => break body,
+                Frame::Event { name, body, .. } if name == EVENT => a.evs.push_back(body),
+                _ => {}
+            }
+        };
+        assert_eq!(seen, json!({ "chat": chat, "epoch": e1, "seq": end }));
 
         // ── 낡은 세대 ──
         let stale = a.err(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": 0, "text": "x" })).await;
@@ -887,7 +971,10 @@ mod live {
         .await;
         let chat = "lnk001";
         let open = json!({ "chat": chat, "cli": "claude", "model": "haiku", "mode": { "kind": "fresh" }, "window": "main" });
-        assert!(a.ok(Grade::Write, "side_chat_open", open.clone()).await["link"].is_null());
+        let opened = a.ok(Grade::Write, "side_chat_open", open.clone()).await;
+        assert!(opened["link"].is_null());
+        // (2026-11-13) 띄우기 전에도 실을 예정 이름 — 고른 것만 · 볼트가 잠겨 못 실을 `secret` 은 빠진다 · 이름뿐
+        assert_eq!(opened["mcpServers"], json!(["plain"]), "열기의 예정 이름");
         // 연결 — 모르는 스트림 · 없는 채팅 · 읽기 등급은 거절.
         assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": "nope-x" })).await.contains("[bad-link]"));
         assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": "nochat", "stream": sa })).await.contains("[session-gone]"));

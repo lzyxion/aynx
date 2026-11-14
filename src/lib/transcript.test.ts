@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hiddenImageCount, pictureKey, userPictures, isViewKey, linkChip, mergeLatestPage, runningToolIndexes, parseInline, parseMarkdown, prependItems, toolFlag, toolHeadline, unwrapPasted } from "$lib/transcript";
+import { hiddenImageCount, pictureKey, userPictures, isViewKey, linkChip, mergeLatestPage, runningToolIndexes, parseInline, parseMarkdown, prependItems, toolFlag, toolHeadline, unwrapPasted, agentTurnCopies, withoutImagePlaceholders } from "$lib/transcript";
 import type { TranscriptItem } from "$lib/context";
 
 describe("parseInline", () => {
@@ -252,5 +252,57 @@ describe("사람 말의 그림 자리", () => {
     const a: TranscriptItem = { ...user(1, [pic(10, 0)]), role: "assistant" };
     expect(userPictures([user(2, [pic(10, 0), pic(10, 1)]), user(1, [pic(10, 0)]), a, user(1)])).toEqual([pic(10, 0), pic(10, 1)]);
     expect(pictureKey(pic(10, 1))).toBe("10:50:1");
+  });
+});
+
+describe("agentTurnCopies (에이전트 답 복사)", () => {
+  const it_ = (role: TranscriptItem["role"], text: string | null = null): TranscriptItem => ({
+    role,
+    text,
+    truncated: false,
+    images: 0,
+    tool: role === "tool" ? { name: "Bash", summary: "ls", input: "ls", inputTruncated: false, output: "a\nb", outputTruncated: false, error: false } : null,
+    at: null,
+  });
+  const seq = (xs: TranscriptItem[]) => xs.map((item, i) => ({ id: `h${i}`, item }));
+
+  it("턴마다 마지막 에이전트 줄에 · 글 조각만 빈 줄로 · 도구는 빼고 코드 울타리는 그대로", () => {
+    const s = seq([
+      it_("user", "질문"),
+      it_("assistant", "먼저 봅니다."),
+      it_("tool"),
+      it_("assistant", "결과:\n```sh\nls\n```\n"),
+      it_("tool"),
+      it_("user", "둘째"),
+      it_("tool"),
+      it_("user", "셋째"),
+      it_("assistant", "끝"),
+    ]);
+    const m = agentTurnCopies(s, true);
+    expect([...m.entries()]).toEqual([
+      ["h4", "먼저 봅니다.\n\n결과:\n```sh\nls\n```"],
+      ["h8", "끝"],
+    ]);
+  });
+
+  it("끝 턴이 진행 중이면 그 턴은 없다", () => {
+    const s = seq([it_("user", "a"), it_("assistant", "b"), it_("user", "c"), it_("assistant", "쓰는 중")]);
+    expect([...agentTurnCopies(s, false).keys()]).toEqual(["h1"]);
+  });
+});
+
+describe("사람 말 맨 앞의 그림 자리표 떼기(2026-11-14)", () => {
+  it("그림이 모두 그려질 때만 · 맨 앞에 이어진 것만", () => {
+    expect(withoutImagePlaceholders("[Image #1] 테스트입니다.", true)).toBe("테스트입니다.");
+    expect(withoutImagePlaceholders("[Image #3] [Image #4] 붙었나?", true)).toBe("붙었나?");
+    expect(withoutImagePlaceholders("[Image #1]", true)).toBe("");
+    // 하나라도 못 그리면 그대로
+    expect(withoutImagePlaceholders("[Image #1] 테스트입니다.", false)).toBe("[Image #1] 테스트입니다.");
+    // 가운데 · 뒤 · 닮은 글은 그대로
+    expect(withoutImagePlaceholders("카드 배치 검토. [Image #1]", true)).toBe("카드 배치 검토. [Image #1]");
+    expect(withoutImagePlaceholders("[Image #1] 와 [Image #2] 비교", true)).toBe("와 [Image #2] 비교");
+    expect(withoutImagePlaceholders("[Image #x] 글", true)).toBe("[Image #x] 글");
+    expect(withoutImagePlaceholders("[Image #1]글", true)).toBe("[Image #1]글");
+    expect(withoutImagePlaceholders("[image #1] 글", true)).toBe("[image #1] 글");
   });
 });

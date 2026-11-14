@@ -582,6 +582,8 @@ export interface TranscriptItem {
   link?: TranscriptLink | null;
   /** (프로듀서 채팅) 사람 말이 앱이 깨움의 꼴이다(Rust `parse_wake_note` — 앨범 · 세대 · 범위 시작 · 글 전체 SHA). 표시용 — 앨범 기록과 맞춰야 표지 */
   wake?: TranscriptWakeTag | null;
+  /** (사이드 채팅) 사람 말 맨 끝의 파일 첨부 꼬리에서 읽은 파일 이름(Rust `parse_file_refs` — 걷혀 글에는 없다) · 없으면 칸이 없다 */
+  files?: string[];
 }
 
 /** 기록의 깨움 꼴(Rust `WakeTag`) */
@@ -607,6 +609,16 @@ export interface TranscriptPicture {
 export interface TranscriptPage {
   items: TranscriptItem[];
   cursor: number | null;
+  /**
+   * 최신 쪽(`before` 없음)에서 찾은 마지막 답의 모델 · 강도(Claude 답 줄 · Codex `turn_context` — Rust `TranscriptPage::last`). AI 타일 대화 면의
+   * 모델 키워드 **표시 전용**(터미널로 보내지 않는다 — `pane/flip-model.ts`). 이 쪽 안에서 못 찾았으면 없다.
+   */
+  last?: {
+    model: string;
+    effort?: string | null;
+    /** 그 값을 실은 줄의 파일 안 바이트 자리 — 메뉴로 덮어 둔 값 뒤에 새 답이 남았나를 이것으로만 가린다(`pane/flip-model-ack.ts`) */
+    at?: number;
+  };
 }
 
 /**

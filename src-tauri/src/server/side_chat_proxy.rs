@@ -4,7 +4,7 @@
 //! | Tauri 명령 | 서버 op | 등급 | 인자 → 답 |
 //! | --- | --- | --- | --- |
 //! | [`side_chat_open`] | 같은 이름 | 쓰기 | `chat, cli, model, effort?, mode` → 스냅숏(띄우지 않는다) |
-//! | [`side_chat_send`] | 같은 이름 | 쓰기 | `chat, epoch, text, clientId?, linkName?, images?` → `{epoch, link}`(프로세스가 없으면 서버가 여기서 띄운다) |
+//! | [`side_chat_send`] | 같은 이름 | 쓰기 | `chat, epoch, text, clientId?, linkName?, images?, files?` → `{epoch, link}`(프로세스가 없으면 서버가 여기서 띄운다 · `files` 는 판 32 — 낮은 서버면 `[server-outdated]`) |
 //! | [`side_chat_interrupt`] | 같은 이름 | 쓰기 | `chat, epoch` → bool |
 //! | [`side_chat_set_model`] | 같은 이름 | 쓰기 | `chat, epoch, model` → bool |
 //! | [`side_chat_set_effort`] | 같은 이름 | 쓰기 | `chat, epoch, effort?`(없음 = CLI 기본) → bool |
@@ -14,6 +14,7 @@
 //! | [`side_chat_list`] | 같은 이름 | 읽기 | → 서버 표의 채팅들(`viewers` = 보는 창 수 — 창 라벨 없음) |
 //! | [`side_chat_subscribe`] | (없음 — GUI 안) | — | `channel` → —(이 창의 사건 통로를 건다 · 다시 부르면 갈음) |
 //! | [`side_chat_link`] | 같은 이름 | 쓰기 | `chat, epoch?, stream?`(없음 = 연결 끊기) → `{link, changed}`(5단계 — 연결 칩 · 서버 거울의 창 타일만) |
+//! | [`side_chat_seen`] | 같은 이름 | 쓰기 | `chat, epoch, seq` → `{sent}`(완료 확인 공유 — 판 31 · 방송 `side-chat-seen` 은 몸이 id · 번호뿐이라 `client::RELAYED`) |
 //!
 //! - **창 이름은 GUI 가 채운다** — 부른 웹뷰의 창 라벨(`webview.window().label()`)이고, 프런트가 준 값은 받지 않는다. 그리고 **사람 창만**
 //!   부를 수 있다(독이 있는 창 — 집 PC 주 창 · 원격 웹 창 `remote-<기기>-<세대>` · [`human_window`] — 2026-11-01). 보조 · 떼어 낸 창은
@@ -41,7 +42,7 @@ use tauri::Manager;
 
 use super::ai_proxy::wire_message;
 use super::client;
-use super::ipc::frame::SIDE_CHAT_VIEWERS_PROTOCOL;
+use super::ipc::frame::{SIDE_CHAT_FILES_PROTOCOL, SIDE_CHAT_SEEN_PROTOCOL, SIDE_CHAT_VIEWERS_PROTOCOL};
 use super::ipc::Grade;
 use crate::errors::{with_reason, SERVER_OUTDATED};
 use crate::i18n::tr;
@@ -123,6 +124,8 @@ pub async fn side_chat_open(
 }
 
 /// **사람이 보낸 글** — 프로세스가 없으면 서버가 여기서 띄우고 준비를 기다린다(그래서 시한이 길다 — [`send_timeout`]).
+// Tauri 명령 인자는 프런트 `invoke` 의 칸 이름 그대로라 묶지 않는다(판 32 의 `files` 로 여덟 개).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn side_chat_send(
     webview: tauri::Webview,
@@ -132,16 +135,39 @@ pub async fn side_chat_send(
     client_id: Option<String>,
     link_name: Option<String>,
     images: Option<Vec<String>>,
+    files: Option<Vec<String>>,
 ) -> Result<Value, String> {
     caller(&webview)?;
+    let files = files.unwrap_or_default();
+    // 판 31 이하 서버는 `files` 를 버린다 — 사람이 붙인 파일이 소리 없이 빠지지 않게 보내지 않는다(판 32 — `frame` 의 머리말).
+    if !files.is_empty() && client::negotiated_protocol().is_some_and(|p| p < SIDE_CHAT_FILES_PROTOCOL) {
+        return Err(with_reason(
+            SERVER_OUTDATED,
+            tr!(
+                ko: "세션 서버가 이전 판이라 파일을 붙일 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
+                en: "The session server is an older version and cannot take attached files — restart it in Settings › Session server (open shell sessions will close)"
+            ),
+        ));
+    }
     client::request_timed(
         Grade::Write,
         "side_chat_send",
-        json!({ "chat": chat, "epoch": epoch, "text": text, "clientId": client_id, "linkName": link_name, "images": images.unwrap_or_default() }),
+        json!({ "chat": chat, "epoch": epoch, "text": text, "clientId": client_id, "linkName": link_name, "images": images.unwrap_or_default(), "files": files }),
         send_timeout(),
     )
     .await
     .map_err(wire_message)
+}
+
+/// **완료 확인 공유**(2026-11-13 — `server::side_chat` 머리말) — 이 창에서 사람이 그 채팅의 턴 끝(`epoch` · `seq`)을 봤다. 서버가 낡지 않았으면
+/// `side-chat-seen{chat, epoch, seq}` 로 방송해 다른 창의 끝남 · 실패 배너가 풀린다. 판 31 미만 서버면 보내지 않는다(조용히 — 예전 그대로).
+#[tauri::command]
+pub async fn side_chat_seen(webview: tauri::Webview, chat: String, epoch: u64, seq: u64) -> Result<Value, String> {
+    caller(&webview)?;
+    if client::negotiated_protocol().is_some_and(|p| p < SIDE_CHAT_SEEN_PROTOCOL) {
+        return Ok(json!({ "sent": false }));
+    }
+    call(Grade::Write, "side_chat_seen", json!({ "chat": chat, "epoch": epoch, "seq": seq })).await
 }
 
 /// 도는 턴을 끊는다(없으면 false).
@@ -354,6 +380,7 @@ mod tests {
             ("side_chat_attach", "Grade::Read"),
             ("side_chat_list", "Grade::Read"),
             ("side_chat_link", "Grade::Write"),
+            ("side_chat_seen", "Grade::Write"),
         ] {
             assert!(src.contains(&format!("pub async fn {op}(webview: tauri::Webview")) || src.contains(&format!("pub async fn {op}(\n    webview: tauri::Webview")), "{op}");
             assert!(src.contains(&format!("{grade},\n        \"{op}\"")) || src.contains(&format!("{grade}, \"{op}\"")), "{op} 등급");
@@ -371,7 +398,9 @@ mod tests {
         let client = include_str!("client.rs");
         let relayed = &client[client.find("const RELAYED").unwrap()..];
         let relayed = &relayed[..relayed.find("];").unwrap()];
-        assert!(!relayed.contains("side_chat"), "RELAYED 에 사이드 채팅 사건");
+        // 완료 확인(`side_chat::SEEN_EVENT` — 몸이 채팅 id · 세대 · 번호뿐)만 예외로 방송한다.
+        assert!(!relayed.replace("super::side_chat::SEEN_EVENT", "").contains("side_chat"), "RELAYED 에 사이드 채팅 사건");
+        assert!(relayed.contains("super::side_chat::SEEN_EVENT"));
         assert!(client.contains("n if n == super::side_chat::EVENT => super::side_chat_proxy::on_event(app, body)"));
     }
 }

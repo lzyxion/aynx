@@ -240,8 +240,10 @@ pub(crate) fn fetch_item(f: &Listed) -> FetchItem {
         };
     }
     let head = local::target(f.agent).map(head_bytes).unwrap_or(64 * 1024);
+    // 꼬리는 로컬처럼 **한 바이트 더**(앞과 한 바이트 겹친다) — 꼬리의 첫 줄은 잘린 줄로 버려지므로, 꼬리가 줄 첫머리에서
+    // 시작하면 온전한 줄 하나를 잃는다(로컬 `read_chunk` 의 2026-11-14 주석)
     let tail = if f.size > head {
-        TAIL_BYTES.min(f.size - head)
+        (TAIL_BYTES + 1).min(f.size - head + 1)
     } else {
         0
     };

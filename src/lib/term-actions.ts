@@ -58,9 +58,15 @@ export interface TermActions {
   screenSnapshot(): ScreenSnapshot;
   /**
    * 지금 **화면**(스크롤과 상관없이 맨 아래 `rows` 줄 — 스크롤백 아님)의 글자 줄 — 대화 면이 Claude 의 폴더 신뢰 질문을 알아채는 데 쓴다
-   * (`pane/claude-trust.ts`). 값은 부른 쪽의 메모리에만 머문다(로그 · 저장 · 서버로 나가지 않는다).
+   * (`pane/claude-trust.ts`). 값은 부른 쪽의 메모리에만 머문다(로그 · 저장 · 서버로 나가지 않는다). 행마다 한 줄 — 접힌 행을 잇지 않는다
+   * (`term/screen-rows.ts`).
    */
   screenLines(): string[];
+  /**
+   * 지금 **화면의 맨 아래 줄들**(스크롤과 상관없이 — `screenLines` 와 같은 자리)을 색 · 흐림째 — 대화 면 모델 메뉴가 보내기 전에 TUI 입력 줄에
+   * 치다 만 글이 남았는지 본다(`pane/flip-model.ts` 의 `tuiInputLeftover` — 흐린 안내 글 ↔ 친 글). 값은 부른 쪽 메모리에만 머문다.
+   */
+  screenBottom(rows: number): ScreenSnapshot;
   /** 버퍼 전체를 `.txt` 로 — 저장 자리는 OS 대화상자가 묻고, 결과는 앱 토스트가 말한다 */
   saveScrollback(): void;
   /**
@@ -83,7 +89,7 @@ export interface TermActions {
    */
   insertText(text: string): "ok" | "no-bracketed" | "closed";
   /**
-   * **문서 코드 블록을 셸 입력 줄에 넣는다 — 실행하지 않는다**(문서 타일의 [터미널에 넣기] — `$lib/code-to-term` 의 `codeInsertBytes`).
+   * **문서 코드 블록을 셸 입력 줄에 넣는다 — 실행하지 않는다**(문서 타일 · 사이드 채팅의 [터미널에 넣기] — `$lib/code-to-term` 의 `codeInsertBytes`).
    * [`insertText`] 와 달리 **한 줄**은 괄호 붙여넣기 모드가 꺼져 있어도 글자 그대로 넣는다(줄바꿈이 없으니 실행되지 않는다). 여러 줄인데
    * 모드가 꺼져 있으면 넣지 않고(`"multiline"`), 넣을 글이 없으면 `"empty"`, 세션이 없으면(끊김 · 재연결 중) `"closed"`.
    * 동시 입력을 타지 않는다 — 사람이 고른 이 타일 하나에만 넣는다.

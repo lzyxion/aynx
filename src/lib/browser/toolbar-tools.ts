@@ -46,6 +46,11 @@ export interface ToolbarMenuRow {
   label: string;
   /** 오른쪽 단축키 글자 (빈 값이면 없음) */
   hint?: string;
+  /**
+   * 하위 갈래로 들어가는 줄(사이드 채팅 `[+]` 의 타일 연결 · MCP — 2026-11-13) — 값이 있으면(빈 글자도) 오른쪽 끝에 흐린 글자 + `›` 가 서고
+   * → 키도 이 줄을 고른다. 갈래를 바꾸는 일은 부르는 쪽(`onpick`)이 한다
+   */
+  more?: string;
   /** `undefined` = 그냥 항목 · 참/거짓 = 켜짐 표시가 있는 항목 */
   checked?: boolean;
   /** 하나만 고르는 무리(보기 셋)인가 — 역할만 바뀐다 */

@@ -60,6 +60,22 @@ export function parseAgentSeen(v: unknown): { stream: string; seq: number } | nu
   return typeof stream === "string" && typeof seq === "number" && Number.isFinite(seq) ? { stream, seq } : null;
 }
 
+/** 사이드 채팅 완료 확인 방송(`side-chat-seen`)의 몸 → 값(모양이 틀리면 `null`) */
+export function parseSideChatSeen(v: unknown): { chat: string; epoch: number; seq: number } | null {
+  if (typeof v !== "object" || v === null) return null;
+  const { chat, epoch, seq } = v as Record<string, unknown>;
+  const num = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+  return typeof chat === "string" && num(epoch) && num(seq) ? { chat, epoch, seq } : null;
+}
+
+/**
+ * 사이드 채팅의 확인이 이 창의 지금 배너에 해당하는가 — `mine` = 이 창이 받은 마지막 턴 끝(다음 턴이 섰으면 `null` — 그 턴의 배너는 새 턴이
+ * 이미 풀었다). 세대가 다르면(다시 떴다 · CLI 를 바꿨다) 다른 턴이고, 이 창이 더 늦은 턴 끝을 받았으면 지난 턴의 확인이다(그 배너는 남는다).
+ */
+export function sideChatSeenApplies(seen: { epoch: number; seq: number }, mine: { epoch: number; seq: number } | null): boolean {
+  return mine !== null && mine.epoch === seen.epoch && seen.seq >= mine.seq;
+}
+
 /** 그 확인이 이 창의 지금 턴에 해당하는가 — 이 창이 더 새 신호를 받았으면 지난 턴의 확인이다 */
 export function seenApplies(seq: number, mine: number | null): boolean {
   return mine === null || seq >= mine;

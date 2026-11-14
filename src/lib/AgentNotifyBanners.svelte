@@ -2,10 +2,10 @@
   /**
    * **에이전트 알림 배너** — 창 위 가운데에 쌓이는 카드 (docs/log/2026-09-27-agent-banners.md).
    *
-   * 에이전트의 턴 끝 · 권한 물음만 여기 선다. 복사됨·저장됨 같은 일반 알림은 오른쪽 위 토스트
-   * 그대로다(`Toasts.svelte`). 상태·규칙은 밖에 있다 — 규칙은 순수 `$lib/agent-banners`, 상태와
+   * 에이전트의 턴 끝 · 권한 물음만 여기 선다 — AI 타일의 것과 **사이드 채팅**의 것(끝남 · 권한 · 실패 — 2026-11-13, 카드에 타일 대신
+   * 채팅 칩). 복사됨·저장됨 같은 일반 알림은 오른쪽 위 토스트 그대로다(`Toasts.svelte`). 상태·규칙은 밖에 있다 — 규칙은 순수 `$lib/agent-banners`, 상태와
    * 타이머는 `app/agent-banners.svelte.ts`. 이 컴포넌트가 하는 일은 넷뿐이다: **그리기 · 누름 받기 ·
-   * 호버 멈춤 · "그 타일로 갔다" 감지**.
+   * 호버 멈춤 · "그 타일로 갔다 · 그 채팅을 봤다" 감지**.
    *
    * `+page` 의 `.body`(탭 바·위 상태바 **아래**의 기준 상자) 안에 **한 번만** 마운트한다 — 그 상자의
    * 위 가운데에 붙으므로 탭 바 높이를 숫자로 적을 자리가 없고, 창 제어 단추와도 겹치지 않는다.
@@ -20,6 +20,12 @@
    * 예외 하나 — **보고 있는 타일에서 선 항목**(긴 턴 · `bornFocused`)은 이미 그 타일에 있으니 이 길로 풀지
    * 않는다. 그 타일 안의 키·누름(`PaneHost` → `touchAgentBanner`)이 푼다(docs/log/2026-09-27-agent-banners.md
    * "보고 있는 타일도").
+   *
+   * ## "그 채팅을 봤다"
+   *
+   * 사이드 채팅 항목은 창이 앞에 있고 **그 채팅이 보이는**(채팅 독의 채팅 갈래 · 폰 덮개 — `app/side-chat-live` 의 `shownSideChat`,
+   * 알릴지 정하는 `chatShown` 과 같은 사실) 순간 풀린다. 타일과 같은 결이다 — 창이 뒤에 있던 동안 선 항목은 창이 앞에 서는 순간
+   * 그 채팅이 보이고 있으면 곧바로 풀린다. 채팅이 지워지면(어느 창에서든 — 목록에서 빠지면) 그 항목은 저절로 해결로 접는다.
    *
    * ## 층
    *
@@ -36,6 +42,7 @@
   import {
     agentBannerItems,
     agentBannerState,
+    dropSideChatBanner,
     expandAgentBanner,
     hideAgentBanner,
     hideAllAgentBanners,
@@ -44,7 +51,10 @@
     focusMovedTo,
     releaseAgentBanners,
     resolveVisited,
+    resolveVisitedSideChat,
   } from "$lib/app/agent-banners.svelte.js";
+  import { shownSideChat } from "$lib/app/side-chat-live.svelte.js";
+  import { sideChats } from "$lib/app/side-chats.svelte.js";
   import { focusedPane } from "$lib/app/tabs.svelte.js";
   import { windowFocused } from "$lib/app/os-notify";
   import { cubicIn, cubicOut } from "svelte/easing";
@@ -93,6 +103,21 @@
     if (pane !== null) untrack(() => focusMovedTo(pane));
     if (!winFocused || pane === null) return;
     untrack(() => resolveVisited(pane));
+  });
+
+  /** 그 채팅을 봤다 → 해결 (머리말). 항목이 늘 때도 다시 본다(창이 뒤에 있던 동안 선 것) */
+  $effect(() => {
+    const chat = shownSideChat();
+    void agentBannerItems().length;
+    if (!winFocused || chat === null) return;
+    untrack(() => resolveVisitedSideChat(chat));
+  });
+
+  /** 지워진 채팅의 항목 — 저절로 해결(타일의 `dropAgentBanner` 와 같은 결) */
+  $effect(() => {
+    const ids = new Set(sideChats().map((c) => c.id));
+    const gone = agentBannerItems().flatMap((b) => (b.sideChatId !== undefined && !ids.has(b.sideChatId) ? [b.sideChatId] : []));
+    if (gone.length > 0) untrack(() => gone.forEach(dropSideChatBanner));
   });
 
   // ---------------------------------------------------------------------------
@@ -164,9 +189,26 @@
     });
   }
 
-  const message = (item: BannerItem) => t(item.kind === "permission" ? "app.agent.banner.permission" : "app.agent.banner.stop");
+  /** 둘째 줄 — 채팅의 끝남은 "답변이 끝났습니다"(타일은 "작업이 끝났습니다") · 실패는 채팅에만 */
+  const message = (item: BannerItem) =>
+    t(
+      item.kind === "permission"
+        ? "app.agent.banner.permission"
+        : item.kind === "failed"
+          ? "app.agent.banner.failed"
+          : item.sideChatId !== undefined
+            ? "app.agent.banner.chat.stop"
+            : "app.agent.banner.stop",
+    );
   const pillText = (item: BannerItem) =>
-    t(item.kind === "permission" ? "app.agent.banner.pill.permission" : "app.agent.banner.pill.stop", { name: item.label });
+    t(
+      item.kind === "permission"
+        ? "app.agent.banner.pill.permission"
+        : item.kind === "failed"
+          ? "app.agent.banner.pill.failed"
+          : "app.agent.banner.pill.stop",
+      { name: item.label },
+    );
 
   /** [보기]·[확인하러 가기] 툴팁 — 같은 일을 하는 단축키(`go-to-alert`). 안 걸었으면 툴팁 없음 */
   const goKeyTip = $derived.by(() => {
@@ -193,6 +235,7 @@
         class="slot"
         data-agent-banner={item.id}
         data-pane={item.paneId}
+        data-side-chat={item.sideChatId}
         data-kind={item.kind}
         data-collapsed={item.collapsed}
         in:bannerIn|global
@@ -238,6 +281,19 @@
             <span class="body">
               <span class="line1">
                 <strong class="title">{bannerTitle(item, t("app.agent.name.generic"))}</strong>
+                {#if item.sideChatId !== undefined}
+                  <!-- 채팅 칩 — 타일이 아니라 사이드 채팅에서 온 알림이다. 좁은 기둥에서는 아이콘만(이름은 title · aria-label) -->
+                  <span
+                    class="where"
+                    data-banner-chat-chip
+                    role="img"
+                    title={t("app.agent.banner.chat")}
+                    aria-label={t("app.agent.banner.chat")}
+                    ><UiIcon name="chat" size={11} /><span class="where-txt"
+                      >{t("app.agent.banner.chat")}</span
+                    ></span
+                  >
+                {/if}
                 <span class="when">{relativeTime(item.at, now, t)}</span>
               </span>
               <span class="line2">{message(item)}</span>
@@ -307,6 +363,8 @@
     align-items: center;
     gap: var(--space-2);
     width: min(430px, calc(100% - 32px));
+    /* 폭을 재는 컨테이너 — 좁으면(폰) 채팅 칩이 글자를 접는다(아래 `@container agent-banners`). 폭은 위 식이 정하므로 내용이 폭을 바꾸지 않는다 */
+    container: agent-banners / inline-size;
     translate: -50% 0;
     font-family: var(--font-ui);
     pointer-events: none;
@@ -397,6 +455,10 @@
   .status.permission {
     background: var(--accent);
   }
+  /* 사이드 채팅의 답변 실패 — 모양은 끝남과 같고 점만 오류색 */
+  .status.failed {
+    background: var(--err);
+  }
 
   .body {
     display: flex;
@@ -413,8 +475,9 @@
     min-width: 0;
   }
 
+  /* 제목은 내용만큼(넘치면 말줄임) — 채팅 칩이 제목 바로 옆에 붙고, 시각은 오른쪽 끝(`margin-left: auto`) */
   .title {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     font-size: var(--t-sm);
@@ -423,8 +486,37 @@
     text-overflow: ellipsis;
   }
 
+  /* 채팅 칩 — 제목 옆의 작은 출처 표지(타일 알림에는 없다) */
+  .where {
+    display: inline-flex;
+    flex: none;
+    gap: 3px;
+    align-items: center;
+    align-self: center;
+    height: 18px;
+    padding: 0 6px;
+    font-size: var(--t-xs);
+    color: var(--fg-2);
+    background: var(--surface-hover);
+    border-radius: 999px;
+  }
+
+  /* 좁은 기둥(폰 — 한 장 430 이 다 못 서는 폭) — 칩은 아이콘만. 제목(채팅 이름)이 칩 글자에 밀려 잘리지 않게 */
+  @container agent-banners (max-width: 400px) {
+    .where-txt {
+      display: none;
+    }
+
+    .where {
+      justify-content: center;
+      width: 18px;
+      padding: 0;
+    }
+  }
+
   .when {
     flex: none;
+    margin-left: auto;
     font-size: var(--t-xs);
     color: var(--fg-3);
   }

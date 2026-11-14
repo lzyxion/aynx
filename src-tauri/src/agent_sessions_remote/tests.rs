@@ -127,13 +127,44 @@ fn fetch_item_matches_the_local_ranges() {
     let mid = fetch_item(&f("claude", 64 * 1024 + 10));
     assert_eq!(
         (mid.head, mid.tail),
-        (64 * 1024, 10),
-        "꼬리는 앞과 겹치지 않는다"
+        (64 * 1024, 11),
+        "꼬리는 앞과 한 바이트만 겹친다(꼬리 첫 줄이 줄 첫머리여도 버려지지 않게)"
     );
     let big = fetch_item(&f("codex", 10 * 1024 * 1024));
-    assert_eq!((big.head, big.tail), (128 * 1024, 64 * 1024));
+    assert_eq!((big.head, big.tail), (128 * 1024, 64 * 1024 + 1));
     let idx = fetch_item(&f("index", 10));
     assert_eq!((idx.head, idx.tail), (0, INDEX_TAIL_BYTES));
+}
+
+/// 꼬리가 줄 첫머리에서 시작해도(앞이 꼭 줄 끝에서 끝나는 파일) 그 줄을 잃지 않는다 — 한 바이트 겹침(로컬 `read_chunk` 와 같은 까닭 ·
+/// 2026-11-14 Codex 0.168 한 턴 대화의 모양, 값은 지어냄).
+#[test]
+fn a_tail_starting_on_a_line_start_keeps_that_line() {
+    let meta = json!({"type": "session_meta", "payload": {"id": X1, "cwd": "/w", "source": "cli", "thread_source": "user",
+                      "timestamp": "2026-11-14T00:00:00.000Z"}});
+    let user = json!({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]}});
+    let turn = json!({"type": "turn_context", "payload": {"cwd": "/w", "model": "gpt-test", "effort": "high"}});
+    let mut body = lines(&[meta, user]);
+    // 앞(128 KB)이 꼭 줄 끝에서 끝나게 채우는 줄
+    let shell = json!({"type": "world_state", "payload": {"blob": ""}}).to_string();
+    let fill = 128 * 1024 - body.len() - shell.len() - 1;
+    body.extend(lines(&[json!({"type": "world_state", "payload": {"blob": "x".repeat(fill)}})]));
+    assert_eq!(body.len(), 128 * 1024);
+    body.extend(lines(&[turn]));
+    let f = Listed {
+        agent: "codex",
+        size: body.len() as u64,
+        mtime_ms: 1,
+        path: format!("/r/x/2026/11/14/rollout-a-{X1}.jsonl"),
+    };
+    let it = fetch_item(&f);
+    let got = Fetched {
+        head: Some(body[..it.head as usize].to_vec()),
+        tail: Some(body[body.len() - it.tail as usize..].to_vec()),
+    };
+    // 턴이 없으면(`turn_context` 를 잃으면) 대화가 아니라 `None`
+    let (p, _) = parse_fetched(&f, got);
+    assert_eq!(p.expect("turn_context 를 잃지 않는다").id, X1);
 }
 
 #[test]

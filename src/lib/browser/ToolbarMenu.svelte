@@ -15,6 +15,9 @@
    * `runOnMenu` 가 든다 (docs/conventions.md "메뉴를 닫는 코드").
    *
    * 다룬 키는 전파를 끊는다 — 창 전역의 파일 타일 키(`file-keys.ts`)가 같은 ↑↓ 로 목록 선택을 움직이지 않게.
+   *
+   * 하위 갈래(2026-11-13 — 사이드 채팅 `[+]`): `more` 가 있는 줄은 오른쪽 끝에 흐린 글자 + `›` 이고 → 로도 고른다. ← 는 `onback` 을 부른다
+   * (부르는 쪽이 줄을 바꾼다 — 갈래마다 이 메뉴를 다시 세우면 포커스가 새 줄로 간다). `touch`(폰)는 줄 높이 44px.
    */
 
   let {
@@ -27,6 +30,8 @@
     onpick,
     /** 닫아 달라 — `true` 면 단추로 포커스를 돌려준다 */
     onclose,
+    onback,
+    touch = false,
   }: {
     label: string;
     rows: readonly ToolbarMenuRow[];
@@ -34,6 +39,10 @@
     align: "left" | "right";
     onpick: (key: string) => void;
     onclose: (back: boolean) => void;
+    /** ← — 하위 갈래에서 뿌리로(없으면 ← 는 아무 일도 없다) */
+    onback?: () => void;
+    /** 터치 화면(폰) — 줄 44px */
+    touch?: boolean;
   } = $props();
 
   /** 화면 가장자리와 띄울 틈 */
@@ -94,6 +103,20 @@
       onclose(false); // 포커스는 Tab 이 옮긴다 — 여기서 또 옮기면 서로 낚아챈다
       return;
     }
+    if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") {
+      const at = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null;
+      const row = at ? rows.find((r) => r.key === at.dataset.menuKey) : undefined;
+      if (ev.key === "ArrowRight" && row?.more !== undefined && !row.disabled) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onpick(row.key);
+      } else if (ev.key === "ArrowLeft" && onback) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onback();
+      }
+      return;
+    }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) {
       // 맨 글자는 메뉴 안에서 끝낸다 — 목록의 "글자 쳐서 고르기" 가 메뉴 뒤에서 선택을 옮기지 않게.
       // 수식 조합(`Ctrl+1/2/3` · `Ctrl+I`)과 기능 키(`F11`)는 그대로 올려 보낸다 — 열린 채로도 먹는다.
@@ -121,6 +144,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="tb-menu menu-surface"
+  class:touch
   role="menu"
   aria-label={label}
   tabindex="-1"
@@ -137,6 +161,7 @@
       class:danger={row.danger}
       role={role(row)}
       aria-checked={row.checked}
+      aria-haspopup={row.more !== undefined ? "menu" : undefined}
       data-menu-key={row.key}
       disabled={row.disabled}
       title={row.title}
@@ -150,9 +175,14 @@
       {/if}
       <span class="tb-label">{row.label}</span>
       {#if row.hint}<kbd class="menu-kbd">{row.hint}</kbd>{/if}
-      <span class="tb-check" aria-hidden="true"
-        >{#if row.checked}<UiIcon name="check" size={14} />{/if}</span
-      >
+      {#if row.more !== undefined}
+        {#if row.more}<span class="menu-kbd tb-more">{row.more}</span>{/if}
+        <span class="tb-check" aria-hidden="true"><UiIcon name="chevron" size={14} /></span>
+      {:else}
+        <span class="tb-check" aria-hidden="true"
+          >{#if row.checked}<UiIcon name="check" size={14} />{/if}</span
+        >
+      {/if}
     </button>
   {/each}
 </div>
@@ -176,6 +206,20 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* 하위 갈래 줄의 오른쪽 흐린 글자(지금 연결 이름 · MCP 수) — 길면 말줄임 */
+  .tb-more {
+    min-width: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 폰 — 손가락 크기(44px) */
+  .tb-menu.touch .tb-row {
+    height: 44px;
   }
 
   /* ✓ 칸 — 비어 있어도 폭을 차지한다(켜진 줄과 안 켜진 줄의 단축키가 같은 x 에 선다) */

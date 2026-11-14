@@ -75,6 +75,7 @@
   } from "../model/producer";
   import { artistOf } from "../artists";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
+  import { modelLabel, orderModels } from "$lib/model-order";
   import { producerClis, rememberProducer } from "$lib/app/orch-start.svelte.js";
   import ArtistAvatar from "./ArtistAvatar.svelte";
   import EqBars from "../EqBars.svelte";
@@ -225,7 +226,8 @@
   });
   const preCli = $derived((target.cli === "codex" ? "codex" : "claude") as RoleCli);
   // 직전 프로듀서가 제안 밖 모델(Codex 의 계정 모델 등)이었으면 그 칩도 보인다
-  const preModels = $derived([...new Set(["", ...MODEL_SUGGESTIONS[preCli], target.model])]);
+  // 순서 = "기본"(빈 값) 고정 맨 앞 → 고정 순서 별칭 → 버전 → 등급(`orderModels` — 목록에 없는 지금 값은 더해서 그 자리에)
+  const preModels = $derived(["", ...orderModels([...new Set([...MODEL_SUGGESTIONS[preCli], target.model])].filter(Boolean))]);
   const preEfforts = $derived(EFFORTS[preCli]);
 
   function pickPre(p: Partial<{ cli: RoleCli; model: string; effort: string }>): void {
@@ -391,7 +393,12 @@
 
   let retuneOpen = $state<"model" | "effort" | null>(null);
   const tuneCli = $derived((target.cli === "codex" ? "codex" : "claude") as RoleCli);
-  const tuneModels = $derived([...new Set(["", ...MODEL_SUGGESTIONS[tuneCli], ...(st?.ready?.models ?? []), st?.model ?? ""])]);
+  const tuneModels = $derived([
+    "",
+    ...orderModels(
+      [...new Set([...MODEL_SUGGESTIONS[tuneCli], ...(st?.ready?.models ?? []), st?.model ?? ""])].filter(Boolean),
+    ),
+  ]);
   const tuneEfforts = $derived(EFFORTS[tuneCli]);
   const canRetune = $derived(!!live && !live.readOnly && live.gone === null && !prelaunch);
 
@@ -571,7 +578,7 @@
         <div class="pre-row" role="radiogroup" aria-label={t("orch.producer.chip.model")}>
           {#each tuneModels as m (m)}
             <button type="button" class="pre-chip" role="radio" aria-checked={(st?.model ?? target.model) === m} data-producer-tune-model={m}
-              onclick={() => void retune({ model: m })}>{m || t("orch.producer.model.default")}</button>
+              onclick={() => void retune({ model: m })}>{m ? modelLabel(m) : t("orch.producer.model.default")}</button>
           {/each}
         </div>
       {:else}
@@ -630,7 +637,7 @@
         <span class="pre-label">{t("orch.producer.draft.model")}</span>
         {#each preModels as m (m)}
           <button type="button" class="pre-chip" role="radio" aria-checked={target.model === m} data-producer-pre-model={m}
-            onclick={() => pickPre({ model: m })}>{m || t("orch.producer.model.default")}</button>
+            onclick={() => pickPre({ model: m })}>{m ? modelLabel(m) : t("orch.producer.model.default")}</button>
         {/each}
       </div>
       {#if preEfforts.length > 1}

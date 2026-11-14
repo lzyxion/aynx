@@ -674,6 +674,10 @@ pub struct TranscriptItem {
     /// 글에서는 걷혔다(사람이 친 글만 남는다).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub brief: bool,
+    /// 사람 말 맨 끝의 **파일 첨부 꼬리**(사이드 채팅 — `side_chat::event::parse_file_refs` · 판 32)에서 읽은 파일 이름. 글에서는 걷혔다
+    /// (화면은 보낼 때와 같은 이름 칩으로 그린다).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
 }
 
 /// 한 쪽 — 오래된 것부터. `cursor` 가 있으면 더 오래된 것이 있다(다음 호출의 `before`).
@@ -682,6 +686,41 @@ pub struct TranscriptItem {
 pub struct TranscriptPage {
     pub items: Vec<TranscriptItem>,
     pub cursor: Option<u64>,
+    /// **최신 쪽**(`before` 없음)에서 거꾸로 읽다 처음 만난 모델 · 강도 — AI 타일 대화 면 입력 칸의 모델 키워드(2026-11-13).
+    /// 이 쪽이 훑은 줄 안에서만 찾는다(없으면 `None` — 화면은 앞서 받은 값을 쥔다). **표시 전용**: 화면은 이 글자를 터미널에 보내지
+    /// 않는다(보내는 글은 고정 허용 목록의 낱말뿐 — `pane/flip-model.ts`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last: Option<LastModel>,
+}
+
+/// 마지막 답의 모델 · 강도. Claude = `type:"assistant"` 줄의 `message.model` · 같은 줄 최상위 `effort`, Codex = `type:"turn_context"` 의
+/// `payload.model` · `payload.effort` (2026-11-13 사용자 PC 실측).
+#[derive(Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+pub struct LastModel {
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// 그 값을 실은 줄의 **파일 안 바이트 자리**(줄 첫머리 — 원격 창도 파일 기준). 화면이 "메뉴로 덮어 둔 값 뒤에 새 답(값을 실은 줄)이
+    /// 남았나" 를 이것으로만 가린다(2026-11-14 실기 — 새 턴의 사람 말 · 도구 항목으로 걷으면 옛 값이 돌아왔다). 덧붙이기만 하는 파일이라 줄마다 다르다.
+    pub at: u64,
+}
+
+/// 모델 · 강도 이름의 최대 글자 수(표시용 — 넘으면 버린다).
+const MODEL_MAX_CHARS: usize = 80;
+
+/// 줄 하나의 모델 · 강도 — 두 CLI 의 모양이 겹치지 않아 줄 파서와 따로 한 함수다. Claude 의 `<synthetic>` 같은 꺾쇠 이름 · 부속
+/// 에이전트(`isSidechain`) 줄은 뺀다(기록 보기와 같은 결).
+pub(crate) fn line_model(v: &Value, at: u64) -> Option<LastModel> {
+    let short = |s: &str| (s.chars().count() <= MODEL_MAX_CHARS).then(|| s.to_owned());
+    let (model, effort) = match v["type"].as_str()? {
+        "assistant" if v["isSidechain"] != true => (&v["message"]["model"], &v["effort"]),
+        "turn_context" => (&v["payload"]["model"], &v["payload"]["effort"]),
+        _ => return None,
+    };
+    let model = crate::agent_sessions::str_of(model).filter(|m| !m.starts_with('<')).and_then(short)?;
+    let effort = crate::agent_sessions::str_of(effort).and_then(short);
+    Some(LastModel { model, effort, at })
 }
 
 // ---------------------------------------------------------------------------
@@ -775,6 +814,7 @@ fn read_page_from<R: Read + Seek>(
             return Ok(TranscriptPage {
                 items: Vec::new(),
                 cursor: None,
+                last: None,
             })
         }
         Some(b) => {
@@ -804,6 +844,9 @@ fn read_page_from<R: Read + Seek>(
     // 먹은 가장 오래된 줄의 시작 — 다음 쪽의 커서
     let mut cursor = end;
     let mut more = false;
+    // 최신 쪽이면 마지막 답의 모델 · 강도(`TranscriptPage::last`) — 최신부터 읽으니 처음 만난 것이 마지막이다
+    let latest = before.is_none();
+    let mut last: Option<LastModel> = None;
     while let Some((off, raw)) = rev.next_line().map_err(io)? {
         if raw.iter().all(u8::is_ascii_whitespace) {
             cursor = off;
@@ -814,6 +857,9 @@ fn read_page_from<R: Read + Seek>(
             cursor = off;
             continue;
         };
+        if latest && last.is_none() {
+            last = line_model(&v, off);
+        }
         let evs = parse(&v);
         let has_content = !evs.is_empty();
         let full = shown >= limit || (bytes >= PAGE_MAX_BYTES && shown > 0);
@@ -863,11 +909,94 @@ fn read_page_from<R: Read + Seek>(
     Ok(TranscriptPage {
         items,
         cursor: (more && cursor > 0).then_some(cursor),
+        last,
     })
+}
+
+/// 경로 맞대기용 꼴 — 구분자 `/` · 끝 `/` 없음 · Windows 는 소문자(대소문자를 가리지 않는 파일 시스템). **순수**.
+fn norm_path(p: &str) -> String {
+    let s = p.strip_prefix(r"\\?\").unwrap_or(p).replace('\\', "/");
+    let s = s.trim_end_matches('/');
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s.to_string()
+    }
+}
+
+/// **AI 타일 대화 면의 첨부 경로 걷기**(2026-11-14) — 대화 면은 첨부를 글 **앞에** 경로 하나에 괄호 붙여넣기 하나씩 넣는다(프런트
+/// `tileAttachPastes` = `shellQuote(경로) + " "` — Windows 경로는 `"…"`, POSIX 는 `'…'` 또는 그대로). 그 꼴의 낱말이 맨 앞부터 이어지고 그 경로가
+/// 앱 첨부 자리(`root` — [`norm_path`] 꼴) 바로 아래 `<64자 hex>/<이름>` 일 때만 (이름들, 남은 글). 사이의 그림 자리표 `[Image #N]` 는
+/// 글에 남긴다(그림 경로는 CLI 가 이미 자리표 + 그림 블록으로 바꿨다 — 기록이 `pictures` 로 그린다). 하나도 없으면 `None` — 다른 폴더 ·
+/// 상대 경로 · 글 가운데의 경로는 그대로 글이다. **순수**.
+fn strip_attach_paths(text: &str, root: &str) -> Option<(Vec<String>, String)> {
+    let mut names = Vec::new();
+    // 그림 자리표(`[Image #N] ` — 두 CLI 가 그림 경로 붙여넣기를 바꾼 것)는 남기고 넘어간다(칩 차례가 그림 → 파일일 수 있다)
+    let mut kept = String::new();
+    let mut rest = text;
+    loop {
+        if let Some(after) = image_placeholder(rest) {
+            kept.push_str(&rest[..rest.len() - after.len()]);
+            rest = after;
+            continue;
+        }
+        let (token, after) = match rest.as_bytes().first() {
+            Some(q @ (b'"' | b'\'')) => {
+                let q = *q as char;
+                let Some(end) = rest[1..].find(q).map(|i| i + 1) else { break };
+                (&rest[1..end], &rest[end + 1..])
+            }
+            Some(_) => {
+                let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+                (&rest[..end], &rest[end..])
+            }
+            None => break,
+        };
+        let Some(name) = attach_name(token, root) else { break };
+        // 낱말 뒤는 빈칸 하나(붙여넣기의 꼴) 또는 글 끝
+        let next = match after.strip_prefix(' ') {
+            Some(n) => n,
+            None if after.is_empty() => after,
+            None => break,
+        };
+        names.push(name);
+        rest = next;
+    }
+    (!names.is_empty()).then(|| (names, kept + rest))
+}
+
+/// 맨 앞의 `[Image #<수>]` + 빈칸 하나(또는 글 끝) — 그 뒤 글.
+fn image_placeholder(s: &str) -> Option<&str> {
+    let body = s.strip_prefix("[Image #")?;
+    let digits = body.bytes().take_while(u8::is_ascii_digit).count();
+    let after = body[digits..].strip_prefix(']').filter(|_| digits > 0)?;
+    after.strip_prefix(' ').or((after.is_empty()).then_some(after))
+}
+
+/// 그림 이름인가(png · jpg · jpeg · gif · webp — 사이드 채팅 그림 판정과 같은 표).
+fn is_image_name(name: &str) -> bool {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp")
+}
+
+/// 경로가 앱 첨부 자리 바로 아래 `<64자 소문자 hex>/<이름>` 이면 그 이름.
+fn attach_name(path: &str, root: &str) -> Option<String> {
+    if path.is_empty() || path.chars().any(char::is_control) {
+        return None;
+    }
+    let n = norm_path(path);
+    let tail = n.strip_prefix(root)?.strip_prefix('/')?;
+    let (dir, name) = tail.split_once('/')?;
+    let hex = dir.len() == 64 && dir.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    // 이름은 원래 글자에서(소문자로 바꾸기 전)
+    let raw = path.rsplit(['\\', '/']).next()?;
+    (hex && !name.is_empty() && !name.contains('/')).then(|| raw.to_string())
 }
 
 /// 오래된 것부터 놓인 줄들 → 항목들. 결과는 같은 id 의 호출에 붙인다.
 fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
+    // 앱 첨부 자리(서버가 아는 실제 경로 — 화면이 준 것이 아니다) · 맞대기용으로 고른 꼴
+    let attach_root = crate::agent_attachments::attachments_root().ok().map(|p| norm_path(&p.to_string_lossy()));
     let mut items: Vec<TranscriptItem> = Vec::new();
     // 호출 id → 항목 번호
     let mut calls: HashMap<String, usize> = HashMap::new();
@@ -883,6 +1012,21 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                     let briefed = (who == Speaker::User).then(|| crate::side_chat::event::parse_producer_brief(&text).map(str::to_owned)).flatten();
                     let brief = briefed.is_some();
                     let text = briefed.unwrap_or(text);
+                    // 맨 끝의 파일 첨부 꼬리도 걷어 칸으로(사이드 채팅 — 꼴 그대로일 때만). 머리글보다 먼저 — 머리글만 있는 글의 `] ` 가 꼬리 앞에 남는다
+                    let refs = (who == Speaker::User).then(|| crate::side_chat::event::parse_file_refs(&text).map(|(n, b)| (n, b.to_owned()))).flatten();
+                    let (mut files, text) = match refs {
+                        Some((names, body)) => (names, body),
+                        None => (Vec::new(), text),
+                    };
+                    // AI 타일 대화 면이 맨 앞에 붙여 넣은 **앱 첨부 자리의 경로**(2026-11-14 — `tileAttachPastes`)도 걷어 칸으로. 그림 말이면 그림
+                    // 경로는 칩 없이 걷기만(기록의 그림 블록이 `pictures` 로 그린다)
+                    let text = match (who == Speaker::User).then(|| attach_root.as_deref().and_then(|r| strip_attach_paths(&text, r))).flatten() {
+                        Some((names, body)) => {
+                            files.extend(names.into_iter().filter(|n| images == 0 || !is_image_name(n)));
+                            body
+                        }
+                        None => text,
+                    };
                     let note = (who == Speaker::User).then(|| crate::side_chat::event::parse_link_note(&text)).flatten();
                     let (link, text) = match note {
                         Some((link, rest)) => (Some(link), rest.to_owned()),
@@ -904,6 +1048,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         link,
                         wake,
                         brief,
+                        files,
                     });
                 }
                 Ev::ToolUse { id, name, input } => {
@@ -932,6 +1077,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         link: None,
                         wake: None,
                         brief: false,
+                        files: Vec::new(),
                     });
                 }
                 Ev::ToolResult { id, output, error, denied } => {
@@ -967,6 +1113,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                             link: None,
                             wake: None,
                             brief: false,
+                            files: Vec::new(),
                         }),
                     }
                 }
@@ -981,6 +1128,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                     link: None,
                     wake: None,
                     brief: false,
+                    files: Vec::new(),
                 }),
                 Ev::Declined => {
                     // 끝의 도구 줄 묶음에서 아직 결과가 없는 가장 가까운 호출(결과 줄은 이 표식보다 뒤에 온다)
@@ -1185,7 +1333,10 @@ pub(crate) fn page_of_file(
 ) -> Result<TranscriptPage, String> {
     let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
     let size = f.metadata().map_err(io)?.len();
-    read_page_from(f, size, before, limit.unwrap_or(LIMIT_DEFAULT), parse)
+    let mut page = read_page_from(f, size, before, limit.unwrap_or(LIMIT_DEFAULT), parse)?;
+    // 모델 · 강도는 AI 타일 대화 면의 표시 전용 — 오케스트레이션(MCP `read_worker`)으로는 싣지 않는다
+    page.last = None;
+    Ok(page)
 }
 
 fn transcript_in(

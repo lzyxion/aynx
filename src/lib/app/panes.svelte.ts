@@ -7,7 +7,9 @@ import {
   effectiveDefaultShellId,
   borrowsSession,
   planDocOpen,
+  findNewDocPane,
   findPane,
+  listPanes,
   listAiClis,
   listShells,
   newAiPane,
@@ -32,7 +34,7 @@ import { rememberFileUi, rememberFileView, withLastFileUi } from "$lib/app/file-
 import { reportOscTitle } from "$lib/app/titles.svelte.js";
 import { paneCwd, wslCwdToWindows } from "$lib/shell-integration";
 import { startDirFor } from "$lib/start-dir";
-import { localBackend, remoteBackend } from "$lib/fs-backend";
+import { localBackend, remoteBackend, type FsBackend } from "$lib/fs-backend";
 import { joinHome } from "$lib/path-links";
 import { resolveDocLink } from "$lib/doc-links";
 import { DOC_SPLIT_DEFAULT, clampDocSplit } from "$lib/doc-edit-preview";
@@ -40,6 +42,7 @@ import { DOC_ZOOM_DEFAULT, clampDocZoom } from "$lib/doc-zoom";
 import { isTextLike } from "$lib/doc-lang";
 import { setDocAnchor, setDocLine } from "$lib/app/doc-anchors.svelte.js";
 import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { isRemote } from "$lib/app/window.svelte.js";
 import {
   activeTab,
   adoptPane,
@@ -200,6 +203,16 @@ export async function openShellInNewTab(shell?: string): Promise<void> {
   openInNewTab(withCwd(newLocalPane(shell), await startDirHere("shell", NO_FOCUS)));
 }
 
+/**
+ * 이 창의 **기본 셸** 하나만 든 새 탭([`openDefaultShell`] 과 같은 셸) — 사이드 채팅 코드 블록 [터미널에 넣기]의 "새 탭에 터미널 열기"
+ * (`app/code-to-term` — 옆에 설 타일이 없다). 돌려주는 것은 연 명세의 id(원격 창은 집 PC 가 새 id 로 세운다 — 그쪽이 안다).
+ */
+export async function openDefaultShellInNewTab(): Promise<string> {
+  const pane = withCwd(newLocalPane((await defaultShellId()) ?? undefined), await startDirHere("shell", NO_FOCUS));
+  openInNewTab(pane);
+  return pane.id;
+}
+
 /** AI CLI 하나만 든 새 탭 — 연 뒤 설치 여부만 안내([`openAiPaneHere`] 와 같은 규칙) */
 export async function openAiInNewTab(cli: { command: string; id: string }): Promise<void> {
   noteShellMenuAi(cli.id);
@@ -323,7 +336,7 @@ export async function openAiPaneBeside(
 }
 
 /**
- * **그 타일 오른쪽에** 이 창의 기본 셸 타일을 연다 — 문서 코드 블록 [터미널에 넣기]의 "새 터미널 열기"(`app/code-to-term`).
+ * **그 타일 오른쪽에** 이 창의 기본 셸 타일을 연다 — 문서 타일 · AI 타일 대화 면 코드 블록 [터미널에 넣기]의 "새 터미널 열기"(`app/code-to-term`).
  * [`openDefaultShell`] 과 같은 셸 · 같은 시작 폴더 규칙인데 자리만 사람이 누른 타일 옆(좌우 분할)이다([`openAiPaneBeside`] 와 같은 결).
  * 돌려주는 것은 새 타일의 id — 탭이나 타일이 사라졌으면 `null`.
  */
@@ -654,7 +667,8 @@ export function openDocFrom(tabId: string, browserPaneId: string, path: string):
  * 경로는 이미 풀려 온다(`path-links.ts` — 셸 폴더 기준 · WSL 옮김). `home` 갈래면 여기서 그 백엔드의 홈을 물어 잇는다.
  * 여는 것은 **파일이 확인될 때만**이다(`stat`): 터미널 글자는 무엇이든 될 수 있어서, 없는 파일 · 폴더면 토스트 한 줄로
  * 물러선다(빈 문서 타일을 세워 오류를 보이는 것보다 덜 시끄럽다). 로컬 셸은 이 컴퓨터, ssh 셸은 그 세션(SFTP)으로 본다.
- * `line`(꼬리 `:12` — 1 기준)이 있으면 연(또는 포커스만 옮긴) 타일에 한 번짜리 "이 줄로" 를 건다(`doc-anchors` — 저장되지 않는다).
+ * `line`(꼬리 `:12` — 1 기준)이 있으면 연(또는 포커스만 옮긴) 타일에 한 번짜리 "이 줄로" 를 건다(`doc-anchors` — 저장되지 않는다 ·
+ * 원격 창은 [`setLineOnOpened`]).
  */
 export async function openPathFromTerminal(
   tabId: string,
@@ -666,30 +680,113 @@ export async function openPathFromTerminal(
   const pane = tab ? findPane(tab.root, paneId) : null;
   if (!pane || (pane.kind !== "local" && pane.kind !== "ssh")) return;
   const remote = pane.kind === "ssh";
-  const backend = remote ? remoteBackend(sessionOf(pane.id)) : localBackend();
+  const path = await openableFile(remote ? remoteBackend(sessionOf(pane.id)) : localBackend(), target);
+  if (path === null) return;
+  const source = remote ? { paneId: pane.id, alias: pane.alias ?? "" } : undefined;
+  const before = paneIdsNow();
+  const opened = openDoc({ tabId, nearPaneId: paneId, path, source });
+  if (opened !== null && line !== undefined) setLineOnOpened({ opened, before, path, source, line });
+}
+
+/** 원격 창이 연 문서 타일이 거울에 서기를 기다리는 시한 — 넘기면 조용히 그만둔다(파일은 이미 열렸다) */
+const REMOTE_DOC_WAIT_MS = 8_000;
+/** 그동안 거울을 살피는 간격 */
+const REMOTE_DOC_POLL_MS = 100;
+
+/** 이 창의 모든 탭에 지금 있는 타일 id — 원격 창이 요청 전에 적어 두는 것([`setLineOnOpened`]) */
+function paneIdsNow(): Set<string> {
+  return new Set(residentWindowTabs().flatMap((x) => listPanes(x.root).map((p) => p.id)));
+}
+
+/**
+ * 연(또는 포커스만 옮긴) 문서 타일에 한 번짜리 "이 줄로" 를 건다 — 터미널 · AI 타일 대화 면([`openPathFromTerminal`])과 사이드
+ * 채팅([`openPathFromChat`])의 공통 끝.
+ *
+ * 집 PC 창은 `opened`(연 명세의 id)에 바로 건다. **원격 창(원격 웹 · 폰)**은 옆에 열기 · 미리 보기 갈아 끼우기 · 새 탭이 모두 집 PC 에
+ * 요청만 보내고 집 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 그 id 는 거울에 서지 않는다 — 요청 전에 적어 둔 타일
+ * (`before`) 뒤 **새로 나타난 같은 파일의 문서 타일**([`findNewDocPane`] — 원격 SSH 문서는 같은 터미널 · 별칭까지)을 짧게 살펴 거기 건다.
+ * 이미 열린 같은 파일이라 포커스만 옮겼으면 `opened` 가 거울의 실제 id(`before` 에 있다)라 원격도 바로 건다. 거는 때가 타일이 거울에 선
+ * 직후여도 된다 — 문서가 글을 읽은 뒤 그 값을 보고 한 번 스크롤한다(`DocView` 의 `line` 효과). [`REMOTE_DOC_WAIT_MS`] 안에 안 서면
+ * 조용히 그만둔다. 그사이 같은 파일 문서가 또 새로 서면 그쪽을 집을 수 있다 — 알고 받은 한계(`code-to-term` 의 새 셸과 같은 결).
+ */
+function setLineOnOpened(o: {
+  opened: string;
+  before: ReadonlySet<string>;
+  path: string;
+  source?: DocSource;
+  line: number;
+}): void {
+  if (!isRemote || o.before.has(o.opened)) {
+    setDocLine(o.opened, o.line);
+    return;
+  }
+  const started = Date.now();
+  const tick = (): void => {
+    const found = findNewDocPane(
+      residentWindowTabs().flatMap((x) => listPanes(x.root)),
+      o.before,
+      o.path,
+      o.source,
+    );
+    if (found) {
+      setDocLine(found.id, o.line);
+      return;
+    }
+    if (Date.now() - started < REMOTE_DOC_WAIT_MS) setTimeout(tick, REMOTE_DOC_POLL_MS);
+  };
+  tick();
+}
+
+/**
+ * 풀린 경로 → 열 파일의 경로 — `home` 갈래면 그 백엔드의 홈에 잇고, **파일일 때만** 돌려준다(끊김 · 없는 파일 · 폴더면 토스트 한 줄 뒤
+ * `null`). 터미널 · AI 타일 대화 면([`openPathFromTerminal`])과 사이드 채팅([`openPathFromChat`])이 같은 문구로 물러서게 한 곳에 둔다.
+ */
+async function openableFile(backend: FsBackend, target: { path: string } | { home: string }): Promise<string | null> {
   if (!backend.online) {
     showNotice(t("app.doc.open.offline"));
-    return;
+    return null;
   }
   let path: string;
   try {
     path = "home" in target ? joinHome(await backend.home(), target.home) : target.path;
   } catch {
     showNotice(t("app.doc.open.missing", { path: "~/" + ("home" in target ? target.home : "") }));
-    return;
+    return null;
   }
   try {
     const st = await backend.stat(path);
     if (st.kind === "dir" || (st.kind === "symlink" && st.linkIsDir)) {
       showNotice(t("app.doc.open.folder", { path }));
-      return;
+      return null;
     }
   } catch {
     showNotice(t("app.doc.open.missing", { path }));
-    return;
+    return null;
   }
-  const opened = openDoc({ tabId, nearPaneId: paneId, path, source: remote ? { paneId: pane.id, alias: pane.alias ?? "" } : undefined });
-  if (opened !== null && line !== undefined) setDocLine(opened, line);
+  return path;
+}
+
+/**
+ * **사이드 채팅의 경로 클릭** — 에이전트 말의 파일 경로를 문서 타일로 연다(2026-11-12 · 집 PC 독 · 원격 웹 독 · 폰). 채팅 프로세스는 늘 이
+ * PC 라 경로는 **로컬**이다(이미 채팅 폴더 기준으로 풀려 온다 — `SideChatFace`). 누른 곳이 타일이 아니라 곁에 설 타일이 없으므로 자리는 팔레트
+ * "파일 열기…"(`app/file-picker` 의 `pickFile`)와 같다 — **지금 탭의 포커스 타일** 곁에 여는 문 [`openDoc`](미리 보기 규칙 그대로). 지금 탭이
+ * 없거나 그 자리에 못 열었으면 새 탭에 연다. 원격 창은 같은 함수들이 집 PC 에 요청으로 연다(`app/mirror-requests` — 줄은 집 PC 가 세운
+ * 새 id 에 건다: [`setLineOnOpened`]). 열었으면 `true`.
+ */
+export async function openPathFromChat(target: { path: string } | { home: string }, line?: number): Promise<boolean> {
+  const path = await openableFile(localBackend(), target);
+  if (path === null) return false;
+  const before = paneIdsNow();
+  const tab = activeTab();
+  let opened = tab ? openDoc({ tabId: tab.id, nearPaneId: paneOf(tab), path }) : null;
+  if (opened === null) {
+    const pane = newDocPane(path);
+    pane.docPreview = true;
+    openInNewTab(pane);
+    opened = pane.id;
+  }
+  if (line !== undefined) setLineOnOpened({ opened, before, path, line });
+  return true;
 }
 
 /**

@@ -199,6 +199,8 @@ const RELAYED: &[&str] = &[
     crate::agent_signal::EVENT,
     // 완료 확인 공유(`{stream, seq}` — 토큰 · 본문 없음) — 어느 창에서 사람이 그 턴 끝을 봤다.
     crate::agent_state::SEEN_EVENT,
+    // 사이드 채팅 완료 확인 공유(판 31 — `{chat, epoch, seq}` · 토큰 · 본문 없음). 사건 `side-chat-event` 와 달리 방송해도 된다.
+    super::side_chat::SEEN_EVENT,
     crate::host_history::CHANGED_EVENT,
     // DB 연결별 접속 기록이 바뀌었다(몸 없음 — 독 DB 칸 "최근" 사본이 다시 읽는다 · `crate::db_history`).
     crate::db_history::CHANGED_EVENT,

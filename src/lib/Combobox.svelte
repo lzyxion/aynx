@@ -40,6 +40,7 @@
     disabled = false,
     inputClass,
     openOnClick = false,
+    label,
     ...rest
   }: {
     /** `<input>` 에 붙는다 — 폼의 `<label for>` 이 그대로 이 칸을 가리킨다 */
@@ -54,6 +55,8 @@
     inputClass?: string;
     /** 칸을 누르면 목록을 연다 — 고르는 칸에 가까운 자리(설정의 모델 이름). 기본은 글자 · `↓` 로만 */
     openOnClick?: boolean;
+    /** 목록 줄의 표시 글자 — 없으면 값 그대로. 거르기 · 고른 뒤 칸에 들어가는 것은 늘 값이다(모델 이름의 첫 글자 대문자 등) */
+    label?: (value: string) => string;
     /** 나머지(`data-*` 등)는 `<input>` 에 그대로 */
     [attr: `data-${string}`]: string | boolean | undefined;
   } = $props();
@@ -243,7 +246,7 @@
           }}
           onclick={() => pick(i)}
         >
-          {row}
+          {label ? label(row) : row}
         </button>
       {/each}
       </div>

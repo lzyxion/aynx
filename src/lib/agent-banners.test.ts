@@ -331,3 +331,83 @@ describe("nextBannerToVisit (Alt+` 알림 위치로 가기)", () => {
     expect(nextBannerToVisit(s)?.paneId).toBe("p3");
   });
 });
+
+/** 사이드 채팅 항목 — 대상이 `sideChatId` (2026-11-13) */
+const chatInput = (sideChatId: string, kind: "stop" | "permission" | "failed" = "stop"): BannerInput => ({
+  sideChatId,
+  kind,
+  agent: "Codex",
+  logo: "codex",
+  label: `chat-${sideChatId}`,
+  text: `‘chat-${sideChatId}’ 답변이 끝났습니다`,
+});
+
+describe("사이드 채팅 대상 — 타일과 같은 규칙, 대상만 다르다", () => {
+  it("채팅마다 하나로 합친다 — 같은 id 의 타일과는 섞지 않는다", () => {
+    let s = addBanner(EMPTY_BANNERS, input("x"), 1, 1000);
+    s = addBanner(s, chatInput("x"), 2, 2000);
+    expect(s.active).toHaveLength(2);
+    s = addBanner(s, chatInput("x", "failed"), 3, 3000);
+    expect(s.active).toHaveLength(2);
+    expect(s.active[0]).toMatchObject({ id: 2, sideChatId: "x", kind: "failed", at: 3000 });
+    expect("paneId" in s.active[0]).toBe(false);
+    expect(s.active[1]).toMatchObject({ id: 1, paneId: "x" });
+    expect("sideChatId" in s.active[1]).toBe(false);
+  });
+
+  it("문자열 대상은 타일만 · `{ sideChatId }` 는 채팅만 푼다", () => {
+    let s = addBanner(EMPTY_BANNERS, input("x"), 1, 1000);
+    s = addBanner(s, chatInput("x"), 2, 2000);
+    const tile = resolveBanner(s, "x", "checked", 3000);
+    expect(tile.active.map((b) => b.id)).toEqual([2]);
+    const chat = resolveVisit(s, { sideChatId: "x" }, 3000);
+    expect(chat.active.map((b) => b.id)).toEqual([1]);
+    expect(chat.resolved[0]).toMatchObject({ id: 2, sideChatId: "x", resolution: "checked", resolvedAt: 3000 });
+  });
+
+  it("갈래를 주면 그 갈래일 때만 — 채팅의 자동 해결", () => {
+    const s = addBanner(EMPTY_BANNERS, chatInput("c", "failed"), 1, 1000);
+    expect(resolveBanner(s, { sideChatId: "c" }, "auto", 2000, ["permission"])).toBe(s);
+    expect(resolveBanner(s, { sideChatId: "c" }, "auto", 2000, ["stop", "failed"]).active).toHaveLength(0);
+  });
+
+  it("타일 포커스 이동은 채팅 항목을 건드리지 않는다", () => {
+    const s = addBanner(EMPTY_BANNERS, chatInput("c"), 1, 1000);
+    expect(releaseBornFocused(s, "p9")).toBe(s);
+  });
+
+  it("[모두 읽음] 은 실패도 끝남처럼 푼다 — 권한은 남는다", () => {
+    let s = addBanner(EMPTY_BANNERS, chatInput("a", "failed"), 1, 1000);
+    s = addBanner(s, chatInput("b", "permission"), 2, 2000);
+    s = addBanner(s, input("p1"), 3, 3000);
+    const r = resolveAllFinished(s, 4000);
+    expect(r.active.map((b) => b.id)).toEqual([2]);
+    expect(r.resolved.map((b) => b.id)).toEqual([3, 1]);
+  });
+
+  it("Alt+` 차례 — 권한 먼저, 그 밖(끝남 · 실패 · 타일 · 채팅)은 최근 먼저", () => {
+    let s = addBanner(EMPTY_BANNERS, input("p1"), 1, 1000);
+    s = addBanner(s, chatInput("a", "failed"), 2, 2000);
+    expect(nextBannerToVisit(s)?.id).toBe(2);
+    s = addBanner(s, input("p2"), 3, 3000);
+    expect(nextBannerToVisit(s)?.id).toBe(3);
+    s = addBanner(s, chatInput("b", "permission"), 4, 500);
+    expect(nextBannerToVisit(s)?.id).toBe(4);
+  });
+
+  it("배지 — 채팅도 센다 · 채팅의 권한 물음도 강조색", () => {
+    let s = addBanner(EMPTY_BANNERS, chatInput("a", "failed"), 1, 1000);
+    expect(bannerBadge(s)).toEqual({ count: 1, urgent: false });
+    s = addBanner(s, chatInput("b", "permission"), 2, 2000);
+    expect(bannerBadge(s)).toEqual({ count: 2, urgent: true });
+  });
+
+  it("접힘 · 넘침은 타일과 같다", () => {
+    let s = addBanner(EMPTY_BANNERS, chatInput("a"), 1, 1000);
+    expect(nextCollapseAt(s)).toBe(1000 + COLLAPSE_MS);
+    s = collapseDue(s, 1000 + COLLAPSE_MS);
+    expect(s.active[0].collapsed).toBe(true);
+    for (let i = 2; i <= 5; i++) s = addBanner(s, chatInput(`c${i}`), i, i * 1000);
+    expect(bannerView(s, false).more).toBe(5 - MAX_SHOWN);
+  });
+});

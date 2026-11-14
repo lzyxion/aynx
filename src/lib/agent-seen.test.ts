@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyAgentSignals } from "$lib/agent-status";
-import { noteEnded, parseAgentSeen, seenApplies, shouldSend, turnEnded, watching } from "$lib/agent-seen";
+import { noteEnded, parseAgentSeen, parseSideChatSeen, seenApplies, shouldSend, sideChatSeenApplies, turnEnded, watching } from "$lib/agent-seen";
 
 const base = { visible: true, watching: true, handheld: false, mark: { seq: 5, gen: 1 }, gen: 2, sent: undefined };
 
@@ -54,6 +54,26 @@ describe("shouldSend", () => {
     expect(shouldSend({ ...base, watching: false })).toBe(false);
     expect(shouldSend({ ...base, sent: 5 })).toBe(false);
     expect(shouldSend({ ...base, sent: 4 })).toBe(true);
+  });
+});
+
+describe("parseSideChatSeen · sideChatSeenApplies", () => {
+  it("모양이 틀리면 null — 몸은 채팅 id · 세대 · 번호뿐", () => {
+    expect(parseSideChatSeen({ chat: "c", epoch: 2, seq: 9 })).toEqual({ chat: "c", epoch: 2, seq: 9 });
+    for (const v of [null, "x", {}, { chat: "c", seq: 9 }, { chat: "c", epoch: 2 }, { chat: 1, epoch: 2, seq: 9 }, { chat: "c", epoch: "2", seq: 9 }, { chat: "c", epoch: 2, seq: Infinity }]) {
+      expect(parseSideChatSeen(v)).toBeNull();
+    }
+  });
+  it("이 창의 마지막 턴 끝과 같은 세대 · 그 번호 이후의 확인만 푼다", () => {
+    const mine = { epoch: 2, seq: 9 };
+    expect(sideChatSeenApplies({ epoch: 2, seq: 9 }, mine)).toBe(true);
+    expect(sideChatSeenApplies({ epoch: 2, seq: 12 }, mine)).toBe(true);
+    // 이 창이 더 늦은 턴 끝을 받았다 — 지난 턴의 확인
+    expect(sideChatSeenApplies({ epoch: 2, seq: 8 }, mine)).toBe(false);
+    // 다시 떴다 · CLI 를 바꿨다
+    expect(sideChatSeenApplies({ epoch: 3, seq: 9 }, mine)).toBe(false);
+    // 다음 턴이 섰다(턴 끝 없음) — 풀 것이 없다
+    expect(sideChatSeenApplies({ epoch: 2, seq: 9 }, null)).toBe(false);
   });
 });
 

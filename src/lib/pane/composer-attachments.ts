@@ -14,10 +14,30 @@ export interface ComposerAttachment {
   url: string | null;
 }
 
-/** 한 번에 붙이는 수 상한 — 사이드 채팅 서버 판정(`server::side_chat::IMAGES_MAX`)과 같은 8 */
+/**
+ * **막 보낸 말풍선의 그림**(2026-11-14) — 보낼 때 입력 칸 칩이 쥐던 미리보기(`blob:`)를 그 말풍선이 이어 쓴다(기록에 들어 `pictures` 로 바뀌기
+ * 전의 꼬리 · 보내는 중 말풍선). `url` 은 넘겨받은 쪽이 거둔다(`revokeSentPics`).
+ */
+export interface SentPic {
+  name: string;
+  url: string;
+}
+
+/** 말풍선의 이름 칩 — 그림으로 그린 것(`pics` 의 이름 — 같은 이름은 하나씩)을 뺀 나머지. **순수** */
+export function filesBesidePics(files: readonly string[], pics: readonly SentPic[]): string[] {
+  const left = pics.map((p) => p.name);
+  return files.filter((f) => {
+    const i = left.indexOf(f);
+    if (i < 0) return true;
+    left.splice(i, 1);
+    return false;
+  });
+}
+
+/** 한 번에 붙이는 수 상한 — 사이드 채팅 서버 판정(`server::side_chat::IMAGES_MAX` — 그림 + 파일 합쳐)과 같은 8 */
 export const COMPOSER_ATTACH_MAX = 8;
-/** 사이드 채팅 그림 한 장의 상한 — 서버 판정과 같은 10 MB */
-export const SIDE_CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+/** 사이드 채팅 첨부 하나(그림 · 파일)의 상한 — 서버 판정(`IMAGE_MAX_BYTES` · `FILE_MAX_BYTES`)과 같은 10 MB */
+export const SIDE_CHAT_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
 
@@ -61,22 +81,22 @@ export function tileAttachPastes(paths: readonly string[]): string[] {
 }
 
 /**
- * 붙여넣기에서 **그림 파일**만 — 글이 함께 있으면(표 · 웹 문서 복사) 예전처럼 글 붙여넣기로 둔다(빈 목록). WebView2 는 화면 캡처를
- * `image/png` 파일 하나(`image.png`)로 준다.
+ * 붙여넣기에서 **파일**(그림 · 탐색기에서 복사한 아무 파일 — 2026-11-14 "파일 업로드")만 — 글이 함께 있으면(표 · 웹 문서 복사) 예전처럼
+ * 글 붙여넣기로 둔다(빈 목록). WebView2 는 화면 캡처를 `image/png` 파일 하나(`image.png`)로 준다.
  */
-export function clipboardImageFiles(
+export function clipboardFiles(
   dt: { getData(type: string): string; files?: ArrayLike<File> | null; items?: ArrayLike<{ kind: string; type: string; getAsFile(): File | null }> | null } | null,
 ): File[] {
   if (!dt) return [];
   if (dt.getData("text/plain") !== "") return [];
   const out: File[] = [];
   for (const it of Array.from(dt.items ?? [])) {
-    if (it.kind !== "file" || !it.type.startsWith("image/")) continue;
+    if (it.kind !== "file") continue;
     const f = it.getAsFile();
     if (f) out.push(f);
   }
   if (out.length === 0) {
-    for (const f of Array.from(dt.files ?? [])) if (f.type.startsWith("image/")) out.push(f);
+    out.push(...Array.from(dt.files ?? []));
   }
   return out;
 }

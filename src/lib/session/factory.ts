@@ -320,15 +320,30 @@ export function findDocPane(
   path: string,
   source?: { paneId: string; alias: string },
 ): PaneSpec | null {
-  for (const p of listPanes(root)) {
-    if (p.kind !== "doc" || p.path !== path) continue;
-    const alias = p.alias?.trim() ?? "";
-    if (source) {
-      if (alias === source.alias.trim() && p.sourcePaneId === source.paneId) return p;
-    } else if (alias === "") {
-      return p;
-    }
-  }
+  for (const p of listPanes(root)) if (isSameDocFile(p, path, source)) return p;
+  return null;
+}
+
+/** 이 타일이 그 파일을 보는 문서 타일인가 — [`findDocPane`] 의 "같다" 한 줄(순수 함수) */
+function isSameDocFile(p: PaneSpec, path: string, source?: { paneId: string; alias: string }): boolean {
+  if (p.kind !== "doc" || p.path !== path) return false;
+  const alias = p.alias?.trim() ?? "";
+  return source ? alias === source.alias.trim() && p.sourcePaneId === source.paneId : alias === "";
+}
+
+/**
+ * `before`(요청 전에 있던 타일 id) 뒤 **새로 나타난, 그 파일을 보는 문서 타일** — 있으면 그 명세, 없으면 `null` (순수 함수).
+ *
+ * 원격 창(원격 웹 · 폰)이 문서를 열면 집 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 연 명세의 id 로는 그 타일을
+ * 찾을 수 없다 — 거울에 새로 선 타일 중 같은 파일([`findDocPane`] 과 같은 판정)을 그 타일로 본다(`app/panes` 의 `setLineOnOpened`).
+ */
+export function findNewDocPane(
+  panes: Iterable<PaneSpec>,
+  before: ReadonlySet<string>,
+  path: string,
+  source?: { paneId: string; alias: string },
+): PaneSpec | null {
+  for (const p of panes) if (!before.has(p.id) && isSameDocFile(p, path, source)) return p;
   return null;
 }
 

@@ -142,6 +142,8 @@ export interface LiveRow {
   streaming?: boolean;
   /** 사람 말과 함께 보낸 첨부 이름(입력 칸 칩 — 기록에 들기 전의 꼬리) */
   files?: readonly string[];
+  /** 그중 이 창이 보낸 그림의 미리보기(`SentPic` — 이름 칩 대신 그림으로 · 기록의 `upic` 과 같은 모양) */
+  sentPics?: readonly { name: string; url: string }[];
 }
 
 /**
@@ -185,6 +187,32 @@ export function unwrapPasted(text: string): string {
   return text.replace(/<pasted_content id="([^"]*)">\r?\n?([\s\S]*?)\r?\n?<\/pasted_content id="\1">/g, "$2");
 }
 
+/**
+ * **에이전트 답 복사의 자리와 글**(대화 면 · 사이드 채팅 — `TranscriptBody` 의 `copyable`, 2026-11-14): 한 턴(사람 말 하나 뒤의 에이전트 줄 전부)마다
+ * 그 턴의 **마지막 에이전트 줄 id → 복사할 글**. 글은 그 턴의 에이전트 말(마크다운 원문 그대로)만 빈 줄로 잇는다 — 도구 줄 · 끊김 표식은 자리만
+ * 차지하고 글에는 없다. 글이 없는 턴은 뺀다. 끝 턴은 `lastDone` 일 때만(답을 아직 쓰는 중이면 단추가 없다).
+ */
+export function agentTurnCopies(seq: readonly { id: string; item: TranscriptItem }[], lastDone: boolean): Map<string, string> {
+  const out = new Map<string, string>();
+  let texts: string[] = [];
+  let last: string | null = null;
+  const flush = () => {
+    if (last !== null && texts.length > 0) out.set(last, texts.join("\n\n"));
+    texts = [];
+    last = null;
+  };
+  for (const { id, item } of seq) {
+    if (item.role === "user") {
+      flush();
+      continue;
+    }
+    last = id;
+    if (item.role === "assistant" && item.text && item.text.trim() !== "") texts.push(item.text.trim());
+  }
+  if (lastDone) flush();
+  return out;
+}
+
 /** 사람 말에 바로 실린 그림 자리의 열쇠(그 대화 파일 안에서 하나 — 줄 시작 · 길이 · 차례) */
 export function pictureKey(p: TranscriptPicture): string {
   return `${p.at}:${p.len}:${p.n}`;
@@ -197,6 +225,17 @@ export function pictureKey(p: TranscriptPicture): string {
 export function hiddenImageCount(item: TranscriptItem, showing: boolean, failed: (p: TranscriptPicture) => boolean): number {
   const pics = showing ? (item.pictures ?? []) : [];
   return Math.max(0, item.images - pics.length) + pics.filter(failed).length;
+}
+
+/**
+ * **사람 말 맨 앞의 그림 자리표 떼기**(2026-11-14 사용자 결정) — CLI 가 붙여 넣은 그림을 바꾼 `[Image #N]` 가 글 **맨 앞에 이어져** 있고 그 말의
+ * 그림이 **모두** 그려질 때(`drawn` — 그릴 수 없는 그림 · "그림 N" 칩 · 실패가 하나도 없다)만 그 자리표들을 뗀 글. 아니면 글 그대로(가운데 자리표 ·
+ * 사람이 쓴 닮은 글은 맨 앞 꼴이 아니면 그대로). **순수**.
+ */
+export function withoutImagePlaceholders(text: string, drawn: boolean): string {
+  if (!drawn) return text;
+  const m = /^(?:\[Image #\d+\](?: |$))+/.exec(text);
+  return m ? text.slice(m[0].length) : text;
 }
 
 /** 쪽들(받은 항목 + 꼬리)의 사람 말에 실린 그림 자리들 — 겹치면 하나 */

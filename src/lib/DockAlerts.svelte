@@ -21,6 +21,7 @@
   import type { ResolvedBanner } from "$lib/agent-banners";
   import { groupAlertRows, type AlertGroup, type AlertGroupView } from "$lib/dock-alert-groups";
   import { openPlansAt } from "$lib/app/plans.svelte.js";
+  import { openSideChatFromAlert } from "$lib/app/side-chat-open";
   import { focusTile, tabOfPane } from "$lib/app/tabs.svelte.js";
   import { currentWorkspaceId } from "$lib/app/workspaces.svelte.js";
   import { windowSessionCards, workspaceSheetBuckets } from "$lib/console/window-cards";
@@ -36,8 +37,8 @@
    *    (`app/pending-plans` 는 메인 창의 부팅만 건다 — 분리 창에서는 목록이 늘 비어 이 칸이
    *    저절로 빠진다). 누르면 검토 대기 카드의 [작업안에서 보기]와 **같은 곳**으로 간다 —
    *    작업안의 진행 보기, 가장 오래된(= 먼저 만료될) 작업안.
-   * 2. **확인할 것** — 해결되지 않은 에이전트 알림(턴 끝 · 권한 물음 — `app/agent-banners`). × 로
-   *    배너에서 비킨 것도 "나중에" 표시를 달고 여기 남는다. 누르면 그 타일로 가며 해결된다(배너의
+   * 2. **확인할 것** — 해결되지 않은 에이전트 알림(턴 끝 · 권한 물음 — `app/agent-banners`, 사이드 채팅의 끝남 · 권한 · 실패 포함). × 로
+   *    배너에서 비킨 것도 "나중에" 표시를 달고 여기 남는다. 누르면 그 타일로 가며(채팅이면 그 채팅을 열며) 해결된다(배너의
    *    [보기] 와 같다 — 2026-09-27, docs/log/2026-09-27-agent-banners.md).
    * 3. **지난 알림** — 해결된 에이전트 알림("확인함" · "저절로 해결")과 이 창에서 띄운 일반 알림
    *    (`app/notifications`)을 시각 순으로 합친 것, 새것이 위.
@@ -51,7 +52,10 @@
    * 새로 들어온 줄도 눈앞에 뜬다. 다만 **칸이 보이기 시작할 때 읽지 않았던 줄**은 점 하나로 표시해 둔다(무엇이 새로 왔는지가
    * 연 순간 사라지면 연 보람이 없다). 본문은 독과 같이 **언마운트하지 않으므로** 그 점은 칸이 다시 보일 때마다 새로 잡는다.
    *
-   * 다른 곳으로 가는 줄(세션 · 승인 대기 · 타일로 가기 · 작업안 실행)은 **메뉴 통로**(`runOnMenu` · `runAfterClose`)를 지난다 —
+   * 사이드 채팅 알림(턴 끝 · 권한 물음 · 실패)은 2026-11-13 부터 AI 타일 알림과 같은 배너 저장소에 산다(대상이 `sideChatId` — 일반 기록에는
+   * 적히지 않는다). 해결된 줄은 누르면 그 채팅을 연다 — 채팅 독, 원격 폰 배치는 폰 덮개(`app/side-chat-open`).
+   *
+   * 다른 곳으로 가는 줄(세션 · 승인 대기 · 타일로 가기 · 작업안 실행 · 사이드 채팅)은 **메뉴 통로**(`runOnMenu` · `runAfterClose`)를 지난다 —
    * 스냅샷 → 독 닫기 → 실행 (docs/conventions.md). × 와 바닥 줄의 [알림 지우기] 는 독을 닫지 않으므로 통로가 필요 없다.
    *
    * **지운 줄은 밀려 나간다**(2026-10-24 — End-4 사이드바 알림 지우기): × · [알림 지우기] 는 데이터에서 곧바로 빼고, 줄의 DOM 만
@@ -131,7 +135,14 @@
   /** 줄 앞자리 그림의 종류 */
   function kindOf(row: HistoryRow): NotificationEntry["kind"] {
     if (row.type === "generic") return row.entry.kind;
+    if (row.entry.sideChatId !== undefined) return "side-chat";
     return row.entry.kind === "permission" ? "agent-permission" : "agent-stop";
+  }
+
+  /** 줄의 결 — 일반 기록은 적힌 그대로, 배너 기록은 사이드 채팅의 답변 실패만 오류색 */
+  function levelOf(row: HistoryRow): "info" | "success" | "error" {
+    if (row.type === "generic") return row.entry.level ?? "info";
+    return row.entry.kind === "failed" ? "error" : "info";
   }
 
   /**
@@ -207,6 +218,11 @@
         focusTile(tab.id, paneId);
       },
     );
+  }
+
+  /** 사이드 채팅 줄(해결된 배너 기록) — 그 채팅을 고르고 채팅 독(폰은 덮개)을 연다. 지워진 채팅이면 아무 일도 없다(`openSideChatFromAlert`) */
+  function goToSideChat(entry: { sideChatId?: string }): void {
+    runOnMenu(() => entry.sideChatId, onclose, (id) => void openSideChatFromAlert(id));
   }
 
   /** 줄을 지운 뒤 포커스를 목록에 남긴다(누른 × 가 사라지면 포커스가 몸통으로 떨어진다) */
@@ -287,7 +303,7 @@
 {#snippet rowPick(row: HistoryRow, detail: string, child: boolean, alarm = false, source: string | null = null)}
   {@const entry = row.entry}
   {@const kind = kindOf(row)}
-  {@const level = alarm ? "error" : row.type === "generic" ? (row.entry.level ?? "info") : "info"}
+  {@const level = alarm ? "error" : levelOf(row)}
   {@const name = child ? (entry.short ?? entry.text) : entry.text}
   {#if row.type === "generic" && row.entry.operationId && row.entry.run}
     {@const run = row.entry.run}
@@ -316,6 +332,24 @@
   {:else if entry.paneId}
     {@const logo = row.type === "agent" ? row.entry.logo : null}
     <button type="button" class="pick" data-alert-row onclick={() => goTo(entry)}>
+      <span class="mark {level}" class:logo={!!logo}
+        >{#if logo}{@render agentMark(logo, child)}{:else}<UiIcon
+            name={KIND_ICON[kind]}
+            size={child ? 14 : 18}
+          />{/if}</span
+      >
+      <span class="text"><span class="name">{name}</span><span class="detail">{detail}</span></span>
+    </button>
+  {:else if row.type === "agent" && row.entry.sideChatId !== undefined}
+    {@const logo = row.entry.logo}
+    <!-- 사이드 채팅 줄(해결된 배너 기록) — 그 채팅을 연다(타일 줄이 그 타일로 가는 것과 같은 결) -->
+    <button
+      type="button"
+      class="pick"
+      data-alert-row
+      data-notify-side-chat={row.entry.sideChatId}
+      onclick={() => goToSideChat(row.entry)}
+    >
       <span class="mark {level}" class:logo={!!logo}
         >{#if logo}{@render agentMark(logo, child)}{:else}<UiIcon
             name={KIND_ICON[kind]}
@@ -387,7 +421,9 @@
       {#each todo as item (item.id)}
         <div class="row" data-notify-todo={item.id} data-kind={item.kind} data-hidden={item.hidden}>
           <button type="button" class="pick" data-alert-row onclick={() => openTodo(item.id)}>
-            <span class="mark {item.kind === 'permission' ? 'permission' : 'stop'}" class:logo={!!item.logo}
+            <span
+              class="mark {item.kind === 'permission' ? 'permission' : item.kind === 'failed' ? 'error' : 'stop'}"
+              class:logo={!!item.logo}
               >{@render agentMark(item.logo)}</span
             >
             <span class="text"
@@ -431,7 +467,7 @@
             head,
             many && view.group ? `${view.group.label} · ${whenOf(head)}` : whenOf(head),
             false,
-            many && view.rows.some((r) => r.type === "generic" && r.entry.level === "error"),
+            many && view.rows.some((r) => levelOf(r) === "error"),
             many ? (view.group?.label ?? null) : null,
           )}
           {#if many}

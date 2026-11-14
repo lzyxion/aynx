@@ -890,7 +890,23 @@ if (ONLY === "" || ONLY === "producer" || ONLY === "wake") {
   const WA = (id, taskId, state, extra = {}) => ({ id, taskId, cli: "claude", gen: 1, state, kind: "write", roleName: "impl", role: "worker", startedAt: NOW - 10 * 60_000, worktree: null, branch: null, conversationId: null, turns: [], ...extra });
   const WAKE_TEXT = "[Aynx app notice — not from the person] Album run-wk (gen 1) changed after seq 4: task t1 reported success; task t2 integrated. Read get_run (or wait_run with afterSeq=4) for details, then keep coordinating. If nothing needs you now, end your turn with a one-line note.";
   await ev(`(async () => (await ${importApp('app/dock.svelte.ts')}).closeDock())()`);
-  const { chat } = await legacyAlbum('run-wk', '깨움 앨범', '로그 회전을 나눠서 해 줘');
+  await legacyDraft();
+  // (2026-11-13 `model-order.ts`) 새 앨범 모델 칸 Combobox — 지금 값 opus 맨 위 → 등급 순 · 줄 글자만 첫 글자 대문자(칸의 값은 그대로)
+  // 칸은 고른 CLI 카드를 다시 누르면 펴지는 조절 칸 안에 있다
+  await ev(`document.querySelector('${H} [data-new-cli="claude"]').click()`);
+  await until(`document.querySelector('${H} [data-new-model]')?.offsetParent !== null`);
+  await ev(`document.querySelector('${H} [data-new-model]').click()`);
+  await until(`document.querySelectorAll('[role="listbox"] .row').length > 0`);
+  await sleep(150);
+  await shot("model-combobox.png");
+  check("⑫ 새 앨범 모델 칸 — 고정 순서 Fable · Opus · Sonnet · Haiku(지금 값 opus 도 제자리) · 칸의 값은 opus",
+    [await ev(`JSON.stringify([...document.querySelectorAll('[role="listbox"] .row')].map((r) => r.textContent.trim()))`), await ev(`document.querySelector('${H} [data-new-model]').value`)],
+    [JSON.stringify(["Fable", "Opus", "Sonnet", "Haiku"]), "opus"]);
+  await ev(`document.querySelector('${H} [data-new-model]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await until(`!document.querySelector('[role="listbox"] .row')`);
+  await ev(`document.querySelector('${H} [data-new-cli="claude"]').click()`);
+  await until(`document.querySelector('${H} [data-new-model]')?.offsetParent === null`);
+  const { chat } = await sendLegacyAlbum('run-wk', '깨움 앨범', '로그 회전을 나눠서 해 줘');
   const E = (e) => `window.__pcEmit(${JSON.stringify(chat)}, ${JSON.stringify(e)})`;
   check("⑫ 입력 칸 자리표시 글 — 프로듀서에게 말하기…", await ev(`document.querySelector('${F} [data-flip-composer] textarea')?.placeholder`), "프로듀서에게 말하기…");
   // 앨범 — 트랙 둘 · 막힌 아티스트(트랙 #2) · 깨움 예약 기록 하나(SHA 's-real' — 기록의 첫 깨움 문장과 맞는다)
@@ -958,6 +974,10 @@ if (ONLY === "" || ONLY === "producer" || ONLY === "wake") {
   await until(`!!document.querySelector('${F} [data-producer-tune-row="model"]')`);
   await sleep(200);
   await shot("wake-model-chip.png");
+  // (2026-11-13) 칩 줄 순서 — 기본(빈 값) 맨 앞 → 고정 등급 순(지금 값도 제자리 · ✓ 만) · 칩 글자는 첫 글자 대문자
+  check("⑫ 대화 중 모델 칩 줄 — 기본 → 고정 등급 순 · 첫 글자 대문자",
+    await ev(`JSON.stringify([...document.querySelectorAll('${F} [data-producer-tune-model]')].slice(1).map((b) => [b.dataset.producerTuneModel, b.textContent.trim(), b.getAttribute('aria-checked')]))`),
+    await ev(`(() => { const bs = [...document.querySelectorAll('${F} [data-producer-tune-model]')]; const cur = bs.find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.producerTuneModel ?? ''; const rank = ['fable', 'opus', 'sonnet', 'haiku']; const order = rank; return bs[0]?.dataset.producerTuneModel === '' ? JSON.stringify(order.map((m) => [m, m[0].toUpperCase() + m.slice(1), String(m === cur)])) : 'no-default-first'; })()`));
   await ev(`document.querySelector('${F} [data-producer-tune-model="sonnet"]').click()`);
   await until(`window.__calls.some(([c]) => c === 'producer_chat_set_model')`);
   await ev(`document.querySelector('${F} [data-producer-tune="effort"]').click()`);

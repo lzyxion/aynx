@@ -33,7 +33,7 @@
   const count = $derived(pendingCount() + agentBannerBadge().count);
   const urgent = $derived(pendingCount() > 0 || agentBannerBadge().urgent);
   const canReadAll = $derived(
-    agentBannerItems().some((b) => b.kind === "stop") || notificationList().some((e) => !e.read),
+    agentBannerItems().some((b) => b.kind !== "permission") || notificationList().some((e) => !e.read),
   );
   const canClear = $derived(notificationList().length > 0 || resolvedAgentBanners().length > 0);
 

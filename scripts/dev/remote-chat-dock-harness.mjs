@@ -9,15 +9,16 @@
 // ③ 다른 창이 먼저 답한 권한 카드(`[unknown-request]`) — 오류 줄 · 오류 토스트 없이 삼킨다
 // ④ 다른 창이 보낸 사람 글(`userAccepted{text}`) — 곧바로 말풍선
 // ⑤ 원격 폰(390x844) — 독 없음 · 상태줄 말풍선(점 = 권한) → 전체 화면 덮개 · 포커스는 뒤로 단추(입력 칸 아님) · 입력 칸
-//    `enterkeyhint="enter"` · 그림 고르기 단추 · Enter = 줄바꿈(보내지 않는다) · 휴대폰 '뒤로' = 닫기 · 시트의 사이드 채팅 줄 → 덮개
+//    `enterkeyhint="enter"` · 입력 칸 `[+]`(파일 업로드 — 숨은 파일 칸 · 아무 파일) · Enter = 줄바꿈(보내지 않는다) · 휴대폰 '뒤로' = 닫기 · 시트의 사이드 채팅 줄 → 덮개
 // ⑥ 잡히지 않은 예외 · 콘솔 오류 0(`stub:` 거절 제외)
-// ⑧ 마지막 선택은 CLI 마다 — Claude 칩에서 opus · high → Codex(강도 low) → Claude 로 돌아오면 opus · high 로 다시 연다(side_chat_open 에 강도까지) ·
-//    저장의 last = {cli, byCli} · [새 채팅]도 Claude · opus · high
+// ⑧ 마지막 선택은 CLI 마다 — 모델 메뉴(입력 칸의 모델 키워드 — 2026-11-13 D안)에서 opus · high → Codex(강도 low) → Claude 로 돌아오면 opus · high 로
+//    다시 연다(side_chat_open 에 강도까지) · 저장의 last = {cli, byCli} · [새 채팅]도 Claude · opus · high
+// ⑨ 모델 메뉴의 모델 줄(2026-11-13) — "CLI 기본" 맨 앞 → 고정 순서(별칭 → 버전 → 등급 · 고른 것도 제자리 · ✓ 로만) · 모르는 것 뒤 · 줄 글자 첫 글자 대문자(GPT 머리글자)
 // ⑦ 채팅 목록 줄의 단추 둘(이름 바꾸기 · 지우기 — 2026-11-01): 데스크톱은 호버에만 보이고, 폰 덮개는 늘 보인다. 연필 → 이름 칸 → Enter 로
 //    바뀐다(폰은 조합 중 Enter 를 거른다) · 휴지통 → 지우기 확인 상자(취소하면 아무것도 지우지 않는다) · 줄 선택(채팅 열기)으로 번지지 않는다
 //
 // usage: node scripts/dev/run-harness.mjs remote-chat-dock-harness.mjs <outdir> --size 1400x900
-//   → <outdir>/remote-dock.png · remote-dock-list-hover.png · phone-chat.png · phone-chat-list.png
+//   → <outdir>/remote-dock.png · remote-dock-list-hover.png · chip-models-claude.png · chip-models-codex.png · phone-chat.png · phone-chat-list.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -160,6 +161,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
     list_console_sessions: [], delegation_list_targets: [], vault_list: [], mcp_activity: null,
     vault_status: { state: 'unlocked', hasMaster: false, entryCount: 0 },
     side_chat_dir: 'C:/Users/me/AppData/Roaming/aynx-dev/side-chats/chat-a',
+    // ⑨ Codex 모델 캐시 — 순서를 일부러 흩어 둔다(설정 파일 기본 gpt-6-sol 은 첫 줄로 합쳐진다)
+    codex_models: { configured: 'gpt-6-sol', models: ['gpt-5.6-sol', 'gpt-reserve', 'gpt-6.1-luna', 'gpt-6.1-sol', 'gpt-6.1-astra', 'gpt-6-sol'] },
     side_chat_list: [{ chat: 'chat-a', cli: 'claude', model: '', effort: null, epoch: 1, status: 'running', conversationId: null, viewers: 1, detached: false }],
   };
   const snap = () => ({
@@ -276,46 +279,74 @@ await ev(`document.querySelector('[data-chat-dock-list]').click()`);
 await sleep(300);
 
 // ── ⑧ 마지막 선택은 CLI 마다(2026-11-01) — Claude opus · high → Codex(low) → Claude 로 돌아오면 opus · high · 새 채팅도 ──────────
-const chipText = () => ev(`document.querySelector('[data-chat-dock] [data-chat-chip] .chip-text')?.textContent.trim() ?? null`);
-const effortText = () => ev(`document.querySelector('[data-chat-dock] [data-chat-effort-chip] .chip-text')?.textContent.trim() ?? null`);
-/** 칩 메뉴의 한 줄을 누른다(필요하면 "답하는 중" 확인 상자에 [지금 바꾸기]) */
-const pickMenu = async (chipSel, key) => {
-  await ev(`document.querySelector('[data-chat-dock] ${chipSel}').click()`);
-  await waitFor(`!!document.querySelector('[data-toolbar-menu] [data-menu-key="${key}"]')`, 3000);
-  await ev(`document.querySelector('[data-toolbar-menu] [data-menu-key="${key}"]').click()`);
+/** 모델 키워드의 말풍선 첫 줄 — `CLI · 모델 · Effort · 강도` */
+const chipText = () => ev(`document.querySelector('[data-chat-dock] [data-chat-model-chip]')?.getAttribute('title')?.split('\\n')[0] ?? null`);
+/** 모델 메뉴의 단추 하나를 누른다(`[data-chat-model="opus"]` · `[data-chat-cli="codex"]` · `[data-chat-effort="high"]` — 필요하면 "답하는 중" 확인 상자에 [지금 바꾸기]) 뒤 닫는다 */
+const pickMenu = async (sel) => {
+  if (!(await ev(`!!document.querySelector('[data-chat-model-menu]')`))) await ev(`document.querySelector('[data-chat-dock] [data-chat-model-chip]').click()`);
+  await waitFor(`!!document.querySelector('[data-chat-model-menu] ${sel}')`, 3000);
+  await ev(`document.querySelector('[data-chat-model-menu] ${sel}').click()`);
   await sleep(400);
   if (await ev(`!!document.querySelector('[data-confirm-dialog]')`)) {
     await ev(`document.querySelector('[data-confirm-dialog] .actions .btn:not(.btn-secondary)').click()`);
     await sleep(500);
   }
   await sleep(300);
+  if (await ev(`!!document.querySelector('[data-chat-model-menu]')`)) await ev(`document.querySelector('[data-chat-dock] [data-chat-model-chip]').click()`);
+  await sleep(200);
 };
 const lastOpen = () => ev(`JSON.stringify((window.__calls.filter(([c]) => c === 'side_chat_open').at(-1) ?? [null, null])[1])`);
 const savedLast = () => ev(`JSON.stringify(JSON.parse((window.__calls.filter(([c]) => c === 'side_chats_save').at(-1) ?? [null, { json: '{}' }])[1].json).last ?? null)`);
-await pickMenu("[data-chat-chip]", "model:opus");
-await pickMenu("[data-chat-effort-chip]", "effort:high");
-const claudeEffort = await effortText();
-check("⑧ Claude 에서 opus · high", [await chipText(), claudeEffort?.includes("high") ?? false], ["Claude Code · opus", true]);
-await pickMenu("[data-chat-chip]", "cli:codex");
+await pickMenu('[data-chat-model="opus"]');
+await pickMenu('[data-chat-effort="high"]');
+check("⑧ Claude 에서 opus · high", await chipText(), "Claude Code · Opus · Effort · High");
+await pickMenu('[data-chat-cli="codex"]');
 const toCodex = JSON.parse(await lastOpen());
 check("⑧ Codex 로 — 기억 없음 = 기본 모델 · 기본 강도로 다시 연다", [toCodex?.cli, toCodex?.model, toCodex?.effort], ["codex", "", null]);
-await pickMenu("[data-chat-effort-chip]", "effort:low");
-await pickMenu("[data-chat-chip]", "cli:claude");
+await pickMenu('[data-chat-effort="low"]');
+await pickMenu('[data-chat-cli="claude"]');
 const toClaude = JSON.parse(await lastOpen());
-check("⑧ Claude 로 돌아오면 opus · high 로 다시 연다(강도도 실림) · 칩도 그대로",
-  [toClaude?.cli, toClaude?.model, toClaude?.effort, await chipText(), await effortText()],
-  ["claude", "opus", "high", "Claude Code · opus", claudeEffort]);
-await pickMenu("[data-chat-chip]", "cli:codex");
+check("⑧ Claude 로 돌아오면 opus · high 로 다시 연다(강도도 실림) · 키워드도 그대로",
+  [toClaude?.cli, toClaude?.model, toClaude?.effort, await chipText()],
+  ["claude", "opus", "high", "Claude Code · Opus · Effort · High"]);
+await pickMenu('[data-chat-cli="codex"]');
 const backCodex = JSON.parse(await lastOpen());
 check("⑧ 다시 Codex — low 가 남았다", [backCodex?.model, backCodex?.effort], ["", "low"]);
-await pickMenu("[data-chat-chip]", "cli:claude");
+await pickMenu('[data-chat-cli="claude"]');
 await sleep(600);
 check("⑧ 저장의 last = {cli, byCli} 새 모양",
   JSON.parse(await savedLast()),
   { cli: "claude", byCli: { claude: { model: "opus", effort: "high" }, codex: { model: "", effort: "low" } } });
 await ev(`document.querySelector('[data-chat-dock-new]').click()`);
 await sleep(800);
-check("⑧ 새 채팅도 Claude · opus · high", [await chipText(), await effortText()], ["Claude Code · opus", claudeEffort]);
+check("⑧ 새 채팅도 Claude · opus · high", await chipText(), "Claude Code · Opus · Effort · High");
+
+// ── ⑨ 모델 메뉴의 모델 줄(2026-11-13 — `model-order.ts`): "CLI 기본" 맨 앞 고정 → 별칭(등급 순) → 버전 → 등급(고른 것도 제자리) · 줄 글자만 첫 글자 대문자 ──────────
+/** 모델 메뉴를 열어 모델 줄([값, 글자, ✓])을 읽고(캡처가 있으면 찍고) 닫는다 */
+const modelRows = async (rows, png) => {
+  await ev(`document.querySelector('[data-chat-dock] [data-chat-model-chip]').click()`);
+  await waitFor(`document.querySelectorAll('[data-chat-model-menu] [data-chat-model]').length === ${rows}`, 3000);
+  const got = JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[data-chat-model-menu] [data-chat-model]')].map((b) =>
+    [b.dataset.chatModel, b.querySelector('.row-label')?.textContent.trim() ?? null, b.getAttribute('aria-checked') === 'true']))`));
+  if (png) await shot(png);
+  await ev(`document.querySelector('[data-chat-dock] [data-chat-model-chip]').click()`);
+  await sleep(300);
+  return got;
+};
+const cliDefault = ["", "Default", false];
+check("⑨ Claude — 고정 순서 fable > opus > sonnet > haiku · 고른 opus 는 제자리에 ✓ · 글자는 첫 글자 대문자", await modelRows(5, "chip-models-claude.png"), [
+  cliDefault, ["fable", "Fable", false], ["opus", "Opus", true], ["sonnet", "Sonnet", false], ["haiku", "Haiku", false],
+]);
+await pickMenu('[data-chat-cli="codex"]');
+check("⑨ Codex — CLI 기본 ✓ · 버전 먼저(6.1 > 6 > 5.6) · 같은 버전 안 astra > sol > luna · 모르는 gpt-reserve 는 뒤 · GPT 머리글자", await modelRows(7, "chip-models-codex.png"), [
+  ["", "Default", true], ["gpt-6.1-astra", "GPT-6.1-astra", false], ["gpt-6.1-sol", "GPT-6.1-sol", false], ["gpt-6.1-luna", "GPT-6.1-luna", false],
+  ["gpt-6-sol", "GPT-6-sol", false], ["gpt-5.6-sol", "GPT-5.6-sol", false], ["gpt-reserve", "GPT-reserve", false],
+]);
+await pickMenu('[data-chat-model="gpt-reserve"]');
+check("⑨ 모르는 이름을 골라도 제자리(맨 뒤)에 ✓ · Default 는 풀림(값은 소문자 그대로 넘긴다)",
+  [(await modelRows(7)).filter((r, i) => i === 0 || i === 6), JSON.parse(await ev(`JSON.stringify((window.__calls.filter(([c]) => c === 'side_chat_set_model' || c === 'side_chat_open').at(-1) ?? [null, {}])[1].model ?? null)`))],
+  [[["", "Default", false], ["gpt-reserve", "GPT-reserve", true]], "gpt-reserve"]);
+await pickMenu('[data-chat-cli="claude"]');
 
 await ev(`(async () => (await ${chatDockMod}).closeChatDock(false))()`);
 await sleep(300);
@@ -341,12 +372,12 @@ const P = JSON.parse(await ev(`(() => {
     full: !!r && Math.round(r.width) === innerWidth,
     focusBack: document.activeElement?.hasAttribute('data-mobile-chat-back') ?? false,
     hint: ta?.getAttribute('enterkeyhint') ?? null,
-    pick: !!m?.querySelector('[data-side-chat-pick]') && m.querySelector('input[type=file]')?.getAttribute('accept') === 'image/*',
+    pick: !!m?.querySelector('[data-chat-plus]') && !!m.querySelector('input[type=file][data-side-chat-pick]') && !m.querySelector('input[type=file][data-side-chat-pick]').hasAttribute('accept'),
     title: m?.querySelector('[data-mobile-chat-list] .title')?.textContent.trim() ?? null,
     perm: !!m?.querySelector('[data-side-chat-perm="r1"]'),
   });
 })()`));
-check("⑤ 말풍선 → 전체 화면 덮개 · 포커스 = 뒤로 · enterkeyhint=enter · 그림 고르기 · 제목 · 권한 카드", P, {
+check("⑤ 말풍선 → 전체 화면 덮개 · 포커스 = 뒤로 · enterkeyhint=enter · [+](파일 칸) · 제목 · 권한 카드", P, {
   overlay: true, full: true, focusBack: true, hint: "enter", pick: true, title: "디스크 점검", perm: true,
 });
 // Enter = 줄바꿈(보내지 않는다)

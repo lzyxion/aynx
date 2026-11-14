@@ -10,29 +10,44 @@
    * - **권한 카드**: 꼬리 안의 카드 — 제목 · 도구 · 상세(명령 · 경로 · 파일 바꾸기의 diff) + **[허용 한 번] [거절]**(`side_chat_decide` —
    *   사람만 · "늘 허용" 없음). 끝난 요청은 그 결과(내가 허용 · 거절 / CLI 가 거둠 / 프로세스가 끝나 닫힘)를 보인다. Codex 는 읽기 전용
    *   명령을 묻지 않고 돌리고 샌드박스 밖(권한 상승)만 묻는다는 한 줄을 붙인다(설계 spike3 규칙 4).
-   * - **입력 칸**: `FlipComposer` 의 알약 모양(`tools` — Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 칸 안 오른쪽 아래 = 둥근
-   *   보내기 · 칸 아래 줄 = 칩). 첫 보내기는
+   * - **입력 칸**: `FlipComposer` 의 알약 모양(Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 칸 안 오른쪽 아래 = 둥근 보내기).
+   *   칸 한 줄 안에 `[+]  입력 … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다): 왼쪽 `[+]` =
+   *   파일 업로드 · 타일 연결(고르기 · 끊기) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
+   *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽 칩(`chat/ChatLinkChip` · × = 끊기). 상태 · 바꾸기는
+   *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 집 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
    *   서버가 CLI 를 띄운다 — 그동안 "{cli} 시작 중…". 턴이 도는 동안 보내기 자리는 **[중단]**(치기는 늘 된다). Esc 는 칸이 쓰지 않으니 독까지
    *   올라가 독을 닫는다(`ChatDock` 의 `onKeydown`).
    * - **알림**: 끊김("중단함" — 실패가 아니다) · 오류 · CLI 알림 · 종료("CLI가 종료됐습니다 [다시 시작]" — 다음 보내기도 다시 띄운다).
-   * - 에이전트 말은 마크다운(코드 블록 = `CodeView` 의 강조 · [복사]) + ```mermaid 다이어그램(`TranscriptBody` 의 `diagrams` — 자라는 글의
+   * - 에이전트 말은 마크다운(코드 블록 = 머리 띠 + [복사] · 셸 언어면 [터미널에 넣기] — 문서 타일과 같은 `DocCodeBlock` · 아래 항목) + ```mermaid 다이어그램(`TranscriptBody` 의 `diagrams` — 자라는 글의
    *   닫히지 않은 울타리는 코드 블록으로 두었다가 닫히면 그린다) · ```svg 그림(`SvgView` — `<img>` 하나).
    * - **그림**(2026-10-24): 에이전트 말의 `![alt](경로)` 는 이 면이 쥔 `DocImageCache` 하나(로컬 백엔드 — 문서 보기 타일과 같은 규칙 ·
    *   `readPreview` → `blob:` → `<img>` · 새 Tauri 명령 없음)가 읽는다. 상대 경로의 기준은 CLI 의 cwd — 갈라 온 채팅은 `cwd`(서버가 알린
    *   그 대화의 폴더), 아니면 채팅 폴더(`sideChatDir` — 기존 `side_chat_dir`). 그 폴더를 알기 전에는 그림 자리가 "불러오는 중" 이다.
    *   Codex 가 만든 그림(`imageGeneration`)은 서버가 `![지시문](savedPath)` 글로 바꿔 보낸다(절대 경로 — 그림 바이트는 오지 않는다).
    * - 찾기(`find` 단축키)는 이 면의 글자를 찾는다(`DomFindBar` — 다이어그램 SVG 는 훑지 않는다).
-   * - **그림 첨부**(2026-10-24): 입력 칸에 놓은 OS 그림 파일 · 파일 타일 짐(로컬은 복사 · 원격은 내려받기) · 붙여 넣은 그림은 로컬 첨부
-   *   자리(`<data_root>/attachments/<hex>/` — AI 타일 첨부와 같은 자리 · 30일 정리)의 사본이 되어 칸 위 칩으로 선다(그림만 · 10 MB · 8장).
-   *   보내면 그 경로들이 `side_chat_send` 의 `images` 로 간다 — 서버가 그 자리 안의 그림 파일인지 다시 보고 사람 글의 일부로 싣는다
-   *   (Claude 블록 · Codex `localImage`). 꼬리의 말풍선은 이름 칩, 기록에 들면 `pictures`(`ConvImageCache` — 타일 대화 면과 같은 명령)가
-   *   그림을 그린다.
-   * - **폰**(`phone` — 원격 폰 덮개 `mobile/MobileChat` · 2026-11-01): Enter 는 줄바꿈 · 보내기는 단추(화면 키보드), 끌어 놓기 · 붙여 넣기
-   *   대신 칸 안 **그림 고르기** 단추(`<input type=file accept="image/*" multiple>` → 같은 `attachFiles` — 원격은 `stage_agent_attachment`
-   *   가 집 PC 첨부 자리에 사본을 둔다).
+   * - **사진 · 파일 첨부**(2026-10-24 그림 · 2026-11-14 아무 파일): 입력 칸에 놓은 OS 파일 · 파일 타일 짐(로컬은 복사 · 원격은 내려받기) ·
+   *   붙여 넣은 그림은 로컬 첨부 자리(`<data_root>/attachments/<hex>/` — AI 타일 첨부와 같은 자리 · 30일 정리)의 사본이 되어 칸 위 칩으로
+   *   선다(하나 10 MB · 합쳐 8개 — 그림은 미리보기 · 그 밖은 파일 아이콘 + 이름). 보내면 그림은 `side_chat_send` 의 `images`(Claude 블록 ·
+   *   Codex `localImage`), 그 밖은 `files`(판 32 — 서버가 그 채팅 CLI 의 cwd 안 `attachments/` 에 옮겨 적고 글 끝에 경로를 붙인다 · cwd 안이라
+   *   권한 카드 없이 읽힌다)로 간다 — 서버가 그 자리 안의 실제 파일인지 다시 본다. 꼬리의 말풍선은 이름 칩, 기록에 들면 `pictures`
+   *   (`ConvImageCache` — 타일 대화 면과 같은 명령)가 그림을 그린다.
+   * - **고르기**: `[+]` › 파일 업로드(AI 타일 대화 면 `[+]` 와 같은 이름) = 숨은 `<input type=file multiple>` → 같은 `attachFiles`(원격은
+   *   `stage_agent_attachment` 가 집 PC 첨부 자리에 사본을 둔다). 끌어 놓기 · 붙여 넣기도 같은 길.
+   * - **폰**(`phone` — 원격 폰 덮개 `mobile/MobileChat` · 2026-11-01): Enter 는 줄바꿈 · 보내기는 단추(화면 키보드). 메뉴 줄 · 손잡이는 누르는
+   *   자리가 44px 근처다(`touch`).
+   * - **코드 블록 → 셸 타일**(2026-11-12 사용자 결정 — 집 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 닫힌 코드 블록에 [터미널에 넣기]
+   *   (`TranscriptBody` 의 `codeActions` → `app/code-to-term` 의 `codeToTerminal` — 문서 타일과 같은 상자 · 같은 규칙, 입력 줄에 넣기만 ·
+   *   Enter 는 사람). 이 면은 타일이 아니라 `sourcePaneId` 가 없다 — 상자의 새 터미널 줄은 **새 탭**에 열고, Esc 는 누른 단추로만 돌아간다.
+   *   폰은 넣은 뒤 덮개를 걷는다(받은 타일이 덮개 밑에 가려 있다 — `closeMobileOverlay`).
+   * - **경로 링크**(2026-11-12 사용자 결정 — 집 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 파일 경로(`:12` · `:12-20` · `#L12` 줄 꼬리 포함)를
+   *   그냥 클릭에 문서 타일로 연다 — AI 타일 대화 면과 같은 판정 · 같은 풀기(`TranscriptBody` 의 `paths` → `MarkdownBlocks`, `resolvePathLink`).
+   *   채팅 프로세스는 늘 이 PC 라 자리는 `local`, 상대 경로의 기준은 그림과 같은 `baseDir`(모르면 절대 · `~/` 경로만). 여는 일은
+   *   `app/panes` 의 `openPathFromChat`(파일일 때만 · 지금 탭의 포커스 타일 곁 — 팔레트 "파일 열기…" 와 같은 자리 · 탭이 없으면 새 탭 · 꼬리 줄로).
+   *   원격 창(웹 · 폰)에서도 경로는 집 PC 경로이고 여는 것은 집 PC 에 요청이다. 폰은 연 뒤 덮개를 걷는다.
    */
   import { onDestroy, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
+  import { openExportDoc } from "$lib/app/new-doc.svelte.js";
   import FlipComposer from "$lib/pane/FlipComposer.svelte";
   import DomFindBar from "$lib/DomFindBar.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -48,16 +63,14 @@
   import { sessionOfFsKey } from "$lib/fs-drop-route";
   import { LOCAL_KEY } from "$lib/fs-backend";
   import { showNotice } from "$lib/app/notice";
-  import {
-    baseName,
-    isImageName,
-    SIDE_CHAT_IMAGE_MAX_BYTES,
-  } from "$lib/pane/composer-attachments";
+  import { baseName, SIDE_CHAT_ATTACH_MAX_BYTES, type SentPic } from "$lib/pane/composer-attachments";
   import {
     clearComposerAttachments,
     composerAttachmentsOf,
     removeComposerAttachment,
+    revokeSentPics,
     stageComposerAttachments,
+    takeComposerPictures,
   } from "$lib/pane/composer-attachments.svelte.js";
   import { entryItem, historyHold, pendingPermissions, type LiveEntry } from "$lib/side-chat-live";
   import type { LiveRow } from "$lib/transcript";
@@ -80,14 +93,27 @@
   import { DocImageCache } from "$lib/doc-images.svelte";
   import { localBackend } from "$lib/fs-backend";
   import { sideChatDir } from "$lib/app/side-chats.svelte.js";
+  import { codeToTerminal } from "$lib/app/code-to-term.svelte.js";
+  import { closeMobileOverlay } from "$lib/app/mobile-sheets.svelte.js";
+  import { openPathFromChat } from "$lib/app/panes.svelte.js";
+  import { resolvePathLink, type PathLinkPlace, type PathMatch, type ResolvedPath } from "$lib/path-links";
+  import ToolbarMenu from "$lib/browser/ToolbarMenu.svelte";
+  import ChatModelPopover from "$lib/chat/ChatModelPopover.svelte";
+  import ChatModelKeyword from "$lib/chat/ChatModelKeyword.svelte";
+  import ChatLinkChip from "$lib/chat/ChatLinkChip.svelte";
+  import { SideChatControls } from "$lib/chat/side-chat-controls.svelte";
+  import { linkSendName, type LinkChip } from "$lib/side-chat-link";
+  import type { SideChat } from "$lib/side-chat";
+  import type { AiCli } from "$lib/session";
 
   let {
     chatId,
+    chat,
     cli,
     cliName,
-    tools,
+    offered,
+    chipLink,
     linkNote,
-    linkName = null,
     onsent,
     onrestart,
     cwd = "",
@@ -95,30 +121,78 @@
     inputEl = $bindable(null),
   }: {
     chatId: string;
+    /** 이 채팅(목록의 그 객체 — 모델 · 강도 · 연결) */
+    chat: SideChat;
     /** 이 채팅의 지금 CLI(`claude` · `codex`) — 기록을 읽는 갈래 */
     cli: string;
     /** 화면에 쓸 CLI 이름 */
     cliName: string;
-    /** 입력 칸 아래 줄 왼쪽(CLI · 모델 칩) */
-    tools?: Snippet;
+    /** 고를 수 있는 CLI(모델 메뉴의 CLI 스위치) — 감지 전엔 `null` */
+    offered: readonly Pick<AiCli, "id" | "name">[] | null;
+    /** 연결 칩 상태(`linkChipState`) — 칸 안 칩 · `[+]` 의 타일 연결 줄 · 보낼 때 실을 이름(`linkSendName` — 머리글이 같은 이름이 되게) */
+    chipLink: LinkChip;
     /** 입력 칸 위 한 줄(연결 칩의 안내 — 읽기 허용이 꺼진 타일 · 닫힌 타일 · 5단계) */
     linkNote?: Snippet;
-    /** 연결 칩의 지금 이름 — 보낼 때 서버에 실어 머리글(기록 칩)이 같은 이름이 되게(`linkSendName`) */
-    linkName?: string | null;
     /** 보냈다(제목 · 시각 — `app/side-chats`) */
     onsent?: (text: string) => void;
     /** [다시 시작] */
     onrestart: () => void;
     /** CLI 가 도는 폴더(갈라 온 채팅 — 서버가 알린 절대 경로). 비면 채팅 폴더 — 그림의 상대 경로 기준 */
     cwd?: string;
-    /** 폰 덮개 — Enter 줄바꿈 · 그림 고르기 단추(머리말) */
+    /** 폰 덮개 — Enter 줄바꿈 · 누르는 자리 44px(머리말) */
     phone?: boolean;
     inputEl?: HTMLTextAreaElement | null;
   } = $props();
 
   let pickEl = $state<HTMLInputElement | null>(null);
+  const linkName = $derived(linkSendName(chipLink));
 
-  /** 그림 고르기 — 고른 파일을 같은 첨부 길로(같은 파일을 다시 고를 수 있게 값을 비운다) */
+  /** 입력 칸 손잡이(`[+]` · 모델 키워드)의 상태 · 바꾸기 — 머리말 */
+  const ctl = new SideChatControls({
+    chat: () => chat,
+    offered: () => offered,
+    chipLink: () => chipLink,
+    focusHome: () => inputEl?.focus({ preventScroll: true }),
+    pickFiles: () => pickEl?.click(),
+  });
+
+  /** 떠 있는 메뉴를 모두 닫는다(독이 닫힐 때 — `ChatDock`) */
+  export function closeMenus(): void {
+    ctl.closeAll();
+  }
+
+  /** 에이전트 말 코드 블록의 [터미널에 넣기] — 상자는 단추 아래 · 오른쪽 맞춤(문서 타일과 같다 · 머리말) */
+  const codeActions = {
+    onterm: (code: string, button: HTMLElement) => {
+      const r = button.getBoundingClientRect();
+      codeToTerminal(null, code, { x: r.right, y: r.bottom + 4, align: "right" }, button, phone ? closeMobileOverlay : undefined);
+    },
+  };
+
+  /**
+   * 에이전트 말의 파일 경로 링크 — 늘 로컬 자리 · 채팅 폴더 기준(`baseDir` — 모르면 절대 · `~/` 경로만), 여는 일은 `openPathFromChat`(머리말).
+   * 폴더를 알기 전(`null`)에도 절대 경로는 건다.
+   */
+  const pathLinks = $derived.by(() => {
+    const place: PathLinkPlace = { kind: "local", cwd: baseDir };
+    const label = (r: NonNullable<ResolvedPath>, m: PathMatch) =>
+      ("path" in r ? r.path : `~/${r.home}`) + (m.line !== undefined ? `:${m.line}` : "");
+    return {
+      title: (m: PathMatch) => {
+        const r = resolvePathLink(m, place);
+        return r ? label(r, m) : null;
+      },
+      open: (m: PathMatch) => {
+        const r = resolvePathLink(m, place);
+        if (!r) return;
+        void openPathFromChat(r, m.line).then((ok) => {
+          if (ok && phone) closeMobileOverlay();
+        });
+      },
+    };
+  });
+
+  /** 사진 · 파일 고르기 — 고른 파일을 같은 첨부 길로(같은 파일을 다시 고를 수 있게 값을 비운다) */
   function onPicked(ev: Event): void {
     const input = ev.currentTarget as HTMLInputElement;
     const files = Array.from(input.files ?? []);
@@ -203,18 +277,41 @@
     },
   };
 
-  // ── 첨부 칩 — 그림만 · 로컬 첨부 자리의 사본(서버가 그 자리 안의 그림만 받는다) ─────────────────
+  // ── 첨부 칩 — 사진 · 파일 · 로컬 첨부 자리의 사본(서버가 그 자리 안의 실제 파일만 받는다) ─────────────────
 
   const attachKey = $derived(`side:${chatId}`);
   const attachments = $derived(composerAttachmentsOf(attachKey));
   onDestroy(() => clearComposerAttachments(untrack(() => attachKey)));
 
-  /** 그림이 아니거나 너무 크면 알리고 뺀다 */
-  function imagesOnly<T>(items: readonly T[], name: (x: T) => string, size: (x: T) => number | null): T[] {
+  /**
+   * **막 보낸 그림**(2026-11-14) — 이 창에서 보낸 말의 그림 칩 미리보기를 그 말풍선(꼬리)이 그림으로 이어 쓴다. 열쇠 = `<채팅 id>:<clientId>`.
+   * 그 말이 꼬리에서 걷히면(기록이 받아 `pictures` 로 그린다) · 면이 사라지면 거둔다. 다른 창이 보낸 말 · 그림 밖 파일은 이름 칩 그대로.
+   */
+  let sentPics = $state<Record<string, SentPic[]>>({});
+  const sentKey = (cid: string) => `${chatId}:${cid}`;
+  $effect(() => {
+    const prefix = `${chatId}:`;
+    const live = new Set((st?.entries ?? []).flatMap((e) => (e.kind === "user" && e.clientId ? [sentKey(e.clientId)] : [])));
+    untrack(() => {
+      const gone = Object.keys(sentPics).filter((k) => k.startsWith(prefix) && !live.has(k));
+      if (gone.length === 0) return;
+      const next = { ...sentPics };
+      for (const k of gone) {
+        revokeSentPics(next[k]);
+        delete next[k];
+      }
+      sentPics = next;
+    });
+  });
+  onDestroy(() => {
+    for (const pics of Object.values(untrack(() => sentPics))) revokeSentPics(pics);
+  });
+
+  /** 너무 크면(10 MB — 서버 판정과 같다) 알리고 뺀다. 크기를 모르는 것(파일 타일 짐)은 서버가 본다 */
+  function withinSize<T>(items: readonly T[], name: (x: T) => string, size: (x: T) => number | null): T[] {
     const out: T[] = [];
     for (const x of items) {
-      if (!isImageName(name(x))) showNotice(t("pane.flip.composer.imagesOnly", { name: name(x) }));
-      else if ((size(x) ?? 0) > SIDE_CHAT_IMAGE_MAX_BYTES) showNotice(t("pane.flip.composer.imageTooBig", { name: name(x) }));
+      if ((size(x) ?? 0) > SIDE_CHAT_ATTACH_MAX_BYTES) showNotice(t("pane.flip.composer.fileTooBig", { name: name(x) }));
       else out.push(x);
     }
     return out;
@@ -222,7 +319,7 @@
 
   /** OS 파일 · 붙여 넣은 그림 — 로컬 첨부 자리로 사본(`stage_agent_attachment`) */
   function attachFiles(files: File[]): void {
-    const ok = imagesOnly(files, (f) => f.name, (f) => f.size);
+    const ok = withinSize(files, (f) => f.name, (f) => f.size);
     if (ok.length === 0) return;
     void stageComposerAttachments(
       attachKey,
@@ -240,7 +337,7 @@
     }
     const drag = decodeFsDrag(dt.getData(FS_DRAG_TYPE));
     if (fsDragEmpty(drag)) return;
-    const paths = imagesOnly(drag.paths, baseName, () => null);
+    const paths = withinSize(drag.paths, baseName, () => null);
     if (paths.length === 0) return;
     const source = drag.backendKey === LOCAL_KEY ? null : sessionOfFsKey(drag.backendKey);
     if (drag.backendKey !== LOCAL_KEY && source === null) return;
@@ -262,7 +359,7 @@
       if (!item) return { key: keyOf(e), item: null };
       if (e.kind === "user") {
         const note = e.failed ? t("app.chatDock.send.failed") : e.accepted ? null : t("pane.flip.sending");
-        return { key: keyOf(e), item, dim: !e.accepted, note, files: e.files };
+        return { key: keyOf(e), item, dim: !e.accepted, note, files: e.files, sentPics: e.clientId ? sentPics[sentKey(e.clientId)] : undefined };
       }
       return {
         key: keyOf(e),
@@ -292,8 +389,10 @@
   function send(text: string): boolean {
     // 칩은 모두 준비된 뒤에만 보낸다(`FlipComposer` 의 `canSend`)
     const images = attachments.flatMap((a) => (a.path === null ? [] : [{ path: a.path, name: a.name }]));
-    if (!sendSideChat(chatId, text, linkName, images)) return false;
-    clearComposerAttachments(attachKey);
+    const cid = sendSideChat(chatId, text, linkName, images);
+    if (cid === null) return false;
+    const pics = takeComposerPictures(attachKey);
+    if (pics.length > 0) sentPics = { ...sentPics, [sentKey(cid)]: pics };
     onsent?.(text);
     return true;
   }
@@ -438,16 +537,27 @@
   {/if}
 {/snippet}
 
-{#snippet pickImages()}
+{#snippet plus()}
   <button
     type="button"
-    class="pick"
-    data-side-chat-pick
-    title={t("app.chatDock.pickImages")}
-    aria-label={t("app.chatDock.pickImages")}
-    onclick={() => pickEl?.click()}><UiIcon name="image-plus" size={18} /></button
+    class="plus"
+    class:on={ctl.plusOpen}
+    class:touch={phone}
+    data-chat-plus
+    aria-haspopup="menu"
+    aria-expanded={ctl.plusOpen}
+    title={t("app.chatDock.plus")}
+    aria-label={t("app.chatDock.plus")}
+    onclick={(ev) => ctl.togglePlus(ev.currentTarget)}><UiIcon name="plus" size={20} /></button
   >
-  <input bind:this={pickEl} class="pick-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" onchange={onPicked} />
+{/snippet}
+
+{#snippet linkAbove()}
+  <ChatLinkChip {chipLink} unlink={() => ctl.unlink()} touch={phone} />
+{/snippet}
+
+{#snippet keyword()}
+  <ChatModelKeyword {ctl} {cliName} touch={phone} />
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -472,6 +582,10 @@
     column
     chat
     diagrams
+    {codeActions}
+    copyable
+    exportDoc={(text, at) => void openExportDoc({ text, anchor: at, from: { chatDir: null } })}
+    paths={pathLinks}
     {images}
     {pictures}
     {activity}
@@ -490,7 +604,9 @@
     onprefilled={(n) => takeSideChatFill(chatId, n)}
     onsend={send}
     onterminal={() => {}}
-    {tools}
+    leading={plus}
+    above={chipLink.kind === "linked" ? linkAbove : undefined}
+    inField={keyword}
     {gate}
     {busy}
     oninterrupt={() => void interruptSideChat(chatId)}
@@ -499,31 +615,78 @@
     onattach={attachFiles}
     ondropdata={onDropData}
     enterNewline={phone}
-    inField={phone ? pickImages : undefined}
     bind:inputEl
   />
+  <input bind:this={pickEl} class="pick-input" type="file" multiple tabindex="-1" aria-hidden="true" data-side-chat-pick onchange={onPicked} />
+  {#if ctl.plusOpen && ctl.plusBtn}
+    {#key ctl.plusView}
+      <ToolbarMenu
+        label={t("app.chatDock.plus")}
+        rows={ctl.plusRows}
+        trigger={ctl.plusBtn}
+        align="left"
+        touch={phone}
+        onpick={(key) => ctl.pickPlus(key)}
+        onback={() => ctl.plusBack()}
+        onclose={(back) => ctl.closePlus(back)}
+      />
+    {/key}
+  {/if}
+  {#if ctl.modelOpen && ctl.modelBtn}
+    <ChatModelPopover {ctl} trigger={ctl.modelBtn} touch={phone} />
+  {/if}
 </div>
 
 <style>
-  /* 폰 — 알약 칸 안 보내기 왼쪽의 그림 고르기(보내기 원과 같은 32 원 · 터치는 칸 높이가 받는다) */
-  .pick {
+  /* `[+]` — 알약 칸 안 왼쪽 아래(보내기 원과 같은 32 원 · 낮은 면). 열려 있으면 고른 면 + 45° 돌아 × 모양(목업 D3) */
+  .plus {
+    position: relative;
     width: 32px;
     height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    color: var(--fg-2);
-    background: transparent;
+    color: var(--fg-1);
+    background: var(--control-tile-bg);
     border: none;
     border-radius: 50%;
     cursor: pointer;
   }
 
-  .pick:hover,
-  .pick:focus-visible {
-    color: var(--fg-1);
-    background: var(--control-ghost-hover);
+  .plus :global(svg) {
+    transition: transform 160ms ease;
+  }
+
+  .plus:hover {
+    background: var(--control-tile-bg-hover);
+  }
+
+  .plus.on {
+    color: var(--control-sel-fg);
+    background: var(--control-sel-bg);
+  }
+
+  .plus.on :global(svg) {
+    transform: rotate(45deg);
+  }
+
+  .plus:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* 폰 — 보이는 크기는 그대로, 누르는 자리만 44px */
+  .plus.touch::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .plus :global(svg) {
+      transition: none;
+    }
   }
 
   .pick-input {

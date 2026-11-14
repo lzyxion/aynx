@@ -3,7 +3,8 @@ import {
   attachmentPaths,
   attachmentsReady,
   baseName,
-  clipboardImageFiles,
+  clipboardFiles,
+  filesBesidePics,
   isImageName,
   removeAttachment,
   settleAttachment,
@@ -42,7 +43,7 @@ describe("대화 면 입력 칸의 첨부 칩", () => {
     expect(baseName("/a/b/")).toBe("b");
   });
 
-  it("붙여넣기 — 글 없이 그림만 있을 때만 그림 파일", () => {
+  it("붙여넣기 — 글 없이 파일만 있을 때만 그 파일(그림 · 아무 파일)", () => {
     const png = new File([new Uint8Array([1])], "image.png", { type: "image/png" });
     const txt = new File([new Uint8Array([1])], "a.txt", { type: "text/plain" });
     const dt = (text: string, items: { kind: string; type: string; file: File | null }[], files: File[] = []) => ({
@@ -50,10 +51,18 @@ describe("대화 면 입력 칸의 첨부 칩", () => {
       items: items.map((i) => ({ kind: i.kind, type: i.type, getAsFile: () => i.file })),
       files,
     });
-    expect(clipboardImageFiles(dt("", [{ kind: "file", type: "image/png", file: png }]))).toEqual([png]);
-    expect(clipboardImageFiles(dt("표 글", [{ kind: "file", type: "image/png", file: png }]))).toEqual([]);
-    expect(clipboardImageFiles(dt("", [{ kind: "file", type: "text/plain", file: txt }]))).toEqual([]);
-    expect(clipboardImageFiles(dt("", [{ kind: "string", type: "text/html", file: null }], [png, txt]))).toEqual([png]);
-    expect(clipboardImageFiles(null)).toEqual([]);
+    expect(clipboardFiles(dt("", [{ kind: "file", type: "image/png", file: png }]))).toEqual([png]);
+    expect(clipboardFiles(dt("표 글", [{ kind: "file", type: "image/png", file: png }]))).toEqual([]);
+    expect(clipboardFiles(dt("", [{ kind: "file", type: "text/plain", file: txt }]))).toEqual([txt]);
+    expect(clipboardFiles(dt("", [{ kind: "string", type: "text/html", file: null }], [png, txt]))).toEqual([png, txt]);
+    expect(clipboardFiles(dt("", [{ kind: "string", type: "text/html", file: null }]))).toEqual([]);
+    expect(clipboardFiles(null)).toEqual([]);
+  });
+
+  it("막 보낸 말풍선 — 그림으로 그린 이름은 칩에서 뺀다(같은 이름은 하나씩)", () => {
+    const pic = (name: string) => ({ name, url: `blob:${name}` });
+    expect(filesBesidePics(["a.png", "main.ts"], [pic("a.png")])).toEqual(["main.ts"]);
+    expect(filesBesidePics(["image.png", "image.png"], [pic("image.png")])).toEqual(["image.png"]);
+    expect(filesBesidePics(["main.ts"], [])).toEqual(["main.ts"]);
   });
 });

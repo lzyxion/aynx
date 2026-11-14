@@ -79,7 +79,7 @@ export interface LiveState {
   effort: string | null;
   /** 지금 대화 id(준비 · `conversation-changed` · 스냅숏) */
   conversationId: string | null;
-  /** 지금 프로세스에 실린 외부 MCP 서버 이름(`mcpServers` 사건 · 스냅숏 — 머리줄 칩) */
+  /** 지금 프로세스에 실린 외부 MCP 서버 이름(`mcpServers` 사건 · 스냅숏 — 입력 칸 `[+]` › MCP). 띄우기 전에는 서버가 연 때 계산한 예정 이름 */
   mcp: string[];
 }
 

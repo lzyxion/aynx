@@ -5,10 +5,11 @@
   - 머리: ← 닫기(뒤로) · 지금 채팅 제목 ▾(목록 — 맨 위 [새 채팅] · 줄 = 로고 · 제목 · 모델 · 시각 · 점 + 늘 보이는 이름 바꾸기 · 지우기 단추 —
     독과 같은 `ChatHistory`) · + 새 채팅.
     휴대폰 '뒤로' 도 닫는다 — 다른 폰 덮개와 같은 기록 칸(`MobileBar` 의 SvelteKit `pushState`).
-  - 몸: 독과 같은 대화 면(`SideChatFace` 의 `phone` — Enter 줄바꿈 · 보내기는 단추 · 그림 고르기 단추). 상태는 `app/side-chat-live` 에 남아
+  - 몸: 독과 같은 대화 면(`SideChatFace` 의 `phone` — Enter 줄바꿈 · 보내기는 단추 · 누르는 자리 44px). 상태는 `app/side-chat-live` 에 남아
     덮개를 닫았다 열어도 지금 턴을 잃지 않는다. 권한 카드는 원격에서도 그냥 [허용 한 번] · [거절]이다(재확인 없음 — 사용자 결정 11-01).
   - 열 때 입력 칸에 포커스를 주지 않는다(화면 키보드가 대화를 가린다) — 뒤로 단추에 준다.
-  - CLI · 모델 · 강도 칩과 연결 고르기는 데스크톱 독의 일이다(폰은 연결을 [사이드 채팅에 묻기]로만 건다 — 보낼 때 그 이름은 싣는다).
+  - CLI · 모델 · 강도 · 연결 · 그림 · 실린 MCP 는 독과 같은 입력 칸 한 줄(`[+]` · 모델 키워드 · 연결 칩 — 2026-11-13 목업 D안 · 대화 면이 쥔다).
+    예전 폰 판의 칸 안 그림 고르기 단추는 `[+]` › 파일 업로드로 들어갔다.
   - 오른쪽에서 밀려 들어오고 밀려 나간다(다른 전체 화면 덮개와 같은 `pushOut`).
 -->
 <script lang="ts">
@@ -32,7 +33,7 @@
   import { joinSideChat, restartSideChat, setShownSideChat, sideChatDot, sideChatLiveOf } from "$lib/app/side-chat-live.svelte.js";
   import { joinListedSideChats, removeSideChat, sideChatsHeadDot } from "$lib/app/side-chat-surface.svelte.js";
   import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
-  import { linkChipState, linkSendName } from "$lib/side-chat-link";
+  import { linkChipState } from "$lib/side-chat-link";
   import { sideChatCliOk, sideChatNewDefault, sortSideChats, type SideChat } from "$lib/side-chat";
   import { targetOf, type Dot } from "$lib/chat/chat-presentation";
   import { knownAiClis } from "$lib/app/panes.svelte.js";
@@ -258,8 +259,10 @@
         <SideChatFace
           chatId={c.id}
           cli={c.cli}
+          chat={c}
           cliName={cliName(c.cli)}
-          linkName={linkSendName(chipLink)}
+          {offered}
+          {chipLink}
           onsent={(text) => noteSideChatSent(c.id, text)}
           onrestart={() => void restartSideChat(targetOf(c))}
           cwd={c.cwd}

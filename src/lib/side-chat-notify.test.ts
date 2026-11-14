@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { shouldNotifySideChat, sideChatNotifyText, sideChatTurnNotifyKind } from "$lib/side-chat-notify";
+import {
+  bannerKindOfSideChat,
+  shouldNotifySideChat,
+  sideChatNotifyText,
+  sideChatResolvedBy,
+  sideChatTurnNotifyKind,
+} from "$lib/side-chat-notify";
 
 describe("sideChatTurnNotifyKind", () => {
   it("잘 끝남 · 오류는 알리고 사람이 끊은 턴은 알리지 않는다", () => {
@@ -19,8 +25,8 @@ describe("shouldNotifySideChat", () => {
     expect(shouldNotifySideChat({ enabled: true, windowFocused: true, chatShown: true })).toBe("none");
   });
 
-  it("창이 앞이어도 그 채팅이 안 보이면 토스트", () => {
-    expect(shouldNotifySideChat({ enabled: true, windowFocused: true, chatShown: false })).toBe("toast");
+  it("창이 앞이어도 그 채팅이 안 보이면 배너(AI 타일과 같은 표면)", () => {
+    expect(shouldNotifySideChat({ enabled: true, windowFocused: true, chatShown: false })).toBe("banner");
   });
 
   it("창이 뒤면 채팅이 열려 있어도 OS 알림", () => {
@@ -35,5 +41,21 @@ describe("sideChatNotifyText", () => {
     expect(sideChatNotifyText("finished", "빌드 질문", tr)).toBe("app.chatDock.notify.finished|빌드 질문");
     expect(sideChatNotifyText("failed", "빌드 질문", tr)).toBe("app.chatDock.notify.failed|빌드 질문");
     expect(sideChatNotifyText("permission", "빌드 질문", tr)).toBe("app.chatDock.notify.permission|빌드 질문");
+  });
+});
+
+describe("bannerKindOfSideChat", () => {
+  it("끝남은 타일의 턴 끝(`stop`)과 같은 갈래 · 실패 · 권한은 그대로", () => {
+    expect(bannerKindOfSideChat("finished")).toBe("stop");
+    expect(bannerKindOfSideChat("failed")).toBe("failed");
+    expect(bannerKindOfSideChat("permission")).toBe("permission");
+  });
+});
+
+describe("sideChatResolvedBy", () => {
+  it("새 턴은 전부 · 권한이 비면 권한만 · 그 밖은 없음", () => {
+    expect(sideChatResolvedBy({ turnStarted: true, permissionsCleared: false })).toEqual(["stop", "failed", "permission"]);
+    expect(sideChatResolvedBy({ turnStarted: false, permissionsCleared: true })).toEqual(["permission"]);
+    expect(sideChatResolvedBy({ turnStarted: false, permissionsCleared: false })).toEqual([]);
   });
 });

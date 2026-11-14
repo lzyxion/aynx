@@ -11,7 +11,7 @@
 //! | op | 등급 | 몸 → 답 |
 //! | --- | --- | --- |
 //! | `side_chat_open` | 쓰기 | `{chat, cli, model, effort?, mode: {kind: fresh} \| {kind: resume, conv, project?} \| {kind: fork, from}, window}` → 스냅숏(아래) · **띄우지 않는다**(뜻만 적는다) · 같은 채팅 · 같은 CLI 면 다시 붙기 · `fork` · `project` 는 아래 "타일 대화 이어 가기" |
-//! | `side_chat_send` | 쓰기 | `{chat, epoch, text, clientId?, linkName?, images?}` → `{epoch, link}` · 프로세스가 없으면 **여기서 띄운다**(악수 · 준비를 기다려 — `turn::START_MS`) · `images` = 붙인 그림 경로(첨부 자리 안만 — `chat_images`) |
+//! | `side_chat_send` | 쓰기 | `{chat, epoch, text, clientId?, linkName?, images?, files?}` → `{epoch, link}` · 프로세스가 없으면 **여기서 띄운다**(악수 · 준비를 기다려 — `turn::START_MS`) · `images` = 붙인 그림 경로(첨부 자리 안만 — `chat_images`) · `files` = 그림 밖 첨부(판 32 — 첨부 자리 안만 · 서버가 채팅 자기 폴더의 `attachments/` 에 사본 — `chat_files`) |
 //! | `side_chat_interrupt` | 쓰기 | `{chat, epoch}` → bool(끊기를 보냈나 — 도는 턴이 없으면 false) |
 //! | `side_chat_set_model` | 쓰기 | `{chat, epoch, model}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기에 쓴다) |
 //! | `side_chat_set_effort` | 쓰기 | `{chat, epoch, effort: 낱말 \| null}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기의 `--effort` · 첫 `turn/start`) · `null` = CLI 기본 · 악수가 알린 목록 밖이면 `[bad-effort]` |
@@ -20,6 +20,7 @@
 //! | `side_chat_attach` | 읽기 | `{chat, window}` → 스냅숏 · 그 창을 보는 창에 **덧붙인다**(F5 · 웹뷰 크래시 뒤 새 페이지 · 다른 창) · 없으면 `[session-gone]` |
 //! | `side_chat_list` | 읽기 | `{}` → `[{chat, cli, model, effort, epoch, status, conversationId, viewers, detached}]`(`viewers` = 보는 창 **수** — 남의 창 라벨은 돌려주지 않는다) |
 //! | `side_chat_link` | 쓰기 | `{chat, epoch?, stream: 스트림 \| null}` → `{link, changed}` · 서버 거울의 창 타일만(`[bad-link]`) · 바뀌면 다음 보내기에 연결 머리글(5단계 — 아래 "연결") |
+//! | `side_chat_seen` | 쓰기 | `{chat, epoch, seq}` → `{sent}` · 어느 창에서 사람이 그 채팅의 턴 끝(사건 `turnEnded` 의 `epoch` · `seq`)을 봤다 — 표는 그대로 · 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 `side-chat-seen{chat, epoch, seq}` 방송(판 31 — 아래 "완료 확인 공유") |
 //!
 //! 스냅숏 = `{link, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, liveTurn: [Ev], pending: [Ev]}`
 //! (`link` = `null` \| `{stream, code, label, kind, readable, closed}` · `cwd` = CLI 가 도는 폴더(`null` = 채팅 자기 폴더) — 화면의 이름표일
@@ -37,6 +38,13 @@
 //! 그리게 · 로그 · `Debug` 에는 없다).
 //! `epoch` 은 프로세스 세대 [`chat_proc::ProcId`] — **서버 전역 단조 증가 · 재사용 없음**(0 = 아직 안 띄움). 닫고 다시 연 같은 채팅도 옛
 //! 세대와 겹치지 않는다(오케스트레이션 2단계 단계 1 — 예전에는 채팅마다 1부터 다시 셌다).
+//!
+//! ## 완료 확인 공유(2026-11-13 — 판 31 · `src/lib/app/agent-seen.svelte.ts`)
+//!
+//! 배너(끝남 · 실패)는 창마다 산다 — 집 PC 에서 그 채팅을 봐도 원격 창의 배너가 남았다(거꾸로도). AI 타일의 `agent_state_seen` 과 같은 결로,
+//! 사람이 본 창이 `side_chat_seen{chat, epoch, seq}` 를 보내고 서버는 **표를 바꾸지 않고** 방송만 한다. 몸은 채팅 id · 세대 · 사건 번호뿐이라
+//! (본문 · 토큰 없음) 사건(`side-chat-event`)과 달리 `client::RELAYED` 로 모든 창에 간다. 낡음(그 뒤 다음 턴이 섰다)은 받는 창이 제 사본의
+//! 마지막 턴 끝 번호와 견줘 버린다 — 서버는 없는 채팅 · 다른 세대 · 아직 없는 번호만 거른다.
 //!
 //! ## 띄우기(설계 2절 · CLAUDE.md "③ 사이드 채팅 프로세스")
 //!
@@ -89,6 +97,8 @@
 //!   (Claude `--strict-mcp-config` · Codex 하나씩 끄기 — 같은 이름의 외부 서버는 Codex 에 싣지 않고 `mcp-name-taken`).
 //! - 비밀 값은 AI 타일과 같은 브로커(`mcp_launch` — stdio 도우미 · HTTP 헤더 프록시)가 티켓으로 — 인자 · 파일 · 프런트에 값이 없다. 볼트가
 //!   잠겼으면 비밀 값이 있는 서버만 빼고 `mcp-locked` 로 알린다(채팅은 뜬다).
+//! - **이름은 첫 보내기 전에도**(2026-11-13): 프로세스는 첫 보내기에 뜨지만 `open` 이 띄우지 않고 실을 예정 이름(`planned_mcp` — 같은
+//!   빼기 규칙 · 이름만)을 스냅숏 `mcpServers` 에 싣는다 — 입력 칸 `[+]` › MCP 가 새 채팅에서도 선다. 띄우면 실린 목록이 갈음한다.
 //! - **묻지 않기**(`side_chat_no_ask` — 설정에서만): Claude `--allowedTools mcp__<서버>` · Codex `default_tools_approval_mode='approve'`. 끈 서버는
 //!   부를 때마다 권한 카드(`permission{kind: mcpTool}` — Claude `can_use_tool` · Codex MCP 승인 elicitation · `prompt`).
 //!
@@ -136,6 +146,8 @@ use crate::side_chat::{claude, codex, store, Adapter, Cli, Decision, Ev};
 
 /// 사건 이벤트 이름(서버 → GUI). 몸 `{windows, chat, epoch, seq, ev}`.
 pub(crate) const EVENT: &str = "side-chat-event";
+/// 완료 확인 방송 이름(op `side_chat_seen` — 머리말 "완료 확인 공유"). 몸 `{chat, epoch, seq}` — 본문 · 토큰 없음, GUI 가 모든 창에 중계한다.
+pub(crate) const SEEN_EVENT: &str = "side-chat-seen";
 /// op 실패 코드.
 pub(crate) const SIDE_CHAT: &str = "side-chat";
 /// 옛 프로세스 세대(`epoch`)의 호출 — 화면은 다시 attach 한다.
@@ -173,6 +185,7 @@ pub(crate) fn is_side_chat_op(op: &str) -> bool {
             | "side_chat_attach"
             | "side_chat_list"
             | "side_chat_link"
+            | "side_chat_seen"
     )
 }
 
@@ -217,7 +230,8 @@ struct State {
     core: Core,
     /// 연결(`crate::chat_token`)이 서거나 바뀌었다 — 사람의 다음 글 앞에 연결 머리글을 붙인다(`op_send` — 붙인 뒤 내린다).
     link_note: bool,
-    /// 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름(`Ev::McpServers` — 스냅숏의 `mcpServers`).
+    /// 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름(`Ev::McpServers` — 스냅숏의 `mcpServers`). 프로세스가 없을 때 연 채팅은 실을 예정
+    /// 이름([`planned_mcp`] — `op_open`).
     mcp: Vec<String>,
 }
 
@@ -446,19 +460,19 @@ fn external_mcp(cli: Cli, cwd: &str, user_names: &[String], notices: &mut Vec<Ev
     let broker = hub::broker();
     let (mut out, mut locked, mut taken, mut failed) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for s in picked {
-        if cli == Cli::Codex && user_names.contains(&s.name) {
-            taken.push(s.name);
-            continue;
+        match mcp_skip(&s, cli, user_names, vault_open) {
+            Some(Skip::Taken) => {
+                taken.push(s.name);
+                continue;
+            }
+            Some(Skip::Locked) => {
+                locked.push(s.name);
+                continue;
+            }
+            None => {}
         }
         let secret = !s.env.is_empty() || !s.headers.is_empty();
-        let prepared = if !secret {
-            Some(s.clone())
-        } else if !vault_open {
-            locked.push(s.name);
-            continue;
-        } else {
-            broker.as_ref().and_then(|b| b.prepare(&s, Some(cwd)).ok())
-        };
+        let prepared = if !secret { Some(s.clone()) } else { broker.as_ref().and_then(|b| b.prepare(&s, Some(cwd)).ok()) };
         match prepared.filter(crate::agent_mcp::launch_ok) {
             Some(p) => out.push(p),
             None => failed.push(s.name),
@@ -472,17 +486,54 @@ fn external_mcp(cli: Cli, cwd: &str, user_names: &[String], notices: &mut Vec<Ev
     out
 }
 
+/// 고른 외부 서버를 싣지 않을 까닭(띄우기 [`external_mcp`] 와 열기의 예정 이름 [`planned_mcp`] 이 같은 규칙을 쓴다).
+enum Skip {
+    /// Codex 사용자 `config.toml` 에 같은 이름(`mcp-name-taken`)
+    Taken,
+    /// 비밀 값이 있는데 볼트가 잠겼다(`mcp-locked`)
+    Locked,
+}
+
+fn mcp_skip(s: &crate::agent_mcp::McpServer, cli: Cli, user_names: &[String], vault_open: bool) -> Option<Skip> {
+    if cli == Cli::Codex && user_names.contains(&s.name) {
+        return Some(Skip::Taken);
+    }
+    if !vault_open && (!s.env.is_empty() || !s.headers.is_empty()) {
+        return Some(Skip::Locked);
+    }
+    None
+}
+
+/// **열 때의 예정 이름**(2026-11-13 — 첫 보내기 전에도 `[+]` › MCP 가 보이게) — 프로세스는 첫 보내기에 뜨므로(머리말 "게으르게") 그 전에는
+/// 실린 목록(`Ev::McpServers`)이 없다. 띄우지 않고 [`external_mcp`] 와 같은 고르기 · 빼기 규칙([`mcp_skip`] — 같은 이름 · 볼트 잠김)만 적용한
+/// **이름**을 스냅숏의 `mcpServers` 에 싣는다(값 · 티켓 · 토큰 없음). 띄우면 실제로 실린 목록이 이것을 갈음한다(준비 실패만 그때 빠진다).
+/// 블로킹(설정 · 프로젝트 판정 · Codex 설정 파일 읽기) — 표 · 채팅 잠금 **앞**에서 부른다.
+fn planned_mcp(cli: Cli, cwd: &str) -> Vec<String> {
+    let picked = picked_servers(cwd);
+    if picked.is_empty() {
+        return Vec::new();
+    }
+    let user = if cli == Cli::Codex { codex_mcp_names().names } else { Vec::new() };
+    let vault_open = hub::vault().is_some_and(|v| v.is_unlocked());
+    picked.into_iter().filter(|s| mcp_skip(s, cli, &user, vault_open).is_none()).map(|s| s.name).collect()
+}
+
+/// **그 채팅 CLI 가 도는 폴더** — 채팅 자기 폴더(없으면 만든다) · 갈라 온 채팅은 열 때 색인에서
+/// 정한 폴더(그 사이 지워졌으면 `[conversation-folder-missing]`).
+fn run_cwd(root: &Path, id: &str, forked: Option<&Path>) -> Result<PathBuf, WireError> {
+    let own = store::chat_dir(root, id).ok_or_else(|| fail("bad-chat", "invalid side chat id"))?;
+    std::fs::create_dir_all(&own).map_err(|e| fail("chat-dir", e.to_string()))?;
+    match forked {
+        Some(p) if p.is_dir() => Ok(p.to_path_buf()),
+        Some(_) => Err(fail(FOLDER_MISSING, "the conversation's folder no longer exists")),
+        None => Ok(own),
+    }
+}
+
 /// 실행 재료([`chat_proc::Launch`])를 짓는다(파일을 쓰지만 아무것도 띄우지 않는다).
 fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
     let root = sidechat_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
-    let own = store::chat_dir(&root, id).ok_or_else(|| fail("bad-chat", "invalid side chat id"))?;
-    std::fs::create_dir_all(&own).map_err(|e| fail("chat-dir", e.to_string()))?;
-    // 갈라 온 채팅 — 열 때 색인에서 정한 폴더(그 사이 지워졌으면 띄우지 않는다)
-    let cwd = match &st.cwd {
-        Some(p) if p.is_dir() => p.clone(),
-        Some(_) => return Err(fail(FOLDER_MISSING, "the conversation's folder no longer exists")),
-        None => own,
-    };
+    let cwd = run_cwd(&root, id, st.cwd.as_deref())?;
     let dir = root.join(".run").join(format!("{id}-{proc}"));
     std::fs::create_dir_all(&dir).map_err(|e| fail("temp-dir", e.to_string()))?;
     let mut spot = Spot::new(dir);
@@ -531,6 +582,12 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
             };
             // 묻지 않기를 켠 외부 서버만 통째로 미리 허용 — 나머지 외부 도구는 `can_use_tool` → 권한 카드
             allowed.extend(claude::no_ask_rules(&ext));
+            // 파일 첨부(판 32) — 사본은 늘 채팅 자기 폴더의 `attachments/`(`chat_files`). 갈라 온 채팅은 cwd 가 다른 폴더라 그 폴더 **하나의 읽기**만
+            // 더한다(`--add-dir` + `Read(//…/**)` — 쓰기 · 실행 도구는 `--tools` 에 없다). 자기 폴더가 cwd 인 채팅은 `Read(./**)` 에 이미 든다.
+            let attach_dir = if st.cwd.is_some() { attach_read(id) } else { None };
+            if let Some((_, rule)) = &attach_dir {
+                allowed.push(rule.clone());
+            }
             let append = Some(spot.write("instructions.md", &instructions(&root)).map_err(|e| fail("temp-file", e))?);
             let (mode, session_id) = match (st.conversation.as_deref(), fresh.as_deref()) {
                 (Some(c), _) => (Mode::Resume { conv: c }, c),
@@ -552,7 +609,11 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
                 append_file: append.as_deref(),
                 mcp_allowed: &allowed,
             };
-            (claude::argv(&o).map_err(bad)?, Box::new(claude::Claude::new(&o)))
+            let mut a = claude::argv(&o).map_err(bad)?;
+            if let Some((dir, _)) = &attach_dir {
+                a.extend(["--add-dir".to_string(), dir.clone()]);
+            }
+            (a, Box::new(claude::Claude::new(&o)))
         }
         Cli::Codex => {
             let names = user_names;
@@ -667,6 +728,9 @@ struct SendBody {
     /// 사람이 이 글에 붙인 그림의 경로(입력 칸 칩 — 앱 첨부 자리의 사본). 서버가 다시 본다(`chat_images`).
     #[serde(default)]
     images: Vec<String>,
+    /// 사람이 이 글에 붙인 그림 밖 파일의 경로(판 32 — 앱 첨부 자리의 사본). 서버가 다시 보고 채팅 자기 폴더로 옮겨 적는다(`chat_files`).
+    #[serde(default)]
+    files: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -674,6 +738,14 @@ struct SendBody {
 struct EpochBody {
     chat: String,
     epoch: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SeenBody {
+    chat: String,
+    epoch: u64,
+    seq: u64,
 }
 
 #[derive(Deserialize)]
@@ -739,6 +811,7 @@ pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> 
         "side_chat_attach" => op_attach(body(b)?, conn),
         "side_chat_list" => Ok(list()),
         "side_chat_link" => op_link(body(b)?),
+        "side_chat_seen" => Ok(op_seen(body(b)?)),
         _ => Err(WireError::new(super::ipc::frame::code::UNKNOWN_OP, format!("unknown op: {op}"))),
     }
 }
@@ -836,6 +909,9 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
             return Err(fail("bad-conversation", "invalid conversation id"))
         }
     };
+    // 첫 보내기 전에도 보일 외부 MCP 이름(띄울 폴더 = 갈라 온 대화의 폴더, 아니면 채팅 폴더 — [`prepare`] 와 같은 자리) — 잠금 앞에서
+    let plan_cwd = cwd.clone().or_else(|| sidechat_root().and_then(|r| store::chat_dir(&r, &b.chat)));
+    let planned = plan_cwd.map(|p| planned_mcp(cli, &p.to_string_lossy().replace('\\', "/"))).unwrap_or_default();
     let (chat, alive, old) = {
         let mut t = lock(&TABLE);
         let alive = t.conns.contains(&conn);
@@ -884,6 +960,7 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     if !st.core.has_proc() {
         st.model = b.model;
         st.effort = b.effort;
+        st.mcp = planned;
         if conversation.is_some() {
             st.conversation = conversation;
             st.cwd = cwd;
@@ -914,13 +991,18 @@ fn op_attach(b: AttachBody, conn: u64) -> Result<Value, WireError> {
 /// **사람이 보낸 글** — 이 함수가 `encode_user` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`). 프로세스가 없으면 여기서
 /// 띄우고 준비를 기다린다.
 fn op_send(b: SendBody) -> Result<Value, WireError> {
-    if (b.text.trim().is_empty() && b.images.is_empty()) || b.text.len() > TEXT_MAX {
+    if (b.text.trim().is_empty() && b.images.is_empty() && b.files.is_empty()) || b.text.len() > TEXT_MAX {
         return Err(fail("bad-text", "the message is empty or too long"));
     }
+    if b.images.len() + b.files.len() > IMAGES_MAX {
+        return Err(fail("too-many-attachments", "too many attachments in one message"));
+    }
     let chat = find(&b.chat)?;
-    // 그림 — 파일을 읽는 일이라 채팅 잠금 앞에서(CLI 는 채팅마다 고정 — 바꾸면 `open` 이 새 채팅을 세운다). Claude 만 바이트를 싣는다.
+    // 그림 · 파일 — 파일을 읽고 쓰는 일이라 채팅 잠금 앞에서(CLI 는 채팅마다 고정 — 바꾸면 `open` 이 새 채팅을 세운다). Claude 만 그림
+    // 바이트를 싣는다.
     let cli = lock(&chat.st).cli;
     let images = chat_images(&b.images, cli == Cli::Claude)?;
+    let attached = chat_files(&chat.id, &b.files)?;
     let mut st = lock(&chat.st);
     check_epoch(&st, b.epoch)?;
     if !st.core.has_proc() {
@@ -938,6 +1020,7 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
     let epoch = st.core.id();
     // 연결이 서거나 바뀐 뒤의 첫 글 — 앱 고정 연결 머리글을 앞에 붙인다(5단계 · 서버가 아는 연결 · 거울의 타일 이름으로만 짓는다).
     let text = if st.link_note { format!("{}{}", link_header_now(&chat.id, b.link_name.as_deref()), b.text) } else { b.text.clone() };
+    let text = with_file_refs(&text, &attached);
     let Some(a) = st.core.adapter() else {
         return Err(fail("exited", "the side chat CLI exited before it was ready"));
     };
@@ -949,7 +1032,9 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
     // 사건을 내는 읽기 스레드는 이 잠금이 풀린 뒤에야 반영하므로 apply 앞이든 뒤든 같다.
     let files = images
         .iter()
-        .filter_map(|im| Path::new(&im.path).file_name().map(|n| n.to_string_lossy().into_owned()))
+        .map(|im| im.path.as_str())
+        .chain(attached.iter().map(|f| f.path.as_str()))
+        .filter_map(|p| Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()))
         .collect();
     if st.sent.len() >= SENT_MAX {
         st.sent.pop_front();
@@ -1024,6 +1109,165 @@ fn plain_path(p: &Path) -> String {
         Some(rest) if !rest.starts_with("UNC\\") => rest.to_string(),
         _ => s.into_owned(),
     }
+}
+
+/// 그림 밖 첨부 한 개의 상한 — 그림과 같은 10 MB(사용자 결정 2026-11-14).
+const FILE_MAX_BYTES: u64 = IMAGE_MAX_BYTES;
+/// 채팅 자기 폴더 안 사본 자리의 이름(`sidechat/<id>/attachments/`).
+const FILES_DIR: &str = "attachments";
+
+/// 채팅 자기 폴더로 옮겨 적은 첨부 하나 — CLI 가 읽을 경로(확장 머리 없음).
+#[derive(Debug, PartialEq)]
+pub(super) struct AttachedFile {
+    path: String,
+}
+
+/// **보내기에 붙인 그림 밖 파일**(판 32 · 2026-11-14) — 화면이 준 경로는 그림과 같이 **앱 첨부 자리 안의 실제 파일만** 받고, 서버가
+/// **늘 그 채팅 자기 폴더**(`<데이터 루트>/sidechat/<id>/`) 안 `attachments/` 에 사본을 둔다 — 갈라 온 채팅도 기록된 cwd(사용자 저장소)에는
+/// 쓰지 않는다(사용자 결정). 자기 폴더가 cwd 인 채팅은 Claude 의 미리 허용 `Read(./**)`(`side_chat::claude::ALLOWED`)에 들고, 갈라 온 Claude
+/// 채팅은 띄울 때 그 폴더 하나의 읽기를 더한다([`attach_read`]). 채팅을 지우면 폴더째 지워진다(`store::remove_chat_dir`). 사본 자리는
+/// 서버가 정한다 — 화면은 경로를 보내지 않는다. 블로킹(파일을 읽고 쓴다).
+fn chat_files(id: &str, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let root = crate::agent_attachments::attachments_root().map_err(|_| fail("file-outside", "the attachment folder is unavailable"))?;
+    let chats = sidechat_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
+    let own = store::chat_dir(&chats, id).ok_or_else(|| fail("bad-chat", "invalid side chat id"))?;
+    std::fs::create_dir_all(&own).map_err(|e| fail("chat-dir", e.to_string()))?;
+    files_in(&root, &own, paths)
+}
+
+/// **갈라 온 Claude 채팅의 첨부 폴더 읽기**(판 32 · 2026-11-14) — 채팅 자기 폴더의 `attachments/` 를 지금 만들고(없으면 `--add-dir` 가 실패한다 ·
+/// 링크 · 정션이면 [`files_dir`] 가 거절 → 더하지 않는다) → (`--add-dir` 경로, `--allowedTools` 규칙). 규칙은 오케스트레이션과 같은
+/// [`crate::orchestration::spawn::claude_read_rule`](`C:\a\b` → `Read(//c/a/b/**)` — Claude Code 의 절대 경로 규칙은 `//` + POSIX 드라이브
+/// 경로 · 1b 실측 형식). 경로에 규칙 문법 글자가 있으면 `None`(허용 없이 띄운다 — 그 읽기는 권한 카드).
+fn attach_read(id: &str) -> Option<(String, String)> {
+    let own = store::chat_dir(&sidechat_root()?, id)?;
+    let dir = plain_path(&files_dir(&own).ok()?);
+    let rule = crate::orchestration::spawn::claude_read_rule(Path::new(&dir))?;
+    Some((dir, rule))
+}
+
+/// [`chat_files`] 의 몸(시험이 자리를 준다). 실패는 이유 코드 하나: `too-many-attachments` · `file-missing` · `file-outside`(실제 경로가 첨부
+/// 자리 밖 — 링크 · `..` 로 빠져나가도 같다) · `file-not-file` · `file-too-big`(10 MB 넘음) · `file-dest`(사본 자리가 cwd 안의 실제 폴더가
+/// 아니다 — `attachments` 가 링크 · 정션이거나 만들 수 없다) · `file-copy`. **모두 확인한 뒤에 옮긴다**(하나라도 틀리면 아무것도 쓰지 않는다).
+/// 같은 이름은 덮지 않고 ` (2)` · ` (3)` … 를 붙인다(`create_new`).
+pub(super) fn files_in(root: &Path, cwd: &Path, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
+    if paths.len() > IMAGES_MAX {
+        return Err(fail("too-many-attachments", "too many attachments in one message"));
+    }
+    let root = std::fs::canonicalize(root).map_err(|_| fail("file-outside", "the attachment folder is unavailable"))?;
+    let mut picked = Vec::with_capacity(paths.len());
+    for p in paths {
+        let real = std::fs::canonicalize(p).map_err(|_| fail("file-missing", "an attached file is missing"))?;
+        if real == root || !real.starts_with(&root) {
+            return Err(fail("file-outside", "an attached file is outside the attachment folder"));
+        }
+        let meta = std::fs::metadata(&real).map_err(|_| fail("file-missing", "an attached file is missing"))?;
+        if !meta.is_file() {
+            return Err(fail("file-not-file", "an attachment is not a file"));
+        }
+        if meta.len() > FILE_MAX_BYTES {
+            return Err(fail("file-too-big", "an attached file is larger than 10 MB"));
+        }
+        let Some(name) = real.file_name().map(|n| n.to_os_string()) else {
+            return Err(fail("file-missing", "an attached file has no name"));
+        };
+        picked.push((real, name));
+    }
+    let dest = files_dir(cwd)?;
+    picked.into_iter().map(|(real, name)| copy_unique(&real, &dest, Path::new(&name))).collect()
+}
+
+/// `<채팅 폴더>/attachments` — 없으면 만들고, **링크 · 정션이 아닌 그 폴더 바로 아래 실제 폴더**인지 본다(밖으로 쓰지 않게).
+fn files_dir(cwd: &Path) -> Result<PathBuf, WireError> {
+    let bad = || fail("file-dest", "the attachment folder in the chat folder is not usable");
+    let cwd = std::fs::canonicalize(cwd).map_err(|_| bad())?;
+    let dir = cwd.join(FILES_DIR);
+    match std::fs::symlink_metadata(&dir) {
+        Ok(m) if m.file_type().is_symlink() || !m.is_dir() => return Err(bad()),
+        Ok(_) => {}
+        Err(_) => std::fs::create_dir(&dir).map_err(|_| bad())?,
+    }
+    // 정션처럼 `is_symlink` 가 못 알아볼 수 있는 되돌림도 — 실제 경로가 그 자리 그대로여야 한다
+    if std::fs::canonicalize(&dir).map_err(|_| bad())? != dir {
+        return Err(bad());
+    }
+    Ok(dir)
+}
+
+/// `dir` 에 `name`(차면 `이름 (2).확장` …)으로 새로 만들어 옮겨 적는다 — 있는 파일은 덮지 않는다.
+fn copy_unique(src: &Path, dir: &Path, name: &Path) -> Result<AttachedFile, WireError> {
+    use std::io::{Read, Write};
+    let copy_err = || fail("file-copy", "an attached file could not be copied");
+    let stem = name.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = name.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for n in 1..=999u32 {
+        let candidate = if n == 1 { dir.join(name) } else { dir.join(format!("{stem} ({n}){ext}")) };
+        let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(copy_err()),
+        };
+        let written = std::fs::File::open(src)
+            .and_then(|f| std::io::copy(&mut f.take(FILE_MAX_BYTES + 1), &mut out))
+            .and_then(|w| out.flush().map(|()| w));
+        drop(out);
+        match written {
+            Ok(w) if w <= FILE_MAX_BYTES => return Ok(AttachedFile { path: plain_path(&candidate) }),
+            Ok(_) => {
+                let _ = std::fs::remove_file(&candidate);
+                return Err(fail("file-too-big", "an attached file is larger than 10 MB"));
+            }
+            Err(_) => {
+                let _ = std::fs::remove_file(&candidate);
+                return Err(copy_err());
+            }
+        }
+    }
+    Err(copy_err())
+}
+
+/// **사람 글 끝에 붙인 파일의 경로** — 빈 줄 하나 뒤 한 줄에 하나 `Attached file: <절대 경로>`. **순수**.
+///
+/// 형식을 고른 이유: Claude 의 `@경로` 는 대화형 TUI 입력 칸이 펼치는 기능이고, 사이드 채팅이 쓰는 stream-json 입력 · Codex app-server
+/// `turn/start` 의 글은 CLI 가 펼치지 않고 모델에 그대로 간다. 두 CLI 모두 모델이 이 글을 읽고 Read · 셸 읽기로 연다 — 그래서 CLI 문법에
+/// 기대지 않는 **꾸밈 없는 꼬리표 + 절대 경로**(Claude Read 는 절대 경로를 받는다 · cwd 안이라 `Read(./**)` 미리 허용에 든다)로 둔다.
+/// 영어 고정 — 모델에 가는 앱 고정 글이다(연결 머리글과 같은 결). 재료는 서버가 지은 사본 경로뿐(이름은 사람이 붙인 파일의 이름) — AI 문자열이
+/// 끼지 않는다.
+fn with_file_refs(text: &str, files: &[AttachedFile]) -> String {
+    if files.is_empty() {
+        return text.to_string();
+    }
+    use crate::side_chat::event::FILE_REF_PREFIX;
+    let refs: Vec<String> = files.iter().map(|f| format!("{FILE_REF_PREFIX}{}", f.path)).collect();
+    if text.trim().is_empty() {
+        return refs.join("\n");
+    }
+    // 끝 줄바꿈만 걷는다(머리글만 있는 글의 `] ` 는 남긴다 — 기록 보기가 머리글 · 꼬리를 둘 다 떼어 읽는다: `parse_file_refs`)
+    format!("{}\n\n{}", text.trim_end_matches(['\n', '\r']), refs.join("\n"))
+}
+
+/// **완료 확인 공유**(머리말) — 낡지 않았으면 방송하고 `{sent}`. 채팅이 없어도 오류가 아니다(이미 닫힌 채팅의 늦은 확인).
+fn op_seen(b: SeenBody) -> Value {
+    let payload = find(&b.chat).ok().and_then(|chat| {
+        let st = lock(&chat.st);
+        seen_payload(&chat.id, st.core.id().get(), st.core.seq(), b.epoch, b.seq)
+    });
+    let sent = payload.is_some();
+    if let Some(p) = payload {
+        hub::emit(SEEN_EVENT, p);
+    }
+    json!({ "sent": sent })
+}
+
+/// 방송할 몸 — **순수**. 세대가 다르거나(다시 떴다 · CLI 를 바꿨다) 서버가 아직 내지 않은 번호면 `None`.
+fn seen_payload(chat: &str, cur_epoch: u64, cur_seq: u64, epoch: u64, seq: u64) -> Option<Value> {
+    if epoch != cur_epoch || seq > cur_seq {
+        return None;
+    }
+    Some(json!({ "chat": chat, "epoch": epoch, "seq": seq }))
 }
 
 fn op_interrupt(b: EpochBody) -> Result<Value, WireError> {
@@ -1445,5 +1689,76 @@ mod image_tests {
         assert!(reason(images_in(&root, &[s(&big)], false).unwrap_err()).contains("[image-too-big]"));
         assert!(chat_images(<&[String]>::default(), true).unwrap().is_empty());
         std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// 파일 첨부(판 32) — 첨부 자리 안의 실제 파일만 · 사본은 채팅 자기 폴더의 `attachments/` · 같은 이름은 번호 · 이유 코드 하나씩.
+    #[test]
+    fn files_only_from_the_attachment_folder_into_the_chat_cwd() {
+        let base = std::env::temp_dir().join(format!("aynx-sidechat-file-{}", crate::token::generate_token().unwrap()));
+        let root = base.join("attachments");
+        let dir = root.join("b".repeat(64));
+        let cwd = base.join("chat");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&cwd).unwrap();
+        let ts = dir.join("main.ts");
+        std::fs::write(&ts, b"export {}").unwrap();
+        let noext = dir.join("Makefile");
+        std::fs::write(&noext, b"all:").unwrap();
+        let outside = base.join("secret.txt");
+        std::fs::write(&outside, b"x").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+
+        let got = files_in(&root, &cwd, &[s(&ts), s(&noext)]).unwrap();
+        let real_cwd = std::fs::canonicalize(&cwd).unwrap();
+        let first = Path::new(&got[0].path);
+        assert!(!got[0].path.starts_with(r"\\?\"), "CLI 에는 확장 머리 없는 경로");
+        assert!(first.ends_with("attachments/main.ts") || first.ends_with(r"attachments\main.ts"));
+        assert!(Path::new(&plain_path(&real_cwd)).join("attachments").join("main.ts") == first);
+        assert_eq!(std::fs::read(first).unwrap(), b"export {}");
+        assert!(Path::new(&got[1].path).ends_with("Makefile"));
+        // 같은 이름은 덮지 않는다 — ` (2)` · ` (3)`
+        let again = files_in(&root, &cwd, &[s(&ts), s(&ts)]).unwrap();
+        assert!(Path::new(&again[0].path).ends_with("main (2).ts"));
+        assert!(Path::new(&again[1].path).ends_with("main (3).ts"));
+        assert_eq!(std::fs::read(first).unwrap(), b"export {}", "처음 사본은 그대로");
+        // 첨부 자리 밖 · `..` 로 빠져나가기 · 폴더 · 없음
+        let escape = format!("{}/../../secret.txt", s(&dir));
+        for p in [s(&outside), escape, s(&cwd.join("attachments").join("main.ts"))] {
+            assert!(reason(files_in(&root, &cwd, &[p]).unwrap_err()).contains("[file-outside]"));
+        }
+        assert!(reason(files_in(&root, &cwd, &[s(&root)]).unwrap_err()).contains("[file-outside]"));
+        assert!(reason(files_in(&root, &cwd, &[s(&dir)]).unwrap_err()).contains("[file-not-file]"));
+        assert!(reason(files_in(&root, &cwd, &[s(&dir.join("없음.ts"))]).unwrap_err()).contains("[file-missing]"));
+        let many: Vec<String> = (0..=IMAGES_MAX).map(|_| s(&ts)).collect();
+        assert!(reason(files_in(&root, &cwd, &many).unwrap_err()).contains("[too-many-attachments]"));
+        let big = dir.join("big.pdf");
+        std::fs::File::create(&big).unwrap().set_len(FILE_MAX_BYTES + 1).unwrap();
+        // 하나라도 틀리면 아무것도 옮기지 않는다
+        let before = std::fs::read_dir(cwd.join("attachments")).unwrap().count();
+        assert!(reason(files_in(&root, &cwd, &[s(&noext), s(&big)]).unwrap_err()).contains("[file-too-big]"));
+        assert_eq!(std::fs::read_dir(cwd.join("attachments")).unwrap().count(), before);
+        assert!(chat_files("x", &[]).unwrap().is_empty());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// 글 끝의 경로 꼬리 — 빈 줄 하나 뒤 한 줄에 하나 · 파일이 없으면 글 그대로.
+    #[test]
+    fn file_refs_append_after_the_text() {
+        let f = |p: &str| AttachedFile { path: p.to_string() };
+        assert_eq!(with_file_refs("봐 줘", &[]), "봐 줘");
+        assert_eq!(
+            with_file_refs("봐 줘\n", &[f(r"C:\c\attachments\a.ts"), f(r"C:\c\attachments\b.pdf")]),
+            "봐 줘\n\nAttached file: C:\\c\\attachments\\a.ts\nAttached file: C:\\c\\attachments\\b.pdf"
+        );
+        assert_eq!(with_file_refs("", &[f("/c/attachments/a.ts")]), "Attached file: /c/attachments/a.ts");
+        // 기록 읽기(`parse_file_refs`)가 그대로 되읽는다 — 머리글만 있는 글(연결이 바뀐 뒤 파일만 보냄)도 머리글 · 꼬리 둘 다
+        use crate::side_chat::event::{parse_file_refs, parse_link_note, LINK_HEADER_NONE};
+        let made = with_file_refs("봐 줘", &[f(r"C:\c\attachments\a.ts"), f(r"C:\c\attachments\b (2).pdf")]);
+        assert_eq!(parse_file_refs(&made), Some((vec!["a.ts".to_string(), "b (2).pdf".to_string()], "봐 줘")));
+        let only = with_file_refs("", &[f("/c/attachments/a.ts")]);
+        assert_eq!(parse_file_refs(&only), Some((vec!["a.ts".to_string()], "")));
+        let both = with_file_refs(LINK_HEADER_NONE, &[f("/c/attachments/a.ts")]);
+        let (names, rest) = parse_file_refs(&both).unwrap();
+        assert_eq!((names, parse_link_note(rest).map(|(_, r)| r)), (vec!["a.ts".to_string()], Some("")));
     }
 }

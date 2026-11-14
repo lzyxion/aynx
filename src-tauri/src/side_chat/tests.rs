@@ -1209,3 +1209,42 @@ fn codex_mcp_approval_maps_to_the_permission_card() {
     );
     assert_eq!(j(&s.stdin[0]), json!({"jsonrpc": "2.0", "id": 6, "result": {"action": "cancel"}}));
 }
+
+// ---------------------------------------------------------------------------
+// 파일 첨부 꼬리(판 32 · 2026-11-14 — 기록 보기의 파일 칩)
+// ---------------------------------------------------------------------------
+
+/// 꼬리는 `with_file_refs` 꼴 그대로 **맨 끝**일 때만 뗀다 — 사람이 본문에 쓴 닮은 글 · 가운데의 꼬리 · 꼬리 뒤의 글은 그대로.
+#[test]
+fn file_refs_read_only_the_exact_tail() {
+    let a = r"C:\Users\me\AppData\Roaming\aynx\sidechat\abc\attachments\main.ts";
+    let ok = |t: &str| parse_file_refs(t).map(|(n, b)| (n, b.to_string()));
+    assert_eq!(ok(&format!("봐 줘\n\nAttached file: {a}")), Some((vec!["main.ts".to_string()], "봐 줘".to_string())));
+    assert_eq!(
+        ok(&format!("여러 줄\n본문\n\nAttached file: {a}\nAttached file: /home/me/repo/attachments/b (2).pdf")),
+        Some((vec!["main.ts".to_string(), "b (2).pdf".to_string()], "여러 줄\n본문".to_string()))
+    );
+    assert_eq!(ok(&format!("Attached file: {a}")), Some((vec!["main.ts".to_string()], String::new())));
+    for t in [
+        "그냥 글".to_string(),
+        // 빈 줄 없이 붙은 꼬리 · 빈 줄 둘
+        format!("봐 줘\nAttached file: {a}"),
+        format!("봐 줘\n\n\nAttached file: {a}"),
+        // 꼬리 뒤에 글 · 가운데의 꼬리
+        format!("봐 줘\n\nAttached file: {a}\n더 쓴 글"),
+        format!("Attached file: {a}\n\n그다음 글"),
+        // 사본 자리(`attachments`) 밖 · 상대 경로 · 빈 경로 · 머리 글자 다름
+        r"봐 줘
+
+Attached file: C:\Users\me\notes\main.ts"
+            .to_string(),
+        "봐 줘\n\nAttached file: attachments/main.ts".to_string(),
+        "봐 줘\n\nAttached file: ".to_string(),
+        format!("봐 줘\n\nattached file: {a}"),
+        format!("봐 줘\n\nAttached file:  {a}"),
+        // 아홉 줄(보내기 상한 8 을 넘음)
+        format!("x\n\n{}", vec![format!("Attached file: {a}"); 9].join("\n")),
+    ] {
+        assert!(parse_file_refs(&t).is_none(), "{t}");
+    }
+}

@@ -11,6 +11,7 @@ import {
   deferredSshPaneIds,
   effectiveDefaultShellId,
   findDocPane,
+  findNewDocPane,
   findPaneByStream,
   insertSubtree,
   leafOf,
@@ -882,6 +883,21 @@ describe("문서 타일 (docs/log/2026-09-27-doc-tile.md)", () => {
     expect(findDocPane(root, "/a.md", { paneId: "p2", alias: "web-01" })).toBeNull();
     expect(findDocPane(root, "C:/a.md", { paneId: "p1", alias: "web-01" })).toBeNull();
     expect(findDocPane(root, "C:/b.md")).toBeNull();
+  });
+
+  it("findNewDocPane — 요청 전에 없던 타일 중 같은 파일(같은 판정)만 · 있던 타일은 보지 않는다", () => {
+    const old = newDocPane("C:/a.md");
+    const other = newDocPane("C:/b.md");
+    const fresh = newDocPane("C:/a.md");
+    const remote = newDocPane("/a.md", { paneId: "p1", alias: "web-01" });
+    const before = new Set([old.id]);
+    expect(findNewDocPane([old, other, fresh, remote], before, "C:/a.md")).toBe(fresh);
+    expect(findNewDocPane([old], before, "C:/a.md")).toBeNull();
+    expect(findNewDocPane([old, other], before, "C:/a.md")).toBeNull();
+    expect(findNewDocPane([old, fresh, remote], before, "/a.md", { paneId: "p1", alias: "web-01" })).toBe(remote);
+    // 원본이 다르면 다른 문서다
+    expect(findNewDocPane([remote], before, "/a.md")).toBeNull();
+    expect(findNewDocPane([remote], before, "/a.md", { paneId: "p2", alias: "web-01" })).toBeNull();
   });
 
   it("clonePane 은 보기(`docMode`) · 목차(`docOutline`) · 편집 보기(`docEditView` · `docSplit`) · 글자 크기(`docZoom`)와 빌림을 그대로 물려준다", () => {

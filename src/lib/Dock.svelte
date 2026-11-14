@@ -422,7 +422,7 @@
 
   /** [모두 읽음] 이 할 일이 있는가 — 끝난 에이전트 알림 · 읽지 않은 일반 알림 */
   const canReadAll = $derived(
-    agentBannerItems().some((b) => b.kind === "stop") || notificationList().some((e) => !e.read),
+    agentBannerItems().some((b) => b.kind !== "permission") || notificationList().some((e) => !e.read),
   );
 
   /** [모두 읽음] — 끝남을 전부 확인함으로 · 일반 알림을 읽음으로. 권한 물음 · 승인 대기는 남는다(답해야 풀린다) */

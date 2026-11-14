@@ -888,3 +888,31 @@ fn claude_first_prompt_straddling_the_head_is_read_to_its_end() {
     assert!(parsed.prompt.as_deref().is_some_and(|t| t.contains("what is this")));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// 2026-11-14 실측(Codex 0.168 — 모양만, 값은 지어냄): 한 턴 대화는 앞 128 KB 를 넘는 큰 줄(`world_state`) **바로 뒤**에 하나뿐인
+/// `turn_context` 가 선다. 앞을 그 줄 끝까지 이어 읽으면 꼬리가 바로 거기서 시작하는데, 꼬리의 첫 줄을 잘린 줄로 버려 턴을 잃고
+/// "대화가 아님" 이 됐다(AI 타일 대화 면 · 목록에서 빠짐). 꼬리를 한 바이트 앞부터 읽어 그 줄을 온전히 쥔다.
+#[test]
+fn codex_lone_turn_right_after_the_extended_head_is_kept() {
+    let root = temp_dir("codex-seam");
+    let day = root.join("2026").join("11").join("14");
+    std::fs::create_dir_all(&day).unwrap();
+    let pad = |n: usize| "x".repeat(n);
+    let mut vs = vec![codex_meta_line(U3, "/w", json!("cli"), None)];
+    vs[0]["payload"]["thread_source"] = json!("user");
+    vs.push(json!({"type": "response_item", "payload": {"type": "additional_tools", "tools": pad(44 * 1024)}}));
+    vs.push(json!({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Add a retry loop"}]}}));
+    // 앞 128 KB 경계에 걸친 큰 줄 — 앞 읽기가 이 줄 끝까지 이어 읽는다
+    vs.push(json!({"type": "world_state", "payload": {"blob": pad(100 * 1024)}}));
+    vs.push(json!({"type": "turn_context", "payload": {"cwd": "/w", "model": "gpt-test", "effort": "high"}}));
+    vs.push(json!({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Done."}]}}));
+    let body = lines(&vs);
+    let seam = body.find("{\"type\":\"turn_context\"").unwrap() as u64;
+    assert!(seam > 128 * 1024 && body.len() as u64 - seam < 64 * 1024, "꼬리가 앞에 바로 붙는 모양");
+    let p = day.join(format!("rollout-2026-11-14T00-00-00-{U3}.jsonl"));
+    std::fs::write(&p, &body).unwrap();
+    let parsed = codex_parse(&read_chunk(&p, 128 * 1024).unwrap()).expect("하나뿐인 turn_context 를 잃지 않는다");
+    assert_eq!(parsed.model.as_deref(), Some("gpt-test"));
+    assert_eq!(conversation_file(codex(), std::slice::from_ref(&root), U3).unwrap(), p);
+    let _ = std::fs::remove_dir_all(&root);
+}

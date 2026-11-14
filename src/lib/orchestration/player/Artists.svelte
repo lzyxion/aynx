@@ -21,6 +21,7 @@
   import { artistIconChoices, isBuiltinArtistIcon } from "../artists";
   import { avatarLabel, refreshAvatars } from "$lib/avatars.svelte.js";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
+  import { modelLabel, orderModels } from "$lib/model-order";
   import ArtistAvatar from "./ArtistAvatar.svelte";
 
   /** `crumb` — 판의 경로 줄(원형 ← · 라이브러리 › 아티스트). 목업대로 판 안 맨 위 한 줄(두 칸 위) */
@@ -146,7 +147,7 @@
         {#each ["write", "judge"] as kind (kind)}<button type="button" class="opt" aria-pressed={form.kind === kind} data-artist-kind-choice={kind} disabled={busy || original !== null} onclick={() => (form.kind = kind as "write" | "judge")}>{t(kind === "write" ? "orch.artists.write.long" : "orch.artists.judge.long")}</button>{/each}
       </div></div>
       <div class="pair">
-        <label><span>{t("orch.config.role.model")}</span><Combobox inputClass="value" suggestions={MODEL_SUGGESTIONS[form.cli]} placeholder={t("orch.config.role.cliDefault")} disabled={busy} openOnClick data-artist-model bind:value={form.model} /></label>
+        <label><span>{t("orch.config.role.model")}</span><Combobox inputClass="value" suggestions={orderModels(MODEL_SUGGESTIONS[form.cli])} label={modelLabel} placeholder={t("orch.config.role.cliDefault")} disabled={busy} openOnClick data-artist-model bind:value={form.model} /></label>
         <div class="field"><span id="artist-effort-label">{t("orch.artists.effort")}</span><span data-artist-effort><Dropdown value={form.effort} options={efforts} disabled={busy} labelledby="artist-effort-label" onchange={(v) => (form.effort = v)} /></span></div>
       </div>
       <label class="instructions"><span>{t("orch.artists.instructions")}</span><textarea class="value" rows="2" data-artist-instructions bind:value={form.instructions} disabled={busy}></textarea></label>

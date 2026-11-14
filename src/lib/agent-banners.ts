@@ -37,27 +37,59 @@
  *   다시 그 타일로 오면 방문으로 풀린다.
  * - 접힘 시계도 **사람이 돌아올 때까지** 멈춘다(`awaitingActivity`) — 자리를 비운 사이 10초 만에 알약으로
  *   줄어 있지 않게. 창 안의 첫 키·누름·마우스 움직임([`activityResumed`])부터 10초를 센다.
+ *
+ * ## 대상 — 타일 또는 사이드 채팅 (2026-11-13)
+ *
+ * 항목은 **타일**(`paneId`) 또는 **사이드 채팅**(`sideChatId`) 하나를 가리킨다(둘 중 하나만 — [`BannerWhere`]). 사이드 채팅 알림
+ * (`app/side-chat-notify`)도 AI 타일 알림과 같은 것으로 알아보게 같은 기둥에 선다(사용자 결정 — 목업 A안). 규칙은 모두 같다 —
+ * 합치기는 **대상마다 하나**, 해결 · 숨김 · 접힘 · 넘침 · 배지 · `` Alt+` `` 의 차례도 그대로다. 다른 것 셋:
+ *
+ * - 갈래가 하나 더 있다 — 답변 **실패**(`failed`, 채팅에만). 모양은 끝남과 같고 상태 점만 오류색이다.
+ * - "그 타일로 갔다" 대신 **그 채팅을 봤다**(창이 앞 · 채팅 독(폰은 덮개)이 그 채팅) — 채팅에서는 보는 중이면 알리지 않으므로
+ *   `bornFocused` 가 없다.
+ * - 대상을 받는 함수는 문자열이면 타일(`paneId` — 옛 부름 그대로), `{ sideChatId }` 면 채팅이다([`BannerTarget`]).
  */
 
 import type { AlertGroup } from "$lib/dock-alert-groups";
 
-/** 배너의 두 갈래 — 턴 끝 · 권한 물음 (`$lib/agent-notify` 의 `AgentNotifyKind` 와 같은 값) */
-export type BannerKind = "stop" | "permission";
+/**
+ * 배너의 갈래 — 턴 끝 · 권한 물음 (`$lib/agent-notify` 의 `AgentNotifyKind` 와 같은 값) · 답변 실패(사이드 채팅에만 —
+ * `$lib/side-chat-notify` 의 `failed`)
+ */
+export type BannerKind = "stop" | "permission" | "failed";
+
+/** 항목이 가리키는 곳 — 타일 하나 또는 사이드 채팅 하나(머리말 "대상") */
+export type BannerWhere = { paneId: string; sideChatId?: undefined } | { sideChatId: string; paneId?: undefined };
+
+/** 대상을 받는 함수의 인자 — 문자열은 타일의 `paneId`, `{ sideChatId }` 는 사이드 채팅 */
+export type BannerTarget = string | { sideChatId: string };
+
+/** 그 항목이 그 대상을 가리키나 */
+export function bannerAt(b: BannerWhere, target: BannerTarget): boolean {
+  return typeof target === "string" ? b.paneId === target : b.sideChatId === target.sideChatId;
+}
+
+/** 두 항목이 같은 대상인가 — 합치기의 열쇠 */
+function sameTarget(a: BannerWhere, b: BannerWhere): boolean {
+  return a.paneId !== undefined ? b.paneId === a.paneId : b.sideChatId === a.sideChatId;
+}
 
 /** 해결의 두 갈래 — 사람이 봤다 · 저절로 풀렸다 */
 export type BannerResolution = "checked" | "auto";
 
-/** 배너 항목 하나 (아직 해결되지 않은 것) */
-export interface BannerItem {
-  /** 창 안에서만 유일한 번호 — 같은 타일의 알림이 내용을 바꿔도 **그대로**다(키가 같아 카드가 제자리에서 바뀐다) */
+/** 배너 항목 하나 (아직 해결되지 않은 것) — 대상은 [`BannerWhere`] */
+export type BannerItem = BannerFields & BannerWhere;
+
+/** 항목의 대상 밖 칸들 */
+export interface BannerFields {
+  /** 창 안에서만 유일한 번호 — 같은 대상의 알림이 내용을 바꿔도 **그대로**다(키가 같아 카드가 제자리에서 바뀐다) */
   id: number;
-  paneId: string;
   kind: BannerKind;
   /** 에이전트 이름(`aiDisplayName` — "Claude Code") · 모르면 `null`(그리는 쪽이 일반 이름으로) */
   agent: string | null;
   /** 로고 이름(`"claude"`·`"codex"`) · 모르면 `null` */
   logo: string | null;
-  /** 탭/타일 이름 — 알린 순간의 것 (`app/agent-notify` 의 `tileLabel`) */
+  /** 탭/타일 이름 · 채팅 제목 — 알린 순간의 것 (`app/agent-notify` 의 `tileLabel` · `app/side-chat-notify`) */
   label: string;
   /** 알림 센터 한 줄 — 토스트 문구 그대로(`{name} — {agent} 작업이 끝났습니다`) */
   text: string;
@@ -80,10 +112,10 @@ export interface BannerItem {
 }
 
 /** 해결된 항목 — 알림 센터의 "지난 알림" */
-export interface ResolvedBanner extends BannerItem {
+export type ResolvedBanner = BannerItem & {
   resolution: BannerResolution;
   resolvedAt: number;
-}
+};
 
 /** 배너 저장소 전체 */
 export interface BannerState {
@@ -94,8 +126,7 @@ export interface BannerState {
 }
 
 /** 알림 한 번이 싣고 오는 것 — 번호·시각·접힘은 저장하는 쪽이 붙인다 */
-export interface BannerInput {
-  paneId: string;
+export type BannerInput = BannerWhere & {
   kind: BannerKind;
   agent: string | null;
   logo: string | null;
@@ -105,7 +136,7 @@ export interface BannerInput {
   bornFocused?: boolean;
   group?: AlertGroup;
   short?: string;
-}
+};
 
 /** 펼친 카드가 알약으로 접히기까지 (ms) */
 export const COLLAPSE_MS = 10_000;
@@ -117,14 +148,15 @@ export const MAX_RESOLVED = 100;
 export const EMPTY_BANNERS: BannerState = { active: [], resolved: [] };
 
 /**
- * 알림 하나를 더한다 — **같은 타일의 항목이 있으면 그것을 바꿔 맨 위로**(번호는 그대로), 없으면 새 번호로.
+ * 알림 하나를 더한다 — **같은 대상(타일 · 채팅)의 항목이 있으면 그것을 바꿔 맨 위로**(번호는 그대로), 없으면 새 번호로.
  * 어느 쪽이든 펼침 · 숨김 풀림 · 접힘 시계는 `now` 부터.
  */
 export function addBanner(state: BannerState, input: BannerInput, id: number, now: number): BannerState {
-  const old = state.active.find((b) => b.paneId === input.paneId);
+  const old = state.active.find((b) => sameTarget(b, input));
+  const where: BannerWhere = input.paneId !== undefined ? { paneId: input.paneId } : { sideChatId: input.sideChatId };
   const item: BannerItem = {
     id: old?.id ?? id,
-    paneId: input.paneId,
+    ...where,
     kind: input.kind,
     agent: input.agent,
     logo: input.logo,
@@ -139,17 +171,17 @@ export function addBanner(state: BannerState, input: BannerInput, id: number, no
   };
   if (input.group !== undefined) item.group = input.group;
   if (input.short !== undefined) item.short = input.short;
-  return { ...state, active: [item, ...state.active.filter((b) => b.paneId !== input.paneId)] };
+  return { ...state, active: [item, ...state.active.filter((b) => !sameTarget(b, input))] };
 }
 
 /**
- * **그 타일로 갔다** — 방문 해결. 그 타일의 항목이 `bornFocused` 면 건너뛴다(이미 거기 있던 채로 섰다 —
+ * **그 타일로 갔다 · 그 채팅을 봤다** — 방문 해결. 그 항목이 `bornFocused` 면 건너뛴다(이미 거기 있던 채로 섰다 —
  * 머리말). 풀 것이 없으면 같은 상태.
  */
-export function resolveVisit(state: BannerState, paneId: string, now: number): BannerState {
-  const item = state.active.find((b) => b.paneId === paneId);
+export function resolveVisit(state: BannerState, target: BannerTarget, now: number): BannerState {
+  const item = state.active.find((b) => bannerAt(b, target));
   if (!item || item.bornFocused) return state;
-  return resolveBanner(state, paneId, "checked", now);
+  return resolveBanner(state, target, "checked", now);
 }
 
 /**
@@ -157,7 +189,7 @@ export function resolveVisit(state: BannerState, paneId: string, now: number): B
  * 항목처럼 풀린다). 벗길 것이 없으면 같은 상태.
  */
 export function releaseBornFocused(state: BannerState, focusedPaneId: string): BannerState {
-  const off = (b: BannerItem) => b.bornFocused && b.paneId !== focusedPaneId;
+  const off = (b: BannerItem) => b.bornFocused && b.paneId !== undefined && b.paneId !== focusedPaneId;
   if (!state.active.some(off)) return state;
   return { ...state, active: state.active.map((b) => (off(b) ? { ...b, bornFocused: false } : b)) };
 }
@@ -177,17 +209,17 @@ export function activityResumed(state: BannerState, now: number): BannerState {
 }
 
 /**
- * 그 타일의 항목을 해결한다 — 지난 알림 맨 앞으로. `kinds` 를 주면 그 갈래일 때만(에이전트 신호의 자동
+ * 그 대상(타일 · 채팅)의 항목을 해결한다 — 지난 알림 맨 앞으로. `kinds` 를 주면 그 갈래일 때만(에이전트 신호의 자동
  * 해결 — [`resolvedBy`]). 없으면 **같은 상태를 그대로** 돌려준다(부르는 쪽이 `$state` 에 다시 넣어도 반응이 일지 않게).
  */
 export function resolveBanner(
   state: BannerState,
-  paneId: string,
+  target: BannerTarget,
   resolution: BannerResolution,
   now: number,
   kinds?: readonly BannerKind[],
 ): BannerState {
-  const item = state.active.find((b) => b.paneId === paneId);
+  const item = state.active.find((b) => bannerAt(b, target));
   if (!item || (kinds && !kinds.includes(item.kind))) return state;
   const done: ResolvedBanner = { ...item, resolution, resolvedAt: now };
   return {
@@ -197,16 +229,16 @@ export function resolveBanner(
 }
 
 /**
- * **끝남(`stop`)을 전부 "확인함" 으로** — 독 알림 칸 바닥 줄의 [모두 읽음](2026-10-18 통합 독). 권한 물음은 남긴다:
+ * **끝남(`stop` · 채팅의 `failed`)을 전부 "확인함" 으로** — 독 알림 칸 바닥 줄의 [모두 읽음](2026-10-18 통합 독). 권한 물음은 남긴다:
  * 에이전트가 사람의 답을 기다리며 멈춰 있는 일이라 "읽음" 한 번으로 치울 것이 아니다(그 타일로 가서 답해야 풀린다).
  * 해결된 순서는 지금 줄의 순서 그대로 지난 알림 맨 앞에 선다. 끝남이 없으면 **같은 상태**다.
  */
 export function resolveAllFinished(state: BannerState, now: number): BannerState {
-  const stops = state.active.filter((b) => b.kind === "stop");
+  const stops = state.active.filter((b) => b.kind !== "permission");
   if (stops.length === 0) return state;
   const done = stops.map((b): ResolvedBanner => ({ ...b, resolution: "checked", resolvedAt: now }));
   return {
-    active: state.active.filter((b) => b.kind !== "stop"),
+    active: state.active.filter((b) => b.kind === "permission"),
     resolved: [...done, ...state.resolved].slice(0, MAX_RESOLVED),
   };
 }
@@ -312,16 +344,14 @@ export function bannerView(state: BannerState, showAll: boolean): BannerView {
 
 /**
  * `` Alt+` ``(알림 위치로 가기)가 갈 항목 — 해결되지 않은 것(× 로 비킨 것 포함) 중 **권한 물음이 먼저**,
- * 같은 갈래끼리는 최근(`at`)이 먼저. 가면 그 항목이 해결되므로 다시 누르면 다음 것으로 넘어간다. 없으면 `null`.
+ * 그 밖(끝남 · 실패)끼리는 최근(`at`)이 먼저 — 타일 · 채팅을 가리지 않는다. 가면 그 항목이 해결되므로 다시 누르면 다음 것으로
+ * 넘어간다. 없으면 `null`.
  */
 export function nextBannerToVisit(state: BannerState): BannerItem | null {
+  const urgent = (b: BannerItem) => b.kind === "permission";
   let best: BannerItem | null = null;
   for (const b of state.active) {
-    if (
-      best === null ||
-      (b.kind === "permission" && best.kind !== "permission") ||
-      (b.kind === best.kind && b.at > best.at)
-    ) {
+    if (best === null || (urgent(b) && !urgent(best)) || (urgent(b) === urgent(best) && b.at > best.at)) {
       best = b;
     }
   }

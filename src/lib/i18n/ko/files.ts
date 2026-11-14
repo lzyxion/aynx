@@ -453,7 +453,7 @@ export const files = {
   "doc.md.code.copy": "복사",
   "doc.md.code.copied": "복사했습니다",
   "doc.md.code.copyfail": "복사하지 못했습니다",
-  // 문서 타일 코드 블록의 [터미널에 넣기](`DocCodeBlock` · `CodeTermPicker` · `app/code-to-term`) — 셸 타일 입력 줄에 넣기만
+  // 문서 타일 · AI 타일 대화 면 · 사이드 채팅 코드 블록의 [터미널에 넣기](`DocCodeBlock` · `CodeTermPicker` · `app/code-to-term`) — 셸 타일 입력 줄에 넣기만
   "doc.codeterm.button": "터미널에 넣기",
   "doc.codeterm.button.title": "터미널 입력 줄에 넣기",
   "doc.codeterm.picker.aria": "넣을 셸 타일 고르기",
@@ -465,6 +465,8 @@ export const files = {
   "doc.codeterm.picker.busy": "명령 도는 중",
   "doc.codeterm.picker.tab": "탭 {n}",
   "doc.codeterm.picker.new": "새 터미널 열기",
+  // 사이드 채팅에서 연 상자 — 옆에 설 타일이 없어 새 탭에 연다
+  "doc.codeterm.picker.newTab": "새 탭에 터미널 열기",
   "doc.codeterm.picker.keys.move": "고르기",
   "doc.codeterm.picker.keys.insert": "넣기",
   "doc.codeterm.picker.keys.open": "열고 넣기",
@@ -553,6 +555,11 @@ export const files = {
   "doc.new.notText": "열 수 없는 형식입니다: {name}",
   "doc.new.exists": "같은 이름의 파일이 있습니다",
   "doc.new.notOpened": "만들었지만 열지 못했습니다: {path}",
+  "doc.export": "문서로 내보내기",
+  "doc.export.title": "문서로 내보내기 · {dir}",
+  "doc.export.pick": "바꾸기",
+  "doc.export.pickTitle": "폴더 바꾸기",
+  "doc.export.writeFailed": "파일은 만들었지만 내용을 쓰지 못했습니다({path}): {e}",
   "doc.edit.block.truncated": "파일이 커서 앞부분만 읽었습니다 — 편집하면 뒤가 사라지므로 편집할 수 없습니다",
   "doc.edit.block.lossy": "UTF-8 이 아닌 바이트가 있습니다 — 편집하면 원래 바이트가 망가지므로 편집할 수 없습니다",
   "doc.edit.block.offline": "연결이 없어 편집할 수 없습니다",

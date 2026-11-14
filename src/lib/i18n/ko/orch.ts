@@ -1146,7 +1146,7 @@ export const orch = {
   // ── 저장소 맡기기 · 구성 묶음(3차 1단계 — docs/log/2026-10-16-orchestration-headless-design.md 2절 · 2-7) ──
   "config.role.model": "모델",
   "config.role.effort": "추론 강도",
-  "config.role.cliDefault": "default",
+  "config.role.cliDefault": "Default",
   "config.perm.readOnly": "읽기 전용",
   "config.perm.edit": "편집 자동",
   "config.perm.full": "전부 자동",

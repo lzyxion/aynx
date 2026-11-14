@@ -731,6 +731,7 @@ pub fn run() {
             server::side_chat_proxy::side_chat_open,
             server::side_chat_proxy::side_chat_send,
             server::side_chat_proxy::side_chat_interrupt,
+            server::side_chat_proxy::side_chat_seen,
             server::side_chat_proxy::side_chat_set_model,
             server::side_chat_proxy::side_chat_set_effort,
             server::side_chat_proxy::side_chat_decide,

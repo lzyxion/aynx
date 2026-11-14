@@ -28,6 +28,25 @@
    * 터미널 면과 같은 `stageAgentFiles` · `stageFsPaths`(원격 타일은 그 서버로). 보내면 그 경로들을 터미널 면 끌어 놓기와 같은 괄호
    * 붙여넣기로 글보다 먼저 넣고(`submitText` 의 `attach`) 칩을 비운다. 터미널 면의 놓기는 예전 그대로(입력 줄에 경로).
    *
+   * **입력 칸 한 줄 `[+] 입력 [로고 모델 게이지 ⌄] [보내기]`**(2026-11-13 — 사이드 채팅과 같은 부품 · 목업 E2 · E3 · E4):
+   * - `[+]` = 메뉴 없이 곧바로 파일 고르기 창(아무 파일) — 고른 것은 붙여 넣은 그림과 같은 `attach` 길(`stageAgentFiles` · 칩).
+   * - 모델 키워드(`chat/ChatModelKeyword` 의 `view`) — 값은 **그 대화 기록의 마지막 답**(최신 쪽의 `TranscriptPage.last` — 로컬 · 원격
+   *   같은 쪽 읽기 · 새 명령 없음). 첫 답 전에는 로고만. 메뉴로 바꾼 값은 CLI 가 화면에 확인 문구를 띄운 뒤에만 곧바로(`pane/flip-model-ack.ts` — 기록에 그 뒤의 새 답이 남으면 다시 기록을 따른다 · 거절 · 시간 초과 · 전환 확인 화면이면 그대로).
+   * - 누르면 메뉴(`pane/FlipModelMenu` — 2026-11-14 넓힘): Claude 는 Default + 별칭 목록 · Default 고리 + Effort 게이지 → `/model <별칭|default>` ·
+   *   `/effort <단계|auto>`(새 세션 기본값도 바뀐다 — 메뉴 안내), Codex 는 그 PC 의 Codex 모델 목록(`codex_models` — 원격 SSH 타일이면 그 서버
+   *   목록을 몰라 게이지만) + 그 모델이 받는 단계 → `/model <slug> --reasoning=<단계>` · `/model --reasoning=<단계>`(이 세션에만). 보내는 글은
+   *   `pane/flip-model.ts` 의 **고정 허용 목록 낱말로만** 짓고(기록의 글 · AI 출력이 섞이지 않는다 — "AI 문자열→PTY 길은 없다") 사람 입력 문
+   *   (`submitText` — 보내기와 같은 길)으로 간다. 메뉴는 고른 뒤 닫는다(`runOnMenu`).
+   * - 일하는 중 · 권한을 묻는 중 · 폴더 신뢰 질문 중이면 키워드가 흐리게 잠긴다(⌄ 없음 — [중지] · 권한 판정과 같은 출처). 보내기 직전에
+   *   TUI 입력 줄에 사람이 치다 만 글이 보이면(흐리지 않은 글 — `tuiInputLeftover`) 보내지 않고 알린다. 대화 면 입력 칸의 글은 보낼 때 곧바로
+   *   친 글자 + Enter 로 나가므로 TUI 입력 줄에 남지 않는다 — 칸에 글이 있어도 메뉴는 막지 않는다.
+   * - **Claude 모델 전환 확인 카드**(2026-11-14 · 목업 E5 — `pane/FlipModelSwitchCard`): 대화가 지금 모델로 캐시돼 있으면 Claude 가 TUI 에
+   *   "Switch model?" 을 띄운다 — 대화 면이 보이는 동안 화면을 1초마다 읽어(메뉴로 보낸 직후는 확인 기다리기가 150ms 로) 대화 끝에 카드를 세우고 입력 칸 ·
+   *   키워드를 잠근다. [전환] · [취소] = 고정 키 `1` · `2`(사람 입력 문 `sendKeys` — 보내기 직전에 확인이 아직 떠 있는지 다시 본다), 화면에서 사라지면 걷는다.
+   *   `/effort` 의 "Change effort level?" 도 같은 카드(Effort 제목 · 2026-11-14 실기 "두 번 눌러야 바뀐다").
+   * - **Codex 가 Enter 를 삼키면 하나 더**(2026-11-14 실측 — 새로 뜬 Codex 는 첫 입력 묶음 뒤 Enter 를 먹지 않는다): 메뉴 줄 · 입력 칸 한 줄을 보낸 뒤
+   *   0.7초에 입력 줄이 보낸 글 그대로면 Enter 키 하나를 더(`retryEnter` · 판정 `flip-model.ts` 의 `tuiInputHolds` — 확실할 때만).
+   *
    * 이 상자의 **캡처 단계** keydown 이 xterm · 입력 칸보다 먼저 본다(판정은 순수 층 `pane/ai-flip-keys.ts`): 입력 칸이면 Escape(터미널로
    * — CLI 로 보내지 않는다) · PageUp/Down(기록) 만 가로챈다. 칸 **밖**이면(기록을 눌러 글을 고른 뒤) 글자 · IME · 붙여넣기는 칸으로
    * 포커스를 옮기며 흘려보내고(권한 대기라 칸이 없으면 터미널로 넘긴다), ↑↓ · PageUp/Down · Home/End 는 기록을 밀고, 나머지(Enter ·
@@ -55,6 +74,11 @@
    * 에이전트 말의 **파일 경로**(구분자나 줄 꼬리가 있는 코드 조각 · 평문 속 경로 · 경로 주소의 링크 — `MarkdownBlocks` 의 `paths`)는 그냥 클릭에 문서 타일로 연다
    * (2026-11-11). 자리는 터미널 글자의 경로와 같은 `pathLinkPlace`(로컬 · SSH · WSL), 폴더는 그 타일 셸이 마지막으로 알린 값(`reportedCwd` —
    * 터미널의 `shell.cwd()` 와 같은 값의 반응형 사본), 여는 길도 같은 `onopenpath` → `openPathFromTerminal`(파일일 때만 · 꼬리 줄로).
+   * 에이전트 말의 **코드 블록**에는 머리 띠 [복사] · (셸 계열 언어면) [터미널에 넣기](2026-11-12 사용자 결정 — `TranscriptBody` 의
+   * `codeActions` → `app/code-to-term` 의 `codeToTerminal`, 문서 타일 · 사이드 채팅과 같은 상자 · 같은 규칙 · 입력 줄에 넣기만 · Enter 는 사람).
+   * 누른 곳은 이 타일이라 `sourcePaneId = pane.id` — 상자의 새 터미널은 **이 타일 오른쪽**에 서고(`openShellPaneBeside`), Esc 는 단추 또는
+   * 이 타일로 돌아간다. 받는 쪽은 이 창의 셸 타일들(로컬 · SSH — AI 타일은 빠진다, 이 타일 자신도)이고 원격 AI 타일이어도 같다.
+   * 폰도 덮개가 아니라 타일 안이라 넣은 뒤 할 일(`ondone`)이 없다 — 받는 타일로 가는 것은 `focusTile` 이 한다.
    *
    * 넘김 상태는 `pane/ai-flip.svelte.ts`(화면 상태 — 저장 안 함). AI 타일이 아니게 되면(CLI 가 끝났다) 터미널 면으로 돌아온다.
    * **신뢰 안내 말풍선**(2026-11-04 · 옅게 누런 면 + 꼬리 — docs/log/2026-11-04-trust-bubble.md): Codex 훅 신뢰는 닫으면 이 기기에서 다시 안 뜨고, Claude 폴더 신뢰는 터미널에 질문이 떠 있는
@@ -73,6 +97,7 @@
    */
   import { onDestroy, tick, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
+  import { openExportDoc } from "$lib/app/new-doc.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { stripReason, hasReason } from "$lib/error-reason";
   import {
@@ -88,6 +113,7 @@
   import { isClaudeTrustPrompt } from "$lib/pane/claude-trust";
   import { termActionsOf } from "$lib/term-actions";
   import { showNotice } from "$lib/app/notice";
+  import { codeToTerminal } from "$lib/app/code-to-term.svelte.js";
   import FlipComposer from "$lib/pane/FlipComposer.svelte";
   import DomFindBar from "$lib/DomFindBar.svelte";
   import { registerTileFind } from "$lib/app/tile-find";
@@ -113,14 +139,54 @@
   import { resolvePathLink, type PathMatch, type ResolvedPath } from "$lib/path-links";
   import { hasSession } from "$lib/session";
   import { stageAgentFiles } from "$lib/agent-attachments";
-  import { attachmentPaths, tileAttachPastes } from "$lib/pane/composer-attachments";
+  import { attachmentPaths, tileAttachPastes, type SentPic } from "$lib/pane/composer-attachments";
   import {
     clearComposerAttachments,
     composerAttachmentsOf,
     removeComposerAttachment,
+    revokeSentPics,
     stageComposerAttachments,
+    takeComposerPictures,
   } from "$lib/pane/composer-attachments.svelte.js";
   import TilePermissionCard from "$lib/pane/TilePermissionCard.svelte";
+  import ChatModelKeyword, { type KeywordView } from "$lib/chat/ChatModelKeyword.svelte";
+  import FlipModelMenu, { type FlipModelRow } from "$lib/pane/FlipModelMenu.svelte";
+  import FlipModelSwitchCard from "$lib/pane/FlipModelSwitchCard.svelte";
+  import { loadCodexModels, type CodexModels } from "$lib/app/side-chats.svelte.js";
+  import { modelLabel } from "$lib/model-order";
+  import { effortName } from "$lib/chat/side-chat-controls.svelte";
+  import { runOnMenu } from "$lib/browser/menu-runner";
+  import { aiDisplayName } from "$lib/pane-icons";
+  import {
+    CLAUDE_EFFORT_LEVELS,
+    CLAUDE_MODEL_ALIASES,
+    CLAUDE_MODEL_DEFAULT,
+    claudeTierOf,
+    codexEffortLine,
+    codexLevelsFor,
+    codexMenuModels,
+    codexModelLine,
+    flipEffortLevels,
+    flipModelLabel,
+    flipModelLocked,
+    slashEffortLine,
+    slashModelLine,
+    tuiInputHolds,
+    tuiInputLeftover,
+    type LastModel,
+  } from "$lib/pane/flip-model";
+  import {
+    claudeSwitchAsk,
+    latestAck,
+    overrideOf,
+    settleOverride,
+    shownModel,
+    SWITCH_NO_KEY,
+    SWITCH_YES_KEY,
+    type ModelOverride,
+    type SentKind,
+    type SwitchAsk,
+  } from "$lib/pane/flip-model-ack";
   import UiIcon from "$lib/UiIcon.svelte";
   import { aiFacePref, handheld, mobileLayout } from "$lib/app/mobile.svelte.js";
   import { cardTarget } from "$lib/tile-permission";
@@ -291,6 +357,54 @@
   });
   const trustGate = $derived(trustAsked ? { text: t("pane.flip.trust.gate"), quiet: true } : null);
 
+  // ── Claude 의 모델 전환 확인 카드(2026-11-14 — 목업 E5 · 판정 `pane/flip-model-ack.ts` 의 `claudeSwitchAsk` · 카드 `FlipModelSwitchCard`) ─────────
+  // 대화가 그 모델로 캐시돼 있으면 Claude 는 다른 모델로의 `/model` 에 TUI 확인("Switch model?")을 띄운다 — 메뉴에서 보냈든 사람이 터미널에서 쳤든. 대화
+  // 면이 보이는 동안 그 타일 화면을 1초마다 읽어(xterm 버퍼 한 화면 — 서버 · IPC 없음) 떠 있으면 대화 끝에 카드를 세우고 입력 칸 · 키워드를 잠근다.
+  // 화면에서 사라지면(터미널에서 답함 · Esc) 걷는다. 메뉴로 보낸 직후에는 확인 기다리기(`watchAck` — 150ms)가 먼저 알아본다.
+  // [전환] · [취소] 는 **고정 키** `SWITCH_YES_KEY`("1") · `SWITCH_NO_KEY`("2") 하나를 사람 입력 문(`TermActions.sendKeys`)으로 보낸다(실측 — 번호가
+  // 그 줄을 바로 고른다 · Esc 도 물러나지만 번호가 대칭이다). 화면에서 읽은 모델 이름은 카드 제목 **표시에만** 쓰고 보내는 키에 싣지 않는다(불변식 4).
+  let switchAsk = $state<SwitchAsk | null>(null);
+  const SWITCH_POLL_MS = 1000;
+  /** 답을 보낸 뒤 CLI 가 화면을 다시 그릴 틈 — 그동안 남은 확인 화면을 새 확인으로 보지 않는다(카드가 다시 서거나 확인 기다리기가 멈추지 않게) */
+  const SWITCH_GRACE_MS = 1500;
+  let switchQuietUntil = 0;
+  function readSwitch(): SwitchAsk | null {
+    return claudeSwitchAsk(termActionsOf(pane.id)?.screenLines() ?? []);
+  }
+  $effect(() => {
+    if (!claudeTile || view !== "convo" || !shown) {
+      switchAsk = null;
+      return;
+    }
+    const check = () => {
+      if (Date.now() < switchQuietUntil) return;
+      const a = readSwitch();
+      // 같은 화면이면 그대로(카드가 다시 그려지지 않게)
+      if (a?.kind !== switchAsk?.kind || a?.name !== switchAsk?.name) switchAsk = a;
+    };
+    untrack(check);
+    const h = setInterval(check, SWITCH_POLL_MS);
+    return () => clearInterval(h);
+  });
+  const switchGate = $derived(switchAsk ? { text: t("pane.flip.switch.gate"), quiet: true } : null);
+  /** 카드의 답 — 보내기 직전에 그 확인이 아직 떠 있는지 다시 본다(아니면 보내지 않고 카드만 걷는다) */
+  function answerSwitch(yes: boolean): void {
+    const id = pane.id;
+    const now = readSwitch();
+    switchAsk = null;
+    if (now === null) return;
+    const acts = termActionsOf(id);
+    if (!acts) {
+      showNotice(t("pane.flip.composer.closed"));
+      return;
+    }
+    // [전환] 뒤 "Set model to …" · "Set effort level to …" 로 키워드가 곧바로 바뀐다
+    switchQuietUntil = Date.now() + SWITCH_GRACE_MS;
+    acts.sendKeys(yes ? SWITCH_YES_KEY : SWITCH_NO_KEY);
+    if (yes) watchAck(id, "claude", { kind: now.kind, line: null });
+    focusComposer();
+  }
+
   /** 카드의 [터미널에서 답하기] — 풀었으니 터미널 면으로 */
   function permToTerminal(): void {
     setFlipView(pane.id, "term");
@@ -328,7 +442,7 @@
 
   /** 기록에 안 나타나도 말풍선을 걷는 시간 */
   const PENDING_MS = 20_000;
-  let pending = $state<{ id: number; text: string; files?: readonly string[] }[]>([]);
+  let pending = $state<{ id: number; text: string; files?: readonly string[]; pics?: readonly SentPic[] }[]>([]);
   let pendingSeq = 0;
   const pendingTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
@@ -336,6 +450,8 @@
     const timer = pendingTimers.get(id);
     if (timer !== undefined) clearTimeout(timer);
     pendingTimers.delete(id);
+    // 막 보낸 그림(입력 칸 미리보기)은 말풍선과 함께 거둔다 — 기록에 들면 그 줄의 `pictures` 가 그린다
+    revokeSentPics(pending.find((p) => p.id === id)?.pics);
     if (pending.some((p) => p.id === id)) pending = pending.filter((p) => p.id !== id);
   }
 
@@ -381,20 +497,266 @@
       showNotice(t("pane.drop.attach.notready"));
       return false;
     }
-    clearComposerAttachments(pane.id);
+    // 그림 칩의 미리보기는 보내는 중 말풍선이 이어 쓴다(말풍선을 세우지 않으면 곧바로 거둔다)
+    const pics = takeComposerPictures(pane.id);
+    if (files.length === 0) retryEnter(pane.id, agentKindOf(pane) ?? link?.agent ?? "", text.trim());
     cliPastTrust = true; // 사람이 말했다 — 그 뒤로 화면을 읽을 까닭이 없다
     // 대화를 바꾸는 Codex 명령(`/new` · `/resume` …)이면 옛 연결을 버린다 — 새 대화는 첫 질문의 신호가 잇는다(빈 면). 말풍선은 띄우지 않는다
-    if (agentPromptSent(pane.id, text)) return true;
-    // 그림만 보냈으면 말풍선 없음(맞댈 글이 없다 — 기록이 곧 그린다)
-    if (text.trim() === "") return true;
+    if (agentPromptSent(pane.id, text) || text.trim() === "") {
+      // 대화를 바꾸는 명령 · 그림만 보냈으면 말풍선 없음(맞댈 글이 없다 — 기록이 곧 그린다)
+      revokeSentPics(pics);
+      return true;
+    }
     const id = ++pendingSeq;
-    pending = [...pending, { id, text, files }];
+    pending = [...pending, { id, text, files, ...(pics.length > 0 ? { pics } : {}) }];
     pendingTimers.set(id, setTimeout(() => dropPending(id), PENDING_MS));
     return true;
   }
   onDestroy(() => {
     for (const timer of pendingTimers.values()) clearTimeout(timer);
+    for (const p of untrack(() => pending)) revokeSentPics(p.pics);
   });
+
+  // ── 입력 칸의 [+] · 모델 키워드(2026-11-13 — 이 파일 머리말 · 판정 `pane/flip-model.ts`) ───────────────────────────
+
+  /** `[+]` 의 숨은 파일 고르기 — 아무 파일 · 여럿 */
+  let pickEl = $state<HTMLInputElement | null>(null);
+  function onPicked(ev: Event): void {
+    const input = ev.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    if (files.length > 0) attach(files);
+  }
+
+  /** 지금 대화의 마지막 답의 모델 · 강도(최신 쪽이 실어 온 값 — 대화가 바뀌면 지운다). **표시 전용** — 터미널로 보내지 않는다 */
+  let recordModel = $state<LastModel | null>(null);
+  /**
+   * 메뉴로 보낸 뒤 **CLI 가 받았다고 화면에 알린 값**(2026-11-14 — `pane/flip-model-ack.ts`) — 기록에 그 뒤의 새 답이 남을 때까지 키워드를 덮는다.
+   * 같은 대화에서만(대화가 바뀌면 걷는다). 화면에서 읽은 글자라 **표시 전용** — 보내는 줄에는 쓰지 않는다(불변식 4).
+   */
+  let modelOverride = $state<ModelOverride | null>(null);
+  /** 최신 쪽의 `last` 가 실린 줄 자리(`null` = 기록에 아직 값이 없다 · `undefined` = 이 대화의 쪽을 아직 못 받았다) */
+  let recordLastAt: number | null | undefined = undefined;
+  const lastModel = $derived(shownModel(recordModel, modelOverride));
+  /** 그 타일의 CLI(보낼 명령의 갈래) */
+  const modelCli = $derived(flippable ? (agentKindOf(pane) ?? link?.agent ?? null) : null);
+  /** 일하는 중 · 권한을 묻는 중([중지] · 권한 카드 · "터미널에서 답하기" 와 같은 출처) · 폴더 신뢰 질문 중(Enter 가 그 답이 된다) */
+  const modelLocked = $derived(
+    trustAsked || switchAsk !== null || flipModelLocked({ status: flippable ? agentStatusOf(pane) : null, cards: permCards.length, tuiAsking }),
+  );
+  let modelOpen = $state(false);
+  let modelBtn = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (modelLocked || view !== "convo" || modelCli === null) modelOpen = false;
+  });
+
+  /**
+   * Codex 모델 목록 — 사이드 채팅과 같은 출처(`codex_models` — 이 PC 의 Codex 캐시 파일 · 프로세스 없음). 이 PC 에서 도는 타일(`local` —
+   * 원격 웹 창에서 보는 집 PC 타일도)만 읽는다. SSH 타일의 Codex 는 그 서버의 목록을 몰라 `null` — 메뉴는 게이지만.
+   */
+  let codexList = $state<CodexModels | null>(null);
+  const codexLocal = $derived(modelCli === "codex" && pane.kind === "local");
+  $effect(() => {
+    if (!codexLocal) {
+      codexList = null;
+      return;
+    }
+    untrack(() => void loadCodexModels().then((v) => (codexList = v)));
+  });
+
+  const modelKeyword = $derived.by((): KeywordView | null => {
+    const cli = modelCli;
+    if (cli === null) return null;
+    const last = lastModel;
+    const name = aiDisplayName(cli) ?? cli;
+    const label = last ? flipModelLabel(cli, last.model) : null;
+    const effort = last?.effort ?? "";
+    const head = label === null ? `${name} · ${t("pane.flip.model.unknown")}` : `${name} · ${label}${effort ? ` · ${t("app.chatDock.effort.chip", { e: effortName(effort) })}` : ""}`;
+    return {
+      cli,
+      label,
+      efforts: effort ? flipEffortLevels(cli, codexList, last?.model ?? null) : [],
+      effort,
+      title: modelLocked ? `${head}\n${t("pane.flip.model.busy")}` : head,
+      open: modelOpen,
+      locked: modelLocked,
+      onopen: (el) => {
+        modelBtn = el;
+        modelOpen = !modelOpen;
+        // 열 때마다 새로 읽는다(파일 둘 — 사이드 채팅 메뉴와 같다)
+        if (modelOpen && codexLocal) void loadCodexModels().then((v) => (codexList = v));
+      },
+    };
+  });
+
+  /**
+   * 메뉴의 내용 — CLI 마다(이 파일 머리말). Claude 의 Default 줄은 기록으로 고르지 않는다(기록에는 실제로 쓴 모델만 있다 — 고정 없음과
+   * 구별되지 않는다 · `flip-model.ts` 머리말). Effort 는 기록의 값이 단계면 그 칸, 모르면 Default 고리.
+   */
+  const menu = $derived.by((): { models: FlipModelRow[]; levels: readonly string[]; effort: string; ring: boolean; note: string } | null => {
+    const cli = modelCli;
+    const last = lastModel;
+    if (cli === "claude") {
+      const tier = last ? claudeTierOf(last.model) : null;
+      const e = last?.effort ?? "";
+      return {
+        models: [
+          { value: CLAUDE_MODEL_DEFAULT, label: t("app.chatDock.cliDefault"), checked: false },
+          ...CLAUDE_MODEL_ALIASES.map((m) => ({ value: m, label: m.charAt(0).toUpperCase() + m.slice(1), checked: m === tier })),
+        ],
+        levels: CLAUDE_EFFORT_LEVELS,
+        effort: CLAUDE_EFFORT_LEVELS.includes(e) ? e : "",
+        ring: true,
+        note: t("pane.flip.model.note.claude"),
+      };
+    }
+    if (cli === "codex") {
+      const list = codexList;
+      return {
+        models: codexMenuModels(list).map((m) => ({ value: m, label: modelLabel(m), checked: m === last?.model })),
+        levels: codexLevelsFor(list, last?.model ?? null),
+        effort: last?.effort ?? "",
+        ring: false,
+        note: t("pane.flip.model.note.codex"),
+      };
+    }
+    return null;
+  });
+
+  function closeModel(back: boolean): void {
+    modelOpen = false;
+    if (back) modelBtn?.focus({ preventScroll: true });
+  }
+
+  /**
+   * 메뉴에서 고른 **고정 줄**을 그 타일 터미널의 사람 입력 문으로(대화 면 보내기와 같은 `submitText` — 친 글자 + Enter). 불변식 4
+   * ("AI 문자열→PTY 길은 없다"): `line` 은 `flip-model.ts` 의 허용 목록 낱말로만 지은 것이다(`slashModelLine` · `slashEffortLine` ·
+   * `codexModelLine` — slug 는 이 PC 의 Codex 모델 목록 원소 · `codexEffortLine` — 목록 밖이면 `null` 이라 여기 오지 않는다). 기록에서 읽은
+   * 모델 이름 · 강도는 키워드 표시와 "목록의 어느 줄 · 어느 단계 상수인가" 비교에만 쓰고 그 글자가 이 줄에 실리지 않으며, 누름은 사람이 메뉴에서
+   * 한 것이다. 보내는 중 말풍선은 띄우지 않는다(대화 말이 아니다).
+   */
+  function sendFixedLine(paneId: string, line: string, cli: string | null): boolean {
+    const r = termActionsOf(paneId)?.submitText(line) ?? "closed";
+    if (r === "closed") showNotice(t("pane.flip.composer.closed"));
+    if (r === "ok" && cli !== null) retryEnter(paneId, cli, line);
+    return r === "ok";
+  }
+
+  /**
+   * **Codex 가 Enter 를 삼켰으면 하나 더**(2026-11-14 실기 — `flip-model.ts` 의 `tuiInputHolds`): 새로 뜬 Codex 는 첫 입력 묶음 뒤의 Enter 를 먹지 않아
+   * 보낸 글이 입력 줄에 남는다(그 뒤 메뉴는 "치다 만 글" 로 막혔다). 보낸 뒤 `ENTER_RETRY_MS` 에 그 타일 화면의 입력 줄이 **보낸 한 줄 그대로**면 Enter
+   * 키 하나(고정 키 · 사람 입력 문 `sendKeys`)를 더 보낸다 — 한 번만. 입력 줄이 비었거나(먹었다) 다르면 아무것도 안 한다. 화면 글자는 비교에만 쓰고
+   * 보내는 것은 늘 `\r` 하나다(불변식 4). 실측: 그 시점(글 뒤 약 0.7초)의 Enter 는 먹는다. Claude 는 이 일이 없어(실측) Codex 만.
+   */
+  const ENTER_RETRY_MS = 700;
+  function retryEnter(paneId: string, cli: string, sent: string): void {
+    if (cli !== "codex" || sent.includes("\n")) return;
+    setTimeout(() => {
+      if (paneId !== pane.id) return;
+      const acts = termActionsOf(paneId);
+      const screen = acts?.screenBottom(INPUT_SCAN_ROWS);
+      if (acts && screen && tuiInputHolds(cli, screen.lines, sent)) acts.sendKeys("\r");
+    }, ENTER_RETRY_MS);
+  }
+
+  // ── 보낸 뒤 CLI 의 확인 문구 기다리기(2026-11-14 — 판정 `pane/flip-model-ack.ts`) ─────────────────────────────
+  // 보낸 뒤 짧은 간격으로 최대 `ACK_WAIT_MS` 동안 그 타일 화면을 읽어 **맨 아래의 확인이 보낸 것의 답인가**(`latestAck` — Claude 는 보낸 명령의
+  // 되울림 바로 아래 확인, Codex 는 맨 아래 확인 줄의 값)를 본다(줄 수 비교는 화면이 차면 놓쳤다 — 2026-11-14 실기). 받았으면 키워드를 덮고,
+  // 거절 · 물러남 · 시간 초과면 그대로 둔다. 새로 보내면 앞의 기다림은 걷는다(빠른 연속 변경은 마지막 값). Claude 의 모델 전환 확인 화면이 보이면 확인 대기라 멈춘다(그동안 바꾸지 않는다).
+  // 화면 글자는 **표시에만** 쓴다 — 보내는 줄은 위 고정 줄뿐이고 여기서 읽은 것은 어떤 줄에도 실리지 않는다(불변식 4).
+  const ACK_WAIT_MS = 3000;
+  const ACK_POLL_MS = 150;
+  let ackTimer: ReturnType<typeof setTimeout> | null = null;
+  function stopAck(): void {
+    if (ackTimer !== null) clearTimeout(ackTimer);
+    ackTimer = null;
+  }
+  onDestroy(stopAck);
+  function screenOf(paneId: string): string[] {
+    return termActionsOf(paneId)?.screenLines() ?? [];
+  }
+  function watchAck(paneId: string, cli: string, sent: { kind: SentKind; line: string | null }): void {
+    stopAck();
+    const conv = convKey;
+    const t0 = Date.now();
+    const step = () => {
+      ackTimer = null;
+      if (convKey !== conv || modelCli !== cli || paneId !== pane.id) return;
+      const lines = screenOf(paneId);
+      if (cli === "claude") {
+        const ask = claudeSwitchAsk(lines);
+        // 확인 대기 — 바꾸지 않고 카드를 곧바로 세운다(대화 면이 보이는 동안 — 1초 시계를 기다리지 않게)
+        if (ask !== null && Date.now() >= switchQuietUntil) {
+          if (view === "convo" && shown) switchAsk = ask;
+          return;
+        }
+        // 카드로 답한 직후 — 아직 지워지지 않은 확인 화면이다. 확인 문구를 계속 기다린다
+        if (ask !== null) {
+          if (Date.now() - t0 < ACK_WAIT_MS) ackTimer = setTimeout(step, ACK_POLL_MS);
+          return;
+        }
+      }
+      const r = latestAck(cli, sent, lines);
+      if (r !== "wait") {
+        modelOverride = overrideOf(modelOverride, r.ack, recordLastAt);
+        return;
+      }
+      if (Date.now() - t0 < ACK_WAIT_MS) ackTimer = setTimeout(step, ACK_POLL_MS);
+    };
+    ackTimer = setTimeout(step, ACK_POLL_MS);
+  }
+
+  /** TUI 입력 줄을 볼 화면 줄 수 — 화면 전체(스냅숏 상한 60 줄 · 넘으면 아래쪽). 인라인으로 그리는 CLI 는 입력 줄이 바닥에 붙어 있지 않을 수 있다 */
+  const INPUT_SCAN_ROWS = 60;
+
+  /**
+   * 보내도 되는 순간인가 — 잠기지 않았고, 시계 사이에 폴더 신뢰 질문이 뜨지 않았고(Enter 가 그 답이 되면 안 된다), TUI 입력 줄에 사람이
+   * 치다 만 글이 보이지 않는다(그 뒤에 이어 치면 명령이 아니라 말이 된다 — `tuiInputLeftover` · 입력 줄을 못 찾으면 막지 않는다).
+   */
+  function modelSendable(cli: string): boolean {
+    if (modelLocked) return false;
+    if (trustWatch && readTrustPrompt()) {
+      trustAsked = true;
+      return false;
+    }
+    const screen = termActionsOf(pane.id)?.screenBottom(INPUT_SCAN_ROWS);
+    if (screen && tuiInputLeftover(cli, screen.lines) === true) {
+      showNotice(t("pane.flip.model.leftover"));
+      return false;
+    }
+    return true;
+  }
+
+  /** 메뉴에서 고른 고정 줄을 보내고 CLI 의 확인을 기다린다 */
+  function sendPicked({ id, cli, line, sent }: { id: string; cli: string; line: string; sent: SentKind }): void {
+    if (sendFixedLine(id, line, cli)) watchAck(id, cli, { kind: sent, line });
+    focusComposer();
+  }
+
+  function pickModel(value: string): void {
+    runOnMenu(
+      () => {
+        const cli = modelCli;
+        const line =
+          cli === "claude" ? slashModelLine(value) : cli === "codex" ? codexModelLine(codexList, value, lastModel?.effort) : null;
+        return cli !== null && line !== null && modelSendable(cli) ? { id: pane.id, cli, line, sent: "model" as const } : null;
+      },
+      () => closeModel(false),
+      sendPicked,
+    );
+  }
+
+  function pickEffort(level: string): void {
+    runOnMenu(
+      () => {
+        const cli = modelCli;
+        const line = cli === "claude" ? slashEffortLine(level) : cli === "codex" ? codexEffortLine(level) : null;
+        return cli !== null && line !== null && modelSendable(cli) ? { id: pane.id, cli, line, sent: "effort" as const } : null;
+      },
+      () => closeModel(false),
+      sendPicked,
+    );
+  }
 
   // ── 쪽 받기 — 시트(`ConversationViewer`)와 같은 명령 · 같은 범위 ─────────────────────────
 
@@ -425,6 +787,10 @@
   $effect(() => {
     void convKey;
     convoPending = false;
+    recordModel = null;
+    modelOverride = null;
+    recordLastAt = undefined;
+    stopAck();
   });
 
   // ── 그림 — 사이드 채팅(`SideChatFace`)과 같은 캐시 · 같은 규칙 ─────────────────────────────
@@ -451,6 +817,13 @@
       },
     };
   });
+  /** 에이전트 말 코드 블록의 [터미널에 넣기] — 상자는 단추 아래 · 오른쪽 맞춤, 새 터미널은 이 타일 오른쪽(이 파일 머리말) */
+  const codeActions = {
+    onterm: (code: string, button: HTMLElement) => {
+      const r = button.getBoundingClientRect();
+      codeToTerminal(pane.id, code, { x: r.right, y: r.bottom + 4, align: "right" }, button);
+    },
+  };
   const imageCtx = $derived.by(() => {
     const remote = remoteAlias !== null;
     const dir = imageFolder?.trim() ?? "";
@@ -517,6 +890,16 @@
     if (key !== null && key === convKey) {
       loadedConvs.add(key);
       convoPending = false;
+      // 최신 쪽만 마지막 답의 모델 · 강도를 싣는다 — 못 실었으면(이 쪽 밖) 앞서 받은 값을 쥔다
+      if (before === null && page.last) recordModel = { model: page.last.model, effort: page.last.effort ?? null };
+      if (before === null) {
+        // 값을 실은 줄(Claude 답 줄 · Codex `turn_context`)이 덮은 뒤의 새 줄이면 다시 기록을 따른다 — 사람 말 · 도구 항목으로는 걷지 않는다
+        const at = page.last ? (page.last.at ?? null) : undefined;
+        if (at !== undefined) recordLastAt = at;
+        else if (recordLastAt === undefined) recordLastAt = null;
+        const ov = settleOverride(modelOverride, at);
+        if (ov !== modelOverride) modelOverride = ov;
+      }
     }
     return page;
   }
@@ -801,6 +1184,23 @@
   {/if}
 {/snippet}
 
+{#snippet attachPlus()}
+  <!-- [+] — 메뉴 없이 곧바로 파일 고르기(사이드 채팅 [+] 와 같은 32 원) -->
+  <button
+    type="button"
+    class="plus"
+    class:touch={phone}
+    data-flip-plus
+    title={t("pane.flip.composer.attach")}
+    aria-label={t("pane.flip.composer.attach")}
+    onclick={() => pickEl?.click()}><UiIcon name="plus" size={20} /></button
+  >
+{/snippet}
+
+{#snippet keywordSlot()}
+  {#if modelKeyword}<ChatModelKeyword view={modelKeyword} touch={phone} />{/if}
+{/snippet}
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="flip"
@@ -856,6 +1256,9 @@
           {images}
           {pictures}
           paths={pathLinks}
+          {codeActions}
+          copyable
+          exportDoc={(text, at) => void openExportDoc({ text, anchor: at, from: { tile: pane.id } })}
           bind:bodyEl
         />
       {/if}
@@ -903,6 +1306,11 @@
           </div>
         </div>
       {/if}
+      {#if switchAsk}
+        <div class="perms" data-flip-model-switches>
+          <FlipModelSwitchCard kind={switchAsk.kind} name={switchAsk.name} {phone} onyes={() => answerSwitch(true)} onno={() => answerSwitch(false)} />
+        </div>
+      {/if}
       {#if permCards.length > 0}
         <div class="perms" data-tile-perms>
           {#each permCards as card (card.requestId)}
@@ -914,7 +1322,7 @@
       <div class="composer-slot" class:held={permCards.length > 0} class:bottom={mobileLayout()}>
       <FlipComposer
         permission={permission || tuiAsking}
-        gate={trustGate}
+        gate={trustGate ?? switchGate}
         {stoppable}
         terminalKeys
         oninterrupt={stopTurn}
@@ -925,14 +1333,69 @@
         onattach={attach}
         prefill={flipPrefillOf(pane.id)}
         onprefilled={(n) => clearFlipPrefill(pane.id, n)}
+        leading={attachPlus}
+        inField={modelKeyword ? keywordSlot : undefined}
+        compact={false}
         bind:inputEl={composerEl}
       />
       </div>
+      <input bind:this={pickEl} class="pick-input" type="file" multiple tabindex="-1" aria-hidden="true" data-flip-pick onchange={onPicked} />
+      {#if modelOpen && modelBtn && modelCli !== null && menu}
+        <FlipModelMenu
+          cli={modelCli}
+          models={menu.models}
+          levels={menu.levels}
+          effort={menu.effort}
+          ring={menu.ring}
+          note={menu.note}
+          trigger={modelBtn}
+          touch={phone}
+          onmodel={pickModel}
+          oneffort={pickEffort}
+          onclose={closeModel}
+        />
+      {/if}
     </div>
   {/if}
 </div>
 
 <style>
+  /* `[+]` — 알약 칸 안 왼쪽 아래(사이드 채팅 `SideChatFace` 의 `.plus` 와 같은 32 원 · 낮은 면 — 메뉴가 없어 돌지 않는다) */
+  .plus {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: var(--fg-1);
+    background: var(--control-tile-bg);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .plus:hover {
+    background: var(--control-tile-bg-hover);
+  }
+
+  .plus:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* 폰 — 보이는 크기는 그대로, 누르는 자리만 44px */
+  .plus.touch::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+
+  .pick-input {
+    display: none;
+  }
+
   /* 상자 — 두 층이 같은 크기로 겹친다. `clip`: 밖으로 밀린 층이 비치지 않고, 스크롤 상자도 아니다(포커스 · 캐럿이 못 민다) */
   .flip {
     position: absolute;

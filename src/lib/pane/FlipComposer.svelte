@@ -11,11 +11,14 @@
    *
    * 모양은 **알약** 하나(채팅 독 2026-10-23 → 타일의 대화 면도 2026-10-24): 칸은 끝이 둥근 알약(한 줄 44px · 반지름 22px — 여러 줄로
    * 자라면 같은 반지름의 둥근 상자), 칸 안 오른쪽 아래에 둥근 보내기 단추(Enter 와 같은 `submit` → `onsend` 길 · 마지막 글 줄과 같은 높이).
-   * `tools` 를 주면(채팅 독) 칸 아래 줄에 부른 쪽의 칩(왼쪽)이 서고 좁은 독이라 양옆 여백을 줄인다. 타일의 대화 면은 주지 않는다(칩 줄
-   * 없음 · 760 단 여백 그대로).
+   * 칸 아래 줄은 없다(2026-11-13 — 사이드 채팅의 옛 칩 줄은 칸 안으로 들어왔다 · 목업 D안). 타일의 대화 면도 `leading`([+] 파일 붙이기) ·
+   * `inField`(모델 키워드)를 준다(2026-11-13 — 목업 E2) — 그때는 `compact={false}` 로 760 단 여백을 그대로 둔다.
    *
-   * `inField` 를 주면(프로듀서 채팅 — 10-30 실기) 알약 칸 **안** 보내기 원 왼쪽에 부른 쪽의 단추(목업 `CoordChat` 의 [끊고 전달])가 서고, 글은 그
-   * 폭만큼 오른쪽을 비운다(재어서). 칸 아래 줄이 없는 모양이라도 좁은 독 여백(`with-tools`)을 쓴다.
+   * `inField` 를 주면(프로듀서 채팅의 [끊고 전달] — 10-30 실기 · 사이드 채팅의 모델 키워드) 알약 칸 **안** 보내기 원 왼쪽에 부른 쪽의 단추가 서고,
+   * 글은 그 폭만큼 오른쪽을 비운다(재어서). `leading` 을 주면(사이드 채팅의 `[+]`) 알약 칸 안 **왼쪽 아래**에 서고 글은 그 폭만큼 왼쪽을 비운다.
+   * `above` 를 주면(사이드 채팅의 연결 칩) 알약 안 글 줄 위(첨부 칩 줄 앞)에 한 줄. 셋 중 하나라도 있으면 좁은 독 여백(`compact` — 부른 쪽이
+   * 정하면 그 값)을 쓰고,
+   * `leading` 이 있으면 알약이 크기 질의의 상자(`container: composer`)가 된다 — 부른 쪽의 단추가 좁은 폭에서 글자를 감출 수 있게.
    *
    * `gate` 를 주면(채팅 독 — 2026-10-23) **보내기만 막는다**(Enter · 단추 — 칸에 치기는 된다): 칸 위에 한 줄(CLI 시작 중) 또는 카드(시작 묻기 ·
    * CLI 나감 — 문구 · 단추 · 안내 한 줄). 막는 까닭은 부르는 쪽이 정한다.
@@ -32,7 +35,7 @@
    *
    * **첨부 칩**(2026-10-24): `attachments` 를 주면 알약 안 글 줄 위에 칩 줄(작은 미리보기 — 그림이면 `blob:` · 아니면 파일 아이콘 + 이름
    * + ×(`onremove`)). 칩이 있으면 글이 비어도 보낸다 · 준비 중인 칩(경로 없음)이 있으면 막는다 · 비우기는 부르는 쪽(보낸 뒤). 칸의
-   * **그림 붙여넣기**(클립보드에 글 없이 그림만 — `clipboardImageFiles`)는 `onattach` 로(글 붙여넣기는 그대로). `ondropdata` 를 주면
+   * **파일 붙여넣기**(클립보드에 글 없이 그림 · 파일만 — `clipboardFiles`)는 `onattach` 로(글 붙여넣기는 그대로). `ondropdata` 를 주면
    * (사이드 채팅 — 타일 캔버스 밖이다) 이 상자가 OS 파일 · 파일 타일 짐의 끌어 놓기를 받아 그대로 넘긴다. 타일의 대화 면은 주지 않는다
    * (놓기는 타일 캔버스가 받아 `app/transfer` 가 칩으로 넣는다).
    */
@@ -40,7 +43,7 @@
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { composerEnter } from "$lib/pane/ai-flip-keys";
-  import { attachmentsReady, clipboardImageFiles, type ComposerAttachment } from "$lib/pane/composer-attachments";
+  import { attachmentsReady, clipboardFiles, type ComposerAttachment } from "$lib/pane/composer-attachments";
   import { FS_DRAG_TYPE } from "$lib/fs-drag";
 
   import type { ComposerGate } from "$lib/pane/ai-flip.svelte.js";
@@ -49,8 +52,9 @@
     permission = false,
     onsend,
     onterminal,
-    tools,
     inField,
+    leading,
+    above,
     gate = null,
     busy = false,
     stoppable = false,
@@ -64,6 +68,7 @@
     placeholder,
     enterNewline = false,
     terminalKeys = false,
+    compact,
     inputEl = $bindable(null),
   }: {
     /** 에이전트가 권한을 묻는 중 */
@@ -72,10 +77,12 @@
     onsend: (text: string) => boolean;
     /** 터미널 면으로 */
     onterminal: () => void;
-    /** 칸 아래 줄의 칩(채팅 독의 CLI · 모델) — 없으면 그 줄이 없다(보내기는 늘 칸 안) */
-    tools?: Snippet;
-    /** 알약 칸 안 보내기 왼쪽의 단추(프로듀서 채팅의 [끊고 전달]) — 없으면 자리도 없다 */
+    /** 알약 칸 안 보내기 왼쪽의 단추(프로듀서 채팅의 [끊고 전달] · 사이드 채팅의 모델 키워드) — 없으면 자리도 없다 */
     inField?: Snippet;
+    /** 알약 칸 안 왼쪽 아래의 단추(사이드 채팅의 `[+]`) — 없으면 자리도 없다 */
+    leading?: Snippet;
+    /** 알약 안 글 줄 위 한 줄(사이드 채팅의 연결 칩) */
+    above?: Snippet;
     /** 보내기를 막는 사정(채팅 독) — 있으면 Enter · 보내기 단추가 아무것도 보내지 않는다 */
     gate?: ComposerGate | null;
     /** 턴이 돈다(사이드 채팅 v2) — 보내기 대신 [중단] */
@@ -108,12 +115,16 @@
      * 이 칸에서도 먹는다. 글 편집 키는 그대로 칸의 것. 사이드 채팅 · 프로듀서 채팅은 주지 않는다.
      */
     terminalKeys?: boolean;
+    /** 좁은 독 여백 — 없으면 칸 안 단추가 있을 때(독). AI 타일 대화 면은 단추가 있어도 거짓(760 단 여백) */
+    compact?: boolean;
     inputEl?: HTMLTextAreaElement | null;
   } = $props();
 
   let text = $state("");
   /** 알약 안 단추 자리의 폭(`inField` — 글이 그 밑으로 가지 않게) */
   let inFieldW = $state(0);
+  /** 알약 안 왼쪽 단추 자리의 폭(`leading`) */
+  let leadingW = $state(0);
   /** 칸 높이 상한(줄) — 넘으면 칸 안에서 스크롤 */
   const MAX_ROWS = 6;
   const rows = $derived(Math.min(MAX_ROWS, Math.max(1, text.split("\n").length)));
@@ -146,7 +157,7 @@
 
   function onPaste(ev: ClipboardEvent): void {
     if (!onattach) return;
-    const files = clipboardImageFiles(ev.clipboardData);
+    const files = clipboardFiles(ev.clipboardData);
     if (files.length === 0) return;
     ev.preventDefault();
     onattach(files);
@@ -201,7 +212,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="composer"
-  class:with-tools={!!tools || !!inField}
+  class:compact={compact ?? (!!inField || !!leading || !!above)}
   class:drag-over={dragOver}
   data-flip-composer
   ondragover={onDragOver}
@@ -229,7 +240,10 @@
         {#if gate.tip}<div class="gate-tip">{gate.tip}</div>{/if}
       </div>
     {/if}
-    <div class="wrap" class:blocked={gate?.quiet === true}>
+    <div class="wrap" class:blocked={gate?.quiet === true} class:cq={!!leading}>
+      {#if above}
+        <div class="above" data-flip-above>{@render above()}</div>
+      {/if}
       {#if attachments.length > 0}
         <!-- 첨부 칩 — 알약 안 글 줄 위(미리보기 · 이름 · ×) -->
         <ul class="atts" aria-label={t("pane.flip.composer.attachments")} data-flip-attachments>
@@ -279,7 +293,11 @@
         onkeydown={onKeydown}
         onpaste={onPaste}
         style:padding-right={inField && inFieldW > 0 ? `${46 + inFieldW + 4}px` : undefined}
+        style:padding-left={leading && leadingW > 0 ? `${5 + leadingW + 6}px` : undefined}
       ></textarea>
+      {#if leading}
+        <div class="leading" bind:clientWidth={leadingW} data-flip-leading>{@render leading()}</div>
+      {/if}
       {#if inField}
         <div class="in-field" bind:clientWidth={inFieldW} data-flip-in-field>{@render inField()}</div>
       {/if}
@@ -310,12 +328,6 @@
           }}><UiIcon name="up" size={16} /></button
         >
       {/if}
-    </div>
-  {/if}
-  {#if tools}
-    <!-- 칸 아래 줄 — 부른 쪽의 칩(CLI · 모델)만. 보내기는 칸 안이다 -->
-    <div class="tools" data-flip-tools>
-      {@render tools()}
     </div>
   {/if}
 </div>
@@ -447,8 +459,8 @@
     outline: none;
   }
 
-  /* 아래 줄이 있는 모양(채팅 독) — 좁은 독이라 양옆 여백을 줄인다 */
-  .composer.with-tools {
+  /* 칸 안 단추가 있는 모양(채팅 독 · 프로듀서 채팅) — 좁은 독이라 양옆 여백을 줄인다 */
+  .composer.compact {
     padding: var(--space-2) var(--space-3) var(--space-3);
   }
 
@@ -511,14 +523,28 @@
     display: none;
   }
 
-  /* 칸 아래 줄 — 칩만(왼쪽부터). 알약의 둥근 끝 안쪽에서 시작하게 조금 들인다 */
-  .tools {
+  /* 알약 안 왼쪽 아래 — 보내기 원과 같은 둘레 · 같은 바닥(여러 줄이면 마지막 글 줄 높이) */
+  .leading {
+    position: absolute;
+    left: 5px;
+    bottom: 5px;
+    height: 32px;
     display: flex;
     align-items: center;
+  }
+
+  /* 크기 질의의 상자 — 칸 안 단추(부른 쪽)가 좁은 알약에서 글자를 감춘다(`@container composer`) */
+  .wrap.cq {
+    container: composer / inline-size;
+  }
+
+  /* 글 줄 위 한 줄(연결 칩) — 첨부 칩 줄과 같은 들임. 첨부 줄이 뒤따르면 그 줄의 위 여백이 사이를 띄운다 */
+  .above {
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-1);
     min-width: 0;
-    margin-top: var(--space-2);
-    padding-left: var(--space-1);
+    padding: 6px var(--space-2) 0;
   }
 
   /*

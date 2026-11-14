@@ -4,7 +4,7 @@
   import AiGlyph from "$lib/AiGlyph.svelte";
   import SideChatFace from "$lib/SideChatFace.svelte";
   import ToolbarMenu from "$lib/browser/ToolbarMenu.svelte";
-  import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
+  import { runOnMenu } from "$lib/browser/menu-runner";
   import type { ToolbarMenuRow } from "$lib/browser/toolbar-tools";
   import PlansView from "$lib/PlansView.svelte";
   import { pendingCount } from "$lib/app/pending-plans.svelte.js";
@@ -25,45 +25,26 @@
   import {
     currentSideChat,
     lastSideChatPick,
-    loadCodexModels,
     newSideChat,
     noteSideChatSent,
     renameSideChat,
     selectSideChat,
-    setSideChatEffortPick,
-    setSideChatPick,
     sideChats,
-    type CodexModels,
   } from "$lib/app/side-chats.svelte.js";
   import {
     joinSideChat,
     linkSideChat,
     restartSideChat,
     setShownSideChat,
-    setSideChatEffort,
-    setSideChatModel,
     sideChatDot,
     sideChatLiveOf,
-    switchSideChatCli,
   } from "$lib/app/side-chat-live.svelte.js";
-  import {
-    sideChatNewDefault,
-    sideChatCliOk,
-    sideChatCwdLabel,
-    sideChatEffortChoices,
-    sideChatModelChoices,
-    sideChatModelOk,
-    sortSideChats,
-    type SideChat,
-  } from "$lib/side-chat";
-  import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "$lib/orchestration/config";
+  import { sideChatNewDefault, sideChatCliOk, sideChatCwdLabel, sortSideChats, type SideChat } from "$lib/side-chat";
   import { knownAiClis } from "$lib/app/panes.svelte.js";
-  import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
   import { openSettingsAt } from "$lib/app/overlays.svelte.js";
   import { showNotice } from "$lib/app/notice";
   import { offeredAiClis, type AiCli } from "$lib/session";
   import { aiDisplayName, aiIconName } from "$lib/pane-icons";
-  import { iconRef } from "$lib/host-icons";
   import { relativeTime } from "$lib/notifications";
   import { stripReason } from "$lib/error-reason";
   import { dockSides } from "$lib/dock";
@@ -75,14 +56,12 @@
   import { veilVisible } from "$lib/app/veil.svelte.js";
   import { handheld, mobileLayout } from "$lib/app/mobile.svelte.js";
   import { shortcutTitle } from "$lib/status-items";
-  import { linkChipState, linkSendName, linkTileName, linkTilePickLabel, type LinkTile } from "$lib/side-chat-link";
+  import { linkChipState, type LinkTile } from "$lib/side-chat-link";
   import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
   import { isShared, toggleShared } from "$lib/ai.svelte.js";
   import { focusTile } from "$lib/app/tabs.svelte.js";
   import { targetOf, type Dot } from "$lib/chat/chat-presentation";
   import ChatHistory from "$lib/chat/ChatHistory.svelte";
-  import ChatLinkControl from "$lib/chat/ChatLinkControl.svelte";
-  import ChatModelControls from "$lib/chat/ChatModelControls.svelte";
 
   // ---------------------------------------------------------------------------
   // **채팅 독** (2026-10-23 — docs/log/2026-10-23-side-chat-dock.md) — 런처 독의 **반대쪽** 창 끝에 떠 있는 카드 하나. 쪽은 설정
@@ -94,7 +73,7 @@
   //
   // **갈래 [채팅 | 작업안]**(2026-10-25 — docs/log/2026-10-25-plans-tile-refresh.md) — 독 맨 위 폭 전체의 알약 두 칸(아이콘뿐 — 채팅 =
   // 지금 채팅의 CLI 로고 · 작업안 = 체크리스트 + 승인 대기 수). 그 줄 오른쪽 끝에 독 단위의 📌 · ✕(2026-10-27 — 갈래를 바꿔도 그대로).
-  // 작업안 갈래의 몸통은 옛 작업안 타일의 `PlansView` 이고 머리줄이 없다(제목 ▾ · MCP · + · ⋯ 머리줄은 채팅 갈래에서만).
+  // 작업안 갈래의 몸통은 옛 작업안 타일의 `PlansView` 이고 머리줄이 없다(제목 ▾ · + · ⋯ 머리줄은 채팅 갈래에서만).
   // 두 몸통은 **함께 마운트된 채** 갈래가 아닌 쪽만 숨는다 — 갈래를
   // 오가도 채팅의 지금 턴 · 작업안의 펼친 명령 · 위험 카드의 확인 상태가 남는다. 작업안의 폴링 · 구독은 보일 때만(`visible`).
   //
@@ -108,10 +87,9 @@
   // 붙는다(`joinSideChat` — 구독 → attach → 없으면 open(띄우지 않음)). F5 · 웹뷰 크래시는 새 페이지가 같은 길로 다시 붙는다.
   //
   // 머리줄: 지금 채팅 제목 ▾(목록 — 맨 위 [새 채팅], 줄 = CLI 로고 · 제목 · 모델 · 시각 · 권한/답하는 중/새 답 점, 우클릭 이름 바꾸기 · 지우기) ·
-  // MCP 칩(실린 외부 MCP 수 — 누르면 서버 이름 목록 · 설정으로) · `+` 새 채팅 · ⋯(이름 바꾸기 · 지우기). 고정 · × 는 윗줄(갈래 옆). 입력 칸 아래 왼쪽 칩 = CLI · 모델(위로 여는 메뉴): 모델 = 산 프로세스에 곧바로(다시
-  // 띄우지 않음 · 턴 중이면 다음 턴부터) · CLI = 지금 프로세스를 닫고 그 CLI 의 대화로 다시 연다(각 CLI 가 제 대화 id 를 쥔다). 그 오른쪽
-  // 강도 칩 = 추론 강도(위로 여는 메뉴 — 두 CLI 모두 다시 띄우지 않고 곧바로 · 그 모델이 강도를 받지 않으면 숨는다). 사이드
-  // 채팅의 상태는 **이 독의 점**이고 탭 점 · 배너는 없다 — 끝남 · 권한 물음은 설정 `[ai] notify_side_chat` 으로 토스트 · OS 알림(`app/side-chat-notify`).
+  // `+` 새 채팅 · ⋯(이름 바꾸기 · 지우기). 고정 · × 는 윗줄(갈래 옆). CLI · 모델 · 강도 · 연결 · 그림 · 실린 MCP 는 입력 칸 한 줄 안(`[+]` · 모델
+  // 키워드 · 연결 칩 — 2026-11-13 목업 D안, 몸은 대화 면의 `chat/side-chat-controls` · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩은 걷었다). 사이드
+  // 채팅의 상태는 **이 독의 점**이고 탭 점은 없다 — 끝남 · 실패 · 권한 물음은 설정 `[ai] notify_side_chat` 으로 AI 타일과 같은 배너 · OS 알림(`app/side-chat-notify` — 2026-11-13).
   //
   // ## 틀 (구현 순서 1)
   //
@@ -126,9 +104,9 @@
   //
   // ## 표시 조각 (2026-10-26)
   //
-  // 목록 `chat/ChatHistory` · CLI · 모델 · 강도 칩 `chat/ChatModelControls` · 연결 칩 `chat/ChatLinkControl` · 순수 계산 `chat/chat-presentation` 은
-  // props · 콜백만 받는다. 채팅 프로세스 · 바꾸기 확인(그때의 채팅이 대상) · 메뉴(`ToolbarMenu` — 독 DOM 안에 그대로) · 가장자리 · 바깥 누르기 · Esc ·
-  // 폭과 두 몸통(`hidden`)은 이 파일이 쥔다.
+  // 목록 `chat/ChatHistory` · 순수 계산 `chat/chat-presentation` 은 props · 콜백만 받는다. 입력 칸 손잡이(`[+]` · 모델 메뉴 · 연결 칩)는 대화 면
+  // (`SideChatFace`)이 쥐고, 이 파일은 연결 칩 상태(`chipLink`)와 그 안내 한 줄(`linkNote`)만 준다. 머리줄 · 목록 메뉴(`ToolbarMenu` — 독 DOM 안에
+  // 그대로) · 가장자리 · 바깥 누르기 · Esc · 폭과 두 몸통(`hidden`)은 이 파일이 쥔다.
   // ---------------------------------------------------------------------------
 
   let dockEl = $state<HTMLElement | null>(null);
@@ -319,220 +297,8 @@
   }
 
   // ---------------------------------------------------------------------------
-  // CLI · 모델 칩 — 모델은 산 프로세스에 곧바로, CLI 는 닫고 그 CLI 의 대화로 다시 연다
+  // 연결(5단계 — 결정 10 · 목업 ⑥A) — 이 채팅이 MCP 로 읽을 타일 하나. 고르기 · 끊기는 대화 면의 `[+]`(`chat/side-chat-controls`), 여기는 상태와 안내
   // ---------------------------------------------------------------------------
-
-  let chipBtn = $state<HTMLElement | null>(null);
-  let chipOpen = $state(false);
-
-  const chipRows = $derived.by<ToolbarMenuRow[]>(() => {
-    const c = current;
-    if (!c) return [];
-    const list = offered ?? [];
-    // CLI 줄 = 그 CLI 의 로고(런처 독과 같은 출처 — 모르는 CLI 는 로고를 지어내지 않고 일반 `ai` 그림)
-    const out: ToolbarMenuRow[] = list.map((x) => {
-      const name = aiIconName(x.id);
-      return {
-        key: `cli:${x.id}`,
-        icon: "ai",
-        logo: name ? iconRef(name) : undefined,
-        label: x.name,
-        checked: x.id === c.cli,
-        radio: true,
-      };
-    });
-    // 모델 줄 = 글자만(그림 칸 없음 — 고른 것은 오른쪽 ✓). 출처는 지어낸 이름 없이(`sideChatModelChoices`): 지금 프로세스의 악수가 알린
-    // 목록(`ready.models`)이 있으면 그것, 없으면 Claude 별칭 · Codex 자신의 모델 캐시 + `config.toml` 의 `model`. 목록 밖은 [직접 입력…]
-    const isCodex = c.cli === "codex";
-    const ready = sideChatLiveOf(c.id)?.state.ready ?? null;
-    const suggestions =
-      ready && ready.models.length > 0
-        ? ready.models
-        : [...(MODEL_SUGGESTIONS[c.cli as RoleCli] ?? []), ...(isCodex ? (codexModels?.models ?? []) : [])];
-    const models = sideChatModelChoices(c.model, isCodex ? codexModels?.configured : null, suggestions);
-    out.push({ key: "model:", icon: "", label: t("app.chatDock.cliDefault"), checked: c.model === "", radio: true, sep: true });
-    for (const m of models) out.push({ key: `model:${m}`, icon: "", label: m, checked: c.model === m, radio: true });
-    out.push({ key: "model-custom", icon: "", label: t("app.chatDock.chip.custom") });
-    return out;
-  });
-
-  /** Codex 의 모델 목록 — 칩 메뉴를 열 때마다 새로 읽는다(파일 둘 · 프로세스 없음) */
-  let codexModels = $state<CodexModels | null>(null);
-
-  function toggleChip(ev: MouseEvent, chat: SideChat): void {
-    chipBtn = ev.currentTarget as HTMLElement;
-    chipOpen = !chipOpen;
-    if (chipOpen && chat.cli === "codex") void loadCodexModels().then((v) => (codexModels = v));
-  }
-
-  /** 칩의 말풍선 — 확인하지 않은 CLI 버전이면 그 경고를 붙인다(설계 7절 "칩 경고만") */
-  function chipTitle(chat: SideChat): string {
-    const untested = sideChatLiveOf(chat.id)?.state.untested ?? null;
-    return untested ? `${t("app.chatDock.chip")}\n${t("app.chatDock.chip.untested", { v: untested })}` : t("app.chatDock.chip");
-  }
-
-  // [직접 입력…] — 칩 자리에 모델 이름 칸이 선다(Enter = 바꾸기 · Esc = 그만두기 · 포커스를 잃으면 그만두기)
-  let customFor = $state<string | null>(null);
-  let customText = $state("");
-  const customOk = $derived(sideChatModelOk(customText.trim()));
-
-  function onCustomKey(ev: KeyboardEvent, chat: SideChat): void {
-    if (ev.isComposing) return;
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      if (!customOk) return;
-      const model = customText.trim();
-      customFor = null;
-      if (model !== chat.model) void applyChange(chat, chat.cli, model);
-      void focusHome();
-    } else if (ev.key === "Escape") {
-      ev.preventDefault();
-      ev.stopPropagation(); // 독을 닫지 않는다 — 입력만 그만둔다
-      customFor = null;
-      void focusHome();
-    }
-  }
-
-  function pickChip(key: string): void {
-    runOnMenu(
-      () => (current ? { chat: current, key } : null),
-      () => closeChip(false),
-      ({ chat, key }) => {
-        if (key.startsWith("cli:")) {
-          const cli = key.slice(4);
-          // CLI 를 바꾸면 모델 · 강도는 그 CLI 의 마지막 선택으로(모델 이름 · 강도 낱말은 CLI 마다 다르다 — `setSideChatPick`)
-          if (cli !== chat.cli) void applyChange(chat, cli, "");
-        } else if (key.startsWith("model:")) {
-          const model = key.slice(6);
-          if (model !== chat.model) void applyChange(chat, chat.cli, model);
-        } else if (key === "model-custom") {
-          customText = chat.model;
-          customFor = chat.id;
-        }
-      },
-    );
-  }
-
-  function closeChip(back: boolean): void {
-    chipOpen = false;
-    if (back) chipBtn?.focus({ preventScroll: true });
-  }
-
-  /**
-   * 칩으로 바꿨다. 모델(값 있음)은 산 프로세스에 곧바로 — 턴 중이면 다음 턴부터라 묻지 않는다. CLI 바꾸기와 "CLI 기본"(대화 중에는 바꿀 수
-   * 없어 프로세스를 닫고 다시 연다)은 프로세스를 닫으므로 **답하는 중이면 한 번 묻는다**(지금 턴이 끊긴다).
-   */
-  async function applyChange(chat: SideChat, cli: string, model: string): Promise<void> {
-    if (!sideChatCliOk(cli)) return;
-    // `chat` 은 목록의 그 채팅 자체(반응형 사본이 아니다) — 적기 전에 갈래를 정한다(적은 뒤엔 `chat.cli` 가 이미 새 값)
-    const switching = cli !== chat.cli;
-    const closes = switching || model === "";
-    if (closes && sideChatLiveOf(chat.id)?.state.status === "running") {
-      const ok = await askConfirm(t("app.chatDock.switch.busy"), { kind: "warning", okLabel: t("app.chatDock.switch.now") });
-      if (!ok) return;
-    }
-    // CLI 를 바꾸면 그 CLI 의 기억된 모델 · 강도로 채운다(`setSideChatPick`) — 다시 열기가 그 강도도 싣는다
-    setSideChatPick(chat.id, cli, model);
-    const c = sideChats().find((x) => x.id === chat.id);
-    if (!c) return;
-    if (switching) await switchSideChatCli(targetOf(c));
-    else await setSideChatModel(targetOf(c));
-    if (currentSideChat()?.id === chat.id) await focusHome();
-  }
-
-  // ---------------------------------------------------------------------------
-  // 추론 강도 칩 — 두 CLI 모두 산 프로세스에 곧바로(다시 띄우지 않는다 · 턴 중이면 다음 턴부터라 묻지 않는다)
-  // ---------------------------------------------------------------------------
-
-  let effortBtn = $state<HTMLElement | null>(null);
-  let effortOpen = $state(false);
-
-  /**
-   * 고를 강도 — 지어낸 값 없음(`sideChatEffortChoices`): 지금 프로세스의 악수가 그 모델의 목록을 알렸으면 그것, 아니면 앱이 이미 쓰는
-   * CLI 별 목록(`EFFORTS` — 역할 표와 같은 것). 빈 목록이면 칩을 숨긴다 — 다만 이미 고른 강도가 있으면 "기본" 으로 되돌릴 수 있게 남긴다.
-   */
-  const effortChoices = $derived.by<string[]>(() => {
-    const c = current;
-    if (!c) return [];
-    const ready = sideChatLiveOf(c.id)?.state.ready ?? null;
-    return sideChatEffortChoices(ready?.efforts ?? null, c.model, EFFORTS[c.cli as RoleCli] ?? []);
-  });
-  const effortShown = $derived(!!current && (effortChoices.length > 0 || current.effort !== ""));
-
-  const effortRows = $derived.by<ToolbarMenuRow[]>(() => {
-    const c = current;
-    if (!c) return [];
-    const list = c.effort === "" || effortChoices.includes(c.effort) ? effortChoices : [c.effort, ...effortChoices];
-    const out: ToolbarMenuRow[] = [
-      { key: "effort:", icon: "", label: t("app.chatDock.effort.default"), checked: c.effort === "", radio: true },
-    ];
-    for (const e of list) out.push({ key: `effort:${e}`, icon: "", label: e, checked: c.effort === e, radio: true });
-    return out;
-  });
-
-  function effortLabel(effort: string): string {
-    return effort || t("app.chatDock.effort.default");
-  }
-
-  function toggleEffort(ev: MouseEvent): void {
-    effortBtn = ev.currentTarget as HTMLElement;
-    effortOpen = !effortOpen;
-  }
-
-  function closeEffort(back: boolean): void {
-    effortOpen = false;
-    if (back) effortBtn?.focus({ preventScroll: true });
-  }
-
-  function pickEffort(key: string): void {
-    runOnMenu(
-      () => (current && key.startsWith("effort:") ? { chat: current, effort: key.slice(7) } : null),
-      () => closeEffort(false),
-      ({ chat, effort }) => {
-        if (effort !== chat.effort) void applyEffort(chat, effort);
-      },
-    );
-  }
-
-  /** 강도를 적고(저장) 산 프로세스에 보낸다 — 없으면 서버가 다음 띄우기에 쓴다 */
-  async function applyEffort(chat: SideChat, effort: string): Promise<void> {
-    setSideChatEffortPick(chat.id, effort);
-    const c = sideChats().find((x) => x.id === chat.id);
-    if (!c) return;
-    await setSideChatEffort(targetOf(c));
-    if (currentSideChat()?.id === chat.id) await focusHome();
-  }
-
-  // ---------------------------------------------------------------------------
-  // 연결 칩(5단계 — 결정 10 · 목업 ⑥A) — 이 채팅이 MCP 로 읽을 타일 하나. 새 채팅은 아무것도 보지 않는다
-  // ---------------------------------------------------------------------------
-
-  let linkBtn = $state<HTMLElement | null>(null);
-  let linkOpen = $state(false);
-
-  /** 지금 채팅의 프로세스에 실린 외부 MCP 서버 이름(머리줄 칩 — 없으면 칩 없음) */
-  const headMcp = $derived<string[]>(current ? (sideChatLiveOf(current.id)?.state.mcp ?? []) : []);
-
-  let mcpBtn = $state<HTMLElement | null>(null);
-  let mcpOpen = $state(false);
-
-  /** MCP 칩 목록 — 실린 서버 이름 줄 + 설정으로 가는 줄. 어느 줄을 골라도 설정 › MCP 의 서버 목록으로 간다 */
-  const mcpRows = $derived<ToolbarMenuRow[]>([
-    ...headMcp.map((name) => ({ key: `server:${name}`, icon: "mcp", label: name })),
-    { key: "settings", icon: "settings", label: t("app.chatDock.mcp.settings"), sep: true },
-  ]);
-
-  function pickMcp(): void {
-    runAfterClose(
-      () => (mcpOpen = false),
-      () => openSettingsAt("mcp", "ai-mcp-servers"),
-    );
-  }
-
-  function closeMcp(back: boolean): void {
-    mcpOpen = false;
-    if (back) mcpBtn?.focus({ preventScroll: true });
-  }
 
   /** 이 창의 연결할 수 있는 타일(포커스된 것이 위) */
   const linkTiles = $derived<LinkTile[]>(current ? linkTilesHere() : []);
@@ -541,52 +307,6 @@
   const chipLink = $derived(
     current ? linkChipState(current.tile, linkTiles, sideChatLiveOf(current.id)?.link ?? null) : ({ kind: "none" } as const),
   );
-
-  const linkRows = $derived.by<ToolbarMenuRow[]>(() => {
-    const c = current;
-    if (!c) return [];
-    const out: ToolbarMenuRow[] = linkTiles.map((x) => ({
-      key: `tile:${x.paneId}`,
-      icon: x.kind === "ssh" ? "server" : "terminal",
-      label: linkTilePickLabel(x),
-      hint: x.readable ? (x.focused ? t("app.chatDock.link.focused") : "") : t("app.chatDock.link.readOff"),
-      title: x.readable ? undefined : t("app.chatDock.link.readOff.title"),
-      checked: c.tile?.stream === x.stream,
-      radio: true,
-    }));
-    if (out.length === 0) out.push({ key: "none", icon: "", label: t("app.chatDock.link.noTiles"), disabled: true });
-    out.push({ key: "unlink", icon: "close", label: t("app.chatDock.link.unlink"), disabled: !c.tile, sep: true });
-    return out;
-  });
-
-  function toggleLink(ev: MouseEvent): void {
-    linkBtn = ev.currentTarget as HTMLElement;
-    linkOpen = !linkOpen;
-  }
-
-  function closeLink(back: boolean): void {
-    linkOpen = false;
-    if (back) linkBtn?.focus({ preventScroll: true });
-  }
-
-  /** 줄 하나 — 스냅샷(그 채팅 · 그 타일) → 닫기 → 연결 바꾸기(메뉴 통로 `runOnMenu`) */
-  function pickLink(key: string): void {
-    runOnMenu(
-      () => {
-        const c = current;
-        if (!c) return null;
-        if (key === "unlink") return { chat: c.id, tile: null };
-        const tile = key.startsWith("tile:") ? linkTiles.find((x) => x.paneId === key.slice(5)) : undefined;
-        return tile ? { chat: c.id, tile: { stream: tile.stream, name: linkTileName(tile) } } : null;
-      },
-      () => closeLink(false),
-      ({ chat, tile }) => {
-        void linkSideChat(chat, tile).then(() => {
-          if (currentSideChat()?.id === chat) void focusHome();
-        });
-      },
-    );
-  }
 
   /** [읽기 허용 켜기] — 로컬 타일의 'AI 읽기 허용'(사람 손 — 머리줄 토글과 같은 문) */
   function allowRead(tile: LinkTile): void {
@@ -655,16 +375,15 @@
     renameText = chat.title;
   }
 
+  /** 지금 대화 면(입력 칸의 `[+]` · 모델 메뉴를 쥔다) */
+  let face = $state<ReturnType<typeof SideChatFace> | null>(null);
+
   function closeLists(): void {
     listOpen = false;
-    chipOpen = false;
-    effortOpen = false;
-    linkOpen = false;
-    customFor = null;
     rowMenu = null;
     moreOpen = false;
-    mcpOpen = false;
     renaming = null;
+    face?.closeMenus();
   }
 
   // ---------------------------------------------------------------------------
@@ -925,19 +644,6 @@
       {@render dot(headDot)}
       <UiIcon name="chevron-down" size={14} />
     </button>
-    {#if headMcp.length > 0}
-      <!-- 이 채팅에 실린 외부 MCP(2026-10-25 — 사람이 설정에서 사이드 채팅에 고른 서버). 누르면 이름 목록(2026-10-27) -->
-      <button
-        type="button"
-        class="mcp-chip"
-        data-chat-dock-mcp
-        aria-haspopup="menu"
-        aria-expanded={mcpOpen}
-        title={t("app.chatDock.mcp.title", { names: headMcp.join(" · ") })}
-        bind:this={mcpBtn}
-        onclick={() => (mcpOpen = !mcpOpen)}>{t("app.chatDock.mcp.chip", { n: headMcp.length })}</button
-      >
-    {/if}
     <button
       type="button"
       class="head-btn"
@@ -992,10 +698,13 @@
       {@const c = current}
       {#key c.id}
         <SideChatFace
+          bind:this={face}
           chatId={c.id}
+          chat={c}
           cli={c.cli}
           cliName={cliName(c.cli)}
-          linkName={linkSendName(chipLink)}
+          {offered}
+          {chipLink}
           onsent={(text) => noteSideChatSent(c.id, text)}
           onrestart={() => restart(c)}
           cwd={c.cwd}
@@ -1031,28 +740,6 @@
               </div>
             {/if}
           {/snippet}
-          {#snippet tools()}
-            <ChatModelControls
-              {c}
-              bind:customFor
-              bind:customText
-              {customOk}
-              {chipOpen}
-              {effortOpen}
-              {effortShown}
-              untested={sideChatLiveOf(c.id)?.state.untested ?? null}
-              {onCustomKey}
-              {toggleChip}
-              {chipTitle}
-              {cliName}
-              {modelLabel}
-              {effortLabel}
-              {toggleEffort}
-              {logo}
-            />
-            <!-- 연결 칩(5단계) — `연결: <타일> ×`(× = 끊기) · `연결 없음 +` -->
-            <ChatLinkControl {chipLink} {linkOpen} {toggleLink} unlink={() => void linkSideChat(c.id, null)} />
-          {/snippet}
         </SideChatFace>
       {/key}
     {:else}
@@ -1073,18 +760,6 @@
     <PlansView visible={open && section === "plans"} exitSide={side} />
   </div>
 
-  {#if chipOpen && chipBtn}
-    <ToolbarMenu label={t("app.chatDock.chip.menu")} rows={chipRows} trigger={chipBtn} align="left" onpick={pickChip} onclose={closeChip} />
-  {/if}
-  {#if linkOpen && linkBtn}
-    <ToolbarMenu label={t("app.chatDock.link.menu")} rows={linkRows} trigger={linkBtn} align="left" onpick={pickLink} onclose={closeLink} />
-  {/if}
-  {#if effortOpen && effortBtn}
-    <ToolbarMenu label={t("app.chatDock.effort.menu")} rows={effortRows} trigger={effortBtn} align="left" onpick={pickEffort} onclose={closeEffort} />
-  {/if}
-  {#if mcpOpen && mcpBtn && section === "chat"}
-    <ToolbarMenu label={t("app.chatDock.mcp.menu")} rows={mcpRows} trigger={mcpBtn} align="left" onpick={pickMcp} onclose={closeMcp} />
-  {/if}
   {#if moreOpen && moreBtn}
     <ToolbarMenu label={t("app.chatDock.more")} rows={moreRows} trigger={moreBtn} align="right" onpick={pickMore} onclose={() => (moreOpen = false)} />
   {/if}
@@ -1325,31 +1000,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  /* 실린 외부 MCP 수 — 고른 칩과 같은 secondaryContainer 알약(누르는 것이 아니다 — 이름은 툴팁) */
-  .mcp-chip {
-    flex: 0 0 auto;
-    padding: 3px 10px;
-    font-family: var(--font-ui);
-    font-size: var(--t-xs);
-    font-weight: 500;
-    color: var(--control-sel-fg);
-    background: var(--control-sel-bg);
-    border: none;
-    border-radius: 999px;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  .mcp-chip:hover,
-  .mcp-chip[aria-expanded="true"] {
-    background: var(--control-sel-bg-hover);
-  }
-
-  .mcp-chip:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
   }
 
   .head-btn {

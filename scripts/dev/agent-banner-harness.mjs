@@ -11,8 +11,8 @@
 // 긴 턴 → 배너(OS 알림 없음) · 방문으로 안 풀림 · 사람이 돌아올 때까지 안 접힘 · 그 타일에 키 → 해결 · 짧은 턴 → 없음 ·
 // 0 = 끔 · 다른 타일로 갔다 오면 방문으로 해결 · 그 타일 누름 → 해결 ·
 // ⑭ 서브 에이전트(docs/log/2026-10-04-subagent-signals.md): Stop → 서브 2개 진행 중 → 배너 없음 · 탭 점 실행 중 + 수 2 ·
-// 하나 끝 → 수 1 · 같은 끝 한 번 더 → 그대로 · 마지막 끝 → 완료 배너 한 번 · 탭 점 완료 · 메인이 깨어나 보고 → stop →
-// 두 번째 배너 없음(서브 에이전트로 선 완료를 알린 사용자 턴) · 새 턴(start)의 stop 은 다시 알린다 · 마지막에 콘솔 예외 0.
+// 하나 끝 → 수 1 · 같은 끝 한 번 더 → 그대로 · 마지막 끝 → 배너 없음 · 탭 점 완료(서브의 끝은 알리지 않는다 — 2026-10-21) ·
+// 메인이 깨어나 보고 → stop → 완료 배너 한 번 · 새 턴(start)의 stop 은 다시 알린다 · 마지막에 콘솔 예외 0.
 //
 // usage:
 //   npx vite --port 1437 --strictPort
@@ -23,6 +23,7 @@
 //     → <outdir>/agent-banners.png · agent-banners-pill.png · agent-banners-light.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { fakeAgentSignal } from "./agent-signal-fake.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const [outDir = ".", port = process.env.CDP_PORT ?? "9247"] = process.argv.slice(2);
@@ -125,6 +126,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
     push_session_block: null, drop_session: null, resize_session: null, write_session: null, close_session: null,
     reap_window_sessions: null, vault_status: 'none', vault_list: [], mcp_status: { clis: [] },
     list_ai_clis: [], operation_results: {}, list_console_sessions: [], delegation_list_targets: [],
+    term_theme_list: [], restore_done_sessions: { closed: 0, unclaimed: 0 },
     audit_status: { state: 'off', written: 0, failed: 0 }, mcp_activity: null, list_forwards: [],
     'plugin:notification|is_permission_granted': true,
   };
@@ -149,8 +151,9 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
 collecting = true;
-await send("Page.reload", { ignoreCache: true });
-await sleep(4000);
+// 고정 4초는 찬 vite(러너가 새로 띄운 dev 서버)에서 모자랐다 — 새 문서의 부팅 끝을 기다린다(`boot-wait.mjs` · 2026-11-13)
+await reloadBoot(send, ev);
+await sleep(1000);
 
 const tabsMod = importApp("app/tabs.svelte.ts");
 const panesMod = importApp("app/panes.svelte.ts");
@@ -240,7 +243,8 @@ check((await badge()) === "2", "× 뒤에도 배지 2");
 await clickAt(BELL);
 const todo = JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[data-notify-todo]')].map(r => ({ kind: r.dataset.kind, hidden: r.dataset.hidden, later: !!r.querySelector('.later') })))`));
 check(todo.length === 2 && todo.some((r) => r.hidden === "true" && r.later), `센터 "확인할 것" 둘 · 숨긴 것에 "나중에" (${JSON.stringify(todo)})`);
-check((await ev(`document.querySelector('.notifycenter .group')?.textContent.trim()`)) === "확인할 것", "첫 칸 제목 = 확인할 것");
+// 옛 알림 센터 팝오버(`.notifycenter`)는 독 알림 칸(`[data-dock-alerts]` — 2026-10-18 통합 독)으로 옮겼고 칸 제목은 "새 알림" 이다
+check((await ev(`document.querySelector('[data-dock-alerts] .group')?.textContent.trim()`)) === "새 알림", "첫 칸 제목 = 새 알림(확인할 것)");
 await key("Escape", "Escape");
 
 // ── ⑤ 저절로 해결 ────────────────────────────────────────────────────────────
@@ -476,16 +480,17 @@ await backToBlank();
   check((await bannersOf()) === 0 && d.n === 1, `⑭ 중복 끝 · 모르는 id · id 없음 → 그대로 수 1 (${JSON.stringify(d)})`);
   await emitSub("subagent-stop", "agent_b2");
   d = await tabDotOf();
-  check((await bannersOf()) === 1, "⑭ 마지막 서브 에이전트가 끝남 → 완료 배너 한 번");
+  // 서브 에이전트의 끝은 알리지 않는다 — 메인이 결과를 받아 다시 돌고 그 `stop` 이 알린다(2026-10-21 · `agent-status` 머리말)
+  check((await bannersOf()) === 0, "⑭ 마지막 서브 에이전트가 끝남 → 배너 없음(점만 완료)");
+  check(d.dot === "finished" && d.n === 0, `⑭ 탭 점 완료 · 수 없음 (${JSON.stringify(d)})`);
+  // 메인이 결과를 보고하러 깨어난다(UserPromptSubmit 없이) — 그 stop 이 완료 배너를 한 번 세운다
+  await emit(4, "tool");
+  await emit(4, "stop");
+  check((await bannersOf()) === 1, "⑭ 메인이 다시 돌고 stop → 완료 배너 한 번");
   check(
     (await ev(`document.querySelector('[data-agent-banner][data-pane="${T.pane}"]')?.dataset.kind ?? null`)) === "stop",
     "⑭ 배너는 턴 끝 종류",
   );
-  check(d.dot === "finished" && d.n === 0, `⑭ 탭 점 완료 · 수 없음 (${JSON.stringify(d)})`);
-  // 메인이 결과를 보고하러 깨어난다(UserPromptSubmit 없이) — 도구가 끝남 배너를 풀고, 다음 stop 은 다시 알리지 않는다
-  await emit(4, "tool");
-  await emit(4, "stop");
-  check((await bannersOf()) === 0, "⑭ 같은 사용자 턴의 두 번째 stop → 배너 없음(알림은 한 번)");
   await emit(4, "start");
   await emit(4, "stop");
   check((await bannersOf()) === 1, "⑭ 새 사용자 턴의 stop 은 다시 알린다");

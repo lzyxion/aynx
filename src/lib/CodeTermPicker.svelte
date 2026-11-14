@@ -10,17 +10,18 @@
   import { veilVisible } from "$lib/app/veil.svelte.js";
 
   /**
-   * **문서 코드 블록을 셸 타일에 넣기 — 고르기 상자** (`app/code-to-term.svelte.ts`).
+   * **코드 블록을 셸 타일에 넣기 — 고르기 상자** (`app/code-to-term.svelte.ts` — 문서 타일 · AI 타일 대화 면 · 사이드 채팅의 [터미널에 넣기]).
    *
    * [AI에게 묻기] 의 고르기 상자(`AskAiPicker.svelte`)와 **같은 결의 형제**다 — 키 · 닫힘 · 포커스 복귀 · 자리 잡기 · 모양을 그대로
    * 따르되 줄이 셸 타일이다. 받을 셸 타일이 곧장 정해지지 않을 때(이 탭에 여럿 · 다른 탭에만 있음 · 없음) 뜬다. 상태는
    * `app/code-to-term.svelte.ts` 에 있고 이 컴포넌트는 `+page` 에 늘 마운트돼 그 상태가 있을 때만 그린다.
    *
-   * - 줄 순서: **이 탭** → **다른 탭** → 새 터미널 열기. 마지막에 포커스했던 셸 타일이 골라진 채 뜬다.
+   * - 줄 순서: **이 탭** → **다른 탭** → 새 터미널 열기(사이드 채팅에서 열었으면 "새 탭에 터미널 열기" — 옆에 설 타일이 없다).
+   *   마지막에 포커스했던 셸 타일이 골라진 채 뜬다.
    * - 원격(SSH) 셸은 줄에 **호스트 이름**을 보인다 — 어느 서버에 넣는지 보고 고른다. 로컬은 셸 이름.
    * - "명령 도는 중" 은 표시만 한다(막지 않는다).
    * - 키: ↑↓ · Home/End 로 고르고 Enter 로 넣는다. **Esc 는 여기서 끊는다**(뒤 화면의 Escape 사슬로 새지 않게) — 닫고 포커스를
-   *   원래 문서 타일(누른 단추)로 돌려준다.
+   *   누른 단추(사라졌으면 누른 타일 — 문서 타일 · AI 타일, 사이드 채팅은 단추만)로 돌려준다.
    * - 줄을 고르면 메뉴 통로(`runOnMenu`)로 **값을 스냅샷하고 닫은 뒤** 실행한다(docs/conventions.md).
    * - 바깥을 누르면 닫는다(포커스는 누른 자리의 것). 가림막이 내려와도 닫는다.
    */
@@ -93,7 +94,7 @@
       () => {
         const p = codeTermPicker();
         const row = p?.rows[i];
-        return p && row ? { row, sourcePaneId: p.sourcePaneId, code: p.code } : null;
+        return p && row ? { row, sourcePaneId: p.sourcePaneId, code: p.code, ondone: p.ondone } : null;
       },
       () => closeCodeTermPicker("none"),
       runCodeTermRow,
@@ -227,7 +228,9 @@
             <UiIcon name="terminal" size={14} />
             <span class="plus"><UiIcon name="plus" size={9} /></span>
           </span>
-          <span class="name">{t("files.doc.codeterm.picker.new")}</span>
+          <span class="name"
+            >{picker.sourcePaneId === null ? t("files.doc.codeterm.picker.newTab") : t("files.doc.codeterm.picker.new")}</span
+          >
         </button>
       {/if}
     {/each}

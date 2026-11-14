@@ -9,6 +9,7 @@
 // **여기 없는 것 — 입력 출처(`$lib/term/input-source`)의 동기 구간.** 키 이벤트 문맥(`inputKeyEvent`)을 세우고 내리는 try/finally 는
 // `Terminal` 의 `sendAsKey`(= `inputKeyEvent = true; try { sendInput(d) } finally { inputKeyEvent = false }`)에, 붙여넣기 문맥(`inputPasting`)은
 // `Terminal` 의 `pasteToTerm` 에 남는다 — 여기서는 그 둘을 옛 자리와 같은 순서로 부르기만 한다. `writeInput` · `sendInput` 도 `Terminal` 의 것이다.
+import { screenRowsText, type ScreenRow } from "$lib/term/screen-rows";
 import type { Terminal } from "@xterm/xterm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeClipboard } from "$lib/clipboard";
@@ -82,11 +83,22 @@ export function createTermActions(h: TermActionsHost): TermActions {
     // 대시보드 세션 카드의 화면 축소판 — 보이는 화면 그대로(칸의 색째). 팔레트는 투명도를 입히기 **전**의 테마다
     // (`termTheme` — 축소판의 바탕은 불투명해야 한다).
     screenSnapshot: () => snapshotScreen(t.buffer.active, { cols: t.cols, rows: t.rows }, settings.termTheme),
+    // 맨 아래 줄들 — 스크롤해 둔 자리가 아니라 화면 바닥(`baseY`)에서 센다
+    screenBottom: (rows: number) => {
+      const b = t.buffer.active;
+      const n = Math.max(0, Math.min(rows, t.rows));
+      const bottom = { viewportY: b.baseY + t.rows - n, length: b.length, getLine: (y: number) => b.getLine(y), getNullCell: () => b.getNullCell() };
+      return snapshotScreen(bottom, { cols: t.cols, rows: n }, settings.termTheme);
+    },
+    // 행마다 한 줄 — `isWrapped` 로 잇지 않는다(`term/screen-rows.ts` 머리말: Claude 는 칸 끝까지 채운 행 다음에 `isWrapped` 가 선다)
     screenLines: () => {
       const b = t.buffer.active;
-      const out: string[] = [];
-      for (let i = 0; i < t.rows; i++) out.push(b.getLine(b.baseY + i)?.translateToString(true) ?? "");
-      return out;
+      const rows: ScreenRow[] = [];
+      for (let i = 0; i < t.rows; i++) {
+        const line = b.getLine(b.baseY + i);
+        rows.push({ text: line?.translateToString(true) ?? "", wrapped: line?.isWrapped ?? false });
+      }
+      return screenRowsText(rows);
     },
     saveScrollback: () => void h.saveScrollback(),
     logPath: () => h.logPath,

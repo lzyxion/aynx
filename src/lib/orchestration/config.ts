@@ -17,9 +17,9 @@ export const EFFORTS: Record<RoleCli, readonly string[]> = {
   codex: ["", "low", "medium", "high", "xhigh"],
 };
 
-/** 모델 이름 제안 — **설치 계정에서 실측된 것만**(Claude 별칭 — CLI `initialize` 답의 순서 그대로 · 2.1.322 · Codex 는 빈 값 = 에이전트 기본값) */
+/** 모델 이름 제안 — **설치 계정에서 실측된 것만**(Claude 별칭 — 등급 순 `model-order.ts` · 2.1.322 · Codex 는 빈 값 = 에이전트 기본값) */
 export const MODEL_SUGGESTIONS: Record<RoleCli, readonly string[]> = {
-  claude: ["opus", "fable", "sonnet", "haiku"],
+  claude: ["fable", "opus", "sonnet", "haiku"],
   codex: [],
 };
 

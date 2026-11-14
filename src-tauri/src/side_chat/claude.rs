@@ -4,6 +4,7 @@
 //!   stdio` 와 함께 써도 `can_use_tool` 이 그대로 오고 `system/init` 의 `tools` 가 다섯으로 준다 · 지연 도구였던 WebFetch 가 `ToolSearch`
 //!   없이 바로 묻는다). 설정 출처 통제 = 판정형 턴과 같은 후보 B(`--setting-sources ""` + 훅 끈 설정 파일) · MCP 는 채팅 파일만
 //!   (`--strict-mcp-config`). 미리 허용 = cwd 안 `Read(./**)` + `WebSearch` + `WebFetch`(10-25 사용자 결정) — cwd 밖 읽기만 카드로 묻는다(설계 4절 · 8절 2).
+//!   예외 하나: 갈라 온 채팅은 서버가 채팅 자기 폴더의 첨부 폴더 읽기(`--add-dir` + `Read(//…/**)`)를 인자 끝에 더한다(`server::side_chat::attach_read` · 판 32).
 //! - 준비 = `initialize` 제어 요청의 답(버전 `response.response.claude_code_version` · 모델 별칭 목록). `system/init` 은 **턴마다** 온다 —
 //!   턴 시작 신호로 쓴다(함정 1).
 //! - 추론 강도 = 띄울 때 `--effort <낱말>`, 대화 중에는 제어 요청 `apply_flag_settings{settings:{effortLevel}}`(플래그 설정 층 — 메모리뿐 ·

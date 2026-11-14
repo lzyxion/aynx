@@ -25,6 +25,8 @@ import type { AlertGroup } from "$lib/dock-alert-groups";
  * 되짚는 자리다 · docs/log/2026-09-28-run-result-notify.md). 이 줄만 타일이 아니라 **실행**
  * (`operationId`)을 가리킨다.
  * `orchestration` 은 오케스트레이션 감독 사건(서버가 사건 id 와 함께 만든 것 — 권한 대기 · 복구 필요 … 리뷰 F11).
+ * `side-chat` 은 이 목록에 적히지 않는다(2026-11-13 — 사이드 채팅 알림은 AI 타일 알림처럼 배너 저장소가 쥔다) — 독 알림 칸이
+ * 해결된 사이드 채팅 배너 줄의 앞 그림을 고를 때만 쓰는 이름이다(`DockAlerts` 의 `kindOf`).
  */
 export type NotificationKind =
   | "agent-stop"

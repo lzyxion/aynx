@@ -13,6 +13,7 @@
   import { createArtistLoader } from "../artist-loader.svelte.js";
   import { artistList, runSnapshot } from "../api";
   import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "../config";
+  import { modelLabel, orderModels } from "$lib/model-order";
   import Combobox from "$lib/Combobox.svelte";
   import Dropdown from "$lib/Dropdown.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -147,7 +148,7 @@
         </div>
         {#if !clis.length}<p>{t("app.ai.noneEnabled")}</p>{/if}
         <div class="tune" id="new-tune-{tabId}" hidden={!tuneOpen}>
-          <label class="tune-model"><span>{t("orch.producer.draft.model")}</span><Combobox inputClass="tune-field" data-new-model suggestions={MODEL_SUGGESTIONS[draft.cli]} bind:value={draft.model} disabled={busy} placeholder={t("orch.producer.model.default")} openOnClick /></label>
+          <label class="tune-model"><span>{t("orch.producer.draft.model")}</span><Combobox inputClass="tune-field" data-new-model suggestions={orderModels(MODEL_SUGGESTIONS[draft.cli])} label={modelLabel} bind:value={draft.model} disabled={busy} placeholder={t("orch.producer.model.default")} openOnClick /></label>
           <div class="tune-effort"><span id="new-effort-{tabId}">{t("orch.producer.draft.effort")}</span><span data-new-effort><Dropdown labelledby={`new-effort-${tabId}`} value={draft.effort} disabled={busy} options={EFFORTS[draft.cli].map((value) => ({ value, label: value || t("orch.producer.effort.default") }))} onchange={(value) => { draft.effort = value; edited(); }} /></span></div>
         </div>
       </div>

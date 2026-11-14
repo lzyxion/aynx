@@ -375,6 +375,55 @@ pub(crate) fn parse_link_note(text: &str) -> Option<(LinkNote, &str)> {
     (stream_ok && name_ok).then(|| (LinkNote { label: Some(name.to_string()), unlinked: false }, body))
 }
 
+/// **파일 첨부 꼬리**의 줄 머리(판 32 — `server::side_chat::with_file_refs` 가 짓고 [`parse_file_refs`] 가 읽는다 · 같은 글자).
+pub(crate) const FILE_REF_PREFIX: &str = "Attached file: ";
+/// 꼬리 줄 수 상한 — 보내기의 첨부 상한(그림 + 파일 8)과 같다.
+const FILE_REFS_MAX: usize = 8;
+
+/// **파일 첨부 꼬리 읽기**(2026-11-14 — 기록 보기의 파일 칩) — 사람 말이 `with_file_refs` 가 짓는 꼴 그대로 **맨 끝**이 꼬리면
+/// (파일 이름들, 꼬리 앞 본문). 꼴 = (본문 + 빈 줄 하나 +)? `Attached file: <절대 경로>` 줄들 — 경로는 `…/attachments/<이름>`(서버의 사본
+/// 자리)이어야 한다. 본문이 있으면 빈 줄로 갈리고 본문 끝은 줄바꿈이 아니다. 아니면 `None`(닮은 글 · 가운데의 꼬리 · 꼬리 뒤의 글은
+/// 손대지 않는다). **순수**.
+pub(crate) fn parse_file_refs(text: &str) -> Option<(Vec<String>, &str)> {
+    let mut names = Vec::new();
+    let mut end = text.len();
+    loop {
+        let start = text[..end].rfind('\n').map_or(0, |i| i + 1);
+        let Some(name) = text[start..end].strip_prefix(FILE_REF_PREFIX).and_then(file_ref_name) else { break };
+        names.push(name);
+        if names.len() > FILE_REFS_MAX {
+            return None;
+        }
+        if start == 0 {
+            names.reverse();
+            return Some((names, ""));
+        }
+        end = start - 1;
+    }
+    if names.is_empty() {
+        return None;
+    }
+    // 꼬리 앞은 빈 줄 하나 — 본문 끝은 줄바꿈이 아니다
+    let body = text[..end].strip_suffix('\n')?;
+    if body.is_empty() || body.ends_with('\n') || body.ends_with('\r') {
+        return None;
+    }
+    names.reverse();
+    Some((names, body))
+}
+
+/// 꼬리 한 줄의 경로 → 파일 이름 — 절대 경로(드라이브 · `/` · UNC) · 부모 폴더 이름 `attachments` · 제어 문자 없음일 때만.
+fn file_ref_name(path: &str) -> Option<String> {
+    if path.is_empty() || path.chars().any(char::is_control) {
+        return None;
+    }
+    let b = path.as_bytes();
+    let absolute = path.starts_with('/') || path.starts_with(r"\\") || (b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'));
+    let mut parts = path.rsplit(['\\', '/']);
+    let name = parts.next().filter(|n| !n.is_empty())?;
+    (absolute && parts.next() == Some("attachments")).then(|| name.to_string())
+}
+
 /// 그림 대체 글자의 상한(글자).
 pub(crate) const IMAGE_ALT_MAX: usize = 80;
 

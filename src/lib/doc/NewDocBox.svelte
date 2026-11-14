@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { stemEnd } from "$lib/doc-new";
-  import { closeNewDoc, newDocBox, newDocEdit as edit, submitNewDoc } from "$lib/app/new-doc.svelte.js";
+  import { closeNewDoc, newDocBox, newDocEdit as edit, pickNewDocFolder, submitNewDoc } from "$lib/app/new-doc.svelte.js";
   import { veilVisible } from "$lib/app/veil.svelte.js";
 
   /**
@@ -12,6 +12,7 @@
    * `data-inline-edit` · 오류 한 줄)이고, 자리 · 닫힘은 고르기 상자(`CodeTermPicker`)와 같은 결이다 — 메뉴가 서 있던 자리 · 화면 안으로 민다 ·
    * 바깥을 누르거나 가림막이 내려오면 닫는다. 키: Enter = 만들기 · **Esc 는 여기서 끊고**(뒤 화면의 Escape 사슬로 새지 않게) 닫으며 포커스를
    * 그 문서 타일로 돌려준다. 이름 칸은 확장자 앞이 골라진 채 뜬다.
+   * 에이전트 답 [문서로 내보내기](`openExportDoc`)도 이 상자다 — 머리 글만 "문서로 내보내기 · 폴더" 이고, 집 PC 창의 로컬 폴더면 머리 줄 끝에 [바꾸기].
    */
 
   const box = $derived(newDocBox());
@@ -88,7 +89,21 @@
     style:visibility={pos ? "visible" : "hidden"}
     onkeydown={onKey}
   >
-    <div class="menu-title" title={box.dir}>{t("files.doc.new.title", { dir: box.dirName })}</div>
+    <div class="head">
+      <div class="menu-title" title={box.dir} data-new-doc-dir={box.dir}>
+        {t(box.export ? "files.doc.export.title" : "files.doc.new.title", { dir: box.dirName })}
+      </div>
+      {#if box.pick}
+        <button
+          type="button"
+          class="btn btn-sm btn-ghost"
+          title={t("files.doc.export.pickTitle")}
+          disabled={box.busy}
+          data-new-doc-pick
+          onclick={() => void pickNewDocFolder()}>{t("files.doc.export.pick")}</button
+        >
+      {/if}
+    </div>
     <div class="row">
       <input
         class="menu-input"
@@ -125,7 +140,20 @@
     box-sizing: border-box;
   }
 
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-right: var(--space-1);
+  }
+
+  .head .btn {
+    flex: none;
+  }
+
   .menu-title {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

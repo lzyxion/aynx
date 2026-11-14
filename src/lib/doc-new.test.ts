@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NEW_DOC_DEFAULT, newDocName, stemEnd } from "./doc-new";
+import { NEW_DOC_DEFAULT, exportDocName, newDocName, stemEnd } from "./doc-new";
 
 const ok = (name: string) => ({ ok: true, name });
 
@@ -44,5 +44,22 @@ describe("stemEnd — 처음 고를 끝", () => {
     expect(stemEnd(NEW_DOC_DEFAULT)).toBe("untitled".length);
     expect(stemEnd("plan")).toBe(4);
     expect(stemEnd(".env")).toBe(4);
+  });
+});
+
+describe("exportDocName — 에이전트 답 [문서로 내보내기]의 처음 이름", () => {
+  it("첫 제목 · 꾸밈 걷기 · 금지 글자 · .md", () => {
+    expect(exportDocName("서론\n\n# 배포 절차\n\n## 둘째")).toBe("배포 절차.md");
+    expect(exportDocName("## **A/B** 시험: `run`?")).toBe("A B 시험 run.md");
+    expect(exportDocName("# [링크](http://x) 정리 ##")).toBe("링크 정리.md");
+    expect(exportDocName("# 끝에 점...")).toBe("끝에 점.md");
+  });
+  it("코드 울타리 안의 # 은 제목이 아니다 · 제목 없음 · 빈 제목 = 기본 이름", () => {
+    expect(exportDocName("```sh\n# comment\n```\n# 진짜")).toBe("진짜.md");
+    expect(exportDocName("그냥 글")).toBe(NEW_DOC_DEFAULT);
+    expect(exportDocName("# ***")).toBe(NEW_DOC_DEFAULT);
+  });
+  it("긴 제목은 자른다", () => {
+    expect(exportDocName("# " + "가".repeat(200))).toBe("가".repeat(80) + ".md");
   });
 });

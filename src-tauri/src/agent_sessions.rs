@@ -606,10 +606,14 @@ fn read_chunk(path: &Path, head: u64) -> std::io::Result<Chunk> {
     let head = head_buf.len() as u64;
     let mut tail_buf = None;
     if size > head {
-        let start = size.saturating_sub(TAIL_BYTES).max(head);
+        // 꼬리는 **한 바이트 앞**부터 — `chunk_from_parts` 가 꼬리의 첫 줄을 잘린 줄로 보고 버리므로, 꼬리가 줄 첫머리에서
+        // 시작하면(앞을 줄 끝까지 이어 읽어 꼬리가 바로 거기 붙을 때가 흔하다) 온전한 줄 하나를 잃는다. 앞 바이트가 `\n` 이면
+        // 그 한 바이트만 버려진다(2026-11-14 실측 — Codex 0.168 의 한 턴 대화는 앞 128 KB 를 넘는 `world_state` 줄 바로 뒤의
+        // 하나뿐인 `turn_context` 를 잃어 "대화가 아님" → AI 타일 대화 면 · 목록에서 빠졌다).
+        let start = size.saturating_sub(TAIL_BYTES).max(head).saturating_sub(1);
         f.seek(SeekFrom::Start(start))?;
         let mut buf = Vec::new();
-        f.take(TAIL_BYTES).read_to_end(&mut buf)?;
+        f.take(TAIL_BYTES + 1).read_to_end(&mut buf)?;
         tail_buf = Some(buf);
     }
     let stem = path

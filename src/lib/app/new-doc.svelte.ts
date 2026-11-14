@@ -3,13 +3,16 @@ import { t } from "$lib/i18n/i18n.svelte.js";
 import { hasReason, stripReason } from "$lib/error-reason";
 import { baseNameOf, localBackend, remoteBackend, type FsBackend } from "$lib/fs-backend";
 import { tick } from "svelte";
-import { NEW_DOC_DEFAULT, newDocName, stemEnd } from "$lib/doc-new";
+import { NEW_DOC_DEFAULT, exportDocName, newDocName, stemEnd } from "$lib/doc-new";
 import { beginInlineEdit, createInlineEdit, resetInlineEdit } from "$lib/browser/inline-edit.svelte";
-import type { PaneSpec } from "$lib/session";
+import { newDocPane, type PaneSpec } from "$lib/session";
 import { sessionOf } from "$lib/app/sessions.svelte.js";
-import { findPaneAnywhere, focusTile, tabOfPane } from "$lib/app/tabs.svelte.js";
-import { docSourceOf, openDoc, type DocSource } from "$lib/app/panes.svelte.js";
+import { findPaneAnywhere, focusTile, openPaneBeside, tabOfPane } from "$lib/app/tabs.svelte.js";
+import { docSourceOf, openDoc, openPathFromChat, type DocSource } from "$lib/app/panes.svelte.js";
 import { setDocEdit } from "$lib/app/doc-anchors.svelte.js";
+import { localReportedFolder, reportedCwd } from "$lib/app/pane-cwd.svelte.js";
+import { isRemote } from "$lib/ipc";
+import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 
 /**
  * **문서 타일의 [새 문서…]** (2026-11-11) — 타일 ⋯ 와 본문 우클릭(읽기 모양)의 같은 줄(`new-doc` — 배선은 `pane/tile-menu-controller` 의 한 칸)이
@@ -26,12 +29,20 @@ import { setDocEdit } from "$lib/app/doc-anchors.svelte.js";
  *
  * 줄이 서는 때: 문서 타일이 파일을 보여 주고(`path`) 그 백엔드에 쓸 수 있을 때 — 끊긴 원격 · 원본 터미널을 잃은 원격은 흐리게(까닭은 편집 단추와
  * 같은 `files.doc.edit.block.offline`).
+ *
+ * **에이전트 답 [문서로 내보내기]**(2026-11-14 — `openExportDoc` · 대화 면 · 사이드 채팅의 턴 끝 단추 줄)도 같은 상자 · 같은 만들기다. 다른 것은 셋:
+ * - 이름은 답의 첫 제목(`exportDocName`), 폴더는 AI 타일이면 그 셸이 알린 폴더(SSH 면 그 서버 — 파일도 그 서버의 SFTP 로 만든다) · 사이드 채팅이면
+ *   채팅 폴더 · 모르면 그 백엔드의 홈. 집 PC 창의 로컬 폴더만 [바꾸기](OS 폴더 고르기)가 있다 — 원격 창은 `plugin:dialog` 가 막혀 있고(`remote/deny.rs`)
+ *   SSH 폴더는 OS 상자로 고를 수 없어 미리 채운 폴더만 쓴다.
+ * - 빈 파일을 만든 뒤(`createFile` — 같은 이름이면 `[exists]` 로 거절 · **덮어쓰지 않는다**) 그 파일에 답 글을 쓴다(`writeText`). 쓰는 곳은 사람이
+ *   상자에서 확인한 그 경로 하나뿐이다. 새 Tauri 명령은 없다.
+ * - 여는 자리: AI 타일이면 그 타일 오른쪽(`openPaneBeside` row) · 사이드 채팅이면 `openPathFromChat` 과 같은 규칙. 원격 창은 같은 함수가 집 PC 에 요청한다.
  */
 
 /** 상자의 상태 — 있으면 상자가 뜬다 */
 export interface NewDocBox {
-  /** [새 문서…]를 누른 문서 타일 — 새 문서가 이 곁에 선다 · Esc 로 포커스가 돌아온다 */
-  paneId: string;
+  /** [새 문서…]를 누른 문서 타일 · 내보내기를 누른 AI 타일 — 새 문서가 이 곁에 선다 · Esc 로 포커스가 돌아온다. 사이드 채팅의 내보내기는 `null` */
+  paneId: string | null;
   /** 그 문서의 백엔드 출처(`docSourceOf` — 없으면 로컬). 백엔드는 만들 때 다시 짓는다(그사이 재연결로 세션이 바뀔 수 있다) */
   source: DocSource | undefined;
   /** 만들 폴더(지금 문서의 폴더) */
@@ -42,6 +53,10 @@ export interface NewDocBox {
   anchor: { x: number; y: number };
   /** 만드는 중 — 두 번 눌러 둘을 만들지 않게 */
   busy: boolean;
+  /** 에이전트 답 내보내기 — 새 파일에 쓸 글 · 여는 자리(`tile` = 그 AI 타일 오른쪽 · `chat` = 사이드 채팅 규칙). 없으면 [새 문서…](빈 파일 · 편집으로) */
+  export?: { text: string; open: "tile" | "chat" };
+  /** [바꾸기](OS 폴더 고르기) — 집 PC 창의 로컬 폴더만 */
+  pick?: boolean;
 }
 
 let box = $state<NewDocBox | null>(null);
@@ -104,7 +119,7 @@ export function closeNewDoc(back: "source" | "none"): void {
   const b = box;
   box = null;
   resetInlineEdit(newDocEdit);
-  if (back !== "source" || b === null) return;
+  if (back !== "source" || b === null || b.paneId === null) return;
   const tab = tabOfPane(b.paneId);
   if (tab) focusTile(tab.id, b.paneId);
 }
@@ -114,7 +129,7 @@ export async function submitNewDoc(): Promise<void> {
   const b = box;
   if (b === null || b.busy) return;
   // 그사이 그 문서 타일이 닫혔다 — 곁에 열 자리가 없으니 만들지 않는다
-  if (findPaneAnywhere(b.paneId) === null) {
+  if (b.paneId !== null && findPaneAnywhere(b.paneId) === null) {
     closeNewDoc("none");
     return;
   }
@@ -147,7 +162,28 @@ export async function submitNewDoc(): Promise<void> {
     }
     return;
   }
+  if (b.export) {
+    // 만든 빈 파일에 답 글을 쓴다 — 방금 만든 파일이라 기준 version 없이(사람이 확인한 이 경로 하나뿐)
+    try {
+      if (!backend.writeText) throw new Error("readonly");
+      await backend.writeText(made, b.export.text, null);
+    } catch (e) {
+      if (box === b) closeNewDoc("none");
+      showNotice(t("files.doc.export.writeFailed", { path: made, e: stripReason(e instanceof Error ? e.message : String(e)) }));
+      return;
+    }
+    if (box === b) closeNewDoc("none");
+    if (b.export.open === "chat") {
+      await openPathFromChat({ path: made });
+      return;
+    }
+    const tab = b.paneId !== null ? tabOfPane(b.paneId) : null;
+    const pane = newDocPane(made, b.source);
+    if (!tab || b.paneId === null || !openPaneBeside(tab.id, b.paneId, pane, "row")) showNotice(t("files.doc.new.notOpened", { path: made }));
+    return;
+  }
   if (box === b) closeNewDoc("none");
+  if (b.paneId === null) return;
   const tab = tabOfPane(b.paneId);
   const opened = tab ? openDoc({ tabId: tab.id, nearPaneId: b.paneId, path: made, source: b.source }) : null;
   if (opened === null) {
@@ -155,4 +191,76 @@ export async function submitNewDoc(): Promise<void> {
     return;
   }
   setDocEdit(opened);
+}
+
+/**
+ * **에이전트 답 [문서로 내보내기]** — 상자를 연다(이 파일 머리말). `from` = 누른 곳: AI 타일(그 타일 id — 그 타일의 작업 폴더) · 사이드 채팅
+ * (지금은 늘 `null` = **홈 폴더** — 2026-11-14 사용자 결정: 채팅 폴더는 앱 데이터 안이라 찾기 어렵고 채팅을 지우면 같이 지워진다 · 포커스 타일의
+ * 폴더는 헷갈린다 · 잘못 저장해도 홈이면 찾기 쉽다).
+ * 원격 SSH AI 타일이면 그 서버에 만든다(`docSourceOf` — 원본 터미널이 없거나 끊겼으면 까닭 한 줄).
+ */
+export async function openExportDoc(o: {
+  text: string;
+  anchor: { x: number; y: number } | null;
+  from: { tile: string } | { chatDir: string | null };
+}): Promise<void> {
+  let paneId: string | null = null;
+  let source: DocSource | undefined;
+  let dir: string | null;
+  if ("tile" in o.from) {
+    const pane = findPaneAnywhere(o.from.tile);
+    if (!pane) return;
+    const src = docSourceOf(pane);
+    if (src === null) {
+      showNotice(t("files.doc.edit.block.offline"));
+      return;
+    }
+    paneId = pane.id;
+    source = src;
+    dir = src ? reportedCwd(pane.id) : localReportedFolder(pane);
+  } else {
+    dir = o.from.chatDir;
+  }
+  const backend = backendOf(source);
+  if (!backend.canWrite || !backend.online || !backend.writeText) {
+    showNotice(t("files.doc.edit.block.offline"));
+    return;
+  }
+  if (!dir) {
+    try {
+      dir = await backend.home();
+    } catch {
+      showNotice(t("files.doc.edit.block.offline"));
+      return;
+    }
+  }
+  box = {
+    paneId,
+    source,
+    dir,
+    dirName: baseNameOf(dir) || dir,
+    anchor: o.anchor ?? { x: Math.max(8, window.innerWidth / 2 - 160), y: Math.max(8, window.innerHeight / 3) },
+    busy: false,
+    export: { text: o.text, open: paneId !== null ? "tile" : "chat" },
+    pick: !isRemote && source === undefined,
+  };
+  beginInlineEdit(newDocEdit, exportDocName(o.text));
+}
+
+/** [바꾸기] — OS 폴더 고르기(집 PC 창 · 로컬만). 고르면 그 폴더로, 취소면 그대로 */
+export async function pickNewDocFolder(): Promise<void> {
+  const b = box;
+  if (b === null || !b.pick || b.busy) return;
+  let picked: string | string[] | null;
+  try {
+    picked = await openFolderDialog({ directory: true, multiple: false, defaultPath: b.dir });
+  } catch {
+    return;
+  }
+  const dir = Array.isArray(picked) ? (picked[0] ?? null) : picked;
+  if (box !== b || !dir) return;
+  b.dir = dir;
+  b.dirName = baseNameOf(dir) || dir;
+  newDocEdit.error = null;
+  void tick().then(() => newDocEdit.el?.focus({ preventScroll: true }));
 }

@@ -30,9 +30,11 @@ import {
   type LiveState,
 } from "$lib/side-chat-live";
 import { hasReason, stripReason } from "$lib/error-reason";
+import { isImageName } from "$lib/pane/composer-attachments";
 import { sideChatOpenMode } from "$lib/side-chat";
-import { sideChatTurnNotifyKind } from "$lib/side-chat-notify";
+import { sideChatResolvedBy, sideChatTurnNotifyKind } from "$lib/side-chat-notify";
 import { notifySideChat } from "$lib/app/side-chat-notify";
+import { sideChatBannerSignal } from "$lib/app/agent-banners.svelte.js";
 import { noteSideChatConversation, setSideChatTile } from "$lib/app/side-chats.svelte.js";
 import type { SideChatTileLink } from "$lib/side-chat-link";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -106,6 +108,12 @@ export interface SideChatLive {
 const lives = $state<Record<string, SideChatLive>>({});
 /** 지금 사람 눈에 보이는 채팅(독이 열려 있고 그 채팅을 보인다) */
 let shown = $state<string | null>(null);
+/**
+ * 채팅 → 이 창이 사건으로 받은 **마지막 턴 끝**(`turnEnded` 의 세대 · 번호) — 다음 `turnStarted` 가 걷는다. 완료 확인 공유(`app/agent-seen`)의
+ * 재료다: 사람이 본 창은 이 번호를 알리고, 받은 창은 제 것과 견줘 낡은 확인(그 뒤 다음 턴이 섰다)을 버린다. 스냅숏으로만 안 턴 끝은 없다
+ * (그 창에는 그 턴의 배너도 없다).
+ */
+const turnEnds = $state<Record<string, { epoch: number; seq: number }>>({});
 
 const targets = new Map<string, SideChatTarget>();
 const subs = new Map<string, () => void>();
@@ -130,10 +138,33 @@ export function sideChatDot(id: string): "permission" | "running" | "finished" |
   return l.unseen ? "finished" : null;
 }
 
+/**
+ * 지금 사람 눈에 보이는 채팅(채팅 독의 채팅 갈래 · 폰 덮개 — 없으면 `null`) — 반응형. 알릴지의 판정(`chatShown`)과 같은 사실이고,
+ * 배너(`AgentNotifyBanners`)가 창이 앞일 때 이것으로 "그 채팅을 봤다" 를 푼다.
+ */
+export function shownSideChat(): string | null {
+  return shown;
+}
+
 /** 독이 알린다 — 지금 보이는 채팅(없으면 `null`) */
 export function setShownSideChat(id: string | null): void {
   shown = id;
   if (id && lives[id]?.unseen) lives[id].unseen = false;
+}
+
+/** 그 채팅의 마지막 턴 끝(세대 · 번호 — 다음 턴이 섰으면 `null`) — 반응형. [`turnEnds`] */
+export function sideChatTurnEnd(id: string): { epoch: number; seq: number } | null {
+  return turnEnds[id] ?? null;
+}
+
+/** 턴 끝이 있는 채팅들(채팅 → 세대 · 번호) — 반응형. 완료 확인 공유가 턴 끝을 안 순간을 적는 데 쓴다 */
+export function sideChatTurnEnds(): Readonly<Record<string, { epoch: number; seq: number }>> {
+  return turnEnds;
+}
+
+/** 다른 창에서 사람이 그 턴 끝을 봤다(`app/agent-seen`) — 목록 점 "새 답" 을 거둔다 */
+export function seenSideChatElsewhere(id: string): void {
+  if (lives[id]?.unseen) lives[id].unseen = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +183,13 @@ export function sideChatErrorText(e: unknown): string {
   if (hasReason(msg, "conversation-not-found")) return t("app.chatDock.err.forkNotFound");
   if (hasReason(msg, "conversation-folder-missing")) return t("app.chatDock.err.forkFolder");
   if (hasReason(msg, "cli-not-found")) return t("app.chatDock.err.cliNotFound");
+  // 첨부(서버 판정 — `server::side_chat` 의 `images_in` · `files_in`)
+  if (hasReason(msg, "too-many-attachments") || hasReason(msg, "too-many-images")) return t("app.chatDock.err.tooMany");
+  if (hasReason(msg, "file-too-big") || hasReason(msg, "image-too-big")) return t("app.chatDock.err.tooBig");
+  const attachFails = ["file-outside", "file-missing", "file-not-file", "file-dest", "file-copy", "image-outside", "image-missing", "image-not-file", "image-type"] as const;
+  if (attachFails.some((r) => hasReason(msg, r))) {
+    return t("app.chatDock.err.attachment");
+  }
   return stripReason(msg);
 }
 
@@ -316,8 +354,14 @@ function apply(id: string, e: SideChatEvent): void {
   const ended = l.state.ended;
   const pending = pendingPermissions(l.state).length;
   l.state = foldLive(l.state, e.ev);
-  if (pendingPermissions(l.state).length > pending) notifySideChat(id, "permission", shown === id);
+  const nowPending = pendingPermissions(l.state).length;
+  // 다른 창에서 답했다 · 새 턴이 섰다 — 이 창의 배너는 저절로 풀린다(알림보다 먼저 — 턴 끝의 새 알림이 곧바로 풀리지 않게)
+  sideChatBannerSignal(id, sideChatResolvedBy({ turnStarted: e.ev.t === "turnStarted", permissionsCleared: pending > 0 && nowPending === 0 }));
+  if (nowPending > pending) notifySideChat(id, "permission", shown === id);
+  if (e.ev.t === "turnStarted") delete turnEnds[id];
   if (e.ev.t === "turnEnded") {
+    // 배너보다 먼저 — 알림과 같은 순간에 완료 확인의 재료가 선다(`app/agent-seen`)
+    turnEnds[id] = { epoch: e.epoch, seq: e.seq };
     const kind = sideChatTurnNotifyKind(e.ev.outcome);
     if (kind) notifySideChat(id, kind, shown === id);
   }
@@ -361,23 +405,27 @@ async function withEpoch<T>(id: string, run: (epoch: number) => Promise<T>): Pro
 
 /**
  * **보낸다** — 꼬리에 흐린 내 말을 먼저 세우고 `side_chat_send`(프로세스가 없으면 서버가 띄우고 준비를 기다린다 — 그동안 "… 시작 중").
- * 한 번에 하나 · 턴이 도는 동안은 부르지 않는다(입력 칸이 [중단] 을 보인다). 보냈으면 참(칸을 비운다 — 실패는 말풍선에 남는다).
+ * 한 번에 하나 · 턴이 도는 동안은 부르지 않는다(입력 칸이 [중단] 을 보인다). 보냈으면 그 말의 `clientId`(칸을 비운다 · 막 보낸 그림을 그
+ * 말풍선에 잇는 열쇠 — 실패는 말풍선에 남는다), 못 보냈으면 `null`.
  */
 export function sendSideChat(
   id: string,
   text: string,
   linkName: string | null = null,
   images: readonly { path: string; name: string }[] = [],
-): boolean {
+): string | null {
   const l = lives[id];
-  if (!l || l.sending || l.state.status === "running" || (text.trim() === "" && images.length === 0)) return false;
+  if (!l || l.sending || l.state.status === "running" || (text.trim() === "" && images.length === 0)) return null;
   const clientId = `c${Date.now().toString(36)}${(++clientSeq).toString(36)}`;
   l.state = addSent(l.state, text, clientId, images.map((im) => im.name));
   l.sending = true;
   l.error = null;
   void (async () => {
     try {
-      const r = await withEpoch(id, (epoch) => sideChatSend(id, epoch, text, clientId, linkName, images.map((im) => im.path)));
+      // 그림은 `images`(Claude 바이트 · Codex 경로), 그 밖은 `files`(서버가 채팅 자기 폴더로 옮겨 적는다) — 판정 표는 서버와 같다(`isImageName`)
+      const pics = images.filter((im) => isImageName(im.path)).map((im) => im.path);
+      const files = images.filter((im) => !isImageName(im.path)).map((im) => im.path);
+      const r = await withEpoch(id, (epoch) => sideChatSend(id, epoch, text, clientId, linkName, pics, files));
       const now = lives[id];
       if (now && r.epoch > now.epoch) now.epoch = r.epoch;
       // 서버가 붙인 연결 머리글 — 말풍선 위 칩(F5 뒤 기록 쪽과 같은 그림)
@@ -393,7 +441,7 @@ export function sendSideChat(
       if (now) now.sending = false;
     }
   })();
-  return true;
+  return clientId;
 }
 
 /** [중단] — 도는 턴을 끊는다(끊긴 턴은 "중단함" 으로 남는다) */
@@ -474,6 +522,7 @@ async function reopen(tg: SideChatTarget): Promise<void> {
   const fresh = !prev || prev.cli !== tg.cli || snap.seq < prev.seq;
   if (fresh && prev) {
     delete lives[tg.id];
+    delete turnEnds[tg.id];
     adopt(tg.id, tg.cli, snap, null);
     const now = lives[tg.id];
     if (now) now.historyConv = tg.conversation ?? tg.fork;

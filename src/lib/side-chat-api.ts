@@ -53,7 +53,7 @@ export type SideChatEv =
   | { t: "effortChanged"; effort: string | null }
   /** 낱말 하나 + 짧은 상세 — 화면 문구는 낱말로 고른다(`untested-version` · `handshake-failed` · `stderr` …). 새 낱말이 올 수 있다. */
   | { t: "notice"; code: string; detail: string | null }
-  /** 이 프로세스에 실린 외부 MCP 서버 이름(띄울 때 — 머리줄 "MCP N" 칩 · 2026-10-25) */
+  /** 이 프로세스에 실린 외부 MCP 서버 이름(띄울 때 — 입력 칸 `[+]` › MCP · 2026-10-25 · 11-13 머리줄 칩에서 옮김) */
   | { t: "mcpServers"; names: string[] }
   | { t: "exited"; code: number | null; reason: ExitReason };
 
@@ -101,7 +101,7 @@ export interface SideChatSnapshot {
   cwd?: string | null;
   /** 갈라 올 원본 대화(첫 턴 전까지) */
   forkFrom?: string | null;
-  /** 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름 · 옛 서버는 칸 없음 */
+  /** 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름 — 프로세스가 없으면 열 때 계산한 실을 예정 이름(2026-11-13 · 이름만) · 옛 서버는 칸 없음 */
   mcpServers?: string[];
   /** 지금 턴의 사건(지난 턴은 기록 파일 — `agent_conversation_transcript`). */
   liveTurn: SideChatEv[];
@@ -149,7 +149,9 @@ export function sideChatOpen(a: SideChatOpenArgs): Promise<SideChatSnapshot> {
  * 사람이 보낸 글 — 프로세스가 없으면 서버가 띄우고 준비를 기다린다(길 수 있다). 답의 `epoch` 가 이제 쓸 세대다. `link` = 서버가 이 글 앞에
  * 붙인 연결 머리글(붙이지 않았으면 `null` · 옛 서버는 칸 없음 — 세션 id 는 없다). `linkName` = 입력 칸 연결 칩의 지금 이름(머리글을 붙일
  * 때만 서버가 그 이름으로 짓는다 — 기록 칩 = 입력 칸 칩 · 없으면 거울 이름). `images` = 붙인 그림의 경로(2026-10-24 — 앱 첨부 자리의
- * 사본만 · 서버가 다시 본다: 8장 · 10 MB · png/jpeg/gif/webp — 밖이면 `[image-*]` · `[too-many-images]`). 그림만이면 글이 빌 수 있다.
+ * 사본만 · 서버가 다시 본다: 8장 · 10 MB · png/jpeg/gif/webp — 밖이면 `[image-*]` · `[too-many-images]`). `files` = 그림 밖 첨부의 경로(판 32 —
+ * 같은 첨부 자리의 사본만 · 서버가 그 채팅 cwd 의 `attachments/` 에 옮겨 적고 글 끝에 경로를 붙인다 · 그림과 합쳐 8개 · 하나 10 MB — 밖이면
+ * `[file-*]` · `[too-many-attachments]` · 판 31 서버면 `[server-outdated]`). 첨부만이면 글이 빌 수 있다.
  */
 export function sideChatSend(
   chat: string,
@@ -158,8 +160,17 @@ export function sideChatSend(
   clientId?: string | null,
   linkName?: string | null,
   images: readonly string[] = [],
+  files: readonly string[] = [],
 ): Promise<{ epoch: number; link?: TranscriptLink | null }> {
-  return invoke("side_chat_send", { chat, epoch, text, clientId: clientId ?? null, linkName: linkName ?? null, images });
+  return invoke("side_chat_send", { chat, epoch, text, clientId: clientId ?? null, linkName: linkName ?? null, images, files });
+}
+
+/**
+ * **완료 확인 공유**(2026-11-13 — `app/agent-seen.svelte.ts`) — 이 창에서 사람이 그 채팅의 턴 끝(`turnEnded` 사건의 `epoch` · `seq`)을 봤다.
+ * 서버가 낡지 않았으면 `side-chat-seen{chat, epoch, seq}` 로 방송한다(몸은 id · 번호뿐). 판 31 미만 서버면 보내지 않고 `{sent: false}`.
+ */
+export function sideChatSeen(chat: string, epoch: number, seq: number): Promise<{ sent: boolean }> {
+  return invoke("side_chat_seen", { chat, epoch, seq });
 }
 
 /** 도는 턴을 끊는다 — 보냈나(도는 턴이 없으면 false). */

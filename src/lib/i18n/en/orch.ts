@@ -1139,7 +1139,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   // ── Repository delegation · presets (stage 3-1) ──
   "config.role.model": "Model",
   "config.role.effort": "Reasoning effort",
-  "config.role.cliDefault": "default",
+  "config.role.cliDefault": "Default",
   "config.perm.readOnly": "Read-only",
   "config.perm.edit": "Auto-edit",
   "config.perm.full": "Full auto",

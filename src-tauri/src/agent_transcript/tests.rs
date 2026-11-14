@@ -1050,3 +1050,187 @@ fn codex_input_images_get_pictures() {
     let w = &file.as_bytes()[s as usize..e as usize];
     assert!(image_in_window(file.len() as u64, s, w, pic.at, pic.len, pic.n).is_ok());
 }
+
+/// 최신 쪽은 마지막 답의 모델 · 강도를 싣는다(AI 타일 대화 면의 모델 키워드 — Claude 답 줄 · Codex `turn_context`). 더 오래된 쪽 ·
+/// 부속 에이전트 줄 · 꺾쇠 이름은 아니다. 오케스트레이션 길(`page_of_file`)은 싣지 않는다.
+#[test]
+fn latest_page_carries_the_last_model_and_effort() {
+    let mut old = c_asst(json!([{"type": "text", "text": "앞 답"}]));
+    old["message"]["model"] = json!("claude-sonnet-5-5");
+    old["effort"] = json!("low");
+    let mut side = c_asst(json!([{"type": "text", "text": "부속"}]));
+    side["isSidechain"] = json!(true);
+    side["message"]["model"] = json!("claude-haiku-5-5");
+    let mut synth = c_asst(json!([{"type": "text", "text": "합성"}]));
+    synth["message"]["model"] = json!("<synthetic>");
+    let mut new = c_asst(json!([{"type": "text", "text": "새 답"}]));
+    new["message"]["model"] = json!("claude-opus-5-5");
+    new["effort"] = json!("medium");
+    let file = lines(&[old, new, side, synth]);
+    // 값을 실은 줄(둘째 줄)의 첫머리
+    let new_at = (file.find('\n').unwrap() + 1) as u64;
+    let p = page(&file, None, 40, claude_events);
+    assert_eq!(
+        p.last,
+        Some(LastModel { model: "claude-opus-5-5".into(), effort: Some("medium".into()), at: new_at })
+    );
+    let v = serde_json::to_value(&p).unwrap();
+    assert_eq!(v["last"], json!({"model": "claude-opus-5-5", "effort": "medium", "at": new_at}));
+    // 새 턴의 사람 말이 붙어도 last 와 그 자리는 그대로(값을 실은 줄이 아니다)
+    let more = file.clone() + &lines(&[c_user(json!("다음 질문"), json!({}))]);
+    assert_eq!(page(&more, None, 40, claude_events).last.map(|l| l.at), Some(new_at));
+    // 원격(파일 끝의 창 하나 — 같은 리더)도 파일 기준 자리
+    let mut w = 16usize;
+    let p = loop {
+        let start = more.len().saturating_sub(w);
+        match page_in_window(more.len() as u64, start as u64, &more.as_bytes()[start..], None, 2, claude_events).unwrap() {
+            WindowPage::Page(p) => break p,
+            WindowPage::NeedMore => w *= 4,
+        }
+    };
+    assert_eq!(p.last.map(|l| l.at), Some(new_at));
+    // 더 오래된 쪽(커서 앞)은 싣지 않는다
+    let first_len = (file.find('\n').unwrap() + 1) as u64;
+    assert!(page(&file, Some(first_len), 40, claude_events).last.is_none());
+
+    // Codex — `turn_context` 의 payload(보이는 항목이 없는 줄이어도)
+    let file = lines(&[
+        x_meta(),
+        json!({"type": "turn_context", "payload": {"model": "gpt-6-sol", "effort": "low"}}),
+        json!({"type": "turn_context", "payload": {"model": "gpt-6-astra", "effort": "high"}}),
+        x_item(json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "답"}]})),
+    ]);
+    let p = page(&file, None, 40, codex_events);
+    let tc_at = file.match_indices('\n').nth(1).map(|(i, _)| i as u64 + 1).unwrap();
+    assert_eq!(p.last, Some(LastModel { model: "gpt-6-astra".into(), effort: Some("high".into()), at: tc_at }));
+    // 강도 없는 턴 — 모델만
+    let file = lines(&[json!({"type": "turn_context", "payload": {"model": "gpt-6-astra"}})]);
+    assert_eq!(page(&file, None, 40, codex_events).last, Some(LastModel { model: "gpt-6-astra".into(), effort: None, at: 0 }));
+    // 모델을 알 줄이 없으면 없음 · 직렬화에서도 빠진다
+    let file = lines(&[x_meta()]);
+    let p = page(&file, None, 40, codex_events);
+    assert!(p.last.is_none());
+    assert!(serde_json::to_value(&p).unwrap().get("last").is_none());
+
+    // 오케스트레이션의 고정 파일 길은 싣지 않는다
+    let dir = std::env::temp_dir().join(format!("aynx-last-model-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("c.jsonl");
+    std::fs::write(&path, lines(&[json!({"type": "turn_context", "payload": {"model": "gpt-6-astra"}})])).unwrap();
+    let p = page_of_file(std::fs::File::open(&path).unwrap(), None, None, codex_events).unwrap();
+    assert!(p.last.is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---- AI 타일 대화 면의 첨부 경로 걷기(2026-11-14) ----
+
+/// 맨 앞의 앱 첨부 자리 경로(붙여넣기 꼴 — `"…"` · `'…'` · 그대로 + 빈칸 하나)만 걷는다. 다른 폴더 · 상대 경로 · 가운데 · hex 아닌 폴더는 그대로.
+#[test]
+fn attach_paths_strip_only_the_app_attachment_folder_at_the_front() {
+    let root_raw = r"C:\Users\Me\AppData\Roaming\aynx\attachments";
+    let root = norm_path(root_raw);
+    let hex = "ab".repeat(32);
+    let a = format!(r"{root_raw}\{hex}\main.ts");
+    let b = format!(r"{root_raw}\{hex}\스크린 샷.PNG");
+    let got = |t: &str| strip_attach_paths(t, &root).map(|(n, r)| (n, r.to_string()));
+    assert_eq!(got(&format!("\"{a}\" 이 파일 봐 줘")), Some((vec!["main.ts".to_string()], "이 파일 봐 줘".to_string())));
+    assert_eq!(
+        got(&format!("\"{a}\" \"{b}\" 둘 다")),
+        Some((vec!["main.ts".to_string(), "스크린 샷.PNG".to_string()], "둘 다".to_string()))
+    );
+    assert_eq!(got(&format!("\"{a}\" ")), Some((vec!["main.ts".to_string()], String::new())));
+    assert_eq!(got(&format!("\"{a}\"")), Some((vec!["main.ts".to_string()], String::new())));
+    // 대소문자 · 구분자가 달라도 같은 자리(Windows)
+    if cfg!(windows) {
+        let lower = format!("c:/users/me/appdata/roaming/aynx/attachments/{hex}/x.pdf");
+        assert_eq!(got(&format!("{lower} 봐")), Some((vec!["x.pdf".to_string()], "봐".to_string())));
+    }
+    // POSIX 꼴('…' · 그대로)
+    let posix_root = norm_path("/home/me/.local/share/aynx/attachments");
+    let p = format!("/home/me/.local/share/aynx/attachments/{hex}/a b.txt");
+    assert_eq!(strip_attach_paths(&format!("'{p}' 봐"), &posix_root).map(|(n, r)| (n, r.to_string())), Some((vec!["a b.txt".to_string()], "봐".to_string())));
+    for t in [
+        "그냥 글".to_string(),
+        // 다른 폴더 · 상대 경로 · 가운데의 경로 · hex 가 아닌 폴더 · 첨부 자리 바로 그 폴더 · 한 단계 더 깊음
+        r#""C:\Users\Me\Documents\main.ts" 봐"#.to_string(),
+        format!("attachments/{hex}/main.ts 봐"),
+        format!("이것 \"{a}\" 봐"),
+        format!(r#""{root_raw}\notes\main.ts" 봐"#),
+        format!(r#""{root_raw}\{hex}" 봐"#),
+        format!(r#""{root_raw}\{hex}\sub\main.ts" 봐"#),
+        // 닫히지 않은 따옴표 · 경로 바로 뒤에 글자가 붙음
+        format!("\"{a} 봐"),
+        format!("\"{a}\"봐"),
+    ] {
+        assert!(strip_attach_paths(&t, &root).is_none(), "{t}");
+    }
+    // 앞의 것만 걷고 가운데 것은 글에 남긴다
+    assert_eq!(got(&format!("\"{a}\" 이것과 \"{a}\"")).unwrap().1, format!("이것과 \"{a}\""));
+    // 그림 자리표는 남기고 그 뒤의 경로도 걷는다(칩 차례: 그림 → 파일)
+    assert_eq!(got(&format!("[Image #1] \"{a}\" 봐")), Some((vec!["main.ts".to_string()], "[Image #1] 봐".to_string())));
+    assert!(got("[Image #1] 봐").is_none());
+    assert!(is_image_name("스크린 샷.PNG") && !is_image_name("main.ts"));
+}
+
+/// 기록 읽기 통째 — Claude 사람 말 맨 앞의 앱 첨부 자리 경로(서버의 실제 자리)는 `files` 칩으로 · 글에서 걷힌다. 그림 말의 그림 경로는 칩 없이.
+#[test]
+fn claude_user_attach_paths_become_file_chips() {
+    let root = crate::agent_attachments::attachments_root().unwrap();
+    let hex = "cd".repeat(32);
+    let ts = root.join(&hex).join("main.ts");
+    let png = root.join(&hex).join("shot.png");
+    let q = |p: &Path| format!("\"{}\"", p.to_string_lossy());
+    let file = lines(&[
+        c_user(json!(format!("{} 이 파일 봐 줘", q(&ts))), json!({})),
+        c_user(
+            json!([{"type": "text", "text": format!("{} {} 둘 다", q(&png), q(&ts))},
+                   {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG_1X1}}]),
+            json!({}),
+        ),
+        c_user(json!(r#""C:\elsewhere\main.ts" 그대로"#), json!({})),
+    ]);
+    let p = page(&file, None, 40, claude_events);
+    let us: Vec<_> = p.items.iter().filter(|i| i.role == "user").collect();
+    assert_eq!((us[0].text.as_deref(), us[0].files.clone()), (Some("이 파일 봐 줘"), vec!["main.ts".to_string()]));
+    assert_eq!((us[1].text.as_deref(), us[1].files.clone()), (Some("둘 다"), vec!["main.ts".to_string()]), "그림 경로는 칩 없이 — 그림 블록이 그린다");
+    assert!(us[2].files.is_empty() && us[2].text.as_deref() == Some(r#""C:\elsewhere\main.ts" 그대로"#));
+}
+
+/// 실측 모양(2026-11-14 — Claude 2.1.325 · Codex 0.169.0 Windows TUI 에 대화 면과 같은 걸음: 파일 경로 붙여넣기 → 그림 경로 붙여넣기 → 글 → Enter).
+/// 경로는 이 PC 의 실제 첨부 자리로 바꿔 짓는다(사용자 이름 · 임시 경로를 저장소에 남기지 않는다).
+/// - Claude: 그림 경로는 `[Image #1]` 자리표 + 그림 블록(+ 따로 선 `isMeta` `[Image: source: …]` 줄) — 파일 경로만 글에 남는다.
+/// - Codex: 이번엔 그림 경로도 바뀌지 않고 글로 남았다(그림 블록 없음) — 둘 다 칩.
+#[test]
+fn measured_tui_attach_shapes_become_file_chips() {
+    let root = crate::agent_attachments::attachments_root().unwrap();
+    let hex = "ab".repeat(32);
+    let ts = root.join(&hex).join("main.ts").to_string_lossy().into_owned();
+    let png = root.join(&hex).join("shot.png").to_string_lossy().into_owned();
+    let said = "테스트입니다. 도구 쓰지 말고 '네' 한 글자만 답하세요.";
+    let claude = lines(&[
+        c_user(
+            json!([{"type": "text", "text": format!("\"{ts}\" [Image #1] {said}")},
+                   {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG_1X1}}]),
+            json!({"origin": {"kind": "human"}, "imagePasteIds": [1]}),
+        ),
+        c_user(json!([{"type": "text", "text": format!("[Image: source: {png}]")}]), json!({"isMeta": true})),
+    ]);
+    let p = page(&claude, None, 40, claude_events);
+    let u = p.items.iter().find(|i| i.role == "user").unwrap();
+    let want = format!("[Image #1] {said}");
+    assert_eq!((u.text.as_deref(), u.files.clone(), u.images, u.pictures.len()), (Some(want.as_str()), vec!["main.ts".to_string()], 1, 1));
+    assert_eq!(p.items.iter().filter(|i| i.role == "user").count(), 1, "isMeta 줄은 건너뛴다");
+
+    let codex = lines(&[
+        x_meta(),
+        x_item(json!({"type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": format!("\"{ts}\" \"{png}\" {said}")}]})),
+    ]);
+    let p = page(&codex, None, 40, codex_events);
+    let u = p.items.iter().find(|i| i.role == "user").unwrap();
+    assert_eq!(
+        (u.text.as_deref(), u.files.clone(), u.images),
+        (Some(said), vec!["main.ts".to_string(), "shot.png".to_string()], 0),
+        "그림 블록이 없으면 그림 경로도 칩"
+    );
+}

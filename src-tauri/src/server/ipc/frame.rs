@@ -161,7 +161,14 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 판 30(2026-11-10 쿼리 타일 데이터 탭): 새 op 없음 — `db_query` 몸의 `readOnly`(타일 모드와 무관하게 가드 · 엔진 읽기 전용 · 열린 작업이면
 /// 거절). 옛 서버는 모르는 칸을 버리고 타일 모드대로 돌리므로, 같은 규칙으로 **`MIN` 을 올리지 않되** GUI 가 판 29 서버에는 그 조회를 보내지
 /// 않는다(`[server-outdated]` — [`DB_READ_QUERY_PROTOCOL`]).
-pub(crate) const PROTOCOL_MAX: u32 = 30;
+///
+/// 판 31(2026-11-13 사이드 채팅 완료 확인 공유): op `side_chat_seen`(쓰기 — 표시 전용) · 방송 `side-chat-seen{chat, epoch, seq}`. 판 25 와 같은
+/// 결이고 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 30 서버면 보내지 않는다(배너는 창마다 따로 풀리는 예전 그대로 · [`SIDE_CHAT_SEEN_PROTOCOL`]).
+///
+/// 판 32(2026-11-14 사이드 채팅 파일 첨부): 새 op 없음 — `side_chat_send` 몸의 `files`(그림 밖 첨부 — 서버가 그 채팅 cwd 의 `attachments/` 에 사본을
+/// 두고 글 끝에 경로를 붙인다). 옛 서버는 모르는 칸을 **버리므로**(사람이 붙인 파일이 소리 없이 빠진다) 판 30 과 같은 규칙으로 **`MIN` 을 올리지 않되**
+/// GUI 가 판 31 서버에는 파일이 든 보내기를 보내지 않는다(`[server-outdated]` — [`SIDE_CHAT_FILES_PROTOCOL`]).
+pub(crate) const PROTOCOL_MAX: u32 = 32;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -230,6 +237,12 @@ pub(crate) const DETACHED_DB_PROTOCOL: u32 = 29;
 
 /// 읽기 전용 조회(`db_query` 의 `readOnly` — 데이터 탭)가 서는 판 — 낮으면 GUI 가 그 조회를 보내지 않는다(옛 서버는 깃발을 버린다).
 pub(crate) const DB_READ_QUERY_PROTOCOL: u32 = 30;
+
+/// 사이드 채팅 완료 확인 공유(`side_chat_seen`)가 서는 판.
+pub(crate) const SIDE_CHAT_SEEN_PROTOCOL: u32 = 31;
+
+/// 사이드 채팅 보내기의 파일 첨부(`side_chat_send` 의 `files`)가 서는 판 — 낮으면 GUI 가 파일이 든 보내기를 보내지 않는다(옛 서버는 칸을 버린다).
+pub(crate) const SIDE_CHAT_FILES_PROTOCOL: u32 = 32;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;
@@ -476,6 +489,8 @@ pub(crate) fn required_grade(op: &str) -> Option<Grade> {
         "side_chat_attach" | "side_chat_list" => Some(Grade::Read),
         "side_chat_open" | "side_chat_send" | "side_chat_interrupt" | "side_chat_set_model" | "side_chat_set_effort"
         | "side_chat_decide" | "side_chat_close" | "side_chat_link" => Some(Grade::Write),
+        // 완료 확인 공유(판 31)도 쓰기 — `agent_state_seen` 과 같이 표는 바꾸지 않고 방송만 한다.
+        "side_chat_seen" => Some(Grade::Write),
         // 프로듀서 채팅(판 20 — `server::producer`). 스냅숏 · 상태 · 목록 = 읽기, 나머지 = 쓰기(사람의 결정도 승인 등급 프레임이 아니다).
         "producer_chat_attach" | "producer_chat_status" | "producer_chat_list" | "producer_fork_probe" | "orchestration_album_defaults" => Some(Grade::Read),
         "orchestration_album_widen" | "orchestration_album_set" | "orchestration_rename_album" => Some(Grade::Write),

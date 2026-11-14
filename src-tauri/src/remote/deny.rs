@@ -234,6 +234,8 @@ pub(crate) const ALLOW: &[&str] = &[
     "side_chat_instructions_load", "side_chat_instructions_save",
     "side_chat_open", "side_chat_send", "side_chat_interrupt", "side_chat_set_model", "side_chat_set_effort", "side_chat_decide",
     "side_chat_close", "side_chat_attach", "side_chat_list", "side_chat_subscribe", "side_chat_link",
+    // 사이드 채팅 완료 확인 공유(2026-11-13 — 표시 전용 · 몸은 id · 번호뿐) — AI 타일의 `agent_state_seen` 과 같은 등급.
+    "side_chat_seen",
     // 타일 권한 카드(2026-11-01 — `server::tile_permission_proxy`): 사람의 결정 · 스냅숏 · 통로. 사이드 채팅 · 프로듀서 권한 카드와 같은 등급(원격은
     // 이미 그 타일의 TUI 에 칠 수 있다 · 재확인 없음). 서버가 그 창이 그 세션을 보는지 다시 본다 · 본문은 그 창의 통로에만.
     // 명령 카드의 앱 분석(순수 계산 — 작업안 카드와 같은 분석 · 아무것도 바꾸지 않는다)
@@ -349,6 +351,7 @@ pub(crate) fn command_label(cmd: &str) -> String {
         "side_chat_list" => tr!(ko: "사이드 채팅 프로세스 보기", en: "viewing side chat processes"),
         "side_chat_subscribe" => tr!(ko: "사이드 채팅 사건 받기", en: "receiving side chat events"),
         "side_chat_link" => tr!(ko: "사이드 채팅에 타일 연결", en: "linking a tile to a side chat"),
+        "side_chat_seen" => tr!(ko: "사이드 채팅 완료 확인 알리기", en: "sharing that a side chat reply was seen"),
         "set_app_icon" => tr!(ko: "앱 아이콘 바꾸기", en: "changing the app icon"),
         "app_icon_add" => tr!(ko: "아바타 넣기", en: "adding an avatar"),
         "app_icon_remove" => tr!(ko: "아바타 지우기", en: "removing an avatar"),
@@ -555,6 +558,7 @@ mod tests {
             "side_chat_instructions_load", "side_chat_instructions_save",
             "side_chat_open", "side_chat_send", "side_chat_interrupt", "side_chat_set_model", "side_chat_set_effort",
             "side_chat_decide", "side_chat_close", "side_chat_attach", "side_chat_list", "side_chat_subscribe", "side_chat_link",
+            "side_chat_seen",
         ] {
             assert_eq!(class_of(c), Class::Allow, "{c}");
         }

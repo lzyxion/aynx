@@ -18,12 +18,14 @@ import {
   restartCollapse,
   type BannerInput,
   type BannerItem,
+  type BannerKind,
   type BannerResolution,
   type BannerState,
   type ResolvedBanner,
 } from "$lib/agent-banners";
 import { focusTile, tabOfPane } from "$lib/app/tabs.svelte.js";
 import { glowTile } from "$lib/app/tile-glow.svelte.js";
+import { openSideChatFromAlert } from "$lib/app/side-chat-open";
 
 /**
  * **에이전트 알림 배너의 저장소** — 창 하나에 한 벌 (docs/log/2026-09-27-agent-banners.md).
@@ -39,6 +41,10 @@ import { glowTile } from "$lib/app/tile-glow.svelte.js";
  * - `PaneHost.svelte` — 타일 안의 키·누름([`touchAgentBanner`]) — 보고 있는 타일에서 선 항목(`bornFocused`)이
  *   풀리는 길이다(docs/log/2026-09-27-agent-banners.md "보고 있는 타일도").
  * - `DockAlerts.svelte`(독 알림 칸 — 2026-10-18 통합 독, 옛 알림 센터 팝오버) · 상태바 알림 배지 — 확인할 것 / 지난 알림 · 배지.
+ * - **사이드 채팅**(2026-11-13 — 항목의 대상이 `sideChatId`): `app/side-chat-notify` 가 알릴 때 [`pushAgentBanner`],
+ *   `app/side-chat-live` 가 채팅의 사건마다 [`sideChatBannerSignal`](다른 창에서 답했다 · 새 턴이 섰다 — 저절로 해결),
+ *   `AgentNotifyBanners.svelte` 가 "그 채팅을 봤다"([`resolveVisitedSideChat`]) · 지워진 채팅([`dropSideChatBanner`]).
+ *   여는 길은 `app/side-chat-open` 의 `openSideChatFromAlert`(빛낼 타일이 없어 빛내지 않는다).
  *
  * **메모리에만** 산다 — 알림 센터와 같은 이유(CLAUDE.md "보안 제약" · docs/log/2026-09-25-notification-center.md).
  */
@@ -116,8 +122,19 @@ export function dropAgentBanner(paneId: string): void {
   set(resolveBanner(state, paneId, "auto", Date.now()));
 }
 
+/** 사이드 채팅의 사건 하나 — 그 채팅의 `kinds` 갈래 항목을 저절로 해결한다(`$lib/side-chat-notify` 의 `sideChatResolvedBy`) */
+export function sideChatBannerSignal(sideChatId: string, kinds: readonly BannerKind[]): void {
+  if (kinds.length === 0) return;
+  set(resolveBanner(state, { sideChatId }, "auto", Date.now(), kinds));
+}
+
+/** 채팅이 지워졌다 */
+export function dropSideChatBanner(sideChatId: string): void {
+  set(resolveBanner(state, { sideChatId }, "auto", Date.now()));
+}
+
 /** 한 항목을 해결하고 그 타일을 한 번 빛낸다 — 사람이 봤다 */
-function resolveChecked(item: BannerItem): void {
+function resolveChecked(item: BannerItem & { paneId: string }): void {
   set(resolveBanner(state, item.paneId, "checked" satisfies BannerResolution, Date.now()));
   glowTile(item.paneId, item.kind === "permission" ? "accent" : "ok");
 }
@@ -125,10 +142,16 @@ function resolveChecked(item: BannerItem): void {
 /**
  * [보기] · [확인하러 가기] · 알림 센터의 "확인할 것" 줄 — 그 탭으로 가 그 타일에 포커스를 주고 해결한다.
  * 탭은 **누를 때** 다시 찾는다(그 사이 타일을 옮겼을 수 있다). 타일이 없어졌으면 저절로 해결로 접는다.
+ * 사이드 채팅 항목은 그 채팅을 열고(`openSideChatFromAlert`) 해결한다 — 채팅이 지워졌으면 저절로 해결로 접는다.
  */
 export function openAgentBanner(id: number): void {
   const item = state.active.find((b) => b.id === id);
   if (!item) return;
+  if (item.sideChatId !== undefined) {
+    const chat = item.sideChatId;
+    set(resolveBanner(state, { sideChatId: chat }, openSideChatFromAlert(chat) ? "checked" : "auto", Date.now()));
+    return;
+  }
   const tab = tabOfPane(item.paneId);
   if (!tab) {
     dropAgentBanner(item.paneId);
@@ -156,7 +179,15 @@ export function resolveVisited(paneId: string): void {
   const next = resolveVisit(state, paneId, Date.now());
   if (next === state) return;
   set(next);
-  glowTile(item.paneId, item.kind === "permission" ? "accent" : "ok");
+  glowTile(paneId, item.kind === "permission" ? "accent" : "ok");
+}
+
+/**
+ * 사람이 **그 채팅을 봤다** — 창이 앞에 있고 채팅 독(폰은 채팅 덮개)이 그 채팅을 보이는 순간, 배너가 부른다(`AgentNotifyBanners` 의
+ * `$effect` · 보이는 채팅은 `app/side-chat-live` 의 `shownSideChat`). 타일의 [`resolveVisited`] 와 같은 결이다(빛낼 타일은 없다).
+ */
+export function resolveVisitedSideChat(sideChatId: string): void {
+  set(resolveVisit(state, { sideChatId }, Date.now()));
 }
 
 /**
@@ -179,6 +210,11 @@ export function touchAgentBanner(paneId: string): void {
 /** **다른 창에서 사람이 그 타일의 턴 끝을 봤다**(`app/agent-seen`) — 끝남 항목만 "확인함" 으로 푼다. 권한 물음은 답해야 풀린다 */
 export function seenAgentBanner(paneId: string): void {
   set(resolveBanner(state, paneId, "checked", Date.now(), ["stop"]));
+}
+
+/** **다른 창에서 사람이 그 채팅의 턴 끝을 봤다**(`app/agent-seen`) — 끝남 · 실패 항목만 "확인함" 으로 푼다. 권한 물음은 답해야 풀린다 */
+export function seenSideChatBanner(sideChatId: string): void {
+  set(resolveBanner(state, { sideChatId }, "checked", Date.now(), ["stop", "failed"]));
 }
 
 /** × — 배너에서만 비킨다 */

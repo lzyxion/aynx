@@ -6,7 +6,7 @@
    * - 오래된 것이 위, 최신이 아래. 열면 맨 아래에서 시작하고 "이전 메시지 더 보기" 가 한 쪽씩 앞에 붙인다(커서 — Rust 가 끝에서
    *   거꾸로 읽는다). 쪽을 받는 길은 부르는 쪽이 준다(`fetchPage` — 로컬 · 원격 · Run 작업자). 이 컴포넌트는 그 길을 모른다.
    * - **본문은 글자로만 그린다** — `{@html}` 이 없다. 에이전트 말의 마크다운은 순수 층(`$lib/transcript`)이 블록과 토막으로만
-   *   나누고(그리기는 `MarkdownBlocks` — 코드 블록은 `CodeView` 의 판 · [복사] 단추), `http`/`https` 링크는 **그냥 클릭**에 OS 기본
+   *   나누고(그리기는 `MarkdownBlocks` — 코드 블록은 `CodeView` 의 판 · [복사] 단추 · 사이드 채팅 · 타일 대화 면은 머리 띠 — 아래 `codeActions`), `http`/`https` 링크는 **그냥 클릭**에 OS 기본
    *   브라우저로 연다 — 글자가 곧 링크이고(칩 없음), 출처 이름표(괄호 묶음 · 문장 끝 뒤 링크)만 모델이 단 그 자리의 사이트 이름 칩이 된다(괄호는 지움 · 주소는 툴팁 — 2026-11-01 (나)안 · 칩 제자리 ·
    *   2026-11-01 D안 · 처음 2026-10-25 — `linkStyle="chip"` ·
    *   `openLink` · 원격 창은 폴리필이 그 브라우저의 새 탭으로). 생각은 싣지 않는다(Rust 가
@@ -36,10 +36,19 @@
    * - **사람 말의 그림**(`pictures` — 타일 대화 면, 2026-10-24): Claude 붙여넣기 · 끌어 놓은 파일 · Codex 첨부는 기록 줄에 바로(base64 ·
    *   데이터 URL) 실린다. 쪽은 그 자리(`item.pictures`)만 싣고, 이 컴포넌트는 보이는 사람 말의 자리를 `pictures.sync` 로 올려 받은 `blob:` 을
    *   말풍선 안에 그린다(읽기 · 캐시는 부르는 쪽의 `ConvImageCache`). 우클릭은 같은 그림 메뉴(링크 복사 없음). 못 그리는 것만 "이미지 N개" 칩.
-   * - **경로 링크**(`paths` — 타일 대화 면만, 2026-11-11): 에이전트 말의 파일 경로(`MarkdownBlocks` 의 `paths` 그대로 — 판정은 거기, 푸는 일 ·
-   *   여는 일은 부르는 쪽 `pane/AiFlip`). 사이드 채팅 · 프로듀서 채팅 · 시트는 넘기지 않는다.
+   * - **경로 링크**(`paths` — 타일 대화 면 2026-11-11 · 사이드 채팅 2026-11-12): 에이전트 말의 파일 경로(`MarkdownBlocks` 의 `paths` 그대로 —
+   *   판정은 거기, 푸는 일 · 여는 일은 부르는 쪽 `pane/AiFlip` · `SideChatFace`). 프로듀서 채팅 · 시트는 넘기지 않는다.
+   * - **코드 블록 머리 띠**(`codeActions` — 사이드 채팅 · 타일 대화 면, 2026-11-12): 에이전트 말의 코드 블록에 [복사] · [터미널에 넣기](`MarkdownBlocks` 의
+   *   `codeActions` 그대로 — 넣는 일은 부르는 쪽 `SideChatFace` · `pane/AiFlip` → `app/code-to-term`). **닫힌 블록에만** 선다 — 자라는 꼬리 글은 닫히지 않은
+   *   울타리를 떼어(`splitOpenFence` — 다이어그램과 같은 자르기) 그 몫에는 넘기지 않는다(반쯤 쓴 명령을 넣지 않게). 시트 · 프로듀서 채팅은 넘기지 않는다.
+   * - **사람 말 복사**(`copyable` — 타일 대화 면 · 사이드 채팅, 2026-11-14 목업 F1): 사람 말풍선 바로 아래 한 줄 오른쪽 끝에 복사 아이콘 단추.
+   *   자리는 늘 잡아 두고(대화가 들썩이지 않게) 말풍선 · 그 줄에 마우스가 오르거나 포커스가 있을 때만 보인다. 말풍선은 `tabindex=-1` 이라
+   *   폰에서 한 번 누르면 포커스가 서서 단추가 나오고 다른 곳을 누르면 숨는다. 복사하는 것은 말풍선의 글(`unwrapPasted` — 화면 글 그대로)뿐 —
+   *   첨부 · 그림 칩 · "보내는 중" 같은 표식은 넣지 않는다. 알림은 앱 토스트. 시트 · 프로듀서 채팅은 켜지 않는다.
+   *   같은 `copyable` 이 **에이전트 답 복사**도 켠다 — 한 턴(사람 말 하나 뒤의 에이전트 줄 전부)의 마지막 에이전트 줄 아래 한 줄 **왼쪽 끝**에 같은 단추 하나.
+   *   글은 그 턴의 에이전트 말(마크다운 원문 · 코드 울타리 그대로)만 빈 줄로 잇고 도구 줄 · 권한 카드는 뺀다(`agentTurnCopies`). 답을 아직 쓰는 턴에는 없다.
    */
-  import { tick, untrack, type Snippet } from "svelte";
+  import { tick, untrack, type ComponentProps, type Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import MarkdownBlocks from "$lib/MarkdownBlocks.svelte";
   import { splitOpenFence } from "$lib/markdown";
@@ -48,10 +57,13 @@
   import type { PathMatch } from "$lib/path-links";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { TranscriptItem, TranscriptPage, TranscriptPicture } from "$lib/context";
+  import { filesBesidePics, type SentPic } from "$lib/pane/composer-attachments";
   import ImageMenu from "$lib/ImageMenu.svelte";
   import { imageMenuActions, inlineImageName, type ImageMenuAction } from "$lib/image-menu";
   import { runImageAction } from "$lib/image-actions";
   import { isRemote } from "$lib/ipc";
+  import { writeClipboard } from "$lib/clipboard";
+  import { toast } from "$lib/toast.svelte.js";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     linkChip,
@@ -64,7 +76,9 @@
     toolFlag,
     toolHeadline,
     unwrapPasted,
+    agentTurnCopies,
     hiddenImageCount,
+    withoutImagePlaceholders,
     pictureKey,
     userPictures,
     type LiveRow,
@@ -100,6 +114,9 @@
     notes = [],
     noteCard,
     paths,
+    codeActions,
+    copyable = false,
+    exportDoc,
   }: {
     /** 대화의 열쇠 — 바뀌면(열림 포함) 처음부터. `null` 이면 아무것도 읽지 않는다 */
     convKey: string | null;
@@ -118,7 +135,7 @@
     /** 첫 쪽을 받아 맨 아래로 내린 뒤(성공 · 실패 모두) */
     onloaded?: (ok: boolean) => void;
     /** 보내는 중인 글(목록 끝의 흐린 말풍선) — 기록에 나타나면 걷힌다 · `files` = 함께 보낸 첨부 이름(입력 칸 칩) */
-    pending?: { id: number; text: string; files?: readonly string[] }[];
+    pending?: { id: number; text: string; files?: readonly string[]; pics?: readonly SentPic[] }[];
     /** 그 보낸 글이 기록에 나타났다 */
     onsettled?: (id: number) => void;
     /** 대화 모양 — 내 말은 오른쪽 말풍선(타일의 대화 면). 시트는 끈다 */
@@ -193,7 +210,34 @@
     turnBreak?: (at: number | null) => string;
     /** 에이전트 말의 경로 링크(타일 대화 면 — 이 파일 머리말). 없으면 예전 그대로 */
     paths?: { title: (m: PathMatch) => string | null; open: (m: PathMatch) => void };
+    /** 에이전트 말 코드 블록의 [복사] · [터미널에 넣기](사이드 채팅 · 타일 대화 면 — 이 파일 머리말). 없으면 예전 그대로 */
+    codeActions?: ComponentProps<typeof MarkdownBlocks>["codeActions"];
+    /** 사람 말풍선 아래의 [복사] 단추(타일 대화 면 · 사이드 채팅 — 이 파일 머리말). 끄면 예전 그대로 */
+    copyable?: boolean;
+    /** 에이전트 답 [문서로 내보내기](`copyable` 의 턴 끝 단추 줄 · [복사] 오른쪽) — 그 턴의 글(복사와 같은 글) · 단추 아래 자리. 없으면 단추 없음 */
+    exportDoc?: (text: string, anchor: { x: number; y: number }) => void;
   } = $props();
+
+  /**
+   * 에이전트 답 복사 — 한 턴의 마지막 에이전트 줄 id → 그 턴의 글(`agentTurnCopies`). 끝 턴은 답을 다 쓴 뒤에만: 에이전트가 일하는 중
+   * (`activity` 의 running · permission) · 자라는 꼬리 글이 있으면 없다. 보내는 중 말풍선이 있으면 그 앞 턴은 끝난 것이다.
+   */
+  const agentCopies = $derived.by(() => {
+    if (!copyable) return new Map<string, string>();
+    const seq = [
+      ...shown.map((x) => ({ id: `h${x.k}`, item: x.item })),
+      ...live.flatMap((r) => (r.item ? [{ id: `l${r.key}`, item: r.item }] : [])),
+    ];
+    const busy = activity === "running" || activity === "permission" || live.some((r) => r.streaming);
+    return agentTurnCopies(seq, shownPending.length > 0 || !busy);
+  });
+
+  /** 사람 말 · 에이전트 답의 글만 클립보드로 — 결과는 앱 토스트(원격 웹도 같은 웹 API · 같은 토스트) */
+  async function copyMessage(text: string) {
+    const ok = await writeClipboard(text);
+    if (ok) toast.success(t("board.viewer.copy.done"));
+    else toast.error(t("board.viewer.copy.fail"));
+  }
 
   /** 도구 이름 → 보일 이름. 이름표가 있는 것만 번역(Codex 사이드 채팅의 `imageGeneration` — 나머지는 CLI 의 이름 그대로) */
   const toolLabel = (name: string | null) =>
@@ -606,7 +650,7 @@
   /** 말풍선 id → 처음 본 때의 그 수 */
   const baseline = new Map<number, number>();
   const shownPending = $derived.by(() => {
-    const out: { id: number; text: string; files?: readonly string[] }[] = [];
+    const out: { id: number; text: string; files?: readonly string[]; pics?: readonly SentPic[] }[] = [];
     for (const p of pending) {
       if (!baseline.has(p.id)) baseline.set(p.id, sentCount(p.text));
       if (sentCount(p.text) > (baseline.get(p.id) ?? 0)) continue;
@@ -647,6 +691,8 @@
   streaming = false,
   files: readonly string[] = [],
   mark: { pill: string } | { note: string } | { hide: true } | null = null,
+  copyText: string | null = null,
+  sentPics: readonly SentPic[] = [],
 )}
   {#if item.role === "user" && mark && "hide" in mark}
     <!-- 같은 깨움을 꼬리가 지금 그린다(도는 깨움 턴 — F5 직후) — 기록 쪽은 그리지 않는다(턴이 끝나 꼬리가 걷히면 기록 알약이 선다) -->
@@ -659,14 +705,18 @@
     {@const chip = linkChip(item.link)}
     {@const pics = pictures ? (item.pictures ?? []) : []}
     {@const hidden = hiddenImageCount(item, !!pictures, (p) => pictures?.state(p).status === "fail")}
+    <!-- 그림이 모두 그려지면 맨 앞의 `[Image #N]` 자리표는 뗀다(판정은 여기 — 불러오기 실패는 화면만 안다 · `withoutImagePlaceholders`) -->
+    {@const shownText = item.text ? withoutImagePlaceholders(unwrapPasted(item.text), item.images > 0 && pics.length > 0 && hidden === 0) : ""}
+    {@const utext = copyable ? shownText : ""}
     {#if chip}
       <!-- 앱 연결 머리글이 알린 연결(사이드 채팅) — 말풍선 위의 작은 칩 · 세션 id 는 없다 -->
       <li class="item linkchip" data-item="link" data-link={chip.key === "board.viewer.unlinked" ? "off" : "on"}>
         <span>{t(chip.key, { label: chip.label })}</span>
       </li>
     {/if}
-    <li class="item user" class:pending={dim} data-item="user" title={fmtAt(item.at)}>
-      {#if item.text}<p class="utext">{unwrapPasted(item.text)}</p>{/if}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <li class="item user" class:pending={dim} class:copyable={utext.trim() !== ""} data-item="user" title={fmtAt(item.at)} tabindex={copyable ? -1 : undefined}>
+      {#if shownText}<p class="utext">{shownText}</p>{/if}
       {#if pics.length > 0}
         <div class="upics">
           {#each pics as p, i (pictureKey(p))}
@@ -683,23 +733,33 @@
           {/each}
         </div>
       {/if}
+      {#if sentPics.length > 0}
+        <!-- 막 보낸 그림(이 창의 입력 칸 미리보기 — 기록에 들면 위 `pictures` 가 같은 자리에 선다 · 꼬리가 걷혀 둘이 함께 서지 않는다) -->
+        <div class="upics">
+          {#each sentPics as sp, i (i)}<img class="upic" src={sp.url} alt={sp.name} data-sent-pic />{/each}
+        </div>
+      {/if}
       {#if hidden > 0}<span class="chip">{t("board.viewer.images", { n: hidden })}</span>{/if}
-      {#each files as f, i (i)}<span class="chip" data-sent-file>{f}</span>{/each}
+      <!-- 보낼 때의 이름 칩(꼬리 — 그림으로 그린 것은 빼고) · 기록의 파일 첨부 꼬리(Rust 가 글에서 떼어 `files` 로 — 표시만) -->
+      {#each [...(item.files ?? []), ...filesBesidePics(files, sentPics)] as f, i (i)}<span class="chip file" data-sent-file><UiIcon name="file" size={14} /><span>{f}</span></span>{/each}
       {#if item.truncated}<span class="cut">{t("board.viewer.truncated")}</span>{/if}
       {#if note}<span class="cut">{note}</span>{/if}
       {#if mark && "note" in mark}<span class="cut" data-wake-unrecorded>{mark.note}</span>{/if}
+      {#if utext.trim() !== ""}{@render msgCopy(utext, "user")}{/if}
     </li>
   {:else if item.role === "assistant"}
-    {@const parts = streaming && diagrams ? splitOpenFence(item.text ?? "") : { done: item.text ?? "", open: null }}
-    <!-- 자라는 글이면 닫히지 않은 울타리를 떼어 여느 코드 블록으로(다이어그램은 닫힌 몫만 — 이 파일 머리말) -->
-    <li class="item assistant" data-item="assistant">
-      <MarkdownBlocks blocks={parseMarkdown(parts.done)} compact {diagrams} {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" {paths} />
+    {@const parts = streaming && (diagrams || codeActions) ? splitOpenFence(item.text ?? "") : { done: item.text ?? "", open: null }}
+    <!-- 자라는 글이면 닫히지 않은 울타리를 떼어 여느 코드 블록으로(다이어그램 · 코드 블록 단추는 닫힌 몫만 — 이 파일 머리말) -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <li class="item assistant" data-item="assistant" tabindex={copyable ? -1 : undefined}>
+      <MarkdownBlocks blocks={parseMarkdown(parts.done)} compact {diagrams} {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" {paths} {codeActions} />
       {#if parts.open !== null}<MarkdownBlocks blocks={parseMarkdown(parts.open)} compact {images} linkImages={!!images} onlink={openLink} linkClick="plain" linkStyle="chip" {paths} />{/if}
       {#if item.truncated}<span class="cut">{t("board.viewer.truncated")}</span>{/if}
+      {#if copyText !== null}{@render msgCopy(copyText, "agent")}{/if}
     </li>
   {:else if item.role === "interrupted"}
     <!-- 끊긴 턴(Claude 끊김 표식 · Codex turn_aborted) — 사이드 채팅 꼬리의 "중단함" 과 같은 한 줄 -->
-    <li class="item stopped" data-item="interrupted" title={fmtAt(item.at)}>{t("board.viewer.interrupted")}</li>
+    <li class="item stopped" data-item="interrupted" title={fmtAt(item.at)}>{t("board.viewer.interrupted")}{#if copyText !== null}{@render msgCopy(copyText, "agent")}{/if}</li>
   {:else if item.tool}
     {@const h = toolHeadline(item.tool)}
     {@const flag = toolFlag(item.tool)}
@@ -739,8 +799,36 @@
           {/if}
         </div>
       {/if}
+      {#if copyText !== null}{@render msgCopy(copyText, "agent")}{/if}
     </li>
   {/if}
+{/snippet}
+
+{#snippet msgCopy(text: string, side: "user" | "agent")}
+  <!-- 말 복사(`copyable`) — 사람 말은 말풍선 바로 아래 오른쪽 끝(자리는 말풍선의 아래 여백), 에이전트 답은 그 턴의 마지막 줄 아래 왼쪽 끝 -->
+  <span class="mcopy" class:user={side === "user"} data-msg-copy={side}>
+    <button
+      type="button"
+      class="mcopy-btn"
+      title={t("board.viewer.copy")}
+      aria-label={t("board.viewer.copy")}
+      onclick={() => void copyMessage(text)}><UiIcon name="copy" size={14} /></button
+    >
+    {#if side === "agent" && exportDoc}
+      <!-- [문서로 내보내기](`exportDoc` — 부르는 쪽이 상자를 연다) — [복사] 바로 오른쪽 -->
+      <button
+        type="button"
+        class="mcopy-btn"
+        title={t("files.doc.export")}
+        aria-label={t("files.doc.export")}
+        data-msg-export
+        onclick={(ev) => {
+          const r = ev.currentTarget.getBoundingClientRect();
+          exportDoc?.(text, { x: r.left, y: r.bottom + 4 });
+        }}><UiIcon name="upload" size={14} /></button
+      >
+    {/if}
+  </span>
 {/snippet}
 
 {#snippet lead(id: string)}
@@ -813,7 +901,7 @@
         {#each shown as { k, item } (k)}
           {@render lead(`h${k}`)}
           {#if item.role !== "tool" || toolShown(`h${k}`)}
-            {@render row(item, toolOpen(`h${k}`, item, open.has(k)), () => toggle(k), running.has(k), false, null, false, [], marks.get(k) ?? null)}
+            {@render row(item, toolOpen(`h${k}`, item, open.has(k)), () => toggle(k), running.has(k), false, null, false, [], marks.get(k) ?? null, agentCopies.get(`h${k}`) ?? null)}
           {/if}
           {#each notePlace.after.get(k) ?? [] as nk (nk)}
             <li class="item" class:card={!noteUser.has(nk)} class:user={noteUser.has(nk)} data-item="note">{@render noteCard?.(nk)}</li>
@@ -836,16 +924,26 @@
               r.note ?? null,
               r.streaming ?? false,
               r.files ?? [],
+              null,
+              agentCopies.get(`l${r.key}`) ?? null,
+              r.sentPics ?? [],
             )}
           {:else if liveCard}
             <li class="item card" data-item="live-card">{@render liveCard(r.key)}</li>
           {/if}
         {/each}
         {#each shownPending as p (p.id)}
-          <li class="item user pending" data-item="pending" aria-busy="true">
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <li class="item user pending" class:copyable={copyable && p.text.trim() !== ""} data-item="pending" aria-busy="true" tabindex={copyable ? -1 : undefined}>
             {#if p.text.trim() !== ""}<p class="utext">{p.text}</p>{/if}
-            {#each p.files ?? [] as f, i (i)}<span class="chip" data-sent-file>{f}</span>{/each}
+            {#if (p.pics ?? []).length > 0}
+              <div class="upics">
+                {#each p.pics ?? [] as sp, i (i)}<img class="upic" src={sp.url} alt={sp.name} data-sent-pic />{/each}
+              </div>
+            {/if}
+            {#each filesBesidePics(p.files ?? [], p.pics ?? []) as f, i (i)}<span class="chip file" data-sent-file><UiIcon name="file" size={14} /><span>{f}</span></span>{/each}
             <span class="cut">{t("pane.flip.sending")}</span>
+            {#if copyable && p.text.trim() !== ""}{@render msgCopy(p.text, "user")}{/if}
           </li>
         {/each}
         {#if activity === "running"}
@@ -916,6 +1014,70 @@
     padding: var(--space-2) var(--space-3);
     background: var(--surface-hover);
     border-radius: var(--radius-md);
+  }
+
+  /* 말풍선은 누르면(폰) 포커스만 받는다 — 테두리는 그리지 않는다(아래 복사 단추가 그 표시) */
+  .item.user:focus,
+  .item.assistant:focus {
+    outline: none;
+  }
+
+  /*
+   * 말 복사(`copyable` — 목업 F1): 단추 자리는 늘 잡아 두고(높이 22 — 대화가 들썩이지 않게) 단추만 비친다 — 그 말(줄)에 마우스가 오르거나,
+   * 포커스가 그 안에 있을 때(폰에서 한 번 누름 · Tab). 사람 말은 말풍선 바로 아래 오른쪽 끝(말풍선의 아래 여백에 띄운다 — 판 밖),
+   * 에이전트 답은 그 턴의 마지막 줄 안 맨 아래 왼쪽 끝.
+   */
+  .item.user.copyable {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  .mcopy {
+    display: flex;
+    height: 22px;
+    margin-top: 2px;
+  }
+
+  .mcopy.user {
+    position: absolute;
+    top: 100%;
+    right: 0;
+  }
+
+  .mcopy {
+    gap: 2px;
+  }
+
+  .mcopy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--fg-3);
+    background: transparent;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .mcopy-btn:hover {
+    color: var(--fg-1);
+    background: var(--surface-hover);
+  }
+
+  .item:hover .mcopy-btn,
+  .item:focus-within .mcopy-btn {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mcopy-btn {
+      transition: none;
+    }
   }
 
   /* 보내는 중 — 같은 판을 흐리게(기록에 나타나면 진짜 말로 바뀐다) */
@@ -1092,6 +1254,15 @@
     color: var(--fg-2);
     background: var(--bg-chip);
     border-radius: var(--radius-sm);
+  }
+
+  /* 보낸 첨부 이름 칩 — 입력 칸 칩(`FlipComposer` 의 `.att` · `.thumb.icon`)과 같은 `file` 그림 14 · 간격 `--space-1`(2026-11-14) */
+  .chip.file {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-right: var(--space-1);
+    vertical-align: middle;
   }
 
   .cut {

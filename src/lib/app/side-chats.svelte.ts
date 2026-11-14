@@ -429,6 +429,8 @@ export async function deleteSideChat(id: string): Promise<void> {
 export interface CodexModels {
   configured: string | null;
   models: string[];
+  /** 보이는 모델 slug → 그 모델이 받는 추론 단계 · 기본 단계(AI 타일 대화 면의 Codex 모델 메뉴 — 2026-11-14). 옛 서버면 없다 */
+  levels?: Record<string, { levels: string[]; default: string | null }>;
 }
 
 /** 칩 메뉴를 열 때 부른다 — 파일 둘을 읽을 뿐이라 매번 새로 읽는다. 실패하면 빈 값 */

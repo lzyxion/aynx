@@ -42,3 +42,39 @@ export function stemEnd(name: string): number {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? dot : name.length;
 }
+
+/** 내보내기 이름의 글자 상한(확장자 앞) — 긴 제목이 경로 한도를 먹지 않게 */
+const EXPORT_STEM_MAX = 80;
+
+/**
+ * **에이전트 답 [문서로 내보내기]의 처음 이름** (2026-11-14 — `app/new-doc.svelte.ts` 의 `openExportDoc`). 답의 첫 마크다운 제목(`#` ~ `######`,
+ * 코드 울타리 안은 보지 않는다)에서 인라인 꾸밈(`**` · `_` · `` ` `` · 링크 `[글](주소)` → 글)을 걷고, 어느 백엔드에서도 파일 이름에 못 쓰는 글자
+ * (`\ / : * ? " < > |` · 제어 문자)는 빈칸으로, 끝의 점 · 빈칸은 떼고(윈도우), 길면 자르고 `.md` 를 붙인다. 제목이 없거나 남는 글이 없으면
+ * [`NEW_DOC_DEFAULT`] — 사람이 상자에서 고친 이름은 [`newDocName`] 이 다시 검사한다.
+ */
+export function exportDocName(text: string): string {
+  let fence: string | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (f) {
+      if (fence === null) fence = f[1][0];
+      else if (f[1][0] === fence) fence = null;
+      continue;
+    }
+    if (fence !== null) continue;
+    const h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+    if (!h) continue;
+    const stem = h[1]
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/[*_`~]/g, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\/:*?"<>|\u0000-\u001f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, EXPORT_STEM_MAX)
+      .replace(/[.\s]+$/, "")
+      .replace(/^\.+/, "");
+    return stem === "" ? NEW_DOC_DEFAULT : `${stem}.md`;
+  }
+  return NEW_DOC_DEFAULT;
+}

@@ -535,6 +535,8 @@ const WANTED = [
   // 폰 상태줄의 사이드 채팅 단추(말풍선 하나 — 지난 대화의 `conversations` 는 말풍선 둘) · 폰 입력 칸의 그림 고르기(2026-11-01)
   ["chat", "material-symbols:chat-bubble-outline-rounded"],
   ["image-plus", "material-symbols:add-photo-alternate-outline-rounded"],
+  // 사이드 채팅 `[+]` › 파일 업로드(2026-11-14 — 클립)
+  ["attach-file", "material-symbols:attach-file-rounded"],
 ];
 
 /**

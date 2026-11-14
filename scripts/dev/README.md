@@ -115,6 +115,92 @@ node scripts/dev/render-web.mjs 520 out.png     # 폭 520 으로 렌더 → 시�
 node scripts/dev/run-harness.mjs convo-path-links-harness.mjs <outdir> --size 1280x860
 ```
 
+## side-chat-path-links-harness.mjs — 사이드 채팅의 파일 경로 링크
+
+`SideChatFace` 의 `pathLinks` → `app/panes` 의 `openPathFromChat`(2026-11-12). `convo-path-links-harness` 의 사이드 채팅 판 — 사이드 채팅 명령 스텁
+(`remote-chat-dock-harness` 의 것 · 에이전트 말은 스냅숏의 `liveTurn`)에 파일 명령(`local_stat` · `local_read_text` · `local_home`)을 더했고, `side_chat_dir` 의
+답은 하네스가 풀 때까지 붙잡는다. 걸릴 것 / 안 걸릴 것(`[data-path-link]` · title = 풀린 경로 + `:줄`) · 채팅 폴더를 알기 전엔 절대 · `~/` 만 → 안 뒤엔 상대도 ·
+탭이 없을 때 클릭 → 새 탭에 문서 타일 · 지금 탭의 포커스 타일(셸) 곁에 문서 타일 · 줄 강조(.md · .ts · `#L12`) · `~/` 는 홈에 이어 stat ·
+원격 폰(400x844 · 거울로 탭 하나) 클릭 → 집 PC 에 `openBeside` 요청 · 덮개 닫힘 · 콘솔 오류 0 을 판정한다. 원격 판은 안내 토스트가 덮개를 덮어 토스트를 숨긴다.
+원격 판(데스크톱 1280x860 · 폰)은 거울 흉내가 `mirror_request` 의 문서 요청을 받아 **집 PC 처럼 새 id** 의 문서 타일을 거울에 더한다 — 원격 창의 줄이
+그 새 타일에 걸리는지(`app/panes` 의 `setLineOnOpened`)를 옆에 열기(`openBeside`) · 미리 보기 갈아 끼우기(`replaceTile`) · 이미 열린 같은 파일(요청 없음 ·
+거울의 실제 id) · 터미널 · AI 타일 대화 면의 길(`openPathFromTerminal` 을 직접 — 대화 면 클릭 자체는 `convo-path-links-harness`)로 본다.
+⑧(2026-11-13) **사이드 채팅 알림 줄 → 그 채팅** — 스텁에 둘째 채팅(chat-b)을 두고 `notifySideChat` 으로 알린 뒤 [모두 읽음](`resolveFinishedBanners`)으로
+풀어(사이드 채팅 알림은 배너 저장소에 산다 — 지난 알림 줄 = 해결된 배너 기록) 런처 독 알림 칸의 줄(`[data-notify-side-chat]`)이 단추인지 · 누르면 런처 독이
+닫히고 chat-b 가 골라져 채팅 독(채팅 갈래)이 열리는지 · 지워진 채팅(목록에 없는 id 의 배너 — 곧바로 저절로 해결)의 줄은 독만 닫히는지 ·
+폰은 알림 덮개(`MobileAlerts`)의 같은 줄 → 그 채팅의 폰 덮개가 서는지를 본다.
+
+```bash
+node scripts/dev/run-harness.mjs side-chat-path-links-harness.mjs <outdir> --size 1280x860
+#   → scpl-before-dir.png · scpl-links.png · scpl-newtab.png · scpl-beside.png · scpl-remote-beside.png · scpl-remote-replace.png ·
+#     scpl-remote-term.png · scpl-phone-before.png · scpl-phone-after.png · scpl-notify-row.png · scpl-notify-open.png ·
+#     scpl-phone-notify-row.png · scpl-phone-notify-open.png
+```
+
+## side-chat-banner-harness.mjs — 사이드 채팅 알림 = AI 타일 알림 배너
+
+사이드 채팅 알림(끝남 · 권한 · 실패)이 오른쪽 위 토스트 대신 **AI 타일 알림 배너**로 서는지(2026-11-13 사용자 결정 · 목업 A안 — `app/side-chat-notify` →
+`app/agent-banners` 항목의 대상 `sideChatId`). 스텁은 `side-chat-path-links-harness` 의 사이드 채팅 명령(채팅 셋)에 통로 먹이기(`__scFeed` — `side_chat_subscribe`
+의 Channel) · 창 포커스 스텁(`window.__focus` + `focus`/`blur`) · OS 알림 스텁(`window.Notification` → `__os`)을 더했다.
+① 모양 — 로고 · 제목 "Claude Code · <채팅 제목>" · 채팅 칩 · 상태 점(끝남 `--ok` · 권한 `--accent` · 실패 `--err`) · 둘째 줄 · 단추 문구 · 권한 강조 테두리 ·
+사이드 채팅 토스트 없음 · 배지(수 · 강조색) · 일반 기록에 안 적힘 ② 진짜 사건 길(권한 사건 → 배너 · 다른 창이 답함 → 저절로 해결 · 오류 턴 끝 → 실패 · 새 턴 → 저절로 해결)
+③ `` Alt+` `` 차례(권한 먼저 → 최근) ④ [보기] → 그 채팅 + 해결 ⑤ 독에서 그 채팅을 고르면 해결 · 보고 있는 채팅은 알리지 않음 ⑥ 창이 뒤 → OS 알림 + 배너 →
+창이 앞에 서면 곧바로 해결 ⑦ 10초 뒤 알약 → 누르면 펼침 ⑧ 독 "새 알림" 줄 → 그 채팅 · 지난 알림 줄(`data-notify-side-chat`) → 그 채팅 ⑨ 지워진 채팅 → 저절로 해결 ⑩ 원격 폰(400x844) —
+배너 · [확인하러 가기] → 폰 채팅 덮개 ⑪ 콘솔 오류 0. 접힘을 실제로 기다려 약 1분.
+⑫(2026-11-13) **두 창 완료 확인 공유** — 같은 Edge 에 둘째 탭(`/json/new`)으로 원격 폰 창을 띄워 집 PC 창과 나란히 둔다(두 탭 모두 `visibilityState` 를 보임으로
+스텁). 채팅 사건은 두 창에 같이 먹이고, 서버(op `side_chat_seen` → 방송 `side-chat-seen`)는 하네스가 흉내 낸다(두 창의 `__seenOut` 을 모아 두 창에 `__emit`).
+집 PC 에서 그 채팅을 보면(턴 끝 뒤 입력) 폰의 끝남 배너가 풀리고 · 폰 덮개로 보면 집 PC 의 실패 배너가 풀리고 · 앞 턴 번호 · 다른 세대의 확인은 버리고 ·
+권한 물음은 확인으로 풀리지 않는지를 본다.
+
+```bash
+node scripts/dev/run-harness.mjs side-chat-banner-harness.mjs <outdir> --size 1280x860
+#   → scb-three.png · scb-pill.png · scb-alerts.png · scb-phone.png · scb-phone-open.png · scb-two-remote-cleared.png · scb-two-home-cleared.png
+```
+
+## msg-actions-harness.mjs — 대화의 말 복사 · 문서로 내보내기 (사이드 채팅 · AI 타일 대화 면)
+
+`TranscriptBody` 의 `copyable`(2026-11-14 — 목업 F1 · `transcript.ts` 의 `agentTurnCopies`). 스텁은 `code-to-term-chat-harness` 를 줄인 것이고,
+사이드 채팅은 기록이 있는 채팅(`links.claude` · 턴이 돌지 않음)으로 뜬다. 대화 글은 턴 1 = 글 · 도구 · 글(제목 + 코드 울타리), 턴 2 = 글 하나.
+클립보드는 진짜 `writeText` 를 부르되 쓴 글을 `window.__clip` 에 적는다. 판 넷 — 로컬 사이드 채팅 · 로컬 AI 타일 · 원격 데스크톱 · 원격 폰(400x844 · 터치).
+
+```bash
+node scripts/dev/run-harness.mjs msg-actions-harness.mjs <outdir> --size 1280x860
+```
+
+- ① 사람 말풍선마다 [복사] — 호버 전 숨김(자리는 22px 늘 있음) · 호버에 보임 · 말풍선 바로 아래 · 오른쪽 끝 ② 클립보드 = 말풍선 글 · 토스트 "복사했습니다"
+- ③ 에이전트 [복사]는 턴마다 하나(그 턴 마지막 에이전트 줄 안 · 왼쪽 끝) ④ 턴 글 = 글 조각만 빈 줄로(도구 출력 없음 · 울타리 그대로)
+- ⑤ 말풍선 포커스 → Tab = 그 [복사] ⑥ 진행 중 턴(사이드 채팅 통로의 지금 턴 · AI 타일 훅 start)엔 에이전트 [복사] 없음 · 첨부 칩 있는 사람 말의 [복사] = 글만
+- ⑦ 폰 — 말풍선을 누르면 보이고 다른 곳을 누르면 숨음 · 눌러 복사 ⑧ 콘솔 오류 0
+- ⑨ 에이전트 답 [문서로 내보내기](C안 — `app/new-doc` 의 `openExportDoc` · `doc/NewDocBox`): [복사] 바로 오른쪽 · 상자의 이름 = 첫 제목 · 폴더 = 채팅 폴더 / AI 타일 셸 폴더(OSC 7) ·
+  [바꾸기]는 집 PC 창만 · [만들기] → `local_create_file` + `local_write_text`(답 글 그대로 · 도구 기록 없음) · 문서 타일 = AI 타일 오른쪽(row) / 지금 탭 곁 / 원격은 거울의 `mirror_request`
+- ⑩ 같은 이름 → 덮어쓰지 않음(쓰기 없음 · 상자에 까닭) · Esc 로 닫힘. 파일은 **디스크에 쓰지 않는다** — 스텁의 `window.__files` 표에만 있다
+
+## code-to-term-chat-harness.mjs — 코드 블록 [터미널에 넣기] (사이드 채팅 · AI 타일 대화 면)
+
+`DocCodeBlock` · `app/code-to-term` 의 사이드 채팅(`SideChatFace`) · AI 타일 대화 면(`pane/AiFlip`) 입구(2026-11-12). 스텁은 `convo-path-links-harness`
+(가짜 로컬 세션 · AI 타일 · `window.__tx`) + `remote-chat-dock-harness`(사이드 채팅 명령)를 합쳤고, 셸 세션은 열리면 곧 프롬프트(OSC 133 A/B) +
+`ESC[?2004h` 를 스스로 먹인다(`shellReadyForInsert` 가 선다). 원격 판은 거울(`mirror-layout`)로 셸 탭을 세우고(시청자 = `probe_session` attached +
+`attach_session_viewer`), `mirror_request` 의 `newTab` 을 받으면 집 PC 처럼 **새 id** 의 셸 탭을 거울에 더한다. 판 넷 — 로컬 사이드 채팅 · 로컬 AI 타일 ·
+원격 데스크톱 · 원격 폰(400x844).
+
+- ① 셸 블록(bash · powershell · 언어 없음)에만 [터미널에 넣기], ts 는 [복사]만 · 자라는 꼬리의 닫힌 블록엔 단추 · 닫히지 않은 울타리엔 띠 · 단추 없음
+- ② 셸 하나 → 상자 없이 바로 넣기: `write_session`(출처 `paste`) 바이트 = `codeForTerm`(주석 · 빈 줄 빠짐) 을 괄호 붙여넣기로 감싼 것 · 밖에 `\r` 없음 · 받는 셸로 포커스(xterm 입력 칸)
+- ③ 셸 둘 → 고르기 상자(사이드 채팅 "새 탭에 터미널 열기" · AI 타일 "새 터미널 열기") · 줄 고르기 → 그 셸 · Esc → 닫힘 · 포커스 = 누른 단추
+- ④ 셸 없음 → 사이드 채팅은 새 탭 · AI 타일은 그 타일 오른쪽(`row` 분할 b) 에 새 셸 · 준비 뒤 넣기
+- ⑤ AI 타일은 상자 줄에 없고 그 세션에는 붙여넣기가 한 번도 가지 않는다
+- ⑥ 원격 데스크톱 · 폰: 있는 셸에 바로(시청 임대의 stream) · 다른 탭에만 셸이면 상자 → 새 탭 요청 하나 → 새로 나타난 셸(`hs-2`)에 넣기 · 폰은 넣은 뒤 덮개 닫힘.
+  원격 판은 안내 토스트("메인 PC 창이 닫혀 있어…")가 폰 덮개의 단추를 덮어 토스트를 숨긴다. ⑦ 콘솔 오류 0
+- ⑧ (2026-11-13 폰 실기) 두 번 넣기 — 집 PC 창 · 원격 데스크톱 · 원격 폰마다 셸 없음 → 새 탭에 넣기 → 채팅으로 돌아와 4.5초 뒤 다시(상자 없이 같은 셸) →
+  시작 탭을 보다가 채팅에서 그 셸을 골라 넣기. 폰 배치는 화면 밖 타일의 시청자를 3초 뒤 떼어(`parkDelayMs`) 수정 전에는 "PowerShell 7의 세션이 끊겨
+  있습니다" 가 났다 — 지금은 그 타일로 가서 다시 붙은 뒤 넣는다(`app/code-to-term` 의 `deliver`). 토스트는 저장소(`toast.svelte.ts`)를 훑어 모은다.
+- 스텁 셸은 메아리를 내지 않아 캡처의 터미널에는 넣은 글이 보이지 않는다 — 넣은 바이트는 `window.__writes` 로 본다.
+
+```bash
+node scripts/dev/run-harness.mjs code-to-term-chat-harness.mjs <outdir> --size 1280x860
+#   → ctt-chat-blocks.png · ctt-chat-newtab.png · ctt-chat-picker.png · ctt-ai-blocks.png · ctt-ai-beside.png · ctt-ai-picker.png ·
+#     ctt-remote.png · ctt-phone-before.png · ctt-phone-after.png · ctt-remote-twice.png · ctt-phone-twice-1.png · ctt-phone-twice-2.png · ctt-phone-twice-3.png
+```
+
 ## flat-corner-harness.mjs — 평면 상태줄 왼쪽 · 오른쪽의 안쪽 모서리 곡선
 
 `+page.svelte` 의 `.canvas-corner` 절(2026-11-03). 재질(평면 · 글래스) × 자리(왼쪽 · 오른쪽) × 배율(1 · 1.25 · 1.5) 마다
@@ -1044,9 +1130,11 @@ Escape · 10초 알약 · 호버 멈춤 · 창이 뒤일 때 OS + 배너 · 타�
 ⑬ 은 **보고 있는 타일도 긴 턴이면**(`[ai] notify_focused_after_secs` 를 1초로 낮춰) — 배너가 서고 방문으로 안 풀리며,
 사람이 돌아올 때까지 안 접히고, 그 타일에 키·누름이면 풀리는지 · 짧은 턴 · 0 = 끔 · 다른 탭에 갔다 오면 풀리는지를 본다.
 ⑭ 는 **서브 에이전트**(docs/log/2026-10-04-subagent-signals.md) — `agent` 를 실은 `subagent-start`·`subagent-stop` 을 흉내 내
-"Stop → 서브 2개 → 배너 없음 · 탭 점 실행 중 + 수 2 → 하나 끝 → 수 1 → 중복·모르는 id·id 없음은 그대로 → 마지막 끝 → 완료
-배너 한 번 · 탭 점 완료 → 메인이 깨어나 다시 stop → 두 번째 배너 없음 → 새 턴의 stop 은 다시 알림" 을 본다
-(PNG `agent-banners-subagents.png` — 수 2 인 순간).
+"Stop → 서브 2개 → 배너 없음 · 탭 점 실행 중 + 수 2 → 하나 끝 → 수 1 → 중복·모르는 id·id 없음은 그대로 → 마지막 끝 → 배너 없음 ·
+탭 점 완료(서브의 끝은 알리지 않는다 — 2026-10-21) → 메인이 깨어나 다시 stop → 완료 배너 한 번 → 새 턴의 stop 은 다시 알림" 을 본다
+(PNG `agent-banners-subagents.png` — 수 2 인 순간). 2026-11-13 — 부팅 기다림을 `reloadBoot` 로(고정 4초는 찬 vite 에서 모자랐다) · 스텁에
+`term_theme_list` · `restore_done_sessions` · 칸 제목 판정을 독 알림 칸("새 알림")으로 고쳤다. 러너로도 돈다:
+`node scripts/dev/run-harness.mjs agent-banner-harness.mjs <outdir> --size 1280x860`.
 
 ```bash
 npx vite --port 1437 --strictPort
@@ -1147,6 +1235,22 @@ PAGE_PORT=1430 node scripts/dev/profile-switcher-harness.mjs <outdir> 9231
 
 - 주입 스크립트는 `blocks-harness.mjs` 안 `script` 를 고쳐 바꾼다. `push_session_block` 호출 수는
   타일의 AI 공유가 켜져 있을 때만 는다(기본 꺼짐 — 프라이버시 게이트 확인용).
+
+## flip-composer-harness.mjs · flip-composer-remote-harness.mjs — AI 타일 대화 면 입력 칸의 [+] · 모델 키워드
+
+`pane/AiFlip.svelte` · `pane/FlipModelMenu.svelte` · `pane/flip-model.ts`(2026-11-13 — 목업 E2 · E3 · E4). `ai-flip-harness` 의 스텁에 쪽의 `last`
+(마지막 답의 모델 · 강도 — 대화 id 마다 `window.__txLast`)와 `stage_agent_attachment` 를 더했다. [+] 는 진짜 마우스 + `Page.setInterceptFileChooserDialog`
+(`fileChooserOpened` → `DOM.setFileInputFiles`)로 고른다. 첫 답 전 로고만 · `Opus 5.5` · 막대 · 알약 안 자리 · [+] → 파일 고르기 창 → 칩 → 괄호 붙여넣기 ·
+메뉴(body · 모델 넷 · ✓ · Effort 다섯 · 고리 없음) → 입력 문으로 나간 글이 정확히 `/model sonnet\r` · `/effort high\r` · 낙관적 표시 없음 · 메뉴 안 Esc ·
+다음 답 뒤 반영 · 일하는 중 잠김 · 권한 대기 · (2026-11-14) Claude Default 줄 `/model default\r` · Default 고리 `/effort auto\r` · TUI 입력 줄에 치다 만 글이면
+안 보냄(흐린 안내 글이면 보냄) · Codex `GPT-6-astra` · 모델 목록(`codex_models` 스텁) → `/model gpt-6-luna --reasoning=high\r` · 칸 → `/model --reasoning=xhigh\r` 를 판정한다. 원격 판은 원격 창 흉내
+(`phone-convo-harness` 와 같은 길 — 탭 명세의 `agentLink`)로 데스크톱 폭 · 폰(400 · 터치)에서 같은 것을 `write_session` 으로 본다 — 집 PC Codex 타일(목록 → slug 줄)
+· SSH Codex 타일(그 서버 목록을 몰라 게이지만 → `/model --reasoning=high\r`)까지.
+
+```bash
+node scripts/dev/run-harness.mjs flip-composer-harness.mjs <outdir> --size 1280x860
+node scripts/dev/run-harness.mjs flip-composer-remote-harness.mjs <outdir> --size 1280x860
+```
 
 ## ai-flip-harness.mjs — AI 타일 안에서 터미널 ⇄ 대화 넘기기 (단추 · 단축키 · 따라가기 · 입력 칸)
 

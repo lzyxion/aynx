@@ -12,6 +12,7 @@ import { t } from "$lib/i18n/i18n.svelte.js";
 import {
   COMPOSER_ATTACH_MAX,
   isImageName,
+  type SentPic,
   removeAttachment,
   settleAttachment,
   type ComposerAttachment,
@@ -85,6 +86,25 @@ export function removeComposerAttachment(key: string, id: number): void {
   const gone = list.find((a) => a.id === id);
   if (gone) revoke(gone);
   setList(key, removeAttachment(list, id));
+}
+
+/**
+ * **보냈다** — 칩을 모두 걷되 그림 칩의 미리보기(`blob:`)는 거두지 않고 돌려준다(막 보낸 말풍선이 그 그림을 그린다 — 거두는 것은 넘겨받은 쪽
+ * [`revokeSentPics`]). 그림 밖 · 미리보기 없는 칩(파일 타일 짐)은 여기서 거둔다.
+ */
+export function takeComposerPictures(key: string): SentPic[] {
+  const out: SentPic[] = [];
+  for (const a of composerAttachmentsOf(key)) {
+    if (a.url && isImageName(a.name)) out.push({ name: a.name, url: a.url });
+    else revoke(a);
+  }
+  setList(key, []);
+  return out;
+}
+
+/** 넘겨받은 그림 미리보기를 거둔다(말풍선이 기록으로 바뀌었다 · 사라졌다 · 면이 사라진다) */
+export function revokeSentPics(pics: readonly SentPic[] | undefined): void {
+  for (const p of pics ?? []) URL.revokeObjectURL(p.url);
 }
 
 /** 모두 걷는다 — 보낸 뒤 · 면이 사라질 때 */
