@@ -291,7 +291,7 @@ pub fn run() {
                     remote::remote_window_gone(window.label());
                     return;
                 }
-                // 집 PC 주 창이 사라졌다(트레이로 · 앱 끝) — 원격 창의 배치 거울은 `workspaces.json` 으로 돌아간다(R2-B).
+                // 메인 PC 주 창이 사라졌다(트레이로 · 앱 끝) — 원격 창의 배치 거울은 `workspaces.json` 으로 돌아간다(R2-B).
                 remote::mirror_main_window_gone(window.app_handle(), window.label());
                 // 보는 창이 하나도 남지 않았다 — 볼트를 창 0개 잠금으로(HTTP 티켓 정지 · ③-3b1). F5·최소화·숨김은 창 0개가
                 // 아니다(파괴가 아니므로 여기 오지 않는다). 서버도 이 GUI 의 연결이 끊기면 스스로 건다(kill 대비).
@@ -303,7 +303,7 @@ pub fn run() {
                     if remote::vault_lock_due(0, remote::remote_present()) {
                         server::vault_proxy::lock_on_last_window();
                     }
-                    // 트레이가 없으면 집 PC 창이 모두 사라진 GUI 는 끝나야 한다 — 숨은 원격 창만 남아 Tauri 가 끝나지 않는 일을 막는다.
+                    // 트레이가 없으면 메인 PC 창이 모두 사라진 GUI 는 끝나야 한다 — 숨은 원격 창만 남아 Tauri 가 끝나지 않는 일을 막는다.
                     if !tray::active(app) {
                         remote::close_remote_windows();
                     }
@@ -813,8 +813,8 @@ pub fn run() {
             messenger::messenger_set_webhook,
             messenger::messenger_test,
             messenger::messenger_send,
-            // 원격 웹 클라이언트 관문(R1a) — 상태(메모리만 · 원격 허용) · 페어링 답·대기(집 PC 전용) · 기기 목록·폐기(원격 허용) ·
-            // 이름 찾기(집 PC 전용) · 기록 · 이름 바꾸기 · 모두 끊기(원격 허용 — R1a-5) — 분류는 `remote/deny.rs`.
+            // 원격 웹 클라이언트 관문(R1a) — 상태(메모리만 · 원격 허용) · 페어링 답·대기(메인 PC 전용) · 기기 목록·폐기(원격 허용) ·
+            // 이름 찾기(메인 PC 전용) · 기록 · 이름 바꾸기 · 모두 끊기(원격 허용 — R1a-5) — 분류는 `remote/deny.rs`.
             remote::remote_status,
             remote::remote_gate_theme_set,
             remote::remote_pair_respond,
@@ -828,10 +828,10 @@ pub fn run() {
             remote::remote_log,
             remote::remote_device_rename,
             remote::remote_disconnect_all,
-            // 집 PC 화면 배치 거울(R2-B) — 주 창이 올리고(집 PC 전용) 원격 창이 받는다(원격 허용) · `remote/mirror.rs`.
+            // 메인 PC 화면 배치 거울(R2-B) — 주 창이 올리고(메인 PC 전용) 원격 창이 받는다(원격 허용) · `remote/mirror.rs`.
             remote::mirror::mirror_publish,
             remote::mirror::mirror_get,
-            // 원격의 배치 바꾸기 요청(R3) — 원격이 보내고(원격 허용) 주 창이 받아 답한다(집 PC 전용).
+            // 원격의 배치 바꾸기 요청(R3) — 원격이 보내고(원격 허용) 주 창이 받아 답한다(메인 PC 전용).
             remote::mirror::mirror_request,
             remote::mirror::mirror_request_inbox,
             remote::mirror::mirror_respond

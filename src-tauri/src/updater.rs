@@ -2,7 +2,7 @@
 //!
 //! `tauri-plugin-updater` 를 **Rust 명령 뒤에** 감싼다 — 플러그인의 JS API · 권한(`updater:*`)은 웹뷰에 열지 않는다
 //! (`capabilities/*.json` 에 없다). 프런트는 아래 명령 여섯과 이벤트 [`EVENT`] 만 안다. 원격 웹 창은 여섯 다 부르지 못한다
-//! (`remote/deny.rs` 의 `HOME_ONLY` — 원격 기기가 집 PC 를 업데이트시키지 못한다).
+//! (`remote/deny.rs` 의 `HOME_ONLY` — 원격 기기가 메인 PC 를 업데이트시키지 못한다).
 //!
 //! - **GUI 프로세스에서만 돈다** — 세션 서버(`server.rs`)는 이 모듈을 부르지 않는다.
 //! - 찾기(`update_check`)가 닿는 곳은 릴리스 피드 하나(`tauri.conf.json` 의 `plugins.updater.endpoints` —
@@ -33,7 +33,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::i18n::tr;
 
-/// 상태가 바뀔 때 집 PC 창마다 내는 이벤트(몸 = [`View`]).
+/// 상태가 바뀔 때 메인 PC 창마다 내는 이벤트(몸 = [`View`]).
 pub(crate) const EVENT: &str = "update-state";
 
 /// `tauri.conf.json` 의 공개키 자리표시자 — 키를 넣기 전의 빌드.
@@ -208,7 +208,7 @@ fn snapshot() -> View {
     snap(&store())
 }
 
-/// 집 PC 창마다 지금 상태를 낸다(원격 창은 받지 않는다 — 칩도 카드도 없다).
+/// 메인 PC 창마다 지금 상태를 낸다(원격 창은 받지 않는다 — 칩도 카드도 없다).
 fn emit(app: &AppHandle) {
     let view = snapshot();
     for label in crate::remote::home_windows(app).into_keys() {

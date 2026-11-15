@@ -421,7 +421,7 @@ await ev(`(async () => (await ${importApp("app/chat-dock.svelte.ts")}).closeChat
 await sleep(400);
 
 // 폰 폭(위 띠 · 고르기 화면)은 여기서 찍지 않는다 — 모바일 배치는 원격 웹 모드(`aynx-h-remote` + 다시 읽기)에서만 서고, 그때 탭은
-// 집 PC 거울에서 오므로 이 판의 로컬 타일 · 신호가 넘어가지 않는다(거울 스텁까지 세우는 것은 이 판의 몫이 아니다).
+// 메인 PC 거울에서 오므로 이 판의 로컬 타일 · 신호가 넘어가지 않는다(거울 스텁까지 세우는 것은 이 판의 몫이 아니다).
 
 console.log(`${passed} PASS · ${failed} FAIL`);
 ws.close();

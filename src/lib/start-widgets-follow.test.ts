@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// 원격 창이 집 PC 한 벌을 따른다(2026-11-04) — 받기는 귀(프로필 자동 저장)를 부르지 않고, 편집 판정은 한 곳이다.
+// 원격 창이 메인 PC 한 벌을 따른다(2026-11-04) — 받기는 귀(프로필 자동 저장)를 부르지 않고, 편집 판정은 한 곳이다.
 vi.hoisted(() => { vi.stubGlobal("$state", <T>(value: T) => value); });
 
 async function load(remote: boolean) {

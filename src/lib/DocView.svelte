@@ -1333,7 +1333,7 @@
   $effect(() => {
     const id = paneId;
     if (!id) return;
-    return setPaneTools(id, { bar: docBar, tail: docTail, span: () => headSpan });
+    return setPaneTools(id, { bar: docBar, tail: docTail, span: () => headSpan, keepBar: true });
   });
   // 머리줄 ④판(10-20 — 쿼리 타일과 같은 규칙 `pane/head-span`): 목차 토글은 이름 뒤(`tail`)이고, 목차 패널이 열려 있으면(넓은 타일 · 본문 **왼쪽**)
   // 왼쪽 무리(아이콘 · 이름 · 토글)가 패널 경계까지를 쥔다(`span` — 문서 도구가 본문 열 위에서 시작). 좁은 타일의 "지금 절 ▾" 도 같은 `tail` 자리다(10-20 실기 — 넓음 ↔ 좁음에 단추가 튀지 않게).

@@ -1,6 +1,6 @@
-// 헤드리스 검증 — **원격 창의 시작 화면이 집 PC 한 벌을 따른다**(2026-11-04 · docs/log/2026-11-04-start-board-mirror.md).
+// 헤드리스 검증 — **원격 창의 시작 화면이 메인 PC 한 벌을 따른다**(2026-11-04 · docs/log/2026-11-04-start-board-mirror.md).
 //
-// 원격 창 흉내(`__AYNX_REMOTE__`) — 탭 · 배치는 스텁 `mirror_get` · 이벤트 `mirror-layout` 으로 진짜 받기 길을 지난다. 끝에 집 PC 창 흉내로 올리기(`mirror_publish`)를 본다.
+// 원격 창 흉내(`__AYNX_REMOTE__`) — 탭 · 배치는 스텁 `mirror_get` · 이벤트 `mirror-layout` 으로 진짜 받기 길을 지난다. 끝에 메인 PC 창 흉내로 올리기(`mirror_publish`)를 본다.
 //
 //   node scripts/dev/run-harness.mjs start-board-mirror-harness.mjs <outdir> --size 1280x860
 //     → <outdir>/board-phone.png · board-wide.png
@@ -70,7 +70,7 @@ const importApp = (file) =>
   `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded: ${file}'); return await import(e); })()`;
 
 const CLOCK = { hour12: true, seconds: false, date: false, size: 72 };
-/** 집 PC 배치 — 시계 없음 + 프로젝트가 호스트 왼쪽(기본 배치와 다르다). 폭이 넓어 폰에서는 좁은 판(쌓기)이 된다 */
+/** 메인 PC 배치 — 시계 없음 + 프로젝트가 호스트 왼쪽(기본 배치와 다르다). 폭이 넓어 폰에서는 좁은 판(쌓기)이 된다 */
 const BOARD_A = {
   widgets: [
     { kind: "projects", x: -520, y: -200, w: 320, h: 160 },
@@ -188,8 +188,8 @@ const NO_EDIT = { menu: 0, editing: false, bar: false, remove: 0, resize: 0, gri
 await ev(`(() => { sessionStorage.removeItem('h.home'); sessionStorage.removeItem('h.profiles'); localStorage.removeItem('aynx:start-widgets'); localStorage.removeItem('aynx:start-clock'); })()`);
 await setMirror(snapshot(BOARD_A));
 check("① 폰 시작 화면이 선다", await boot(400, 844, true), true);
-check("① 쌓기 순서 = 집 PC 읽는 순서", await order(), ["projects", "hosts", "shells"]);
-check("① 시계 없음 = 집 PC 와 같음", (await shown()).includes("clock"), false);
+check("① 쌓기 순서 = 메인 PC 읽는 순서", await order(), ["projects", "hosts", "shells"]);
+check("① 시계 없음 = 메인 PC 와 같음", (await shown()).includes("clock"), false);
 check("① 좁은 판", await ev(`!!document.querySelector('[data-start-narrow]')`), true);
 check("① 이 브라우저에도 남음", JSON.parse(await stored()).widgets.map((w) => w.kind), ["projects", "hosts", "shells"]);
 await shot("board-phone.png");
@@ -204,9 +204,9 @@ await sleep(200);
 check("② 빈 자리 우클릭 뒤", await noEditUi(), NO_EDIT);
 check("② 편집 판정", await ev(`(async () => (await ${W}).startBoardEditable())()`), false);
 
-// ── ③ 집 PC 변경 · 망가진 값 · 칸 없음 ─────────────────────────────────────
+// ── ③ 메인 PC 변경 · 망가진 값 · 칸 없음 ─────────────────────────────────────
 await emitLayout(snapshot(BOARD_B));
-check("③ 집 PC 변경이 곧바로 반영", await order(), ["shells", "hosts"]);
+check("③ 메인 PC 변경이 곧바로 반영", await order(), ["shells", "hosts"]);
 await emitLayout(snapshot({ widgets: [{ kind: "nope", x: 0, y: 0, w: 1, h: 1 }], clock: CLOCK }));
 check("③ 망가진 값은 무시", await order(), ["shells", "hosts"]);
 await emitLayout(snapshot(undefined));
@@ -225,14 +225,14 @@ await sleep(500);
 check("④ 원격이 프로필 배치를 스스로 입히지 않음", await order(), ["shells", "hosts"]);
 await ev(`sessionStorage.removeItem('h.profiles')`);
 
-// ── ⑤ 다시 읽어도 — 집 PC 창이 없으면 마지막 값 ─────────────────────────────
+// ── ⑤ 다시 읽어도 — 메인 PC 창이 없으면 마지막 값 ─────────────────────────────
 await setMirror(null);
 await send("Page.reload", { ignoreCache: true });
 await waitFor(`performance.getEntriesByType('resource').some(r => r.name.includes('start-widgets.svelte.ts'))`, 25000);
 await sleep(1500);
-check("⑤ 집 PC 창 없음 = 마지막으로 받은 값", await ev(`(async () => JSON.stringify((await ${W}).startWidgets().map((w) => w.kind)))()`), JSON.stringify(["shells", "hosts"]));
+check("⑤ 메인 PC 창 없음 = 마지막으로 받은 값", await ev(`(async () => JSON.stringify((await ${W}).startWidgets().map((w) => w.kind)))()`), JSON.stringify(["shells", "hosts"]));
 
-// ── ⑥ 넓은 원격 창 — 집 PC 좌표 ────────────────────────────────────────────
+// ── ⑥ 넓은 원격 창 — 메인 PC 좌표 ────────────────────────────────────────────
 await setMirror(snapshot(BOARD_A));
 check("⑥ 넓은 창이 선다", await boot(1280, 860, false), true);
 check("⑥ 좁은 판 아님", await ev(`!!document.querySelector('[data-start-narrow]')`), false);
@@ -242,7 +242,7 @@ const stage = JSON.parse(
     `(() => { const r = document.querySelector('[data-launcher]').getBoundingClientRect(); const o = {}; for (const e of document.querySelectorAll('[data-start-widget]')) { const b = e.getBoundingClientRect(); o[e.dataset.startWidget] = [Math.round(b.left - (r.left + r.width / 2)), Math.round(b.top - (r.top + r.height / 2))]; } return JSON.stringify({ o, scale: document.querySelector('.stage').dataset.startScale }); })()`,
   ),
 );
-check("⑥ 집 PC 좌표(판 가운데 기준 · 배율 1)", [stage.scale, stage.o.projects[0], stage.o.projects[1]], ["1", -520, -200]);
+check("⑥ 메인 PC 좌표(판 가운데 기준 · 배율 1)", [stage.scale, stage.o.projects[0], stage.o.projects[1]], ["1", -520, -200]);
 check("⑥ 편집 요소 없음", await noEditUi(), NO_EDIT);
 await rightClick('[data-start-widget="hosts"]');
 await sleep(200);
@@ -257,9 +257,9 @@ await ev(`document.querySelector(${JSON.stringify(row)}).click()`);
 await sleep(600);
 check("⑦ 줄을 누르면 여는 길로 간다", await ev(`window.__calls.some(([c]) => c === 'mirror_request')`), true);
 
-// ── ⑧ 집 PC 주 창 — 올리기 · 같은 값은 안 보냄 · 편집은 그대로 ──────────────
+// ── ⑧ 메인 PC 주 창 — 올리기 · 같은 값은 안 보냄 · 편집은 그대로 ──────────────
 await ev(`(() => { sessionStorage.setItem('h.home', '1'); localStorage.removeItem('aynx:start-widgets'); localStorage.removeItem('aynx:start-clock'); })()`);
-check("⑧ 집 PC 창이 선다", await boot(1280, 860, false), true);
+check("⑧ 메인 PC 창이 선다", await boot(1280, 860, false), true);
 const publishes = () => ev(`JSON.stringify(window.__calls.filter(([c]) => c === 'mirror_publish').map(([, a]) => a.snapshot.startBoard ?? null))`).then(JSON.parse);
 check("⑧ 올리기에 한 벌이 실림", await waitFor(`window.__calls.some(([c, a]) => c === 'mirror_publish' && !!a.snapshot.startBoard)`), true);
 await sleep(500);
@@ -275,10 +275,10 @@ check("⑧ 배치 변경이 재발행", await waitFor(`window.__calls.filter(([c
 const lastBoard = (await publishes()).at(-1);
 check("⑧ 실린 칸 = 배치 · 시계만", Object.keys(lastBoard).sort(), ["clock", "widgets"]);
 check("⑧ 빼낸 위젯이 반영", lastBoard.widgets.some((w) => w.kind === "shells"), false);
-check("⑧ 집 PC 는 편집 가능", await ev(`(async () => (await ${W}).startBoardEditable())()`), true);
+check("⑧ 메인 PC 는 편집 가능", await ev(`(async () => (await ${W}).startBoardEditable())()`), true);
 await rightClick('[data-start-widget="hosts"]');
 await sleep(200);
-check("⑧ 집 PC 위젯 우클릭 = 메뉴", await ev(`document.querySelectorAll('[role="menu"]').length > 0`), true);
+check("⑧ 메인 PC 위젯 우클릭 = 메뉴", await ev(`document.querySelectorAll('[role="menu"]').length > 0`), true);
 await ev(`(() => { sessionStorage.removeItem('h.home'); localStorage.removeItem('aynx:start-widgets'); localStorage.removeItem('aynx:start-clock'); })()`);
 
 check("⑨ 예외 0", errors, []);

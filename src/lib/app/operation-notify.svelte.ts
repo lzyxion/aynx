@@ -77,7 +77,7 @@ let early: OperationStateEvent[] = [];
 let started = false;
 
 /**
- * 원격 창에서 도는가(R4 — `boot()` 이 원격 창에도 건다) — 메신저 보내기와 미전달 큐 꺼내기는 집 PC 주 창 몫이라 건너뛴다.
+ * 원격 창에서 도는가(R4 — `boot()` 이 원격 창에도 건다) — 메신저 보내기와 미전달 큐 꺼내기는 메인 PC 주 창 몫이라 건너뛴다.
  * 토스트 · 알림 센터 · OS 알림(원격은 웹 알림)은 원격 기기의 사람에게 그대로.
  */
 let remote = false;
@@ -169,7 +169,7 @@ async function announce(operationId: string, state: FinishedRunState): Promise<v
   });
 
   // ①½ 메신저 — `[messenger] operation_results`(③-4). 보낼지는 메신저 규칙(켬 · 자리 비움)이 정한다.
-  // 원격 창(R4)은 보내지 않는다 — 집 PC 주 창이 이미 보낸다(두 번 울리지 않게).
+  // 원격 창(R4)은 보내지 않는다 — 메인 PC 주 창이 이미 보낸다(두 번 울리지 않게).
   if (!remote) messengerOperationResult(outcome);
 
   const veiled = veilVisible();
@@ -247,7 +247,7 @@ export function startOperationNotify(opts: { remote?: boolean } = {}): void {
     const queued = early;
     early = [];
     for (const ev of queued) onState(ev);
-    // 미전달 큐는 꺼내면 비워진다 — 집 PC 주 창의 몫(원격 창이 먼저 꺼내 가면 집 PC 가 못 본다).
+    // 미전달 큐는 꺼내면 비워진다 — 메인 PC 주 창의 몫(원격 창이 먼저 꺼내 가면 메인 PC 가 못 본다).
     if (!remote) await announceUnseen();
   })();
 }

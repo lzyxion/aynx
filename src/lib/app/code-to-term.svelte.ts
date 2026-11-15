@@ -20,7 +20,7 @@ import { glowTile } from "$lib/app/tile-glow.svelte.js";
 
 /**
  * **코드 블록을 셸 타일에 넣기** — 코드 블록 머리 띠의 [터미널에 넣기]가 부르는 코디네이터. 부르는 곳은 셋 — 문서 타일(`DocView`),
- * 사이드 채팅의 에이전트 말(`SideChatFace` — 집 PC 채팅 독 · 원격 웹 채팅 독 · 폰 덮개, 2026-11-12), AI 타일 대화 면의 에이전트 말
+ * 사이드 채팅의 에이전트 말(`SideChatFace` — 메인 PC 채팅 독 · 원격 웹 채팅 독 · 폰 덮개, 2026-11-12), AI 타일 대화 면의 에이전트 말
  * (`pane/AiFlip` — 타일이라 `sourcePaneId` 는 그 AI 타일, 2026-11-12).
  *
  * 명령 블록 → AI 타일(`app/ask-ai.svelte.ts` · docs/log/2026-09-28-ask-ai-block.md)과 같은 결의 **형제**다 — 그쪽을 일반화하지 않고
@@ -33,7 +33,7 @@ import { glowTile } from "$lib/app/tile-glow.svelte.js";
  * - "새 터미널 열기" 는 누른 타일(문서 타일 · AI 타일) 오른쪽에 이 창의 기본 셸을 열고(`openShellPaneBeside`), 셸이 입력을 받을 준비가 되면 넣는다
  *   (`shellReadyForInsert` — 시한을 넘기면 넣지 않고 알린다). 누른 곳이 타일이 아니면(사이드 채팅 — `sourcePaneId` 가 `null`) 옆에 설
  *   자리가 없으니 **새 탭**에 기본 셸을 연다(`openDefaultShellInNewTab` — 2026-11-12 사용자 결정 "없으면 새로 탭을 열어서").
- * - 원격 창(원격 웹 · 폰)은 새 타일을 집 PC 에 요청으로 연다 — 집 PC 가 새 id 로 세우므로(`app/mirror-requests` 의 `fresh`) 기다리는
+ * - 원격 창(원격 웹 · 폰)은 새 타일을 메인 PC 에 요청으로 연다 — 메인 PC 가 새 id 로 세우므로(`app/mirror-requests` 의 `fresh`) 기다리는
  *   동안 **요청 뒤 새로 나타난 셸 타일**을 그 타일로 본다. 있는 셸 타일에 넣기는 원격도 같은 길이다(`write_session` — `remote/deny.rs` ALLOW).
  *   폰 배치가 화면 밖이라 떼어 둔 시청자(세션 손잡이 없음)는 그 타일로 먼저 가서 다시 붙은 뒤 넣는다(`deliver` — 2026-11-13).
  *
@@ -204,7 +204,7 @@ const VIEWER_RESUME_TIMEOUT_MS = 6000;
  * 타일(다른 탭 · 한 탭의 숨은 타일 · 페이지가 뒤)의 시청자를 3초 뒤 뗀다(`mobile/policy` 의 `parkDelayMs` — 데이터 · 배터리) — 그동안
  * 그 타일의 세션 손잡이가 비어 `insertCode` 가 `"closed"` 를 돌려준다. 그 타일로 가면(보이면) 시청자가 받은 자리부터 다시 붙으니
  * (`Terminal` 의 `resumeViewer`), 원격이면 **먼저 그리로 가서** 다시 붙을 때까지 [`VIEWER_RESUME_TIMEOUT_MS`] 동안 다시 넣어 본다.
- * 집 PC 창은 시청자를 떼지 않으므로 지금처럼 곧바로 알린다.
+ * 메인 PC 창은 시청자를 떼지 않으므로 지금처럼 곧바로 알린다.
  */
 function deliver(tabId: string, paneId: string, name: string, code: string, ondone?: () => void): void {
   const api = termActionsOf(paneId);
@@ -277,7 +277,7 @@ const READY_POLL_MS = 200;
  * [`TERM_READY_TIMEOUT_MS`] 안에 안 되면 넣지 않고 알린다 — 프롬프트가 서기 전에 넣으면 글이 시작 출력 · 프로필 스크립트에 먹힌다.
  * 기다리는 동안 그 타일이 닫히면 조용히 그만둔다.
  *
- * 원격 창은 연 명세의 id 가 거울에 서지 않는다(집 PC 가 새 id 로 세운다) — 요청 전에 있던 타일들을 적어 두고 **그 뒤 새로 나타난 셸
+ * 원격 창은 연 명세의 id 가 거울에 서지 않는다(메인 PC 가 새 id 로 세운다) — 요청 전에 있던 타일들을 적어 두고 **그 뒤 새로 나타난 셸
  * 타일**을 받을 타일로 본다(그사이 다른 셸이 새로 서면 그쪽을 집을 수 있다 — 알고 받은 한계).
  */
 async function openAndInsert(sourcePaneId: string | null, code: string, ondone?: () => void): Promise<void> {

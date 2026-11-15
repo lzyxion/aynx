@@ -30,10 +30,10 @@ import { isRemote } from "$lib/ipc";
  *
  * 저장은 **놓는 순간 한 번**이다 — 끄는 동안 · 크기를 바꾸는 동안에는 쓰지 않는다(`StartPage` 가 놓을 때만 [`setStartWidgets`]).
  *
- * ## 원격 창은 집 PC 한 벌을 따른다 (2026-11-04 — docs/log/2026-11-04-start-board-mirror.md)
+ * ## 원격 창은 메인 PC 한 벌을 따른다 (2026-11-04 — docs/log/2026-11-04-start-board-mirror.md)
  *
- * 원격 창(폰 · 넓은 원격 창)의 localStorage 는 집 PC 와 따로라, 예전에는 집 PC 에서 고친 위젯이 폰에 닿지 않았다. 이제 집 PC 주 창이 거울 스냅숏에 한 벌을 싣고
- * (`app/mirror-publish`), 원격이 [`followHomeStartBoard`] 로 받아 쓴다. localStorage 는 원격에서 **마지막으로 받은 값**의 자리다(집 PC 창이 닫혀 있을 때 · 첫 거울 전).
+ * 원격 창(폰 · 넓은 원격 창)의 localStorage 는 메인 PC 와 따로라, 예전에는 메인 PC 에서 고친 위젯이 폰에 닿지 않았다. 이제 메인 PC 주 창이 거울 스냅숏에 한 벌을 싣고
+ * (`app/mirror-publish`), 원격이 [`followHomeStartBoard`] 로 받아 쓴다. localStorage 는 원격에서 **마지막으로 받은 값**의 자리다(메인 PC 창이 닫혀 있을 때 · 첫 거울 전).
  * 원격에서는 위젯을 편집하지 않는다([`startBoardEditable`] 한 곳 — `StartPage` 의 판 메뉴가 편집의 유일한 입구다).
  */
 
@@ -157,7 +157,7 @@ export function applyStartBoard(board: StartBoardSnapshot): void {
   undoStack = [];
 }
 
-/** 이 창에서 위젯을 편집할 수 있는가 — 집 PC 창만(원격 창은 집 PC 한 벌을 따른다 · 머리말) */
+/** 이 창에서 위젯을 편집할 수 있는가 — 메인 PC 창만(원격 창은 메인 PC 한 벌을 따른다 · 머리말) */
 export function startBoardEditable(): boolean {
   return !isRemote;
 }
@@ -166,7 +166,7 @@ export function startBoardEditable(): boolean {
 let followed = "";
 
 /**
- * **원격 창이 집 PC 한 벌을 받았다**(`app/mirror`) — 메모리 + 이 브라우저 localStorage. [`applyStartBoard`] 를 지나므로 귀(프로필 자동 저장)를 부르지 않는다.
+ * **원격 창이 메인 PC 한 벌을 받았다**(`app/mirror`) — 메모리 + 이 브라우저 localStorage. [`applyStartBoard`] 를 지나므로 귀(프로필 자동 저장)를 부르지 않는다.
  * 받은 값과 견준다(지금 값이 아니다) — 시계 박스는 이 창의 언어로 다시 맞춰질 수 있어(`StartPage`) 지금 값과 견주면 거울마다 되덮는다.
  */
 export function followHomeStartBoard(board: StartBoardSnapshot): void {

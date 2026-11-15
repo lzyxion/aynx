@@ -437,9 +437,9 @@ export function focusPane(tabId: string, paneId: string): void {
 }
 
 /**
- * **집 PC 주 창 — 지금 보지 않는 워크스페이스에 새 탭을 넣는다**(원격의 새 탭 요청 · 10-20 워크스페이스 칩 — `app/mirror-requests`).
+ * **메인 PC 주 창 — 지금 보지 않는 워크스페이스에 새 탭을 넣는다**(원격의 새 탭 요청 · 10-20 워크스페이스 칩 — `app/mirror-requests`).
  * 화면은 움직이지 않는다: 고르지 않고(`selectTab` 없음) 그 워크스페이스의 마지막 활성 탭만 새 탭으로 적는다 — 거울이 그 워크스페이스의
- * 활성 탭 바뀜을 원격에 알리고, 집 PC 가 나중에 그 워크스페이스로 가면 새 탭에 선다. 이번 실행에서 열린(materialized) 워크스페이스만 —
+ * 활성 탭 바뀜을 원격에 알리고, 메인 PC 가 나중에 그 워크스페이스로 가면 새 탭에 선다. 이번 실행에서 열린(materialized) 워크스페이스만 —
  * cold 는 `false`(그 탭 객체가 아직 이 창에 없다).
  */
 export function openTabInWorkspace(workspaceId: string, tab: TabSpec, pane: PaneSpec | null): boolean {
@@ -735,7 +735,7 @@ export function openPaneInTab(tabId: string, pane: PaneSpec, near?: string): voi
  * 고른다(사용량 화면을 걷는 일은 부르는 쪽의 `focusTile`). 탭이나 타일이 사라졌으면 `false`.
  */
 export function openPaneBeside(tabId: string, paneId: string, pane: PaneSpec, dir?: SplitDir, activate = true): boolean {
-  // 원격은 요청을 보냈으면 `true` — 결과(집 PC 의 거절 포함)는 요청이 따로 알린다.
+  // 원격은 요청을 보냈으면 `true` — 결과(메인 PC 의 거절 포함)는 요청이 따로 알린다.
   if (remoteLayout({ op: "openBeside", tile: paneId, pane, ...(dir ? { dir } : {}) })) return true;
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   if (!tab || !findPane(tab.root, paneId)) return false;
@@ -1666,12 +1666,12 @@ export function detachPaneLeavingStart(tab: TabSpec, paneId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// 원격 창의 집 PC 화면 거울 (원격 웹 R2-B · R3 — `app/mirror.svelte.ts` · `app/mirror-requests.svelte.ts` · `$lib/mirror/*`)
+// 원격 창의 메인 PC 화면 거울 (원격 웹 R2-B · R3 — `app/mirror.svelte.ts` · `app/mirror-requests.svelte.ts` · `$lib/mirror/*`)
 //
-// 원격 창의 탭 목록은 **집 PC 주 창의 워크스페이스들을 비춘 것**이다(10-20 — 전부 · 소속을 단 채 · 원격이 보는 워크스페이스로
+// 원격 창의 탭 목록은 **메인 PC 주 창의 워크스페이스들을 비춘 것**이다(10-20 — 전부 · 소속을 단 채 · 원격이 보는 워크스페이스로
 // `currentWorkspaceTabs` 가 거른다) — 쓰는 길은 [`applyMirrorTabs`] 하나(거울 환원 결과)이고,
 // 배치를 바꾸는 조작(새 탭 · 분할 · 타일 열기 · 닫기 · 옮기기 · 이름 바꾸기)은 위 함수들의 첫 줄이 **요청**으로 바꿔 [`remoteLayout`] 에
-// 넘긴다(R3) — 집 PC 주 창이 제 함수로 적용하고 결과는 거울로 돌아온다. 요청을 보내는 몸통(대상 id → 집 PC 열쇠 · 닫기 확인 · 거절
+// 넘긴다(R3) — 메인 PC 주 창이 제 함수로 적용하고 결과는 거울로 돌아온다. 요청을 보내는 몸통(대상 id → 메인 PC 열쇠 · 닫기 확인 · 거절
 // 안내)은 `app/mirror-requests` 가 [`setRemoteLayoutSink`] 로 건다(이 모듈이 그쪽을 부르면 순환이라). 고르는 일(탭 · 포커스 ·
 // 최대화)은 원격 창 몫이라 그대로 된다. 저장도 하지 않는다(원격 창은 쓰기 범위를 잡지 않는다).
 // ---------------------------------------------------------------------------
@@ -1697,7 +1697,7 @@ function lockedNotice(): void {
 }
 
 /**
- * **원격 창이면 배치를 바꾸지 않고 요청으로 보낸다**(R3) — 보냈거나 막았으면 `true`. 집 PC 창은 늘 `false`(그대로 적용).
+ * **원격 창이면 배치를 바꾸지 않고 요청으로 보낸다**(R3) — 보냈거나 막았으면 `true`. 메인 PC 창은 늘 `false`(그대로 적용).
  * 요청 몸통이 아직 없거나 요청으로 옮길 수 없는 조작(`null`)이면 안내 한 줄.
  */
 function remoteLayout(req: LayoutRequest | null): boolean {
@@ -1707,13 +1707,13 @@ function remoteLayout(req: LayoutRequest | null): boolean {
   return true;
 }
 
-/** 파일 타일 보기 요청의 묶음 시간 — 슬라이더 · `Ctrl+휠` 의 연타는 끝값 하나로(GUI 빈도 상한 · 집 PC 저장을 흔들지 않게) */
+/** 파일 타일 보기 요청의 묶음 시간 — 슬라이더 · `Ctrl+휠` 의 연타는 끝값 하나로(GUI 빈도 상한 · 메인 PC 저장을 흔들지 않게) */
 const FILE_UI_DEBOUNCE_MS = 250;
 const pendingFileUi = new Map<string, { change: { view?: FileView } & FileUiPatch; timer: ReturnType<typeof setTimeout> }>();
 
 /**
- * **원격 창의 파일 타일 보기 변경을 집 PC 배치에도 적게 한다**(2026-11-04) — 원격 창의 트리는 거울 갱신에 통째로 갈리므로(`applyMirrorTabs`) 집 PC 가 들고 있어야 산다.
- * 타일마다 묶어 끝값 하나를 보낸다. 요청 몸통이 없으면 조용히 버린다(안내 없음). 집 PC 창은 아무것도 하지 않는다.
+ * **원격 창의 파일 타일 보기 변경을 메인 PC 배치에도 적게 한다**(2026-11-04) — 원격 창의 트리는 거울 갱신에 통째로 갈리므로(`applyMirrorTabs`) 메인 PC 가 들고 있어야 산다.
+ * 타일마다 묶어 끝값 하나를 보낸다. 요청 몸통이 없으면 조용히 버린다(안내 없음). 메인 PC 창은 아무것도 하지 않는다.
  */
 export function queueRemoteFileUi(paneId: string, change: { view?: FileView } & FileUiPatch): void {
   if (!isRemote) return;
@@ -1767,11 +1767,11 @@ function remotePlace(tab: TabSpec, node: PaneNode, make: () => LayoutRequest | n
 }
 
 /**
- * 원격의 새 탭이 설 워크스페이스 — 탭에 소속이 있으면 그것, 없으면 원격 창이 지금 보는 것(집 PC 가 보는 것과 다를 수 있다 — 집 PC 는
+ * 원격의 새 탭이 설 워크스페이스 — 탭에 소속이 있으면 그것, 없으면 원격 창이 지금 보는 것(메인 PC 가 보는 것과 다를 수 있다 — 메인 PC 는
  * 그 워크스페이스에 탭을 넣되 화면을 옮기지 않는다 · `app/mirror-requests`).
  */
 /**
- * (오케스트레이션 탭) **원격 창에서 오케스트레이션 탭을 청한다** — 원격 창에 그 탭(앨범 · 홈)이 없을 때 집 PC 가 같은 여는 길
+ * (오케스트레이션 탭) **원격 창에서 오케스트레이션 탭을 청한다** — 원격 창에 그 탭(앨범 · 홈)이 없을 때 메인 PC 가 같은 여는 길
  * (`openAlbumTab` · `openOrchHome`)을 돈다(배치 요청 `openOrchTab` — 새 Tauri 명령 아님). 원격 창이 아니거나 요청 길이 없으면 `false`.
  */
 export function requestOrchTab(runId: string | null): boolean {
@@ -1788,7 +1788,7 @@ function remoteNewTabWorkspace(own?: string): { workspace?: string } {
 /** 원격 창 — 워크스페이스마다 마지막으로 고른 탭(워크스페이스를 바꿨다 돌아오면 그 탭으로 · 거울 환원의 `activeOf`) */
 const remoteActiveByWs: Record<string, string> = {};
 
-/** 원격 창의 지금 고름 — 거울 환원이 "집 PC 가 바꾸지 않았으면 원격의 고름을 둔다" 에 쓴다 */
+/** 원격 창의 지금 고름 — 거울 환원이 "메인 PC 가 바꾸지 않았으면 원격의 고름을 둔다" 에 쓴다 */
 export function mirrorLocalChoice(): {
   workspaceId: string | null;
   activeOf: (workspaceId: string) => string | null;

@@ -4,7 +4,7 @@
 // 스텁은 `convo-path-links-harness.mjs`(가짜 로컬 세션 + Channel 로 출력 먹이기 · 훅 신호로 AI 타일 · 대화 면 `window.__tx`)와
 // `remote-chat-dock-harness.mjs`(사이드 채팅 명령 · 통로)를 합쳤다. 셸 세션은 열리면 곧 프롬프트(OSC 133 A/B) + 괄호 붙여넣기 켬
 // (`ESC[?2004h`)을 스스로 먹인다 — `shellReadyForInsert`(그려짐 · 조용함 1초)가 선다. 원격 창은 거울(`mirror-layout`)로 탭을 세우고,
-// `mirror_request` 의 새 탭 요청을 받으면 **집 PC 처럼 새 id** 의 셸 타일을 거울에 더한다(시청자 붙기 = `attach_session_viewer`).
+// `mirror_request` 의 새 탭 요청을 받으면 **메인 PC 처럼 새 id** 의 셸 타일을 거울에 더한다(시청자 붙기 = `attach_session_viewer`).
 //
 // 보는 것(판 넷 — 로컬 사이드 채팅 · 로컬 AI 타일 · 원격 데스크톱 사이드 채팅 · 원격 폰 사이드 채팅):
 // ① 셸 블록(bash · powershell · 언어 없음)에만 [터미널에 넣기], ts 는 [복사]만 · 자라는 꼬리의 닫히지 않은 울타리엔 단추 없음
@@ -15,7 +15,7 @@
 // ⑥ 원격 데스크톱 · 폰(400x844): 있는 셸에 넣기 · 새 탭 요청 뒤 새로 나타난 셸에 넣기 · 폰은 넣은 뒤 덮개 닫힘
 // ⑦ 콘솔 오류 0(`stub:` 거절 제외)
 // ⑧ 두 번 넣기(2026-11-13 폰 실기) — 셸 없음 → 새 탭 → 다시(같은 셸) → 다른 탭을 보다가 그 셸 고르기(폰은 떼어 둔 시청자가 다시 붙은 뒤) ·
-//    "세션이 끊겨 있습니다" 없음 — 집 PC 창 · 원격 데스크톱 · 원격 폰
+//    "세션이 끊겨 있습니다" 없음 — 메인 PC 창 · 원격 데스크톱 · 원격 폰
 //
 //   node scripts/dev/run-harness.mjs code-to-term-chat-harness.mjs <outdir> --size 1280x860
 //     → <outdir>/ctt-chat-blocks.png · ctt-chat-newtab.png · ctt-chat-picker.png · ctt-ai-blocks.png · ctt-ai-picker.png ·
@@ -232,7 +232,7 @@ const stub = (remote) => `
         const id = nextSession++; window.__chan[id] = { cb: args?.onData?.id, idx: 0, stream: args.stream }; boot(id);
         return Promise.resolve({ id, kind: 'local', lease: { stream: args.stream, sessionEpoch: 1, leaseEpoch: 1 }, start: 0, end: 0, replayed: false, overrunBytes: 0, shell: 'pwsh', viewer: true, sizeOwner: true });
       }
-      // 원격 창의 시청자는 집 PC 에 이미 붙은 세션만 본다(probe = attached) · 로컬 창은 새로 연다(none)
+      // 원격 창의 시청자는 메인 PC 에 이미 붙은 세션만 본다(probe = attached) · 로컬 창은 새로 연다(none)
       if (cmd === 'probe_session') return Promise.resolve(${remote} ? { state: 'attached', kind: 'local', sessionEpoch: 1, checkpoint: null } : { state: 'none', sessionEpoch: null, checkpoint: null });
       if (cmd === 'write_session') { window.__writes.push({ id: args.id ?? null, stream: args.stream ?? null, data: args.data, source: args.source ?? null }); return Promise.resolve(null); }
       if (cmd === 'resize_session' || cmd === 'claim_session_size') return Promise.resolve(true);
@@ -496,10 +496,10 @@ check("③ AI · 줄 고르기 → 그 셸", got.map((w) => [w.id, w.data]), [[s
 check("⑤ AI 세션에는 붙여넣기가 한 번도 없음", await ev(`window.__writes.filter((w) => w.id === ${ai.sid} && w.source === 'paste').length`), 0);
 
 // ════════════════════════════════════════════════════════════════════════════════
-// 판 3 · 4 — 원격 창(데스크톱 · 폰): 거울로 셸 하나 · 새 탭 요청 → 집 PC 가 새 id 로 세운 셸
+// 판 3 · 4 — 원격 창(데스크톱 · 폰): 거울로 셸 하나 · 새 탭 요청 → 메인 PC 가 새 id 로 세운 셸
 // ════════════════════════════════════════════════════════════════════════════════
 const SNAP = importApp("mirror/snapshot");
-/** 거울 상태(집 PC 의 탭들)를 이 페이지에 두고 민다 · 새 탭 요청을 받으면 새 id 의 셸 탭을 더해 다시 민다 */
+/** 거울 상태(메인 PC 의 탭들)를 이 페이지에 두고 민다 · 새 탭 요청을 받으면 새 id 의 셸 탭을 더해 다시 민다 */
 const installMirror = async (withShell = true) =>
   ev(`(async () => {
     const s = await ${SNAP};
@@ -553,7 +553,7 @@ const remoteRound = async (label, phone) => {
     await sleep(400);
     check(`⑥ ${label} 포커스 = 받은 셸`, await focusedId(), r1.id);
   }
-  // 새 탭 경로 — 셸이 다른 탭에만 있게 빈 탭을 하나 지금 탭으로(원격은 요청 — 집 PC 가 빈 탭을 세운다는 흉내는 거울에서)
+  // 새 탭 경로 — 셸이 다른 탭에만 있게 빈 탭을 하나 지금 탭으로(원격은 요청 — 메인 PC 가 빈 탭을 세운다는 흉내는 거울에서)
   await ev(`(() => { window.__home.tabs.push({ id: 'home-empty', title: 'Start', tabKey: 'tke', workspaceId: 'w1', root: { type: 'leaf', pane: { id: 'home-start', kind: 'start', tileKey: 'fks' } } }); window.__home.active = 'home-empty'; window.__push(); })()`);
   await sleep(600);
   const emptyTab = (await panesNow()).find((t) => t.panes.some((p) => p.kind === "start"))?.tab ?? null;
@@ -572,7 +572,7 @@ const remoteRound = async (label, phone) => {
   await clickAt(`document.querySelector('[data-code-term-picker] [data-code-term-new]')`);
   g = await waitWrite(n0, 12000);
   const reqs = await evj(`JSON.stringify(window.__requests.slice(${req0}).map((r) => [r.op, r.pane?.kind ?? null]))`);
-  check(`⑥ ${label} 새 탭 요청 한 번(집 PC 에 newTab · 셸)`, reqs, [["newTab", "local"]]);
+  check(`⑥ ${label} 새 탭 요청 한 번(메인 PC 에 newTab · 셸)`, reqs, [["newTab", "local"]]);
   check(`⑥ ${label} 요청 뒤 새로 나타난 셸(hs-2)에 준비 뒤 넣기`, g.map((w) => [w.stream, w.data]), [["hs-2", WANT.bash]]);
   const r2 = (await panesNow()).flatMap((t) => t.panes).find((p) => p.stream === "hs-2") ?? null;
   if (phone) {
@@ -584,7 +584,7 @@ const remoteRound = async (label, phone) => {
   }
 };
 /**
- * ⑧ (2026-11-13 실기 — 폰) 셸 없음 → [터미널에 넣기] → 새 탭(집 PC 가 새 id 로 세운 셸)에 넣기 → 사이드 채팅으로 돌아와 **다시** 넣기.
+ * ⑧ (2026-11-13 실기 — 폰) 셸 없음 → [터미널에 넣기] → 새 탭(메인 PC 가 새 id 로 세운 셸)에 넣기 → 사이드 채팅으로 돌아와 **다시** 넣기.
  * 둘째는 셸이 하나라 상자 없이 그 셸로 바로 간다 — "세션이 끊겨 있습니다" 없이 같은 셸(hs-1)에 넣어야 한다.
  */
 /**
@@ -665,7 +665,7 @@ const remoteTwiceRound = async (label, phone) => {
   if (phone) await shot("ctt-phone-twice-3.png");
 };
 
-/** ⑧ 집 PC(로컬) 창 — 셸 없음 → 새 탭 → 다시 넣기 */
+/** ⑧ 메인 PC(로컬) 창 — 셸 없음 → 새 탭 → 다시 넣기 */
 const localTwiceRound = async () => {
   check("⑧ 로컬 (준비) 셸 없음", (await panesNow()).flatMap((t) => t.panes).filter((p) => p.kind === "local").length, 0);
   check("⑧ 로컬 사이드 채팅이 열림", await openDock(), true);

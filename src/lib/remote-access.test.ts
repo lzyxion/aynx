@@ -178,7 +178,7 @@ describe("상태 줄(remoteStateView)", () => {
     const remote = { remote: true, serve: null };
     expect(remoteStateView(input({ ...remote }))).toMatchObject({ phase: "connected", title: `${P}pairing.title`, chips: [] });
     expect(remoteStateView(input({ ...remote, deviceCount: 1 }))).toMatchObject({ phase: "connected", title: `${P}inUse.title` });
-    // 집 PC CLI 판정은 원격 창에서 말하지 않는다 — 이 창이 떠 있는 것이 곧 연결이다
+    // 메인 PC CLI 판정은 원격 창에서 말하지 않는다 — 이 창이 떠 있는 것이 곧 연결이다
     expect(remoteStateView(input({ ...remote, status: { ...on, tailscaleCli: false } })).phase).toBe("connected");
     expect(remoteStateView(input({ ...remote, savedEnabled: false, status: off }))).toMatchObject({ phase: "before", title: `${P}off.title`, note: `${P}off.note.remote`, chips: [] });
     expect(remoteStateView(input({ ...remote, status: { ...on, listening: false } }))).toMatchObject(CHECKING);

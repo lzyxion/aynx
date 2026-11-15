@@ -1,13 +1,13 @@
-// 집 PC 화면 배치 거울의 **스냅숏 모양**(원격 웹 R2-B — 설계 5절). 순수 모듈 — 상태 저장소 · invoke 를 모른다.
+// 메인 PC 화면 배치 거울의 **스냅숏 모양**(원격 웹 R2-B — 설계 5절). 순수 모듈 — 상태 저장소 · invoke 를 모른다.
 //
-// 집 PC 주 창이 **제 워크스페이스 전부**(10-20 — 판 2)의 탭 줄 · 타일 트리 · 포커스를 이 모양으로 GUI 에 올리고
+// 메인 PC 주 창이 **제 워크스페이스 전부**(10-20 — 판 2)의 탭 줄 · 타일 트리 · 포커스를 이 모양으로 GUI 에 올리고
 // (`app/mirror-publish.svelte.ts` → `mirror_publish`), 원격 창이 받아 그린다(`app/mirror.svelte.ts` · `mirror/reduce.ts`). 원격이
-// `workspaces.json` 을 읽어 그릴 때도(집 PC 주 창이 없음 — 트레이) 같은 모양으로 만든다(그때는 활성 워크스페이스 하나만).
+// `workspaces.json` 을 읽어 그릴 때도(메인 PC 주 창이 없음 — 트레이) 같은 모양으로 만든다(그때는 활성 워크스페이스 하나만).
 //
 // **워크스페이스 목록**(`workspaces` — 순서 그대로): 이름 · 아이콘 · 색 · 그 워크스페이스의 활성 탭(지금 것은 `activeTabId` 와 같고,
-// 나머지는 집 PC 가 기억한 마지막 활성 탭). 집 PC 가 이번 실행에서 아직 열지 않은 워크스페이스(cold — 탭 객체 · 세션이 아직 없다)는
-// `cold` + 저장된 탭 수만 싣고 탭은 싣지 않는다(원격이 붙을 세션이 없다 — 고르기 화면이 "집 PC 에서 먼저 열기" 를 안내한다).
-// 탭마다 소속(`workspaceId`)이 붙는다. `workspace` · `activeTabId` 는 집 PC 가 **지금 보는** 워크스페이스다.
+// 나머지는 메인 PC 가 기억한 마지막 활성 탭). 메인 PC 가 이번 실행에서 아직 열지 않은 워크스페이스(cold — 탭 객체 · 세션이 아직 없다)는
+// `cold` + 저장된 탭 수만 싣고 탭은 싣지 않는다(원격이 붙을 세션이 없다 — 고르기 화면이 "메인 PC 에서 먼저 열기" 를 안내한다).
+// 탭마다 소속(`workspaceId`)이 붙는다. `workspace` · `activeTabId` 는 메인 PC 가 **지금 보는** 워크스페이스다.
 //
 // **허용 칸만 싣는다**([`sanitizePane`] — 명시 목록). 실리지 않는 것: 1회용 실행 재료(`autorun` · `cwd` · `setup` · `worktree` ·
 // `openDelay` · `restore` 의 화면 버퍼) · AI 타일 표식(`injectMcpToken`) · 이관 재시작 명세(`restart`).
@@ -17,7 +17,7 @@
 // 신호가 없는 타일의 대화 면이 통째로 비었다. 대화 id 는 원격이 이미 보는 지난 대화 목록의 열쇠라 새로 나가는 것이 없다.
 //
 // **타일의 보이는 모습**(`views` — 10-16 모바일 라벨): 원격은 `autorun` 을 받지 않으니 AI 타일을 셸 이름("PowerShell 7")으로 부르게 된다.
-// 그래서 집 PC 가 화면에 이미 그리는 것 중 셋만 따로 싣는다([`sanitizeView`] — 명시 목록): 도는 AI 의 종류(`claude`·`codex` 만) ·
+// 그래서 메인 PC 가 화면에 이미 그리는 것 중 셋만 따로 싣는다([`sanitizeView`] — 명시 목록): 도는 AI 의 종류(`claude`·`codex` 만) ·
 // 에이전트 상태(실행 중 · 권한 대기 · 완료) · 작업 폴더의 **마지막 이름 한 토막**(경로 원문 · 명령 · 토큰 · OSC 제목 원문은 싣지 않는다).
 //
 // **시작 화면 한 벌**(`startBoard` — 2026-11-04 · docs/log/2026-11-04-start-board-mirror.md): 위젯 배치(종류 · 자리 · 크기)와 시계 표시뿐이다 — 위젯 안의 호스트 · 프로젝트 줄은 싣지 않는다.
@@ -37,7 +37,7 @@ export type MirrorNode =
   | { type: "split"; dir: "row" | "col"; ratio: number; px?: number; a: MirrorNode; b: MirrorNode };
 
 export interface MirrorTab {
-  /** 집 PC 의 탭 id(그 창 안에서만 뜻이 있다) */
+  /** 메인 PC 의 탭 id(그 창 안에서만 뜻이 있다) */
   id: string;
   /** 소속 워크스페이스 id(`MirrorSnapshot.workspaces` 의 하나 — cold 가 아닌 것) */
   workspaceId: string;
@@ -51,9 +51,9 @@ export interface MirrorTab {
   /** 오케스트레이션 탭의 표지(2026-10-29 — `TabSpec.orch`) */
   orch?: TabSpec["orch"];
   root: MirrorNode;
-  /** 그 탭의 포커스 타일(집 PC 의 pane id) */
+  /** 그 탭의 포커스 타일(메인 PC 의 pane id) */
   focus: string | null;
-  /** 최대화한 타일(집 PC 의 pane id) */
+  /** 최대화한 타일(메인 PC 의 pane id) */
   zoomedPaneId?: string | null;
 }
 
@@ -63,32 +63,32 @@ export interface MirrorWorkspace {
   name: string;
   icon?: string;
   color?: string;
-  /** 집 PC 가 아직 열지 않았다 — 탭을 싣지 않고 저장된 탭 수만 */
+  /** 메인 PC 가 아직 열지 않았다 — 탭을 싣지 않고 저장된 탭 수만 */
   cold?: true;
   /** cold 일 때 저장된 탭 수 */
   tabCount?: number;
-  /** 그 워크스페이스의 활성 탭(집 PC 의 tab id — cold 면 `null`) */
+  /** 그 워크스페이스의 활성 탭(메인 PC 의 tab id — cold 면 `null`) */
   activeTabId: string | null;
 }
 
 export interface MirrorSnapshot {
   v: number;
-  /** 어디서 왔나 — 집 PC 주 창(`home`) · 저장된 배치(`file` — 원격이 스스로 만든다) */
+  /** 어디서 왔나 — 메인 PC 주 창(`home`) · 저장된 배치(`file` — 원격이 스스로 만든다) */
   source: "home" | "file";
-  /** 집 PC 가 지금 보는 워크스페이스 */
+  /** 메인 PC 가 지금 보는 워크스페이스 */
   workspace: { id: string; name: string } | null;
   /** 워크스페이스 목록(순서 그대로 · 비지 않는다 · 지금 것을 반드시 담는다) */
   workspaces: MirrorWorkspace[];
   /** 지금 워크스페이스의 활성 탭 */
   activeTabId: string | null;
   tabs: MirrorTab[];
-  /** 집 PC pane id → 그 타일의 보이는 모습(있는 타일만 — 파일 머리말) */
+  /** 메인 PC pane id → 그 타일의 보이는 모습(있는 타일만 — 파일 머리말) */
   views?: Record<string, PaneView>;
-  /** 집 PC 주 창의 시작 화면 한 벌(파일 머리말) — 저장된 배치에서 지은 스냅숏에는 없다 */
+  /** 메인 PC 주 창의 시작 화면 한 벌(파일 머리말) — 저장된 배치에서 지은 스냅숏에는 없다 */
   startBoard?: StartBoardSnapshot;
 }
 
-/** 타일의 **보이는 모습** — 집 PC 가 이미 화면에 그리는 것만(원격 라벨 재료). 전부 선택 칸. */
+/** 타일의 **보이는 모습** — 메인 PC 가 이미 화면에 그리는 것만(원격 라벨 재료). 전부 선택 칸. */
 export interface PaneView {
   /** 도는 AI CLI */
   ai?: "claude" | "codex";
@@ -156,7 +156,7 @@ function copyIf<T>(v: T | undefined): T | undefined {
 
 /**
  * **타일 명세 한 장 → 거울에 싣는 명세** — 순수 · 명시 목록. 실리지 않는 칸은 파일 머리말.
- * `deferred` 는 싣는다(집 PC 에서 아직 연결하지 않은 SSH 타일 — 원격은 붙을 세션이 없음을 안내한다).
+ * `deferred` 는 싣는다(메인 PC 에서 아직 연결하지 않은 SSH 타일 — 원격은 붙을 세션이 없음을 안내한다).
  */
 export function sanitizePane(p: PaneSpec): PaneSpec {
   const out: PaneSpec = { id: p.id, kind: p.kind };
@@ -203,7 +203,7 @@ function nodeOf(node: PaneNode): MirrorNode {
   return { type: "split", dir: node.dir, ratio: node.ratio, ...(node.px ? { px: node.px } : {}), a: nodeOf(node.a), b: nodeOf(node.b) };
 }
 
-/** 스냅숏을 짓는 재료 — 집 PC 주 창의 탭 모듈 값(또는 원격이 저장된 배치에서 되살린 탭) */
+/** 스냅숏을 짓는 재료 — 메인 PC 주 창의 탭 모듈 값(또는 원격이 저장된 배치에서 되살린 탭) */
 export interface SnapshotInput {
   source: "home" | "file";
   workspace: { id: string; name: string } | null;
@@ -213,9 +213,9 @@ export interface SnapshotInput {
   activeTabId: string | null;
   /** 그 탭의 포커스 타일 id */
   focusOf: (tab: TabSpec) => string | null;
-  /** 타일의 보이는 모습(집 PC 주 창만 — 저장된 배치는 모른다). 결과는 [`sanitizeView`] 를 지난다. */
+  /** 타일의 보이는 모습(메인 PC 주 창만 — 저장된 배치는 모른다). 결과는 [`sanitizeView`] 를 지난다. */
   viewOf?: (pane: PaneSpec) => PaneView | null;
-  /** 시작 화면 한 벌(집 PC 주 창만) */
+  /** 시작 화면 한 벌(메인 PC 주 창만) */
   startBoard?: StartBoardSnapshot;
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   // 원격 창의 앱 모달(R4) — 묻기(네이티브 confirm 대신)와 마스터 재확인. 상태는 `app/remote-dialog.svelte.ts`, 단추·문구는
-  // `$lib/remote-dialog`. 원격 창에서만 줄이 찬다(집 PC 창에서는 아무것도 그리지 않는다).
+  // `$lib/remote-dialog`. 원격 창에서만 줄이 찬다(메인 PC 창에서는 아무것도 그리지 않는다).
   import { tick } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";

@@ -9,12 +9,14 @@ import {
   moveStrip,
   parseAiFace,
   parseInputMode,
+  parseLastView,
   parseFont,
   parseStrip,
   parseTheme,
   resolveTheme,
   serializeAiFace,
   serializeInputMode,
+  serializeLastView,
   serializeStrip,
   serializeTheme,
   THEME_PREFS,
@@ -129,5 +131,22 @@ describe("AI 타일 첫 화면", () => {
     expect(serializeAiFace("convo")).toBeNull();
     expect(serializeAiFace("term")).toBe("term");
     for (const f of AI_FACES) expect(parseAiFace(serializeAiFace(f))).toBe(f);
+  });
+});
+
+describe("마지막으로 보던 탭 · 타일(11-15)", () => {
+  it("저장한 것을 그대로 읽는다", () => {
+    const v = { tab: "k:tab-a", tile: "k:tile-b" };
+    expect(parseLastView(serializeLastView(v))).toEqual(v);
+    expect(parseLastView(serializeLastView({ tab: "i:3", tile: null }))).toEqual({ tab: "i:3", tile: null });
+  });
+
+  it("없거나 모양이 틀리면 null — 모르는 칸은 버린다", () => {
+    expect(parseLastView(null)).toBeNull();
+    expect(parseLastView("")).toBeNull();
+    expect(parseLastView("{")).toBeNull();
+    expect(parseLastView("42")).toBeNull();
+    expect(parseLastView(JSON.stringify({ tab: 1, tile: "" }))).toBeNull();
+    expect(parseLastView(JSON.stringify({ tab: "k:a", tile: 7 }))).toEqual({ tab: "k:a", tile: null });
   });
 });

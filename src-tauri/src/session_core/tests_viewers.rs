@@ -254,7 +254,7 @@ fn owner_size_follows_the_owner_and_a_reattached_primary() {
 }
 
 /// **크기 되찾기**(10-20 — [이 창 크기로]) — 입력 없이 주인을 이 쪽으로: 크기를 적고 노트에 싣는다(서버가 건다). 이미 주인이면 노트 없이
-/// `changed: false`. 자격 없는 폰 시청자는 되찾지 못한다(크기만 적힌다 · 오류 아님). 주(집 PC)도 시청자에게서 되찾는다.
+/// `changed: false`. 자격 없는 폰 시청자는 되찾지 못한다(크기만 적힌다 · 오류 아님). 주(메인 PC)도 시청자에게서 되찾는다.
 #[test]
 fn claim_switches_the_owner_without_input() {
     let mut core = Core::default();
@@ -266,7 +266,7 @@ fn claim_switches_the_owner_without_input() {
     core.take_notes();
     assert_eq!(core.size_owner(S), Some(v.lease_epoch), "원격이 쳐서 주인");
 
-    // 집 PC(주)가 되찾는다 — 새 크기로.
+    // 메인 PC(주)가 되찾는다 — 새 크기로.
     let c = core.claim_size_owner(S, 1, p.lease_epoch, 130, 42).unwrap();
     assert_eq!((c.owner, c.changed, c.holder.viewer), (true, true, false));
     assert_eq!(owner_notes(&core.take_notes()), vec![(Some(p.lease_epoch), true, Some((130, 42)))]);

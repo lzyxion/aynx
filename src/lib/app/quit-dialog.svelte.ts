@@ -12,7 +12,7 @@
  * - **이 창 닫기** — 보조 창에서만(메인 창은 위 셋이 그 몫이다). 제목줄 창 단추를 끈 기본 모양에서는 보조 창을 닫는 길이 이것이다
  *   (`[app] window_controls` — 2026-10-28). 창의 X 와 같은 길(`winClose` — 그 창의 저장 안 한 문서를 묻는다).
  *
- * 원격 창에는 끝내기 단추가 없다(`Dock.svelte`) — 세 명령도 집 PC 전용이다(`remote/deny.rs` 의 `HOME_ONLY`).
+ * 원격 창에는 끝내기 단추가 없다(`Dock.svelte`) — 세 명령도 메인 PC 전용이다(`remote/deny.rs` 의 `HOME_ONLY`).
  */
 
 import { invoke } from "$lib/ipc";

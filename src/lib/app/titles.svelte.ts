@@ -61,8 +61,8 @@ const endedAgents = new SvelteSet<string>();
 const attestedAgents = new SvelteMap<string, string>();
 
 /**
- * **집 PC 가 거울로 알려 준 CLI**(원격 창만 · paneId → `"claude"`·`"codex"` — 10-16 모바일 라벨). 원격은 `autorun` 을 받지 않아
- * AI 타일을 셸 이름으로 부르게 되므로, 집 PC 가 이미 그리는 판정(`PaneView.ai`)을 신원 규칙 ③′ 자리에 함께 넣는다(훅 신호가 먼저).
+ * **메인 PC 가 거울로 알려 준 CLI**(원격 창만 · paneId → `"claude"`·`"codex"` — 10-16 모바일 라벨). 원격은 `autorun` 을 받지 않아
+ * AI 타일을 셸 이름으로 부르게 되므로, 메인 PC 가 이미 그리는 판정(`PaneView.ai`)을 신원 규칙 ③′ 자리에 함께 넣는다(훅 신호가 먼저).
  * 쓰는 곳은 `app/mirror` 의 환원 한 곳이고 거울을 받을 때마다 통째로 갈아 끼운다.
  */
 const mirroredAgents = new SvelteMap<string, string>();

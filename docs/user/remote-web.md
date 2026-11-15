@@ -128,6 +128,7 @@ comes back to the remote side as is. So:
   behind your back).
 - **Closing something that ends a session** (a tile or tab with a terminal) asks once on the remote side. On the main PC it closes with no confirmation, and a brief notice appears: "Remote <device> closed a tile".
   If the main PC has an unsaved document or an open DB transaction, it does not close, and the remote side is told why (sort it out on the main PC).
+  If the document you edited **in the remote window itself** is unsaved, the remote side asks first, the same as on the PC (**Save and close · Discard and close · Cancel**).
 - **If the main PC window is closed (tray), the layout cannot be changed** — "The layout can only be changed while a main PC window is open" appears (the remote side does not open a main PC window
   behind your back).
 - A query tile opened with [Open separately here] belongs to the remote window, so closing it does nothing on the main PC.
@@ -162,17 +163,24 @@ Phones and tablets open the same address too, and **they can do the same as a PC
 - **You view one tile at a time.** Clicking the pill in the top strip (the current tile's name and location) shows the tab and tile picker screen — one group per tab, with tile
   rows inside (including agent status). Picking belongs to this phone's screen, so the main PC screen stays as it is (when the main PC switches tabs, the phone follows). The main PC's split
   layout stays as it is, and one tile is shown large on screen — tiles fill to the screen edge with no gaps or rounded corners, and there is no tile header (name, chip row;
-  the top strip's pill gives the name). The **×** (close tab) on a group's header asks the main PC (it asks once if the tab has a session).
-  **New tab** at the bottom of that screen opens the "Open in a new tab" sheet below. The **gear** in the head is the phone settings screen.
+  the top strip's pill gives the name). The **×** (close tab) on a group's header asks the main PC (it asks once if the tab has a session). The small **×** at the right of
+  each tile row closes that tile the same way as the ⋯ menu's close (it asks once if the tile has a session, and closing a tab's last tile closes the tab). Tapping the rest of the row
+  only picks the tile.
+  **New tab** at the bottom of that screen opens the open sheet below, set to **New tab**. The **gear** in the head is the phone settings screen.
 - **Tile menu**: the **⋯** to the right of the top strip's pill opens the same menu as the ⋯ in a PC tile header (Server › Forwarding · remote files · tmux sessions · AI permissions ·
   output · close …). Buttons that exist only in the header also appear at the top of this menu — **Switch to conversation / Switch to terminal** on AI tiles,
   **Open folder** on local terminals, **Open branch tile**. A phone is always one tile in one window, so **Split left and right · Split top and bottom · Detach to a new window** are not in this
   menu or the long-press menu (PCs and wide remote windows still have them). The menu you get by long-pressing the terminal (copy, paste …) is unchanged.
-- **Open in a new tab**: pressing **+** in the top strip (or New tab on the picker screen) brings up a sheet from the bottom — New tile (default shell · each enabled AI agent ·
+- **Open sheet**: pressing **+** in the top strip (or New tab on the picker screen) brings up a sheet from the bottom — New tile (default shell · each enabled AI agent ·
   local files), recent hosts (a green dot if connected), **All hosts · projects · DB**, past conversations, task plans (with the number awaiting review), and at the bottom [Alerts] and
-  [Settings]. What you pick always opens as **a new tab holding only that**, and the phone goes to that tab (a phone views one tile at a time, so it does not insert a split). A new tab
-  lands in the workspace the phone is viewing if opened from the top strip, or in the workspace that screen was showing if opened from the picker screen. Closing with nothing picked (clicking
-  outside · Esc · ×) creates nothing.
+  [Settings]. At the top, **[This tab | New tab]** picks where it opens:
+  - **This tab** (the default from **+** in the top strip) adds the tile to the tab you are viewing, and the phone shows the new tile right away. The main PC places it in that tab
+    the same way as on the PC and switches its own screen to that tab too (the same as opening a tile from a PC remote).
+  - **New tab** (the default from New tab on the picker screen) opens **a new tab holding only that**, and the phone goes to that tab. A new tab lands in the workspace the phone is viewing
+    if opened from the top strip, or in the workspace that screen was showing if opened from the picker screen.
+  - **This tab** is off when the sheet was opened for another workspace, when there is no tab, or while the main PC is showing a different workspace (a line under the buttons says so).
+  - **All hosts · projects · DB** follows the same choice for hosts and DB. Projects open the same way as on the PC (an open project tab, or its own tab).
+  - Closing with nothing picked (clicking outside · Esc · ×) creates nothing.
 - **All hosts · projects · DB**: pick hosts, projects or DB with tabs, and below "Recent" stands the same folder tree as the desktop dock. Click a folder row to expand or collapse it.
   Clicking an item row only selects it, and a button appears on the right — hosts [Connect] · projects [Open] · DB [Open query]. Double-click, drag and drop, and
   folder editing are not on the phone (use the main PC or a PC remote).
@@ -206,6 +214,9 @@ Phones and tablets open the same address too, and **they can do the same as a PC
 - **Data · battery**: terminal tiles not on screen, and terminals while the phone browser is in the background, stop receiving after a short while. When you return, the output from that gap
   is received and drawn (if too much piled up, there is a "some output was lost" notice). If you return after a long time in the background and the connection is cut, the page reloads and
   reattaches (right away, unless the remote lock screen is up).
+- **Coming back to the same tile**: the phone remembers the last tab and tile you were viewing **in that browser** (a PC remote does too). When the page reloads — after the
+  browser was in the background for a while, or after a refresh — it opens on that tile even if the main PC moved to another tab in the meantime. If that tile (and its tab) was
+  closed, it follows the main PC as before. While the page stays open, the phone still follows the main PC when it switches tabs.
 - The task plan review card, approval confirmation dialog and tile menu also fit the phone's width, and buttons are finger-sized.
 - On touch devices, terminals draw with the default renderer rather than the GPU (WebGL) (to avoid phone GPU memory problems and a broken screen when returning from the background).
 
@@ -217,7 +228,7 @@ Phones and tablets open the same address too, and **they can do the same as a PC
   and follows soon after the main PC connects. [Reconnect] on an ended session is also done on the main PC.
 - The main PC's auxiliary windows (detached windows) do not show remotely — only the main window's workspaces.
 - A file picker dialog, opening the main PC's Explorer, dragging out to Explorer, detaching a tile to a new window and opening in the main PC's editor do not work remotely.
-- A phone has no **split line dragging or drag and drop** (it is a screen that views one tile at a time). To change the layout, use + (new tab) in the top strip and close in the tile ⋯ menu (splitting is done on the main PC or a PC remote).
+- A phone has no **split line dragging or drag and drop** (it is a screen that views one tile at a time). To change the layout, use + in the top strip (this tab or a new tab) and close with × on the picker screen or in the tile ⋯ menu (splitting is done on the main PC or a PC remote).
 - There is no finger selection of part of the text inside a terminal — long-press for **Select all · Copy**, or use block copy.
 - There is no pinch zoom that enlarges only the terminal text (the browser's own zoom works).
 - The gateway screens (pairing · unlock) use the language set on the main PC.

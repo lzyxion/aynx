@@ -196,9 +196,10 @@ export async function openDefaultShell(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// **새 탭에 열기** — 폰의 "새 탭에 열기" 시트(원격 웹 R5 · 10-20 · `mobile/MobileSheet`). 폰은 타일 하나만 그려서 분할로 끼우면 새
-// 타일이 보이지 않는다 — 그래서 언제나 **그것 하나뿐인 새 탭**이다. 명세 · 시작 폴더 규칙은 "이 탭에" 길과 같다(포커스된 타일이
-// 없으니 셸은 홈 · AI 는 `[ai] start_dir`). 원격 창에서는 `openInNewTab` 이 집 PC 에 새 탭 요청을 보낸다(R3 의 그 길).
+// **새 탭에 열기** — 폰 열기 시트의 "새 탭에"(원격 웹 R5 · 10-20 · `mobile/MobileSheet`) · 사이드 채팅의 새 탭 터미널. **그것 하나뿐인
+// 새 탭**이다. 명세 · 시작 폴더 규칙은 "이 탭에" 길과 같다(포커스된 타일이 없으니 셸은 홈 · AI 는 `[ai] start_dir`). 원격 창에서는
+// `openInNewTab` 이 메인 PC 에 새 탭 요청을 보낸다(R3 의 그 길). 시트의 "지금 탭에"(11-15)는 위의 이 탭에 여는 길을 그대로 부른다 —
+// 폰은 타일 하나만 그리지만 메인 PC 가 포커스를 새 타일로 옮기고 폰이 그 포커스를 따라가므로 새 타일이 곧 뜬다.
 // ---------------------------------------------------------------------------
 
 const NO_FOCUS: FocusSnapshot = { tab: null, focused: null };
@@ -210,7 +211,7 @@ export async function openShellInNewTab(shell?: string): Promise<void> {
 
 /**
  * 이 창의 **기본 셸** 하나만 든 새 탭([`openDefaultShell`] 과 같은 셸) — 사이드 채팅 코드 블록 [터미널에 넣기]의 "새 탭에 터미널 열기"
- * (`app/code-to-term` — 옆에 설 타일이 없다). 돌려주는 것은 연 명세의 id(원격 창은 집 PC 가 새 id 로 세운다 — 그쪽이 안다).
+ * (`app/code-to-term` — 옆에 설 타일이 없다). 돌려주는 것은 연 명세의 id(원격 창은 메인 PC 가 새 id 로 세운다 — 그쪽이 안다).
  */
 export async function openDefaultShellInNewTab(): Promise<string> {
   const pane = withCwd(newLocalPane((await defaultShellId()) ?? undefined), await startDirHere("shell", NO_FOCUS));
@@ -418,8 +419,8 @@ export function noteLocalFsDir(paneId: string, dir: string): void {
 }
 
 /**
- * 파일 타일의 명세에 **보기 값을 적는다** — 적기만 한다(기록 · 요청 없음). 사람의 변경은 [`noteFileView`] · [`noteFileUi`] 가, 원격 창의 요청은 집 PC 주 창이
- * (`app/mirror-requests`) 부른다 — 그래서 원격의 고름이 집 PC 의 마지막 값(`app/file-ui-last` — 기기별)을 바꾸지 않는다. 파일 타일이 아니거나 없으면 `false`.
+ * 파일 타일의 명세에 **보기 값을 적는다** — 적기만 한다(기록 · 요청 없음). 사람의 변경은 [`noteFileView`] · [`noteFileUi`] 가, 원격 창의 요청은 메인 PC 주 창이
+ * (`app/mirror-requests`) 부른다 — 그래서 원격의 고름이 메인 PC 의 마지막 값(`app/file-ui-last` — 기기별)을 바꾸지 않는다. 파일 타일이 아니거나 없으면 `false`.
  *
  * **기본값이면 칸을 지운다** — 크기 `1` · 장소 패널 켬 · 미리 보기 끔 · 숨김 끔은 따로 적을 뜻이 없다. 보기(`view`)는 설정의 기본과 같아도 적는다.
  */
@@ -452,7 +453,7 @@ export function applyFileUiChange(paneId: string, change: { view?: FileView } & 
 
 /**
  * 파일 타일의 **보기 곁 상태**를 바꿨다 — 아이콘 크기 단계 · 장소 패널 · 미리 보기 · 숨김 (docs/log/2026-10-07-file-tile-dolphin.md).
- * [`noteFileView`] 와 같은 규칙(패널 자신이 들고 있어야 저장·이관·복제가 따라온다). 원격 창이면 집 PC 배치에도 적게 요청한다(`queueRemoteFileUi`).
+ * [`noteFileView`] 와 같은 규칙(패널 자신이 들고 있어야 저장·이관·복제가 따라온다). 원격 창이면 메인 PC 배치에도 적게 요청한다(`queueRemoteFileUi`).
  */
 export function noteFileUi(paneId: string, patch: FileUiPatch): void {
   if (!applyFileUiChange(paneId, patch)) return;
@@ -761,8 +762,8 @@ function paneIdsNow(): Set<string> {
  * 연(또는 포커스만 옮긴) 문서 타일에 한 번짜리 "이 줄로" 를 건다 — 터미널 · AI 타일 대화 면([`openPathFromTerminal`])과 사이드
  * 채팅([`openPathFromChat`])의 공통 끝.
  *
- * 집 PC 창은 `opened`(연 명세의 id)에 바로 건다. **원격 창(원격 웹 · 폰)**은 옆에 열기 · 미리 보기 갈아 끼우기 · 새 탭이 모두 집 PC 에
- * 요청만 보내고 집 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 그 id 는 거울에 서지 않는다 — 요청 전에 적어 둔 타일
+ * 메인 PC 창은 `opened`(연 명세의 id)에 바로 건다. **원격 창(원격 웹 · 폰)**은 옆에 열기 · 미리 보기 갈아 끼우기 · 새 탭이 모두 메인 PC 에
+ * 요청만 보내고 메인 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 그 id 는 거울에 서지 않는다 — 요청 전에 적어 둔 타일
  * (`before`) 뒤 **새로 나타난 같은 파일의 문서 타일**([`findNewDocPane`] — 원격 SSH 문서는 같은 터미널 · 별칭까지)을 짧게 살펴 거기 건다.
  * 이미 열린 같은 파일이라 포커스만 옮겼으면 `opened` 가 거울의 실제 id(`before` 에 있다)라 원격도 바로 건다. 거는 때가 타일이 거울에 선
  * 직후여도 된다 — 문서가 글을 읽은 뒤 그 값을 보고 한 번 스크롤한다(`DocView` 의 `line` 효과). [`REMOTE_DOC_WAIT_MS`] 안에 안 서면
@@ -826,10 +827,10 @@ async function openableFile(backend: FsBackend, target: { path: string } | { hom
 }
 
 /**
- * **사이드 채팅의 경로 클릭** — 에이전트 말의 파일 경로를 문서 타일로 연다(2026-11-12 · 집 PC 독 · 원격 웹 독 · 폰). 채팅 프로세스는 늘 이
+ * **사이드 채팅의 경로 클릭** — 에이전트 말의 파일 경로를 문서 타일로 연다(2026-11-12 · 메인 PC 독 · 원격 웹 독 · 폰). 채팅 프로세스는 늘 이
  * PC 라 경로는 **로컬**이다(이미 채팅 폴더 기준으로 풀려 온다 — `SideChatFace`). 누른 곳이 타일이 아니라 곁에 설 타일이 없으므로 자리는 팔레트
  * "파일 열기…"(`app/file-picker` 의 `pickFile`)와 같다 — **지금 탭의 포커스 타일** 곁에 여는 문 [`openDoc`](미리 보기 규칙 그대로). 지금 탭이
- * 없거나 그 자리에 못 열었으면 새 탭에 연다. 원격 창은 같은 함수들이 집 PC 에 요청으로 연다(`app/mirror-requests` — 줄은 집 PC 가 세운
+ * 없거나 그 자리에 못 열었으면 새 탭에 연다. 원격 창은 같은 함수들이 메인 PC 에 요청으로 연다(`app/mirror-requests` — 줄은 메인 PC 가 세운
  * 새 id 에 건다: [`setLineOnOpened`]). 열었으면 `true`.
  * **그림 파일**(`imageMime` 표 — svg 포함)이면 문서가 아니라 이미지 타일([`openImage`] — 터미널 경로와 같은 규칙 · 2026-11-14)이고 꼬리 줄은
  * 버린다. 이미 그 그림을 보는 타일이 있으면 포커스만 옮긴다. 원격 창도 같은 요청 길(`openBeside` · `newTab` — 타일 명세를 그대로 싣는다)을 탄다.

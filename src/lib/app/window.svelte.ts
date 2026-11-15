@@ -29,7 +29,7 @@ export const tearToken = takeTearToken();
 const appWindow = getCurrentWindow();
 
 /** 메인 창은 마지막 탭을 닫아도 남는다 (앱 자체가 사라지면 안 된다). 원격 창(`remote-*`)은 주 창이 아니다 — 자동 승인·대기 카드·
- * 떨어진 세션 안내·페어링 확인 같은 집 PC 주 창 묶음이 원격에서 돌지 않는다(설계 6절). */
+ * 떨어진 세션 안내·페어링 확인 같은 메인 PC 주 창 묶음이 원격에서 돌지 않는다(설계 6절). */
 export const isMainWindow = !isRemote && appWindow.label === "main";
 
 

@@ -1,11 +1,13 @@
 <!--
-  **폰의 둘러보기 화면**(원격 웹 R5 · 10-20 — "호스트 · 프로젝트 · DB 전체 보기") — "새 탭에 열기" 시트에서 밀어 넣는 전체 화면. 머리 =
+  **폰의 둘러보기 화면**(원격 웹 R5 · 10-20 — "호스트 · 프로젝트 · DB 전체 보기") — 열기 시트에서 밀어 넣는 전체 화면. 머리 =
   44px 둥근 뒤로(→ 시트) + 칸 고르기 [호스트 | 프로젝트 | DB]. 몸통 = "최근"(몇 줄 · 열려 있으면 점) + "전체"(데스크톱 독과 **같은 트리** —
   순수 층 `hostTreeRows` · `projectTreeRows` · `dbDockTree` 와 둥지 꼴 `nestRows`, 펼친 폴더 = 둥근 묶음 판 `dock-tree.css`).
 
   폰 몸짓만 다르다: **두 번 누르기가 없다** — 폴더 줄을 누르면 펼치고 접고, 항목 줄을 누르면 고르기만 하고 줄 오른쪽에 알약 하나가 선다
-  (호스트 [접속] · 프로젝트 [열기] · DB [쿼리 열기]). 알약을 누르면 그것 하나뿐인 새 탭(시트를 연 자리의 워크스페이스 — `openInTarget`)이고
-  덮개가 모두 닫힌다. 끌어 놓기 · 폴더 편집 · 우클릭 메뉴는 없다. 펼침은 이 화면의 지역 상태다(데스크톱 독의 펼침 기록을 건드리지 않는다).
+  (호스트 [접속] · 프로젝트 [열기] · DB [쿼리 열기]). 알약을 누르면 시트의 여는 자리(11-15 — [지금 탭에 | 새 탭에])대로 호스트 · DB 는
+  지금 탭에 타일 하나 더(`connect` · `openQueryTile` — 메인 PC 에 `openPane` 요청) 또는 그것 하나뿐인 새 탭(시트를 연 자리의 워크스페이스 —
+  `openInTarget`)이고(`openFromSheet`), 프로젝트는 데스크톱의 프로젝트 열기 규칙 그대로(열린 자리가 있으면 그리로 · 아니면 제 탭)다. 덮개가 모두 닫힌다.
+  끌어 놓기 · 폴더 편집 · 우클릭 메뉴는 없다. 펼침은 이 화면의 지역 상태다(데스크톱 독의 펼침 기록을 건드리지 않는다).
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
@@ -21,7 +23,7 @@
   import { listPanes } from "$lib/session";
   import { settings } from "$lib/settings.svelte.js";
   import { residentWindowTabs } from "$lib/app/tabs.svelte.js";
-  import { connectInNewTab, hostCache } from "$lib/app/hosts.svelte.js";
+  import { connect as connect_, connectInNewTab, hostCache } from "$lib/app/hosts.svelte.js";
   import { hostHistory } from "$lib/app/host-history.svelte.js";
   import { projectTreeRows, sortProjects, worktreeLabel, type Project, type ProjectTreeRow, type WorktreeInfo } from "$lib/projects";
   import { loadWorktrees, openProject, openProjectWorktree, projects, refreshProjects, worktreesOf } from "$lib/app/projects.svelte.js";
@@ -32,11 +34,12 @@
   import { dbHistory } from "$lib/app/db-history.svelte.js";
   import { dbDockConnList, dbOpenLocations, refreshDbDock } from "$lib/app/db-dock.svelte.js";
   import { dbFolderMeta } from "$lib/app/db-folders.svelte.js";
-  import { openQueryTileInNewTab } from "$lib/app/query.svelte.js";
+  import { openQueryTile, openQueryTileInNewTab } from "$lib/app/query.svelte.js";
   import {
     backToMobileSheet,
     closeMobileOverlay,
     mobileBrowseKind,
+    openFromSheet,
     openInTarget,
     setMobileBrowseKind,
     type BrowseKind,
@@ -113,7 +116,11 @@
 
   function connect(name: string) {
     const host = hostCache().find((h) => h.name === name);
-    if (host) openInTarget(() => connectInNewTab(host));
+    if (host)
+      openFromSheet(
+        () => connect_(host),
+        () => connectInNewTab(host),
+      );
   }
 
   function openWorktree(p: Project, w: WorktreeInfo) {
@@ -247,7 +254,10 @@
             {#if lastDb !== null}<span class="sub">{relativeTime(lastDb, now, t)}</span>{/if}
             {#if dbOpenIds.has(row.id)}<span class="dot" aria-label={t("app.mobile.connected")}></span>{/if}
           </button>
-          {#if selected === key}{@render act(t("app.mobile.browse.query"), () => openInTarget(() => openQueryTileInNewTab(row.id, row.tabName)))}{/if}
+          {#if selected === key}{@render act(t("app.mobile.browse.query"), () => openFromSheet(
+                () => openQueryTile(row.id, row.tabName),
+                () => openQueryTileInNewTab(row.id, row.tabName),
+              ))}{/if}
         </div>
       </li>
     {/if}

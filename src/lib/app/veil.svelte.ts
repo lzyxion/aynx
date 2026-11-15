@@ -37,7 +37,7 @@
  *
  * ## 가림막은 **앱 전체에 하나처럼** 선다 (2026-10-28 사용자 결정 — docs/log/2026-10-28-lock-screens.md)
  *
- * 상태는 여전히 창마다 하나지만 집 PC 창들은 서로 맞춘다 — 사람은 하나고, 자리를 비운 것도 그 사람이다:
+ * 상태는 여전히 창마다 하나지만 메인 PC 창들은 서로 맞춘다 — 사람은 하나고, 자리를 비운 것도 그 사람이다:
  * - 어느 창에서 가림막이 서면([`openVeil`]) [`VEIL_RAISED_EVENT`] 로 다른 창도 선다(볼트는 이미 잠겼으니 다시 잠그지 않는다).
  * - 한 창에서 관문을 지나면([`closeVeil`]) [`VEIL_LIFTED_EVENT`] 로 다른 창도 걷힌다 — 받는 창은 볼트가 **실제로 열렸는지**
  *   (`locked` 가 아닌지) 다시 물은 뒤에만 걷는다(이벤트 하나로 걷히지 않게). 09-19 의 "이미 열려 있어도 창마다 관문은 선다" 를 바꿨다.
@@ -50,9 +50,9 @@ import { settleVaultUnlockIfOpen } from "$lib/app/prompts.svelte.js";
 import { emit, isRemote, listen, type UnlistenFn } from "$lib/ipc";
 import * as vault from "$lib/vault";
 
-/** 가림막이 섰다 — 다른 집 PC 창도 세운다 (짐 = 보낸 창 라벨) */
+/** 가림막이 섰다 — 다른 메인 PC 창도 세운다 (짐 = 보낸 창 라벨) */
 export const VEIL_RAISED_EVENT = "veil-raised";
-/** 관문을 지났다 — 다른 집 PC 창도 볼트가 열렸는지 확인하고 걷는다 (짐 = 보낸 창 라벨) */
+/** 관문을 지났다 — 다른 메인 PC 창도 볼트가 열렸는지 확인하고 걷는다 (짐 = 보낸 창 라벨) */
 export const VEIL_LIFTED_EVENT = "veil-lifted";
 
 let windowLabel: string | null = null;
@@ -68,7 +68,7 @@ function selfLabel(): string {
 }
 
 /*
- * 다른 집 PC 창에 알린다 — 원격 창은 내지 않는다(문이 거절한다) · 실패는 삼킨다(이 창의 가림막은 이미 섰다/걷혔다).
+ * 다른 메인 PC 창에 알린다 — 원격 창은 내지 않는다(문이 거절한다) · 실패는 삼킨다(이 창의 가림막은 이미 섰다/걷혔다).
  * 이벤트 이름은 내보내는 호출의 첫 인자에 상수로 바로 적는다 — 원격 이벤트 분류 시험(`remote/deny.rs` 의 `frontend_emits_are_classified`)이 그 글자를 읽는다.
  */
 function broadcastRaised(): void {
@@ -126,7 +126,7 @@ export function raiseVeilForRelock(): void {
  * - `relock` 이면 [`raiseVeilForRelock`] (잠그지 않고 관문만).
  * - 서버가 **바뀌었으면**(크래시·재시작 — 볼트는 그 메모리와 함께 사라졌다) 볼트가 있는 한 [`openVeil`] — 새 서버에는
  *   폐기할 티켓도 없다. 없는 볼트(`absent`)는 가림막을 세우지 않는다(옵트인 — 볼트 없는 사람의 화면은 예전 그대로).
- * - `windowBoot`(집 PC 창의 부팅 첫머리 — 메인 · 보조 창, 원격 창 아님)이고 **마스터가 걸린 볼트가 잠겨 있으면** 가림막(2026-10-28 사용자 결정 — 마스터를 걸었으면
+ * - `windowBoot`(메인 PC 창의 부팅 첫머리 — 메인 · 보조 창, 원격 창 아님)이고 **마스터가 걸린 볼트가 잠겨 있으면** 가림막(2026-10-28 사용자 결정 — 마스터를 걸었으면
  *   앱을 다시 켤 때 무조건 화면을 가린다). 세션 서버가 새로 뜬 날(재부팅 · 10분 자진 종료 · [모든 세션 종료] 뒤)에도 첫 화면이
  *   잠금 해제 모달이 아니라 가림막 관문이고, 건너뛰는 길은 없다 — 마스터를 잊었으면 `vault.bin` 을 손으로 지운다(앱 안에 길을
  *   두지 않는다 — 지나가는 사람이 지울 수 있게 되므로). 이미 잠긴 금고라 다시 잠그지 않는다([`raiseVeilForRelock`]).
@@ -156,7 +156,7 @@ export function closeVeil(): void {
 }
 
 /**
- * 다른 창의 가림막을 따라간다 — 집 PC 창의 부팅(`app/boot`)이 한 번 건다(머리말 "앱 전체에 하나처럼").
+ * 다른 창의 가림막을 따라간다 — 메인 PC 창의 부팅(`app/boot`)이 한 번 건다(머리말 "앱 전체에 하나처럼").
  * 섰다는 소식 → 잠그지 않고 세운다([`raiseVeilForRelock`]). 걷혔다는 소식 → 볼트가 `locked` 가 아니면 걷는다.
  */
 export function listenVeilAcrossWindows(): Promise<UnlistenFn> {

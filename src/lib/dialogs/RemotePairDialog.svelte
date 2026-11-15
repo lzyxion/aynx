@@ -1,6 +1,6 @@
 <script lang="ts">
   // 원격 기기 페어링 확인(R1a-2) — 상태·IPC 는 `app/remote-pair.svelte.ts`. 주 창에서만 뜨고, **가림막이 떠 있으면 그리지 않는다**
-  // (잠긴 집 PC 앞에서 기기를 들이지 못하게 — 그 파일 머리말). 기본 포커스는 [거절], Esc·바깥 클릭도 거절이다.
+  // (잠긴 메인 PC 앞에서 기기를 들이지 못하게 — 그 파일 머리말). 기본 포커스는 [거절], Esc·바깥 클릭도 거절이다.
   import { tick } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";

@@ -22,7 +22,9 @@
    * 메뉴(`ChatModelPopover` — CLI 스위치 · 모델 · Effort). 모델 이름은 목록 줄과 같은 글자(`keywordModelLabel`), 강도는 글자 대신 막대(단계
    * 이름은 `title` · `aria-label`) — 강도를 받지 않는 모델이면 막대가 없다. 확인하지 않은 CLI 버전이면 경고 그림.
    *
-   * 좁은 알약(`FlipComposer` 의 `container: composer`)에서는 이름을 더 줄이고, 아주 좁으면 이름 · 막대를 감춰 `로고 ⌄` 만 남긴다.
+   * 폰(`touch`)은 폭과 상관없이, 메인 PC · 원격 데스크톱은 좁은 알약(`FlipComposer` 의 `container: composer` 가 300px 이하 — 좁힌 독)에서
+   * 이름 · 막대를 감춰 `로고 ⌄` 만 남긴다(2026-11-15 사용자 결정 2안 — 글 칸을 넓힌다). 경고 그림은 남고, 감춘 이름 · 강도는 `title` ·
+   * `aria-label` 에 그대로 있다.
    *
    * 몸은 두 갈래가 같다: 사이드 채팅은 `ctl`(`SideChatControls`)을 주고, **AI 타일 대화 면**(2026-11-13 — 목업 E2 · E4 · `pane/AiFlip`)은
    * 다 지은 `view`(`KeywordView` — 기록의 마지막 답에서 읽은 값)를 준다. `view` 에만 있는 것: 이름 없음(첫 답 전 — 로고만) · **잠김**
@@ -195,14 +197,14 @@
     background: var(--control-on-bg);
   }
 
-  /* 좁은 알약 — 이름을 줄이고, 아주 좁으면 이름 · 막대를 감춰 로고 ⌄ 만 */
-  @container composer (max-width: 300px) {
-    .kw-name {
-      max-width: 5.5em;
-    }
+  /* 폰(터치) — 폭과 상관없이 이름 · 막대를 감춰 로고 ⌄ 만(글 칸을 넓힌다). 경고 그림 · 잠김은 그대로 */
+  .kw.touch .kw-name,
+  .kw.touch .kw-gauge {
+    display: none;
   }
 
-  @container composer (max-width: 230px) {
+  /* 좁은 알약(입력 칸 300 이하 — 메인 PC · 원격 데스크톱의 좁힌 독) — 같은 로고 ⌄ 만 */
+  @container composer (max-width: 300px) {
     .kw-name,
     .kw-gauge {
       display: none;

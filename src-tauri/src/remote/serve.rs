@@ -1,7 +1,7 @@
 //! **Tailscale 연결** — 설정 › 원격 접속의 [연결] · [serve 끄기] 뒤(이름 찾기 → `tailscale serve` 판정 · 실행 → `[remote]` 저장 → 관문 맞추기).
 //!
 //! 불변식:
-//! - **집 PC 전용**이다(`deny.rs` 의 `HOME_ONLY` — 원격 창에서는 세 명령 모두 거절, 화면에도 줄이 없다).
+//! - **메인 PC 전용**이다(`deny.rs` 의 `HOME_ONLY` — 원격 창에서는 세 명령 모두 거절, 화면에도 줄이 없다).
 //! - **실행 인자는 고정이고 포트 숫자 하나만 끼운다**([`serve_on_args`] · [`SERVE_OFF_ARGS`]). 프런트 문자열은 인자에 닿지 않는다 —
 //!   포트는 `u16` 으로 받고, `replace` 는 판정 대상과 견주기만 한다.
 //! - **Funnel 길이 없다** — 여기서 부르는 CLI 인자에 Funnel 을 켜는 것이 없고, 443 이나 이 포트가 Funnel 로 나가 있으면 연결을 거절한다
@@ -335,7 +335,7 @@ fn off_blocking(port_arg: Option<u16>) -> Result<(), String> {
     ))
 }
 
-/// 지금 443 판정 — CLI 가 없거나 못 읽으면 `unknown`. **집 PC 전용**(`deny.rs`). 아무것도 바꾸지 않는다.
+/// 지금 443 판정 — CLI 가 없거나 못 읽으면 `unknown`. **메인 PC 전용**(`deny.rs`). 아무것도 바꾸지 않는다.
 #[tauri::command]
 pub async fn remote_serve_status(port: Option<u16>) -> Result<ServeStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -350,7 +350,7 @@ pub async fn remote_serve_status(port: Option<u16>) -> Result<ServeStatus, Strin
     .map_err(|e| e.to_string())
 }
 
-/// [연결] — 이름 찾기 → serve 판정 · 실행 → `[remote]` 저장 → 관문 맞추기. **집 PC 전용**(`deny.rs`).
+/// [연결] — 이름 찾기 → serve 판정 · 실행 → `[remote]` 저장 → 관문 맞추기. **메인 PC 전용**(`deny.rs`).
 #[tauri::command]
 pub async fn remote_serve_connect(app: AppHandle, port: Option<u16>, replace: Option<String>) -> Result<ServeOutcome, String> {
     tauri::async_runtime::spawn_blocking(move || connect_blocking(&app, port, replace))
@@ -358,7 +358,7 @@ pub async fn remote_serve_connect(app: AppHandle, port: Option<u16>, replace: Op
         .map_err(|e| e.to_string())?
 }
 
-/// [serve 끄기] — 443 이 이 포트일 때만 걷는다. `[remote]` 는 안 바꾼다. **집 PC 전용**(`deny.rs`).
+/// [serve 끄기] — 443 이 이 포트일 때만 걷는다. `[remote]` 는 안 바꾼다. **메인 PC 전용**(`deny.rs`).
 #[tauri::command]
 pub async fn remote_serve_off(port: Option<u16>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || off_blocking(port))

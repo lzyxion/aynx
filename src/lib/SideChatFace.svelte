@@ -14,7 +14,7 @@
    *   칸 한 줄 안에 `[+]  입력 … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다): 왼쪽 `[+]` =
    *   파일 업로드 · 타일 연결(고르기 · 끊기) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
    *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽 칩(`chat/ChatLinkChip` · × = 끊기). 상태 · 바꾸기는
-   *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 집 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
+   *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 메인 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
    *   서버가 CLI 를 띄운다 — 그동안 "{cli} 시작 중…". 턴이 도는 동안 보내기 자리는 **[중단]**(치기는 늘 된다). Esc 는 칸이 쓰지 않으니 독까지
    *   올라가 독을 닫는다(`ChatDock` 의 `onKeydown`).
    * - **알림**: 끊김("중단함" — 실패가 아니다) · 오류 · CLI 알림 · 종료("CLI가 종료됐습니다 [다시 시작]" — 다음 보내기도 다시 띄운다).
@@ -32,22 +32,21 @@
    *   권한 카드 없이 읽힌다)로 간다 — 서버가 그 자리 안의 실제 파일인지 다시 본다. 꼬리의 말풍선은 이름 칩, 기록에 들면 `pictures`
    *   (`ConvImageCache` — 타일 대화 면과 같은 명령)가 그림을 그린다.
    * - **고르기**: `[+]` › 파일 업로드(AI 타일 대화 면 `[+]` 와 같은 이름) = 숨은 `<input type=file multiple>` → 같은 `attachFiles`(원격은
-   *   `stage_agent_attachment` 가 집 PC 첨부 자리에 사본을 둔다). 끌어 놓기 · 붙여 넣기도 같은 길.
+   *   `stage_agent_attachment` 가 메인 PC 첨부 자리에 사본을 둔다). 끌어 놓기 · 붙여 넣기도 같은 길.
    * - **폰**(`phone` — 원격 폰 덮개 `mobile/MobileChat` · 2026-11-01): Enter 는 줄바꿈 · 보내기는 단추(화면 키보드). 메뉴 줄 · 손잡이는 누르는
    *   자리가 44px 근처다(`touch`).
-   * - **코드 블록 → 셸 타일**(2026-11-12 사용자 결정 — 집 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 닫힌 코드 블록에 [터미널에 넣기]
+   * - **코드 블록 → 셸 타일**(2026-11-12 사용자 결정 — 메인 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 닫힌 코드 블록에 [터미널에 넣기]
    *   (`TranscriptBody` 의 `codeActions` → `app/code-to-term` 의 `codeToTerminal` — 문서 타일과 같은 상자 · 같은 규칙, 입력 줄에 넣기만 ·
    *   Enter 는 사람). 이 면은 타일이 아니라 `sourcePaneId` 가 없다 — 상자의 새 터미널 줄은 **새 탭**에 열고, Esc 는 누른 단추로만 돌아간다.
    *   폰은 넣은 뒤 덮개를 걷는다(받은 타일이 덮개 밑에 가려 있다 — `closeMobileOverlay`).
-   * - **경로 링크**(2026-11-12 사용자 결정 — 집 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 파일 경로(`:12` · `:12-20` · `#L12` 줄 꼬리 포함)를
+   * - **경로 링크**(2026-11-12 사용자 결정 — 메인 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 파일 경로(`:12` · `:12-20` · `#L12` 줄 꼬리 포함)를
    *   그냥 클릭에 문서 타일로 연다 — AI 타일 대화 면과 같은 판정 · 같은 풀기(`TranscriptBody` 의 `paths` → `MarkdownBlocks`, `resolvePathLink`).
    *   채팅 프로세스는 늘 이 PC 라 자리는 `local`, 상대 경로의 기준은 그림과 같은 `baseDir`(모르면 절대 · `~/` 경로만). 여는 일은
    *   `app/panes` 의 `openPathFromChat`(파일일 때만 · 지금 탭의 포커스 타일 곁 — 팔레트 "파일 열기…" 와 같은 자리 · 탭이 없으면 새 탭 · 꼬리 줄로).
-   *   원격 창(웹 · 폰)에서도 경로는 집 PC 경로이고 여는 것은 집 PC 에 요청이다. 폰은 연 뒤 덮개를 걷는다.
+   *   원격 창(웹 · 폰)에서도 경로는 메인 PC 경로이고 여는 것은 메인 PC 에 요청이다. 폰은 연 뒤 덮개를 걷는다.
    */
   import { onDestroy, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
-  import { openExportDoc } from "$lib/app/new-doc.svelte.js";
   import FlipComposer from "$lib/pane/FlipComposer.svelte";
   import DomFindBar from "$lib/DomFindBar.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -584,7 +583,6 @@
     diagrams
     {codeActions}
     copyable
-    exportDoc={(text, at) => void openExportDoc({ text, anchor: at, from: { chatDir: null } })}
     paths={pathLinks}
     {images}
     {pictures}

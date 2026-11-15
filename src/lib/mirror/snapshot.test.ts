@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PaneSpec, TabSpec } from "$lib/session/spec";
 import { MAX_WORKSPACES, MIRROR_VERSION, buildSnapshot, parseSnapshot, sanitizePane, sanitizeView } from "./snapshot";
 
-// 원격 웹 R2-B — 집 PC 화면 거울의 스냅숏은 허용 칸만 싣는다(실행 재료 · 토큰 표식 · 화면 버퍼는 원격으로 가지 않는다).
+// 원격 웹 R2-B — 메인 PC 화면 거울의 스냅숏은 허용 칸만 싣는다(실행 재료 · 토큰 표식 · 화면 버퍼는 원격으로 가지 않는다).
 
 const aiLocal: PaneSpec = {
   id: "pane-3",
@@ -129,7 +129,7 @@ describe("views — 타일의 보이는 모습(10-16)", () => {
     expect(sanitizeView(null)).toBeNull();
   });
 
-  it("집 PC 의 viewOf 로 싣고, 받을 때 한 번 더 거른다", () => {
+  it("메인 PC 의 viewOf 로 싣고, 받을 때 한 번 더 거른다", () => {
     const pane: PaneSpec = { id: "pane-1", kind: "local", autorun: "claude", cwd: "C:/work/proj" };
     const snap = buildSnapshot({
       source: "home",
@@ -226,7 +226,7 @@ describe("워크스페이스 목록(10-20 — 판 2 · 원격의 워크스페이
   });
 });
 
-// 시작 화면 한 벌(2026-11-04) — 원격 창이 집 PC 위젯 배치 · 시계 표시를 따른다
+// 시작 화면 한 벌(2026-11-04) — 원격 창이 메인 PC 위젯 배치 · 시계 표시를 따른다
 describe("startBoard", () => {
   const board = {
     widgets: [

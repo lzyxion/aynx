@@ -70,7 +70,7 @@ export async function runOrchV3(h, only) {
   })()`), true);
   const route = async (path) => {
     await ev(`(async () => { const o = await ${orchMod}; const m = await ${tabsMod}; o.openOrchHome(); o.navigateOrchTab(m.activeTab().id, ${JSON.stringify(path)}); })()`);
-    // 원격 경로는 이 페이지의 albumScreens에 있다. 집 PC 거울의 tab.orch는 그대로다.
+    // 원격 경로는 이 페이지의 albumScreens에 있다. 메인 PC 거울의 tab.orch는 그대로다.
     await until(`(async () => { const t = (await ${tabsMod}).activeTab(); const s = await ${h.importApp('app/album-screen.svelte.ts')}; return !!t && JSON.stringify(s.orchScreenPath(t)) === ${JSON.stringify(JSON.stringify(path))}; })()`);
   };
   const sum = (runId, name, state, repo) => ({ ...DETAIL, runId, name, state, repo, taskCount: 0, taskStates: {}, attemptCount: 0, orphaned: false });
@@ -426,7 +426,7 @@ async function runF2(h, only) {
       await ev(`(() => { const e = document.querySelector('[data-remote-reauth] input[type="password"]'); e.value = 'harness'; e.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await ev(`document.querySelector('[data-remote-reauth-ok]').click()`); await started();
       check('원격: REAUTH 표를 거치고 _basic 호출 없음', [await ev(`window.__reauthTickets`), (await calls('producer_album_start_basic')).length], [1, 0]);
-      check('원격: 집 PC 거울 명세를 고치지 않음', (await tabState()).orch, mirrorBefore.orch);
+      check('원격: 메인 PC 거울 명세를 고치지 않음', (await tabState()).orch, mirrorBefore.orch);
       await shot('v3-new-remote-reauth.png');
     } finally {
       await ev(`sessionStorage.removeItem('aynx-h-remote'); sessionStorage.removeItem('h.mirror'); sessionStorage.removeItem('h.pcchats')`);

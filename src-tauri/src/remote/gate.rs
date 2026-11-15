@@ -7,7 +7,7 @@
 //! | `GET /remote/gate.js` · `gate.css` | 누구나 | 위 두 쪽의 스크립트·모양(인라인 없음 — CSP `script-src 'self'`) |
 //! | `GET /remote/theme.css` | 누구나 | 메인 PC 앱이 지금 칠한 색(`theme.rs` — 받은 값이 없으면 빈 몸). gate.css 뒤에 실린다 |
 //! | 그 밖의 GET | 열림만(아니면 401) | 정적 파일(R1a-1) |
-//! | `POST /remote/pair/request` | 미페어링 | 페어링 요청 하나 → 집 PC 주 창에 이벤트 `remote-pair-request` |
+//! | `POST /remote/pair/request` | 미페어링 | 페어링 요청 하나 → 메인 PC 주 창에 이벤트 `remote-pair-request` |
 //! | `POST /remote/pair/status` `{poll}` | 폴 비밀을 든 브라우저 | `pending`·`denied`·`gone`·`allowed`(+ 기기 쿠키) |
 //! | `POST /remote/unlock` `{password?}` | 페어링됨 | 원격 가림막을 걷는다(+ 세션 쿠키) — 아래 "볼트" |
 //! | `POST /remote/lock` | 누구나 | 이 세션을 닫는다(세션 쿠키 지움) |
@@ -24,14 +24,14 @@
 //!
 //! ## 볼트 — **원격 가림막을 걷는 것이 곧 볼트를 여는 것** (결정 · 설계 3.1)
 //!
-//! 집 PC 가림막의 규칙("가림막을 걷는 것이 곧 볼트를 여는 것")을 원격 창에도 그대로 쓴다. 원격 창은 열린 동안 **창으로 세므로**
+//! 메인 PC 가림막의 규칙("가림막을 걷는 것이 곧 볼트를 여는 것")을 원격 창에도 그대로 쓴다. 원격 창은 열린 동안 **창으로 세므로**
 //! (3.1 — 세는 일은 `windows.rs`), 볼트가 창 0개·가림막으로 잠겨 있었어도 원격을 걷으면 연다:
 //! - 마스터 있음: `vault_verify_master`(세션 서버 — 상태를 바꾸지 않는 확인 · 서버 쪽 빈도 제한) → 맞으면, 볼트가 열려 있지 않을 때만
 //!   **기존 `vault_unlock(master)`** 로 연다(값을 돌려주는 새 길은 없다 — 사람이 친 암호가 GUI → 서버 한 방향으로 갈 뿐).
 //! - 마스터 없음(사용자 선택 — 설정 화면이 6번 커밋에서 밝힌다): 단추 하나. 볼트가 잠겨 있으면 기존 `vault_unlock(None)`.
 //! - 금고 없음: 세션만 연다.
 //!
-//! 집 PC 의 가림막(화면 층)은 원격을 걷어도 그대로이고, 원격 세션은 집 PC 를 걷어도 그대로다(창마다 자기 가림막). 원격 [잠그기]·
+//! 메인 PC 의 가림막(화면 층)은 원격을 걷어도 그대로이고, 원격 세션은 메인 PC 를 걷어도 그대로다(창마다 자기 가림막). 원격 [잠그기]·
 //! 무입력 만료는 그 세션만 닫는다 — 볼트를 잠그는 일(원격 창이 빠져 창 0개가 되면)은 `windows.rs` 의 셈이 한다(R1a-3).
 //!
 //! ## 재확인 (R1a-4 — 설계 3절 단계 3 · `deny.rs`)
@@ -282,7 +282,7 @@ pub(crate) async fn unlock_page_now() -> String {
 
 // ── 이벤트 ─────────────────────────────────────────────────────────────────
 
-/// 열린 원격 세션이 바뀌었다 — 집 PC 주 창에(상태바 — [`activity_changed`]).
+/// 열린 원격 세션이 바뀌었다 — 메인 PC 주 창에(상태바 — [`activity_changed`]).
 /// 원격 창(ws)이 자기 세션을 곧바로 다시 보게 깨우고(끝난 세션의 연결은 닫힌다 — R1a-3), 볼트 셈에 알린다(`windows`).
 pub(crate) fn sessions_changed(app: &AppHandle, auth: &Auth) {
     let n = activity_changed(app, auth);
@@ -290,7 +290,7 @@ pub(crate) fn sessions_changed(app: &AppHandle, auth: &Auth) {
     super::windows::sessions_changed(app, n);
 }
 
-/// 원격 접속 모습이 바뀌었다(세션 열림·닫힘 · 원격 창 붙음·끊김 · 기기 이름) — 집 PC 주 창에 `remote-sessions
+/// 원격 접속 모습이 바뀌었다(세션 열림·닫힘 · 원격 창 붙음·끊김 · 기기 이름) — 메인 PC 주 창에 `remote-sessions
 /// {unlocked, active}`(R1a-5). `unlocked` = 열린 기기 수 · `active` = 열렸고 **원격 창이 붙은** 기기 수(상태바 "원격 접속 중 (N)").
 /// 몸은 수뿐이고 프런트가 `remote_devices_list`·`remote_log` 를 다시 읽는다. 열린 기기 수를 돌려준다.
 pub(crate) fn activity_changed(app: &AppHandle, auth: &Auth) -> usize {
@@ -301,7 +301,7 @@ pub(crate) fn activity_changed(app: &AppHandle, auth: &Auth) -> usize {
     ids.len()
 }
 
-/// 집 PC 에 OS 알림 — **끌 수 없다**(설계 9-⑤ 권장 · 13절). 원격 기기가 페어링을 청하거나 원격 가림막을 걷었을 때.
+/// 메인 PC 에 OS 알림 — **끌 수 없다**(설계 9-⑤ 권장 · 13절). 원격 기기가 페어링을 청하거나 원격 가림막을 걷었을 때.
 /// 문구에는 기기 이름만(코드·IP·토큰 없음).
 pub(crate) fn notify_home(app: &AppHandle, body: String) {
     use tauri_plugin_notification::NotificationExt;
@@ -412,7 +412,7 @@ async fn pair_request(app: &AppHandle, auth: &Arc<Auth>, headers: &HeaderMap, no
     let made = auth.lock().pair_request(Instant::now(), name, login, ts_name);
     match made {
         Ok((ticket, notice)) => {
-            eprintln!("[aynx] 원격 관문: 페어링 요청 — 집 PC 확인 대기");
+            eprintln!("[aynx] 원격 관문: 페어링 요청 — 메인 PC 확인 대기");
             let _ = app.emit_to("main", "remote-pair-request", &notice);
             notify_home(
                 app,
@@ -556,7 +556,7 @@ async fn unlock(app: &AppHandle, auth: &Arc<Auth>, headers: &HeaderMap, body: By
         ),
     );
     sessions_changed(app, auth);
-    // 볼트를 열었다 — 페이지가 원격 창으로 붙기 전까지도 원격을 "있음" 으로 센다(집 PC 창 0개일 때 곧바로 다시 잠그지 않게).
+    // 볼트를 열었다 — 페이지가 원격 창으로 붙기 전까지도 원격을 "있음" 으로 센다(메인 PC 창 0개일 때 곧바로 다시 잠그지 않게).
     super::windows::unlocked(app);
     json_response(StatusCode::OK, json!({ "ok": true }), &[session_cookie(token.as_str())])
 }

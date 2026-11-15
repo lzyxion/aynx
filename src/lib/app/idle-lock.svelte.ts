@@ -26,7 +26,7 @@
  * 자리 비움은 아니다" 같은 어긋남이 생긴다. 그래서 `lastActivity` 를 설치 함수의 지역에서 모듈로 올렸다 —
  * 리스너가 걸려 있지 않으면(설치 전) 모듈이 뜬 시각이 마지막 입력이다.
  *
- * ## 입력 시계는 집 PC 창끼리 나눈다 (2026-10-28)
+ * ## 입력 시계는 메인 PC 창끼리 나눈다 (2026-10-28)
  *
  * 가림막이 앱 전체에 하나처럼 서면서(`app/veil` — 한 창이 서면 모든 창이 선다) 창마다 따로 센 시계로는 **쓰지 않던 보조 창
  * 하나가 메인 창에서 일하는 중에 앱 전체를 가린다.** 그래서 활동한 창이 [`USER_ACTIVE_EVENT`] 를 [`SHARE_MS`] 에 한 번씩 내고,
@@ -38,7 +38,7 @@ import { openVeil, veilVisible } from "$lib/app/veil.svelte.js";
 import { emit, isRemote, listen } from "$lib/ipc";
 import { settings } from "$lib/settings.svelte.js";
 
-/** 이 창에서 사람이 움직였다 — 다른 집 PC 창의 입력 시계를 미룬다 (짐 없음) */
+/** 이 창에서 사람이 움직였다 — 다른 메인 PC 창의 입력 시계를 미룬다 (짐 없음) */
 export const USER_ACTIVE_EVENT = "user-active";
 
 /** 활동을 다른 창에 알리는 최소 간격(ms) — 분 단위 판정에 30초면 충분하고 이벤트는 드물다 */
@@ -77,7 +77,7 @@ export function installIdleLock(): () => void {
     if (now - lastBump < BUMP_THROTTLE_MS) return;
     lastBump = now;
     lastActivity = now;
-    // 다른 집 PC 창의 시계도 미룬다(머리말 "입력 시계는 집 PC 창끼리 나눈다") — 제 이벤트를 제가 받아도 같은 값이라 무해하다
+    // 다른 메인 PC 창의 시계도 미룬다(머리말 "입력 시계는 메인 PC 창끼리 나눈다") — 제 이벤트를 제가 받아도 같은 값이라 무해하다
     if (!isRemote && now - lastShare >= SHARE_MS) {
       lastShare = now;
       void emit(USER_ACTIVE_EVENT).catch(() => {});

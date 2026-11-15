@@ -244,7 +244,7 @@ await ev(`(async () => (await ${V}).closeVeil())()`);
 await sleep(300);
 check("⑤ 가림막을 걷으면 보냄", (await seenCalls()).length, 2);
 
-// ── ⑤ 넓은 창(집 PC 와 같은 갈래) — 비포커스 · 사람 입력 ──────────────────────
+// ── ⑤ 넓은 창(메인 PC 와 같은 갈래) — 비포커스 · 사람 입력 ──────────────────────
 await boot(1280, false);
 await signal("s-a", "start");
 await signal("s-a", "stop");

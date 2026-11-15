@@ -318,7 +318,7 @@ export interface PaneMenuCtx {
   phone?: { flip: "term" | "convo" | null };
   /**
    * **폰 배치(`mobileLayout`)인가**(원격 웹 R5 · 10-20) — 폰은 늘 타일 하나를 가장자리까지 그리고 창도 하나라 **분할 둘 · 새 창으로 분리**가
-   * 뜻이 없다(나눠도 보이지 않고, 원격 브라우저에서 새 창은 집 PC 의 창이다). 참이면 그 세 줄을 그리지 않는다 — 위 띠 ⋯ · 길게 누르기 메뉴 모두.
+   * 뜻이 없다(나눠도 보이지 않고, 원격 브라우저에서 새 창은 메인 PC 의 창이다). 참이면 그 세 줄을 그리지 않는다 — 위 띠 ⋯ · 길게 누르기 메뉴 모두.
    * 데스크톱 · 넓은 원격 창은 `undefined` 라 예전 그대로다.
    */
   solo?: boolean;
@@ -654,7 +654,7 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
   // 헤더를 창 밖으로 끄는 몸짓과 같은 결과다. 몸짓을 모르는 사람에게 그 기능이 존재한다는
   // 사실을 알리는 자리이기도 하다. 혼자 떼면 뜻이 깨지는 타일에서는 항목 자체를 그리지 않는다.
   // 원격 문서 타일도 여기서 빠진다(`ctx.borrowed`) — `startPaneTear` 가 거절하는 것과 같은 규칙이다.
-  // 폰(`solo`)에는 분리도 없다 — 창이 하나뿐이고 원격 브라우저에서 새 창은 집 PC 의 창이다.
+  // 폰(`solo`)에는 분리도 없다 — 창이 하나뿐이고 원격 브라우저에서 새 창은 메인 PC 의 창이다.
   const detachable = kind !== "sftp" && kind !== "start" && ctx.borrowed !== true && ctx.solo !== true && ctx.orchTab !== true;
   if (detachable) {
     // 그림이 "링크 열기"(`external`)와 갈리는 이유: 터미널 우클릭 메뉴에서는 **둘이 한

@@ -94,3 +94,19 @@ export function recentProjectIds(
   }
   return out;
 }
+
+/**
+ * **"지금 탭에" 를 못 쓰는 까닭** — 쓸 수 있으면 `null`. 순수(부르는 쪽이 지금 값을 넘긴다).
+ * - `none` — 시트의 대상이 원격 창의 지금 워크스페이스가 아니다(고르기 화면이 다른 · cold 워크스페이스를 보던 중) · 지금 탭이 없다
+ * - `elsewhere` — 메인 PC 가 다른 워크스페이스를 보는 중(`openPane` 은 메인 PC 의 지금 워크스페이스에서만 된다 — 거절 `elsewhere`)
+ */
+export function sheetHereBlock(at: {
+  target: string | null;
+  current: string | null;
+  hasTab: boolean;
+  homeWorkspace: string | null;
+}): "none" | "elsewhere" | null {
+  if (!at.hasTab || at.current === null || (at.target !== null && at.target !== at.current)) return "none";
+  if (at.homeWorkspace !== null && at.homeWorkspace !== at.current) return "elsewhere";
+  return null;
+}

@@ -17,7 +17,7 @@
 //! | [`side_chat_seen`] | 같은 이름 | 쓰기 | `chat, epoch, seq` → `{sent}`(완료 확인 공유 — 판 31 · 방송 `side-chat-seen` 은 몸이 id · 번호뿐이라 `client::RELAYED`) |
 //!
 //! - **창 이름은 GUI 가 채운다** — 부른 웹뷰의 창 라벨(`webview.window().label()`)이고, 프런트가 준 값은 받지 않는다. 그리고 **사람 창만**
-//!   부를 수 있다(독이 있는 창 — 집 PC 주 창 · 원격 웹 창 `remote-<기기>-<세대>` · [`human_window`] — 2026-11-01). 보조 · 떼어 낸 창은
+//!   부를 수 있다(독이 있는 창 — 메인 PC 주 창 · 원격 웹 창 `remote-<기기>-<세대>` · [`human_window`] — 2026-11-01). 보조 · 떼어 낸 창은
 //!   `[main-window-only]` 로 거절. 원격 관문(`remote::deny`)에서 `side_chat_*` 는 모두 ALLOW 다(사용자 결정 2026-11-01 — 원격 창은 이미
 //!   셸에 칠 수 있다 · `side_chat_decide` 도 재확인 없음).
 //! - **사건 중계는 방송하지 않는다**: 서버 이벤트 `side-chat-event{windows, chat, epoch, seq, ev}` 는 몸에 대화 본문이 있어 `client::RELAYED`
@@ -47,7 +47,7 @@ use super::ipc::Grade;
 use crate::errors::{with_reason, SERVER_OUTDATED};
 use crate::i18n::tr;
 
-/// 집 PC 의 주 창 라벨.
+/// 메인 PC 의 주 창 라벨.
 pub(crate) const MAIN_WINDOW: &str = "main";
 /// 사람 창(주 창 · 원격 창)이 아닌 창의 호출 거절 이유 — 낱말은 옛 이름 그대로(프런트가 이 낱말로 가른다).
 pub(crate) const MAIN_WINDOW_ONLY: &str = "main-window-only";
@@ -57,7 +57,7 @@ pub(crate) fn send_timeout() -> Duration {
     Duration::from_millis(crate::orchestration::turn::START_MS) + Duration::from_secs(30)
 }
 
-/// 사이드 채팅을 쓰는 창인가 — **순수**. 집 PC 주 창 · 원격 웹 창(`remote::is_remote_label`)만(보조 · 떼어 낸 창은 아니다).
+/// 사이드 채팅을 쓰는 창인가 — **순수**. 메인 PC 주 창 · 원격 웹 창(`remote::is_remote_label`)만(보조 · 떼어 낸 창은 아니다).
 pub(crate) fn is_human_window(label: &str) -> bool {
     label == MAIN_WINDOW || crate::remote::is_remote_label(label)
 }

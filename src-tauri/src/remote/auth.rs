@@ -8,7 +8,7 @@
 //! | 단계 | 근거 | 받는 것 |
 //! | --- | --- | --- |
 //! | 0 미페어링 | — | 페어링 쪽만 |
-//! | 1 페어링됨 | 기기 쿠키(`__Host-pl_dev`) — 집 PC 사람이 6자리 코드를 견주고 [허용] 한 기기 | 원격 가림막 쪽만 |
+//! | 1 페어링됨 | 기기 쿠키(`__Host-pl_dev`) — 메인 PC 사람이 6자리 코드를 견주고 [허용] 한 기기 | 원격 가림막 쪽만 |
 //! | 2 열림 | 기기 쿠키 + 세션 쿠키(`__Host-pl_ses`) — 원격 가림막을 걷음(마스터 암호, 없으면 단추) | 앱 |
 //!
 //! - **기기 토큰은 값을 남기지 않는다** — `<설정 루트>/remote-devices.json` 에는 `sha256(토큰)` 만(값은 쿠키에만). 비교는
@@ -280,7 +280,7 @@ struct PairRequest {
     state: PairState,
 }
 
-/// 집 PC 주 창에 보내는 것(이벤트 `remote-pair-request` · `remote_pair_pending`).
+/// 메인 PC 주 창에 보내는 것(이벤트 `remote-pair-request` · `remote_pair_pending`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairNotice {
@@ -581,7 +581,7 @@ impl AuthState {
             .map(|p| notice(p, now))
     }
 
-    /// 집 PC 사람의 답. 모르는·끝난·이미 답한 요청이면 `Err`.
+    /// 메인 PC 사람의 답. 모르는·끝난·이미 답한 요청이면 `Err`.
     pub(crate) fn pair_respond(&mut self, request_id: &str, allow: bool, now: Instant) -> Result<(), ()> {
         match self.pairing.as_mut() {
             Some(p) if p.id == request_id && p.state == PairState::Pending && p.expires > now => {

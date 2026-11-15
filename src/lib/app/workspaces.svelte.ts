@@ -45,7 +45,7 @@ let host: WorkspaceWindow | null = null;
 let queue: WorkspaceSaveQueue | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let mainWindow = true;
-/** 원격 창(집 PC 거울) — [`setMirrorWorkspaces`] 가 켠다 */
+/** 원격 창(메인 PC 거울) — [`setMirrorWorkspaces`] 가 켠다 */
 let mirrorMode = false;
 let scope: WriterScope = { kind: "main" };
 let paused = $state(false);
@@ -356,10 +356,10 @@ export async function bootAuxWorkspace(id?: string, restoreSaved = false): Promi
 export function workspacePlacement(): WriterScope { return scope; }
 
 /**
- * **원격 창의 워크스페이스**(원격 웹 R2-B · 10-20 워크스페이스 칩 — `app/mirror.svelte.ts`) — 집 PC 주 창의 워크스페이스 목록을 그대로
- * 비추되 **지금 볼 것은 원격 창 몫**이다(`current` — 거울 환원의 `pickMirrorWorkspace` 가 정한다 · 집 PC 화면은 움직이지 않는다).
+ * **원격 창의 워크스페이스**(원격 웹 R2-B · 10-20 워크스페이스 칩 — `app/mirror.svelte.ts`) — 메인 PC 주 창의 워크스페이스 목록을 그대로
+ * 비추되 **지금 볼 것은 원격 창 몫**이다(`current` — 거울 환원의 `pickMirrorWorkspace` 가 정한다 · 메인 PC 화면은 움직이지 않는다).
  * 쓰기 범위 · 창 바인딩 · 저장 큐를 잡지 않는다(`queue` 없음 = 저장이 돌지 않는다 · 주 창이 아니라 관리 · 전환기도 없다).
- * cold(집 PC 가 아직 열지 않음)는 `materialized` 거짓 — [`switchWorkspace`] 가 그리로 가지 않는다.
+ * cold(메인 PC 가 아직 열지 않음)는 `materialized` 거짓 — [`switchWorkspace`] 가 그리로 가지 않는다.
  */
 export function setMirrorWorkspaces(items: readonly { id: string; name: string; icon?: string; color?: string; cold?: boolean }[], current: string): void {
   mirrorMode = true;
@@ -380,7 +380,7 @@ export function setMirrorWorkspaces(items: readonly { id: string; name: string; 
 let mirrorRepaint: (() => void) | null = null;
 export function setMirrorRepaint(fn: (() => void) | null): void { mirrorRepaint = fn; }
 
-/** 원격 창의 워크스페이스 바꾸기 — 이 창에서만(집 PC 에 요청하지 않는다). cold 는 안내만. */
+/** 원격 창의 워크스페이스 바꾸기 — 이 창에서만(메인 PC 에 요청하지 않는다). cold 는 안내만. */
 function switchMirrorWorkspace(id: string): void {
   const target = list.find((w) => w.id === id);
   if (!target || id === currentId) return;

@@ -125,7 +125,7 @@
   </InfoNote>
 </p>
 {#if isRemote}
-  <!-- 원격 창(R1a-4) — 정책은 집 PC 전용이다(관문이 save_settings 의 [automation] 변경을 거절한다 — remote/deny.rs) -->
+  <!-- 원격 창(R1a-4) — 정책은 메인 PC 전용이다(관문이 save_settings 의 [automation] 변경을 거절한다 — remote/deny.rs) -->
   <p class="footnote warn-line" role="note">
     <UiIcon name="warning" size={13} />
     <span>{t("settings.remote.automationHomeOnly")}</span>

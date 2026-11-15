@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { launchItems, openAliases, recentHostRows, recentProjectIds } from "./launch";
+import { launchItems, openAliases, recentHostRows, recentProjectIds, sheetHereBlock } from "./launch";
 
 describe("새 탭 시트의 새 타일 칸", () => {
   it("기본 셸 · AI 마다 · 로컬 파일 순서 — 같은 AI 는 한 번", () => {
@@ -64,5 +64,21 @@ describe("최근 줄", () => {
       { id: "p3", at: 5 },
     ]);
     expect(recentProjectIds([], new Set(["p1"]))).toEqual([]);
+  });
+});
+
+describe("시트의 \"지금 탭에\" — 못 쓰는 자리(11-15)", () => {
+  const at = { target: "w1", current: "w1", hasTab: true, homeWorkspace: "w1" };
+  it("지금 워크스페이스 · 탭 있음 · 메인 PC 도 같은 워크스페이스면 쓸 수 있다", () => {
+    expect(sheetHereBlock(at)).toBeNull();
+    expect(sheetHereBlock({ ...at, homeWorkspace: null })).toBeNull(); // 아직 거울을 못 받았으면 막지 않는다(메인 PC 가 거절하면 안내)
+  });
+  it("대상이 다른(고르기 화면의 다른 · cold) 워크스페이스 · 탭 없음 = none", () => {
+    expect(sheetHereBlock({ ...at, target: "w3" })).toBe("none");
+    expect(sheetHereBlock({ ...at, hasTab: false })).toBe("none");
+    expect(sheetHereBlock({ ...at, current: null })).toBe("none");
+  });
+  it("메인 PC 가 다른 워크스페이스를 보는 중 = elsewhere", () => {
+    expect(sheetHereBlock({ ...at, homeWorkspace: "w2" })).toBe("elsewhere");
   });
 });

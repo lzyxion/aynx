@@ -3,24 +3,27 @@
   (`<select>`)을 이것으로 바꿨다: 폰의 기본 고르기 화면은 한 줄 글자뿐이라 상태 점 · 아이콘 · 탭 묶음을 그릴 수 없었다.
 
   - 머리: **고르기 화면이 보여 주는** 워크스페이스 이름 + 흐린 탭 수 · 둥근 톱니(폰 설정 화면 — `MobileSettings`) · 둥근 닫기.
-  - 워크스페이스 칩 줄(10-20 — 워크스페이스가 둘 이상일 때만): 집 PC 주 창의 워크스페이스마다 알약 하나(`이름 탭 수` · 가장 급한
+  - 워크스페이스 칩 줄(10-20 — 워크스페이스가 둘 이상일 때만): 메인 PC 주 창의 워크스페이스마다 알약 하나(`이름 탭 수` · 가장 급한
     에이전트 점 — `labels.workspaceChips`), 고른 칩은 선택 면, 많으면 가로로 민다. 칩을 누르면 **고르기 화면만** 그 워크스페이스를
-    보여 준다 — 원격 창의 워크스페이스는 타일 줄을 눌렀을 때 바뀐다(`pickTab` → 워크스페이스 모듈의 거울 갈래). 집 PC 가 아직 열지 않은
+    보여 준다 — 원격 창의 워크스페이스는 타일 줄을 눌렀을 때 바뀐다(`pickTab` → 워크스페이스 모듈의 거울 갈래). 메인 PC 가 아직 열지 않은
     워크스페이스(cold)는 칩만 있고 몸통은 "메인 PC 에서 먼저 열기" 안내 · 새 탭 단추를 끈다.
   - 몸통: 탭마다 둥근 묶음 하나(지금 탭은 한 단 밝게) — 머리줄 `번호. 탭 제목 · 타일 수 · ×(탭 닫기)`, 그 아래 타일 줄(아이콘 ·
-    이름 · 흐린 덧말 · 에이전트 점 + 낱말). 지금 탭의 고른 타일이 선택 면이다.
-  - 꼬리: 새 탭(주 동작 알약) — 곧바로 빈 탭을 만들지 않고 **"새 탭에 열기" 시트**(`MobileSheet` — 위 띠 `+` 와 같은 시트)를 연다. 새 탭이
-    설 워크스페이스는 이 화면이 보여 주던 것(칩 줄)이다. 시트를 고르지 않고 닫으면 아무것도 만들지 않는다.
+    이름 · 흐린 덧말 · 에이전트 점 + 낱말 · 오른쪽 ✕ = 타일 닫기). 지금 탭의 고른 타일이 선택 면이다.
+    타일 줄(11-15)은 틀 하나에 형제 단추 둘이다 — 줄 단추(고르기)와 ✕(타일 닫기 · 탭 ✕ 보다 가볍게: 둥근 면 없이 흐린 글리프 · 누르는 자리
+    44px). ✕ 는 데스크톱 머리줄 × 와 같은 길(`closePaneIn` → 원격이면 `closeTile` 요청 · 세션 · 원격의 저장 안 한 문서는 보내기 전에
+    묻는다 — `app/mirror-requests`)이고, 탭의 마지막 타일이면 탭도 닫힌다. 고르기 화면은 닫지 않는다(이어서 더 닫거나 고른다).
+  - 꼬리: 새 탭(주 동작 알약) — 곧바로 빈 탭을 만들지 않고 **열기 시트**(`MobileSheet` — 위 띠 `+` 와 같은 시트)를 "새 탭에"로 연다(11-15 —
+    위 띠 `+` 는 "지금 탭에"로 연다). 새 탭이 설 워크스페이스는 이 화면이 보여 주던 것(칩 줄)이다. 시트를 고르지 않고 닫으면 아무것도 만들지 않는다.
 
-  전부 **원격 로컬**이다(Tauri 명령 없음 — 고르기는 원격 창 몫이고 집 PC 화면은 움직이지 않는다. 새 탭 · 탭 닫기는 원격 창이 하던 그 길
-  그대로 집 PC 에 요청 — 새 탭은 보고 있는 워크스페이스에 서고, 집 PC 가 다른 워크스페이스를 보는 중이면 넣기만 한다). 덮개 상태는
+  전부 **원격 로컬**이다(Tauri 명령 없음 — 고르기는 원격 창 몫이고 메인 PC 화면은 움직이지 않는다. 새 탭 · 탭 닫기는 원격 창이 하던 그 길
+  그대로 메인 PC 에 요청 — 새 탭은 보고 있는 워크스페이스에 서고, 메인 PC 가 다른 워크스페이스를 보는 중이면 넣기만 한다). 덮개 상태는
   `app/mobile-sheets` 가 쥔다(한 번에 하나 — 시트 · 설정을 열면 이 화면은 닫힌다).
   닫으면 포커스를 위 띠 알약으로 돌려줄 뿐 터미널에 주지 않는다 — xterm 에 주면 폰 화면 키보드가 튀어 오른다.
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
   import AgentStatusGlyph from "$lib/AgentStatusGlyph.svelte";
-  import { activeTabId, closeTabAsked, focusPane, paneOf, pickTab, residentWindowTabs } from "$lib/app/tabs.svelte.js";
+  import { activeTabId, closePaneIn, closeTabAsked, focusPane, paneOf, pickTab, residentWindowTabs } from "$lib/app/tabs.svelte.js";
   import { currentWorkspaceId } from "$lib/app/workspaces.svelte.js";
   import { listPanes, tabFixedTitle, type PaneSpec, type TabSpec } from "$lib/session";
   import { closeMobileOverlay, openMobileSettings, openMobileSheet } from "$lib/app/mobile-sheets.svelte.js";
@@ -70,10 +73,10 @@
     onclose();
   }
 
-  /** 새 탭 — "새 탭에 열기" 시트를 연다(새 탭은 보고 있는 워크스페이스에 — 고른 뒤 원격 창도 그리로 옮긴다) */
+  /** 새 탭 — 열기 시트를 "새 탭에"로 연다(새 탭은 보고 있는 워크스페이스에 — 고른 뒤 원격 창도 그리로 옮긴다) */
   function addTab() {
     if (browsed?.cold) return;
-    openMobileSheet(browsingId);
+    openMobileSheet(browsingId, "new");
   }
 
   /** 칩 줄 — 고른 칩이 보이게(열 때 · 고를 때) */
@@ -159,7 +162,7 @@
           <span class="tab-name">{i + 1}. {name}</span>
           <span class="muted count">{t("app.mobile.picker.tiles", { n: leaves.length })}</span>
           <span class="spacer"></span>
-          <!-- 탭 닫기 — 탭 바의 × 와 같은 길(세션이 든 탭이면 원격에서 한 번 묻고 집 PC 에 요청) -->
+          <!-- 탭 닫기 — 탭 바의 × 와 같은 길(세션이 든 탭이면 원격에서 한 번 묻고 메인 PC 에 요청) -->
           <button
             type="button"
             class="round small"
@@ -172,19 +175,30 @@
           {@const view = mirrorViewOf(pane.id)}
           {@const parts = tileParts(displayName(pane), view)}
           {@const picked = pane.id === focused}
-          <button type="button" class="row" class:picked aria-current={picked ? "true" : undefined} onclick={() => choose(tab, pane)}>
-            <span class="icon" aria-hidden="true"><PaneIcon {pane} size={16} /></span>
-            <span class="text">
-              <span class="name">{parts.name}</span>
-              {#if parts.sub}<span class="sub">{parts.sub}</span>{/if}
-            </span>
-            {#if view?.agent}
-              <span class="state">
-                <AgentStatusGlyph state={view.agent} aria-hidden="true" />
-                {t(AGENT_LABEL[view.agent])}
+          <div class="tile-row" class:picked data-tile-row={pane.id}>
+            <button type="button" class="row" aria-current={picked ? "true" : undefined} onclick={() => choose(tab, pane)}>
+              <span class="icon" aria-hidden="true"><PaneIcon {pane} size={16} /></span>
+              <span class="text">
+                <span class="name">{parts.name}</span>
+                {#if parts.sub}<span class="sub">{parts.sub}</span>{/if}
               </span>
-            {/if}
-          </button>
+              {#if view?.agent}
+                <span class="state">
+                  <AgentStatusGlyph state={view.agent} aria-hidden="true" />
+                  {t(AGENT_LABEL[view.agent])}
+                </span>
+              {/if}
+            </button>
+            <!-- 타일 닫기 — 데스크톱 머리줄 × 와 같은 길(원격이면 요청 · 묻기는 `app/mirror-requests`) -->
+            <button
+              type="button"
+              class="x"
+              data-tile-close={pane.id}
+              title={t("app.mobile.closeTile", { name: parts.name })}
+              aria-label={t("app.mobile.closeTile", { name: parts.name })}
+              onclick={() => closePaneIn(tab.id, pane.id)}><UiIcon name="close" size={14} /></button
+            >
+          </div>
         {/each}
       </section>
     {/each}
@@ -412,25 +426,60 @@
     flex: 1 1 auto;
   }
 
+  /* 타일 줄 — 틀 하나에 줄 단추(고르기) + ✕(닫기). 선택 면은 틀이 쥔다 */
+  .tile-row {
+    display: flex;
+    align-items: stretch;
+    border-radius: var(--radius-surface-inner);
+    color: var(--fg-1);
+  }
+  /* 지금 탭의 고른 타일 — 선택 면(secondaryContainer) */
+  .tile-row.picked {
+    background: var(--control-sel-bg);
+    color: var(--control-sel-fg);
+  }
   .row {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    width: 100%;
     min-height: 52px;
-    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+    padding: var(--space-2) 0 var(--space-2) var(--space-2);
     border: 0;
     border-radius: var(--radius-surface-inner);
     background: transparent;
-    color: var(--fg-1);
+    color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
-  /* 지금 탭의 고른 타일 — 선택 면(secondaryContainer) */
-  .row.picked {
-    background: var(--control-sel-bg);
-    color: var(--control-sel-fg);
+  /* 타일 닫기 — 탭 머리줄 ✕(둥근 면) 보다 가볍게: 면 없이 흐린 글리프 · 누르는 자리는 44px 폭 × 줄 높이 */
+  .x {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-surface-inner);
+    background: transparent;
+    color: var(--fg-2);
+    opacity: 0.75;
+    cursor: pointer;
+  }
+  /* 선택 면 위 — 글자색(onSecondaryContainer)을 따라 대비를 지킨다 */
+  .tile-row.picked .x {
+    color: inherit;
+    opacity: 1;
+  }
+  .x:active {
+    opacity: 1;
+  }
+  .x:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
   }
   .icon {
     flex: 0 0 auto;
@@ -465,7 +514,7 @@
     font-size: var(--t-xs);
     color: var(--fg-2);
   }
-  .row.picked .sub {
+  .tile-row.picked .sub {
     color: inherit;
     opacity: 0.8;
   }
@@ -477,7 +526,7 @@
     font-size: var(--t-xs);
     color: var(--fg-2);
   }
-  .row.picked .state {
+  .tile-row.picked .state {
     color: inherit;
   }
 

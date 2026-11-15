@@ -21,7 +21,7 @@ import { fileImageName, freeFileName, imageSaveFilters, svgFileName, type ImageM
  * - [이미지 다운로드] — 다운로드 폴더에 원래 이름으로, 있으면 ` (1)` · ` (2)` …(`freeFileName` — 목록을 읽어 고른다. 그 사이 누가
  *   같은 이름을 만들면 Rust 의 `rename` 정책이 한 번 더 민다). 끝나면 토스트에 놓인 경로 + [폴더에서 보기].
  * - [다른 이름으로 저장…] — OS 저장 대화상자(덮어쓰기는 대화상자가 이미 물었다 → `overwrite`).
- * - 원격 창(브라우저)은 집 PC 의 다운로드 폴더에 쓰지 않는다 — 그 브라우저의 내려받기(`<a download>`)로 준다(저장 대화상자는
+ * - 원격 창(브라우저)은 메인 PC 의 다운로드 폴더에 쓰지 않는다 — 그 브라우저의 내려받기(`<a download>`)로 준다(저장 대화상자는
  *   메뉴에 서지 않는다 — `imageMenuActions`).
  * - [이미지 복사] — PNG 한 장(`clipboard.ts` 의 `writeClipboardImage` — PNG 가 아니면 캔버스로 바꾼다).
  */
@@ -76,7 +76,7 @@ async function downloadImage(target: ImageTarget): Promise<void> {
   try {
     const blob = await bytesOf(target);
     if (isRemote) {
-      // 원격 창 — 이 브라우저의 내려받기로(집 PC 의 폴더가 아니다)
+      // 원격 창 — 이 브라우저의 내려받기로(메인 PC 의 폴더가 아니다)
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

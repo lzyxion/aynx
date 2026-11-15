@@ -4,7 +4,7 @@ import {
   LAYOUT_OPS, anyWorkspace, findTabByKey, findTileByKey, homePane, parseLayoutRequest, refusalOf, requestPane, toWire, type LayoutRequest,
 } from "./request";
 
-// 원격 웹 R3 — 원격의 배치 바꾸기 요청: 원격 id → 집 PC 열쇠, 허용 칸만, 받는 쪽의 다시 거르기.
+// 원격 웹 R3 — 원격의 배치 바꾸기 요청: 원격 id → 메인 PC 열쇠, 허용 칸만, 받는 쪽의 다시 거르기.
 
 const keys = {
   tile: (id: string) => ({ hpane1: "k:t1", hpane2: "i:pane-2" })[id] ?? null,
@@ -83,7 +83,7 @@ describe("toWire", () => {
 });
 
 describe("anyWorkspace(10-20)", () => {
-  it("닫기 · 이름 바꾸기만 집 PC 가 보지 않는 워크스페이스에서도 — 화면을 옮겨 겨누는 조작은 아니다", () => {
+  it("닫기 · 이름 바꾸기만 메인 PC 가 보지 않는 워크스페이스에서도 — 화면을 옮겨 겨누는 조작은 아니다", () => {
     expect(anyWorkspace({ op: "closeTile", tile: "k:a" })).toBe(true);
     expect(anyWorkspace({ op: "closeTabs", tabs: ["k:t"] })).toBe(true);
     expect(anyWorkspace({ op: "renameTab", tab: "k:t", name: "x" })).toBe(true);

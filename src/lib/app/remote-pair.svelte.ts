@@ -4,9 +4,9 @@
  * [허용]·[거절] 하면 `remote_pair_respond` 를 부른다(R1a-2 — 설계 docs/log/2026-10-15-remote-web-client-design.md 3절).
  *
  * 규칙:
- * - **주 창에서만** — `boot()` 이 `isMainWindow` 로 가른다(대기 카드·알림과 같은 규칙). `remote_pair_respond` 는 집 PC 전용
+ * - **주 창에서만** — `boot()` 이 `isMainWindow` 로 가른다(대기 카드·알림과 같은 규칙). `remote_pair_respond` 는 메인 PC 전용
  *   명령이다(R1a 4번 커밋 거부 목록).
- * - **가림막이 떠 있으면 그리지 않는다**(`RemotePairDialog.svelte`) — 잠긴 집 PC 앞의 누군가가 마스터 없이 기기를 들이지 못하게.
+ * - **가림막이 떠 있으면 그리지 않는다**(`RemotePairDialog.svelte`) — 잠긴 메인 PC 앞의 누군가가 마스터 없이 기기를 들이지 못하게.
  *   요청은 그대로 기다리다(120초) 가림막을 걷으면 보인다.
  * - 닫기(Esc · 바깥 클릭)는 **거절**이다 — 답 없이 닫으면 원격 쪽이 만료까지 기다린다.
  * - 요청 수명이 끝나면 스스로 닫는다(관문이 만료를 알리지 않는다 — 받은 `expiresInMs` 로 잰다). 다른 길로 끝나면

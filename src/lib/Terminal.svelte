@@ -364,8 +364,8 @@
   const codeOf = $derived(tileCode(currentWindowLabel(), pane.id));
 
   /**
-   * **시청자 타일인가**(원격 웹 R2-B) — 원격 창의 터미널 타일은 집 PC 의 세션에 **시청자로 붙기만** 한다(`attachSessionViewer`): 세션을 열지도
-   * 닫지도 않고(손잡이의 닫기 = 시청 끝), 자동 실행 · 설정 스크립트 · 재접속 · 체크포인트 · MCP 거울 보고를 하지 않는다(그 일은 집 PC 의
+   * **시청자 타일인가**(원격 웹 R2-B) — 원격 창의 터미널 타일은 메인 PC 의 세션에 **시청자로 붙기만** 한다(`attachSessionViewer`): 세션을 열지도
+   * 닫지도 않고(손잡이의 닫기 = 시청 끝), 자동 실행 · 설정 스크립트 · 재접속 · 체크포인트 · MCP 거울 보고를 하지 않는다(그 일은 메인 PC 의
    * 주 타일이 한다 — 원격이 거울을 덮거나 지우면 AI 가 보는 타일이 엉킨다). 세션이 없거나 끝나면 기다렸다 다시 붙는다(`viewerConnect`).
    */
   const viewer = isRemote;
@@ -489,7 +489,7 @@
   $effect(() => {
     // 설정·호스트 패널은 세션이 없다 — Terminal 이 마운트되지 않으므로 여기 오지 않지만,
     // kind 가 넓어졌으니 방어한다 (이 뒤로 pane.kind 는 SessionKind 로 좁혀진다).
-    // 시청자(원격 창)는 거울에 보고하지 않는다 — 그 스트림의 거울은 집 PC 주 타일의 것이다(`viewer` 주석).
+    // 시청자(원격 창)는 거울에 보고하지 않는다 — 그 스트림의 거울은 메인 PC 주 타일의 것이다(`viewer` 주석).
     if (!hasSession(pane.kind) || viewer) return;
     const key = contextKeyOf;
     const on = aiOn;
@@ -1099,9 +1099,9 @@
   // ---------------------------------------------------------------------------
   // 크기 주인 (원격 웹 R2-A 서버 · R2-B — `$lib/term/size-owner` 머리말)
   //
-  // 한 세션을 집 PC 창(주)과 원격 창(시청자)이 함께 보면 PTY 크기는 마지막으로 사람이 친 쪽의 것이다. 주인이 아닌 쪽은 ① 주인의 크기로
+  // 한 세션을 메인 PC 창(주)과 원격 창(시청자)이 함께 보면 PTY 크기는 마지막으로 사람이 친 쪽의 것이다. 주인이 아닌 쪽은 ① 주인의 크기로
   // 그리고(`refit`) ② xterm 의 터미널 응답(DSR · DA · DECRQM · OSC 색)을 보내지 않는다(`sendInput` — 둘 다 답하면 셸 입력에 두 번 샌다).
-  // 집 PC 타일도 같다(원격이 주인이면 집 PC 가 삼킨다). 새 세션을 연 쪽은 주인이다. 바뀜은 이벤트 `session-size-owner` 로 온다.
+  // 메인 PC 타일도 같다(원격이 주인이면 메인 PC 가 삼킨다). 새 세션을 연 쪽은 주인이다. 바뀜은 이벤트 `session-size-owner` 로 온다.
   // ---------------------------------------------------------------------------
 
   /** 이 타일이 지금 크기 주인인가 */
@@ -1148,7 +1148,7 @@
   // 지금 워크스페이스에서 줄어든 타일 전부(`$lib/app/size-notice.svelte`). 폰 배치에는 없다(띠의 ⤢).
   // ---------------------------------------------------------------------------
 
-  /** 주인이 주(집 PC 창)인가 — 꼬리표 문구(모르면 `undefined`) */
+  /** 주인이 주(메인 PC 창)인가 — 꼬리표 문구(모르면 `undefined`) */
   let ownerPrimary = $state<boolean | undefined>(undefined);
   /** 터미널 상자 · 그려진 영역(`.xterm-screen`)의 px — 테두리 · 카드 자리 */
   let noticeBox = $state<Size2 | null>(null);
@@ -2123,10 +2123,10 @@
   // ---------------------------------------------------------------------------
   // 시청자 (원격 웹 R2-B — 원격 창의 터미널 타일 · `viewer` 주석)
   //
-  // 붙기: 스트림을 묻고(`probeSession` — 집 PC 가 붙어 있든 떨어졌든 살아 있는 회차면) 화면이 비어 있으면 맡겨 둔 화면(체크포인트)부터 그린
-  // 뒤 그 오프셋부터, 아니면 링 전부(소비 0)를 재생받는다 — 집 PC 의 리로드 붙기와 같은 재생 규칙(재생분의 질의에는 답하지 않는다).
-  // 붙을 세션이 없으면(집 PC 가 아직 안 열었다 · 끝났다) 안내 한 줄을 두고 기다렸다 다시 본다. 서버가 시청을 끝내면: 예산 초과(느린 원격)는
-  // 받은 자리부터 다시 붙어 재동기화하고, 세션 끝은 끝 안내 뒤 다시 기다린다(집 PC 가 같은 스트림을 다시 열면 이어 본다 — SSH 재접속 포함).
+  // 붙기: 스트림을 묻고(`probeSession` — 메인 PC 가 붙어 있든 떨어졌든 살아 있는 회차면) 화면이 비어 있으면 맡겨 둔 화면(체크포인트)부터 그린
+  // 뒤 그 오프셋부터, 아니면 링 전부(소비 0)를 재생받는다 — 메인 PC 의 리로드 붙기와 같은 재생 규칙(재생분의 질의에는 답하지 않는다).
+  // 붙을 세션이 없으면(메인 PC 가 아직 안 열었다 · 끝났다) 안내 한 줄을 두고 기다렸다 다시 본다. 서버가 시청을 끝내면: 예산 초과(느린 원격)는
+  // 받은 자리부터 다시 붙어 재동기화하고, 세션 끝은 끝 안내 뒤 다시 기다린다(메인 PC 가 같은 스트림을 다시 열면 이어 본다 — SSH 재접속 포함).
   // ---------------------------------------------------------------------------
 
   /** 다시 붙어 보기까지 기다리는 시간 — 처음 2초, 실패마다 두 배, 15초까지 */
@@ -2226,7 +2226,7 @@
       if (!view.owner && ownerSize) {
         if (t.cols !== ownerSize.cols || t.rows !== ownerSize.rows) t.resize(ownerSize.cols, ownerSize.rows);
       } else {
-        // 이 쪽이 곧 주인이다(집 PC 의 주가 없다) — 재생은 붙기 전 PTY 크기로 쓰고 재생 끝에서 제 크기로(집 PC 리로드 붙기와 같다).
+        // 이 쪽이 곧 주인이다(메인 PC 의 주가 없다) — 재생은 붙기 전 PTY 크기로 쓰고 재생 끝에서 제 크기로(메인 PC 리로드 붙기와 같다).
         const rs = replaying ? replayResize(s.replaySize, { cols: t.cols, rows: t.rows }, !!checkpoint, sized) : null;
         if (rs) {
           restoring = true;
@@ -2379,7 +2379,7 @@
 
   /** `ssh-exit` 수신 — 재연결할지 여기서 갈린다 */
   function handleExit(reason: SessionExitReason) {
-    // 시청자는 재접속하지 않는다 — 세션을 여는 것은 집 PC 의 일이다(끝 안내 뒤 다시 붙어 본다).
+    // 시청자는 재접속하지 않는다 — 세션을 여는 것은 메인 PC 의 일이다(끝 안내 뒤 다시 붙어 본다).
     if (viewer) {
       viewerSessionEnded();
       return;
@@ -3137,7 +3137,7 @@
     console.log(`[aynx] xterm 마운트 완료 (${pane.kind}) cols=${t.cols} rows=${t.rows}`);
 
     if (viewer) {
-      // ── 원격 창의 시청자 타일(R2-B) — 집 PC 의 세션에 붙기만 한다(`viewer` 주석). 이관 · 연결 대기 · 첫 열기는 집 PC 의 일이다.
+      // ── 원격 창의 시청자 타일(R2-B) — 메인 PC 의 세션에 붙기만 한다(`viewer` 주석). 이관 · 연결 대기 · 첫 열기는 메인 PC 의 일이다.
       // 모바일 배치에서 화면에 없는 타일 · 뒤로 간 페이지(R5)는 붙지 않고 떼어 둔 채로 시작한다(보이면 붙는다).
       if (viewerWanted(visible)) void viewerConnect();
       else viewerParked = true;
@@ -3394,10 +3394,10 @@
 
     const root = container.parentElement ?? container;
     root.addEventListener("contextmenu", onContextMenu);
-    // 원격 창에서만(집 PC 터치 화면의 동작은 예전 그대로 — 웹뷰의 길게 누르기 = `contextmenu`)
+    // 원격 창에서만(메인 PC 터치 화면의 동작은 예전 그대로 — 웹뷰의 길게 누르기 = `contextmenu`)
     const untouch = viewer ? attachTouchGestures(root, touch) : () => {};
     // 폰의 화면 키보드(안드로이드 삼성 키보드 등)는 textarea 를 제자리에서 고친다 — 차분만 보낸다(`term/handheld-input` 머리말).
-    // 판정은 여는 순간 한 번(원격 · 폰 취급). 집 PC 창 · 데스크톱 원격 창은 xterm 조합 도우미 그대로.
+    // 판정은 여는 순간 한 번(원격 · 폰 취급). 메인 PC 창 · 데스크톱 원격 창은 xterm 조합 도우미 그대로.
     const unHandheld = (viewer && handheld() ? attachHandheldInput(t, container) : null) ?? (() => {});
     // 폰의 입력 칸 방식(10-20 · `app/mobile` 의 `lineFieldMode`)에서는 xterm 의 textarea 가 포커스를 쥐지 않는다 — 터미널을 누르거나
     // 활성화가 `t.focus()` 를 불러도 띠의 입력 칸으로 넘긴다(화면 키보드는 그 칸에 뜬다). 끌기 스크롤 · 길게 누르기 메뉴 · 마우스 추적
@@ -3543,7 +3543,7 @@
       oncommand?.(pane.id, null); // 도는 명령 표시도 같은 이유로 (`clearPaneTitle` 과 겹쳐도 무해)
       // AI 컨텍스트 저장소에서도 이 패널을 지운다 (공유 여부와 무관하게 항상). 이관이든
       // 닫힘이든 이 창의 터미널은 사라지므로 서버가 들고 있을 이유가 없다.
-      // 시청자는 거울에 올린 적이 없다 — 지우면 그 스트림의 집 PC 거울(같은 열쇠)을 지운다.
+      // 시청자는 거울에 올린 적이 없다 — 지우면 그 스트림의 메인 PC 거울(같은 열쇠)을 지운다.
       if (!viewer) void dropSession(contextKeyOf);
       dropShared(pane.id);
       // 블록 이력도 여기서 버린다. **이관이어도 안전하다** — 페이로드는 `dragstart` 시점에

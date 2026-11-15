@@ -888,7 +888,7 @@ interface ViewerAttached extends Attached {
   viewer: true;
   ownerCols?: number | null;
   ownerRows?: number | null;
-  /** 주인이 주(집 PC 창)인가 — 이벤트의 `primary` 와 같다(옛 서버는 없다) */
+  /** 주인이 주(메인 PC 창)인가 — 이벤트의 `primary` 와 같다(옛 서버는 없다) */
   ownerPrimary?: boolean;
 }
 

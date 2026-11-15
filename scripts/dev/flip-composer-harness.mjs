@@ -3,7 +3,7 @@
 // `agent_conversation_transcript`)에 쪽의 `last`(마지막 답의 모델 · 강도 — 대화 id 마다 `window.__txLast`)와 `stage_agent_attachment` 를 더했다.
 //
 // 보는 것: ① 첫 답 전(대화 모름) — [+] · 로고만(이름 · 막대 없음) · 760 단 여백(좁은 독 여백 아님) ② 기록의 모델 · 강도 — `Opus 5.5` · 막대 2/5 ·
-// title 에 단계 이름 · 알약 안 자리([+] 왼쪽 · 키워드는 보내기 왼쪽 · 글이 둘 밑으로 안 감) ③ [+] = 진짜 마우스 → 파일 고르기 창(메뉴 없음) →
+// title 에 단계 이름 · 넓은 입력 칸(> 300 · 터치 아님)이라 이름 · 막대가 보이고 접근성 이름 = title(2026-11-15 사용자 결정 2안) · 알약 안 자리([+] 왼쪽 · 키워드는 보내기 왼쪽 · 글이 둘 밑으로 안 감) ③ [+] = 진짜 마우스 → 파일 고르기 창(메뉴 없음) →
 // 고른 파일이 `stage_agent_attachment` → 칩 → 보내면 그 경로 괄호 붙여넣기 + 글 ④ 키워드 → 메뉴(body 로 portal · Default + 모델 넷 fable · opus · sonnet · haiku ·
 // ✓ opus · Default 고리 + Effort 칸 다섯 · Medium 고름 · 안내 한 줄) — Sonnet 을 누르면 입력 문으로 정확히 `/model sonnet\r` · 메뉴 닫힘 · 키워드는 그대로(화면에
 // 확인 문구가 없으면) ⑤ Effort High → `/effort high\r` ⑥ 메뉴 안 Esc = 메뉴만 닫힘(대화 면 그대로 · 아무것도 안 나감) ⑦ 다음 답이 기록에 남으면 키워드가
@@ -218,6 +218,23 @@ const kwInfo = async (id) =>
     return JSON.stringify({ name: k.querySelector('[data-chat-model-name]')?.textContent.trim() ?? null, bars: k.querySelector('[data-chat-effort-bars]')?.dataset.chatEffortBars ?? null,
       n: k.querySelectorAll('.kw-bar').length, chev: !!k.querySelector('.kw-chev'), logo: !!k.querySelector('.kw-logo svg, .kw-logo img, .kw-logo span'),
       locked: k.hasAttribute('data-locked'), title: k.getAttribute('title') ?? k.dataset.tip ?? null }); })()`));
+/** 키워드 폭(2026-11-15 사용자 결정 2안) — 입력 칸(`container: composer` 안쪽 폭) · 키워드 · 글 칸 폭 · 조각마다 보이나 · 접근성 이름 = title */
+const kwFit = async (root) =>
+  JSON.parse(await ev(`(() => {
+    const r = document.querySelector('${root}'); const wrap = r?.querySelector('[data-flip-composer] .wrap'); const kw = r?.querySelector('[data-chat-model-chip]');
+    const ta = r?.querySelector('textarea[data-flip-input]'); if (!wrap || !kw || !ta) return 'null';
+    const ws = getComputedStyle(wrap), ts = getComputedStyle(ta);
+    const vis = (s) => { const e = kw.querySelector(s); return e ? getComputedStyle(e).display !== 'none' : null; };
+    return JSON.stringify({
+      box: Math.round(wrap.clientWidth - parseFloat(ws.paddingLeft) - parseFloat(ws.paddingRight)), cq: ws.containerName,
+      kw: Math.round(kw.getBoundingClientRect().width), text: Math.round(ta.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)),
+      logo: vis('.kw-logo'), name: vis('.kw-name'), gauge: vis('.kw-gauge'), chev: vis('.kw-chev'), label: kw.getAttribute('aria-label'), title: kw.getAttribute('title'), touch: kw.classList.contains('touch'),
+    });
+  })()`));
+/** 폰(touch)이거나 입력 칸 ≤ 300 이면 로고 · ⌄ 만, 아니면 다 — 접근성 이름에는 늘 CLI · 모델 · Effort */
+const kwShape = (f) => (!f ? null : { cq: f.cq, small: f.box <= 300, touch: f.touch, logo: f.logo, name: f.name, gauge: f.gauge, chev: f.chev,
+  label: ["Claude Code", "Opus 5.5", "Effort"].every((w) => f.label?.includes(w)) && f.label === f.title });
+const kwWant = (small, touch = false) => ({ cq: "composer", small, touch, logo: true, name: !small && !touch, gauge: !small && !touch, chev: true, label: true });
 const menuInfo = async () =>
   JSON.parse(await ev(`(() => { const m = document.querySelector('[data-flip-model-menu]'); if (!m) return 'null';
     return JSON.stringify({ cli: m.dataset.flipModelMenu, inBody: m.parentElement === document.body, models: [...m.querySelectorAll('[data-flip-model]')].map((b) => b.dataset.flipModel),
@@ -249,6 +266,9 @@ const lay = JSON.parse(await ev(`(() => { const c = document.querySelector('${P(
   return JSON.stringify({ plusLeft: plus.left - wrap.left < 12, kwBeforeSend: kw.right <= snd.left + 1, inPill: kw.top >= wrap.top && kw.bottom <= wrap.bottom,
     padL: parseFloat(cs.paddingLeft) >= plus.width, padR: parseFloat(cs.paddingRight) >= kw.width + snd.width }); })()`));
 check("② 알약 안 자리 — [+] 왼쪽 · 키워드는 보내기 왼쪽 · 글이 둘 밑으로 안 감", lay, { plusLeft: true, kwBeforeSend: true, inPill: true, padL: true, padR: true });
+const fitK = await kwFit(P(ai.id));
+console.log("info ② 키워드 폭:", JSON.stringify(fitK));
+check("② 넓은 AI 타일 — 입력 칸 > 300 · 터치 아님 · 로고 · 이름 · 막대 · ⌄ · 접근성 이름 = title", kwShape(fitK), kwWant(false));
 await shot("composer-known.png");
 
 // ③ [+] — 진짜 마우스 → 파일 고르기 창(메뉴 없음) → 고른 파일이 첨부 길로
@@ -552,7 +572,7 @@ await ev(fakeAgentSignal({ stream: cx.stream, event: "stop", session: CONVX, cli
 await setView(cx.id, "convo");
 await sleep(1500);
 const kx = await kwInfo(cx.id);
-check("⑩ Codex — GPT-6-astra · 막대(그 모델 단계 여섯 중 셋)", [kx.name, kx.bars, kx.n, kx.title], ["GPT-6-astra", "3", 6, "Codex · GPT-6-astra · Effort · High"]);
+check("⑩ Codex — GPT-6-astra · 막대(그 모델 단계 여섯 중 셋)", [kx.name, kx.bars, kx.n, kx.title], ["GPT-6-Astra", "3", 6, "Codex · GPT-6-Astra · Effort · High"]);
 await clickSel(`${P(cx.id)} [data-chat-model-chip]`);
 await sleep(400);
 const mx = await menuInfo();
@@ -577,10 +597,10 @@ check("⑬ Codex 대화 면에 기록이 나온다", (await ev(`document.querySe
 await ev(`window.__feed(${cx.sid}, ${JSON.stringify("\r\n• Model changed to gpt-6-luna xhigh for this session only\r\n\r\n› \x1b[2mAsk Codex to do anything\x1b[22m\r\n")})`);
 await sleep(900);
 const kx13 = await kwInfo(cx.id);
-check("⑬ 확인 문구 → GPT-6-luna · 막대 4/5(그 모델 단계)", [kx13.name, kx13.bars, kx13.n], ["GPT-6-luna", "4", 5]);
+check("⑬ 확인 문구 → GPT-6-luna · 막대 4/5(그 모델 단계)", [kx13.name, kx13.bars, kx13.n], ["GPT-6-Luna", "4", 5]);
 const s13 = await pickAndFeed(cx.id, cx.sid, `[data-flip-model="gpt-6.1-sol"]`, "\r\n■ Model 'gpt-6.1-sol' is unavailable. Use /model to see available models.\r\n\r\n› \x1b[2mAsk Codex to do anything\x1b[22m\r\n");
 await sleep(2600);
-check("⑬ 거절 문구 → 그대로", [s13, (await kwInfo(cx.id)).name], ["/model gpt-6.1-sol --reasoning=xhigh\r", "GPT-6-luna"]);
+check("⑬ 거절 문구 → 그대로", [s13, (await kwInfo(cx.id)).name], ["/model gpt-6.1-sol --reasoning=xhigh\r", "GPT-6-Luna"]);
 // ⑬b (2026-11-14 실기 — "치다 만 글" 이 계속) 새로 뜬 Codex 는 첫 입력 묶음 뒤의 Enter 를 삼킨다(실측 — 200 · 400ms 모두, 다음 Enter 는 먹는다).
 // 보낸 뒤 입력 줄에 보낸 글이 그대로 남아 있으면 Enter 하나를 더 보낸다(고정 키) — 남지 않았으면 더 보내지 않는다
 const STUCK = "\r\n› /model --reasoning=high\r\n\r\n  ~\\w\r\n";

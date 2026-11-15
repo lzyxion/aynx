@@ -1,17 +1,17 @@
-//! **집 PC 화면 배치 거울**(원격 웹 R2-B — 설계 5절) — 원격 창은 집 PC **주 창의 워크스페이스들**(탭 줄 · 타일 트리 · 포커스 타일 —
-//! 10-20 부터 지금 것만이 아니라 전부 · 어느 것을 볼지는 원격 창 몫이고 집 PC 화면은 움직이지 않는다)을 그대로 그린다. 출처는 하나:
+//! **메인 PC 화면 배치 거울**(원격 웹 R2-B — 설계 5절) — 원격 창은 메인 PC **주 창의 워크스페이스들**(탭 줄 · 타일 트리 · 포커스 타일 —
+//! 10-20 부터 지금 것만이 아니라 전부 · 어느 것을 볼지는 원격 창 몫이고 메인 PC 화면은 움직이지 않는다)을 그대로 그린다. 출처는 하나:
 //! 주 창 웹뷰가 탭·트리가 바뀔 때마다(100ms 디바운스) [`mirror_publish`] 로 스냅숏을 올리고, GUI 는 마지막 한 장만 쥐고
 //! 원격 창들에 이벤트 [`MIRROR_EVENT`] 로 방송한다. 원격 창은 붙을 때 [`mirror_get`] 으로 받아 간다.
 //!
 //! 불변식:
-//! - **쓰는 쪽은 집 PC 주 창 하나**(라벨 `main`) — 다른 창(보조 · 떼어 낸 창 · 원격)이 부르면 거절한다. 원격 창 분류도 집 PC 전용
+//! - **쓰는 쪽은 메인 PC 주 창 하나**(라벨 `main`) — 다른 창(보조 · 떼어 낸 창 · 원격)이 부르면 거절한다. 원격 창 분류도 메인 PC 전용
 //!   (`deny::HOME_ONLY`) — 원격이 가짜 배치를 다른 원격에 흘리지 못하게.
 //! - **스냅숏은 프런트가 걸러 만든다**(`src/lib/mirror/snapshot.ts` — 허용 칸만: 종류 · 별칭 · 스트림 · 경로 · 화면 주소). 1회용 실행
 //!   재료(`autorun`·`cwd`·`setup`·`worktree`·`restore` 버퍼 · MCP 토큰 표식 · 조정자 Run)는 싣지 않는다. 여기서는 모양을 보지 않고
 //!   (불투명 JSON) **크기 상한**([`MAX_BYTES`])만 지킨다. 값(비밀)은 애초에 탭 명세에 없다(볼트 · 토큰은 프런트에 오지 않는다).
 //! - 주 창이 **부서지면**(트레이로 · 앱 끝) 스냅숏을 비우고 `null` 을 방송한다 — 원격은 `workspaces.json`(주 범위)을 읽어 읽기 전용으로
 //!   그린다(그 경로는 프런트 `app/mirror.svelte.ts`). 주 창 **리로드**는 비우지 않는다 — 새 페이지가 곧 다시 올린다(원격이 깜빡이지 않게).
-//! - 방송은 원격 창(`remote-*`)만 겨눈다. 집 PC 창의 프런트는 이 이벤트를 듣지 않는다(원격만 `isRemote` 에서 건다).
+//! - 방송은 원격 창(`remote-*`)만 겨눈다. 메인 PC 창의 프런트는 이 이벤트를 듣지 않는다(원격만 `isRemote` 에서 건다).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -64,7 +64,7 @@ fn broadcast(app: &AppHandle, body: &Value) {
     });
 }
 
-/// **집 PC 주 창이 배치를 올린다** — 마지막 한 장을 쥐고 원격 창들에 방송한다. 주 창 말고는 거절(원격은 `deny::HOME_ONLY`).
+/// **메인 PC 주 창이 배치를 올린다** — 마지막 한 장을 쥐고 원격 창들에 방송한다. 주 창 말고는 거절(원격은 `deny::HOME_ONLY`).
 #[tauri::command]
 pub async fn mirror_publish(app: AppHandle, window: tauri::Window, snapshot: Value) -> Result<(), String> {
     let bytes = serde_json::to_vec(&snapshot).map(|v| v.len()).unwrap_or(usize::MAX);
@@ -74,7 +74,7 @@ pub async fn mirror_publish(app: AppHandle, window: tauri::Window, snapshot: Val
     Ok(())
 }
 
-/// **지금 배치**(원격 창이 붙을 때) — 집 PC 주 창이 없으면(트레이) `null` — 그때 원격은 `workspaces.json` 을 읽는다.
+/// **지금 배치**(원격 창이 붙을 때) — 메인 PC 주 창이 없으면(트레이) `null` — 그때 원격은 `workspaces.json` 을 읽는다.
 #[tauri::command]
 pub async fn mirror_get() -> Option<Value> {
     latest().clone()
@@ -98,17 +98,17 @@ pub(crate) fn main_window_gone(app: &AppHandle, label: &str) {
 // ---------------------------------------------------------------------------
 //
 // 원격 창은 제 탭을 바꾸지 않는다 — 배치 조작(새 탭 · 분할 · 타일 열기 · 닫기 · 옮기기 · 이름 바꾸기)은 [`mirror_request`] 로 **요청**하고,
-// GUI 는 집 PC **주 창에만** 연 채널([`mirror_request_inbox`] — 원격 창이 `listen_any` 로 엿들을 수 있는 이벤트를 쓰지 않는다)로 넘긴다.
+// GUI 는 메인 PC **주 창에만** 연 채널([`mirror_request_inbox`] — 원격 창이 `listen_any` 로 엿들을 수 있는 이벤트를 쓰지 않는다)로 넘긴다.
 // 주 창이 제 함수로 적용하고 [`mirror_respond`] 로 답하면 그 답이 원격의 invoke 결과가 된다. 결과 배치는 평소의 거울 방송으로 돌아간다
 // (쓰기 주인은 늘 주 창 하나 — `workspaces.json` 쓰기 임대 규칙 그대로).
 //
 // - 종류는 [`LayoutRequest`] 하나로 고정이다(serde 태그 enum · 모르는 종류·칸은 거절 — 프런트 `src/lib/mirror/request.ts` 의
-//   `LAYOUT_OPS` 와 짝). 대상은 집 PC 의 타일·탭 열쇠(`k:<tileKey>` · `i:<id>`)이고, 있는지는 주 창이 본다(없으면 `[mirror-missing]`).
+//   `LAYOUT_OPS` 와 짝). 대상은 메인 PC 의 타일·탭 열쇠(`k:<tileKey>` · `i:<id>`)이고, 있는지는 주 창이 본다(없으면 `[mirror-missing]`).
 // - 남용 방지: 원격 창마다 [`RATE_WINDOW`] 에 [`RATE_MAX`] 개 · 몸 [`REQUEST_MAX_BYTES`] · 기다리는 요청 [`MAX_PENDING`] · 답을
 //   [`REQUEST_TIMEOUT`] 까지만 기다린다.
 // - 주 창이 없으면(트레이) `[mirror-no-home]` — 주 창을 몰래 띄우지 않는다. 주 창이 리로드 중이면 새 페이지가 채널을 다시 열 때까지
 //   요청은 시간 초과로 끝난다.
-// - 레이아웃 조작은 재확인(REAUTH) 대상이 아니다(권한 B — 원격 창 ≈ 집 PC 창). 세션을 끝내는 닫기의 확인은 요청한 원격 쪽이 묻는다.
+// - 레이아웃 조작은 재확인(REAUTH) 대상이 아니다(권한 B — 원격 창 ≈ 메인 PC 창). 세션을 끝내는 닫기의 확인은 요청한 원격 쪽이 묻는다.
 
 /// 요청 몸 상한(직렬화 바이트) — 새 타일 명세(쿼리 초안 포함)까지.
 pub(crate) const REQUEST_MAX_BYTES: usize = 256 * 1024;
@@ -166,7 +166,7 @@ pub(crate) enum LayoutRequest {
         project_folder: Option<String>,
         #[serde(default, rename = "projectId", skip_serializing_if = "Option::is_none")]
         project_id: Option<String>,
-        /// 설 워크스페이스(원격 창이 보던 것) — 집 PC 가 보는 것과 다르면 주 창은 넣기만 하고 화면을 옮기지 않는다.
+        /// 설 워크스페이스(원격 창이 보던 것) — 메인 PC 가 보는 것과 다르면 주 창은 넣기만 하고 화면을 옮기지 않는다.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         workspace: Option<String>,
     },
@@ -245,14 +245,14 @@ pub(crate) enum LayoutRequest {
         tile: String,
         dir: FocusDir,
     },
-    /// (오케스트레이션 탭) 원격 창에 그 탭이 없을 때 집 PC 가 앨범 탭(`runId`) · 홈을 연다 — 배치 요청 하나(새 Tauri 명령 아님 · 원격 관문 표 그대로).
+    /// (오케스트레이션 탭) 원격 창에 그 탭이 없을 때 메인 PC 가 앨범 탭(`runId`) · 홈을 연다 — 배치 요청 하나(새 Tauri 명령 아님 · 원격 관문 표 그대로).
     OpenOrchTab {
         #[serde(default, rename = "runId", skip_serializing_if = "Option::is_none")]
         run_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         workspace: Option<String>,
     },
-    /// 파일 타일의 보기 설정(2026-11-04 — 원격 창의 토글을 집 PC 배치에 적는다 · 없으면 다음 거울 갱신에 되돌아간다). 화면을 옮기지 않는다.
+    /// 파일 타일의 보기 설정(2026-11-04 — 원격 창의 토글을 메인 PC 배치에 적는다 · 없으면 다음 거울 갱신에 되돌아간다). 화면을 옮기지 않는다.
     FileUi {
         tile: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -399,7 +399,7 @@ fn device_name(app: &AppHandle, label: &str) -> String {
     app.try_state::<super::Gateway>().map(|g| g.auth.lock().device_name(id)).unwrap_or_default()
 }
 
-/// **원격 창의 배치 바꾸기 요청**(R3 · 원격 허용) — 집 PC 주 창에 넘겨 답을 기다린다. 됐으면 `Ok`, 아니면 `[mirror-<사유>] …`
+/// **원격 창의 배치 바꾸기 요청**(R3 · 원격 허용) — 메인 PC 주 창에 넘겨 답을 기다린다. 됐으면 `Ok`, 아니면 `[mirror-<사유>] …`
 /// (`no-home` · `missing` · `elsewhere` · `cold` · `unsaved` · `dbtx` · `start` · `rate` · `busy` · `timeout` · `invalid`).
 #[tauri::command]
 pub async fn mirror_request(app: AppHandle, window: tauri::Window, request: Value) -> Result<(), String> {
@@ -446,7 +446,7 @@ pub async fn mirror_request(app: AppHandle, window: tauri::Window, request: Valu
     }
 }
 
-/// **집 PC 주 창이 배치 요청을 받는 채널을 연다**(R3 · 집 PC 전용) — 페이지를 다시 읽으면 새 채널로 갈아 끼운다.
+/// **메인 PC 주 창이 배치 요청을 받는 채널을 연다**(R3 · 메인 PC 전용) — 페이지를 다시 읽으면 새 채널로 갈아 끼운다.
 #[tauri::command]
 pub async fn mirror_request_inbox(window: tauri::Window, channel: Channel<Value>) -> Result<(), String> {
     if window.label() != PUBLISHER {
@@ -456,7 +456,7 @@ pub async fn mirror_request_inbox(window: tauri::Window, channel: Channel<Value>
     Ok(())
 }
 
-/// **집 PC 주 창의 답**(R3 · 집 PC 전용) — `error` 가 없으면 적용됨. 모르는 id(이미 시간 초과)는 조용히 버린다.
+/// **메인 PC 주 창의 답**(R3 · 메인 PC 전용) — `error` 가 없으면 적용됨. 모르는 id(이미 시간 초과)는 조용히 버린다.
 #[tauri::command]
 pub async fn mirror_respond(window: tauri::Window, id: u64, error: Option<String>) -> Result<(), String> {
     if window.label() != PUBLISHER {

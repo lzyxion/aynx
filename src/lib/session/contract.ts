@@ -160,7 +160,7 @@ export interface SessionHandle {
   readonly sizeOwner?: boolean;
   /** 시청자 붙기에서 — 지금 주인의 크기(주인이 아니면 이 크기로 그린다) */
   readonly ownerSize?: { cols: number; rows: number };
-  /** 시청자 붙기에서 — 지금 주인이 주(집 PC 창)인가(옛 서버는 없다) */
+  /** 시청자 붙기에서 — 지금 주인이 주(메인 PC 창)인가(옛 서버는 없다) */
   readonly ownerPrimary?: boolean;
   /**
    * 입력을 셸에 — `source` 는 출처(`keyboard`(기본) · `paste` · `protocol` — `$lib/term/input-source`). 세션 서버가 오케스트레이션

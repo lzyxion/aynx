@@ -1,5 +1,5 @@
 // 설정 화면 **원격 접속** 손잡이 — `[remote]`(R1a-5 · `RemoteSection`). 값은 [저장] 이 쓰고, 관문은 저장 뒤 Rust 가 다시 맞춘다
-// (`remote::sync`). 켜기 · 이름 · 포트는 **집 PC 에서만**이다 — 원격 창에서 바꾸면 Rust 가 저장을 거절한다(`remote/deny.rs`
+// (`remote::sync`). 켜기 · 이름 · 포트는 **메인 PC 에서만**이다 — 원격 창에서 바꾸면 Rust 가 저장을 거절한다(`remote/deny.rs`
 // 칸 단위 문). 화면도 원격에서 그 칸을 잠근다. 끄기는 어디서나 된다. 예외 하나 — [연결] 은 [저장] 을 기다리지 않는다(`markRemoteConnected`).
 import { settings } from "./store.svelte.js";
 

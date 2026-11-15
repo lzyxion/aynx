@@ -366,7 +366,7 @@ export function findFilePane(
 /**
  * `before`(요청 전에 있던 타일 id) 뒤 **새로 나타난, 그 파일을 보는 문서 타일** — 있으면 그 명세, 없으면 `null` (순수 함수).
  *
- * 원격 창(원격 웹 · 폰)이 문서를 열면 집 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 연 명세의 id 로는 그 타일을
+ * 원격 창(원격 웹 · 폰)이 문서를 열면 메인 PC 가 **새 id** 로 세우므로(`app/mirror-requests` 의 `fresh`) 연 명세의 id 로는 그 타일을
  * 찾을 수 없다 — 거울에 새로 선 타일 중 같은 파일([`findDocPane`] 과 같은 판정)을 그 타일로 본다(`app/panes` 의 `setLineOnOpened`).
  */
 export function findNewDocPane(

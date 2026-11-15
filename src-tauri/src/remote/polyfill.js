@@ -12,7 +12,7 @@
 //   잠금 해제 쪽을 낸다.
 // - 플러그인 명령은 여기서 가른다(아래 `PLUGINS` 표): 브라우저로 대신하거나 · 무해한 흉내 · "원격에서 지원하지 않음" 거절 ·
 //   그대로 관문(`event` 의 emit · `path` — `capabilities/remote.json` 이 연다). 표에 없는 `plugin:*` 는 거절하고 콘솔에 남긴다.
-// - 앱 명령의 문은 관문(`remote/deny.rs` — 집 PC 전용 · 재확인 · 미지원 · 허용)이다. 여기서 하는 것은 둘뿐이다:
+// - 앱 명령의 문은 관문(`remote/deny.rs` — 메인 PC 전용 · 재확인 · 미지원 · 허용)이다. 여기서 하는 것은 둘뿐이다:
 //   (1) **재확인**(R1a-4): 부팅 표의 `reauth` 명령은 보내기 전에 `POST /remote/reauth {cmd, password?}` 로 1회용 표를 받아 프레임의
 //   `reauth` 에 싣는다. 마스터가 없으면 관문이 곧바로 표를 주고, 있으면 암호 칸이 뜬다. R4 부터 칸·확인은 **앱 모달**
 //   (`window.__AYNX_REMOTE_UI__` — 앱이 부팅에서 건다 · 마스터가 없으면 확인 단추만)이고, 앱이 뜨기 전에만 이 파일의 작은 칸.
@@ -35,7 +35,7 @@
   meta.remove(); // 부팅 표는 한 번 쓰면 끝 — DOM 에 남기지 않는다
   const LABEL = String(boot.label || "");
   const GEN = Number(boot.gen) >>> 0;
-  // 이 파일 자신의 문구 언어 — 앱 모듈이 뜨기 전에는 관문이 실은 집 PC 의 앱 언어(`boot.lang`), 뜬 뒤에는 앱이 적는
+  // 이 파일 자신의 문구 언어 — 앱 모듈이 뜨기 전에는 관문이 실은 메인 PC 의 앱 언어(`boot.lang`), 뜬 뒤에는 앱이 적는
   // `<html lang>`(`i18n.svelte.ts` 의 `setLocale` — 원격에서 언어를 바꿔도 따라간다). 셸의 처음 `lang` 은 고정값이라 보지 않는다.
   let lang = boot.lang === "en" ? "en" : "ko";
   new MutationObserver(() => {
@@ -441,12 +441,12 @@
     "event|unlisten": (a) => call((id) => JSON.stringify({ t: "unlisten", id, event: a.event, eventId: a.eventId })),
     "event|emit": null,
     "event|emit_to": null,
-    // 경로: 집 PC 의 경로가 맞는 답이다(관문 — capabilities/remote.json).
+    // 경로: 메인 PC 의 경로가 맞는 답이다(관문 — capabilities/remote.json).
     "path|*": null,
     // 클립보드 읽기 → 브라우저(보안 컨텍스트 — tailscale serve 의 https).
     "clipboard-manager|read_text": () => navigator.clipboard.readText(),
     "clipboard-manager|write_text": (a) => navigator.clipboard.writeText(String((a && (a.text ?? (a.data && a.data.plainText && a.data.plainText.text))) || "")),
-    // 여는 것: URL 은 새 탭 · 집 PC 의 파일·폴더 열기는 뜻이 없다.
+    // 여는 것: URL 은 새 탭 · 메인 PC 의 파일·폴더 열기는 뜻이 없다.
     "opener|open_url": (a) => {
       window.open(String(a.url), "_blank", "noopener");
       return Promise.resolve(null);
@@ -465,7 +465,7 @@
     "dialog|confirm": (a) => dialogMessage({ ...a, buttons: "OkCancel" }).then((r) => r === "Ok"),
     "dialog|open": () => Promise.reject(unsupportedFor("plugin:dialog|open")),
     "dialog|save": () => Promise.reject(unsupportedFor("plugin:dialog|save")),
-    // 탐색기로 끌어내기 — 원격에는 집 PC 탐색기가 없다.
+    // 탐색기로 끌어내기 — 원격에는 메인 PC 탐색기가 없다.
     "drag|start_drag": () => Promise.reject(unsupportedFor("plugin:drag|start_drag")),
     // 앱 정보.
     "app|version": () => (version !== null ? Promise.resolve(version) : new Promise((r) => versionWaiters.push(r))),

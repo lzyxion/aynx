@@ -116,7 +116,6 @@
     paths,
     codeActions,
     copyable = false,
-    exportDoc,
   }: {
     /** 대화의 열쇠 — 바뀌면(열림 포함) 처음부터. `null` 이면 아무것도 읽지 않는다 */
     convKey: string | null;
@@ -214,8 +213,6 @@
     codeActions?: ComponentProps<typeof MarkdownBlocks>["codeActions"];
     /** 사람 말풍선 아래의 [복사] 단추(타일 대화 면 · 사이드 채팅 — 이 파일 머리말). 끄면 예전 그대로 */
     copyable?: boolean;
-    /** 에이전트 답 [문서로 내보내기](`copyable` 의 턴 끝 단추 줄 · [복사] 오른쪽) — 그 턴의 글(복사와 같은 글) · 단추 아래 자리. 없으면 단추 없음 */
-    exportDoc?: (text: string, anchor: { x: number; y: number }) => void;
   } = $props();
 
   /**
@@ -814,20 +811,6 @@
       aria-label={t("board.viewer.copy")}
       onclick={() => void copyMessage(text)}><UiIcon name="copy" size={14} /></button
     >
-    {#if side === "agent" && exportDoc}
-      <!-- [문서로 내보내기](`exportDoc` — 부르는 쪽이 상자를 연다) — [복사] 바로 오른쪽 -->
-      <button
-        type="button"
-        class="mcopy-btn"
-        title={t("files.doc.export")}
-        aria-label={t("files.doc.export")}
-        data-msg-export
-        onclick={(ev) => {
-          const r = ev.currentTarget.getBoundingClientRect();
-          exportDoc?.(text, { x: r.left, y: r.bottom + 4 });
-        }}><UiIcon name="upload" size={14} /></button
-      >
-    {/if}
   </span>
 {/snippet}
 

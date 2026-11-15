@@ -8,7 +8,7 @@
 //! - **볼트 "창 0개" 셈에 원격 창을 더한다**(3.1 — 밖에서 쓰는 중이면 잠그지 않는다). 셈의 단위는 **살아 있는 원격 창(ws 연결)** 이고,
 //!   유예 둘이 붙는다: 원격 가림막을 걷은 직후(페이지가 붙기 전 — [`UNLOCK_GRACE`])와 연결이 끊긴 직후(새로 고침·잠깐 끊김 —
 //!   [`DISCONNECT_GRACE`], 9-④). 세션이 끝나서(잠그기·폐기·무입력·관문 끄기) 닫힌 연결에는 유예가 없다.
-//!   판정은 순수 함수 [`vault_lock_due`] 하나 — 집 PC 창 0개 **그리고** 원격 없음일 때만 잠근다(이유 `windows_zero` 그대로).
+//!   판정은 순수 함수 [`vault_lock_due`] 하나 — 메인 PC 창 0개 **그리고** 원격 없음일 때만 잠근다(이유 `windows_zero` 그대로).
 //! - 세션 서버 쪽 셈(파이프 클라이언트 수)은 그대로다 — GUI 가 살아 있는 한 영향 없음.
 
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub(crate) fn is_remote_label(label: &str) -> bool {
     label.starts_with(REMOTE_PREFIX)
 }
 
-/// 집 PC 의 창(주·보조·떼어 낸 창)만 — 원격 창을 뺀 `webview_windows()`.
+/// 메인 PC 의 창(주·보조·떼어 낸 창)만 — 원격 창을 뺀 `webview_windows()`.
 pub(crate) fn home_windows<R: Runtime, M: Manager<R>>(app: &M) -> HashMap<String, WebviewWindow<R>> {
     app.webview_windows()
         .into_iter()
@@ -37,12 +37,12 @@ pub(crate) fn home_windows<R: Runtime, M: Manager<R>>(app: &M) -> HashMap<String
         .collect()
 }
 
-/// `label` 말고 남은 집 PC 창이 있는가(창 파괴 훅 — 파괴 중인 창이 아직 목록에 있을 수 있다).
+/// `label` 말고 남은 메인 PC 창이 있는가(창 파괴 훅 — 파괴 중인 창이 아직 목록에 있을 수 있다).
 pub(crate) fn has_home_window_except<R: Runtime, M: Manager<R>>(app: &M, label: &str) -> bool {
     app.webview_windows().keys().any(|l| l != label && !is_remote_label(l))
 }
 
-/// **볼트 창 0개 잠금을 걸 때인가** — 순수. 집 PC 창이 하나도 없고 원격도 없을 때만.
+/// **볼트 창 0개 잠금을 걸 때인가** — 순수. 메인 PC 창이 하나도 없고 원격도 없을 때만.
 pub(crate) fn vault_lock_due(home_windows: usize, remote_present: bool) -> bool {
     home_windows == 0 && !remote_present
 }
@@ -130,7 +130,7 @@ pub(crate) fn sessions_changed(app: &AppHandle, unlocked_devices: usize) {
     }
 }
 
-/// `after` 뒤에 한 번 판정 — 집 PC 창 0개 · 원격 없음이면 창 0개 잠금(`windows_zero`). 잠긴 볼트에 다시 보내도 무해하다.
+/// `after` 뒤에 한 번 판정 — 메인 PC 창 0개 · 원격 없음이면 창 0개 잠금(`windows_zero`). 잠긴 볼트에 다시 보내도 무해하다.
 fn schedule(app: &AppHandle, after: Duration) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {

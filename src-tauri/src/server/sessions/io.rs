@@ -280,7 +280,7 @@ fn settle_notes() -> Vec<ResizeJob> {
                     });
                 }
                 // 실을 크기: 노트의 크기(새 주인이 적어 둔 것 — 곧 건다) → **지금** 주인이 적어 둔 크기(주가 붙으면 노트가 쌓인 뒤에 제 크기를
-                // 적고 PTY 에 건다 — 노트 때는 아직 없었다 · 실기 R2-B: 집 PC 리로드 뒤 원격이 옛 크기를 받았다) → 로컬 PTY 크기.
+                // 적고 PTY 에 건다 — 노트 때는 아직 없었다 · 실기 R2-B: 메인 PC 리로드 뒤 원격이 옛 크기를 받았다) → 로컬 PTY 크기.
                 let shown = size
                     .or_else(|| owner.and_then(|_| core().owner_size(&stream)))
                     .or_else(|| owner.and(pty_size_of(kind, id)));

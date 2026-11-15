@@ -330,6 +330,8 @@
     border-bottom: none;
     /* 줄의 gap — 포커스 밖에서 접히는 조작 단추(`data-head-act`)의 앞 간격을 지운다(`pane/pane-tools.svelte.ts`) */
     --head-act-gap: 4px;
+    /* 폭 담기를 걷는다 — 머리줄이 이 줄의 내용 폭을 재야 좁을 때 이름이 먼저 준다(`PaneTools.keepBar` — 담긴 상자는 내용 폭이 0 으로 잡힌다) */
+    container-type: normal;
   }
 
   /* 목차 패널 경계에 맞춘 머리줄(`span`) — 도구가 본문 열의 x 에서 바로 선다(그 x 는 머리줄이 맞춘다 — `pane/head-span`) */

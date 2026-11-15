@@ -10,7 +10,7 @@ import { startBoardSnapshot } from "$lib/start-widgets.svelte.js";
 import type { PaneSpec, TabSpec } from "$lib/session";
 
 /**
- * **집 PC 주 창이 화면 배치를 올린다**(원격 웹 R2-B — 원격 창의 거울 출처 · `src-tauri/src/remote/mirror.rs`).
+ * **메인 PC 주 창이 화면 배치를 올린다**(원격 웹 R2-B — 원격 창의 거울 출처 · `src-tauri/src/remote/mirror.rs`).
  *
  * `+page` 의 `$effect` 가 [`scheduleMirrorPublish`] 를 부른다 — 몸통이 **이 창의 모든 워크스페이스**(10-20 — 원격의 워크스페이스 칩)의
  * 탭 · 트리 · 포커스 · 워크스페이스 목록(이름 · 마지막 활성 탭 · cold 의 저장된 탭 수)을 읽어 스냅숏을 지으므로

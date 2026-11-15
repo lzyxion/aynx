@@ -258,7 +258,7 @@ await openLocal();
 const f = (await specs("localfs")).find((p) => !countBefore.has(p.id));
 check(f && fieldsOf(f) === JSON.stringify({}), "망가진 마지막 값은 버린다 — 기본으로 선다");
 
-// ── ⑨ 원격 요청을 집 PC 주 창이 적용 — 명세만 바꾸고 마지막 값은 그대로(기기별) ──
+// ── ⑨ 원격 요청을 메인 PC 주 창이 적용 — 명세만 바꾸고 마지막 값은 그대로(기기별) ──
 const R = importApp("app/mirror-requests.svelte");
 const beforeLast = await ev(`localStorage.getItem('aynx.files.lastUi')`);
 const home = (await specs("localfs"))[0];

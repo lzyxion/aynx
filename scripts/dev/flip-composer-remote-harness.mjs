@@ -2,15 +2,16 @@
 // 원격 창 흉내(`window.__AYNX_REMOTE__` · 창 이름 `remote-h-1`)로 뜨고 탭은 `applyMirrorTabs` 로 세운다(`phone-convo-harness` 와 같은 길) — AI 타일의
 // 명세에 대화 연결(`agentLink`)을 실어 터미널이 마운트되며 표에 심는다(`seedAgentLink`). 쪽 스텁은 최신 쪽에 `last` 를 싣는다.
 //
-// 데스크톱 폭(1280) · 폰(400 · 모바일)마다 보는 것: ① [+] · 키워드 `Opus 5.5` · 막대 2/5 ② [+] 진짜 마우스 → 파일 고르기 창 → `stage_agent_attachment`
+// 데스크톱 폭(1280) · 폰(400 · 모바일)마다 보는 것: ① [+] · 키워드 `Opus 5.5` · 막대 2/5 ①b (2026-11-15 사용자 결정 2안) 키워드 폭 — 데스크톱 = 다 보임 · 폰(`touch`) = 폭과 상관없이 로고 ⌄ 만 · 접근성 이름 = title
+// ② [+] 진짜 마우스 → 파일 고르기 창 → `stage_agent_attachment`
 // → 칩 ③ 키워드 → 메뉴(body · 화면 안 · 폰은 줄 44px) → Sonnet = `write_session` 으로 정확히 `/model sonnet` + `\r` ④ Effort Max = `/effort max` + `\r`
-// ⑤ 일하는 중(실행 신호) 잠김 ⑦ (2026-11-14) 집 PC Codex 타일 — 모델 목록(`codex_models`) → 정확히 `/model gpt-6-luna --reasoning=medium` +
+// ⑤ 일하는 중(실행 신호) 잠김 ⑦ (2026-11-14) 메인 PC Codex 타일 — 모델 목록(`codex_models`) → 정확히 `/model gpt-6-luna --reasoning=medium` +
 // `\r` ⑧ SSH Codex 타일(그 서버의 목록을 모른다) — 모델 줄 없이 게이지(대체 넷)만 → `/model --reasoning=high` + `\r` ⑨ (2026-11-14) 보낸 뒤
 // 화면에 확인 문구가 뜨면 키워드가 곧바로 · 거절이면 그대로 ⑩ Claude 모델 전환 확인 카드 · 잠금 · [취소] = 정확히 `2` · 사라지면 걷힘 ⑩b Effort 확인도
 // 같은 카드 ⑦b Codex 가 첫 Enter 를 삼켜 입력 줄에 남으면 Enter 하나 더 ⑥ 콘솔 오류 0.
 //
 //   node scripts/dev/run-harness.mjs flip-composer-remote-harness.mjs <outdir> --size 1280x860
-//     → <outdir>/remote-desktop-menu.png · remote-phone.png · remote-phone-menu.png
+//     → <outdir>/remote-desktop.png · remote-desktop-menu.png · remote-phone.png · remote-phone-menu.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { fakeAgentSignal } from "./agent-signal-fake.mjs";
 import fs from "node:fs";
@@ -188,6 +189,23 @@ const P = `[data-pane="ai-a"] [data-flip-convo]`;
 const kwInfo = async () =>
   JSON.parse(await ev(`(() => { const k = document.querySelector('${P} [data-chat-model-chip]'); if (!k) return 'null';
     return JSON.stringify({ name: k.querySelector('[data-chat-model-name]')?.textContent.trim() ?? null, bars: k.querySelector('[data-chat-effort-bars]')?.dataset.chatEffortBars ?? null, locked: k.hasAttribute('data-locked') }); })()`));
+/** 키워드 폭(2026-11-15 사용자 결정 2안) — 입력 칸(`container: composer` 안쪽 폭) · 키워드 · 글 칸 폭 · 조각마다 보이나 · 접근성 이름 = title */
+const kwFit = async (root) =>
+  JSON.parse(await ev(`(() => {
+    const r = document.querySelector('${root}'); const wrap = r?.querySelector('[data-flip-composer] .wrap'); const kw = r?.querySelector('[data-chat-model-chip]');
+    const ta = r?.querySelector('textarea[data-flip-input]'); if (!wrap || !kw || !ta) return 'null';
+    const ws = getComputedStyle(wrap), ts = getComputedStyle(ta);
+    const vis = (s) => { const e = kw.querySelector(s); return e ? getComputedStyle(e).display !== 'none' : null; };
+    return JSON.stringify({
+      box: Math.round(wrap.clientWidth - parseFloat(ws.paddingLeft) - parseFloat(ws.paddingRight)), cq: ws.containerName,
+      kw: Math.round(kw.getBoundingClientRect().width), text: Math.round(ta.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)),
+      logo: vis('.kw-logo'), name: vis('.kw-name'), gauge: vis('.kw-gauge'), chev: vis('.kw-chev'), label: kw.getAttribute('aria-label'), title: kw.getAttribute('title'), touch: kw.classList.contains('touch'),
+    });
+  })()`));
+/** 폰(touch)이거나 입력 칸 ≤ 300 이면 로고 · ⌄ 만, 아니면 다 — 접근성 이름에는 늘 CLI · 모델 · Effort */
+const kwShape = (f) => (!f ? null : { cq: f.cq, small: f.box <= 300, touch: f.touch, logo: f.logo, name: f.name, gauge: f.gauge, chev: f.chev,
+  label: ["Claude Code", "Opus 5.5", "Effort"].every((w) => f.label?.includes(w)) && f.label === f.title });
+const kwWant = (small, touch = false) => ({ cq: "composer", small, touch, logo: true, name: !small && !touch, gauge: !small && !touch, chev: true, label: true });
 const writes = async () => JSON.parse(await ev(`JSON.stringify(window.__writes.map((w) => w[1]))`));
 const sample = path.resolve(outdir, "remote-sample.log");
 fs.writeFileSync(sample, "remote attachment\n");
@@ -201,8 +219,14 @@ for (const mode of [{ name: "desktop", width: 1280, height: 860, mobile: false }
   await waitFor(`performance.getEntriesByType('resource').some(r => r.name.includes('app/tabs.svelte.ts')) && !!document.querySelector('.app')`, 20000);
   await sleep(1200);
   errors.length = 0;
-  await ev(seedTabs);
-  await waitFor(`!!document.querySelector('[data-pane="ai-a"] [data-flip]')`);
+  // 폰은 부팅이 길어 늦게 선 빈 탭 목록이 심은 탭을 덮는 판이 있었다(2026-11-15 — 세 판 중 둘) — 타일이 안 서면 다시 심는다
+  for (let i = 0; i < 4; i++) {
+    const seeded = await ev(seedTabs);
+    if (typeof seeded === "string" && seeded.startsWith("EXC")) console.log(`seed ${mode.name}: ${seeded}`);
+    if (await waitFor(`!!document.querySelector('[data-pane="ai-a"] [data-flip]')`, 5000)) break;
+    console.log(`   (${mode.name}: 탭을 다시 심는다 ${i + 1})`);
+    await sleep(1500);
+  }
   await sleep(600);
   if (!mode.mobile) await ev(`(async () => (await ${FV}).setFlipView('ai-a', 'convo'))()`);
   await waitFor(`!!document.querySelector('${P} [data-chat-model-name]')`, 8000);
@@ -210,7 +234,10 @@ for (const mode of [{ name: "desktop", width: 1280, height: 860, mobile: false }
 
   // ①
   check(`① ${mode.name}: 대화 면 · [+] · Opus 5.5 · 막대 2/5`, [await ev(`document.querySelector('[data-pane="ai-a"] [data-flip]')?.dataset.flip ?? null`), await ev(`!!document.querySelector('${P} [data-flip-plus]')`), await kwInfo()], ["convo", true, { name: "Opus 5.5", bars: "2", locked: false }]);
-  if (mode.mobile) await shot("remote-phone.png");
+  const fit = await kwFit(P);
+  console.log(`info ①b ${mode.name} 키워드 폭:`, JSON.stringify(fit));
+  check(`①b ${mode.name}: ${mode.mobile ? "폰(touch) — 폭과 상관없이 로고 ⌄ 만" : "넓은 입력 칸 — 로고 · 이름 · 막대 · ⌄"} · 접근성 이름 = title`, kwShape(fit), kwWant(false, mode.mobile));
+  await shot(`remote-${mode.name}.png`);
 
   // ② [+]
   choosers.length = 0;
@@ -330,7 +357,7 @@ for (const mode of [{ name: "desktop", width: 1280, height: 860, mobile: false }
     await sleep(1400);
   }
 
-  // ⑦ 집 PC Codex 타일 — 모델 목록 · 모델 줄
+  // ⑦ 메인 PC Codex 타일 — 모델 목록 · 모델 줄
   const openTab = async (tabId, paneId) => {
     await ev(`(async () => (await ${T}).selectTab(${JSON.stringify(tabId)}))()`);
     await sleep(600);
@@ -343,7 +370,7 @@ for (const mode of [{ name: "desktop", width: 1280, height: 860, mobile: false }
   await openTab("tab-c", "cx-l");
   await tap(`[data-pane="cx-l"] [data-flip-convo] [data-chat-model-chip]`, touch);
   await sleep(400);
-  check(`⑦ ${mode.name}: 집 PC Codex 메뉴 — 목록 · astra 단계 여섯 · 이 세션에만`, await menuOf(), { models: ["gpt-6-astra", "gpt-6-luna"], efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], note: "이 세션에만 적용됩니다" });
+  check(`⑦ ${mode.name}: 메인 PC Codex 메뉴 — 목록 · astra 단계 여섯 · 이 세션에만`, await menuOf(), { models: ["gpt-6-astra", "gpt-6-luna"], efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], note: "이 세션에만 적용됩니다" });
   await shot(`remote-${mode.name}-codex-menu.png`);
   const w7 = (await writes()).length;
   await tap(`[data-flip-model="gpt-6-luna"]`, touch);
@@ -380,7 +407,7 @@ for (const mode of [{ name: "desktop", width: 1280, height: 860, mobile: false }
 
   // ⑧ SSH Codex 타일 — 그 서버 목록을 모른다: 게이지만
   await openTab("tab-s", "cx-s");
-  check(`⑧ ${mode.name}: SSH Codex 키워드`, await ev(`document.querySelector('[data-pane="cx-s"] [data-flip-convo] [data-chat-model-name]')?.textContent.trim() ?? null`), "GPT-6-sol");
+  check(`⑧ ${mode.name}: SSH Codex 키워드`, await ev(`document.querySelector('[data-pane="cx-s"] [data-flip-convo] [data-chat-model-name]')?.textContent.trim() ?? null`), "GPT-6-Sol");
   await tap(`[data-pane="cx-s"] [data-flip-convo] [data-chat-model-chip]`, touch);
   await sleep(400);
   check(`⑧ ${mode.name}: SSH Codex 메뉴 — 모델 줄 없음 · 대체 단계 넷 · 이 세션에만`, await menuOf(), { models: [], efforts: ["low", "medium", "high", "xhigh"], note: "이 세션에만 적용됩니다" });

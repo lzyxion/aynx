@@ -21,7 +21,7 @@ import { veilVisible } from "$lib/app/veil.svelte.js";
 import { findPaneByStream, listPanes } from "$lib/session";
 
 /**
- * **완료 확인 공유**(2026-11-04 — docs/log/2026-11-04-agent-seen-sync.md). "안 봄" 표식(`app/agent-unseen`)은 창마다 살아, 폰에서 턴 끝을 봐도 집 PC 창의 완료가 남았다
+ * **완료 확인 공유**(2026-11-04 — docs/log/2026-11-04-agent-seen-sync.md). "안 봄" 표식(`app/agent-unseen`)은 창마다 살아, 폰에서 턴 끝을 봐도 메인 PC 창의 완료가 남았다
  * (거꾸로도). 그래서 사람이 본 창이 서버 op `agent_state_seen{stream, seq}` 로 알리고, 서버가 낡지 않았으면 방송(`agent-seen`)한다 — 서버 표는 바뀌지 않는다(표시 전용 · 토큰 · 본문 없음).
  *
  * - **보내기** — `$effect` 하나가 이 창의 타일을 지켜본다(`tabs` ↔ `agent-status` 순환을 피해 `clearSeenStatus` 안에서 보내지 않는다). 무엇이 "봤다" 인지는 `$lib/agent-seen` 의 표.
@@ -32,7 +32,7 @@ import { findPaneByStream, listPanes } from "$lib/session";
  *
  * ## 사이드 채팅(2026-11-13 — 판 31)
  *
- * 사이드 채팅 배너(`app/agent-banners` 의 `{sideChatId}` 대상)도 창마다 산다 — 집 PC 에서 그 채팅을 봐도 원격 창의 배너가 남았다(거꾸로도). 같은 결로 나눈다:
+ * 사이드 채팅 배너(`app/agent-banners` 의 `{sideChatId}` 대상)도 창마다 산다 — 메인 PC 에서 그 채팅을 봐도 원격 창의 배너가 남았다(거꾸로도). 같은 결로 나눈다:
  * - **번호** — 채팅 사건의 `turnEnded` 가 실은 세대(`epoch`) · 사건 번호(`seq` — 채팅마다 서버가 1씩)다(`app/side-chat-live` 의 `sideChatTurnEnd`). 새 서버 표는 없다.
  * - **보내기** — 같은 `$effect` 가 이 창에 **보이는 채팅**(채팅 독의 채팅 갈래 · 폰 덮개 — `shownSideChat`)의 턴 끝을 타일과 같은 표(`shouldSend` — 넓은 창은 턴 끝 뒤
  *   입력)로 보고 서버 op `side_chat_seen{chat, epoch, seq}` 를 보낸다. 서버는 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 방송(`side-chat-seen`)한다 —

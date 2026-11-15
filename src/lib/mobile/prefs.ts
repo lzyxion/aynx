@@ -1,5 +1,5 @@
 // **폰의 "이 기기" 설정**(원격 웹 R5 · 10-20) — 순수 모듈. 값은 그 브라우저의 `localStorage` 에만 산다(`app/mobile` 이 읽고 쓴다 —
-// 집 PC 의 `settings.toml` 에는 한 글자도 가지 않는다). 여기는 글자 ↔ 값과 범위만 셈한다.
+// 메인 PC 의 `settings.toml` 에는 한 글자도 가지 않는다). 여기는 글자 ↔ 값과 범위만 셈한다.
 //
 // - 터미널 글자 크기: 폰에서 읽기 좋은 범위로 묶는다(`FONT_MIN`~`FONT_MAX`). `null` = 메인 PC 설정 그대로.
 // - 테마: `main`(메인 PC 설정 그대로 — 이 기기 값 없음 · 기본) · `system`(이 기기의 밝기 — `prefers-color-scheme`) · `light` · `dark`.
@@ -156,4 +156,38 @@ export function parseAiFace(raw: string | null): AiFace {
 /** 첫 화면 → 저장할 글자(기본 `convo` 는 지운다 — `null`) */
 export function serializeAiFace(face: AiFace): string | null {
   return face === "convo" ? null : face;
+}
+
+// ---------------------------------------------------------------------------
+// 마지막으로 보던 탭 · 타일(11-15)
+// ---------------------------------------------------------------------------
+
+/**
+ * 원격 창(폰 · 원격 데스크톱)이 마지막으로 보던 탭 · 타일의 영속 열쇠(거울 환원의 열쇠 — `k:<tileKey>` / `i:<id>`). 페이지를 다시 읽은 첫
+ * 화면의 씨앗이다(`$lib/mirror/reduce` 의 `MirrorSeed`). 메인 PC 에는 가지 않는다.
+ */
+export interface LastView {
+  tab: string | null;
+  tile: string | null;
+}
+
+const isKey = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200;
+
+/** 저장된 글자 → 마지막 보기(모양이 틀리거나 둘 다 없으면 `null`) */
+export function parseLastView(raw: string | null): LastView | null {
+  if (raw === null) return null;
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof v !== "object" || v === null) return null;
+  const r = v as { tab?: unknown; tile?: unknown };
+  const out: LastView = { tab: isKey(r.tab) ? r.tab : null, tile: isKey(r.tile) ? r.tile : null };
+  return out.tab === null && out.tile === null ? null : out;
+}
+
+export function serializeLastView(v: LastView): string {
+  return JSON.stringify({ tab: v.tab, tile: v.tile });
 }

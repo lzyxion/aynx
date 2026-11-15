@@ -356,7 +356,7 @@ export class DragController {
     const next = this.#host.selection.forDrag(entry.path, order);
     const paths = order.filter((p) => next.ids.has(p));
     if (paths.length === 0) return;
-    // 원격 웹 클라이언트(R1a-3)에는 집 PC 탐색기가 없다 — 끌어내기를 시작하지 않는다.
+    // 원격 웹 클라이언트(R1a-3)에는 메인 PC 탐색기가 없다 — 끌어내기를 시작하지 않는다.
     if (isRemote) return;
     if (this.#host.backend().key !== LOCAL_KEY) {
       toast.error(t("files.drag.remote.noexport"));

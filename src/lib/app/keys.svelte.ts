@@ -489,7 +489,7 @@ export function runAction(action: string): void {
       raiseVeil();
       break;
     // 끝내기 모달 — 독의 끝내기 단추와 같은 몸통(독이 떠 있으면 먼저 닫는다 — 모달이 독 뒤에 숨지 않게). 원격 창은 아무 일도
-    // 없다(단추가 없는 것과 같은 판단 · 세 명령도 집 PC 전용). 이미 떠 있으면 `openQuitDialog` 가 물러선다(키로는 `anyModalOpen` 이 먼저 막는다).
+    // 없다(단추가 없는 것과 같은 판단 · 세 명령도 메인 PC 전용). 이미 떠 있으면 `openQuitDialog` 가 물러선다(키로는 `anyModalOpen` 이 먼저 막는다).
     case "quit-app":
       if (isRemote) break;
       closeDock();

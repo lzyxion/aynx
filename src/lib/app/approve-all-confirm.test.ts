@@ -27,7 +27,7 @@ describe("모두 승인 확인 상자(10-23 게이지 목업)", () => {
       "app.ai.all.confirm.host.p3",
       "app.ai.all.confirm.switch",
     ]);
-    // 집 PC 창 — 원격 웹 꼬리말 없음
+    // 메인 PC 창 — 원격 웹 꼬리말 없음
     expect(opts?.footnote).toBeUndefined();
   });
 

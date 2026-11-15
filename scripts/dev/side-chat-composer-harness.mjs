@@ -3,25 +3,28 @@
 //
 // 스텁은 `code-to-term-chat-harness.mjs`(가짜 로컬 셸 세션 — 연결할 타일 · 사이드 채팅 명령 · 통로)와 같은 꼴이다. 채팅 하나(`chat-a` —
 // Claude · 기본 모델 · 기본 강도 · 서버 표에서 멈춤 · 외부 MCP 둘 `filesystem` · `github`).
-// 보는 것(판 셋 — 집 PC 창 · 원격 데스크톱 · 원격 폰):
+// 보는 것(판 셋 — 메인 PC 창 · 원격 데스크톱 · 원격 폰):
 // ① 칸 아래 칩 줄 · 머리줄 MCP 칩이 없다 · `[+]` · 모델 키워드가 알약 칸 **안** · 한 줄 알약 높이 · 연결이 없으면 연결 칩도 없다
 // ② `[+]` 뿌리 = 파일 업로드 · 타일 연결(오른쪽 = 지금 연결 이름 ›) · MCP(`2 ›` — 실린 서버가 있을 때만)
 // ③ 파일 업로드 → 파일 상자가 열린다(`Page.fileChooserOpened`) · 메뉴 닫힘
 // ③' 파일 · 그림 고르기(숨은 칸에 `DOM.setFileInputFiles`) → 칩 둘(그림 = 미리보기 · 파일 = 아이콘 + 이름) · 10 MB 넘는 것은 알림 + 칩 없음 ·
-//    보내기 = `side_chat_send{images: [그림], files: [파일]}` · 칩이 걷힌다(집 PC · 원격 데스크톱 · 폰 셋 다 — 2026-11-14)
+//    보내기 = `side_chat_send{images: [그림], files: [파일]}` · 칩이 걷힌다(메인 PC · 원격 데스크톱 · 폰 셋 다 — 2026-11-14)
 // ④ 타일 연결 → 하위 갈래(‹ 머리 · 타일 줄 · 끊기) → 타일 고르기 = `side_chat_link{stream}` · 칸 안 위쪽 연결 칩 `🔗 이름 ×` · 뿌리 줄 오른쪽에 그 이름
 // ⑤ MCP → 하위 갈래(‹ MCP · 서버 이름 줄(앞에 MCP 그림) · MCP 설정 열기) · ← 로 뿌리 · [MCP 설정 열기] → 설정 › MCP 서버 목록
 // ⑥ 연결 칩 × → `side_chat_link{null}` · 칩이 걷힌다
 // ⑦ 모델 메뉴 — CLI 스위치(radiogroup) · 모델 목록 · Effort 게이지 · 첫 포커스 = 고른 모델 줄 · 모델 고르기 = `side_chat_set_model` 뒤에도
 //    **열려 있음** · Effort 칸 누르기 = `side_chat_set_effort` · ← → · Default 고리 · 키워드 막대가 따라 찬다 · [직접 입력…] 칸 · Tab 은 상자 안에서 돈다 ·
 //    CLI 스위치 → Codex(`side_chat_open{cli:codex}` · 모델 목록 = Codex 캐시 · 강도 칸 넷) → 다시 Claude · Esc = 닫힘 + 키워드로 포커스
-// ⑧ 좁은 폭 — 독 최소 폭(320)에서 이름 말줄임 · 알약이 깨지지 않음(손잡이 · 글 칸이 겹치지 않음) · 아주 좁은 창에서 `로고 ⌄` 만
+// ⑧ 좁은 폭 — 독 최소 폭(320)에서 `로고 ⌄` 만 · 넓힌 독의 긴 이름은 말줄임 · 알약이 깨지지 않음(손잡이 · 글 칸이 겹치지 않음) · 아주 좁은 창에서 `로고 ⌄` 만
 // ⑨ 원격 데스크톱(1400x900) — 같은 모양 · 메뉴 둘
 // ⑩ 원격 폰(390x844) — 덮개의 입력 칸도 같은 모양(옛 칸 안 그림 단추 없음) · 메뉴 줄 44px · 모델 메뉴가 화면 안 · 폰에서 Effort 고르기 · 연결 고르기
 // ⑪ 잡히지 않은 예외 · 콘솔 오류 0(`stub:` 거절 제외)
+// ⑫ 키워드 폭(2026-11-15 사용자 결정 2안) — 폰(`touch`)은 늘, 메인 PC · 원격 데스크톱은 입력 칸(`container: composer`) 300 이하(독 320)에서만
+//    이름 · 막대 숨김(로고 ⌄ 만). 기본 독 380 · 넓힌 독 600 · 원격 데스크톱 기본 독 = 다 보임.
+//    넓힌 독(600) = 다 보임. 어느 쪽이든 접근성 이름 = title(CLI · 모델 · Effort). 입력 칸 · 키워드 · 글 칸 폭을 `info` 줄로 찍는다
 //
 //   node scripts/dev/run-harness.mjs side-chat-composer-harness.mjs <outdir> --size 1280x860
-//     → home-dock.png · home-plus.png · home-plus-link.png · home-plus-mcp.png · home-linked.png · home-model.png · home-model-codex.png ·
+//     → home-default.png · home-wide.png · home-wide-long.png · home-dock.png · home-plus.png · home-plus-link.png · home-plus-mcp.png · home-linked.png · home-model.png · home-model-codex.png ·
 //       home-narrow.png · home-narrowest.png · remote-desktop.png · remote-plus.png · remote-model.png · phone-chat.png · phone-plus.png ·
 //       phone-model.png
 import { waitBoot } from "./boot-wait.mjs";
@@ -262,6 +265,27 @@ const shape = (root) =>
       link: r.querySelector('[data-chat-link-chip]')?.textContent.trim() ?? null,
     });
   })()`);
+/** ⑫ 키워드 폭 — 입력 칸(크기 질의 상자 `container: composer` 의 안쪽 폭) · 키워드 단추 폭 · 글 칸(글이 서는 폭) · 조각마다 보이나 · 접근성 이름 */
+const kwFit = (root) =>
+  evj(`(() => {
+    const r = document.querySelector('${root}'); const wrap = r?.querySelector('[data-flip-composer] .wrap'); const kw = r?.querySelector('[data-chat-model-chip]');
+    const ta = r?.querySelector('textarea[data-flip-input]'); if (!wrap || !kw || !ta) return 'null';
+    const ws = getComputedStyle(wrap), ts = getComputedStyle(ta);
+    const vis = (s) => { const e = kw.querySelector(s); return e ? getComputedStyle(e).display !== 'none' : null; };
+    return JSON.stringify({
+      box: Math.round(wrap.clientWidth - parseFloat(ws.paddingLeft) - parseFloat(ws.paddingRight)), cq: ws.containerName,
+      kw: Math.round(kw.getBoundingClientRect().width), text: Math.round(ta.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)),
+      logo: vis('.kw-logo'), name: vis('.kw-name'), gauge: vis('.kw-gauge'), chev: vis('.kw-chev'), label: kw.getAttribute('aria-label'), title: kw.getAttribute('title'),
+      nameText: kw.querySelector('.kw-name')?.textContent.trim() ?? null, touch: kw.classList.contains('touch'),
+    });
+  })()`);
+/** 폰(touch)이거나 입력 칸 ≤ 300 이면 로고 · ⌄ 만, 아니면 다 — 이름 · 막대가 감춰져도 접근성 이름 · title 에는 CLI · 모델(· Effort)이 다 있다 */
+const kwExpect = (f, words) => (!f ? null : {
+  cq: f.cq, small: f.box <= 300, touch: f.touch, logo: f.logo, name: f.name, gauge: f.gauge, chev: f.chev,
+  label: [...words, ...(f.nameText ? [f.nameText] : [])].every((w) => f.label?.includes(w)) && f.label === f.title,
+});
+/** `small` = 입력 칸 ≤ 300 · `touch` = 폰 — 둘 중 하나면 로고 ⌄ 만 */
+const kwWant = (small, touch = false) => ({ cq: "composer", small, touch, logo: true, name: !small && !touch, gauge: !small && !touch, chev: true, label: true });
 const menuRows = () =>
   evj(`JSON.stringify([...document.querySelectorAll('[data-toolbar-menu] [data-menu-key]')].map((b) => [b.dataset.menuKey, b.querySelector('.tb-label')?.textContent.trim() ?? '', b.querySelector('.tb-more')?.textContent.trim() ?? (b.getAttribute('aria-haspopup') ? '' : null), !!b.querySelector('.menu-mark'), b.disabled]))`);
 const menuKeys = async () => (await menuRows()).map((r) => r[0]);
@@ -297,7 +321,7 @@ const setFiles = async (root, files) => {
 };
 const chips = (root) =>
   evj(`JSON.stringify([...document.querySelectorAll('${root} [data-flip-attachment]')].map((c) => [c.querySelector('.att-name')?.textContent.trim() ?? null, !!c.querySelector('img.thumb'), !!c.querySelector('.thumb.icon')]))`);
-/** 집 PC = A · 원격 데스크톱 = R · 폰 = P */
+/** 메인 PC = A · 원격 데스크톱 = R · 폰 = P */
 async function attachAndSend(root, tag) {
   const c0 = await callCount();
   await setFiles(root, [FIX_BIG]);
@@ -316,13 +340,24 @@ async function attachAndSend(root, tag) {
   check(`${tag} ③' 보내기 = images [그림] · files [파일] · 칩 걷힘`, [sent, (await chips(root)).length], [[{ text: "이 파일 봐 줘", images: ["shot.png"], files: ["main.ts"] }], 0]);
 }
 
-// ═══ A. 집 PC 창 ═══════════════════════════════════════════════════════════════════
+// ═══ A. 메인 PC 창 ═══════════════════════════════════════════════════════════════════
 await bootPage({ remote: false, width: 1280, height: 860 });
 errors.length = 0;
 await ev(`(async () => (await ${DOCK}).openChatDock())()`);
 check("A 독이 열리고 대화 면이 선다", await waitFor(`!!document.querySelector('[data-chat-dock].open [data-side-chat-face] [data-chat-model-chip]')`), true);
 await sleep(600);
 const D = "[data-chat-dock]";
+// ⑫ 기본 독(380 — 입력 칸 352) · 넓힌 독(600) — 다 보인다(2026-11-15 사용자 결정 2안). 아래 ①~⑦ 은 넓힌 독에서 본다
+const fDef = await kwFit(D);
+console.log("info ⑫ 기본 독 380:", JSON.stringify(fDef));
+check("⑫ 기본 독 380 — 입력 칸 > 300 · 로고 · 이름 · 막대 · ⌄ · 접근성 이름 = title(CLI · 모델 · Effort)", kwExpect(fDef, ["Claude Code", "Default", "Effort"]), kwWant(false));
+await shot("home-default.png");
+await ev(`(async () => (await ${DOCK}).setChatDockWidth(600))()`);
+await sleep(600);
+const fWide = await kwFit(D);
+console.log("info ⑫ 넓힌 독 600:", JSON.stringify(fWide));
+check("⑫ 넓힌 독 600 — 로고 · 이름 · 막대 · ⌄", kwExpect(fWide, ["Claude Code", "Default", "Effort"]), kwWant(false));
+await shot("home-wide.png");
 check("① 칩 줄 · MCP 칩 없음 · [+] · 키워드가 알약 안 · 한 줄 · 겹침 없음 · Default · 막대 5칸(빈) · 연결 칩 없음", await shape(D), {
   tools: false, mcpChip: false, plusIn: true, kwIn: true, oldPick: false, oneLine: true, noOverlap: true, name: "Default", bars: 5, filled: 0, link: null,
 });
@@ -446,8 +481,8 @@ await ev(`(() => { const i = document.querySelector('[data-chat-model-input]'); 
 const c5 = await callCount();
 await key("Enter");
 await sleep(500);
-check("⑦ [직접 입력…] = 그 줄이 칸(포커스) → Enter = set_model{claude-x} · 메뉴 그대로 · 키워드 Claude-x",
-  [inputFocused, (await callsOf("side_chat_set_model", c5)).map((a) => a.model), (await popInfo()) !== null, (await shape(D)).name], [true, ["claude-x"], true, "Claude-x"]);
+check("⑦ [직접 입력…] = 그 줄이 칸(포커스) → Enter = set_model{claude-x} · 메뉴 그대로 · 키워드 X(modelLabel — claude- 를 뗀 등급 이름)",
+  [inputFocused, (await callsOf("side_chat_set_model", c5)).map((a) => a.model), (await popInfo()) !== null, (await shape(D)).name], [true, ["claude-x"], true, "X"]);
 // CLI 스위치 → Codex
 const c6 = await callCount();
 await clickAt(pop('[data-chat-cli="codex"]'));
@@ -462,7 +497,7 @@ check("⑦ CLI → Codex = side_chat_open{codex}(마지막) · 열린 채 · Cod
 await shot("home-model-codex.png");
 await clickAt(pop('[data-chat-cli="claude"]'));
 await sleep(900);
-check("⑦ 다시 Claude — 기억한 claude-x 로", [(await popInfo())?.cli[0], (await shape(D)).name], [["claude", true], "Claude-x"]);
+check("⑦ 다시 Claude — 기억한 claude-x 로", [(await popInfo())?.cli[0], (await shape(D)).name], [["claude", true], "X"]);
 await key("Escape");
 await sleep(300);
 check("⑦ Esc = 닫힘 · 포커스 = 키워드 · 독은 열린 채",
@@ -477,14 +512,23 @@ check("⑦ 바깥 누르기 = 닫힘", await ev(`!!document.querySelector('[data
 await ev(`document.querySelector('${D} [data-chat-dock-list]').click()`);
 await sleep(300);
 
-// ⑧ 좁은 폭 — 긴 모델 이름으로
-await ev(`(async () => { const m = await ${importApp("app/side-chats.svelte.ts")}; m.setSideChatPick('chat-a', 'claude', 'claude-opus-5-5-20261101-preview'); })()`);
+// ⑧ 좁은 폭 — 긴 모델 이름으로(claude- 가 아니라 modelLabel 이 줄이지 않는 이름)
+await ev(`(async () => { const m = await ${importApp("app/side-chats.svelte.ts")}; m.setSideChatPick('chat-a', 'claude', 'my-custom-research-model-preview-20261101'); })()`);
 await ev(`(async () => (await ${DOCK}).setChatDockWidth(320))()`);
 await sleep(600);
-const n1 = await evj(`(() => { const n = document.querySelector('${D} [data-chat-model-name]'); return JSON.stringify({ shown: getComputedStyle(n).display !== 'none', clipped: n.scrollWidth > n.clientWidth }); })()`);
 const s8 = await shape(D);
-check("⑧ 독 320 — 긴 이름은 말줄임 · 알약 한 줄 · 손잡이와 글 칸이 겹치지 않음", [n1, s8.oneLine, s8.noOverlap], [{ shown: true, clipped: true }, true, true]);
+const f8 = await kwFit(D);
+console.log("info ⑧ 독 320:", JSON.stringify(f8));
+check("⑧ 독 320 — 로고 ⌄ 만(긴 이름도 접근성 이름에는 그대로) · 알약 한 줄 · 손잡이와 글 칸이 겹치지 않음",
+  [kwExpect(f8, ["Claude Code", "Effort"]), s8.oneLine, s8.noOverlap], [kwWant(true), true, true]);
 await shot("home-narrow.png");
+// 긴 이름 + 넓힌 독 — 이름은 말줄임(9em)으로 서고 알약은 한 줄
+await ev(`(async () => (await ${DOCK}).setChatDockWidth(600))()`);
+await sleep(600);
+const n1 = await evj(`(() => { const n = document.querySelector('${D} [data-chat-model-name]'); return JSON.stringify({ shown: getComputedStyle(n).display !== 'none', clipped: n.scrollWidth > n.clientWidth }); })()`);
+const s8w = await shape(D);
+check("⑧ 넓힌 독 600 + 긴 이름 — 말줄임 · 알약 한 줄 · 겹침 없음", [n1, s8w.oneLine, s8w.noOverlap], [{ shown: true, clipped: true }, true, true]);
+await shot("home-wide-long.png");
 await send("Emulation.setDeviceMetricsOverride", { width: 250, height: 860, deviceScaleFactor: 1, mobile: false });
 await sleep(800);
 const s9 = await shape(D);
@@ -499,6 +543,9 @@ check("⑨ 원격 데스크톱 — 독 · 대화 면", await waitFor(`!!document
 await sleep(600);
 const r0 = await shape(D);
 check("⑨ 같은 모양(칩 줄 · MCP 칩 없음 · 손잡이 알약 안 · 한 줄)", [r0.tools, r0.mcpChip, r0.plusIn, r0.kwIn, r0.oneLine, r0.noOverlap], [false, false, true, true, true, true]);
+const fR = await kwFit(D);
+console.log("info ⑫ 원격 데스크톱 기본 독:", JSON.stringify(fR));
+check("⑫ 원격 데스크톱 기본 독 — 터치 아님 · 메인 PC 와 같게 다 보임", kwExpect(fR, ["Claude Code", "Effort"]), kwWant(false));
 await shot("remote-desktop.png");
 await clickAt(`document.querySelector('${D} [data-chat-plus]')`);
 await waitFor(`!!document.querySelector('[data-toolbar-menu]')`, 3000);
@@ -527,6 +574,9 @@ const f0 = await shape(M);
 check("⑩ 폰도 같은 모양 · 옛 칸 안 그림 단추 없음 · 그림 입력은 숨은 칸 하나", [f0.tools, f0.plusIn, f0.kwIn, f0.oldPick, f0.oneLine, f0.noOverlap, await ev(`document.querySelectorAll('${M} input[type=file][data-side-chat-pick]').length`)], [false, true, true, false, true, true, 1]);
 // 누르는 자리 — [+] 의 ::after 가 44px
 check("⑩ [+] 누르는 자리 44px", await ev(`(() => { const s = getComputedStyle(document.querySelector('${M} [data-chat-plus]'), '::after'); return s.content !== 'none' && s.inset === '-6px'; })()`), true);
+const fP = await kwFit(M);
+console.log("info ⑫ 폰:", JSON.stringify(fP));
+check("⑫ 폰 — 입력 칸은 300 보다 넓어도 touch 라 로고 ⌄ 만 · 접근성 이름 = title", kwExpect(fP, ["Claude Code", "Effort"]), kwWant(false, true));
 await shot("phone-chat.png");
 await clickAt(`document.querySelector('${M} [data-chat-plus]')`);
 await waitFor(`!!document.querySelector('[data-toolbar-menu]')`, 3000);

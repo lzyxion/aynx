@@ -19,7 +19,7 @@
   잠기고, 가림막을 걷는 것이 곧 볼트를 여는 것이다**(마스터 없으면 Enter). **보는 창이 0개여도 잠긴다**(마지막 창 파괴·GUI 종료/kill —
   이때 HTTP MCP 티켓은 폐기가 아니라 정지, 가림막을 걷으면 같은 티켓으로 복구 — 결정 · 예외: 사람 쿼리 타일이 붙어 있는 동안 그 타일이
   인증한 DB 비밀번호는 세션 서버 메모리에서 AI 연결이 쓴다 — 볼트 잠김과 무관, SSH 의 열린 세션과 같은 등급 · 사용자 결정 · 아래 DB 절). **마스터를 걸었으면 앱을 다시 켤 때(메인 창 부팅에
-  볼트가 잠겨 있으면 — 세션 서버가 새로 뜬 날 포함) 무조건 가림막이 선다** · **가림막은 집 PC 창 전체에 하나처럼 서고 걷힌다**(원격 웹 창 제외) — 건너뛰는 길은 없고, 마스터를 잊으면 `vault.bin` 을 손으로 지운다(앱 안에
+  볼트가 잠겨 있으면 — 세션 서버가 새로 뜬 날 포함) 무조건 가림막이 선다** · **가림막은 메인 PC 창 전체에 하나처럼 서고 걷힌다**(원격 웹 창 제외) — 건너뛰는 길은 없고, 마스터를 잊으면 `vault.bin` 을 손으로 지운다(앱 안에
   지우는 길을 두지 않는다 — [docs/log/2026-10-28-lock-screens.md](log/2026-10-28-lock-screens.md)) — 자물쇠를 그린
   가림막 자신이 그 관문이고, 다른 키·클릭으로는 걷히지 않는다. 시계는 프라이버시의 무입력
   자동 잠금 하나뿐이고 볼트 쪽 자동 잠금 칸은 없다. 볼트 **밖**(설정 파일·
@@ -211,15 +211,15 @@
 <a id="inv-13"></a>
 ## 13. 원격 웹 클라이언트
 
-- **원격 웹 클라이언트는 tailnet 안 브라우저만** — 관문(`src-tauri/src/remote/`)은 **127.0.0.1 에만** 묶이고 노출은 사용자가 직접 건, 또는 집 PC 설정 화면의 [연결]로 건
-  `tailscale serve` 가 한다(앱 실행은 고정 인자 · Funnel 길 없음 · 집 PC 전용 — `remote/serve.rs` · Funnel 이 그 포트를 내보내면 열지 않는다). 신원은 **집 PC 사람이 6자리 코드를 보고 [허용] 한 기기 페어링
+- **원격 웹 클라이언트는 tailnet 안 브라우저만** — 관문(`src-tauri/src/remote/`)은 **127.0.0.1 에만** 묶이고 노출은 사용자가 직접 건, 또는 메인 PC 설정 화면의 [연결]로 건
+  `tailscale serve` 가 한다(앱 실행은 고정 인자 · Funnel 길 없음 · 메인 PC 전용 — `remote/serve.rs` · Funnel 이 그 포트를 내보내면 열지 않는다). 신원은 **메인 PC 사람이 6자리 코드를 보고 [허용] 한 기기 페어링
   토큰**(Tailscale 헤더는 참고), 원격 창은 자기 가림막을 걷고 연결된 동안만 창으로 센다(마스터 암호는 선택 — 없으면 단추). 원격 창은
-  집 PC 창과 동등하되 **앱 명령의 문은 `remote/deny.rs` 하나**(표 넷 — 명령마다 정확히 하나, 시험이 `generate_handler!` 와 맞춘다):
-  집 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 · 기기 페어링 답 · 앱 업데이트(`update_*` — 찾기 · 받기 · 설치 · 건너뛰기) · 자동 승인 정책(`[automation]`) · `tailscale serve` 걸기·끄기 · 원격 접속 켜기·이름·포트(끄기·기기
+  메인 PC 창과 동등하되 **앱 명령의 문은 `remote/deny.rs` 하나**(표 넷 — 명령마다 정확히 하나, 시험이 `generate_handler!` 와 맞춘다):
+  메인 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 · 기기 페어링 답 · 앱 업데이트(`update_*` — 찾기 · 받기 · 설치 · 건너뛰기) · 자동 승인 정책(`[automation]`) · `tailscale serve` 걸기·끄기 · 원격 접속 켜기·이름·포트(끄기·기기
   폐기는 원격도 된다) / 재확인 = 작업안 승인·AI 권한 올리기는 **마스터가 있으면 그 순간 다시 묻는다**(1회용 표 — 암호는 HTTP 몸으로만,
   ws·로그에 없음) / 프로듀서 채팅 명령(`producer_chat_*`)은 ALLOW(사람의 말 · 결정 · 끊기 — `decide` 는 허용 목록 두 카드에만 뜻 · 앨범 시작 `producer_album_start` · 앨범 권한 넓힘 `orchestration_album_widen` 은 REAUTH ·
   앨범 영구 삭제 `orchestration_delete_archived` · 앨범 병합 `orchestration_merge` 는 REAUTH(병합 미리 보기는 ALLOW) · 넓힘 없는 변경 `orchestration_album_set` · 기본값 읽기 · 아티스트 명령 · 이름 변경 · `producer_fork_probe` 는 ALLOW — 서버가 다시 판정) / 사이드 채팅 명령(`side_chat_*` · `side_chats_*`)도 ALLOW(권한 카드 `side_chat_decide` 포함 · 재확인 없음 → [docs/log/2026-11-01-remote-side-chat.md](log/2026-11-01-remote-side-chat.md)). 플러그인은 `capabilities/remote.json` ACL 이 막고, 그 ACL 이 연 **이벤트 emit 은 이름으로 다시 거른다**(`deny::REMOTE_EMIT`
-  넷만 — 기본 거절 · 집 PC 리스너가 받는 순간 일을 하는 이벤트를 원격이 못 낸다). 집 PC 에는 원격이 열 때 OS 알림 + 상태바 "원격 접속 중"
+  넷만 — 기본 거절 · 메인 PC 리스너가 받는 순간 일을 하는 이벤트를 원격이 못 낸다). 메인 PC 에는 원격이 열 때 OS 알림 + 상태바 "원격 접속 중"
   (둘 다 끌 수 없다). 볼트 값·MCP 토큰·웹훅 URL 은 여전히 원격으로 나가지 않는다 →
   [docs/log/2026-10-15-remote-web-client-design.md](log/2026-10-15-remote-web-client-design.md).
 

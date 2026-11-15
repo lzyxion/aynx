@@ -1,6 +1,6 @@
 <script lang="ts">
   // 원격 창의 거울에서 **함께 볼 수 없는 타일**의 자리(원격 웹 R2-B — `$lib/mirror/tile-policy` 의 `own`). 쿼리 타일처럼 서버 상태(DB 연결 ·
-  // 트랜잭션)를 타일 열쇠로 쥔 것은 같은 열쇠로 붙으면 집 PC 의 것을 함께 쥐게 된다 — 대신 [원격에서 따로 열기] 로 이 창에만 제 타일을 세운다
+  // 트랜잭션)를 타일 열쇠로 쥔 것은 같은 열쇠로 붙으면 메인 PC 의 것을 함께 쥐게 된다 — 대신 [원격에서 따로 열기] 로 이 창에만 제 타일을 세운다
   // (`app/mirror.svelte.ts` 의 `openOwnInstance` — 새 id · 새 `tileKey`).
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { openOwnInstance } from "$lib/app/mirror.svelte.js";

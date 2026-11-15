@@ -10,12 +10,12 @@
 //
 // 폰 배치(`mobileLayout`)에는 이 안내가 없다 — 위 띠의 ⤢ 가 "이 기기 크기로 맞추기" 를 늘 쥐고 있다(`mobile/MobileBar`).
 
-/** 주인이 누구로 보이나 — 이 창이 집 PC 창이면 주인이 아닌 쪽 = 원격 기기, 원격 창이면 주(집 PC) = 메인 PC · 나머지 = 다른 창 */
+/** 주인이 누구로 보이나 — 이 창이 메인 PC 창이면 주인이 아닌 쪽 = 원격 기기, 원격 창이면 주(메인 PC) = 메인 PC · 나머지 = 다른 창 */
 export type NoticeSide = "remoteDevice" | "mainPc" | "otherWindow";
 
 /**
- * 꼬리표 · 카드 문구의 갈래. `remoteWindow` = 이 창이 원격 창인가(`isRemote`), `ownerPrimary` = 주인이 주(집 PC 창)인가(서버 `primary` —
- * 모르면 `undefined`). 집 PC 창에서 주인이 주가 아니면 원격 기기다(집 PC 의 다른 창은 주를 빼앗아 붙는다 — 시청자가 아니다).
+ * 꼬리표 · 카드 문구의 갈래. `remoteWindow` = 이 창이 원격 창인가(`isRemote`), `ownerPrimary` = 주인이 주(메인 PC 창)인가(서버 `primary` —
+ * 모르면 `undefined`). 메인 PC 창에서 주인이 주가 아니면 원격 기기다(메인 PC 의 다른 창은 주를 빼앗아 붙는다 — 시청자가 아니다).
  */
 export function noticeSide(remoteWindow: boolean, ownerPrimary: boolean | undefined): NoticeSide {
   if (remoteWindow) return ownerPrimary === true ? "mainPc" : "otherWindow";

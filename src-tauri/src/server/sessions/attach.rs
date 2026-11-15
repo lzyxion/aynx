@@ -252,7 +252,7 @@ pub(super) async fn attach_viewer(a: ViewerArgs, ctx: &ConnCtx) -> Result<Value,
         "sizeOwner": owner,
         "ownerCols": owner_size.map(|s| s.0),
         "ownerRows": owner_size.map(|s| s.1),
-        // 주인이 주(집 PC 창)인가(10-20 — 주인이 아닌 타일의 꼬리표 "메인 PC" · "다른 창" 을 가른다). 이벤트의 `primary` 와 같다.
+        // 주인이 주(메인 PC 창)인가(10-20 — 주인이 아닌 타일의 꼬리표 "메인 PC" · "다른 창" 을 가른다). 이벤트의 `primary` 와 같다.
         "ownerPrimary": owner_primary,
     }))
 }

@@ -22,9 +22,10 @@ If you install this version by hand instead of updating from inside the app, use
   - In the chat history, an attached file shows as a file chip, and an image you just sent shows as the image itself.
 - **Side chat composer**: one row with **[+]** (upload file · link a tile · MCP) and a model menu: switch between Claude Code and Codex, pick a model, and set effort on a slider. The remote web client and the phone have the same menu.
   - **[+] › MCP** lists the MCP servers the chat will load, even before your first message.
+  - On a phone, and in a chat dock dragged very narrow, the model button shows only the logo, leaving more room to type. Its tooltip and menu still show the model and effort.
   - Seeing a side chat alert in one window clears it in the others.
 - **Model and effort in AI tiles**: the chat view of an AI tile shows the current model and effort and updates as soon as you change them. Changing them from the menu asks first with a **Switch model** or **Change effort** card.
-- **Copy and export**: messages have **[Copy]** (tool output is left out). Agent replies also have **[Export to document]**, which asks for a name and folder and never overwrites an existing file. In the side chat the folder starts at your home folder.
+- **Copy**: messages in the side chat and in the chat view of AI tiles have **[Copy]** (tool output is left out).
 - **Model names** are written the same way everywhere: the chat list, past conversations, the session board's usage and the orchestration player show `Opus 5.5` or `GPT-6.1-Sol` instead of the raw id, and effort shows as `High`.
 - **Alert banners** show only the tile or chat name in the title. The logo already says which agent it is.
 - **New shortcuts for the chat dock**: the chat dock now opens with **Ctrl+Shift+[** (it was Ctrl+Shift+'), and the task plans branch with **Ctrl+Shift+]** (it had no default). Both work inside the document and SQL editors too, and Ctrl+[ still goes to the shell as Esc. If you set your own key in **Settings › Shortcuts**, it stays as it was.
@@ -38,6 +39,11 @@ If you install this version by hand instead of updating from inside the app, use
 - **Maximized tiles**: opening a file, jumping from search, clicking an alert or picking a tile in the session board now un-maximizes the tab when the target tile was hidden behind it.
 - **Keyboard focus**: closing the session board, the shortcut sheet, settings or the chat dock returns the keys to the tile you were in, including terminal tiles. Switching between the chat and task plans branches keeps focus in the dock.
 - **Review card [Later]**: move the review card out of the way to check your tiles first. Waiting plans stay in the chat dock's task plans branch, and a new plan brings the card back.
+- **Phone**
+  - Reopening the remote web client on a phone (or reloading a PC remote) brings back the tab and tile you were viewing, even if the main PC moved to another tab meanwhile. If that tile was closed, it follows the main PC.
+  - The **+** sheet can open a tile in the tab you are viewing: pick **This tab** or **New tab** at the top. **+** in the top strip starts on **This tab**, and **New tab** on the picker screen starts on **New tab**.
+  - Each tile row on the picker screen has a small **×** to close that tile without picking it first. A tile with a session asks first, as before.
+- **Remote window**: closing a tile or tab with a document you edited in the remote window itself now asks to save or discard it first. It used to close without asking.
 - **Task plans in a remote window** open in the remote window's chat dock, the same as on the main PC, instead of covering the tiles.
 - **Clearing task plans**: the bottom row of task plans has **[Clear finished runs]** (Active) and **[Clear history]** (History). In History, **×** on a row clears one run, and with a filter set
   the button clears only the rows you see. Cleared rows slide out like alerts. History is cleared from the screen only — the audit log is kept.

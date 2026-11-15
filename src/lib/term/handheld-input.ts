@@ -22,7 +22,7 @@
 // - textarea 값을 **코드가** 바꾸면(xterm 의 Enter · Ctrl+C · blur · 붙여넣기 비우기, 우클릭 선택 넣기, 우리 비우기) 그 값은 셸이 모르는
 //   글이다 — 값 setter 를 이 요소에만 덮어 거울을 그 자리에서 맞춘다(`foreign` = 그 길이 — 지워도 DEL 을 보내지 않는다).
 // - 보내는 길은 xterm 과 같은 `triggerDataEvent` → `onData` → `sendInput` — 입력 출처는 예전처럼 `keyboard`(`term/input-source`).
-// 집 PC 창 · 데스크톱 원격 창은 이 파일을 쓰지 않는다(데스크톱 한국어 IME 는 `ime-composition-fix` 그대로).
+// 메인 PC 창 · 데스크톱 원격 창은 이 파일을 쓰지 않는다(데스크톱 한국어 IME 는 `ime-composition-fix` 그대로).
 // 모양이 6.0.0 과 다르면 손대지 않는다.
 import type { Terminal } from "@xterm/xterm";
 

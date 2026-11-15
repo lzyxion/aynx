@@ -1,6 +1,6 @@
 // **모바일 위 띠 · 고르기 화면의 라벨**(원격 웹 R5 · 10-16 · 고르기 화면 10-20) — 순수 모듈.
 //
-// - 이름은 데스크톱 탭 바 · 머리줄과 **같은 출처**(`app/titles` 의 `displayName` — 원격은 집 PC 거울이 알려 준 AI 로 "Claude Code"
+// - 이름은 데스크톱 탭 바 · 머리줄과 **같은 출처**(`app/titles` 의 `displayName` — 원격은 메인 PC 거울이 알려 준 AI 로 "Claude Code"
 //   · "Claude Code · dev-01")를 받고, 여기서는 굵은 이름 / 흐린 덧말(호스트 · 작업 폴더 한 토막)로 나누기만 한다.
 // - 에이전트 상태는 글자 기호가 아니라 글리프(`AgentStatusGlyph` — 탭 줄과 같은 그림) + 낱말이다 — 고르기가 `<select>` 한 줄이던 때(10-16)의 기호는 걷었다.
 // - 위치 칩: 탭 번호 하나, 그 탭에 타일이 둘 이상이면 `탭 · 타일/타일 수`.
@@ -17,7 +17,7 @@ export interface TileParts {
 
 /**
  * **타일 이름 나누기** — `displayName` 의 첫 토막이 이름, 나머지(원격 AI 의 호스트) + 작업 폴더가 덧말. 폴더는 이름에 이미
- * 들어 있으면(같은 낱말) 붙이지 않는다. `view` 는 집 PC 가 알려 준 보이는 모습(없으면 `null`).
+ * 들어 있으면(같은 낱말) 붙이지 않는다. `view` 는 메인 PC 가 알려 준 보이는 모습(없으면 `null`).
  */
 export function tileParts(name: string, view: PaneView | null | undefined): TileParts {
   const parts = name
@@ -72,7 +72,7 @@ export interface WorkspaceChip {
   name: string;
   /** 탭 수 — 열린 것은 거울의 탭 수, cold 는 저장된 탭 수 */
   tabs: number;
-  /** 집 PC 가 아직 열지 않았다(고를 타일이 없다) */
+  /** 메인 PC 가 아직 열지 않았다(고를 타일이 없다) */
   cold: boolean;
   /** 그 워크스페이스 타일들 중 가장 급한 에이전트 상태 */
   agent: AgentStatus | null;

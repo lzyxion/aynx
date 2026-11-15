@@ -579,6 +579,7 @@
   class:term={pane.kind === "local" || pane.kind === "ssh"}
   class:talk={flip === "convo"}
   class:has-tools={tools !== null}
+  class:keep-tools={tools?.keepBar === true && span === null}
   bind:this={headEl}
   data-pane-head={pane.id}
   draggable="true"
@@ -936,6 +937,18 @@
   .pane-head.has-tools .pane-ident {
     flex: 0 1 auto;
     max-width: 40%;
+  }
+
+  /*
+   * 이름이 먼저 주는 머리줄(`PaneTools.keepBar` — 문서 타일 · 2026-11-15) — 도구 칸의 바탕 폭이 제 내용 폭이고 이름 묶음의 줄어듦 무게가 훨씬 크다.
+   * 그래서 모자란 폭은 이름(말줄임)이 거의 다 먹고, 이름이 0 이 된 뒤에야 도구 칸이 줄어 잘린다 — 도구줄 끝의 [저장] 이 먼저 잘리지 않게.
+   */
+  .pane-head.keep-tools .pane-ident {
+    flex-shrink: 10000;
+  }
+
+  .pane-head.keep-tools .pane-tools {
+    flex-basis: auto;
   }
 
   .pane-ident.gone {

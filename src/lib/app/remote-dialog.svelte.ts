@@ -16,7 +16,7 @@ import {
  *
  * ## 폴리필과의 약속 — `window.__AYNX_REMOTE_UI__`
  *
- * 원격 창 부팅이 [`installRemoteUi`] 로 건다(집 PC 창에서는 아무것도 하지 않는다). 폴리필(`src-tauri/src/remote/polyfill.js`)은
+ * 원격 창 부팅이 [`installRemoteUi`] 로 건다(메인 PC 창에서는 아무것도 하지 않는다). 폴리필(`src-tauri/src/remote/polyfill.js`)은
  * 이 손잡이가 있으면 그쪽으로, 없으면(앱이 뜨기 전) 예전 그대로 네이티브 대화 · 제 DOM 칸으로 간다.
  *
  * - `message({message, title, kind, buttons})` → 고른 단추의 결과 글자(`"Yes"` · `"Ok"` · 사용자 이름 …) — 플러그인이 견주는 값.
@@ -140,7 +140,7 @@ interface RemoteUi {
 
 let installed = false;
 
-/** 원격 창 부팅이 한 번 — 폴리필이 앱 모달로 묻게 손잡이를 건다. 집 PC 창이면 아무것도 하지 않는다. */
+/** 원격 창 부팅이 한 번 — 폴리필이 앱 모달로 묻게 손잡이를 건다. 메인 PC 창이면 아무것도 하지 않는다. */
 export function installRemoteUi(): void {
   if (!isRemote || installed || typeof window === "undefined") return;
   installed = true;

@@ -427,7 +427,7 @@ function setLink(paneId: string, agent: string, id: string, pending: boolean, la
  * 로컬 AI 타일의 연결이 **확정**됐다 — autorun 을 그 대화의 재개 줄로 고쳐 적는다(2026-11-12 — 앱 · 세션 서버가 다시 떠 새 셸이
  * autorun 을 다시 돌리면 마지막 대화로). 줄은 순수 층 [`resumeAutorunFor`] 가 고정 낱말 · UUID 모양 id · 그 autorun 의 추가 인자로만
  * 짓는다(AI 문자열 → PTY 길 없음 — 전문 4). 에이전트 실행 줄이 아니면 손대지 않는다. 원격 타일은 복원에서 autorun 을 다시 돌리지 않아
- * 하지 않고, 원격 창(폰)은 집 PC 의 명세를 고치지 않는다. 창 이관으로 넘어온 타일은 저장되는 재시작 명세(`restart`)가 그 자리다.
+ * 하지 않고, 원격 창(폰)은 메인 PC 의 명세를 고치지 않는다. 창 이관으로 넘어온 타일은 저장되는 재시작 명세(`restart`)가 그 자리다.
  */
 function persistResumeAutorun(paneId: string, agent: string, id: string): void {
   if (isRemote) return;
@@ -439,8 +439,8 @@ function persistResumeAutorun(paneId: string, agent: string, id: string): void {
 }
 
 function dropLink(paneId: string): void {
-  // 원격 창(폰)에서는 연결의 주인이 집 PC 거울이다([`mirrorAgentLink`]) — 제 셸 사건(새 CLI 의 `C` · 셸 복귀 · 새 세션)으로 지우지 않는다.
-  // 거울에는 "재개로 띄운 것" 표시가 없어, 폰에서 재개한 Codex 타일의 재개 명령 `C` 가 막 받은 연결을 지웠다(10-26). 집 PC 가 지우면
+  // 원격 창(폰)에서는 연결의 주인이 메인 PC 거울이다([`mirrorAgentLink`]) — 제 셸 사건(새 CLI 의 `C` · 셸 복귀 · 새 세션)으로 지우지 않는다.
+  // 거울에는 "재개로 띄운 것" 표시가 없어, 폰에서 재개한 Codex 타일의 재개 명령 `C` 가 막 받은 연결을 지웠다(10-26). 메인 PC 가 지우면
   // 거울이 따라 지운다.
   if (isRemote) return;
   const had = paneId in links;
@@ -462,9 +462,9 @@ export function seedAgentLink(pane: PaneSpec): void {
 }
 
 /**
- * 원격 창 — 집 PC 거울이 실어 온 그 타일의 연결로 맞춘다(`app/mirror` 의 스냅숏 반영 · 10-26). 연결의 주인은 신호를 놓치지 않는 집 PC 다:
+ * 원격 창 — 메인 PC 거울이 실어 온 그 타일의 연결로 맞춘다(`app/mirror` 의 스냅숏 반영 · 10-26). 연결의 주인은 신호를 놓치지 않는 메인 PC 다:
  * 원격 창은 떼어 둔 동안(R5 — 백그라운드 · 숨은 타일) 신호를 놓치고, Codex 는 첫 질문 전에 신호가 없어 붙은 직후 대화 면이 비었다.
- * 거울에 없으면 지운다(집 PC 가 CLI 끝 · 새 CLI 로 버렸다). 명세 사본은 거울이 이미 실었으니 쓰지 않는다.
+ * 거울에 없으면 지운다(메인 PC 가 CLI 끝 · 새 CLI 로 버렸다). 명세 사본은 거울이 이미 실었으니 쓰지 않는다.
  */
 export function mirrorAgentLink(paneId: string, link: AgentLink | undefined): void {
   const cur = links[paneId];

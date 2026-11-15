@@ -97,7 +97,6 @@
    */
   import { onDestroy, tick, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
-  import { openExportDoc } from "$lib/app/new-doc.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { stripReason, hasReason } from "$lib/error-reason";
   import {
@@ -551,7 +550,7 @@
 
   /**
    * Codex 모델 목록 — 사이드 채팅과 같은 출처(`codex_models` — 이 PC 의 Codex 캐시 파일 · 프로세스 없음). 이 PC 에서 도는 타일(`local` —
-   * 원격 웹 창에서 보는 집 PC 타일도)만 읽는다. SSH 타일의 Codex 는 그 서버의 목록을 몰라 `null` — 메뉴는 게이지만.
+   * 원격 웹 창에서 보는 메인 PC 타일도)만 읽는다. SSH 타일의 Codex 는 그 서버의 목록을 몰라 `null` — 메뉴는 게이지만.
    */
   let codexList = $state<CodexModels | null>(null);
   const codexLocal = $derived(modelCli === "codex" && pane.kind === "local");
@@ -1257,7 +1256,6 @@
           paths={pathLinks}
           {codeActions}
           copyable
-          exportDoc={(text, at) => void openExportDoc({ text, anchor: at, from: { tile: pane.id } })}
           bind:bodyEl
         />
       {/if}

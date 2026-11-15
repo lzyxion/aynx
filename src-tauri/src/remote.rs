@@ -7,14 +7,14 @@
 //!
 //! 불변식:
 //! - **127.0.0.1 에만 묶는다.** tailnet 노출은 `tailscale serve --bg --https=443 http://127.0.0.1:<포트>` 가 하고(사용자가 직접 걸거나
-//!   집 PC 설정 화면의 [연결] — `serve.rs`), TLS·인증서도 그쪽이다. 앱은 다른 인터페이스에 듣지 않는다(기존 "리스너는 루프백" 원칙 — `loopback_http`).
+//!   메인 PC 설정 화면의 [연결] — `serve.rs`), TLS·인증서도 그쪽이다. 앱은 다른 인터페이스에 듣지 않는다(기존 "리스너는 루프백" 원칙 — `loopback_http`).
 //! - **`Host` 는 설정한 `*.ts.net` 이름**(`[remote] host`)일 때만 받는다 — DNS 리바인딩 막기. `Origin` 이 있으면 그
 //!   `https://<Host>` 와 같아야 한다 — CSRF 막기. 루프백 이름(`127.0.0.1:<포트>`·`localhost:<포트>`)은 **개발 빌드에서만**
 //!   (로컬 시험용 — [`crate::instance::DEV`]). 판정은 `gateway::check_request` 하나.
 //! - **Tailscale Funnel(공개 인터넷)이 이 포트를 내보내면 열지 않는다** — 켤 때와 도는 동안 60초마다 `tailscale funnel status --json`
 //!   을 보고, 보이면 리스너를 닫는다(`funnel.rs`). CLI 가 없으면 열되 상태가 "확인 불가" 를 말한다.
 //! - **신원은 페어링 토큰, 열림은 원격 가림막**(R1a-2 — `auth.rs`·`gate.rs`): 미페어링 브라우저는 페어링 쪽만, 페어링된 기기는
-//!   원격 가림막 쪽만, 가림막을 걷은 기기만 앱 파일을 받는다. 페어링 [허용]은 **집 PC 주 창의 사람만**(이벤트 `remote-pair-request`
+//!   원격 가림막 쪽만, 가림막을 걷은 기기만 앱 파일을 받는다. 페어링 [허용]은 **메인 PC 주 창의 사람만**(이벤트 `remote-pair-request`
 //!   → 모달 → `remote_pair_respond`). 원격 가림막을 걷는 것이 곧 볼트를 여는 것이다(`gate.rs` 머리말).
 //! - **원격 창**(R1a-3): 열린 기기가 받는 앱 셸에는 관문이 **폴리필**(`/remote/polyfill.js` — `window.__TAURI_INTERNALS__` 를 세운다)을
 //!   첫 스크립트로 끼우고, 페이지는 `/remote/ws` 로 붙는다. 연결 하나 = GUI 안의 숨은 창 하나(`remote-<기기>-<세대>`)이고, 원격의
@@ -25,8 +25,8 @@
 //!   (출처 하나 — 런타임에 `app.config()` 에서 읽는다 · `static_files.rs`).
 //! - GET 과, POST 는 `gate::POST_ROUTES` 다섯만(Origin 필수). GET 의 본문·`..` 경로·이상한 글자는 거절한다(개발 빌드의 자산은 디스크
 //!   `build/` 를 읽으므로).
-//! - **원격 권한 B(R1a-4 — `deny.rs`)**: 원격 창의 앱 명령은 모두 `deny.rs` 의 표 넷(집 PC 전용 · 재확인 · 미지원 · 허용 — 명시
-//!   목록, 시험이 `generate_handler!` 와 맞춘다)을 지나야 Tauri 에 닿는다(`bridge::invoke`). 집 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 ·
+//! - **원격 권한 B(R1a-4 — `deny.rs`)**: 원격 창의 앱 명령은 모두 `deny.rs` 의 표 넷(메인 PC 전용 · 재확인 · 미지원 · 허용 — 명시
+//!   목록, 시험이 `generate_handler!` 와 맞춘다)을 지나야 Tauri 에 닿는다(`bridge::invoke`). 메인 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 ·
 //!   `remote_pair_respond`·`remote_pair_pending` · `save_settings` 의 `[automation]`·원격 켜기·이름·포트(칸 단위). 원격 허용 =
 //!   `remote_status`·`remote_devices_list`·`remote_device_revoke`(자기 기기 포함) · 원격 끄기. 재확인(승인·AI 권한)은
 //!   `POST /remote/reauth` 의 1회용 표(`gate.rs` "재확인").
@@ -284,7 +284,7 @@ impl Handle {
     }
 }
 
-/// 관문 쪽 색(`/remote/theme.css`) — 집 PC 주 창이 칠한 원천 토큰의 계산값과 모드(`src/lib/gate-theme.ts`). **집 PC 전용**(`deny.rs` —
+/// 관문 쪽 색(`/remote/theme.css`) — 메인 PC 주 창이 칠한 원천 토큰의 계산값과 모드(`src/lib/gate-theme.ts`). **메인 PC 전용**(`deny.rs` —
 /// 원격 창은 이 기기 밝기 사본을 칠할 수 있다). 메모리만 · 허용 목록 밖 이름 · 나쁜 값은 버린다(`theme.rs`). 모드가 둘 밖이면 아무것도 안 바꾼다.
 #[tauri::command]
 pub async fn remote_gate_theme_set(mode: String, tokens: std::collections::HashMap<String, String>) -> Result<(), ()> {
@@ -306,8 +306,8 @@ pub async fn remote_status(state: tauri::State<'_, Gateway>) -> Result<RemoteSta
     Ok(status)
 }
 
-/// 이 PC 의 MagicDNS 이름(`tailscale status --json` 의 `Self.DNSName`) — 설정 화면의 [찾기](R1a-5). **집 PC 전용**(`deny.rs` —
-/// 그 값이 켜기·이름 칸을 채운다. 집 PC 에서 `tailscale` 을 실행한다).
+/// 이 PC 의 MagicDNS 이름(`tailscale status --json` 의 `Self.DNSName`) — 설정 화면의 [찾기](R1a-5). **메인 PC 전용**(`deny.rs` —
+/// 그 값이 켜기·이름 칸을 채운다. 메인 PC 에서 `tailscale` 을 실행한다).
 #[tauri::command]
 pub async fn remote_detect_host() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(funnel::detect_host)
@@ -323,7 +323,7 @@ pub(crate) fn unlocked_devices(app: &AppHandle) -> usize {
         .map_or(0, |g| g.auth.lock().unlocked_devices(Instant::now()))
 }
 
-/// 집 PC 사람의 페어링 답([허용]·[거절]) — **집 PC 전용**(`deny.rs`). 6자리 코드를 견주는 것은 사람이다.
+/// 메인 PC 사람의 페어링 답([허용]·[거절]) — **메인 PC 전용**(`deny.rs`). 6자리 코드를 견주는 것은 사람이다.
 #[tauri::command]
 pub async fn remote_pair_respond(
     app: AppHandle,
@@ -345,7 +345,7 @@ pub async fn remote_pair_respond(
     }
 }
 
-/// 지금 답을 기다리는 페어링 요청(주 창이 새로 떴을 때 놓친 이벤트 대신) — **집 PC 전용**.
+/// 지금 답을 기다리는 페어링 요청(주 창이 새로 떴을 때 놓친 이벤트 대신) — **메인 PC 전용**.
 #[tauri::command]
 pub async fn remote_pair_pending(state: tauri::State<'_, Gateway>) -> Result<Option<PairNotice>, ()> {
     Ok(state.auth.lock().pair_pending(Instant::now()))

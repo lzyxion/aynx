@@ -11,7 +11,7 @@ import type { SideChat } from "$lib/side-chat";
 
 /**
  * **사이드 채팅을 그리는 자리들의 공용 몸**(2026-11-01 — docs/log/2026-11-01-remote-side-chat.md 화면 단계). 자리는 둘이다: 데스크톱 폭의
- * 채팅 독(`ChatDock` — 집 PC 주 창 · 원격 데스크톱 폭 창)과 원격 폰 배치의 전체 화면 덮개(`mobile/MobileChat`). 둘 다 서는 순간 서버 표에
+ * 채팅 독(`ChatDock` — 메인 PC 주 창 · 원격 데스크톱 폭 창)과 원격 폰 배치의 전체 화면 덮개(`mobile/MobileChat`). 둘 다 서는 순간 서버 표에
  * 살아 있는 채팅(뒤에서 도는 턴 · 권한 대기)에 붙어 점을 세우고, 폰 상태줄의 말풍선은 같은 점을 읽는다.
  */
 

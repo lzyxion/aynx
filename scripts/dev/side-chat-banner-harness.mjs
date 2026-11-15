@@ -18,7 +18,7 @@
 // ⑨ 지워진 채팅 → 그 배너 저절로 해결
 // ⑩ 원격 폰(400x844) — 배너가 서고 [확인하러 가기] → 그 채팅의 폰 덮개 · 해결
 // ⑪ 콘솔 오류 0(`stub:` 거절 제외)
-// ⑫ 두 창(집 PC 데스크톱 + 원격 폰 — 같은 Edge 의 둘째 탭) 완료 확인 공유 — 집 PC 에서 보면(턴 끝 뒤 입력) 폰의 끝남 배너가 풀림 · 폰에서 보면 집 PC 의
+// ⑫ 두 창(메인 PC 데스크톱 + 원격 폰 — 같은 Edge 의 둘째 탭) 완료 확인 공유 — 메인 PC 에서 보면(턴 끝 뒤 입력) 폰의 끝남 배너가 풀림 · 폰에서 보면 메인 PC 의
 //    실패 배너가 풀림 · op `side_chat_seen` 몸 = chat · epoch · seq · 앞 턴 번호 · 다른 세대 확인은 버림 · 권한 물음은 안 풀림(서버 방송은 하네스가 흉내)
 //
 //   node scripts/dev/run-harness.mjs side-chat-banner-harness.mjs <outdir> --size 1280x860
@@ -424,7 +424,7 @@ await sleep(500);
 await shot("scb-phone-open.png");
 
 // ════════════════════════════════════════════════════════════════════════════════
-// ⑫ 두 창 — 집 PC 창(이 페이지 · 데스크톱) + 원격 폰 창(둘째 페이지): 한 창에서 사람이 턴 끝을 보면 다른 창의 끝남 · 실패 배너가 풀린다
+// ⑫ 두 창 — 메인 PC 창(이 페이지 · 데스크톱) + 원격 폰 창(둘째 페이지): 한 창에서 사람이 턴 끝을 보면 다른 창의 끝남 · 실패 배너가 풀린다
 // (2026-11-13 — `app/agent-seen` 의 사이드 채팅 갈래 · op `side_chat_seen` → 방송 `side-chat-seen`). 서버는 하네스가 흉내 낸다: 두 창의
 // `__seenOut` 을 모아 세대 · 번호를 보고 두 창에 `side-chat-seen{chat, epoch, seq}` 를 쏜다. 채팅 사건은 두 창에 같은 것을 먹인다(서버가 보는 창 모두에 낸다).
 // ════════════════════════════════════════════════════════════════════════════════
@@ -464,7 +464,7 @@ const pageClient = async (wsUrl) => {
   return { send: call, ev: e, close: () => s.close() };
 };
 const A = { send, ev };
-// 집 PC 창을 다시 띄운다(앞 판의 폰 배치를 걷고)
+// 메인 PC 창을 다시 띄운다(앞 판의 폰 배치를 걷고)
 await bootPage({ remote: false, width: 1280, height: 860 });
 await closeChatDock();
 await clearBanners();
@@ -491,7 +491,7 @@ for (let i = 0; i < 50; i++) {
 await B.ev(`(() => { const s = document.createElement('style'); s.textContent = '.toast { display: none !important; }'; document.head.append(s); })()`);
 await sleep(800);
 const SHEETS = importApp("app/mobile-sheets.svelte.ts");
-// 두 창 모두 채팅들에 붙고 통로를 건다 — 집 PC 는 독을 한 번 열고 닫고, 폰은 덮개를 한 번 열고 닫는다
+// 두 창 모두 채팅들에 붙고 통로를 건다 — 메인 PC 는 독을 한 번 열고 닫고, 폰은 덮개를 한 번 열고 닫는다
 await ev(`(async () => (await ${CHAT}).toggleChatDock())()`);
 await sleep(600);
 await closeChatDock();
@@ -527,29 +527,29 @@ const relayUntil = async (ms = 4000) => {
   return all;
 };
 
-// 방향 1 — 집 PC 에서 보면 원격 폰의 끝남 배너가 풀린다
+// 방향 1 — 메인 PC 에서 보면 원격 폰의 끝남 배너가 풀린다
 await mouseAway();
 check("⑫ chat-b 턴(시작 · 잘 끝남) 두 창에", [...(await feedBoth("chat-b", { t: "turnStarted", turn: "t9" })), ...(await feedBoth("chat-b", { t: "turnEnded", turn: "t9", outcome: "ok", message: null }))], ["ok", "ok", "ok", "ok"]);
 await sleep(500);
 check("⑫ 두 창 모두 chat-b 끝남 배너", [await bannersOf(A), await bannersOf(B)], [[["chat-b", "stop"]], [["chat-b", "stop"]]]);
 const endB = JSON.parse(await ev(`(async () => JSON.stringify((await ${LIVE}).sideChatTurnEnd('chat-b')))()`));
 check("⑫ 두 창의 턴 끝 번호가 같다(세대 1)", [endB, JSON.parse(await B.ev(`(async () => JSON.stringify((await ${LIVE}).sideChatTurnEnd('chat-b')))()`))], [endB, endB]);
-// 집 PC — 독을 열어 chat-b 를 본다. 넓은 창은 턴 끝 뒤 입력이 있어야 보낸다: 먼저 입력 없이 열기만
+// 메인 PC — 독을 열어 chat-b 를 본다. 넓은 창은 턴 끝 뒤 입력이 있어야 보낸다: 먼저 입력 없이 열기만
 await ev(`(async () => { (await ${CHATS}).selectSideChat('chat-b'); (await ${CHAT}).openChatDockAt('chat'); })()`);
 await sleep(600);
-check("⑫ 집 PC 가 보는 채팅 = chat-b → 제 배너는 방문으로 풀림", [await ev(`(async () => (await ${LIVE}).shownSideChat())()`), await bannersOf(A)], ["chat-b", []]);
+check("⑫ 메인 PC 가 보는 채팅 = chat-b → 제 배너는 방문으로 풀림", [await ev(`(async () => (await ${LIVE}).shownSideChat())()`), await bannersOf(A)], ["chat-b", []]);
 const early = await relaySeen();
 console.log("  (참고) 입력 전에 보낸 확인:", JSON.stringify(early));
 await mouse("mouseMoved", 300, 500, { buttons: 0 });
 await mouse("mouseMoved", 310, 505, { buttons: 0 });
 const sent1 = [...early, ...(await relayUntil())];
-check("⑫ 집 PC → side_chat_seen{chat-b, 1, 턴 끝 번호} 하나", sent1, [["chat-b", 1, endB?.seq]]);
+check("⑫ 메인 PC → side_chat_seen{chat-b, 1, 턴 끝 번호} 하나", sent1, [["chat-b", 1, endB?.seq]]);
 check("⑫ 원격 폰의 chat-b 배너가 풀림(확인함)", [await bannersOf(B), await resolvedFirst(B)], [[], ["chat-b", "stop", "checked"]]);
 await B.send("Page.captureScreenshot", { format: "png" }).then((r) => r.result?.data && fs.writeFileSync(path.join(outdir, "scb-two-remote-cleared.png"), Buffer.from(r.result.data, "base64")));
 await closeChatDock();
 await mouseAway();
 
-// 방향 2 — 원격 폰에서 보면 집 PC 의 실패 배너가 풀린다(폰은 화면이 켜져 있으면 입력을 묻지 않는다)
+// 방향 2 — 원격 폰에서 보면 메인 PC 의 실패 배너가 풀린다(폰은 화면이 켜져 있으면 입력을 묻지 않는다)
 check("⑫ chat-c 턴(시작 · 오류 끝) 두 창에", [...(await feedBoth("chat-c", { t: "turnStarted", turn: "t9" })), ...(await feedBoth("chat-c", { t: "turnEnded", turn: "t9", outcome: "error", message: "boom" }))], ["ok", "ok", "ok", "ok"]);
 await sleep(500);
 check("⑫ 두 창 모두 chat-c 실패 배너", [await bannersOf(A), await bannersOf(B)], [[["chat-c", "failed"]], [["chat-c", "failed"]]]);
@@ -557,7 +557,7 @@ await B.ev(`(async () => { (await ${CHATS}).selectSideChat('chat-c'); (await ${S
 check("⑫ 폰이 chat-c 덮개를 연다", await waitOn(B, `(async () => !!document.querySelector('[data-mobile-chat]') && (await ${LIVE}).shownSideChat() === 'chat-c')()`, 4000), true);
 const endC = JSON.parse(await B.ev(`(async () => JSON.stringify((await ${LIVE}).sideChatTurnEnd('chat-c')))()`));
 check("⑫ 폰 → side_chat_seen{chat-c, 1, 턴 끝 번호}", await relayUntil(), [["chat-c", 1, endC?.seq]]);
-check("⑫ 집 PC 의 chat-c 실패 배너가 풀림(확인함)", [await bannersOf(A), await resolvedFirst(A)], [[], ["chat-c", "failed", "checked"]]);
+check("⑫ 메인 PC 의 chat-c 실패 배너가 풀림(확인함)", [await bannersOf(A), await resolvedFirst(A)], [[], ["chat-c", "failed", "checked"]]);
 await shot("scb-two-home-cleared.png");
 await B.ev(`(async () => (await ${SHEETS}).closeMobileOverlay())()`);
 await sleep(500);
@@ -573,7 +573,7 @@ check("⑫ (준비) 두 창 모두 chat-a 끝남 배너(둘째 턴)", [await ban
 await ev(`window.__emit('side-chat-seen', ${JSON.stringify({ chat: "chat-a", epoch: 1, seq: old?.seq })})`);
 await ev(`window.__emit('side-chat-seen', ${JSON.stringify({ chat: "chat-a", epoch: 2, seq: (old?.seq ?? 0) + 2 })})`);
 await sleep(300);
-check("⑫ 앞 턴 번호 · 다른 세대의 확인 → 집 PC 배너 남음", await bannersOf(A), [["chat-a", "stop"]]);
+check("⑫ 앞 턴 번호 · 다른 세대의 확인 → 메인 PC 배너 남음", await bannersOf(A), [["chat-a", "stop"]]);
 await feedBoth("chat-b", { t: "turnStarted", turn: "t11" });
 await feedBoth("chat-b", { t: "permission", requestId: "r9", kind: "command", title: "Run", detail: "ls", toolName: "Bash" });
 await sleep(400);

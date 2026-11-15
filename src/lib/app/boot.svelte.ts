@@ -172,9 +172,9 @@ export async function boot(): Promise<void> {
   void refreshDbAi();
   try {
     await bootTear();
-    // 원격 창(R2-B)은 제 탭을 만들지 않는다 — 집 PC 주 창의 화면을 비춘다(`app/mirror`).
+    // 원격 창(R2-B)은 제 탭을 만들지 않는다 — 메인 PC 주 창의 화면을 비춘다(`app/mirror`).
     if (isRemote) {
-      // 배치 바꾸기는 요청으로 집 PC 주 창에(R3 — `app/mirror-requests`).
+      // 배치 바꾸기는 요청으로 메인 PC 주 창에(R3 — `app/mirror-requests`).
       startRemoteLayoutRequests();
       await bootMirror();
     }
@@ -206,10 +206,10 @@ export async function boot(): Promise<void> {
   // (창이 하나도 없어도 돈다). 창 쪽은 거부 사유를 검토 카드에 적는 일만 남았다 — **메인 창에서만**(분리 창까지 들으면
   // 사유가 창 수만큼 적힌다 · `app/auto-approve` 머리말).
   //
-  // **원격 창도**(R4 — 원격 승인) 이 묶음 셋을 건다: 원격 창은 집 PC 와 다른 기기의 다른 사람 눈이라(분리 창처럼 같은
+  // **원격 창도**(R4 — 원격 승인) 이 묶음 셋을 건다: 원격 창은 메인 PC 와 다른 기기의 다른 사람 눈이라(분리 창처럼 같은
   // 화면의 둘째 벌이 아니다) 대기 카드 · 상태바 배지 · 알림 센터의 승인 줄 · 실행 결과 토스트가 거기서도 보여야 원격에서
   // 승인할 수 있다. 이벤트(`operation-state` · `operation-auto-refused`)는 원격 브리지의 `listen` 이 이미 받는다(값·비밀 없음 —
-  // id · 상태 · 사유 한 줄). 결과 알림의 메신저 · "그동안 끝난 실행" 꺼내기는 집 PC 주 창만(`remote` — 두 번 보내지 않게).
+  // id · 상태 · 사유 한 줄). 결과 알림의 메신저 · "그동안 끝난 실행" 꺼내기는 메인 PC 주 창만(`remote` — 두 번 보내지 않게).
   if (isMainWindow || isRemote) startAutoApprove();
   // 승인 대기 배지도 같은 자리에 산다 — 관제판을 열어야만 "기다리는 게 있다" 를 알 수 있던
   // 것을 상태바로 끌어낸다 (docs/log/2026-09-21-approval-ttl.md). 자동 승인과 마찬가지로
@@ -219,7 +219,7 @@ export async function boot(): Promise<void> {
   // (docs/log/2026-09-28-run-result-notify.md). 같은 이유로 **메인 창에서만**: `operation-state` 는
   // 모든 창에 방송되므로 분리 창까지 걸면 창 수만큼 운다.
   if (isMainWindow || isRemote) startOperationNotify({ remote: isRemote });
-  // 원격 기기 페어링 확인(R1a-2) — 집 PC 주 창의 사람만 [허용] 한다(관문은 주 창에만 이벤트를 보낸다).
+  // 원격 기기 페어링 확인(R1a-2) — 메인 PC 주 창의 사람만 [허용] 한다(관문은 주 창에만 이벤트를 보낸다).
   if (isMainWindow) startRemotePair();
   // 원격 창의 배치 바꾸기 요청(R3) — GUI 가 주 창에만 여는 채널로 받아 제 함수로 적용한다.
   if (isMainWindow) void startMirrorRequests();
@@ -230,7 +230,7 @@ export async function boot(): Promise<void> {
   // 오케스트레이션 감독 사건(리뷰 F11) — 서버가 사건 id 와 함께 만든 것을 주 창 한 곳이 한 번 보인다.
   if (isMainWindow) startOrchestrationNotify();
   // 오케스트레이션 — 앨범 목록 요약(탭 · 독 막대의 재료) · AI 가 연 앨범의 탭 자동 배치(Q3 — 그 프로듀서 채팅의 탭을 가진 창 하나가 서버 장부로
-  // 가져간다). 집 PC 의 모든 창(보조 창에도 오케스트레이션 탭이 있을 수 있다) — 원격 창은 탭 트리를 고치지 않는다.
+  // 가져간다). 메인 PC 의 모든 창(보조 창에도 오케스트레이션 탭이 있을 수 있다) — 원격 창은 탭 트리를 고치지 않는다.
   if (!isRemote) startOrchCoordinators();
   // 오케스트레이션 탭 모양 맞추기(2026-10-29 · 2단계 단계 6) — 무너진 탭 · 프로듀서 잎 없는 홈 · 1단계 터미널 프로듀서 탭(→ 보통 탭)을 고친다.
   if (!isRemote) startOrchTabRepair();
@@ -248,7 +248,7 @@ export async function boot(): Promise<void> {
   }
   // 볼트는 세션 서버에 산다(③-3b1) — 보는 창이 하나도 없던 동안 서버가 **창 0개 잠금**을 걸었으면(`relock`) 이 창이
   // 관문(가림막)을 세운다. 볼트를 다시 잠그지는 않는다(그 잠금은 HTTP MCP 티켓을 정지만 했다 — `app/veil`). 모든 창.
-  // 집 PC 창이면 마스터가 걸린 볼트가 잠겨 있을 때도 가림막이다(2026-10-28 — 마스터를 걸었으면 앱을 다시 켤 때 무조건 가린다 ·
+  // 메인 PC 창이면 마스터가 걸린 볼트가 잠겨 있을 때도 가림막이다(2026-10-28 — 마스터를 걸었으면 앱을 다시 켤 때 무조건 가린다 ·
   // 보조 창도 — 가림막이 선 동안 새로 뜬 창이 맨 화면을 보이지 않게).
   void recheckVaultVeil(false, !isRemote);
 }
@@ -472,7 +472,7 @@ function watchWindowClose(): Promise<() => void> {
 function watchPageHide(): () => void {
   if (typeof window === "undefined") return () => {};
   const leaving = async () => {
-    // 원격 창의 시청자 타일(R2-B) — 시청만 끝낸다(세션은 집 PC 것).
+    // 원격 창의 시청자 타일(R2-B) — 시청만 끝낸다(세션은 메인 PC 것).
     if (isRemote) leaveViewers();
     void leaveWindowSessions();
     await flushTabSave();
@@ -591,7 +591,7 @@ export function mountAppListeners(): () => void {
     void recheckVaultVeil(event.payload.replaced);
     void refreshDbAi();
   }).catch(() => () => {});
-  // 가림막은 집 PC 창 전체에 하나처럼 선다 — 다른 창이 세우면 서고, 관문을 지나면 같이 걷힌다(2026-10-28 · `app/veil`).
+  // 가림막은 메인 PC 창 전체에 하나처럼 선다 — 다른 창이 세우면 서고, 관문을 지나면 같이 걷힌다(2026-10-28 · `app/veil`).
   const veilAcross = listenVeilAcrossWindows().catch(() => () => {});
   // 트레이 메뉴(③-4) — [GUI 종료]·[모든 세션 종료] 를 창이 열려 있을 때 주 창이 받아 X 와 같은 흐름을 돈다 · [떨어진 세션]
   // 은 이미 부팅된 주 창에 이벤트로 온다(부팅 중이면 `take_tray_intent` 가 데려간다).

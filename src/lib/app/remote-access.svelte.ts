@@ -2,10 +2,10 @@
  * **원격 접속 상태** — 설정 › 원격 접속 화면과 상태바 원격 칩의 재료(R1a-5 — 설계
  * docs/log/2026-10-15-remote-web-client-design.md 13절 "원격 접속 기록 + 상태바 '원격 접속 중' 상시").
  *
- * - **집 PC 주 창**: 부팅에서 [`startRemoteAccess`] 가 `remote-sessions`(Rust `gate::activity_changed` — 세션 열림·닫힘 · 원격 창
+ * - **메인 PC 주 창**: 부팅에서 [`startRemoteAccess`] 가 `remote-sessions`(Rust `gate::activity_changed` — 세션 열림·닫힘 · 원격 창
  *   붙음·끊김 · 이름)를 듣고, 올 때마다 기기 목록·기록을 다시 읽는다. 상태바 칩은 "열렸고 원격 창이 붙은 기기"(`activeDevices`)가
  *   하나라도 있으면 선다 — **끌 수 없다**(설정 칸이 없다). OS 알림은 Rust 가 직접 낸다(`gate::notify_home`).
- * - **원격 창**: 이벤트를 듣지 않는다(집 PC 주 창 대상 이벤트다). 설정 화면이 보이는 동안 [`refreshRemoteAccess`] 를 몇 초마다
+ * - **원격 창**: 이벤트를 듣지 않는다(메인 PC 주 창 대상 이벤트다). 설정 화면이 보이는 동안 [`refreshRemoteAccess`] 를 몇 초마다
  *   부른다(`RemoteSection`). 상태바에는 "원격 — <기기 이름>" + [잠그기]([`lockThisRemote`])가 선다.
  *
  * 값에 비밀은 없다 — 기기 id·이름·시각·상태 수뿐(토큰·암호·코드 없음).
@@ -68,12 +68,12 @@ export async function revokeRemoteDevice(id: string): Promise<void> {
   await refreshRemoteAccess();
 }
 
-/** 이 PC 의 MagicDNS 이름 — `tailscale status --json`(집 PC 전용). 실패면 던진다(문구는 Rust). */
+/** 이 PC 의 MagicDNS 이름 — `tailscale status --json`(메인 PC 전용). 실패면 던진다(문구는 Rust). */
 export function detectRemoteHost(): Promise<string> {
   return invoke<string>("remote_detect_host");
 }
 
-// ── Tailscale 연결(집 PC 전용 — Rust `remote/serve.rs`) ──
+// ── Tailscale 연결(메인 PC 전용 — Rust `remote/serve.rs`) ──
 
 let serve = $state<RemoteServeStatus | null>(null);
 let flow = $state<ConnectFlow>({ phase: "idle" });
@@ -156,7 +156,7 @@ export async function lockThisRemote(): Promise<void> {
   }
 }
 
-/** 부팅에서 한 번 — **집 PC 주 창에서만**(`boot()`). */
+/** 부팅에서 한 번 — **메인 PC 주 창에서만**(`boot()`). */
 export function startRemoteAccess(): void {
   if (started || isRemote) return;
   started = true;

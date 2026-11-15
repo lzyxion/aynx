@@ -1,9 +1,9 @@
 // 원격 창의 파일 타일 보기 요청 검증(2026-11-04 · docs/log/2026-11-04-file-ui-keep.md).
 //   node scripts/dev/run-harness.mjs file-ui-remote-harness.mjs <outdir> --size 1100x800
 //
-// 헤드리스 스텁 — `window.__AYNX_REMOTE__` 로 뜨고 탭은 `mirror-layout` 방송(집 PC 출처)으로 세운다. `mirror_request` 는 스텁이 받아 적고, 실제 GUI · 주 창 왕복은 아니다
+// 헤드리스 스텁 — `window.__AYNX_REMOTE__` 로 뜨고 탭은 `mirror-layout` 방송(메인 PC 출처)으로 세운다. `mirror_request` 는 스텁이 받아 적고, 실제 GUI · 주 창 왕복은 아니다
 // (GUI 검사는 Rust `remote/mirror.rs` 시험, 주 창 적용은 `file-ui-keep-harness` 가 본다).
-// 보는 것: ① 토글 → 바로 보임 + 요청 한 번(집 PC 열쇠) ② 그 값이 실린 거울 갱신에도 유지 ③ 슬라이더 연타 = 요청 하나 ④ 거절돼도 안내 없음 · 그 페이지 동안 값 유지 ⑤ 저장된 배치(집 PC 없음)면 보내지 않음.
+// 보는 것: ① 토글 → 바로 보임 + 요청 한 번(메인 PC 열쇠) ② 그 값이 실린 거울 갱신에도 유지 ③ 슬라이더 연타 = 요청 하나 ④ 거절돼도 안내 없음 · 그 페이지 동안 값 유지 ⑤ 저장된 배치(메인 PC 없음)면 보내지 않음.
 import { waitBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
@@ -85,7 +85,7 @@ const T = importApp("app/tabs.svelte");
 const P = importApp("app/panes.svelte");
 const S = importApp("mirror/snapshot");
 
-/** 집 PC 가 보낸 것처럼 거울을 민다 — `fields` 가 그 타일의 칸 */
+/** 메인 PC 가 보낸 것처럼 거울을 민다 — `fields` 가 그 타일의 칸 */
 const pushMirror = async (fields, source = "home") => {
   await ev(`(async () => {
     const s = await ${S};
@@ -113,11 +113,11 @@ check(p.fileHidden === true, "토글이 곧바로 이 창에 적힌다");
 check((await requests()).length === 0, "묶는 동안은 아직 보내지 않는다");
 await sleep(400);
 let rs = await requests();
-check(JSON.stringify(rs) === JSON.stringify([{ op: "fileUi", tile: "k:fk", hidden: true }]), `요청 한 번 · 집 PC 열쇠 (${JSON.stringify(rs)})`);
+check(JSON.stringify(rs) === JSON.stringify([{ op: "fileUi", tile: "k:fk", hidden: true }]), `요청 한 번 · 메인 PC 열쇠 (${JSON.stringify(rs)})`);
 const last = await ev(`localStorage.getItem('aynx.files.lastUi')`);
 check(String(last).includes("hidden"), "이 기기의 마지막 값에 적힌다");
 
-// ── ② 집 PC 가 적은 값이 거울로 돌아와도 유지 ─────────────────────────────────
+// ── ② 메인 PC 가 적은 값이 거울로 돌아와도 유지 ─────────────────────────────────
 await pushMirror({ fileHidden: true });
 p = await spec();
 check(p.fileHidden === true, "그 값이 실린 거울 갱신 뒤에도 유지된다");
@@ -145,13 +145,13 @@ p = await spec();
 check(p.filePreview === true, "거절돼도 그 페이지 동안 값이 남는다");
 await ev(`(window.__reject = null, 1)`);
 
-// ── ⑤ 저장된 배치(집 PC 주 창 없음) — 보내지 않는다 ──────────────────────────
+// ── ⑤ 저장된 배치(메인 PC 주 창 없음) — 보내지 않는다 ──────────────────────────
 await pushMirror({}, "file");
 await clearRequests();
 const fileId = (await spec()).id;
 await ev(`${P}.then(m => m.noteFileUi(${JSON.stringify(fileId)}, { hidden: false }))`);
 await sleep(400);
-check((await requests()).length === 0, "집 PC 가 없으면 보내지 않는다");
+check((await requests()).length === 0, "메인 PC 가 없으면 보내지 않는다");
 
 check(errors.length === 0, `콘솔 예외 0 (${errors.join(" | ").slice(0, 300)})`);
 console.log(failed === 0 ? "ALL PASS" : `${failed} FAIL`);

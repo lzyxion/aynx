@@ -198,7 +198,7 @@ function newOrchTab(runId: string | null, producer: PaneSpec | null = null): Tab
   return tab;
 }
 
-/** 원격 창 — 탭을 만들지 않는다(집 PC 창이 쥔다 · 1단계는 배치 요청을 두지 않았다). 있는 탭으로 가거나 한 줄 알린다. */
+/** 원격 창 — 탭을 만들지 않는다(메인 PC 창이 쥔다 · 1단계는 배치 요청을 두지 않았다). 있는 탭으로 가거나 한 줄 알린다. */
 function remoteGo(tab: TabSpec | null, runId: string | null = null): void {
   if (tab) pickTab(tab.id);
   else if (!requestOrchTab(runId)) showNotice(t("orch.tab.remoteOpen"));
@@ -407,7 +407,7 @@ export function handleOrchEscape(e: KeyboardEvent): boolean {
 }
 
 /**
- * (집 PC 주 창 — 원격 배치 요청 `openOrchTab`) 원격 창이 청한 오케스트레이션 탭을 연다 — 같은 여는 길(`openAlbumTab` · `openOrchHome`).
+ * (메인 PC 주 창 — 원격 배치 요청 `openOrchTab`) 원격 창이 청한 오케스트레이션 탭을 연다 — 같은 여는 길(`openAlbumTab` · `openOrchHome`).
  * 원격이 다른 워크스페이스를 보고 있으면 그 워크스페이스에 **넣기만** 한다(이미 있으면 그대로 — 화면을 옮기지 않는다 · 새 탭 요청과 같은 규칙).
  * 그 워크스페이스가 없거나 아직 열리지 않았으면 거절 낱말(`missing` · `cold`).
  */

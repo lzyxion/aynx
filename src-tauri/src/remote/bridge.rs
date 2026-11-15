@@ -11,7 +11,7 @@
 //!   명령은 [`admit`] 을 그냥 지나 ACL 을 본다 — `capabilities/remote.json`(`remote-*`)은 이벤트
 //!   `emit`·`emit_to` 와 `path` 만 연다. 나머지 플러그인은 `polyfill.js` 가 브라우저 쪽에서 대신하거나 거절한다(이중 문).
 //! - **이벤트 문**(R1a-5): 원격의 `plugin:event|emit`·`emit_to` 는 ACL 을 지나도 [`admit_event`] 가 이벤트 이름으로 거른다 —
-//!   `deny::REMOTE_EMIT` 넷만(집 PC 창의 리스너가 받는 순간 집 PC 전용 일을 하는 이벤트를 원격이 낼 수 없게).
+//!   `deny::REMOTE_EMIT` 넷만(메인 PC 창의 리스너가 받는 순간 메인 PC 전용 일을 하는 이벤트를 원격이 낼 수 없게).
 //! - 응답: 우리가 넘긴 responder 가 `InvokeResponse` 를 직접 받는다(JS 를 거치지 않는다). **responder 가 불리지 않고 버려지면**(틀린
 //!   키·명령이 끝나지 않고 버려짐) [`Reply`] 의 `Drop` 이 오류 응답을 보낸다 — 원격 쪽 promise 가 영영 매달리지 않게.
 //! - 동기 명령은 **부른 스레드에서** 돈다(스파이크 — 메인 스레드 아님) → 블로킹 풀에서 부른다(관문의 tokio 고리를 막지 않게).
@@ -182,7 +182,7 @@ pub(crate) fn window_gone(label: &str) {
     }
 }
 
-/// 모든 원격 창을 닫게 한다 — 집 PC 창이 모두 사라지고 트레이도 없을 때(숨은 창만 남아 Tauri 가 끝나지 않는 일을 막는다).
+/// 모든 원격 창을 닫게 한다 — 메인 PC 창이 모두 사라지고 트레이도 없을 때(숨은 창만 남아 Tauri 가 끝나지 않는 일을 막는다).
 pub(crate) fn close_all() {
     for conn in conns().values() {
         conn.out.close("app");
@@ -406,7 +406,7 @@ fn dispatch<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         if settings_gate {
             if let Err(why) = admit_settings(&request.body) {
-                eprintln!("[aynx] 원격 창: 설정 저장 거절(집 PC 전용 칸)");
+                eprintln!("[aynx] 원격 창: 설정 저장 거절(메인 PC 전용 칸)");
                 reply.fail(why);
                 return;
             }

@@ -87,7 +87,7 @@ describe("주소의 forkFrom — 저장 · 이관 · 거울", () => {
 });
 
 describe("잎이 창을 떠날 때 — 구독 갈래(여러 창 · 원격)", () => {
-  it("이 창에 아직 있으면 그대로 · 이관 · 원격 · 집 PC 탭 닫기는 구독만 푼다", () => {
+  it("이 창에 아직 있으면 그대로 · 이관 · 원격 · 메인 PC 탭 닫기는 구독만 푼다", () => {
     expect(leafGoneAction({ remote: false, handoff: false, stillHere: true })).toBe("keep");
     expect(leafGoneAction({ remote: true, handoff: false, stillHere: true })).toBe("keep");
     expect(leafGoneAction({ remote: false, handoff: true, stillHere: false })).toBe("leave");

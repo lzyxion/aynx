@@ -6,8 +6,8 @@
 //
 // 보는 것: ① 걸릴 것 / 안 걸릴 것(`[data-path-link]` · title = 풀린 경로 + `:줄`) ② 채팅 폴더를 알기 전엔 절대 · `~/` 만 → 안 뒤엔 상대도
 // ③ 탭이 없을 때 클릭 → 새 탭에 문서 타일 · 줄 강조 ④ 지금 탭의 포커스 타일(셸) 곁에 문서 타일 · 줄 강조 · `~/` 는 홈에 이어 stat
-// ⑤ 원격 폰(400x844) — 클릭 → 집 PC 에 요청 · 덮개 닫힘 · 집 PC 가 새 id 로 세운 문서 타일이 그 줄로 ⑥ 콘솔 오류 0(`stub:` 거절 제외)
-// ⑦ 원격 데스크톱 — 거울 흉내(`mirror_request` 를 받으면 집 PC 처럼 **새 id** 의 문서 타일을 거울에 더한다)로 옆에 열기 · 미리 보기
+// ⑤ 원격 폰(400x844) — 클릭 → 메인 PC 에 요청 · 덮개 닫힘 · 메인 PC 가 새 id 로 세운 문서 타일이 그 줄로 ⑥ 콘솔 오류 0(`stub:` 거절 제외)
+// ⑦ 원격 데스크톱 — 거울 흉내(`mirror_request` 를 받으면 메인 PC 처럼 **새 id** 의 문서 타일을 거울에 더한다)로 옆에 열기 · 미리 보기
 // 갈아 끼우기 · 이미 열린 같은 파일(요청 없음 · 실제 id) · 터미널 · AI 타일 대화 면의 길(`openPathFromTerminal` 직접)이 모두 그 줄로 가는지
 // (`app/panes` 의 `setLineOnOpened`).
 // ⑧ (2026-11-13) 사이드 채팅 알림 줄 → 그 채팅 — 런처 독 알림 칸의 줄이 단추이고 누르면 런처 독이 닫히고 그 채팅(chat-b)이 골라져 채팅 독이
@@ -176,7 +176,7 @@ const stub = (remote) => `
       ${WORKSPACE_STUB}
       window.__calls.push([cmd, args]);
       if (cmd === 'open_local_session') { const id = nextSession++; window.__chan[id] = { cb: args?.onData?.id, idx: 0 }; return Promise.resolve({ id, shell: 'pwsh' }); }
-      // 원격 창의 셸 타일은 집 PC 에 이미 붙은 세션의 시청자다(code-to-term-chat-harness 와 같은 흉내)
+      // 원격 창의 셸 타일은 메인 PC 에 이미 붙은 세션의 시청자다(code-to-term-chat-harness 와 같은 흉내)
       if (cmd === 'attach_session_viewer') {
         const id = nextSession++; window.__chan[id] = { cb: args?.onData?.id, idx: 0, stream: args.stream };
         return Promise.resolve({ id, kind: 'local', lease: { stream: args.stream, sessionEpoch: 1, leaseEpoch: 1 }, start: 0, end: 0, replayed: false, overrunBytes: 0, shell: 'pwsh', viewer: true, sizeOwner: true });
@@ -411,7 +411,7 @@ check("⑧ 지워진 채팅 → 런처 독 닫힘 · 채팅 그대로 · 채팅 
 ], [null, "chat-b", false]);
 
 // ════════════════════════════════════════════════════════════════════════════════
-// 거울 흉내 — 집 PC 의 탭들을 이 페이지에 두고 민다. 문서 요청(옆에 열기 · 갈아 끼우기 · 새 탭)을 받으면 **집 PC 처럼 새 id**
+// 거울 흉내 — 메인 PC 의 탭들을 이 페이지에 두고 민다. 문서 요청(옆에 열기 · 갈아 끼우기 · 새 탭)을 받으면 **메인 PC 처럼 새 id**
 // (`home-d<n>`)로 문서 타일을 세워 다시 민다(`app/mirror-requests` 의 `fresh` — 원격이 보낸 명세의 id 는 버려진다).
 // ════════════════════════════════════════════════════════════════════════════════
 const installMirror = async (homePane) =>
@@ -449,7 +449,7 @@ const docIdsOf = async (docPath) =>
   (await panesNow()).flatMap((t) => t.panes).filter((p) => p.kind === "doc" && p.path === docPath).map((p) => p.id);
 
 // ════════════════════════════════════════════════════════════════════════════════
-// 판 2 — 원격 데스크톱: 클릭 → 거울 요청 → 집 PC 가 새 id 로 세운 문서 타일이 그 줄로
+// 판 2 — 원격 데스크톱: 클릭 → 거울 요청 → 메인 PC 가 새 id 로 세운 문서 타일이 그 줄로
 // ════════════════════════════════════════════════════════════════════════════════
 await bootPage({ remote: true, width: 1280, height: 860 });
 check("⑦ (준비) 거울 설치", await installMirror({ id: "home-p1", kind: "local", shell: "pwsh", tileKey: "fk1", historyStreamId: "hs-1" }), "ok");
@@ -464,7 +464,7 @@ check("⑦a 클릭 docs/guide.md:30", await clickLink(DOCK, "docs/guide.md:30"),
 const guide = `${RD}\\docs\\guide.md`;
 const remoteMd = await flashWatch(".line-flash", guide, 60);
 check("⑦a 요청 = openBeside 문서 하나", await reqsSince(q0), [["openBeside", "doc", guide]]);
-check("⑦a 집 PC 가 새 id 로 세운 문서 타일 하나", (await docIdsOf(guide)).length, 1);
+check("⑦a 메인 PC 가 새 id 로 세운 문서 타일 하나", (await docIdsOf(guide)).length, 1);
 check("⑦a 그 타일이 30줄로(강조)", remoteMd, "Line 30");
 await shot("scpl-remote-beside.png");
 // ⑦b 미리 보기 갈아 끼우기(replaceTile) — 이것도 새 id
@@ -496,10 +496,10 @@ check("⑦d 그 타일이 5줄로(--line = 4)", termTs, "4");
 await shot("scpl-remote-term.png");
 
 // ════════════════════════════════════════════════════════════════════════════════
-// 판 3 — 원격 폰: 클릭 → 집 PC 에 문서 요청 · 덮개 닫힘 · 새 id 의 문서 타일이 그 줄로
+// 판 3 — 원격 폰: 클릭 → 메인 PC 에 문서 요청 · 덮개 닫힘 · 새 id 의 문서 타일이 그 줄로
 // ════════════════════════════════════════════════════════════════════════════════
 await bootPage({ remote: true, width: 400, height: 844, mobile: true });
-// 집 PC 의 탭 하나(파일 타일 — 세션 없음)를 거울로 세운다 — 문서는 그 탭의 포커스 타일 곁에 열리고, 그 일은 집 PC 에 요청이다
+// 메인 PC 의 탭 하나(파일 타일 — 세션 없음)를 거울로 세운다 — 문서는 그 탭의 포커스 타일 곁에 열리고, 그 일은 메인 PC 에 요청이다
 await installMirror({ id: "home-1", kind: "localfs", tileKey: "fk", path: "C:\\h" });
 await sleep(600);
 check("⑤ (준비) 거울의 탭 하나", (await panesNow()).map((t) => t.panes.map((p) => p.kind)), [["localfs"]]);
@@ -518,10 +518,10 @@ await waitFor(`!document.querySelector('[data-mobile-chat]')`, 4000);
 const phoneMd = await flashWatch(".line-flash", `${RD}\\docs\\guide.md`, 60);
 const reqs = await evj(`JSON.stringify(window.__requests.slice(${r0}).map((r) => [r.op, r.pane?.kind ?? null, r.pane?.path ?? null]))`);
 console.log("phone requests:", JSON.stringify(reqs), JSON.stringify(await evj(`JSON.stringify([...document.querySelectorAll('.toast')].map((e) => e.textContent.trim()))`)));
-check("⑤ 폰 클릭 → stat(집 PC 경로)", await statsSince(s0), [`${RD}\\docs\\guide.md`]);
-check("⑤ 폰 클릭 → 문서 타일 요청 하나(집 PC)", reqs.filter((r) => r[1] === "doc").map((r) => r[2]), [`${RD}\\docs\\guide.md`]);
+check("⑤ 폰 클릭 → stat(메인 PC 경로)", await statsSince(s0), [`${RD}\\docs\\guide.md`]);
+check("⑤ 폰 클릭 → 문서 타일 요청 하나(메인 PC)", reqs.filter((r) => r[1] === "doc").map((r) => r[2]), [`${RD}\\docs\\guide.md`]);
 check("⑤ 폰 클릭 → 덮개 닫힘", await ev(`!!document.querySelector('[data-mobile-chat]')`), false);
-check("⑤ 폰 — 집 PC 가 새 id 로 세운 문서 타일이 30줄로(강조)", phoneMd, "Line 30");
+check("⑤ 폰 — 메인 PC 가 새 id 로 세운 문서 타일이 30줄로(강조)", phoneMd, "Line 30");
 await shot("scpl-phone-after.png");
 
 // ⑧ 폰 — 알림 덮개(`MobileAlerts` = 같은 `DockAlerts`)의 사이드 채팅 줄 → 알림 덮개가 닫히고 그 채팅의 폰 덮개가 선다

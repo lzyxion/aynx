@@ -1,19 +1,19 @@
 // 원격 창의 **배치 바꾸기 요청**(원격 웹 R3 — 설계 5절 · 15.3). 순수 모듈 — 상태 저장소 · invoke 를 모른다.
 //
 // 원격 창은 제 탭을 바꾸지 않는다(R2-B 의 거울). 배치를 바꾸는 조작(새 탭 · 분할 · 타일 열기 · 닫기 · 옮기기 · 이름 바꾸기)은 이 모양의
-// **요청**이 되어 GUI(`mirror_request` — `src-tauri/src/remote/mirror.rs`)를 거쳐 집 PC **주 창**에만 가고, 주 창이 제 함수로 적용한 결과가
+// **요청**이 되어 GUI(`mirror_request` — `src-tauri/src/remote/mirror.rs`)를 거쳐 메인 PC **주 창**에만 가고, 주 창이 제 함수로 적용한 결과가
 // 거울 방송으로 돌아온다(쓰기 주인은 늘 주 창 하나).
 //
 // - 종류는 [`LAYOUT_OPS`] 하나로 고정이다 — GUI 의 `LayoutRequest`(serde enum · 모르는 칸 거절)와 짝이고, 주 창도 받은 것을
 //   [`parseLayoutRequest`] 로 다시 거른다.
-// - 대상은 **집 PC 의 열쇠**다: 타일 = 거울 환원의 타일 열쇠(`k:<tileKey>` · 없으면 `i:<집 PC id>`), 탭 = 같은 꼴의 탭 열쇠.
+// - 대상은 **메인 PC 의 열쇠**다: 타일 = 거울 환원의 타일 열쇠(`k:<tileKey>` · 없으면 `i:<메인 PC id>`), 탭 = 같은 꼴의 탭 열쇠.
 //   원격의 id 는 원격 창 안에서만 뜻이 있어 보내기 전에 [`toWire`] 가 바꾼다(모르는 id 면 보내지 않는다). 주 창은
 //   [`findTileByKey`] · [`findTabByKey`] 로 지금 트리에서 찾고, 없으면 거절한다.
 // - 새로 여는 타일의 명세는 [`requestPane`] 이 거른다 — 거울과 같은 허용 칸(`sanitizePane`)에 여는 재료 셋(`cwd` · `autorun` ·
-//   `injectMcpToken` — 원격 창은 집 PC 창과 같은 권한(B)이고 원격은 이미 그 셸에 칠 수 있다)만 더한다. 세션 열쇠(`historyStreamId`) ·
-//   타일 열쇠 · id 는 싣지 않는다(집 PC 가 새로 매긴다). 워크트리 만들기 · 설정 스크립트 · 조정자 Run · 이관 재시작 · 화면 버퍼는 싣지 않는다.
-// - 새 탭은 **설 워크스페이스**(`workspace` — 원격 창이 보는 것)를 싣는다. 집 PC 가 보는 것과 다르면 집 PC 는 그 워크스페이스에 넣기만
-//   하고 화면을 옮기지 않는다. 그 밖의 대상 조작은 집 PC 가 **지금 보는 워크스페이스**에서만 한다(그 조작들은 집 PC 의 지금 탭 · 타일을
+//   `injectMcpToken` — 원격 창은 메인 PC 창과 같은 권한(B)이고 원격은 이미 그 셸에 칠 수 있다)만 더한다. 세션 열쇠(`historyStreamId`) ·
+//   타일 열쇠 · id 는 싣지 않는다(메인 PC 가 새로 매긴다). 워크트리 만들기 · 설정 스크립트 · 조정자 Run · 이관 재시작 · 화면 버퍼는 싣지 않는다.
+// - 새 탭은 **설 워크스페이스**(`workspace` — 원격 창이 보는 것)를 싣는다. 메인 PC 가 보는 것과 다르면 메인 PC 는 그 워크스페이스에 넣기만
+//   하고 화면을 옮기지 않는다. 그 밖의 대상 조작은 메인 PC 가 **지금 보는 워크스페이스**에서만 한다(그 조작들은 메인 PC 의 지금 탭 · 타일을
 //   옮겨 겨누므로 — 다른 워크스페이스면 `elsewhere`). 닫기 · 이름 바꾸기만 어느 워크스페이스에서나 된다(화면을 옮기지 않는다).
 
 import { clampFileZoom, isFileView, type FileUiPatch, type FileView, type PaneNode, type PaneSpec, type SplitDir, type TabSpec } from "$lib/session/spec";
@@ -45,7 +45,7 @@ export const LAYOUT_OPS = [
 export type LayoutOp = (typeof LAYOUT_OPS)[number];
 
 /**
- * 요청 한 장. 원격 창 안에서는 `tab` · `tile` · `target` · `before` · `near` 가 원격 id 이고, 보낼 때([`toWire`]) 집 PC 열쇠가 된다.
+ * 요청 한 장. 원격 창 안에서는 `tab` · `tile` · `target` · `before` · `near` 가 원격 id 이고, 보낼 때([`toWire`]) 메인 PC 열쇠가 된다.
  */
 export type LayoutRequest =
   | { op: "newTab"; pane?: PaneSpec; title?: string; projectFolder?: string; projectId?: string; workspace?: string }
@@ -63,9 +63,9 @@ export type LayoutRequest =
   | { op: "mergeTab"; tab: string; target: string; dir: SplitDir; side: PaneSide }
   | { op: "swapTile"; tile: string; dir: FocusDir }
   | { op: "expandTile"; tile: string; dir: FocusDir }
-  /** (오케스트레이션 탭 마무리) 원격 창에 그 탭이 없을 때 — 집 PC 가 `openAlbumTab(runId)` · `openOrchHome()` 을 돈다(새 Tauri 명령 아님) */
+  /** (오케스트레이션 탭 마무리) 원격 창에 그 탭이 없을 때 — 메인 PC 가 `openAlbumTab(runId)` · `openOrchHome()` 을 돈다(새 Tauri 명령 아님) */
   | { op: "openOrchTab"; runId?: string; workspace?: string }
-  /** 파일 타일의 보기 설정(2026-11-04) — 원격 창의 토글을 집 PC 배치에 적는다. 없으면 다음 거울 갱신에 되돌아간다. 거절돼도 안내하지 않는다(`app/mirror-requests`) */
+  /** 파일 타일의 보기 설정(2026-11-04) — 원격 창의 토글을 메인 PC 배치에 적는다. 없으면 다음 거울 갱신에 되돌아간다. 거절돼도 안내하지 않는다(`app/mirror-requests`) */
   | ({ op: "fileUi"; tile: string; view?: FileView } & FileUiPatch);
 
 /** 상한 — GUI 도 같은 값을 본다(`remote/mirror.rs`). */
@@ -86,14 +86,14 @@ export function refusalOf(err: unknown): Refusal | null {
 }
 
 /**
- * **어느 워크스페이스의 대상이든 되는 요청인가**(10-20) — 화면을 옮기지 않는 닫기 · 이름 바꾸기 · 파일 타일 보기 설정. 나머지 대상 조작은 집 PC 의 지금 탭 ·
- * 타일을 그 대상으로 옮겨 겨누므로 집 PC 가 지금 보는 워크스페이스에서만 한다(다른 워크스페이스면 `elsewhere`).
+ * **어느 워크스페이스의 대상이든 되는 요청인가**(10-20) — 화면을 옮기지 않는 닫기 · 이름 바꾸기 · 파일 타일 보기 설정. 나머지 대상 조작은 메인 PC 의 지금 탭 ·
+ * 타일을 그 대상으로 옮겨 겨누므로 메인 PC 가 지금 보는 워크스페이스에서만 한다(다른 워크스페이스면 `elsewhere`).
  */
 export function anyWorkspace(req: LayoutRequest): boolean {
   return req.op === "closeTile" || req.op === "closeTabs" || req.op === "renameTab" || req.op === "fileUi";
 }
 
-/** 세션을 끝내는 요청인가(원격이 보내기 전에 묻는다 · 집 PC 가 안내를 남긴다). */
+/** 세션을 끝내는 요청인가(원격이 보내기 전에 묻는다 · 메인 PC 가 안내를 남긴다). */
 export function isClosing(req: LayoutRequest): req is Extract<LayoutRequest, { op: "closeTile" | "closeTabs" }> {
   return req.op === "closeTile" || req.op === "closeTabs";
 }
@@ -124,7 +124,7 @@ export function requestPane(p: PaneSpec, sourceKey: (id: string) => string | nul
 }
 
 /**
- * **받은 명세 → 집 PC 가 세울 명세**(주 창) — 한 번 더 거르고 새 id 를 단다. `sourceId` 는 열쇠 → 집 PC id(없으면 그 칸을 뺀다).
+ * **받은 명세 → 메인 PC 가 세울 명세**(주 창) — 한 번 더 거르고 새 id 를 단다. `sourceId` 는 열쇠 → 메인 PC id(없으면 그 칸을 뺀다).
  */
 export function homePane(p: PaneSpec, id: string, sourceId: (key: string) => string | null): PaneSpec {
   const out = requestPane(p, () => null);
@@ -137,7 +137,7 @@ export function homePane(p: PaneSpec, id: string, sourceId: (key: string) => str
 }
 
 // ---------------------------------------------------------------------------
-// 원격 id → 집 PC 열쇠
+// 원격 id → 메인 PC 열쇠
 // ---------------------------------------------------------------------------
 
 export interface KeyLookup {

@@ -2,11 +2,11 @@
   **폰 설정 화면**(원격 웹 R5 · 10-20) — 전체 화면 덮개. 들어오는 길은 셋: "새 탭에 열기" 시트의 [설정] · 고르기 화면 머리의 톱니 · 독 머리 줄의 톱니(`Dock` 의 `runTool` — 폰 배치일 때).
   줄은 높이 52px 이상 · 묶음마다 둥근 판 · 묶음 이름은 강조색.
 
-  - **이 기기**(이 브라우저의 `localStorage` 에만 — 집 PC 의 `settings.toml` 에 쓰지 않는다 · `app/mobile`):
+  - **이 기기**(이 브라우저의 `localStorage` 에만 — 메인 PC 의 `settings.toml` 에 쓰지 않는다 · `app/mobile`):
     터미널 글자 크기 [− n +](이 기기 터미널만 — 메인 PC 값과 같아지면 이 기기 값을 지운다) · 이 기기 크기로 맞추기(위 띠 `⤢` 와 같은
     값) · 입력 방식 [입력 칸 · 바로 입력](키 띠 맨 왼쪽 단추와 같은 값 — 기본 입력 칸 · `mobile/MobileKeys`) · 키 띠 ›(작은 하위 화면 —
     단추마다 켜고 끄기 · 위로 · 아래로 · 맨 왼쪽 입력 방식 단추는 고정이라 없다) · 테마 [시스템 · 밝게 · 어둡게](화면에만 — `mode.svelte.ts`).
-  - **메인 PC**: 자동 승인 — `[automation]` 은 원격 창의 칸 단위 문(`remote/deny.rs` 의 `settings_home_only`)이 막는 집 PC 전용 칸이라
+  - **메인 PC**: 자동 승인 — `[automation]` 은 원격 창의 칸 단위 문(`remote/deny.rs` 의 `settings_home_only`)이 막는 메인 PC 전용 칸이라
     스위치가 아니라 **읽기 전용 줄**(지금 상태 + "메인 PC 에서"). 알림 ›(전체 설정의 알림 칸).
   - **이 기기 관리**: 지금 잠그기(상태바 자물쇠와 같은 문 — 가림막 + 볼트 잠금) · 연결 끊기(상태바 원격 칩과 같은 `POST /remote/lock`
     — 이 원격 세션을 닫고 잠금 해제 쪽으로) · 이 기기 페어링 해제(원격 허용 `remote_device_revoke` — 이 기기의 id 는 관문의 부팅 표).
@@ -267,7 +267,7 @@
 
       <h3 class="label">{t("app.mobile.settings.home")}</h3>
       <div class="panel">
-        <!-- 자동 승인 — 집 PC 전용 칸(`[automation]`) · 원격에서는 보기만 -->
+        <!-- 자동 승인 — 메인 PC 전용 칸(`[automation]`) · 원격에서는 보기만 -->
         <div class="row">
           <span class="row-text">
             <span class="row-name">{t("app.mobile.settings.autoApprove")}</span>

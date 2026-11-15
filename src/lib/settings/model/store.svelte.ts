@@ -87,8 +87,8 @@ import { appM3Tokens, cachedFixedDynamicTerms, upgradeLegacyAppColors } from "$l
 
 // ---------------------------------------------------------------------------
 // **이 기기 보기 층**(원격 폰 — 10-20). 원격 웹의 폰 설정 화면이 고른 "이 기기" 값(터미널 글자 크기 · 밝기)을 `settings.current` 를
-// **건드리지 않고** 화면에만 얹는다 — 원격 창의 저장(`save_settings`)이 그 값을 집 PC 의 `settings.toml` 에 싣지 않게. 거는 쪽은
-// `app/mobile`(글자 크기)과 `mode.svelte.ts`(밝기를 바꾼 사본 — 크롬 여덟 칸 · 터미널 프리셋 짝)뿐이고, 집 PC 창 · 넓은 원격 창에서는
+// **건드리지 않고** 화면에만 얹는다 — 원격 창의 저장(`save_settings`)이 그 값을 메인 PC 의 `settings.toml` 에 싣지 않게. 거는 쪽은
+// `app/mobile`(글자 크기)과 `mode.svelte.ts`(밝기를 바꾼 사본 — 크롬 여덟 칸 · 터미널 프리셋 짝)뿐이고, 메인 PC 창 · 넓은 원격 창에서는
 // 늘 `null` 이라 아무것도 바뀌지 않는다.
 // ---------------------------------------------------------------------------
 
@@ -588,7 +588,7 @@ export function applySettings() {
   syncAppIcon();
   // 다음 시작의 스플래시가 이 색으로 뜬다 — 토큰을 다 얹은 **뒤**라야 계산값이 맞다 (`splash-memo.ts`)
   rememberSplashColors(root);
-  // 원격 관문 쪽 색도 같은 계산값으로 — 집 PC 주 창만 · 짧게 모아 바뀌었을 때만(`gate-theme.ts`)
+  // 원격 관문 쪽 색도 같은 계산값으로 — 메인 PC 주 창만 · 짧게 모아 바뀌었을 때만(`gate-theme.ts`)
   syncGateTheme(root);
 }
 

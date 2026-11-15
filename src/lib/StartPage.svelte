@@ -113,7 +113,7 @@
    *    줄이지 않고 위젯을 읽는 순서대로 **한 줄로 쌓아 세로로 굴린다**(`narrowStack` · 뿌리에 `data-start-narrow`). 그리기 전용 —
    *    저장된 배치는 그대로라 판이 다시 넓어지면 돌아온다. 그동안 옮기기 · 크기는 없다(끄는 귀 · 모서리가 없다), × · 판
    *    메뉴(되돌리기 · 더하기 · 처음 배치)는 저장된 배치에 그대로 돈다. 키보드의 기하도 쌓인 자리로 센다(↑↓ 가 위아래 카드로).
-   *  · **원격 창**(2026-11-04 — docs/log/2026-11-04-start-board-mirror.md) — 집 PC 한 벌을 따르고 편집하지 않는다. 판 우클릭이 메뉴를 열지 않으면 편집의 모든 길(편집 모드 ·
+   *  · **원격 창**(2026-11-04 — docs/log/2026-11-04-start-board-mirror.md) — 메인 PC 한 벌을 따르고 편집하지 않는다. 판 우클릭이 메뉴를 열지 않으면 편집의 모든 길(편집 모드 ·
    *    × · 크기 · 더하기 · 되돌리기 · 처음 배치 · 시계 표시)이 닫힌다 — 다른 입구가 없다(`startBoardEditable`). 줄 고르기 · 키보드는 그대로.
    *
    * 줄은 전부 **이미 있는 목록과 여는 함수**를 그대로 부른다: 호스트는 호스트 독의 "접속"(`onconnect`), 프로젝트는 독의
@@ -827,7 +827,7 @@
   function onBoardContextMenu(ev: MouseEvent) {
     const target = ev.target instanceof Element ? ev.target : null;
     if (drag || resize || ev.defaultPrevented) return;
-    // 원격 창은 집 PC 한 벌을 따른다 — 편집의 유일한 입구가 이 메뉴다
+    // 원격 창은 메인 PC 한 벌을 따른다 — 편집의 유일한 입구가 이 메뉴다
     if (!startBoardEditable()) {
       ev.preventDefault();
       return;

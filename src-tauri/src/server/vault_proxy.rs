@@ -198,7 +198,7 @@ pub(crate) fn lock_on_last_window() {
     tauri::async_runtime::block_on(lock_windows_zero());
 }
 
-/// 창 0개 잠금 한 번 — [`lock_on_last_window`](창 파괴 훅)와 원격 창 셈(`remote::windows` — 마지막 원격 창이 빠졌고 집 PC 창도
+/// 창 0개 잠금 한 번 — [`lock_on_last_window`](창 파괴 훅)와 원격 창 셈(`remote::windows` — 마지막 원격 창이 빠졌고 메인 PC 창도
 /// 없을 때 · tokio 태스크에서)이 같이 쓴다.
 pub(crate) async fn lock_windows_zero() {
     let sent = tokio::time::timeout(

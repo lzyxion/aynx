@@ -1152,13 +1152,13 @@ if (ONLY === "" || ONLY === "fixb") {
   await sleep(700);
   await shot("fixb-notify-f5.png");
 }
-// ⑮ (2단계 단계 5) 원격 거울 · 폰 — 집 PC 창의 오케스트레이션 탭(연 프로듀서 채팅 잎)이 원격 창 거울에 보이면 원격 창이 **제 구독 통로**로 같은 채팅을
-// 그린다(subscribe 를 원격 페이지가 따로 부른다) · 원격에서 보내기(ALLOW — clientId) · 사건은 그 통로로 와 꼬리에 선다 · 원격 창은 집 PC 채팅을 닫지 않는다
+// ⑮ (2단계 단계 5) 원격 거울 · 폰 — 메인 PC 창의 오케스트레이션 탭(연 프로듀서 채팅 잎)이 원격 창 거울에 보이면 원격 창이 **제 구독 통로**로 같은 채팅을
+// 그린다(subscribe 를 원격 페이지가 따로 부른다) · 원격에서 보내기(ALLOW — clientId) · 사건은 그 통로로 와 꼬리에 선다 · 원격 창은 메인 PC 채팅을 닫지 않는다
 // (잎이 거울에서 빠지면 구독만 푼다) · 폰 폭(390)에서 잎이 무너지지 않는다. 원격 초안 시작은 v3-new-remote-reauth가 검사한다.
 if (ONLY === "" || ONLY === "remote") {
   const H = ".pane-box:not(.hidden)";
   await ev(`(async () => (await ${importApp('app/dock.svelte.ts')}).closeDock())()`).catch(() => null);
-  // 집 PC 쪽도 새 흐름으로 연 실제 앨범 경로를 거울에 싣는다(new 경로에는 채팅 잎이 없다).
+  // 메인 PC 쪽도 새 흐름으로 연 실제 앨범 경로를 거울에 싣는다(new 경로에는 채팅 잎이 없다).
   await legacyAlbum('run-remote', '원격 앨범', '원격에서도 이어서 처리해 줘');
   const made = JSON.parse(await ev(`(async () => {
     const m = await ${tabsMod}; const snapMod = await ${importApp("mirror/snapshot.ts")};
@@ -1207,17 +1207,17 @@ if (ONLY === "" || ONLY === "remote") {
     console.log("PHONE", JSON.stringify(geo));
     check("⑮ 폰 폭(390) — 잎이 화면 폭 · 가로 넘침 없음 · 입력 칸이 보인다", [geo !== null && geo.w >= 300, geo?.noOverflow, geo?.composer], [true, true, true]);
     await shot("s5-phone.png");
-    // 거울에서 라이브러리로 돌아가 채팅 잎을 빼도 집 PC의 서버 채팅은 닫지 않는다.
+    // 거울에서 라이브러리로 돌아가 채팅 잎을 빼도 메인 PC의 서버 채팅은 닫지 않는다.
     await ev(`(() => { const s = JSON.parse(sessionStorage.getItem('h.mirror')); const library = (t) => { const player = t.root.b; delete player.pane.run; t.root = player; t.orch = { view: 'library' }; }; for (const t of s.tabs ?? []) library(t); for (const w of s.workspaces ?? []) for (const t of w.tabs ?? []) library(t); window.__emit('mirror-layout', s); })()`);
     await need(`!document.querySelector('${RF}') && !!document.querySelector('${H} [data-orch-library]')`);
-    check("⑮ 원격 창은 집 PC 채팅을 닫지 않는다(잎이 바뀌어도 close 없음)", await ev(`window.__calls.filter(([c]) => c === 'producer_chat_close').length`), 0);
+    check("⑮ 원격 창은 메인 PC 채팅을 닫지 않는다(잎이 바뀌어도 close 없음)", await ev(`window.__calls.filter(([c]) => c === 'producer_chat_close').length`), 0);
     await shot("s5-phone-library.png");
   } finally {
     await ev(`sessionStorage.removeItem('aynx-h-remote'); sessionStorage.removeItem('h.mirror'); sessionStorage.removeItem('h.pcchats')`);
     await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     // ipc.isRemote는 모듈 적재 시 한 번 정해진다. 저장 표식만 지우면 다음 시나리오도 원격 창이다.
     await reloadBoot(send, ev);
-    check("⑮ 원격 시나리오 뒤 집 PC 모드 복귀", await ev(`(async () => (await ${importApp('lib/ipc.ts')}).isRemote)()`), false);
+    check("⑮ 원격 시나리오 뒤 메인 PC 모드 복귀", await ev(`(async () => (await ${importApp('lib/ipc.ts')}).isRemote)()`), false);
   }
 }
 // ⑰ (10-30 실기) DB 연결 폼의 설명 — 늘 보이는 설명은 한 줄 이하 · 나머지는 ⓘ 팝오버 · 위험 고지(행이 모델 제공자로)는 늘 보인다

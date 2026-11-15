@@ -1,18 +1,21 @@
-// 집 PC 화면 거울의 **환원기**(원격 웹 R2-B) — 받은 스냅숏 + 지난 기억 + 원격 창의 지금 고름 → 원격 창이 그릴 탭 목록. 순수 모듈.
+// 메인 PC 화면 거울의 **환원기**(원격 웹 R2-B) — 받은 스냅숏 + 지난 기억 + 원격 창의 지금 고름 → 원격 창이 그릴 탭 목록. 순수 모듈.
 //
 // 규칙:
-// - **같은 타일은 같은 id** — 타일의 영속 열쇠(`tileKey`, 없으면 집 PC id)로 알아보고, 처음 보는 타일만 새 id(`h` + 집 PC id)를 받는다.
-//   그래서 집 PC 가 분할 · 탭 전환을 해도 원격의 터미널(시청자)이 다시 붙지 않는다(`PaneHost` 는 pane id 로 상자를 쥔다). 저장된 배치에서
+// - **같은 타일은 같은 id** — 타일의 영속 열쇠(`tileKey`, 없으면 메인 PC id)로 알아보고, 처음 보는 타일만 새 id(`h` + 메인 PC id)를 받는다.
+//   그래서 메인 PC 가 분할 · 탭 전환을 해도 원격의 터미널(시청자)이 다시 붙지 않는다(`PaneHost` 는 pane id 로 상자를 쥔다). 저장된 배치에서
 //   만든 스냅숏(트레이 — `file`)은 읽을 때마다 id 가 새로 나지만 열쇠가 같아 원격 id 는 그대로다.
-// - **집 PC 가 그 타일을 바꾸지 않았으면 원격의 명세 객체를 그대로 둔다** — 원격에서 파일 타일을 돌아다닌 폴더 · 보기 같은 화면 상태는
-//   집 PC 가 그 타일을 바꿀 때까지 산다(비교는 받은 명세의 JSON).
-// - **워크스페이스 · 탭 · 포커스 · 최대화는 "집 PC 가 바꾸면 따라가고, 아니면 원격의 고름을 둔다"** — 원격에서 다른 워크스페이스 · 탭을
-//   골라 보는 것은 원격 창 몫이고(집 PC 를 바꾸지 않는다), 집 PC 에서 바꾸면 원격도 그리로 간다. 활성 탭은 워크스페이스마다 따로 센다
-//   (집 PC 가 보지 않는 워크스페이스의 "집 PC 활성 탭" 은 집 PC 가 기억한 마지막 활성 탭 — 그것이 바뀌면 원격의 그 워크스페이스도 따라간다).
+// - **메인 PC 가 그 타일을 바꾸지 않았으면 원격의 명세 객체를 그대로 둔다** — 원격에서 파일 타일을 돌아다닌 폴더 · 보기 같은 화면 상태는
+//   메인 PC 가 그 타일을 바꿀 때까지 산다(비교는 받은 명세의 JSON).
+// - **워크스페이스 · 탭 · 포커스 · 최대화는 "메인 PC 가 바꾸면 따라가고, 아니면 원격의 고름을 둔다"** — 원격에서 다른 워크스페이스 · 탭을
+//   골라 보는 것은 원격 창 몫이고(메인 PC 를 바꾸지 않는다), 메인 PC 에서 바꾸면 원격도 그리로 간다. 활성 탭은 워크스페이스마다 따로 센다
+//   (메인 PC 가 보지 않는 워크스페이스의 "메인 PC 활성 탭" 은 메인 PC 가 기억한 마지막 활성 탭 — 그것이 바뀌면 원격의 그 워크스페이스도 따라간다).
 // - 탭은 **모든 워크스페이스의 것**을 소속(`workspaceId`)과 함께 낸다 — 워크스페이스를 바꿔 봐도 타일 id 가 그대로라 시청자가 다시 붙지 않는다.
 // - **자리 표시**(`tile-policy` 의 `own` — 쿼리 타일)는 원격이 [원격에서 따로 열기] 한 것(`overrides` — 열쇠 → 원격 제 타일)이 있으면 그
-//   타일로, 없으면 자리 표시 목록에 올린다. 집 PC 에서 그 타일이 사라지면 따로 연 것도 사라진다(부르는 쪽이 `overrides` 를 거둔다 —
+//   타일로, 없으면 자리 표시 목록에 올린다. 메인 PC 에서 그 타일이 사라지면 따로 연 것도 사라진다(부르는 쪽이 `overrides` 를 거둔다 —
 //   [`liveKeys`]).
+// - **다시 읽은 첫 환원의 씨앗**(11-15 — `seed`): 이 기기가 마지막으로 보던 탭 · 타일 열쇠(`app/mirror` 가 `localStorage` 에서 읽는다)가
+//   아직 있으면 첫 화면은 그것이다(메인 PC 가 그사이 다른 탭으로 갔어도). 없으면 지금처럼 메인 PC 를 따른다. 기억(`homeActive` ·
+//   `homeFocus`)은 씨앗과 관계없이 지금 메인 PC 값으로 잡으므로, 다음 환원부터는 "메인 PC 가 바꾸면 따라간다" 그대로다.
 
 import type { PaneNode, PaneSpec, TabSpec } from "$lib/session/spec";
 import type { MirrorNode, MirrorSnapshot } from "./snapshot";
@@ -28,24 +31,30 @@ export interface MirrorMemory {
   panes: Map<string, PaneSpec>;
   /** 탭 열쇠 → 원격 tab id */
   tabIds: Map<string, string>;
-  /** 원격 tab id → 지난번 집 PC 의 포커스 · 최대화(원격 pane id) */
+  /** 원격 tab id → 지난번 메인 PC 의 포커스 · 최대화(원격 pane id) */
   homeFocus: Map<string, string | null>;
   homeZoom: Map<string, string | null>;
-  /** 워크스페이스 id → 지난번 집 PC 의 그 워크스페이스 활성 탭(원격 tab id) */
+  /** 워크스페이스 id → 지난번 메인 PC 의 그 워크스페이스 활성 탭(원격 tab id) */
   homeActive: Map<string, string | null>;
-  /** 지난번 집 PC 가 보던 워크스페이스(처음이면 `null`) */
+  /** 지난번 메인 PC 가 보던 워크스페이스(처음이면 `null`) */
   homeWorkspace: string | null;
 }
 
 /** 원격 창의 지금 고름(탭 모듈 · 워크스페이스 모듈 값). */
 export interface MirrorLocal {
-  /** 원격 창이 지금 보는 워크스페이스(모르면 집 PC 를 따른다) */
+  /** 원격 창이 지금 보는 워크스페이스(모르면 메인 PC 를 따른다) */
   workspaceId?: string | null;
   /** 워크스페이스마다 원격이 마지막으로 고른 탭(없으면 모든 워크스페이스에 `activeId`) */
   activeOf?(workspaceId: string): string | null;
   activeId: string | null;
   focusOf(tabId: string): string | null;
   zoomOf(tabId: string): string | null;
+}
+
+/** 다시 읽은 첫 환원의 씨앗 — 이 기기가 마지막으로 보던 탭 · 타일의 영속 열쇠(`k:<tabKey>` · `paneKeyOf`) */
+export interface MirrorSeed {
+  tab: string | null;
+  tile: string | null;
 }
 
 export interface MirrorResult {
@@ -80,8 +89,8 @@ export function emptyMemory(): MirrorMemory {
 }
 
 /**
- * **원격 창이 볼 워크스페이스** — 순수. 탭 고르기와 같은 규칙: 집 PC 가 워크스페이스를 바꿨으면(또는 처음이면) 따라가고, 아니면 원격의
- * 고름(`local`)을 둔다. 고른 것이 없거나 더는 볼 수 없으면(사라짐 · cold) 집 PC 의 지금 것. `live` 는 탭을 실은(cold 아닌) 워크스페이스.
+ * **원격 창이 볼 워크스페이스** — 순수. 탭 고르기와 같은 규칙: 메인 PC 가 워크스페이스를 바꿨으면(또는 처음이면) 따라가고, 아니면 원격의
+ * 고름(`local`)을 둔다. 고른 것이 없거나 더는 볼 수 없으면(사라짐 · cold) 메인 PC 의 지금 것. `live` 는 탭을 실은(cold 아닌) 워크스페이스.
  */
 export function pickMirrorWorkspace(
   home: string,
@@ -94,12 +103,13 @@ export function pickMirrorWorkspace(
   return live.has(picked) ? picked : home;
 }
 
-/** 타일 열쇠 — 영속 `tileKey`, 없으면 집 PC id */
+/** 타일 열쇠 — 영속 `tileKey`, 없으면 메인 PC id */
 export function paneKeyOf(p: Pick<PaneSpec, "id" | "tileKey">): string {
   return p.tileKey ? `k:${p.tileKey}` : `i:${p.id}`;
 }
 
-function tabKeyOf(t: { id: string; tabKey?: string }): string {
+/** 탭 열쇠 — 영속 `tabKey`, 없으면 메인 PC id */
+export function tabKeyOf(t: { id: string; tabKey?: string }): string {
   return t.tabKey ? `k:${t.tabKey}` : `i:${t.id}`;
 }
 
@@ -129,19 +139,20 @@ function unique(want: string, used: Set<string>): string {
 
 /**
  * **환원** — 순수. 탭은 받은 소속(`workspaceId`)을 그대로 단다 — 원격 창의 지금 워크스페이스는 결과의 `workspaceId`
- * ([`pickMirrorWorkspace`]), 활성 탭은 워크스페이스마다 같은 "집 PC 가 바꾸면 따라간다" 규칙.
+ * ([`pickMirrorWorkspace`]), 활성 탭은 워크스페이스마다 같은 "메인 PC 가 바꾸면 따라간다" 규칙. `seed` 는 첫 환원(`prev === null`)에서만 본다.
  */
 export function reduceMirror(
   snap: MirrorSnapshot,
   prev: MirrorMemory | null,
   local: MirrorLocal | null,
   overrides: ReadonlyMap<string, PaneSpec>,
+  seed: MirrorSeed | null = null,
 ): MirrorResult {
   const mem = emptyMemory();
   const old = prev ?? emptyMemory();
   const usedPane = new Set<string>();
   const usedTab = new Set<string>();
-  // ① 이번 스냅숏의 타일마다 원격 id — 집 PC id → 원격 id 표(원본 터미널 · 포커스 · 최대화를 옮긴다)
+  // ① 이번 스냅숏의 타일마다 원격 id — 메인 PC id → 원격 id 표(원본 터미널 · 포커스 · 최대화를 옮긴다)
   const homeToRemote = new Map<string, string>();
   for (const tab of snap.tabs) {
     for (const p of leaves(tab.root)) {
@@ -179,7 +190,7 @@ export function reduceMirror(
   // ② 탭 — 열쇠로 같은 원격 tab id
   const tabs: TabSpec[] = [];
   const focus: Record<string, string> = {};
-  /** 집 PC tab id → 원격 tab id(워크스페이스마다 활성 탭을 옮긴다) */
+  /** 메인 PC tab id → 원격 tab id(워크스페이스마다 활성 탭을 옮긴다) */
   const tabToRemote = new Map<string, string>();
   for (const mt of snap.tabs) {
     const key = tabKeyOf(mt);
@@ -196,7 +207,7 @@ export function reduceMirror(
       }
     };
     collect(root);
-    // 포커스: 집 PC 가 바꿨으면 따라가고, 아니면 원격의 고름(그 타일이 아직 있으면)
+    // 포커스: 메인 PC 가 바꿨으면 따라가고, 아니면 원격의 고름(그 타일이 아직 있으면)
     const homeFocus = mt.focus !== null ? (homeToRemote.get(mt.focus) ?? null) : null;
     mem.homeFocus.set(id, homeFocus);
     const localFocus = local?.focusOf(id) ?? null;
@@ -219,14 +230,14 @@ export function reduceMirror(
     if (zoom !== null && ids.has(zoom)) tab.zoomedPaneId = zoom;
     tabs.push(tab);
   }
-  // ③ 원격 창이 볼 워크스페이스 — 집 PC 가 바꿨으면 따라가고, 아니면 원격의 고름
+  // ③ 원격 창이 볼 워크스페이스 — 메인 PC 가 바꿨으면 따라가고, 아니면 원격의 고름
   const homeWs = snap.workspace?.id ?? snap.workspaces[0].id;
   const live = new Set(snap.workspaces.filter((w) => !w.cold).map((w) => w.id));
   const homeMoved = prev === null || old.homeWorkspace !== homeWs;
   const workspaceId = pickMirrorWorkspace(homeWs, prev === null ? null : old.homeWorkspace, local?.workspaceId, live);
   mem.homeWorkspace = homeWs;
 
-  // ④ 활성 탭(워크스페이스마다): 집 PC 가 바꿨으면 따라가고, 아니면 원격의 고름(그 탭이 아직 그 워크스페이스에 있으면)
+  // ④ 활성 탭(워크스페이스마다): 메인 PC 가 바꿨으면 따라가고, 아니면 원격의 고름(그 탭이 아직 그 워크스페이스에 있으면)
   const activeByWs: Record<string, string | null> = {};
   for (const ws of snap.workspaces) {
     if (ws.cold) continue;
@@ -235,14 +246,40 @@ export function reduceMirror(
     const homeTab = ws.id === homeWs ? snap.activeTabId : ws.activeTabId;
     const homeActive = homeTab !== null ? (tabToRemote.get(homeTab) ?? null) : null;
     mem.homeActive.set(ws.id, homeActive);
-    // 집 PC 가 이 워크스페이스로 막 옮겨 왔으면 그 활성 탭도 따라간다(집 PC 의 "지금 탭" 이 바뀐 것이다)
+    // 메인 PC 가 이 워크스페이스로 막 옮겨 왔으면 그 활성 탭도 따라간다(메인 PC 의 "지금 탭" 이 바뀐 것이다)
     const follow =
       prev === null || (homeMoved && ws.id === homeWs) || !old.homeActive.has(ws.id) || old.homeActive.get(ws.id) !== homeActive;
     const localPick = local ? (local.activeOf ? local.activeOf(ws.id) : local.activeId) : null;
     const picked = follow ? homeActive : localPick;
     activeByWs[ws.id] = exists(picked) ? picked : exists(homeActive) ? homeActive : (own[0]?.id ?? null);
   }
-  const activeId = activeByWs[workspaceId] ?? null;
+  // ⑤ 씨앗(첫 환원만) — 마지막으로 보던 타일(없으면 탭)이 아직 탭을 실은 워크스페이스에 있으면 그리로. 기억은 위에서 메인 PC 값으로 잡았다.
+  let shownWs = workspaceId;
+  const hit = prev === null && seed ? findSeed(snap, seed, live) : null;
+  if (hit) {
+    const tabId = tabToRemote.get(hit.tabId)!;
+    shownWs = hit.workspaceId;
+    activeByWs[shownWs] = tabId;
+    const paneId = hit.tile !== null ? mem.paneIds.get(hit.tile) : undefined;
+    if (paneId) focus[tabId] = paneId;
+  }
+  const activeId = activeByWs[shownWs] ?? null;
 
-  return { tabs, workspaceId, activeId, activeByWs, focus, placeholders, placeholderKeys, memory: mem };
+  return { tabs, workspaceId: shownWs, activeId, activeByWs, focus, placeholders, placeholderKeys, memory: mem };
+}
+
+/** 씨앗이 가리키는 메인 PC 탭 — 타일이 있으면 그 탭, 아니면 탭 열쇠로. cold · 사라짐이면 `null`. */
+function findSeed(
+  snap: MirrorSnapshot,
+  seed: MirrorSeed,
+  live: ReadonlySet<string>,
+): { tabId: string; workspaceId: string; tile: string | null } | null {
+  if (seed.tile !== null)
+    for (const mt of snap.tabs)
+      if (live.has(mt.workspaceId) && leaves(mt.root).some((p) => paneKeyOf(p) === seed.tile))
+        return { tabId: mt.id, workspaceId: mt.workspaceId, tile: seed.tile };
+  if (seed.tab !== null)
+    for (const mt of snap.tabs)
+      if (live.has(mt.workspaceId) && tabKeyOf(mt) === seed.tab) return { tabId: mt.id, workspaceId: mt.workspaceId, tile: null };
+  return null;
 }

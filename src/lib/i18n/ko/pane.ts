@@ -973,7 +973,7 @@ export const pane = {
   // 목록·칩 툴팁의 한 줄 — 로컬은 언어를 타지 않는 `127.0.0.1:l → host:r` 그대로다
   "forward.label.remote": "원격 127.0.0.1:{r} → 내 PC 127.0.0.1:{l}",
   "forward.label.dynamic": "SOCKS 127.0.0.1:{l}",
-  // ── 원격 창의 시청자 타일 · 집 PC 화면 거울 (원격 웹 R2-B — docs/user/remote-web.md) ─────────────
+  // ── 원격 창의 시청자 타일 · 메인 PC 화면 거울 (원격 웹 R2-B — docs/user/remote-web.md) ─────────────
   "viewer.waiting": "메인 PC 에서 이 타일의 세션이 아직 열려 있지 않습니다.",
   "viewer.ended": "세션이 끝났습니다.",
   // 다른 기기 크기 안내(10-20 — 크기 주인이 아닌 타일의 꼬리표 · 카드 · `$lib/term/size-notice`)

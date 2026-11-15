@@ -264,7 +264,7 @@ export const ACTIONS: readonly ActionDef[] = [
   // 아래 `bypassesEditGuard` 에도 넣는다 — 포커스가 어느 입력칸·터미널에 있든 켜져야 한다.
   { id: "toggle-veil", scope: "global", def: "Ctrl+Shift+KeyB" },
   // **끝내기** — 독 머리 줄의 끝내기 단추와 같은 일(끝내기 모달 `app/quit-dialog` — 판을 고르는 것이 곧 확인이라 키 하나로 끝나지는
-  // 않는다). 원격 창에서는 아무 일도 없다(단추가 없는 것과 같은 판단 — 세 명령도 집 PC 전용이다, `remote/deny.rs`).
+  // 않는다). 원격 창에서는 아무 일도 없다(단추가 없는 것과 같은 판단 — 세 명령도 메인 PC 전용이다, `remote/deny.rs`).
   //
   // **`Ctrl+Shift+F4` 인 이유**: `Alt+F4`(창 닫기 — OS) · `Ctrl+F4`(문서 · 탭 닫기 관례)의 "닫는 F4" 무리이고, 둘 다 건드리지
   // 않는다. 남은 `Ctrl+Shift+글자` 는 다 막혀 있고(위 `folder-conversations` · `open-file` 주석) 기능 키는 이 앱의 기본값에

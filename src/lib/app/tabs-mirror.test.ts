@@ -91,13 +91,13 @@ it("applies the mirror and keeps local tab picks", () => {
   });
   expect(currentWorkspaceTabs().map((t) => t.id)).toEqual(["htab-1", "htab-2"]);
   expect(activeTabId()).toBe("htab-1");
-  pickTab("htab-2"); // 원격에서 고르기는 된다(집 PC 를 바꾸지 않는다)
+  pickTab("htab-2"); // 원격에서 고르기는 된다(메인 PC 를 바꾸지 않는다)
   expect(activeTabId()).toBe("htab-2");
   expect(paneOf(currentWorkspaceTabs()[1])).toBe("hpane-3");
   const local = mirrorLocalChoice();
   expect(local.activeId).toBe("htab-2");
   expect(local.focusOf("htab-2")).toBe("hpane-3");
-  // 집 PC 에서 탭이 사라지면 그 기록도 거둔다.
+  // 메인 PC 에서 탭이 사라지면 그 기록도 거둔다.
   applyMirrorTabs([mirrored("htab-1", ["hpane-1"])], "htab-1", { "htab-1": "hpane-1" });
   expect(activeTabId()).toBe("htab-1");
   expect(mirrorLocalChoice().focusOf("htab-2")).toBeNull();
@@ -128,7 +128,7 @@ it("turns layout edits into requests and leaves the mirror untouched", async () 
     "split", "closeTile", "renameTab", "swapTile", "moveTile", "openPane", "openBeside", "closeTabs", "newTab",
   ]);
   expect(sent[0]).toEqual({ op: "split", tile: "hpane-2", dir: "col" });
-  expect(sent.find((r) => r.op === "moveTile")).toMatchObject({ stay: true }); // 보던 탭 그대로 — 집 PC 화면이 튀지 않게
+  expect(sent.find((r) => r.op === "moveTile")).toMatchObject({ stay: true }); // 보던 탭 그대로 — 메인 PC 화면이 튀지 않게
   expect(sent[3]).toEqual({ op: "swapTile", tile: "hpane-2", dir: "left" });
   expect(sent[5]).toMatchObject({ op: "openPane", tab: "htab-1", pane: fresh });
   expect(sent[8]).toEqual({ op: "newTab", pane: ssh, workspace: "w" });

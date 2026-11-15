@@ -4,15 +4,15 @@
 //! (실측 10-15: 폴리필을 우회해 ws 로 보낸 `plugin:dialog|open`·`opener|open_path`·`clipboard-manager|read_text`·`window|close`·
 //! `app|version` 모두 "not allowed on window remote-…" — 열린 것은 `event|emit·emit_to`·`path|*` 뿐).
 //!
-//! 권한 B(사용자 결정 10-15): 원격 창 ≈ 집 PC 창이다. 표는 넷이고 **명령마다 정확히 하나**에 있다 — 시험
+//! 권한 B(사용자 결정 10-15): 원격 창 ≈ 메인 PC 창이다. 표는 넷이고 **명령마다 정확히 하나**에 있다 — 시험
 //! `every_command_is_classified_once` 가 `lib.rs` 의 `generate_handler![…]` 를 소스로 훑어 지킨다(새 명령이 조용히 열리지 않게 —
 //! 표에 없는 명령은 원격에서 [`Class::Unknown`] 으로 거절된다).
 //!
 //! | 표 | 원격에서 | 무엇 |
 //! | --- | --- | --- |
-//! | [`HOME_ONLY`] | 거절 "집 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) |
+//! | [`HOME_ONLY`] | 거절 "메인 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) |
 //! | [`REAUTH`] | 그 순간 마스터 암호 재확인(마스터가 없으면 그대로 통과) | 작업안 승인 · 대상 고치기 · AI 권한 올리기 |
-//! | [`UNSUPPORTED`] | 거절 "원격에서 지원하지 않음" | 집 PC 의 OS 창·편집기·UAC 를 여는 것 · 창 모양 |
+//! | [`UNSUPPORTED`] | 거절 "원격에서 지원하지 않음" | 메인 PC 의 OS 창·편집기·UAC 를 여는 것 · 창 모양 |
 //! | [`ALLOW`] | 그대로 | 나머지 전부(설정·호스트·스니펫·볼트 값 넣기·파일·소스 컨트롤·DB·앱 종료 · 사이드 채팅(2026-11-01) …) |
 //!
 //! - **`save_settings` 는 [`ALLOW`] 이되 칸 단위 문**이 있다([`settings_home_only`]): `[automation]`(자동 승인 정책 — 알림 두 칸만
@@ -34,12 +34,12 @@
 //!   읽기는 [`ALLOW`] 다. (3차 6단계) Run 시작 · [이어 가기] 명령은 걷었다 — Run 은 AI 타일의 `start_run`(MCP)으로만 열리고 그 범위를 맡기기가 정한다.
 //! - 폴리필은 [`UNSUPPORTED`] 중 브라우저에서 "아무것도 안 함" 이 맞는 셋(`set_app_icon`·`focus_window`·
 //!   `take_tray_intent`)을 보내지 않고 `null` 로 답한다(창 조작 흉내와 같은 결 — 시험 `polyfill_noops_are_unsupported`).
-//! - 거절 문구는 **사람 말**이다(R1a-5 — [`command_label`]): "집 PC 에서만 할 수 있습니다 — 볼트 마스터 암호 바꾸기".
+//! - 거절 문구는 **사람 말**이다(R1a-5 — [`command_label`]): "메인 PC 에서만 할 수 있습니다 — 볼트 마스터 암호 바꾸기".
 //!
 //! ## 이벤트 문 (R1a-5 — 설계 14.11 "이벤트 감사")
 //!
-//! 원격 창은 ACL 로 `plugin:event|emit`·`emit_to` 가 열려 있어(`capabilities/remote.json`) **집 PC 창에 아무 이벤트나** 낼 수 있었다.
-//! 집 PC 창의 리스너 몇은 받은 순간 집 PC 전용 일을 한다(`tray-quit` → 앱 종료·모든 세션 끝 · `workspace-request` → 세션 놓기·
+//! 원격 창은 ACL 로 `plugin:event|emit`·`emit_to` 가 열려 있어(`capabilities/remote.json`) **메인 PC 창에 아무 이벤트나** 낼 수 있었다.
+//! 메인 PC 창의 리스너 몇은 받은 순간 메인 PC 전용 일을 한다(`tray-quit` → 앱 종료·모든 세션 끝 · `workspace-request` → 세션 놓기·
 //! 타일 넘기기·포커스 · `remote-pair-request` → 가짜 페어링 모달 · `session-server-connected` → 가림막 다시 보기 …). 그래서 원격의
 //! emit 은 **이벤트 이름으로 거른다 — 기본 거절, [`REMOTE_EMIT`] 만 허용**(`bridge::admit_event`). 허용한 넷은 받는 쪽이 파일을
 //! 다시 읽거나 메모리 사본 이름만 맞추는 것(원격이 같은 명령으로 이미 할 수 있는 일의 메아리)이다. 시험
@@ -60,34 +60,34 @@ pub(crate) enum Class {
     Unknown,
 }
 
-/// 집 PC 전용 — 원격에서 거절.
+/// 메인 PC 전용 — 원격에서 거절.
 pub(crate) const HOME_ONLY: &[&str] = &[
     // 볼트 마스터 바꾸기·풀기(`new: None`)와 전체 삭제.
     "vault_set_master",
     "vault_delete_all",
-    // 원격 기기 페어링 관리 — [허용] 은 집 PC 사람만(6자리 코드를 견주는 것이 사람이다).
+    // 원격 기기 페어링 관리 — [허용] 은 메인 PC 사람만(6자리 코드를 견주는 것이 사람이다).
     "remote_pair_respond",
     "remote_pair_pending",
-    // 집 PC 에서 `tailscale status` 를 돌려 켜기·이름 칸을 채운다(R1a-5) — 켜기·이름 바꾸기가 집 PC 전용이라 같은 쪽.
+    // 메인 PC 에서 `tailscale status` 를 돌려 켜기·이름 칸을 채운다(R1a-5) — 켜기·이름 바꾸기가 메인 PC 전용이라 같은 쪽.
     "remote_detect_host",
-    // [연결] · [serve 끄기] — 집 PC 에서 `tailscale serve` 를 실행해 tailnet 노출을 바꾸고 켜기·이름·포트를 저장한다. 판정 읽기도 같은 쪽(CLI 실행).
+    // [연결] · [serve 끄기] — 메인 PC 에서 `tailscale serve` 를 실행해 tailnet 노출을 바꾸고 켜기·이름·포트를 저장한다. 판정 읽기도 같은 쪽(CLI 실행).
     "remote_serve_status",
     "remote_serve_connect",
     "remote_serve_off",
-    // 집 PC 화면 배치 거울(R2-B)을 올리는 쪽은 집 PC 주 창 하나 — 원격이 다른 원격에 가짜 배치를 흘리지 못하게.
+    // 메인 PC 화면 배치 거울(R2-B)을 올리는 쪽은 메인 PC 주 창 하나 — 원격이 다른 원격에 가짜 배치를 흘리지 못하게.
     "mirror_publish",
-    // 관문 쪽 색(`/remote/theme.css`)을 올리는 쪽도 집 PC 주 창 하나 — 원격 창은 이 기기 밝기 사본을 칠할 수 있고, 원격이 관문 색을 바꾸지 못하게.
+    // 관문 쪽 색(`/remote/theme.css`)을 올리는 쪽도 메인 PC 주 창 하나 — 원격 창은 이 기기 밝기 사본을 칠할 수 있고, 원격이 관문 색을 바꾸지 못하게.
     "remote_gate_theme_set",
-    // 원격의 배치 요청(R3)을 받고 답하는 쪽도 집 PC 주 창 하나 — 원격이 남의 요청을 가로채거나 가짜 답을 내지 못하게.
+    // 원격의 배치 요청(R3)을 받고 답하는 쪽도 메인 PC 주 창 하나 — 원격이 남의 요청을 가로채거나 가짜 답을 내지 못하게.
     "mirror_request_inbox",
     "mirror_respond",
-    // 독의 종료 단추 = 모든 세션 · 세션 서버 · 앱 끝내기(트레이 [모든 세션 종료…] 와 같은 길) — 집 PC 사람의 결정이다. 원격의
+    // 독의 종료 단추 = 모든 세션 · 세션 서버 · 앱 끝내기(트레이 [모든 세션 종료…] 와 같은 길) — 메인 PC 사람의 결정이다. 원격의
     // `tray-quit` emit 이 막힌 것과 같은 판단(`REMOTE_EMIT`). 원격 창에는 단추도 없다(`Dock.svelte`).
     "app_end_all_sessions",
-    // 끝내기 모달의 [GUI 종료](2026-10-28) — 집 PC 화면을 끝내는 것도 집 PC 사람의 결정이다.
+    // 끝내기 모달의 [GUI 종료](2026-10-28) — 메인 PC 화면을 끝내는 것도 메인 PC 사람의 결정이다.
     "app_quit_gui",
     "app_hide_to_tray",
-    // 앱 안 업데이트(2026-11-12 · 전문 13) — 원격 기기가 집 PC 를 업데이트시키지 못한다(찾기 · 받기 · 설치 · 건너뛰기 · 알림 표시까지
+    // 앱 안 업데이트(2026-11-12 · 전문 13) — 원격 기기가 메인 PC 를 업데이트시키지 못한다(찾기 · 받기 · 설치 · 건너뛰기 · 알림 표시까지
     // 전부 — 원격 창에는 칩도 카드도 없다).
     "update_state",
     "update_check",
@@ -108,7 +108,7 @@ pub(crate) const REAUTH: &[&str] = &[
     "db_ai_set",
     // (3차 6단계) 오케스트레이션 Run 시작 · 이어 가기 명령은 걷었다 — Run 은 AI 타일의 `start_run`(MCP)으로만 열리고, 그 범위는 아래
     // 저장소 맡기기(넓힘 = REAUTH)가 정한다.
-    // 오케스트레이션 검증 — 후보 검증 실행 확인(AI 가 바꿀 수 있는 코드를 집 PC 에서 돌린다 — 작업안 승인과 같은 급) ·
+    // 오케스트레이션 검증 — 후보 검증 실행 확인(AI 가 바꿀 수 있는 코드를 메인 PC 에서 돌린다 — 작업안 승인과 같은 급) ·
     // 검증 실패 덮어쓰기(검증을 건너뛰고 통합을 연다).
     "orchestration_approve_verify",
     "orchestration_override_verify",
@@ -120,7 +120,7 @@ pub(crate) const REAUTH: &[&str] = &[
     // (묶음을 고르는 저장소의 권한을 정한다). 거두기 · 묶음 지우기 · 읽기는 ALLOW.
 ];
 
-/// 원격에서 뜻이 없다 — 집 PC 의 OS 창·편집기·UAC 를 연다. 거절.
+/// 원격에서 뜻이 없다 — 메인 PC 의 OS 창·편집기·UAC 를 연다. 거절.
 pub(crate) const UNSUPPORTED: &[&str] = &[
     "set_app_icon",
     // 사용자 아바타(옛 사용자 앱 아이콘) 넣기 · 지우기 · 이름 바꾸기 — 원격 미지원(사용자 결정 10-22 · 10-31 · 화면은 단추를 숨긴다). 목록 · 큰 그림 읽기는
@@ -131,7 +131,7 @@ pub(crate) const UNSUPPORTED: &[&str] = &[
     "take_tray_intent",
     "open_tear_window",
     "focus_window",
-    // 집 PC 에 편집기를 띄운다.
+    // 메인 PC 에 편집기를 띄운다.
     "open_ssh_config",
     "edit_remote_file",
 ];
@@ -146,14 +146,14 @@ pub(crate) const ALLOW: &[&str] = &[
     // 크기 되찾기(10-20) — PTY 크기만 바꾼다(원격이 이미 할 수 있는 키 하나 친 것과 같은 효과 · 셸에 쓰지 않음).
     "claim_session_size",
     "ack_local_output", "detach_session", "attach_session", "probe_session", "stash_checkpoint",
-    // 다중 시청자(R2-A) — 원격 창이 집 PC 의 타일을 빼앗지 않고 함께 본다(B — 집 PC 창과 동등).
+    // 다중 시청자(R2-A) — 원격 창이 메인 PC 의 타일을 빼앗지 않고 함께 본다(B — 메인 PC 창과 동등).
     "attach_session_viewer", "detach_session_viewer",
-    // 집 PC 화면 배치 거울(R2-B) — 원격 창이 붙을 때 지금 배치를 받는다(읽기만).
+    // 메인 PC 화면 배치 거울(R2-B) — 원격 창이 붙을 때 지금 배치를 받는다(읽기만).
     "mirror_get",
-    // 원격의 배치 바꾸기 요청(R3) — 집 PC 주 창이 제 함수로 적용한다(종류는 `remote/mirror.rs` 의 허용 목록 · 빈도·크기 상한).
+    // 원격의 배치 바꾸기 요청(R3) — 메인 PC 주 창이 제 함수로 적용한다(종류는 `remote/mirror.rs` 의 허용 목록 · 빈도·크기 상한).
     "mirror_request",
     "restore_done_sessions", "detached_sessions", "close_detached_session", "set_session_ai_read",
-    // 잠자기 방지(10-23) — 원격에서 집 PC 를 깨워 두거나 놓는 것은 해가 없다(시스템 잠자기만 · 앱이 끝나면 풀린다)
+    // 잠자기 방지(10-23) — 원격에서 메인 PC 를 깨워 두거나 놓는 것은 해가 없다(시스템 잠자기만 · 앱이 끝나면 풀린다)
     "keep_awake_status", "keep_awake_set",
     // 트레이 상태 · 세션 서버 · 진단 · 로그
     "tray_status", "session_server_status", "session_server_restart", "session_server_close_all", "session_stats",
@@ -193,8 +193,8 @@ pub(crate) const ALLOW: &[&str] = &[
     "workspaces_migrate", "workspaces_start_fresh", "workspaces_migration_status", "load_theme_profiles",
     "theme_profiles_edit",
     // 사용자 터미널 테마 — 목록 읽기 · 넣기 · 이름 바꾸기 · 지우기. 테마 프로필 저장 · 월페이퍼처럼 설정 폴더의 **모양** 파일만 쓴다
-    // (권한을 주지 않고 집 PC 의 OS 창도 열지 않는다 · 21색 검증 · 경로 조작 없는 id). 원격 창의 터미널도 같은 테마로 그린다 —
-    // 집 PC 창 아이콘의 후보인 앱 아이콘(`UNSUPPORTED`)과 달리 원격 화면에도 뜻이 있다.
+    // (권한을 주지 않고 메인 PC 의 OS 창도 열지 않는다 · 21색 검증 · 경로 조작 없는 id). 원격 창의 터미널도 같은 테마로 그린다 —
+    // 메인 PC 창 아이콘의 후보인 앱 아이콘(`UNSUPPORTED`)과 달리 원격 화면에도 뜻이 있다.
     "term_theme_list", "term_theme_add", "term_theme_rename", "term_theme_remove",
     // MCP 거울 · AI 에이전트
     "report_session", "update_session_context", "push_session_block", "push_session_blocks", "drop_session",
@@ -280,7 +280,7 @@ pub(crate) const ALLOW: &[&str] = &[
     "remote_disconnect_all",
 ];
 
-/// **원격 창이 낼 수 있는 이벤트**(R1a-5 — 머리말 "이벤트 문"). 기본 거절이고 이 넷만 연다 — 받는 쪽(집 PC 창)이 하는 일은:
+/// **원격 창이 낼 수 있는 이벤트**(R1a-5 — 머리말 "이벤트 문"). 기본 거절이고 이 넷만 연다 — 받는 쪽(메인 PC 창)이 하는 일은:
 /// - `settings-saved` — 파일을 **다시 읽는다**(`settings-sync.svelte.ts` — 짐의 값을 믿지 않는다 · 미저장 편집이 있으면 배너만).
 ///   원격의 설정 저장은 `save_settings` 칸 단위 문을 이미 지났다.
 /// - `host-renamed` — 그 창 메모리의 즐겨찾기·타일 별칭을 새 이름으로(`host-rename.ts` — 파일은 원격이 부른 `edit_host` 가 이미 고쳤다).
@@ -290,8 +290,8 @@ pub(crate) const REMOTE_EMIT: &[&str] = &["settings-saved", "host-renamed", "wor
 /// 프런트가 내지만 **원격 창에서는 거절**하는 이벤트 — 분류 시험의 짝(이름 끝이 `-` 면 접두). 원격 창은 보조 창이 아니라
 /// 워크스페이스 보고·창 사이 요청(세션 놓기 · 타일 넘기기 · 포커스 · 종료 점검)에 끼지 않는다.
 /// 가림막 맞추기(`veil-raised` · `veil-lifted` — 2026-10-28 `app/veil`)와 입력 시계 나누기(`user-active` — `app/idle-lock`)도
-/// 집 PC 창끼리의 일이다 — 원격 창이 `veil-lifted` 를 내면 집 PC 가림막을 걷으려 들고(받는 쪽이 볼트를 다시 묻지만 문에서 막는다),
-/// `user-active` 를 내면 집 PC 의 무입력 잠금을 미룬다. 원격 창은 제 관문(원격 가림막)이 따로 있다.
+/// 메인 PC 창끼리의 일이다 — 원격 창이 `veil-lifted` 를 내면 메인 PC 가림막을 걷으려 들고(받는 쪽이 볼트를 다시 묻지만 문에서 막는다),
+/// `user-active` 를 내면 메인 PC 의 무입력 잠금을 미룬다. 원격 창은 제 관문(원격 가림막)이 따로 있다.
 #[cfg_attr(not(test), allow(dead_code))] // 시험(`frontend_emits_are_classified`)과 사람이 읽는 표 — 문은 기본 거절이라 런타임에 안 본다
 pub(crate) const REMOTE_EMIT_DENIED: &[&str] = &[
     "workspace-status",
@@ -317,7 +317,7 @@ pub(crate) fn emit_message(event: &str) -> String {
     )
 }
 
-/// 거절 문구에 쓰는 **사람 말** 이름(R1a-5) — 집 PC 전용·미지원 명령. 표에 없으면 명령 이름 그대로.
+/// 거절 문구에 쓰는 **사람 말** 이름(R1a-5) — 메인 PC 전용·미지원 명령. 표에 없으면 명령 이름 그대로.
 pub(crate) fn command_label(cmd: &str) -> String {
     match cmd {
         "vault_set_master" => tr!(ko: "볼트 마스터 암호 바꾸기·풀기", en: "changing or removing the vault master password"),
@@ -397,7 +397,7 @@ pub(crate) fn class_of(cmd: &str) -> Class {
     }
 }
 
-/// 집 PC 전용 거절 문구.
+/// 메인 PC 전용 거절 문구.
 pub(crate) fn home_only_message(what: &str) -> String {
     tr!(ko: "메인 PC 에서만 할 수 있습니다 — {what}", en: "Only on the main PC — {what}", what = what)
 }
@@ -428,7 +428,7 @@ pub(crate) fn reauth_message() -> String {
     )
 }
 
-/// `save_settings` 의 칸 단위 문 — 지금 저장된 값(`current`)과 원격이 보낸 값(`next` — 둘 다 정리 뒤)을 견줘 **집 PC 전용 칸이
+/// `save_settings` 의 칸 단위 문 — 지금 저장된 값(`current`)과 원격이 보낸 값(`next` — 둘 다 정리 뒤)을 견줘 **메인 PC 전용 칸이
 /// 바뀌었으면 그 문구**. 순수 함수(시험이 본다).
 ///
 /// - `[automation]` — 자동 승인 정책·상한·검토 만료·감사 보관까지 전부. 알림 두 칸(`notify_review_requests`·
@@ -676,7 +676,7 @@ mod tests {
         let mut same = cur.clone();
         same.remote.port = Some(crate::instance::remote_port(false));
         assert_eq!(settings_home_only(&cur, &same, false), None);
-        // 꺼진 채로 이름을 바꾸는 것도 집 PC 에서만.
+        // 꺼진 채로 이름을 바꾸는 것도 메인 PC 에서만.
         let mut off_host = off.clone();
         off_host.remote.host = None;
         assert!(settings_home_only(&off, &off_host, false).is_some());
@@ -789,7 +789,7 @@ mod tests {
     }
 
     /// 모두 승인(2026-10-23) — 호스트 · DB 연결을 'YOLO' 로 올리는 길은 AI 권한 명령 둘뿐이고 둘 다 재확인이다(원격 창에서는 마스터가
-    /// 있으면 그 순간 다시 묻는다). 그 단계를 켜는 전체 스위치(`[automation] auto_approve`)는 `save_settings` 의 집 PC 전용 칸이다.
+    /// 있으면 그 순간 다시 묻는다). 그 단계를 켜는 전체 스위치(`[automation] auto_approve`)는 `save_settings` 의 메인 PC 전용 칸이다.
     /// `delegation.toml` 에 `approve_all` · `"all"` 을 적는 제품 코드는 위임 모듈 둘뿐이다(다른 명령이 몰래 올리지 못하게).
     #[test]
     fn raising_to_approve_all_is_reauth() {

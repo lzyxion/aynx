@@ -13,9 +13,7 @@
 // ⑥ 진행 중 턴 — 그 턴엔 에이전트 [복사] 없음(사이드 채팅 = 통로의 지금 턴 · AI 타일 = 훅 start) · 첨부 칩이 있는 지금 턴 사람 말의 [복사]에 첨부 이름이 없다
 // ⑦ 폰 — 말풍선을 한 번 누르면 보이고 다른 곳을 누르면 숨는다 · 단추를 누르면 복사
 // ⑧ 콘솔 오류 0(`stub:` 거절 제외)
-// ⑨ 에이전트 답 [문서로 내보내기](C안) — [복사] 바로 오른쪽 · 누르면 상자(이름 = 첫 제목 · 폴더 = 채팅 폴더 / 타일 폴더 · [바꾸기]는 집 PC 창만) ·
-//    [만들기] → 그 폴더에 만들고 답 글(도구 기록 없음)을 씀 · 문서 타일(AI 타일 오른쪽 · 사이드 채팅 = 지금 탭 곁 · 원격 = 집 PC 요청)
-// ⑩ 같은 이름 → 덮어쓰지 않음 · 상자에 까닭 · Esc 로 닫힘. 파일은 디스크에 쓰지 않는다(스텁의 `window.__files` 표).
+// ⑨ 에이전트 답 아래 단추는 [복사] 하나뿐(2026-11-15 사용자 결정 — 옛 [문서로 내보내기]를 걷음) — 사이드 채팅 · AI 대화 면 · 원격 · 폰
 // ⑪ 기록의 파일 첨부(2026-11-14 · 판 32) — 사람 말 U2 에 `files`(Rust `parse_file_refs` 가 꼬리를 떼고 남긴 칸 — 스텁은 그 결과 모양을 준다):
 //    칩 = 이름만(보낼 때와 같은 `data-sent-file`) · 말풍선 글에 `Attached file:` 없음 · [복사] = 꼬리 없는 본문(사이드 채팅 · 원격 데스크톱 · 폰)
 //    · AI 타일 대화 면(앱 첨부 자리 경로를 Rust `strip_attach_paths` 가 걷은 `files` — 같은 칩 · flip-files.png)
@@ -160,9 +158,6 @@ const stub = (remote) => `
     navigator.clipboard.writeText = (t) => { window.__clip.push(t); return orig(t); };
   } catch {}
   let nextSession = 100;
-  // 파일 — 디스크에 쓰지 않는다(이 표에만). 만들기는 같은 이름이면 [exists] 로 거절(백엔드와 같은 꼴)
-  window.__files = {}; window.__fileOps = []; window.__requests = [];
-  const fileEntry = (p) => ({ name: p.split(/[\\\\/]/).pop(), path: p, kind: 'file', size: (window.__files[p] ?? '').length, mtime: 1700000000, mode: null, symlinkTarget: null, linkIsDir: false, hidden: false });
   const T0 = Date.now() - 3600_000;
   const it = (i, role, text, tool = null) => ({ role, text, truncated: false, images: 0, tool, at: T0 + i * 1000 });
   window.__tx = [
@@ -207,18 +202,6 @@ const stub = (remote) => `
       window.__calls.push([cmd, args]);
       if (cmd === 'open_local_session') { const id = nextSession++; window.__chan[id] = { cb: args?.onData?.id, idx: 0 }; return Promise.resolve({ id, shell: 'pwsh' }); }
       if (cmd === 'probe_session') return Promise.resolve({ state: 'none', sessionEpoch: null, checkpoint: null });
-      if (cmd === 'local_create_file') {
-        window.__fileOps.push(['create', args.path]);
-        if (args.path in window.__files) return Promise.reject('[exists] already exists: ' + args.path);
-        window.__files[args.path] = ''; return Promise.resolve(args.path);
-      }
-      if (cmd === 'local_write_text') { window.__fileOps.push(['write', args.path]); window.__files[args.path] = args.text; return Promise.resolve({ version: 'v' + window.__fileOps.length, size: args.text.length }); }
-      if (cmd === 'local_stat') return (args.path in window.__files) ? Promise.resolve(fileEntry(args.path)) : Promise.reject('[not-found] ' + args.path);
-      if (cmd === 'local_read_text') {
-        const text = window.__files[args.path];
-        return text === undefined ? Promise.reject('[not-found] ' + args.path) : Promise.resolve({ text, size: text.length, truncated: false, binary: false, lossy: false, version: 'v1' });
-      }
-      if (cmd === 'mirror_request') { window.__requests.push(args.request); return Promise.resolve(null); }
       if (cmd === 'write_session') { window.__writes.push(args); return Promise.resolve(null); }
       if (cmd === 'resize_session' || cmd === 'claim_session_size') return Promise.resolve(true);
       // ⑫ 보내기 — 사본 자리 경로(이름은 머리의 x-file-name) · 보내기 답 · 기록 그림(1x1 PNG)
@@ -328,101 +311,11 @@ const desktopRound = async (label, root, prefix) => {
   check(`⑤ ${label} Tab → 그 말풍선의 [복사] · 보임`, [await ev(`document.activeElement === (${userLi(root, U2)}).querySelector('[data-msg-copy="user"] button')`), await opacityOf(`document.activeElement`)], [true, "1"]);
 };
 
-// ── 에이전트 답 [문서로 내보내기](2026-11-14 C안 — `app/new-doc.svelte.ts` 의 `openExportDoc` · `doc/NewDocBox`) ──────────────────
-const EXPORT_NAME = "설치 안내.md";
-const allPanes = async () =>
-  evj(`(async () => { const w = await ${W}; const s = await ${S};
-    return JSON.stringify(w.residentWindowTabs().map((t) => ({ tab: t.id, root: t.root, panes: s.listPanes(t.root).map((p) => ({ id: p.id, kind: p.kind, path: p.path ?? null })) }))); })()`);
-const BOX = `document.querySelector('[data-new-doc-box]')`;
-const boxInfo = () =>
-  evj(`(() => { const b = ${BOX}; if (!b) return 'null'; return JSON.stringify({ name: b.querySelector('input').value, dir: b.querySelector('[data-new-doc-dir]')?.dataset.newDocDir ?? null,
-    title: b.querySelector('.menu-title')?.textContent.trim() ?? null, pick: !!b.querySelector('[data-new-doc-pick]'), error: b.querySelector('.error')?.textContent.trim() ?? null }); })()`);
-/** 누르기 — 데스크톱은 마우스(먼저 그 줄 위에 올려 단추가 보이게), 폰은 손가락 */
-const press = async (expr, phone, revealExpr = null) => {
-  if (revealExpr) {
-    const rr = await rectOf(revealExpr);
-    if (phone) await tap(rr.l + 4, rr.t + 8);
-    else await hover(rr.x, rr.y);
-    await sleep(300);
-  }
-  const r = await rectOf(expr);
-  if (!r) return false;
-  if (phone) await tap(r.x, r.y);
-  else await clickXY(r.x, r.y);
-  return true;
-};
-/**
- * 판 하나의 내보내기 — `open`: "tile"(그 AI 타일 오른쪽) · "chat"(지금 탭 곁 · 사이드 채팅 규칙) · "remote"(집 PC 에 요청).
- * `dirHas` = 미리 채운 폴더에 들어 있어야 할 조각 · `pick` = [바꾸기] 가 있어야 하나.
- */
-/** 원격 창의 거울 — 집 PC 의 탭 하나(시작 화면)를 민다. 문서 타일은 그 곁에 요청으로 선다(`mirror_request`) */
-const installMirror = async () =>
-  ev(`(async () => {
-    const s = await ${importApp("mirror/snapshot")};
-    const startTab = { id: 'home-empty', title: 'Start', tabKey: 'tke', workspaceId: 'w1', root: { type: 'leaf', pane: { id: 'home-start', kind: 'start', tileKey: 'fks' } } };
-    window.__home = { tabs: [startTab], active: 'home-empty' };
-    window.__emit('mirror-layout', s.buildSnapshot({ source: 'home', workspace: { id: 'w1', name: 'W' }, tabs: window.__home.tabs, activeTabId: window.__home.active, focusOf: (t) => t.root.pane.id }));
-    return 'ok';
-  })()`);
-const exportRound = async (label, root, { open, dirHas, pick, phone = false, prefix, aiPaneId = null }) => {
-  check(`⑨ ${label} [문서로 내보내기] = 에이전트 [복사] 마다 하나 · [복사] 바로 오른쪽 · 이름표`,
-    await evj(`JSON.stringify([...document.querySelectorAll('${root} [data-msg-copy="agent"]')].map((s) => { const b = s.querySelectorAll('button');
-      return b.length === 2 && b[1].hasAttribute('data-msg-export') && b[1].getBoundingClientRect().left >= b[0].getBoundingClientRect().right - 0.5 && b[1].getAttribute('aria-label') === '문서로 내보내기'; }))`),
-    [true, true]);
-  const exp0 = `document.querySelectorAll('${root} [data-msg-export]')[0]`;
-  await press(exp0, phone, `(${exp0}).closest('li')`);
-  await waitFor(`!!${BOX}`, 3000);
-  await sleep(300);
-  const bi = await boxInfo();
-  check(`⑨ ${label} 상자 — 이름 = 첫 제목 · 폴더 미리 채움 · [바꾸기] ${pick ? "있음" : "없음"}`,
-    [bi?.name, String(bi?.dir ?? "").includes(dirHas), bi?.pick, String(bi?.title ?? "").startsWith("문서로 내보내기")], [EXPORT_NAME, true, pick, true]);
-  await shot(`${prefix}-export-box.png`);
-  const ops0 = await ev(`window.__fileOps.length`);
-  const req0 = await ev(`window.__requests.length`);
-  await press(`${BOX}.querySelector('.btn-primary')`, phone);
-  await waitFor(`!${BOX}`, 4000);
-  await sleep(800);
-  const ops = await evj(`JSON.stringify(window.__fileOps.slice(${ops0}))`);
-  const made = ops.find((o) => o[0] === "write")?.[1] ?? null;
-  check(`⑨ ${label} [만들기] → 그 폴더에 만들고 답 글을 씀(도구 기록 없음) · 상자 닫힘`,
-    [ops.map((o) => o[0]), String(made).endsWith(EXPORT_NAME), String(made).includes(dirHas), await ev(`window.__files[${JSON.stringify(made)}] ?? null`), await ev(`!!${BOX}`)],
-    [["create", "write"], true, true, TURN1, false]);
-  if (open === "remote") {
-    const reqs = await evj(`JSON.stringify(window.__requests.slice(${req0}).map((r) => ({ op: r.op, kind: r.pane?.kind ?? null, path: r.pane?.path ?? null })))`);
-    if (!reqs.some((r) => r.kind === "doc" && r.path === made)) console.log("requests:", JSON.stringify(reqs));
-    check(`⑨ ${label} 집 PC 에 문서 타일 요청(그 파일)`, reqs.some((r) => r.kind === "doc" && r.path === made), true);
-  } else {
-    const tabs = await allPanes();
-    const doc = tabs.flatMap((t) => t.panes).find((p) => p.kind === "doc" && p.path === made) ?? null;
-    if (open === "tile") {
-      const find = (n) => (n.type !== "split" ? null : n.a.type === "leaf" && n.a.pane.id === aiPaneId && n.b.type === "leaf" ? { dir: n.dir, b: n.b.pane.id } : find(n.a) ?? find(n.b));
-      const sp = tabs.map((t) => find(t.root)).find((x) => x) ?? null;
-      check(`⑨ ${label} 문서 타일 = 그 AI 타일 오른쪽(row 분할 b)`, [sp?.dir, sp?.b === doc?.id && !!doc], ["row", true]);
-    } else {
-      const active = await ev(`(async () => (await ${W}).activeTabId())()`);
-      check(`⑨ ${label} 문서 타일이 섰다(지금 탭)`, !!doc && tabs.some((t) => t.tab === active && t.panes.some((p) => p.id === doc.id)), true);
-    }
-    check(`⑨ ${label} 문서 타일이 그 글을 보인다`, await waitFor(`(document.querySelector('[data-pane="${doc?.id}"]')?.innerText ?? '').includes('npm ci')`, 6000), true);
-    await shot(`${prefix}-export-opened.png`);
-  }
-  // 같은 이름 — 덮어쓰지 않는다(상자에 까닭 · 닫히지 않음 · 쓰기 없음) · Esc 로 닫힘
-  await press(exp0, phone, `(${exp0}).closest('li')`);
-  await waitFor(`!!${BOX}`, 3000);
-  await sleep(300);
-  const ops1 = await ev(`window.__fileOps.length`);
-  await press(`${BOX}.querySelector('.btn-primary')`, phone);
-  await sleep(600);
-  const bi2 = await boxInfo();
-  const ops2 = await evj(`JSON.stringify(window.__fileOps.slice(${ops1}))`);
-  check(`⑩ ${label} 같은 이름 → 덮어쓰지 않음(쓰기 없음 · 글 그대로) · 상자에 까닭`,
-    [ops2.map((o) => o[0]), await ev(`window.__files[${JSON.stringify(made)}] ?? null`), bi2?.error ?? null], [["create"], TURN1, "같은 이름의 파일이 있습니다"]);
-  await shot(`${prefix}-export-exists.png`);
-  await ev(`${BOX}.querySelector('input').focus()`);
-  await send("Input.dispatchKeyEvent", { type: "keyDown", code: "Escape", key: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-  await send("Input.dispatchKeyEvent", { type: "keyUp", code: "Escape", key: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-  await sleep(300);
-  check(`⑩ ${label} Esc → 상자 닫힘`, await ev(`!!${BOX}`), false);
-};
+/** ⑨ 에이전트 답 아래 단추 줄마다 [복사] 하나뿐 — 이름표 목록 */
+const agentButtons = (root) =>
+  evj(`JSON.stringify([...document.querySelectorAll('${root} [data-msg-copy="agent"]')].map((s) => [...s.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))))`);
+const onlyCopy = async (label, root) =>
+  check(`⑨ ${label} 에이전트 답 아래 단추 = [복사] 하나뿐(턴마다)`, await agentButtons(root), [["복사"], ["복사"]]);
 
 // ⑪ 기록의 파일 칩 — 이름만 · 글에 꼬리 없음 · [복사] = 본문만
 async function filesRound(name, root, png, phone = false) {
@@ -505,7 +398,7 @@ if (!check("0 사이드 채팅 기록이 섰다", await waitFor(`!!document.quer
 await sleep(500);
 await filesRound("사이드 채팅", DOCK, "files-chat.png");
 await desktopRound("사이드 채팅", DOCK, "copy-chat");
-await exportRound("사이드 채팅", DOCK, { open: "chat", dirHas: "Users\\h", pick: true, prefix: "copy-chat" });
+await onlyCopy("사이드 채팅", DOCK);
 
 // ⑥ 지금 턴(통로) — 그 턴엔 에이전트 [복사] 없음 · 첨부 칩 있는 사람 말의 [복사] = 글만
 const sideEv = (s, e) => ev(`window.__sideEmit({ windows: [window.__label], chat: 'chat-a', epoch: 1, seq: ${s}, ev: ${JSON.stringify(e)} })`);
@@ -514,8 +407,8 @@ await sideEv(7, { t: "userAccepted", clientId: null, text: LIVE_USER, files: ["s
 await sideEv(8, { t: "textDelta", item: "m1", text: "보는 중" });
 await sleep(700);
 const liveUser = userLi(DOCK, LIVE_USER);
-check("⑥ 사이드 채팅 지금 턴 — 에이전트 [복사] · [내보내기]는 기록의 두 턴뿐 · 첨부 칩이 선다",
-  [await ev(`document.querySelectorAll('${DOCK} [data-msg-copy="agent"]').length`), await ev(`document.querySelectorAll('${DOCK} [data-msg-export]').length`), await ev(`(${liveUser})?.querySelector('[data-sent-file]')?.textContent ?? null`)], [2, 2, "shot.png"]);
+check("⑥ 사이드 채팅 지금 턴 — 에이전트 [복사]는 기록의 두 턴뿐 · 첨부 칩이 선다",
+  [await ev(`document.querySelectorAll('${DOCK} [data-msg-copy="agent"]').length`), await ev(`(${liveUser})?.querySelector('[data-sent-file]')?.textContent ?? null`)], [2, "shot.png"]);
 const lur = await rectOf(liveUser);
 await hover(lur.x, lur.y);
 await sleep(350);
@@ -551,15 +444,14 @@ check("0 대화 면 기록", await waitFor(`!!document.querySelector('${CONVO} [
 await sleep(600);
 await filesRound("AI 대화 면", CONVO, "flip-files.png");
 await desktopRound("AI 대화 면", CONVO, "copy-ai");
-await exportRound("AI 대화 면", CONVO, { open: "tile", dirHas: "proj", pick: true, prefix: "copy-ai", aiPaneId: ai.id });
+await onlyCopy("AI 대화 면", CONVO);
 // ⑥ 실행 중(훅 start) — 끝 턴은 아직 쓰는 중 → 그 턴의 [복사] 없음 · 끝나면 다시
 await ev(fakeAgentSignal({ stream: ai.stream, event: "start", session: CONV, cli: "claude" }));
 await sleep(600);
 const runningN = await ev(`document.querySelectorAll('${CONVO} [data-msg-copy="agent"]').length`);
-const runningX = await ev(`document.querySelectorAll('${CONVO} [data-msg-export]').length`);
 await ev(fakeAgentSignal({ stream: ai.stream, event: "stop", session: CONV, cli: "claude" }));
 await sleep(600);
-check("⑥ AI 대화 면 실행 중 = 끝 턴 [복사] · [내보내기] 없음 · 끝나면 다시", [runningN, runningX, await ev(`document.querySelectorAll('${CONVO} [data-msg-copy="agent"]').length`)], [1, 1, 2]);
+check("⑥ AI 대화 면 실행 중 = 끝 턴 [복사] 없음 · 끝나면 다시", [runningN, await ev(`document.querySelectorAll('${CONVO} [data-msg-copy="agent"]').length`)], [1, 2]);
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 판 3 — 원격 데스크톱 사이드 채팅
@@ -571,9 +463,7 @@ check("0 원격 데스크톱 사이드 채팅 기록", await waitFor(`!!document
 await sleep(500);
 await filesRound("원격 데스크톱", DOCK, "files-remote.png");
 await desktopRound("원격 데스크톱", DOCK, "copy-remote");
-check("0 원격 데스크톱 거울", await installMirror(), "ok");
-await sleep(800);
-await exportRound("원격 데스크톱", DOCK, { open: "remote", dirHas: "Users\\h", pick: false, prefix: "copy-remote" });
+await onlyCopy("원격 데스크톱", DOCK);
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 판 4 — 원격 폰 사이드 채팅(터치)
@@ -613,9 +503,7 @@ await tap(pab.x, pab.y);
 await sleep(300);
 check("⑦ 폰 — 에이전트 [복사] = 턴 1 글", await lastClip(), TURN1);
 await shot("copy-phone-agent.png");
-check("0 원격 폰 거울", await installMirror(), "ok");
-await sleep(800);
-await exportRound("원격 폰", PH, { open: "remote", dirHas: "Users\\h", pick: false, phone: true, prefix: "copy-phone" });
+await onlyCopy("폰", PH);
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 판 5 — 막 보낸 그림(⑫): 로컬 사이드 채팅 · 원격 데스크톱 · 폰

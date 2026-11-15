@@ -118,7 +118,7 @@ impl Default for AppSettings {
 /// 원격 웹 클라이언트 관문의 `[remote]` 섹션 ([`crate::remote`] — 설계 docs/log/2026-10-15-remote-web-client-design.md 14절).
 ///
 /// 칸마다 `None` = 안 정함. 해석(기본 포트 · 이름 모양 검사)은 [`crate::remote`] 가 하고, 여기는 빈 값·`0` 만 접는다.
-/// 켜는 일은 **집 PC 에서만**(원격 창의 거부 목록 — R1a 4번 커밋 `remote/deny.rs` 에서 `save_settings` 의 이 칸 변경을 막는다).
+/// 켜는 일은 **메인 PC 에서만**(원격 창의 거부 목록 — R1a 4번 커밋 `remote/deny.rs` 에서 `save_settings` 의 이 칸 변경을 막는다).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct RemotePrefs {
     /// 관문을 여는가 (안 정하면 **끔**).

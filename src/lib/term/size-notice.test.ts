@@ -3,7 +3,7 @@ import { CARD_GAP, noticeActions, noticeSide, outlineBox, placeCard } from "./si
 
 describe("noticeSide", () => {
   it("names the owner from this window's point of view", () => {
-    // 집 PC 창 — 주인이 주가 아니면 원격 기기(모르면 원격 기기로).
+    // 메인 PC 창 — 주인이 주가 아니면 원격 기기(모르면 원격 기기로).
     expect(noticeSide(false, false)).toBe("remoteDevice");
     expect(noticeSide(false, undefined)).toBe("remoteDevice");
     expect(noticeSide(false, true)).toBe("otherWindow");

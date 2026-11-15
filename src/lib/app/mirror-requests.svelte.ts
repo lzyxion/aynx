@@ -5,8 +5,9 @@ import { showNotice } from "$lib/app/notice";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
 import { hasOpenDbTx } from "$lib/app/db-tx";
+import { confirmUnsavedClose } from "$lib/app/unsaved-docs";
 import {
-  activeTabId, adoptPane, autoDirFor, closePaneIn, closeTab, currentWorkspaceTabs, focusPane, isLoneStart,
+  activeTabId, adoptPane, autoDirFor, closePaneIn, closeTab, currentWorkspaceTabs, docNameOf, focusPane, isLoneStart,
   mergeTab, movePane, moveTile, openInNewTab, openPaneHere, openPaneInTab, openTab, openTabInWorkspace, placePane, promotePane, renameTab, resizeTile,
   reorderTabs, replaceTile, residentWindowTabs, selectTab, setRemoteLayoutSink, splitActive,
 } from "$lib/app/tabs.svelte.js";
@@ -24,11 +25,11 @@ import {
 /**
  * **원격 창의 배치 바꾸기 요청**(원격 웹 R3 — 설계 5절 · 15.3). 두 쪽이 한 파일에 있다:
  *
- * - **원격 창**([`startRemoteLayoutRequests`]) — 탭 모듈의 배치 함수들이 막는 대신 넘긴 요청(원격 id)을 집 PC 열쇠로 바꿔
- *   (`$lib/mirror/request` 의 `toWire`) GUI `mirror_request` 로 보낸다. 세션을 끝내는 닫기는 **보내기 전에 여기서 묻는다**(행동한 사람이
- *   확인한다). 원격에서 따로 연 제 타일(쿼리 등)의 닫기는 보내지 않고 혼자 닫는다. 집 PC 주 창이 없으면(거울 출처가 저장된 배치)
+ * - **원격 창**([`startRemoteLayoutRequests`]) — 탭 모듈의 배치 함수들이 막는 대신 넘긴 요청(원격 id)을 메인 PC 열쇠로 바꿔
+ *   (`$lib/mirror/request` 의 `toWire`) GUI `mirror_request` 로 보낸다. 세션을 끝내는 닫기 · 원격 창 자신의 저장 안 한 문서가 든 닫기는
+ *   **보내기 전에 여기서 묻는다**(행동한 사람이 확인한다). 원격에서 따로 연 제 타일(쿼리 등)의 닫기는 보내지 않고 혼자 닫는다. 메인 PC 주 창이 없으면(거울 출처가 저장된 배치)
  *   보내지 않고 안내한다. 거절은 사람 말 한 줄(`app.mirror.refuse.*`).
- * - **집 PC 주 창**([`startMirrorRequests`]) — GUI 가 주 창에만 여는 채널(`mirror_request_inbox` — 원격 창이 들을 수 있는 이벤트를 쓰지
+ * - **메인 PC 주 창**([`startMirrorRequests`]) — GUI 가 주 창에만 여는 채널(`mirror_request_inbox` — 원격 창이 들을 수 있는 이벤트를 쓰지
  *   않는다)로 요청을 받아 [`applyLayoutRequest`] 로 **제 함수 그대로** 적용하고 `mirror_respond` 로 답한다. 결과 배치는 평소의 거울
  *   방송(`app/mirror-publish`)으로 원격에 돌아간다. 닫기는 확인 창 없이 적용하되(원격에서 이미 물었다) 저장 안 한 문서 · 열린 DB
  *   트랜잭션이면 거절하고, 닫았으면 짧은 안내("원격 <기기>가 …")를 남긴다.
@@ -53,7 +54,12 @@ function sessionTilesIn(paneIds: readonly string[]): number {
   }).length;
 }
 
-/** 세션을 끝내는 닫기면 원격에서 묻는다 — 세션 타일이 없으면 묻지 않는다. 진행하면 `true`. */
+/**
+ * 닫기 전에 원격에서 묻는다 — 진행하면 `true`.
+ * 1. **원격 창 자신의 저장 안 한 문서**(11-15 — 이 창에서 고친 문서 타일 · `isDocDirty`)가 있으면 데스크톱 닫기와 같은 물음
+ *    (`confirmUnsavedClose` — 저장하고 닫기 · 버리고 닫기 · 취소). 메인 PC 쪽 저장 안 한 문서 · 열린 트랜잭션은 메인 PC 가 거절한다.
+ * 2. 세션을 끝내는 닫기면 한 번 더 — 세션 타일이 없으면 묻지 않는다.
+ */
 async function confirmClose(req: Extract<LayoutRequest, { op: "closeTile" | "closeTabs" }>): Promise<boolean> {
   const panes =
     req.op === "closeTile"
@@ -61,6 +67,8 @@ async function confirmClose(req: Extract<LayoutRequest, { op: "closeTile" | "clo
       : residentWindowTabs()
           .filter((tab) => req.tabs.includes(tab.id))
           .flatMap((tab) => listPanes(tab.root).map((p) => p.id));
+  const dirty = panes.filter(isDocDirty);
+  if (dirty.length > 0 && !(await confirmUnsavedClose(dirty, docNameOf))) return false;
   const sessions = sessionTilesIn(panes);
   if (sessions === 0) return true;
   const body =
@@ -76,7 +84,7 @@ async function confirmClose(req: Extract<LayoutRequest, { op: "closeTile" | "clo
 
 /**
  * **파일 타일 보기 설정의 요청** — 다른 요청과 달리 **조용히** 실패한다(토글 · 슬라이더마다 안내가 쌓이지 않게). 값은 이미 이 창에 적혀 있어 그 페이지 동안 보이고,
- * 집 PC 가 받지 못했으면 다음 거울 갱신에 되돌아간다(알고 받은 한계 · docs/log/2026-11-04-file-ui-keep.md).
+ * 메인 PC 가 받지 못했으면 다음 거울 갱신에 되돌아간다(알고 받은 한계 · docs/log/2026-11-04-file-ui-keep.md).
  */
 async function sendFileUi(req: Extract<LayoutRequest, { op: "fileUi" }>): Promise<void> {
   if (mirrorSource() !== "home") return;
@@ -87,7 +95,7 @@ async function sendFileUi(req: Extract<LayoutRequest, { op: "fileUi" }>): Promis
 
 async function sendLayout(req: LayoutRequest): Promise<void> {
   if (req.op === "fileUi") return sendFileUi(req);
-  // 원격에서 따로 연 제 타일 — 원격 혼자 닫는다(집 PC 에는 없는 타일이다).
+  // 원격에서 따로 연 제 타일 — 원격 혼자 닫는다(메인 PC 에는 없는 타일이다).
   if (req.op === "closeTile" && isOwnInstance(req.tile)) {
     closeOwnInstance(req.tile);
     return;
@@ -117,7 +125,7 @@ export function startRemoteLayoutRequests(): void {
 }
 
 // ---------------------------------------------------------------------------
-// 집 PC 주 창 — 받아 적용하기
+// 메인 PC 주 창 — 받아 적용하기
 // ---------------------------------------------------------------------------
 
 const fail = (r: Refusal, why = ""): string => `[mirror-${r}]${why ? ` ${why}` : ""}`;
@@ -155,7 +163,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
     keys.some((k) => typeof k === "string" && elsewhere(k)) ? fail("elsewhere") : fail("missing");
   const fresh = (p: PaneSpec): PaneSpec => {
     const pane = homePane(p, newStartPane().id, (key) => tile(key)?.paneId ?? null);
-    // 터미널은 이 창이 새 스트림 열쇠를 단다 — 없으면 스트림이 집 PC 의 pane id 가 되어 원격(다른 id)이 시청할 열쇠를 모른다.
+    // 터미널은 이 창이 새 스트림 열쇠를 단다 — 없으면 스트림이 메인 PC 의 pane id 가 되어 원격(다른 id)이 시청할 열쇠를 모른다.
     if (hasSession(pane.kind)) pane.historyStreamId = nextHistoryStreamId();
     return pane;
   };
@@ -295,7 +303,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
       return null;
     }
     case "openOrchTab": {
-      // 오케스트레이션 탭 — 집 PC 의 여는 길 그대로(있으면 그리로 · 없으면 만든다). 앨범을 여는 것은 여전히 프로듀서의 start_run 뿐이다
+      // 오케스트레이션 탭 — 메인 PC 의 여는 길 그대로(있으면 그리로 · 없으면 만든다). 앨범을 여는 것은 여전히 프로듀서의 start_run 뿐이다
       const r = openOrchTabForRemote(req.runId ?? null, req.workspace ?? null);
       return r === "ok" ? null : fail(r);
     }
@@ -326,7 +334,7 @@ async function handle(msg: unknown): Promise<void> {
 }
 
 /**
- * **집 PC 주 창이 원격의 배치 요청을 받기 시작한다**(`app/boot` — 탭이 선 뒤). GUI 가 주 창에만 여는 채널이다 — 페이지를 다시 읽으면
+ * **메인 PC 주 창이 원격의 배치 요청을 받기 시작한다**(`app/boot` — 탭이 선 뒤). GUI 가 주 창에만 여는 채널이다 — 페이지를 다시 읽으면
  * 새 채널로 갈아 끼운다. 주 창 말고는 아무것도 하지 않는다.
  */
 export async function startMirrorRequests(): Promise<void> {

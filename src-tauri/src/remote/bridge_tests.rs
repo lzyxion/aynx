@@ -34,7 +34,7 @@ fn remote_labels_are_not_home_windows() {
 #[test]
 fn vault_locks_only_with_no_home_window_and_no_remote() {
     assert!(vault_lock_due(0, false));
-    assert!(!vault_lock_due(0, true), "열린 원격이 있으면 집 PC 창 0개여도 잠그지 않는다(3.1)");
+    assert!(!vault_lock_due(0, true), "열린 원격이 있으면 메인 PC 창 0개여도 잠그지 않는다(3.1)");
     assert!(!vault_lock_due(1, false));
     assert!(!vault_lock_due(2, true));
 }

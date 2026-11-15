@@ -4,12 +4,12 @@ import { invoke, isRemote } from "$lib/ipc";
 /**
  * **원격 관문 쪽 색을 메인 PC 앱 색에 맞춘다**(2026-11-01 사용자 결정).
  *
- * 원격 브라우저의 페어링 · 잠금 해제 쪽(`src-tauri/src/remote/gate/gate.css`)은 앱 번들 밖이라 theme.css 를 못 읽는다. 그래서 집 PC
+ * 원격 브라우저의 페어링 · 잠금 해제 쪽(`src-tauri/src/remote/gate/gate.css`)은 앱 번들 밖이라 theme.css 를 못 읽는다. 그래서 메인 PC
  * **주 창**이 색을 칠할 때마다(`applySettings` 끝 — 설정 적용 · 모드 전환 · 색 테마 · 월페이퍼 동적 색 모두 그 함수를 지난다) 아래 원천
  * 토큰의 **계산된 값**과 밝기를 GUI Rust(`remote_gate_theme_set` — 메모리만)에 넘기고, 관문이 `/remote/theme.css` 로 싣는다.
  * gate.css 는 같은 이름의 원천에서 나머지(글래스 판 · 우물 · 배지 …)를 앱과 같은 식으로 다시 짓는다.
  *
- * - 보내는 창은 **집 PC 주 창 하나**다. 원격 창은 이 기기 밝기 사본을 칠할 수 있어 보내지 않고(서버도 `deny.rs` 의 집 PC 전용으로
+ * - 보내는 창은 **메인 PC 주 창 하나**다. 원격 창은 이 기기 밝기 사본을 칠할 수 있어 보내지 않고(서버도 `deny.rs` 의 메인 PC 전용으로
  *   막는다), 보조 창은 같은 설정을 칠하므로 겹쳐 보낼 이유가 없다.
  * - 짧게 모아(슬라이더를 끌면 `applySettings` 가 잇달아 불린다) 지난번과 같으면 보내지 않는다.
  * - 재질(평면/글래스)은 보내지 않는다 — 관문은 글래스 고정.
@@ -43,7 +43,7 @@ const DEBOUNCE_MS = 300;
 let lastSent: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** 이 창이 보낼 창인가 — 집 PC 주 창만. 처음 부를 때 한 번 정한다 */
+/** 이 창이 보낼 창인가 — 메인 PC 주 창만. 처음 부를 때 한 번 정한다 */
 function isSender(): boolean {
   if (isRemote || typeof document === "undefined") return false;
   try {

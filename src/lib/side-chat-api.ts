@@ -2,7 +2,7 @@
 // 같은 이름 Tauri 명령(`src-tauri/src/server/side_chat_proxy.rs`)의 타입 붙은 감싸개 · 사건 꼴(`Ev` — Rust `side_chat/event.rs` 의 거울) ·
 // 사건 통로 하나. 화면(`ChatDock`)은 4단계에서 이것을 쓴다.
 //
-// - **사람 창**(집 PC 주 창 · 원격 웹 창 — 2026-11-01)만 부를 수 있다 — 창 이름은 Rust 가 부른 웹뷰에서 채운다(여기서 싣지 않는다).
+// - **사람 창**(메인 PC 주 창 · 원격 웹 창 — 2026-11-01)만 부를 수 있다 — 창 이름은 Rust 가 부른 웹뷰에서 채운다(여기서 싣지 않는다).
 //   보조 · 떼어 낸 창은 `[main-window-only]`. 원격 관문(`remote/deny.rs`)은 사이드 채팅 명령을 모두 허용한다.
 // - 사건은 전역 이벤트가 아니다: Rust 가 몸의 `windows`(그 채팅을 보는 창들) 가운데 이 창이 건 **`Channel` 에만** 보낸다(본문이 다른 창 · 원격의 `listen` 에
 //   닿지 않게). 그래서 `listen("side-chat-event")` 로는 받을 수 없고 [`onSideChatEvent`] 를 쓴다 — 창마다 통로 하나를 걸고 채팅 id 로 나눠 준다.

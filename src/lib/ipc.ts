@@ -15,13 +15,13 @@ export { listen, emit, emitTo, type UnlistenFn } from "@tauri-apps/api/event";
 
 /**
  * **원격 웹 클라이언트로 도는가**(R1a-3) — 관문의 폴리필이 세운 표식. 원격 창은 브라우저 탭이라 창 조작·탐색기로 끌어내기·
- * 집 PC 전용 묶음(`isMainWindow`)이 없다. 모듈을 읽는 순간 한 번 정해진다(폴리필은 앱 모듈보다 먼저 돈다).
+ * 메인 PC 전용 묶음(`isMainWindow`)이 없다. 모듈을 읽는 순간 한 번 정해진다(폴리필은 앱 모듈보다 먼저 돈다).
  */
 export const isRemote: boolean =
   typeof window !== "undefined" && (window as unknown as { __AYNX_REMOTE__?: boolean }).__AYNX_REMOTE__ === true;
 
 /**
- * **원격 창에서 마스터 암호를 다시 확인한다**(R1a-4 — 설계 3절 단계 3). 집 PC 창이면 묻지 않고 `true`. 원격이면 폴리필의 칸이
+ * **원격 창에서 마스터 암호를 다시 확인한다**(R1a-4 — 설계 3절 단계 3). 메인 PC 창이면 묻지 않고 `true`. 원격이면 폴리필의 칸이
  * 뜨고(마스터가 없으면 칸 없이 통과) 통과하면 `true`, 취소·실패면 `false`. 관문이 막는 명령(승인 · 호스트·DB AI 권한 …)은
  * 폴리필이 알아서 묻는다 — 이 함수는 **명령 하나로 막을 수 없는 화면 토글**(로컬 타일 "AI 읽기 허용" 켜기)이 부른다.
  */
@@ -38,7 +38,7 @@ export async function confirmRemoteMaster(what: string): Promise<boolean> {
 }
 
 /**
- * **이 원격 기기의 이름**(R1a-5) — 원격 창이면 관문이 부팅 표에 실은 이름(상태바 "원격 — <이름>"), 집 PC 창이면 빈 글자.
+ * **이 원격 기기의 이름**(R1a-5) — 원격 창이면 관문이 부팅 표에 실은 이름(상태바 "원격 — <이름>"), 메인 PC 창이면 빈 글자.
  * 이름을 바꾸면 다음 새로 고침부터 보인다.
  */
 export function remoteDeviceName(): string {
@@ -49,7 +49,7 @@ export function remoteDeviceName(): string {
 
 /**
  * 이 원격 기기의 id(10-20 — 폰 설정의 [이 기기 페어링 해제]가 원격 허용 명령 `remote_device_revoke` 에 넘긴다). 관문이 부팅 표에 싣는다 —
- * 비밀이 아니다(기기 목록 `remote_devices_list` 가 이미 내보내는 값). 집 PC 창 · 모르면 빈 글자.
+ * 비밀이 아니다(기기 목록 `remote_devices_list` 가 이미 내보내는 값). 메인 PC 창 · 모르면 빈 글자.
  */
 export function remoteDeviceId(): string {
   if (!isRemote) return "";

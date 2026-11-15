@@ -387,8 +387,8 @@
   });
 
   /**
-   * 원격 창(브라우저)에는 종료(모든 세션 종료…)가 없다 — 집 PC 사람의 결정이다(명령 `app_end_all_sessions` 도 원격에서는
-   * 집 PC 전용으로 거절된다 — `remote/deny.rs`). 창 제어 단추(`+page` 의 `.winctl`)를 그리지 않는 것과 같은 판단.
+   * 원격 창(브라우저)에는 종료(모든 세션 종료…)가 없다 — 메인 PC 사람의 결정이다(명령 `app_end_all_sessions` 도 원격에서는
+   * 메인 PC 전용으로 거절된다 — `remote/deny.rs`). 창 제어 단추(`+page` 의 `.winctl`)를 그리지 않는 것과 같은 판단.
    */
   const tools = $derived(DOCK_TOOLS.filter((tool) => tool.id !== "quit" || !isRemote));
 

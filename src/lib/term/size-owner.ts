@@ -1,6 +1,6 @@
 // **크기 주인**(원격 웹 R2-A 서버 · R2-B 프런트 — tmux `latest`). 순수 모듈 — 상태 저장소를 모른다.
 //
-// 한 세션을 여러 창(집 PC 창 = 주 · 원격 창 = 시청자)이 함께 볼 때 PTY 크기는 **마지막으로 사람이 입력한 쪽**의 것이다(서버 `session_core::viewers`).
+// 한 세션을 여러 창(메인 PC 창 = 주 · 원격 창 = 시청자)이 함께 볼 때 PTY 크기는 **마지막으로 사람이 입력한 쪽**의 것이다(서버 `session_core::viewers`).
 // 이 파일은 그 사실을 터미널 하나가 쓰는 꼴로 바꾼다:
 //
 // - **질의 응답은 주인만** — xterm 이 스스로 내는 터미널 응답(DSR 커서 위치 · DA · DECRQM · OSC 10/11 색 — 출처 `protocol`,
@@ -25,7 +25,7 @@ export interface TermSize {
 export interface OwnerView {
   owner: boolean;
   size: TermSize | null;
-  /** 주인이 주(집 PC 창)인가 — 꼬리표 문구를 가른다(`size-notice.ts`). 모르면(옛 서버 · 낙관적 주인) 없다 */
+  /** 주인이 주(메인 PC 창)인가 — 꼬리표 문구를 가른다(`size-notice.ts`). 모르면(옛 서버 · 낙관적 주인) 없다 */
   primary?: boolean;
 }
 

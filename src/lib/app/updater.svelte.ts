@@ -3,7 +3,7 @@
  *
  * - 상태의 주인은 Rust(`src-tauri/src/updater.rs`)다. 여기는 그 사본(`update-state` 이벤트 · `update_state`)을 들고, 무엇을 보일지는
  *   순수 모듈(`$lib/updater`)이 정한다.
- * - **주 창(집 PC)에서만** 선다(`startUpdater` — `app/boot`). 원격 창은 명령이 모두 거절되고(`remote/deny.rs` HOME_ONLY), 보조 창은
+ * - **주 창(메인 PC)에서만** 선다(`startUpdater` — `app/boot`). 원격 창은 명령이 모두 거절되고(`remote/deny.rs` HOME_ONLY), 보조 창은
  *   칩을 그리지 않는다(사본이 비어 있다).
  * - 자동 확인 — 설정 `[updates] auto_check`(기본 켬)이면 부팅 한 박자 뒤와 6시간마다 `update_check(auto)`. 개발 빌드는 Rust 가
  *   그 요청을 그대로 돌려준다(손 [지금 확인]만 된다).
