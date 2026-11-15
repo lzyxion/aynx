@@ -12,41 +12,45 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-15
+
 If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and file upload stays blocked until it restarts.
 
 ### What's new
 
-- **Upload file**: the **[+]** menu in the side chat and in AI tiles now says **Upload file** (with a paperclip icon) and takes any file, not just images.
-  - Up to 8 files per message, 10 MB each. The AI reads them without asking for permission.
-  - Side chat copies are kept in that chat's own folder and are removed when you delete the chat. A chat continued from a tile doesn't write anything into the tile's folder.
-  - In the chat history, an attached file shows as a file chip, and an image you just sent shows as the image itself.
 - **Side chat composer**: one row with **[+]** (upload file · link a tile · MCP) and a model menu: switch between Claude Code and Codex, pick a model, and set effort on a slider. The remote web client and the phone have the same menu.
   - **[+] › MCP** lists the MCP servers the chat will load, even before your first message.
   - On a phone, and in a chat dock dragged very narrow, the model button shows only the logo, leaving more room to type. Its tooltip and menu still show the model and effort.
   - Seeing a side chat alert in one window clears it in the others.
+- **Upload file**: the **[+]** menu in the side chat and in AI tiles now says **Upload file** (with a paperclip icon) and takes any file, not just images.
+  - Up to 8 files per message, 10 MB each. The AI reads them without asking for permission.
+  - Side chat copies are kept in that chat's own folder and are removed when you delete the chat. A chat continued from a tile doesn't write anything into the tile's folder.
+  - In the chat history, an attached file shows as a file chip, and an image you just sent shows as the image itself.
 - **Model and effort in AI tiles**: the chat view of an AI tile shows the current model and effort and updates as soon as you change them. Changing them from the menu asks first with a **Switch model** or **Change effort** card.
 - **Copy**: messages in the side chat and in the chat view of AI tiles have **[Copy]** (tool output is left out).
 - **Model names** are written the same way everywhere: the chat list, past conversations, the session board's usage and the orchestration player show `Opus 5.5` or `GPT-6.1-Sol` instead of the raw id, and effort shows as `High`.
 - **Alert banners** show only the tile or chat name in the title. The logo already says which agent it is.
-- **New shortcuts for the chat dock**: the chat dock now opens with **Ctrl+Shift+[** (it was Ctrl+Shift+'), and the task plans branch with **Ctrl+Shift+]** (it had no default). Both work inside the document and SQL editors too, and Ctrl+[ still goes to the shell as Esc. If you set your own key in **Settings › Shortcuts**, it stays as it was.
 - **Image tile**: double-click an image in a file tile (local or SFTP) to open it inside Aynx. Image paths in the terminal, in documents and in the side chat open there too.
   - Fit or 1:1, zoom with the wheel around the pointer, drag to pan, and double-click to switch between fit and 1:1.
   - **←** and **→** step through the other images in the same folder. The image reloads when the file changes.
   - A minimap shows where you are when zoomed in. Turn it on or off from the zoom menu or with **M**.
   - Large images download with a progress bar and **[Cancel]**. Above 500 MB, Aynx asks first.
   - **Open with default app** and **Edit externally** moved to the right-click menu.
+- **Phone**
+  - Reopening the remote web client brings back the tab and tile you were viewing, even if the main PC moved to another tab meanwhile. If that tile was closed, it follows the main PC. A remote window on a PC does the same when it reloads.
+  - The **+** sheet can open a tile in the tab you are viewing: pick **This tab** or **New tab** at the top. **+** in the top strip starts on **This tab**, and **New tab** on the picker screen starts on **New tab**.
+  - Each tile row on the picker screen has a small **×** to close that tile without picking it first. A tile with a session asks first, as before.
+- **Remote window**
+  - Closing a tile or tab with a document you edited in the remote window itself now asks to save or discard it first. It used to close without asking.
+  - Task plans open in the remote window's chat dock, the same as on the main PC, instead of covering the tiles.
+- **Task plans**
+  - **Review card [Later]**: move the review card out of the way to check your tiles first. Waiting plans stay in the chat dock's task plans branch, and a new plan brings the card back.
+  - **Clearing**: the bottom row has **[Clear finished runs]** (Active) and **[Clear history]** (History). In History, **×** on a row clears one run, and with a filter set the button clears only the rows you see. History is cleared from the screen only — the audit log is kept.
+- **New shortcuts for the chat dock**: the chat dock now opens with **Ctrl+Shift+[** (it was Ctrl+Shift+'), and the task plans branch with **Ctrl+Shift+]** (it had no default). Both work inside the document and SQL editors too, and Ctrl+[ still goes to the shell as Esc. If you set your own key in **Settings › Shortcuts**, it stays as it was.
 - **Search in the terminal**: the match you are on is now filled with the accent color and the other matches are tinted, so the current one stands out. Jumping from **Search all** lands on the exact line you picked and keeps it highlighted. Closing the search no longer leaves a selection behind.
 - **Maximized tiles**: opening a file, jumping from search, clicking an alert or picking a tile in the session board now un-maximizes the tab when the target tile was hidden behind it.
 - **Keyboard focus**: closing the session board, the shortcut sheet, settings or the chat dock returns the keys to the tile you were in, including terminal tiles. Switching between the chat and task plans branches keeps focus in the dock.
-- **Review card [Later]**: move the review card out of the way to check your tiles first. Waiting plans stay in the chat dock's task plans branch, and a new plan brings the card back.
-- **Phone**
-  - Reopening the remote web client on a phone (or reloading a PC remote) brings back the tab and tile you were viewing, even if the main PC moved to another tab meanwhile. If that tile was closed, it follows the main PC.
-  - The **+** sheet can open a tile in the tab you are viewing: pick **This tab** or **New tab** at the top. **+** in the top strip starts on **This tab**, and **New tab** on the picker screen starts on **New tab**.
-  - Each tile row on the picker screen has a small **×** to close that tile without picking it first. A tile with a session asks first, as before.
-- **Remote window**: closing a tile or tab with a document you edited in the remote window itself now asks to save or discard it first. It used to close without asking.
-- **Task plans in a remote window** open in the remote window's chat dock, the same as on the main PC, instead of covering the tiles.
-- **Clearing task plans**: the bottom row of task plans has **[Clear finished runs]** (Active) and **[Clear history]** (History). In History, **×** on a row clears one run, and with a filter set
-  the button clears only the rows you see. Cleared rows slide out like alerts. History is cleared from the screen only — the audit log is kept.
+- **Document tile**: in a narrow tile the title shortens first, so **Save** and the other buttons stay visible.
 
 ## [0.1.2] - 2026-11-12
 
@@ -86,7 +90,8 @@ The app was renamed from **AYNX** to **Aynx**. Uninstall the previous version be
 
 - First public release.
 
-[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/lzyxion/aynx/releases/tag/v0.1.3
 [0.1.2]: https://github.com/lzyxion/aynx/releases/tag/v0.1.2
 [0.1.1]: https://github.com/lzyxion/aynx/releases/tag/v0.1.1
 [0.1.0]: https://github.com/lzyxion/aynx/tree/v0.1.0
