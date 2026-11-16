@@ -102,6 +102,7 @@ mod socks5;
 mod ssh;
 mod ssh_config;
 mod ssh_pool;
+mod tab_templates;
 mod term_themes;
 mod text_file;
 mod tile_env;
@@ -722,6 +723,9 @@ pub fn run() {
             git_repo::ssh_git_head,
             snippets::load_snippets,
             snippets::save_snippets,
+            // 탭 템플릿(2026-11-16) — 스니펫과 같은 관례의 불투명 blob(`tab-templates.json`). 백엔드는 스키마를 모른다.
+            tab_templates::load_tab_templates,
+            tab_templates::save_tab_templates,
             // 채팅 사이드 독(2026-10-23) — 채팅 목록 파일 · 채팅마다 폴더(`side_chat/store.rs`)
             side_chat::store::side_chats_load,
             side_chat::store::side_chats_save,

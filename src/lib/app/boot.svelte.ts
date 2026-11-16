@@ -86,6 +86,7 @@ import { refreshWallpaper, wallpaper } from "$lib/wallpaper.svelte.js";
 import { adoptStoredMode, appMode } from "$lib/mode.svelte.js";
 import { modeChanged, syncWallpaperTint } from "$lib/dynamic-theme.svelte.js";
 import { loadSnippets } from "$lib/snippets.svelte.js";
+import { ensureTabTemplates } from "$lib/app/tab-templates.svelte.js";
 import { loadThemeProfiles } from "$lib/theme-profiles.svelte.js";
 import { takeMcpNotice } from "$lib/context";
 import { onUploadFailed, onUploaded } from "$lib/sftp";
@@ -154,6 +155,8 @@ export async function boot(): Promise<void> {
   // 저장해 둔 **스니펫** — 명령 팔레트와 설정 섹션이 목록을 그린다. 프리셋과 같은 관례라
   // (자기 파일 · 실패를 삼킴) 바로 옆에 둔다 (docs/log/2026-09-16-snippets.md).
   await loadSnippets();
+  // 저장해 둔 **탭 템플릿**(2026-11-16) — 팔레트 · 프로젝트 시작 화면이 목록을 그린다(스니펫과 같은 관례 — 실패를 삼킴).
+  await ensureTabTemplates();
   // 저장해 둔 **모양 프로필** — 설정 화면과 명령 팔레트가 목록을 그린다. 여기서 읽는 것은
   // 목록뿐이고 **아무것도 입히지 않는다**: 지금 걸린 모양은 이미 `settings.toml` 에 있다
   // (docs/log/2026-09-15-theme-profiles.md).

@@ -8,6 +8,17 @@
   import ConvoRowActions from "$lib/ConvoRowActions.svelte";
   import ConvoMeta from "$lib/ConvoMeta.svelte";
   import ConvoTitleEdit from "$lib/ConvoTitleEdit.svelte";
+  import TemplatePreview from "$lib/TemplatePreview.svelte";
+  import { runOnMenu } from "$lib/browser/menu-runner";
+  import {
+    deleteTabTemplate,
+    openTabTemplate,
+    projectTabTemplates,
+    reloadTabTemplates,
+    renameTabTemplate,
+    templateSummary,
+  } from "$lib/app/tab-templates.svelte.js";
+  import type { TabTemplate } from "$lib/tab-templates";
   import { convoMetaChips, type ConvoMetaChip } from "$lib/convo-meta";
   import { folderNameOf } from "$lib/pane-chips";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -102,6 +113,10 @@
    *  · **밖에서 열림**(실기 ② — 짝은 "열림") — aynx 타일에 연결되지 않았는데 파일이 2분 안에 고쳐진 대화(`OPEN_ELSEWHERE_WINDOW_MS`)는
    *    경고색 알약을 달고, 처음 고르는 줄이 되지 않고, 재개는 그 줄에서 한 번 묻는다(그래도 재개 / 취소 · Enter 한 번 더 /
    *    Escape). 새 대화로 계속은 원본을 건드리지 않아 묻지 않는다.
+   *  · **템플릿**(2026-11-16 — "새로 시작" 과 "지난 대화" 사이) — 이 프로젝트에 붙인 탭 템플릿 카드 두 열(배치 그림 · 이름 · 타일
+   *    요약). 없으면 칸째 숨는다. 카드 클릭 또는 **숫자키 1–9**(앞에서부터 아홉)로 열면 이 타일 자리가 템플릿 배치로 바뀐다
+   *    (`openTabTemplate` 의 `replace` — 탭에 혼자면 탭 내용 전체가, 분할 안이면 그 칸이 템플릿 트리가 된다). 폴더는 이 화면의
+   *    폴더(워크트리)에 붙여 푼다. 우클릭 = 이름 바꾸기 · 삭제(덮어쓰기는 탭 우클릭의 [템플릿 덮어쓰기 ▸]). ↑↓ 이동에는 들지 않는다.
    *  · **바닥 줄** — 키 안내.
    *
    * **무엇을 고르든 이 타일 자리에서 바뀐다**(`replaceTile` — 같은 탭 · 같은 칸). 재개 · 새 대화로 계속도 대시보드와
@@ -304,6 +319,78 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 템플릿 — 이 프로젝트에 붙인 탭 템플릿(2026-11-16)
+  // ---------------------------------------------------------------------------
+
+  /** 뜰 때마다 다시 읽는다 — 다른 창이 고쳤을 수 있다(작은 파일 하나) */
+  $effect(() => {
+    untrack(() => void reloadTabTemplates());
+  });
+
+  const templates = $derived(projectTabTemplates(start.projectId));
+  /** 숫자키가 여는 앞의 아홉 */
+  const TEMPLATE_KEYS = 9;
+
+  /** 템플릿을 이 타일 자리에 연다 — 같은 탭 · 같은 칸(머리말) */
+  function openTemplate(tpl: TabTemplate): void {
+    const tab = tabOfPane(paneId);
+    if (!tab) return;
+    void openTabTemplate(tpl.id, {
+      kind: "replace",
+      tabId: tab.id,
+      paneId,
+      folder: start.folder,
+      ...(remoteAlias !== null ? { host: remoteAlias } : {}),
+    });
+  }
+
+  /** 카드 우클릭 메뉴 — 열려 있는 동안만 산다(항목은 통로 `runOnMenu` 하나 — 스냅샷 → 닫기 → 실행) */
+  let tplMenu = $state<{ id: string; x: number; y: number } | null>(null);
+  let tplMenuEl = $state<HTMLElement | null>(null);
+  /** 이름을 고치는 카드(템플릿 id) — 그 카드의 이름 자리에 칸이 선다(`ConvoTitleEdit`) */
+  let tplRenaming = $state<string | null>(null);
+
+  function openTplMenu(ev: MouseEvent, tpl: TabTemplate): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    tplMenu = { id: tpl.id, x: ev.clientX, y: ev.clientY };
+  }
+
+  function closeTplMenu(): void {
+    tplMenu = null;
+  }
+
+  /** 이 노드를 `body` 끝으로 옮긴다 — 타일 안(움직임 · 겹친 상자)에서는 `position: fixed` 의 기준이 창이 아닐 수 있다(`ImageMenu` 와 같다) */
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return { destroy: () => node.remove() };
+  }
+
+  // 메뉴가 서면 첫 항목에 포커스 · 화면 밖으로 넘치지 않게(`ImageMenu` 와 같은 클램프)
+  $effect(() => {
+    if (!tplMenuEl || !tplMenu) return;
+    (tplMenuEl.querySelector('[role="menuitem"]') as HTMLElement | null)?.focus();
+    const r = tplMenuEl.getBoundingClientRect();
+    const nx = tplMenu.x + r.width > window.innerWidth ? window.innerWidth - r.width - 4 : tplMenu.x;
+    const ny = tplMenu.y + r.height > window.innerHeight ? window.innerHeight - r.height - 4 : tplMenu.y;
+    tplMenuEl.style.left = Math.max(4, nx) + "px";
+    tplMenuEl.style.top = Math.max(4, ny) + "px";
+  });
+
+  function tplMenuKeydown(ev: KeyboardEvent): void {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeTplMenu();
+    }
+  }
+
+  function tplRenameDone(): void {
+    tplRenaming = null;
+    void focusSelected();
+  }
+
+  // ---------------------------------------------------------------------------
   // 지난 대화
   // ---------------------------------------------------------------------------
 
@@ -491,6 +578,16 @@
       view(s);
       return;
     }
+    // 숫자키 1–9 — 템플릿 칸의 앞에서부터 아홉(수식 없이 · `ev.code` 라 자판과 무관). 입력 칸 안이면 위에서 이미 물러났다.
+    if (!ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey && templates.length > 0) {
+      const m = /^(?:Digit|Numpad)([1-9])$/.exec(ev.code);
+      const tpl = m ? templates[Number(m[1]) - 1] : undefined;
+      if (tpl) {
+        ev.preventDefault();
+        openTemplate(tpl);
+        return;
+      }
+    }
     const a = startActionForKey(ev, actions);
     if (a) {
       ev.preventDefault();
@@ -578,6 +675,47 @@
         {/each}
       </div>
     </section>
+
+    <!-- ── 템플릿 — 이 프로젝트에 붙인 탭 템플릿(없으면 칸째 숨는다) ── -->
+    {#if templates.length > 0}
+      <section class="sec" aria-labelledby="pstart-tpl-{paneId}" data-start-templates>
+        <h3 id="pstart-tpl-{paneId}">{t("app.projectStart.templates")}<span class="count">{templates.length}</span></h3>
+        <div class="tcards">
+          {#each templates as tpl, i (tpl.id)}
+            {@const key = i < TEMPLATE_KEYS ? String(i + 1) : null}
+            {#if tplRenaming === tpl.id}
+              <div class="tcard renaming" data-start-template={tpl.id}>
+                <TemplatePreview root={tpl.root} width={64} height={40} />
+                <span class="tmain">
+                  <ConvoTitleEdit
+                    value={tpl.name}
+                    label={t("app.tabTemplates.rename.aria")}
+                    onsave={(name) => renameTabTemplate(tpl.id, name)}
+                    ondone={tplRenameDone}
+                  />
+                </span>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="tcard"
+                data-start-template={tpl.id}
+                title={key ? t("app.projectStart.template.open", { name: tpl.name, key }) : tpl.name}
+                onclick={() => openTemplate(tpl)}
+                oncontextmenu={(ev) => openTplMenu(ev, tpl)}
+              >
+                <TemplatePreview root={tpl.root} width={64} height={40} />
+                <span class="tmain">
+                  <span class="tname">{tpl.name}</span>
+                  <span class="tsum">{templateSummary(tpl.root)}</span>
+                </span>
+                {#if key}<span class="letter"><Keys combo={key} size="sm" /></span>{/if}
+              </button>
+            {/if}
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     <!-- ── 지난 대화 · 이 워크트리 ── -->
     <section class="sec" aria-labelledby="pstart-past-{paneId}" data-start-past>
@@ -779,12 +917,66 @@
       {#if chips.length > 1}
         <span><Keys combo="Tab" /> {t("app.projectStart.keys.scope")}</span>
       {/if}
+      {#if templates.length > 0}
+        <span data-start-keys-templates
+          ><Keys combo={templates.length > 1 ? `1–${Math.min(templates.length, TEMPLATE_KEYS)}` : "1"} />
+          {t("app.projectStart.keys.templates")}</span
+        >
+      {/if}
       {#if letters.length > 0}
         <span>{#each letters as letter, i (i)}{#if i > 0}<span class="keycap-sep">{" "}</span>{/if}<Keys combo={letter} />{/each} {t("app.projectStart.new")}</span>
       {/if}
     </footer>
   </div>
 </div>
+
+{#if tplMenu}
+  <!-- 템플릿 카드 우클릭 메뉴 — 항목은 통로 하나(`runOnMenu` — 스냅샷 → 닫기 → 실행 · docs/conventions.md) -->
+  <div class="tpl-portal" use:portal>
+    <button
+      type="button"
+      class="tpl-backdrop"
+      tabindex="-1"
+      aria-label={t("files.menu.close.aria")}
+      onclick={closeTplMenu}
+      oncontextmenu={(ev) => {
+        ev.preventDefault();
+        closeTplMenu();
+      }}
+    ></button>
+    <div
+      class="tpl-menu menu-surface"
+      role="menu"
+      tabindex="-1"
+      aria-label={t("app.tabTemplates.menu.aria")}
+      data-start-template-menu
+      style:left="{tplMenu.x}px"
+      style:top="{tplMenu.y}px"
+      bind:this={tplMenuEl}
+      onkeydown={tplMenuKeydown}
+    >
+      <button
+        type="button"
+        class="menu-row"
+        role="menuitem"
+        data-tpl-act="rename"
+        onclick={() => runOnMenu(() => tplMenu?.id, closeTplMenu, (id) => {
+          tplRenaming = id;
+        })}
+        >{t("app.tabTemplates.menu.rename")}</button
+      >
+      <div class="menu-sep" role="separator"></div>
+      <button
+        type="button"
+        class="menu-row"
+        role="menuitem"
+        data-tpl-act="delete"
+        onclick={() => runOnMenu(() => tplMenu?.id, closeTplMenu, (id) => deleteTabTemplate(id))}
+        >{t("app.tabTemplates.menu.delete")}</button
+      >
+    </div>
+  </div>
+{/if}
 
 <style>
   /* 원격 — 머리의 호스트 칩 · 이어 읽는 중 한 줄 (docs/log/2026-09-27-remote-conversations.md) */
@@ -1165,6 +1357,86 @@
     align-items: center;
     gap: var(--space-3);
     margin-top: var(--space-1);
+  }
+
+  /* ── 템플릿 — 카드 두 열 ── */
+  .tcards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .tcard {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    font-family: inherit;
+    font-size: var(--t-sm);
+    text-align: left;
+    color: var(--fg-1);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-surface-inner);
+    cursor: pointer;
+  }
+
+  .tcard:hover {
+    background: var(--surface-hover);
+    border-color: var(--line-strong);
+  }
+
+  .tcard:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  .tcard.renaming {
+    cursor: default;
+  }
+
+  .tmain {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tname,
+  .tsum {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tsum {
+    font-size: var(--t-xs);
+    color: var(--fg-3);
+  }
+
+  .tpl-portal {
+    display: contents;
+  }
+
+  /* 바깥 클릭을 받아 닫는 투명 백드롭 — `ImageMenu` 와 같은 층 */
+  .tpl-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 105;
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: default;
+  }
+
+  .tpl-menu {
+    position: fixed;
+    z-index: 106;
+    min-width: 170px;
+    max-width: 260px;
   }
 
   /* ── 바닥 줄 ── */

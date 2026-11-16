@@ -186,4 +186,8 @@ export const commands: Record<keyof typeof koCommands, string> = {
 
   // ── Blocked actions ───────────────────────────────────────────────────────
   "keys.terminalRequired": "A terminal tile must be focused.",
+  // Tab templates (2026-11-16)
+  "palette.section.template": "Templates",
+  "palette.action.saveTemplate": "Save current tab as template…",
+  "palette.template.keywords": "template templates",
 };

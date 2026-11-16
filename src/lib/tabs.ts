@@ -778,6 +778,12 @@ export interface DeserializeOptions {
    * `false` 로 부르는 자리는 지금 없다 (테스트·후속 기능을 위한 구멍).
    */
   deferSsh?: boolean;
+  /**
+   * **처음 여는 배치**인가(탭 템플릿 — 2026-11-16). 참이면 SSH 잎의 시작 폴더 · 자동 실행(`cwd` · `autorun`)을 **첫 접속의
+   * 재료**로 되살린다 — 복원은 돌던 에이전트에 tmux 로 다시 붙는 것이 뜻이라 되살리지 않지만(`PaneSpec.cwd` 주석), 템플릿은
+   * 새 세션이라 프로젝트를 여는 길(`paneForProject`)과 같은 첫 입력이 맞다. 기본 거짓.
+   */
+  firstRun?: boolean;
 }
 
 /**
@@ -788,14 +794,14 @@ export interface DeserializeOptions {
  * 자리에 새로 여는 것이 할 수 있는 전부다. `autorun` 은 남기므로 Claude Code 타일
  * (`autorun:"claude"`)은 복원과 함께 claude 를 다시 띄운다 (이것은 로컬 명령이라 안전하다).
  */
-function paneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
-  const pane = basePaneFrom(leaf, deferSsh);
+function paneFrom(leaf: SavedLeaf, deferSsh: boolean, firstRun = false): PaneSpec {
+  const pane = basePaneFrom(leaf, deferSsh, firstRun);
   if (leaf.tileKey) pane.tileKey = leaf.tileKey;
   return pane;
 }
 
 /** 종류별 되살리기 — [`paneFrom`] 이 그 위에 종류와 무관한 성질을 얹는다 */
-function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
+function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean, firstRun: boolean): PaneSpec {
   switch (leaf.kind) {
     case "ssh": {
       // 빠른 접속 타일은 **대상이 파일에만 있다** — 그래서 되살릴 때도 전용 생성자를 쓰되
@@ -811,7 +817,11 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
       if (leaf.noTmux) pane.noTmux = true;
       if (leaf.forceTmux) pane.forceTmux = true;
       // 복원된 SSH의 시작 폴더는 위치·저장 힌트로만 보존한다(첫 접속 명령은 재실행하지 않는다).
-      if (leaf.cwd) pane.restart = { cwd: leaf.cwd };
+      // 처음 여는 배치(템플릿)면 첫 접속의 재료다 — 프로젝트를 여는 길과 같은 `cwd` · `autorun`([`DeserializeOptions.firstRun`]).
+      if (firstRun) {
+        if (leaf.cwd) pane.cwd = leaf.cwd;
+        if (leaf.autorun) pane.autorun = leaf.autorun;
+      } else if (leaf.cwd) pane.restart = { cwd: leaf.cwd };
       // 저장된 거울 키를 되살린다 (없으면 생성자가 발급한 새 값 그대로 — 옛 레이아웃 파일).
       if (leaf.historyStreamId) pane.historyStreamId = leaf.historyStreamId;
       if (leaf.agentLink) pane.agentLink = { ...leaf.agentLink };
@@ -909,18 +919,18 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean): PaneSpec {
   }
 }
 
-function nodeFrom(node: SavedNode, deferSsh: boolean): PaneNode {
+function nodeFrom(node: SavedNode, deferSsh: boolean, firstRun = false): PaneNode {
   if (isSavedSplit(node)) {
     return {
       type: "split",
       dir: node.dir,
       ratio: clampRatio(node.ratio),
       ...(node.px ? { px: node.px } : {}),
-      a: nodeFrom(node.a, deferSsh),
-      b: nodeFrom(node.b, deferSsh),
+      a: nodeFrom(node.a, deferSsh, firstRun),
+      b: nodeFrom(node.b, deferSsh, firstRun),
     };
   }
-  return leafOf(paneFrom(node, deferSsh));
+  return leafOf(paneFrom(node, deferSsh, firstRun));
 }
 
 /**
@@ -1014,7 +1024,7 @@ function rebindSftp(root: PaneNode): PaneNode {
 export function restoreNode(node: SavedNode, opts: DeserializeOptions = {}): PaneNode {
   // 워크스페이스 v2 파일은 Rust 가 읽어 검증 없이 넘긴다 — 걷은 종류의 잎은 여기서 뺀다([`pruneRetiredLeaves`])
   const pruned = pruneRetiredLeaves(node) ?? { kind: "start" };
-  return rebindSftp(nodeFrom(pruned, opts.deferSsh ?? true));
+  return rebindSftp(nodeFrom(pruned, opts.deferSsh ?? true, opts.firstRun ?? false));
 }
 
 /**

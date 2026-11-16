@@ -5,6 +5,7 @@ import { invoke } from "../ipc";
 import { dropProjectLocal, projects as projectList, putProjectLocal } from "$lib/app/project-list.svelte.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
+import { dropProjectTemplates, projectTemplateCount } from "$lib/app/tab-templates.svelte.js";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { showNotice } from "$lib/app/notice";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -184,15 +185,18 @@ function projectTabTitle(p: Project, w: WorktreeInfo): string {
  *
  * 확인 글에 **함께 지워지는 것**을 적는다(2026-09-28 — docs/log/2026-09-28-project-agent-setup-script.md): 에이전트 ·
  * 셸 · 워크트리 폴더 설정, 설정 스크립트 N줄(있으면), 워크트리별 스크립트 실행 기록 N개(로컬 · 있으면 — Rust 가 곁
- * 파일에서 센다). 기록은 `project_remove` 가 함께 걷는다.
+ * 파일에서 센다). 기록은 `project_remove` 가 함께 걷는다. 그 프로젝트 템플릿(N개 · 있으면)도 함께 — 프로젝트를 지운 뒤 템플릿 파일에서
+ * 뺀다(`app/tab-templates` 의 `dropProjectTemplates`).
  */
 export async function confirmRemoveProject(p: Project): Promise<void> {
   let go = false;
   const lines = setupScriptLines(p.setupScript);
   const records = isRemote(p) ? 0 : await worktreeSetupCount(p.path);
+  const templates = await projectTemplateCount(p.id);
   const items = [t("app.projects.remove.item.settings")];
   if (lines > 0) items.push(t("app.projects.remove.item.script", { n: lines }));
   if (records > 0) items.push(t("app.projects.remove.item.records", { n: records }));
+  if (templates > 0) items.push(t("app.projects.remove.item.templates", { n: templates }));
   const message = t("app.projects.remove.confirm", {
     name: p.name,
     items: items.map((i) => `· ${i}`).join("\n"),
@@ -215,7 +219,10 @@ export async function confirmRemoveProject(p: Project): Promise<void> {
     dropProjectLocal(p.id); // 이벤트를 기다리지 않고 곧바로 화면에서 뺀다
   } catch (e) {
     showNotice(stripReason(e instanceof Error ? e.message : String(e)));
+    return; // 프로젝트가 남았으면 그 템플릿도 그대로
   }
+  // 그 프로젝트 템플릿도 함께(2026-11-16 사용자 결정) — 프로젝트를 지운 **뒤에만**. 실패는 안내 한 줄(프로젝트 삭제는 되돌리지 않는다).
+  await dropProjectTemplates(p.id);
 }
 
 // ---------------------------------------------------------------------------

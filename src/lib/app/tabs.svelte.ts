@@ -47,6 +47,7 @@ import {
   loneTileTitle,
   newTab,
   replacePane,
+  replacePaneWithNode,
   spiralInsert,
   splitPane,
   tabFromPane,
@@ -781,6 +782,36 @@ export function replaceTile(tabId: string, paneId: string, pane: PaneSpec, title
   if (title) tab.title = title;
   activePane[tab.id] = pane.id;
   adoptPane(tab.id, pane.id);
+  return true;
+}
+
+/**
+ * 타일 하나를 **서브트리로 그 자리에서 갈아 끼운다**(탭 템플릿 — 2026-11-16 · 프로젝트 시작 화면에서 연 템플릿). [`replaceTile`] 과 같은
+ * 자리 · 같은 비율이고 들어오는 것이 트리다 — 시작 화면이 탭의 유일한 타일이면 탭 내용 전체가, 분할 안이면 그 칸이 템플릿 배치가 된다.
+ * 포커스는 트리의 첫 타일. 혼자였던 타일이면 `loneName` 이 탭 이름이 된다(분할 안의 한 칸이면 그대로). 원격 창은 여러 타일을 요청 하나로 옮기지 않는다(`queueRemoteNewTab` 과 같은 판단 — 안내 한 줄).
+ * 대상이 없거나 저장 안 한 문서면 `false`.
+ */
+export function replaceTileWithTree(tabId: string, paneId: string, node: PaneNode, loneName?: string): boolean {
+  const found = residentWindowTabs().find((t) => t.id === tabId);
+  // 그 타일이 탭의 유일한 타일인가 — 그때만 `loneName` 을 탭 이름으로(탭 전체가 그 트리가 된다)
+  const lone = found !== undefined && found.root.type === "leaf" && found.root.pane.id === paneId;
+  if (node.type === "leaf") {
+    const ok = replaceTile(tabId, paneId, node.pane);
+    if (ok && lone && loneName && !isRemote && found) found.name = loneName;
+    return ok;
+  }
+  if (remoteLayout(null)) return false;
+  const tab = found;
+  if (!tab || !findPane(tab.root, paneId)) return false;
+  if (unsavedVerdict("replace", [paneId], isDocDirty).kind !== "free") return false;
+  if ((tab.zoomedPaneId ?? null) === paneId) tab.zoomedPaneId = null;
+  withLayoutAnim(() => {
+    tab.root = replacePaneWithNode(tab.root, paneId, node);
+  });
+  if (lone && loneName) tab.name = loneName;
+  const first = findFirstPane(node);
+  activePane[tab.id] = first.id;
+  for (const p of listPanes(node)) adoptPane(tab.id, p.id);
   return true;
 }
 

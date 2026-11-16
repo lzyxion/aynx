@@ -2,6 +2,7 @@
   import { tick } from "svelte";
   import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
   import { t } from "$lib/i18n/i18n.svelte.js";
+  import UiIcon from "$lib/UiIcon.svelte";
   import {
     FLYOUT_CLOSE_MS,
     FLYOUT_EST_ROW,
@@ -250,7 +251,7 @@
         onpointerleave={leaveAddRow}
       >
         <span class="label">{t("app.start.board.menu.add")}</span>
-        <span class="menu-kbd" aria-hidden="true">▸</span>
+        <span class="chev menu-kbd" aria-hidden="true"><UiIcon name="chevron" size={12} /></span>
       </button>
       <div class="menu-sep" role="separator"></div>
     {/if}
@@ -333,10 +334,15 @@
     z-index: 107;
   }
 
-  /* 줄 = 글자 + 오른쪽 부연(`▸` · "놓임") */
+  /* 줄 = 글자 + 오른쪽 부연(옆목록 chevron · "놓임") */
   .row {
     display: flex;
     align-items: center;
+  }
+
+  /* 옆목록 표시 — 타일 메뉴(`PaneMenu`)와 같은 chevron 아이콘(글자 `▸` 는 작아 잘 안 보였다) */
+  .chev {
+    display: inline-flex;
   }
 
   .label {

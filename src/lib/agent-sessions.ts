@@ -275,6 +275,19 @@ function launchParts(autorun: string): { agent: "claude" | "codex"; extras: stri
 }
 
 /**
+ * 에이전트 실행 줄을 **새 대화의 실행 줄**로(탭 템플릿 — 2026-11-16) — `claude --resume <id> …` · `codex resume … <id>` 를
+ * `claude …` · `codex …`(사람이 적은 추가 인자는 그대로)로 되돌린다. 에이전트 실행 줄이 아니면(사람의 다른 명령) 그대로다.
+ * 템플릿은 대화 id · 재개 정보를 담지 않는다 — 열 때마다 새 대화다.
+ */
+export function freshAgentAutorun(autorun: string): string {
+  const parts = launchParts(autorun);
+  if (parts) return [parts.agent, ...parts.extras].join(" ");
+  // 추가 인자 자리 규칙에 걸려 쪼개지 못한 재개 줄 — 대화를 고르는 줄이 남지 않게 에이전트 이름만
+  const link = resumedConversationOf(autorun);
+  return link ? link.agent : autorun;
+}
+
+/**
  * 로컬 AI 타일의 대화가 정해졌다(훅 신호로 확정된 연결 — 2026-11-12) — 그 타일의 autorun 을 **그 대화의 재개 줄**로. 앱 · 세션 서버가
  * 다시 떠 새 셸이 autorun 을 다시 돌리면 마지막 대화가 이어진다(`claude` 로 뜬 타일 · `/clear` · `/resume` · Codex `/new` 뒤의 타일도).
  * 바꿀 것이 없거나 바꾸면 안 되면 `null`.

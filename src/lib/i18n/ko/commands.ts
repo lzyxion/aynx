@@ -229,4 +229,8 @@ export const commands = {
   // 팔레트·단축키·설정의 [삽입] 이 **같은 한 줄**을 쓴다 (`app/keys.svelte.ts` ·
   // `app/snippets.svelte.ts`) — 같은 사정에 두 문장이 있으면 어느 쪽을 고쳐도 반만 바뀐다.
   "keys.terminalRequired": "터미널 타일이 포커스돼 있어야 합니다.",
+  // 탭 템플릿(2026-11-16)
+  "palette.section.template": "템플릿",
+  "palette.action.saveTemplate": "지금 탭을 템플릿으로 저장…",
+  "palette.template.keywords": "템플릿 template",
 } as const satisfies Record<string, string>;

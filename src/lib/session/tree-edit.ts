@@ -248,6 +248,17 @@ export function replacePane(root: PaneNode, paneId: string, pane: PaneSpec): Pan
   return a === root.a && b === root.b ? root : { ...root, a, b };
 }
 
+/**
+ * 잎 하나를 **서브트리로** 갈아 끼운다(탭 템플릿 — 2026-11-16) — [`replacePane`] 과 같은 자리 · 같은 비율, 들어오는 것이 트리다.
+ * 그 잎이 없으면 입력 트리를 참조 그대로 돌려준다.
+ */
+export function replacePaneWithNode(root: PaneNode, paneId: string, node: PaneNode): PaneNode {
+  if (root.type === "leaf") return root.pane.id === paneId ? node : root;
+  const a = replacePaneWithNode(root.a, paneId, node);
+  const b = a === root.a ? replacePaneWithNode(root.b, paneId, node) : root.b;
+  return a === root.a && b === root.b ? root : { ...root, a, b };
+}
+
 // ---------------------------------------------------------------------------
 // 타일 **이동**과 **확장(삼키기)** — 키보드 타일링 (docs/log/2026-09-04-tiling-move-resize.md)
 //

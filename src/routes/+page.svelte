@@ -77,6 +77,7 @@
   import Veil from "$lib/Veil.svelte";
   import SnippetPrompt from "$lib/SnippetPrompt.svelte";
   import SnippetSaveDialog from "$lib/SnippetSaveDialog.svelte";
+  import TabTemplateSaveDialog from "$lib/TabTemplateSaveDialog.svelte";
   import ProjectForm from "$lib/ProjectForm.svelte";
   import WorktreeRemoveDialog from "$lib/WorktreeRemoveDialog.svelte";
   import WorktreeBranchDialog from "$lib/WorktreeBranchDialog.svelte";
@@ -131,6 +132,7 @@
   import { snippetPaletteEntries } from "$lib/snippets";
   import { snippets } from "$lib/snippets.svelte.js";
   import { focusedHostAlias, insertSnippet, openSnippetSave } from "$lib/app/snippets.svelte.js";
+  import { openTabTemplate, templatePaletteEntries } from "$lib/app/tab-templates.svelte.js";
   import { insertHistoryCommand, windowHistory } from "$lib/app/history.svelte.js";
   import { listPanes, newTab } from "$lib/session";
   import { agentKeyLabel, shortFingerprint } from "$lib/copyid";
@@ -908,6 +910,8 @@
     oninsertsnippet={(id) => void insertSnippet(id)}
     onsavesnippet={(command) => openSnippetSave(command, focusedHostAlias())}
     onmanagesnippets={openSnippetSettings}
+    templates={templatePaletteEntries()}
+    onopentemplate={(id) => void openTabTemplate(id, { kind: "newTab" })}
     oninserthistory={(command, run) => void insertHistoryCommand(command, run)}
     onselecttab={pickTab}
     onrunaction={runAction}
@@ -1009,6 +1013,8 @@
   메뉴 · 팔레트의 저장 줄) 둘 다 `openSnippetSave` 한 문을 지나므로 여기 넘길 프롭이 없다.
 -->
 <SnippetSaveDialog />
+<!-- 탭 템플릿 저장 상자 — 탭 우클릭 · 팔레트의 저장 줄이 `openTabTemplateSave` 한 문을 지난다(프롭 없음) -->
+<TabTemplateSaveDialog />
 <!-- 프로젝트 추가·편집 (docs/log/2026-09-24-projects.md) — 독의 `+`·프로젝트 우클릭 "편집…" 이 연다 -->
 <ProjectForm />
 <!-- 워크트리 제거 확인 — "브랜치도 삭제" 칸이 있는 상자 (docs/log/2026-09-24-worktrees.md "브랜치는 같이 지운다") -->

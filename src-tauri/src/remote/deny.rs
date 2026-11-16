@@ -263,6 +263,9 @@ pub(crate) const ALLOW: &[&str] = &[
     "ssh_git_worktree_add_preview", "ssh_git_branch_delete", "project_setup_line", "worktree_setup_record",
     "worktree_setup_count", "git_repo_status", "git_repo_init", "git_project_create", "ssh_git_repo_status",
     "ssh_git_repo_init", "ssh_git_project_create", "git_head", "ssh_git_head",
+    // 탭 템플릿(2026-11-16) — 스니펫과 같은 판단: 사람이 적어 둔 앱 소유 목록(비밀 없음 · 읽어서 실행하지 않음 · 여는 것은 그 창이
+    // 타일을 새로 세우는 일이고 인증은 여느 타일과 같은 길). 원격 창도 셸 · 호스트 · 스니펫을 이미 쓰므로 새로 넓히는 것이 없다.
+    "load_tab_templates", "save_tab_templates",
     // 스니펫 · 볼트(값을 돌려주는 명령은 없다 — 넣기·지우기·상태·잠그기·열기)
     // `vault_verify_master` 는 확인만(상태를 바꾸지 않는다 · 서버 빈도 제한) — 설정 › 보안 들어가기 관문이 원격에서도 같은 길을 쓴다.
     "load_snippets", "save_snippets", "vault_status", "vault_create", "vault_unlock", "vault_lock", "vault_verify_master", "vault_list",

@@ -15,6 +15,7 @@
     value,
     onsave,
     ondone,
+    label,
   }: {
     /** 지금 제목 — 칸의 처음 글자 */
     value: string;
@@ -22,6 +23,8 @@
     onsave: (name: string) => Promise<void>;
     /** 닫는다(저장 끝 · 취소) */
     ondone: () => void;
+    /** 칸의 이름(읽어 주는 글) — 없으면 "대화 이름"(프로젝트 시작 화면의 템플릿 카드가 제 이름을 준다 · 2026-11-16) */
+    label?: string;
   } = $props();
 
   // 처음 글자만 받는다(그 뒤로는 사람이 고친다)
@@ -86,7 +89,7 @@
     disabled={busy}
     autocomplete="off"
     spellcheck="false"
-    aria-label={t("board.convo.rename.aria")}
+    aria-label={label ?? t("board.convo.rename.aria")}
     aria-invalid={error !== null}
     title={t("board.convo.rename.hint")}
     onkeydown={onKeydown}

@@ -206,7 +206,7 @@ check("③ end scale 1 · scrim · terminal display kept · focus in card", [awa
 
 // ④ JSON 트리 → 표 → 원문
 check("④ json · tabs", [await ev(`${CARD}.dataset.format`), await ev(`[...${CARD}.querySelectorAll('[data-block-view-tab]')].map((b) => b.dataset.blockViewTab)`)], ["json", ["tree", "table", "raw"]]);
-check("④ tree default · counts", [await ev(`${CARD}.querySelector('[data-block-view-body]').dataset.blockViewBody`), await ev(`${CARD}.querySelector('[data-json-node="$"]').textContent.replace(/\\s+/g, ' ').trim()`)], ["tree", "▾ { } 4개"]);
+check("④ tree default · counts", [await ev(`${CARD}.querySelector('[data-block-view-body]').dataset.blockViewBody`), await ev(`${CARD}.querySelector('[data-json-node="$"]').textContent.replace(/\\s+/g, ' ').trim()`)], ["tree", "{ } 4개"]);
 await shot("bv-tree.png");
 await ev(`${CARD}.querySelector('[data-block-view-tab="table"]').click()`);
 await sleep(150);

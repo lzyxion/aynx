@@ -85,6 +85,7 @@ import {
   togglePalette,
 } from "$lib/app/overlays.svelte.js";
 import { snippetPromptOpen, snippetSaveOpen } from "$lib/app/snippets.svelte.js";
+import { openTabTemplateSave, tabTemplateSaveOpen } from "$lib/app/tab-templates.svelte.js";
 import { canFlipPane, toggleFlip } from "$lib/pane/ai-flip.svelte.js";
 import { projectFormOpen, worktreeRemoveOpen } from "$lib/app/projects.svelte.js";
 import { worktreeBranchOpen } from "$lib/app/worktree-branch.svelte.js";
@@ -205,6 +206,8 @@ export function anyModalOpen(): boolean {
     snippetPromptOpen() ||
     // 스니펫 저장 대화상자 — 같은 이유(글자를 치는 칸이 다섯이다)로 전역 키가 쉰다.
     snippetSaveOpen() ||
+    // 탭 템플릿 저장 상자(2026-11-16) — 같은 이유(이름 칸). Escape 는 상자가 스스로 끊는다.
+    tabTemplateSaveOpen() ||
     // 프로젝트 추가·편집 — 같은 이유(글자를 치는 칸이 넷이다). Escape 는 모달이 스스로 끊는다.
     projectFormOpen() ||
     // 워크트리 제거 확인 — 화면을 덮는 상자다(뒤의 독이 Delete·Enter 를 다시 받으면 안 된다).
@@ -458,6 +461,10 @@ export function runAction(action: string): void {
     // DB 연결 열기 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY`). 고르기 모달 → 지금 탭에 쿼리 타일(2026-10-12).
     case "open-db":
       void openDbPicker();
+      break;
+    // 지금 탭을 템플릿으로 저장 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY` · 2026-11-16). 탭 우클릭 [템플릿으로 저장…] 과 같은 상자.
+    case "save-tab-template":
+      openTabTemplateSave(null);
       break;
     // 테마 프로필 전환 — 위에서 내려오는 카드 줄을 연다 (docs/log/2026-09-28-profile-switcher.md). 팔레트 줄에서
     // 불려도 곧장 연다 — 위 두 목록과 같은 포커스 복귀 규칙.
