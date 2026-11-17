@@ -1,7 +1,10 @@
 <script lang="ts" module>
   import type { DbQueryResult } from "./query-backend";
 
-  /** [표 | 차트] — 결과마다 기억한다(`RunResults` 의 `chosenTab` 과 같은 꼴 · 저장하지 않는다 — 다시 실행하면 표로) */
+  /**
+   * [표 | 차트] — 결과마다 기억한다(`RunResults` 의 `chosenTab` 과 같은 꼴 · 저장하지 않는다 — 다시 실행하면 표로).
+   * 부르는 쪽이 `bind:view` 로 묶으면(데이터 탭) 그쪽 값이 이기고, 다시 읽어 결과가 바뀌어도 남는다.
+   */
   const chosenView = new WeakMap<DbQueryResult, "grid" | "chart">();
 </script>
 
@@ -22,7 +25,7 @@
     type CellRange,
   } from "./cells";
   import { chartBlocker, classifyColumns } from "./chart-model";
-  import ResultChart from "./ResultChart.svelte";
+  import ResultChart, { type KeptPick } from "./ResultChart.svelte";
   import { getContext, onDestroy, tick, untrack, type Snippet } from "svelte";
   import { GRID_TILE_MENU, gridMenuRows, type GridTileMenu } from "./grid-menu";
   import FindBar from "$lib/FindBar.svelte";
@@ -91,6 +94,8 @@
     rowBase = 0,
     tail,
     colWidths = $bindable({}),
+    view = $bindable(),
+    chartPick = $bindable(),
     onfilter,
     pks = [],
     fks = [],
@@ -115,6 +120,10 @@
     tail?: Snippet;
     /** 사람이 끌어 바꾼 열 폭(열 이름 → px) — 묶으면 결과가 바뀌어도(데이터 탭의 쪽 · 정렬) 폭이 남는다. 저장하지 않는다 */
     colWidths?: Record<string, number>;
+    /** [표 | 차트] — 묶으면 결과가 바뀌어도(데이터 탭의 조건 · 쪽 · 정렬) 고른 쪽이 남는다. 없으면 결과마다 기억(`chosenView`) */
+    view?: "grid" | "chart";
+    /** 차트의 고른 축 · 종류 — 묶으면 결과가 바뀌어도 남는다(`ResultChart` 의 `kept`) */
+    chartPick?: KeptPick;
     /** 칸 우클릭의 거르기 — 있으면(데이터 탭) 메뉴에 거르기 세 항목이 선다. `and` = 지금 조건에 더하기 */
     onfilter?: (col: string, cell: Cell, op: "eq" | "ne" | "and") => void;
     /** 이 표의 기본 키 열 이름(데이터 탭 — 머리글 앞 열쇠) */
@@ -172,9 +181,9 @@
     head = null;
   }
 
-  // 부르는 쪽이 `{#key result}` 로 결과마다 새로 만든다 — 처음 값만 기억에서 꺼낸다
+  // 부르는 쪽이 `{#key result}` 로 결과마다 새로 만든다 — 묶지 않았으면 처음 값만 기억에서 꺼낸다
   // svelte-ignore state_referenced_locally
-  let view = $state<"grid" | "chart">(chosenView.get(result) ?? "grid");
+  if (view === undefined) view = chosenView.get(result) ?? "grid";
   const classes = $derived(columns.length > 0 ? classifyColumns(result) : []);
   const blocker = $derived(chartBlocker(result, classes));
   const charting = $derived(view === "chart" && blocker === null);
@@ -652,7 +661,7 @@
       {result.affected !== undefined ? t("pane.query.done.affected", { n: result.affected }) : t("pane.query.done.noRows")}
     </p>
   {:else if charting}
-    <ResultChart {result} {classes} lead={viewToggle} />
+    <ResultChart {result} {classes} lead={viewToggle} bind:kept={chartPick} />
   {:else}
     <div class="vbar">{@render viewToggle()}</div>
     {#if findOpen}

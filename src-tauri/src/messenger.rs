@@ -14,8 +14,9 @@
 //!
 //! ## 서식은 여기 한 층에서만
 //!
-//! 프런트는 **서식 없는 구조**([`Message`] — 앱 이름 · 이름표 · 사건 · 둘째 줄)만 넘긴다. 마크다운도 이스케이프도
-//! 없다. 채널마다 규칙이 다르므로(Discord 마크다운 ≠ 다른 메신저의 서식) 한 곳에서 그려야 채널이 늘어도 프런트가
+//! 프런트는 **서식 없는 구조**([`Message`] — 등급 · 이름표 · 사건 · 둘째 줄)만 넘긴다. 마크다운도 이스케이프도
+//! 없다. 첫 줄은 `🟡 **확인 필요 · <이름표>** — <사건>` 모양이다(등급 [`Grade`] — 확인 필요 · 완료 · 실패, 없으면 표시 없이
+//! `**<이름표>** — <사건>`). 앱 이름은 첫 줄에 싣지 않는다 — 보낸 사람 이름(Discord `username`)이 이미 앱이다(2026-11-16). 채널마다 규칙이 다르므로(Discord 마크다운 ≠ 다른 메신저의 서식) 한 곳에서 그려야 채널이 늘어도 프런트가
 //! 채널을 모른다. 대화에서 나온 글자는 원래 Rust 안에서만 다뤘으니 서식도 같은 층에 모인다
 //! (docs/log/2026-09-28-messenger-channels.md).
 //!
@@ -51,8 +52,8 @@
 //!
 //! ## 대화에서 나온 글자 — 켠 사람에게만, Rust 안에서만
 //!
-//! `[messenger] include_conversation`(기본 끔)을 켜면 에이전트 알림에 **대화 제목**과 **에이전트 마지막 답의
-//! 앞부분**(권한 물음이면 묻는 도구 이름)을 싣는다. 프런트는 글자를 모른다 — [`messenger_send`] 에 **대화의
+//! `[messenger] include_conversation`(**기본 켬** — 2026-11-16 사용자 결정, 그 전에는 기본 끔)이면 에이전트 알림에 **대화 제목**과
+//! **에이전트 마지막 답의 앞부분**(500자 · 8줄 — [`excerpt_lines`]; 권한 물음이면 묻는 도구 이름과 입력 한 줄)을 싣는다. 프런트는 글자를 모른다 — [`messenger_send`] 에 **대화의
 //! 가리킴**(에이전트 · 대화 id · 사건)만 넘기고, 여기서 설정을 한 번 더 본 뒤 대화 파일을 읽어
 //! (`crate::agent_transcript::turn_tail`) **구조**([`ConvoLine`])로 뽑고, 채널마다 그려 몸통에 붙인다. 그 글자는
 //! 프런트로 돌아가지 않고, 로그·오류 문구에 없고([`conversation_lines`] 는 `Result` 가 아니다 — 못 읽으면 그 칸을
@@ -195,35 +196,48 @@ impl Channel {
         }
     }
 
-    /// 대화 줄 하나를 그린다. 앞의 `「」` · `> ` 는 우리 글자라 걷지 않는다.
+    /// 대화 줄 하나를 그린다(발췌는 여러 줄 — 줄마다 `> `). 앞의 `「」` · `> ` 는 우리 글자라 걷지 않는다 — 대화 글자는
+    /// **줄마다** 걷는다([`Channel::escape`] 는 한 줄로 펴므로 줄을 나눈 뒤에 부른다).
     fn render_convo_line(self, line: &ConvoLine) -> String {
         match line {
             ConvoLine::Title(t) => format!("「{}」", self.escape(t)),
-            ConvoLine::Excerpt(x) => format!("> {}", self.escape(x)),
-            ConvoLine::PendingTool(name) => {
+            ConvoLine::Excerpt(lines) => lines
+                .iter()
+                .map(|l| format!("> {}", self.escape(l)))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            ConvoLine::PendingTool { name, input } => {
                 let name = self.escape(name);
-                tr!(ko: "> 묻는 도구: {name}", en: "> Tool awaiting approval: {name}")
+                match input {
+                    Some(input) => {
+                        let input = self.escape(input);
+                        tr!(ko: "> 묻는 도구: {name} · {input}", en: "> Tool awaiting approval: {name} · {input}")
+                    }
+                    None => tr!(ko: "> 묻는 도구: {name}", en: "> Tool awaiting approval: {name}"),
+                }
             }
+        }
+    }
+
+    /// 첫 줄 — `🟡 **확인 필요 · 이름표** — 사건`(등급이 없으면 `**이름표** — 사건`). 이름표가 비면 앱 이름.
+    fn head(self, msg: &Message) -> String {
+        let label = if msg.label.trim().is_empty() { &msg.app } else { &msg.label };
+        let label = self.escape(label);
+        let event = self.escape(&msg.event);
+        let bold = |s: String| match self {
+            Channel::Discord => format!("**{s}**"),
+            Channel::Slack => format!("*{s}*"),
+        };
+        match msg.grade {
+            Some(g) => format!("{} {} — {event}", g.mark(), bold(format!("{} · {label}", g.word()))),
+            None => format!("{} — {event}", bold(label)),
         }
     }
 
     /// 알림 한 통을 그린다 — 첫 줄 · (있으면) 둘째 줄 · 대화 줄들. **모든 글자를 걷는다**(우리 문구에 기호가
     /// 없으면 그대로 나간다).
     fn render(self, msg: &Message, convo: &[ConvoLine]) -> String {
-        let mut out = match self {
-            Channel::Discord => format!(
-                "**{} · {}** — {}",
-                self.escape(&msg.app),
-                self.escape(&msg.label),
-                self.escape(&msg.event)
-            ),
-            Channel::Slack => format!(
-                "*{} · {}* — {}",
-                self.escape(&msg.app),
-                self.escape(&msg.label),
-                self.escape(&msg.event)
-            ),
-        };
+        let mut out = self.head(msg);
         if !msg.second.trim().is_empty() {
             out.push('\n');
             out.push_str(&self.escape(&msg.second));
@@ -416,11 +430,45 @@ fn clip(text: &str, max: usize) -> String {
 // 알림 한 통 — 프런트가 넘기는 서식 없는 구조
 // ---------------------------------------------------------------------------
 
+/// 알림의 **등급** — 첫 줄 앞의 표시(2026-11-16 · 목업 SLiVDZuGJvL9QYg4R93Kav). 프런트와는 소문자 글자로 오간다.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Grade {
+    /// 사람이 돌아와 눌러야 한다(권한 물음 · 승인 대기 · 앨범의 사람 확인)
+    Action,
+    /// 끝났다(턴 끝 · 명령 성공 · 실행 성공 · 앨범 끝)
+    Done,
+    /// 실패했다(명령 실패 · 실행 실패 · 검증 실패)
+    Failed,
+}
+
+impl Grade {
+    /// 앞 표시 — 확인 필요는 노랑(빨강은 실패처럼 보인다 — 사용자 결정).
+    fn mark(self) -> &'static str {
+        match self {
+            Grade::Action => "🟡",
+            Grade::Done => "🟢",
+            Grade::Failed => "❌",
+        }
+    }
+
+    fn word(self) -> String {
+        match self {
+            Grade::Action => tr!(ko: "확인 필요", en: "Needs action"),
+            Grade::Done => tr!(ko: "완료", en: "Done"),
+            Grade::Failed => tr!(ko: "실패", en: "Failed"),
+        }
+    }
+}
+
 /// 프런트가 넘기는 알림 — **평문**이다(마크다운·이스케이프 없음). 서식은 채널이 입힌다([`Channel::render`]).
 #[derive(serde::Deserialize)]
 pub struct Message {
-    /// 앱 이름(창 제목 — `aynx` · `aynx (dev)`)
+    /// 앱 이름(창 제목 — `aynx` · `aynx (dev)`) — 첫 줄에는 싣지 않는다(이름표가 빌 때만)
     app: String,
+    /// 등급(없으면 앞 표시 없음)
+    #[serde(default)]
+    grade: Option<Grade>,
     /// 이름표 — 탭·타일 이름 또는 프로젝트 · 워크트리. 남의 글자일 수 있다(원격이 창 제목을 바꾼다)
     label: String,
     /// 사건 한 토막 — 우리 문구에 남의 글자(에이전트 이름 · 명령 줄 · OSC 본문)가 섞여 있다
@@ -441,6 +489,7 @@ impl Message {
     pub(crate) fn plain(app: &str, label: String, event: String) -> Message {
         Message {
             app: app.to_string(),
+            grade: None,
             label,
             event,
             second: String::new(),
@@ -458,10 +507,15 @@ impl Message {
         }
     }
 
+    /// 등급을 단다.
+    pub(crate) fn graded(self, grade: Option<Grade>) -> Message {
+        Message { grade, ..self }
+    }
+
     /// 시험용 — 첫 줄(이름표 · 사건)과 덧줄을 평문 그대로.
     #[cfg(test)]
     pub(crate) fn debug_lines(&self) -> Vec<String> {
-        let mut v = vec![format!("{} · {} — {}", self.app, self.label, self.event)];
+        let mut v = vec![format!("{} — {}", self.label, self.event)];
         v.extend(self.lines.iter().cloned());
         v
     }
@@ -469,6 +523,11 @@ impl Message {
     #[cfg(test)]
     pub(crate) fn is_alert(&self) -> bool {
         self.alert
+    }
+
+    #[cfg(test)]
+    pub(crate) fn grade(&self) -> Option<Grade> {
+        self.grade
     }
 }
 
@@ -482,8 +541,12 @@ pub(crate) async fn send_plain(message: Message, channels: Vec<Channel>) -> Resu
 // 대화에서 나온 글자 (모듈 머리말 "대화에서 나온 글자")
 // ---------------------------------------------------------------------------
 
-/// 에이전트 마지막 답 발췌의 최대 글자 수.
-const EXCERPT_MAX_CHARS: usize = 300;
+/// 에이전트 마지막 답 발췌의 최대 글자 수(2026-11-16 300 → 500 — 사용자 결정: 첫 문단 + 끝 질문이 한 화면에).
+const EXCERPT_MAX_CHARS: usize = 500;
+/// 발췌의 최대 줄 수 — 폰 메신저 한 화면(머리 2~3줄 + 이것).
+const EXCERPT_MAX_LINES: usize = 8;
+/// 권한 물음의 입력 한 줄(명령 · 경로)의 최대 글자 수.
+const PENDING_INPUT_MAX_CHARS: usize = 200;
 /// 대화 제목의 최대 글자 수 — 목록의 제목 상한(80)과 같다.
 const TITLE_MAX_CHARS: usize = 80;
 
@@ -499,10 +562,122 @@ enum AgentEvent {
 enum ConvoLine {
     /// 대화 제목
     Title(String),
-    /// 에이전트 마지막 답 앞부분(턴 끝)
-    Excerpt(String),
-    /// 권한을 묻는 도구 이름(권한 물음)
-    PendingTool(String),
+    /// 에이전트 마지막 답(턴 끝) — 다듬은 줄들([`excerpt_lines`])
+    Excerpt(Vec<String>),
+    /// 권한을 묻는 도구 이름과 입력 한 줄(권한 물음)
+    PendingTool { name: String, input: Option<String> },
+}
+
+/// 답의 한 줄을 다듬는다 — 제목 기호(`#`)를 떼고 목록 머리(`-` · `*` · `+`)를 `·` 로, 공백을 편다.
+fn tidy_line(line: &str) -> String {
+    let mut l = line.trim();
+    let unhashed = l.trim_start_matches('#');
+    if unhashed.len() != l.len() && (unhashed.is_empty() || unhashed.starts_with(' ')) {
+        l = unhashed.trim_start();
+    }
+    let flat = collapse(l);
+    for p in ["- ", "* ", "+ "] {
+        if let Some(rest) = flat.strip_prefix(p) {
+            return format!("· {rest}");
+        }
+    }
+    flat
+}
+
+/// 그릴 것이 없는 줄 — 코드 울타리(```` ``` ````)와 가로줄(`---` · `***` · `___`).
+fn is_noise_line(line: &str) -> bool {
+    let l = line.trim();
+    l.starts_with("```") || (l.chars().count() >= 3 && l.chars().all(|c| matches!(c, '-' | '*' | '_')))
+}
+
+/// 답 → 문단(빈 줄로 갈린 줄 묶음 — 다듬은 줄들).
+fn paragraphs(text: &str) -> Vec<Vec<String>> {
+    let mut out: Vec<Vec<String>> = Vec::new();
+    let mut cur: Vec<String> = Vec::new();
+    for raw in text.lines() {
+        if is_noise_line(raw) {
+            continue;
+        }
+        let l = tidy_line(raw);
+        if l.is_empty() {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+            continue;
+        }
+        cur.push(l);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// 줄 끝에 `…` 를 단다(이미 있으면 그대로).
+fn mark_cut(lines: &mut [String]) {
+    if let Some(last) = lines.last_mut() {
+        if !last.ends_with('…') {
+            last.push('…');
+        }
+    }
+}
+
+/// 줄들을 앞에서부터 `max_lines` 줄 · `max_chars` 글자 안에 담는다 — 다 못 담으면 마지막 줄 끝이 `…`.
+fn fit_lines(lines: &[String], max_lines: usize, max_chars: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut used = 0usize;
+    for l in lines {
+        if out.len() >= max_lines {
+            break;
+        }
+        let n = l.chars().count();
+        if used + n <= max_chars {
+            out.push(l.clone());
+            used += n;
+            continue;
+        }
+        // 이 줄이 넘친다 — 남은 자리가 넉넉하면 잘라 담고, 아니면 앞 줄 끝에 `…`.
+        let rest = max_chars.saturating_sub(used);
+        if rest >= 12 || out.is_empty() {
+            out.push(truncate_chars(l, rest.max(1)));
+        } else {
+            mark_cut(&mut out);
+        }
+        return out;
+    }
+    if out.len() < lines.len() {
+        mark_cut(&mut out);
+    }
+    out
+}
+
+/// **턴 끝 발췌** — 줄바꿈을 살려 [`EXCERPT_MAX_CHARS`] 글자 · [`EXCERPT_MAX_LINES`] 줄 안. 넘치면 **첫 문단 + `…` + 끝 문단**
+/// (끝 문단이 먼저 자리를 잡는다 — 답 끝의 "다음으로 …할까요?" 가 폰에서 판단할 거리라서). 문단이 하나면 앞에서부터 자른다.
+/// 제목 기호(`#`)는 떼고 목록 머리는 `·` 로. 순수 — 걷기는 채널이 줄마다 한다.
+fn excerpt_lines(text: &str) -> Vec<String> {
+    let paras = paragraphs(text);
+    if paras.is_empty() {
+        return Vec::new();
+    }
+    let all: Vec<String> = paras.concat();
+    let total: usize = all.iter().map(|l| l.chars().count()).sum();
+    if all.len() <= EXCERPT_MAX_LINES && total <= EXCERPT_MAX_CHARS {
+        return all;
+    }
+    if paras.len() < 2 {
+        return fit_lines(&all, EXCERPT_MAX_LINES, EXCERPT_MAX_CHARS);
+    }
+    // 끝 문단이 먼저 — 첫 문단 한 줄과 `…` 한 줄의 자리(줄 둘 · 글자 80)를 남긴다.
+    let last = fit_lines(&paras[paras.len() - 1], EXCERPT_MAX_LINES - 2, EXCERPT_MAX_CHARS - 80);
+    let used: usize = last.iter().map(|l| l.chars().count()).sum::<usize>() + 1;
+    let mut out = fit_lines(
+        &paras[0],
+        EXCERPT_MAX_LINES - last.len() - 1,
+        EXCERPT_MAX_CHARS.saturating_sub(used),
+    );
+    out.push("…".to_string());
+    out.extend(last);
+    out
 }
 
 /// 프런트가 넘기는 **대화의 가리킴** — 글자가 아니다. `Debug` 없음.
@@ -534,8 +709,8 @@ fn conversation_block(
             if let Some(x) = tail
                 .text
                 .as_deref()
-                .map(|t| clip(t, EXCERPT_MAX_CHARS))
-                .filter(|t| !t.is_empty())
+                .map(excerpt_lines)
+                .filter(|lines| !lines.is_empty())
             {
                 out.push(ConvoLine::Excerpt(x));
             }
@@ -546,7 +721,12 @@ fn conversation_block(
                 .as_deref()
                 .map(|t| clip(t, TITLE_MAX_CHARS));
             if let Some(name) = name.filter(|t| !t.is_empty()) {
-                out.push(ConvoLine::PendingTool(name));
+                let input = tail
+                    .pending_input
+                    .as_deref()
+                    .map(|t| clip(t, PENDING_INPUT_MAX_CHARS))
+                    .filter(|t| !t.is_empty());
+                out.push(ConvoLine::PendingTool { name, input });
             }
         }
     }

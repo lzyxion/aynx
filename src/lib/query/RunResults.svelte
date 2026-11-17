@@ -27,6 +27,7 @@
   import { tick } from "svelte";
   import { hasTabBar, initialPick, initialTab, panelCounts, resultTabs, type StmtStatus } from "./run-panel";
   import { scriptSummary } from "./script-run";
+  import type { KeptPick } from "./ResultChart.svelte";
 
   /**
    * **문장별 결과 패널**(10-14 — Beekeeper Studio 식 개편, 목업 `Main` · `Success`). 단문 · 여러 문장 · 스크립트 실행이 같은 틀이다:
@@ -51,6 +52,8 @@
     limit,
     begin = null,
     onlocate,
+    view = $bindable(),
+    chartPick = $bindable(),
   }: {
     shown: RunShown;
     name: string;
@@ -58,6 +61,9 @@
     /** [트랜잭션 작업 시작] — needsWork 결과에 단다(쓰기 모드 · 작업 없음일 때만 부르는 쪽이 준다) */
     begin?: { disabled: boolean; onclick: () => void } | null;
     onlocate: (row: PanelRow) => void;
+    /** [표 | 차트] · 차트의 고른 축 — 부르는 쪽(스크립트 탭)이 들고 있어 다시 실행해도 남는다(`ResultGrid` 의 같은 이름) */
+    view?: "grid" | "chart";
+    chartPick?: KeptPick;
   } = $props();
 
   const list = $derived(shown.list);
@@ -328,7 +334,7 @@
   {#if current}
     <div class="detail tabbed" role="tabpanel" aria-label={t("pane.query.res.tab", { n: current.no })} data-query-result-panel={current.no}>
       {#key current.result}
-        <ResultGrid result={current.result} {name} {limit} />
+        <ResultGrid result={current.result} {name} {limit} bind:view bind:chartPick />
       {/key}
     </div>
   {:else}
@@ -383,7 +389,7 @@
   {#if grid}
     <div class="detail">
       {#key grid}
-        <ResultGrid result={grid} {name} {limit} lead={single ? undefined : countsText} />
+        <ResultGrid result={grid} {name} {limit} lead={single ? undefined : countsText} bind:view bind:chartPick />
       {/key}
     </div>
   {:else}

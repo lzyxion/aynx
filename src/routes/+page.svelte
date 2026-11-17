@@ -262,6 +262,7 @@
     groupMetaMap,
     openKeybindingSettings,
     openSnippetSettings,
+    openTemplateSettings,
     openSettingsAt,
     paletteSeed,
     paletteMirror,
@@ -912,6 +913,7 @@
     onmanagesnippets={openSnippetSettings}
     templates={templatePaletteEntries()}
     onopentemplate={(id) => void openTabTemplate(id, { kind: "newTab" })}
+    onmanagetemplates={openTemplateSettings}
     oninserthistory={(command, run) => void insertHistoryCommand(command, run)}
     onselecttab={pickTab}
     onrunaction={runAction}

@@ -35,6 +35,7 @@ const SECTION_FILE: Record<SettingsSectionId, string> = {
   notifications: "NotificationsSection",
   keys: "KeybindingsSection",
   snippets: "SnippetsSection",
+  templates: "TemplatesSection",
   triggers: "TriggersSection",
   ai: "McpSection",
   mcp: "McpManager",
@@ -76,7 +77,7 @@ describe("설정 색인", () => {
     }
     expect(groups).toEqual([
       ["theme", "general", "keys"],
-      ["terminal", "snippets", "triggers"],
+      ["terminal", "snippets", "triggers", "templates"],
       ["ai", "mcp", "instructions", "automation", "notifications"],
       ["credentials", "remote"],
     ]);

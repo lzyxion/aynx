@@ -5,9 +5,11 @@ import {
   chipCounts,
   cleanTemplateName,
   findByName,
+  firstAiLeaf,
   hasRelativeFolders,
   leafChip,
   parseTemplates,
+  rebaseTemplate,
   relativizeFolder,
   replaceMissing,
   resolveFolder,
@@ -17,10 +19,10 @@ import {
   templateFromTree,
   templateLeaves,
   templatesForProject,
-  templatesForTab,
   withoutProjectTemplates,
   withTemplate,
   withoutTemplate,
+  withFirstAi,
   type TabTemplate,
 } from "$lib/tab-templates";
 import { freshAgentAutorun } from "$lib/agent-sessions";
@@ -141,6 +143,62 @@ describe("열 때", () => {
   });
 });
 
+describe("프로젝트 옮기기 — rebaseTemplate", () => {
+  const P = { folder: "C:\\work\\aynx", remote: null };
+  const Q = { folder: "D:\\proj\\q", remote: null };
+  const abs: SavedNode = {
+    dir: "row",
+    ratio: 0.5,
+    a: { kind: "local", autorun: "claude", cwd: "C:\\work\\aynx" },
+    b: {
+      dir: "col",
+      ratio: 0.5,
+      a: { kind: "localfs", path: "C:\\work\\aynx\\docs" },
+      b: { kind: "local", cwd: "E:\\other" },
+    },
+  };
+
+  it("없음 → P 는 P 기준으로 상대화 · 기준 밖은 절대 그대로 · P → 없음은 다시 절대로(왕복)", () => {
+    const onP = rebaseTemplate(abs, null, P);
+    expect(templateLeaves(onP).map((l) => l.cwd ?? l.path)).toEqual([".", "./docs", "E:\\other"]);
+    expect(templateLeaves(onP)[0].autorun).toBe("claude");
+    const back = rebaseTemplate(onP, P, null);
+    expect(back).toEqual(abs);
+    expect(hasRelativeFolders(back)).toBe(false);
+  });
+
+  it("P → Q — P 기준 상대는 P 폴더로 풀려 Q 밖이면 절대로 · Q 안의 절대 경로는 Q 기준 상대로", () => {
+    const onP: SavedNode = {
+      dir: "row",
+      ratio: 0.5,
+      a: { kind: "local", cwd: "./src" },
+      b: { kind: "local", cwd: "D:\\proj\\q\\api" },
+    };
+    const onQ = rebaseTemplate(onP, P, Q);
+    expect(templateLeaves(onQ).map((l) => l.cwd)).toEqual(["C:\\work\\aynx\\src", "./api"]);
+  });
+
+  it("원격 프로젝트 — 그 호스트의 SSH 타일만 상대화 · 다른 호스트 · 로컬 타일은 그대로", () => {
+    const R = { folder: "/home/u/proj", remote: "dev-01" };
+    const tree: SavedNode = {
+      dir: "row",
+      ratio: 0.5,
+      a: { kind: "ssh", alias: "dev-01", cwd: "/home/u/proj/api" },
+      b: {
+        dir: "col",
+        ratio: 0.5,
+        a: { kind: "ssh", alias: "other", cwd: "/home/u/proj" },
+        b: { kind: "local", cwd: "C:\\work\\aynx" },
+      },
+    };
+    const onR = rebaseTemplate(tree, null, R);
+    expect(templateLeaves(onR).map((l) => l.cwd)).toEqual(["./api", "/home/u/proj", "C:\\work\\aynx"]);
+    // 원격 → 로컬 P: 원격 SSH 타일의 상대는 원격 폴더로 풀리고 P 를 따르지 않는다 · 로컬 셸은 P 기준 상대로
+    const onP = rebaseTemplate(onR, R, P);
+    expect(templateLeaves(onP).map((l) => l.cwd)).toEqual(["/home/u/proj/api", "/home/u/proj", "."]);
+  });
+});
+
 describe("미리보기 · 요약", () => {
   const tree: SavedNode = {
     dir: "row",
@@ -150,7 +208,7 @@ describe("미리보기 · 요약", () => {
   };
 
   it("칸은 비율대로", () => {
-    expect(templateCells(tree)).toEqual([
+    expect(templateCells(tree).map(({ leaf: _leaf, ...c }) => c)).toEqual([
       { x: 0, y: 0, w: 0.25, h: 1, chip: "ai" },
       { x: 0.25, y: 0, w: 0.75, h: 0.5, chip: "ssh" },
       { x: 0.25, y: 0.5, w: 0.75, h: 0.5, chip: "db" },
@@ -197,14 +255,6 @@ describe("목록 · 파일", () => {
     expect(templatesForProject([mk("a", "A", "p1"), mk("b", "B"), mk("c", "C", "p1")], "p1").map((x) => x.id)).toEqual(["a", "c"]);
   });
 
-  it("덮어쓰기 옆목록 — 그 탭의 프로젝트 템플릿 + 프로젝트 없는 템플릿", () => {
-    const list = [mk("a", "A", "p1"), mk("b", "B"), mk("c", "C", "p2"), mk("d", "D", "p1")];
-    expect(templatesForTab(list, "p1").map((x) => x.id)).toEqual(["a", "b", "d"]);
-    expect(templatesForTab(list, "p2").map((x) => x.id)).toEqual(["b", "c"]);
-    expect(templatesForTab(list, null).map((x) => x.id)).toEqual(["b"]);
-    expect(templatesForTab([mk("a", "A", "p1")], null)).toEqual([]);
-  });
-
   it("프로젝트를 지우면 그 프로젝트 템플릿만 빠진다", () => {
     const list = [mk("a", "A", "p1"), mk("b", "B"), mk("c", "C", "p2"), mk("d", "D", "p1")];
     expect(withoutProjectTemplates(list, "p1").map((x) => x.id)).toEqual(["b", "c"]);
@@ -242,5 +292,45 @@ describe("freshAgentAutorun", () => {
     expect(freshAgentAutorun("codex resume -m o3 0198b5e2-7c3a-7d4e-9f00-1234567890ab")).toBe("codex -m o3");
     expect(freshAgentAutorun("claude")).toBe("claude");
     expect(freshAgentAutorun("npm run dev")).toBe("npm run dev");
+  });
+});
+
+describe("첫 AI 잎 — firstAiLeaf · withFirstAi", () => {
+  const tree: SavedNode = {
+    dir: "row",
+    ratio: 0.5,
+    a: { kind: "local", shell: "pwsh", cwd: "." },
+    b: {
+      dir: "col",
+      ratio: 0.5,
+      a: { kind: "local", autorun: "claude --model opus", cwd: "." },
+      b: { kind: "local", autorun: "codex", cwd: "./api" },
+    },
+  };
+
+  it("화면 순서로 첫 AI 잎 — 없으면 null", () => {
+    expect(firstAiLeaf(tree)?.autorun).toBe("claude --model opus");
+    expect(firstAiLeaf({ kind: "local", shell: "pwsh" })).toBeNull();
+  });
+
+  it("첫 AI 잎만 바꾼다 — 실행 줄 · 시작 폴더 · MCP 표식, 둘째 AI 잎과 셸은 그대로", () => {
+    const id = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const out = withFirstAi(tree, { autorun: `codex resume ${id}`, cwd: "C:\\work\\other" });
+    const leaves = templateLeaves(out);
+    expect(leaves[0]).toEqual({ kind: "local", shell: "pwsh", cwd: "." });
+    expect(leaves[1]).toEqual({ kind: "local", autorun: `codex resume ${id}`, cwd: "C:\\work\\other", injectMcpToken: true });
+    expect(leaves[2]).toEqual({ kind: "local", autorun: "codex", cwd: "./api" });
+    // 원본은 건드리지 않는다
+    expect(templateLeaves(tree)[1]).toEqual({ kind: "local", autorun: "claude --model opus", cwd: "." });
+  });
+
+  it("폴더를 주지 않으면 잎의 폴더 그대로 · SSH 잎은 MCP 표식을 켜지 않는다", () => {
+    const ssh: SavedNode = { kind: "ssh", alias: "web-01", autorun: "claude", cwd: "./api" };
+    expect(withFirstAi(ssh, { autorun: "codex" })).toEqual({ kind: "ssh", alias: "web-01", autorun: "codex", cwd: "./api" });
+  });
+
+  it("AI 잎이 없으면 트리 그대로", () => {
+    const plain: SavedNode = { kind: "query", query: { connId: "c1" } };
+    expect(withFirstAi(plain, { autorun: "claude" })).toEqual(plain);
   });
 });

@@ -37,12 +37,14 @@ import { tileNotifyGroup } from "$lib/app/finish-notify";
  * @param tileName    제목·토스트 앞머리에 넣을 타일 이름
  * @param notice      파서가 준 알림 (이미 다듬어진 글자)
  * @param tileVisible 그 타일이 지금 보이는 탭에 있는가 (`Terminal` 의 `visible`)
+ * @param fromAgent   에이전트가 살아 있는 타일인가 — 그렇다면 메신저로는 보내지 않는다(턴 끝 · 권한 물음 알림과 겹친다 · 2026-11-16)
  */
 export function notifyFromProgram(
   paneId: string,
   tileName: string,
   notice: ProgramNotice,
   tileVisible: boolean,
+  fromAgent = false,
 ): void {
   const text = programNotifyText(notice);
   const labelled = t("pane.program_notify.toast", { tile: tileName, text });
@@ -57,7 +59,7 @@ export function notifyFromProgram(
   });
   // 메신저(Discord) — 아래 표면 판정과 **독립**이다. 속도 제한(타일당 2초)과 `osc_notify` 는 부르는 쪽이
   // 이미 걸렀다 — 그래서 프로그램 알림을 끄면 메신저로도 가지 않는다(docs/log/2026-09-27-discord-notify.md).
-  messengerProgramNotice(tileName, text);
+  messengerProgramNotice(tileName, text, fromAgent);
 
   const asToast = () => toast.info(labelled, { ms: 8000 });
   if (windowFocused() && tileVisible) {

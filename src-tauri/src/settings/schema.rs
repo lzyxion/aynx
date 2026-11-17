@@ -276,7 +276,7 @@ pub struct MessengerPrefs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_command: Option<bool>,
     /// 에이전트 알림에 **대화에서 나온 글자**(대화 제목 · 에이전트 마지막 답 앞부분 · 권한을 묻는 도구 이름)를
-    /// 싣는가 (안 정하면 끔 — 켜면 그 글자가 메신저 서버로 간다). 글자는 Rust 가 대화 파일에서 읽어 곧장
+    /// 싣는가 (안 정하면 **켬** — 2026-11-16 사용자 결정. 그 글자가 메신저 서버로 간다 · 끄려면 `false`). 글자는 Rust 가 대화 파일에서 읽어 곧장
     /// 몸통에 붙인다 — 프런트로 돌아가지 않는다([`crate::messenger`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_conversation: Option<bool>,

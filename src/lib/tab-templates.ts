@@ -4,7 +4,7 @@ import { freshAgentAutorun } from "$lib/agent-sessions";
 
 /**
  * **탭 템플릿의 순수 층** (2026-11-16) — 모양 · 파일 형식 · 버전 · 살아 있는 트리 → 템플릿 트리 · 폴더 상대화/풀기 ·
- * 미리보기 칸 · 타일 요약. 룬도 DOM 도 없다. 목록 · 파일 왕복 · 여는 길 · 저장 상자는 `app/tab-templates.svelte.ts`.
+ * 미리보기 칸 · 타일 요약 · 첫 AI 잎 바꾸기. 룬도 DOM 도 없다. 목록 · 파일 왕복 · 여는 길 · 저장 상자는 `app/tab-templates.svelte.ts`.
  *
  * 템플릿은 **탭 하나를 여는 법**이다 — 분할 트리 배치 + 타일마다 종류와 연결 대상(호스트 · DB 연결 · 폴더 · 에이전트). 열 때마다
  * **새 세션**으로 찍어 낸다. 워크스페이스(살아 있는 탭 묶음)와 다르고, 2026-10-02 에 걷은 저장 레이아웃과도 다르다.
@@ -136,13 +136,19 @@ function cleanLeaf(raw: SavedLeaf, base: FolderBase | null): SavedLeaf {
   if (leaf.kind === "query" && leaf.query) {
     leaf.query = { connId: leaf.query.connId, ...(leaf.query.maxRows !== undefined ? { maxRows: leaf.query.maxRows } : {}) };
   }
-  if (base) {
-    const field = followsBase(leaf, base);
-    const value = field ? leaf[field] : undefined;
-    if (field && value) {
-      const rel = relativizeFolder(value, base.folder, base.remote === null);
-      if (rel !== null) leaf[field] = rel;
-    }
+  return base ? relativizeLeaf(leaf, base) : leaf;
+}
+
+/**
+ * 잎 하나의 폴더를 기준에 맞춰 상대로(그 자리에서 고친다) — 기준을 따르는 칸([`followsBase`])이 기준 폴더(또는 그 아래)일 때만.
+ * 이미 상대인 값 · 기준 밖 · 다른 호스트의 타일은 그대로다. 저장([`cleanLeaf`])과 프로젝트 옮기기([`rebaseTemplate`])가 같은 규칙을 쓴다.
+ */
+function relativizeLeaf(leaf: SavedLeaf, base: FolderBase): SavedLeaf {
+  const field = followsBase(leaf, base);
+  const value = field ? leaf[field] : undefined;
+  if (field && value && !isRelativeFolder(value)) {
+    const rel = relativizeFolder(value, base.folder, base.remote === null);
+    if (rel !== null) leaf[field] = rel;
   }
   return leaf;
 }
@@ -199,6 +205,21 @@ export function resolveTemplate(root: SavedNode, base: FolderBase | null): Saved
 }
 
 /**
+ * **템플릿을 다른 프로젝트로 옮긴다**(순수 — 설정 › 템플릿의 [프로젝트 ▸]). 옛 기준(`from` — 옛 프로젝트의 주 폴더 · 원격이면 그
+ * 호스트, 프로젝트 없음이면 `null`)으로 상대 폴더를 절대 경로로 풀고([`resolveTemplate`]), 새 기준(`to`)이 있으면 저장할 때와 같은
+ * 규칙으로 다시 상대화한다([`relativizeLeaf`] — 기준 밖의 폴더 · 다른 호스트의 타일은 절대 그대로). `to` 가 `null`(프로젝트 없음으로
+ * 떼기)이면 푼 절대 경로로 남는다.
+ *
+ * `from` 이 `null` 인데 상대 폴더가 있으면(옛 프로젝트를 못 찾음) 풀 기준이 없어 그 칸이 지워진다 — 부르는 쪽이 그때는 옮기지 않는다
+ * ([`hasRelativeFolders`]).
+ */
+export function rebaseTemplate(root: SavedNode, from: FolderBase | null, to: FolderBase | null): SavedNode {
+  const resolved = resolveTemplate(root, from);
+  if (!to) return resolved;
+  return mapTree(resolved, (leaf) => relativizeLeaf({ ...leaf }, to)) ?? resolved;
+}
+
+/**
  * 잎마다 대상을 물어 **사라진 대상을 가리키는 잎을 빈 타일로** 바꾼다(순수) — `missing` 이 사라진 대상의 이름을 돌려주면 그 잎이
  * 시작 타일이 되고 이름이 모인다(같은 이름은 한 번). 탭 전체를 실패시키지 않는다.
  */
@@ -215,6 +236,39 @@ export function replaceMissing(
       return { kind: "start" };
     }) ?? root;
   return { root: out, missing: names };
+}
+
+// ---------------------------------------------------------------------------
+// 첫 AI 잎 — 프로젝트 시작 화면에서 고른 템플릿을 지난 대화 · CLI 단추로 열 때(2026-11-17)
+// ---------------------------------------------------------------------------
+
+/** 첫 AI 잎에 얹는 것 — 실행 줄(재개 줄 · 그 CLI 의 새 대화 줄)과, 주면 시작 폴더(재개는 그 대화의 폴더 — 절대 경로) */
+export interface FirstAiPatch {
+  autorun: string;
+  cwd?: string;
+}
+
+/** 첫 AI 잎([`leafChip`] 이 `ai` 인 잎 — 화면에서 읽는 순서, 왼쪽 · 위 먼저). 없으면 `null` */
+export function firstAiLeaf(root: SavedNode): SavedLeaf | null {
+  return templateLeaves(root).find((l) => leafChip(l) === "ai") ?? null;
+}
+
+/**
+ * **첫 AI 잎의 실행 줄(· 시작 폴더)을 바꾼다**(순수) — 나머지 잎(둘째 AI 잎 포함)은 그대로라 새 대화로 선다. 로컬 잎이면 MCP 토큰
+ * 표식도 켠다(AI 타일 — `newAiPane` 과 같다). AI 잎이 없으면 트리 그대로.
+ */
+export function withFirstAi(root: SavedNode, patch: FirstAiPatch): SavedNode {
+  let done = false;
+  return (
+    mapTree(root, (leaf) => {
+      if (done || leafChip(leaf) !== "ai") return leaf;
+      done = true;
+      const out: SavedLeaf = { ...leaf, autorun: patch.autorun };
+      if (patch.cwd !== undefined) out.cwd = patch.cwd;
+      if (out.kind === "local") out.injectMcpToken = true;
+      return out;
+    }) ?? root
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +328,8 @@ export interface TemplateCell {
   w: number;
   h: number;
   chip: TemplateChip;
+  /** 그 칸의 잎 — 칸에 얹을 로고를 고른다(`TemplatePreview` · `templateLeafLogo`) */
+  leaf: SavedLeaf;
 }
 
 /** 작은 분할 그림의 칸들(순수) — `row` 는 좌우, `col` 은 위아래. `px` 고정 몫은 그림에 넣지 않는다 */
@@ -281,7 +337,7 @@ export function templateCells(root: SavedNode): TemplateCell[] {
   const out: TemplateCell[] = [];
   const walk = (n: SavedNode, x: number, y: number, w: number, h: number) => {
     if (!isSavedSplit(n)) {
-      out.push({ x, y, w, h, chip: leafChip(n) });
+      out.push({ x, y, w, h, chip: leafChip(n), leaf: n });
       return;
     }
     const r = Math.min(0.95, Math.max(0.05, n.ratio));
@@ -363,14 +419,6 @@ export function templatesForProject(list: readonly TabTemplate[], projectId: str
 /** 그 프로젝트 템플릿을 뺀 목록 — 프로젝트를 지우면 그 프로젝트 템플릿도 함께 지운다(2026-11-16 사용자 결정) */
 export function withoutProjectTemplates(list: readonly TabTemplate[], projectId: string): TabTemplate[] {
   return list.filter((x) => x.projectId !== projectId);
-}
-
-/**
- * 그 탭에서 **덮어쓸 수 있는** 템플릿(탭 우클릭 [템플릿 덮어쓰기 ▸]) — 탭의 프로젝트 템플릿 + 프로젝트 없는 템플릿. 프로젝트 없이 연
- * 탭이면 프로젝트 없는 템플릿만(다른 프로젝트 템플릿을 남의 탭 배치로 바꾸지 않는다). 목록 순서 그대로.
- */
-export function templatesForTab(list: readonly TabTemplate[], projectId: string | null): TabTemplate[] {
-  return list.filter((x) => !x.projectId || (projectId !== null && x.projectId === projectId));
 }
 
 /** 새 id — 겹치지 않으면 된다(파일 안에서만 뜻이 있다) */

@@ -233,4 +233,8 @@ export const commands = {
   "palette.section.template": "템플릿",
   "palette.action.saveTemplate": "지금 탭을 템플릿으로 저장…",
   "palette.template.keywords": "템플릿 template",
+  "palette.template.manage": "템플릿 관리…",
+  "palette.template.manageTail": "설정 › 템플릿",
+  // 관리 줄이 걸리는 글자들 — 라벨만 훑으면 `>tem` 같은 영문 질의에서 사라진다(스니펫 관리 줄과 같다)
+  "palette.template.manageKeywords": "template manage 설정",
 } as const satisfies Record<string, string>;

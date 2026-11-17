@@ -30,6 +30,7 @@
   import McpManager from "$lib/settings/McpManager.svelte";
   import AutomationSection from "$lib/settings/AutomationSection.svelte";
   import SnippetsSection from "$lib/settings/SnippetsSection.svelte";
+  import TemplatesSection from "$lib/settings/TemplatesSection.svelte";
   import InstructionsSection from "$lib/settings/InstructionsSection.svelte";
   import NotePopover from "$lib/settings/NotePopover.svelte";
 
@@ -360,6 +361,11 @@
       <section hidden={activeTab !== "triggers"}>
         <!-- 추가 · 편집 하위 화면은 이 칸이 안 보이게 되면(섹션 이동 · 모달 닫힘) 요약으로 돌아간다 -->
         <TriggersSection active={open && activeTab === "triggers"} />
+      </section>
+
+      <section hidden={activeTab !== "templates"}>
+        <!-- 칸이 보일 때마다 디스크 최신을 다시 읽고, 안 보이게 되면 메뉴 · 이름 칸을 걷는다 -->
+        <TemplatesSection active={open && activeTab === "templates"} />
       </section>
 
       <section hidden={activeTab !== "ai"}>

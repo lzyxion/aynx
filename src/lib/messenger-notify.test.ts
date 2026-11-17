@@ -3,8 +3,13 @@ import {
   agentEvent,
   agentStatsLine,
   changedFilesBetween,
+  AGENT_STOP_MIN_MS,
   commandFinishEvent,
+  commandGrade,
+  createCoalesceGate,
   isAway,
+  noticeGrade,
+  operationGrade,
   messengerChannels,
   oscEvent,
   resolveMessengerRules,
@@ -41,7 +46,7 @@ describe("resolveMessengerRules — 안 정한 칸의 기본값", () => {
       operationPending: true,
       includeSummary: true,
       includeCommand: false,
-      includeConversation: false,
+      includeConversation: true,
       awayAfterMin: 5,
       discord: true,
       slack: true,
@@ -163,9 +168,10 @@ describe("문구 — 평문 (서식은 Rust 가 입힌다)", () => {
     );
   });
 
-  it("대화 싣기는 켠 사람만(안 정하면 끔)", () => {
+  it("대화 싣기는 안 정하면 켬(2026-11-16) — 끈 사람만 뺀다", () => {
     expect(resolveMessengerRules({ include_conversation: true }).includeConversation).toBe(true);
-    expect(resolveMessengerRules({ include_conversation: null }).includeConversation).toBe(false);
+    expect(resolveMessengerRules({ include_conversation: null }).includeConversation).toBe(true);
+    expect(resolveMessengerRules({ include_conversation: false }).includeConversation).toBe(false);
   });
 
   it("프로그램 알림 — 본문을 걷지 않은 채 싣는다", () => {
@@ -195,5 +201,51 @@ describe("에이전트 알림 둘째 줄 — 맥락 (대화 글자가 아니다)
     expect(changedFilesBetween(before, before)).toBe(0);
     expect(changedFilesBetween(null, after)).toBe(null);
     expect(changedFilesBetween(before, null)).toBe(null);
+  });
+});
+
+describe("등급 · 거르기 · 묶기 (2026-11-16)", () => {
+  it("짧은 턴은 보내지 않는다 — 걸린 시간을 모르면 거르지 않는다", () => {
+    const at = (ms: number | null) => ({ ...veiled, durationMs: ms });
+    expect(shouldSendMessenger("agent-stop", on, at(AGENT_STOP_MIN_MS - 1))).toBe(false);
+    expect(shouldSendMessenger("agent-stop", on, at(AGENT_STOP_MIN_MS))).toBe(true);
+    expect(shouldSendMessenger("agent-stop", on, at(null))).toBe(true);
+    // 권한 물음은 시간을 보지 않는다
+    expect(shouldSendMessenger("agent-permission", on, at(1))).toBe(true);
+  });
+
+  it("앨범 사건 — 제 칸 없이 전송 조건만", () => {
+    expect(shouldSendMessenger("orchestration", on, here)).toBe(false);
+    expect(shouldSendMessenger("orchestration", on, veiled)).toBe(true);
+    expect(shouldSendMessenger("orchestration", { ...on, when: "always" }, here)).toBe(true);
+    expect(shouldSendMessenger("orchestration", { ...on, discord: false, slack: false }, veiled)).toBe(false);
+  });
+
+  it("앨범 등급 표 — Rust messenger_grade 와 같다", () => {
+    expect(noticeGrade("verify-approval")).toBe("action");
+    expect(noticeGrade("worker-blocked")).toBe("action");
+    expect(noticeGrade("run-ended")).toBe("done");
+    expect(noticeGrade("verify-failed")).toBe("failed");
+    for (const quiet of ["exit-unconfirmed", "wake-limit", "wake-failed", "worker-idle", "turn-timeout", "run-adopted", "other"]) {
+      expect(noticeGrade(quiet)).toBeNull();
+    }
+  });
+
+  it("명령 · 작업안 등급", () => {
+    expect(commandGrade(0)).toBe("done");
+    expect(commandGrade(null)).toBe("done");
+    expect(commandGrade(101)).toBe("failed");
+    expect(operationGrade("good")).toBe("done");
+    expect(operationGrade("bad")).toBe("failed");
+    expect(operationGrade("plain")).toBeNull();
+  });
+
+  it("같은 타일 · 같은 사건은 30초 안에 한 통", () => {
+    const gate = createCoalesceGate(30_000);
+    expect(gate("p1", "stop", 0)).toBe(true);
+    expect(gate("p1", "stop", 29_999)).toBe(false);
+    expect(gate("p1", "permission", 1_000)).toBe(true);
+    expect(gate("p2", "stop", 1_000)).toBe(true);
+    expect(gate("p1", "stop", 30_000)).toBe(true);
   });
 });

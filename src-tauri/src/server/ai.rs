@@ -407,6 +407,10 @@ async fn send_notice_messenger(n: NoticeWire) {
         return;
     }
     let kind: &'static str = crate::orchestration::notice::kind_word(&n.kind);
+    // 진단성 사건은 메신저로 보내지 않는다(2026-11-16 — 앱 안 알림만).
+    let Some(grade) = crate::orchestration::notice::messenger_grade(kind) else {
+        return;
+    };
     let text = crate::orchestration::notice::message_text(&crate::orchestration::notice::Notice {
         id: n.id,
         run_id: String::new(),
@@ -418,8 +422,9 @@ async fn send_notice_messenger(n: NoticeWire) {
         at: 0,
     });
     // 이름을 읽을 수 없으면 머리 글자만 쓴다.
-    let label = if n.run_name.is_empty() { "Run".to_string() } else { format!("Run · {}", n.run_name) };
-    let message = crate::messenger::Message::plain(crate::instance::window_title(crate::instance::DEV), label, text);
+    let label = crate::orchestration::notice::messenger_label(&n.run_name);
+    let message =
+        crate::messenger::Message::plain(crate::instance::window_title(crate::instance::DEV), label, text).graded(Some(grade));
     if let Err(e) = crate::messenger::send_plain(message, channels).await {
         log::line(format!("messenger — orchestration notice not sent: {e}"));
     }

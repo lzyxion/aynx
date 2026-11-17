@@ -462,7 +462,7 @@ export function runAction(action: string): void {
     case "open-db":
       void openDbPicker();
       break;
-    // 지금 탭을 템플릿으로 저장 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY` · 2026-11-16). 탭 우클릭 [템플릿으로 저장…] 과 같은 상자.
+    // 지금 탭을 템플릿으로 저장 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY` · 2026-11-16). 탭 우클릭 [템플릿 저장] 과 같은 상자.
     case "save-tab-template":
       openTabTemplateSave(null);
       break;

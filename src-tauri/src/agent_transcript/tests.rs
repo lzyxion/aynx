@@ -452,6 +452,7 @@ fn claude_turn_tail_names_the_tool_awaiting_permission() {
     ]);
     let t = tail(&file, claude_events);
     assert_eq!(t.pending_tool.as_deref(), Some("Edit"));
+    assert_eq!(t.pending_input.as_deref(), Some("src/x.ts"), "묻는 도구의 입력 요약");
     assert_eq!(t.text.as_deref(), Some("I will edit the file."));
     assert!(tail("", claude_events).text.is_none(), "빈 파일");
     assert!(

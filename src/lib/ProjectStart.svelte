@@ -18,7 +18,10 @@
     renameTabTemplate,
     templateSummary,
   } from "$lib/app/tab-templates.svelte.js";
-  import type { TabTemplate } from "$lib/tab-templates";
+  import { firstAiLeaf, type FirstAiPatch, type TabTemplate } from "$lib/tab-templates";
+  import { agentSessionLaunchSpec, agentSessionRemoteLaunchSpec } from "$lib/context";
+  import { showNotice } from "$lib/app/notice";
+  import { stripReason } from "$lib/error-reason";
   import { convoMetaChips, type ConvoMetaChip } from "$lib/convo-meta";
   import { folderNameOf } from "$lib/pane-chips";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -43,6 +46,7 @@
     conversationOpenOtherWindow,
     goToOpenConversation,
     renameBlockedReason,
+    linkOpenedConversation,
     loadConversations,
     openConversation,
     readyWorktrees,
@@ -63,7 +67,7 @@
   import { sideChatConvBadge } from "$lib/side-chat";
   import { sideChatConvMarkOf } from "$lib/app/side-chats.svelte.js";
   import { formatTokens, usageKey } from "$lib/agent-usage";
-  import { pathKey, shortenHome, type AgentConversation } from "$lib/agent-sessions";
+  import { pathKey, resumeAutorunFor, shortenHome, type AgentConversation } from "$lib/agent-sessions";
   import { isRemote, paneForWorktree, projectTail, type Project } from "$lib/projects";
   import {
     effectiveDefaultShellId,
@@ -116,7 +120,9 @@
    *  · **템플릿**(2026-11-16 — "새로 시작" 과 "지난 대화" 사이) — 이 프로젝트에 붙인 탭 템플릿 카드 두 열(배치 그림 · 이름 · 타일
    *    요약). 없으면 칸째 숨는다. 카드 클릭 또는 **숫자키 1–9**(앞에서부터 아홉)로 열면 이 타일 자리가 템플릿 배치로 바뀐다
    *    (`openTabTemplate` 의 `replace` — 탭에 혼자면 탭 내용 전체가, 분할 안이면 그 칸이 템플릿 트리가 된다). 폴더는 이 화면의
-   *    폴더(워크트리)에 붙여 푼다. 우클릭 = 이름 바꾸기 · 삭제(덮어쓰기는 탭 우클릭의 [템플릿 덮어쓰기 ▸]). ↑↓ 이동에는 들지 않는다.
+   *    폴더(워크트리)에 붙여 푼다. 우클릭 = 이름 바꾸기 · 삭제(덮어쓰기는 탭 우클릭 [템플릿 저장] 에서 같은 이름으로 — 저장 상자가 묻는다). ↑↓ 이동에는 들지 않는다.
+   *    **AI 타일이 든 템플릿**은 누르면 곧장 열지 않고 **고른 채** 선다(2026-11-17 — `armed`): 그 동안 지난 대화의 재개는 그 배치의
+   *    첫 AI 칸이 그 대화를 잇고, AI CLI 단추는 첫 AI 칸을 그 CLI 의 새 대화로 연다. 같은 카드를 다시 누르면 저장된 그대로.
    *  · **바닥 줄** — 키 안내.
    *
    * **무엇을 고르든 이 타일 자리에서 바뀐다**(`replaceTile` — 같은 탭 · 같은 칸). 재개 · 새 대화로 계속도 대시보드와
@@ -304,6 +310,17 @@
   }
 
   function runAction(a: StartAction): void {
+    const tpl = armedTpl;
+    armed = null;
+    // 템플릿을 고른 채 AI CLI 단추 — 템플릿을 열고 첫 AI 칸을 그 CLI 의 새 대화로. 템플릿 칸과 **같은 CLI** 면 저장된 그대로(칸의
+    // 추가 인자 포함 — 이것이 "저장된 그대로 열기"의 길이다), 다르면 이 단추가 띄우는 줄로 갈아 끼운다. 셸은 고르기를 풀고 평소대로
+    const autorun = tpl && a.kind === "ai" ? paneOfAction(a).autorun : undefined;
+    if (tpl && autorun) {
+      const saved = firstAiLeaf(tpl.root)?.autorun;
+      const same = saved !== undefined && aiIconName(saved) !== null && aiIconName(saved) === aiIconName(autorun);
+      void openTemplate(tpl, same ? undefined : { autorun });
+      return;
+    }
     replaceWith(paneOfAction(a));
   }
 
@@ -331,17 +348,96 @@
   /** 숫자키가 여는 앞의 아홉 */
   const TEMPLATE_KEYS = 9;
 
-  /** 템플릿을 이 타일 자리에 연다 — 같은 탭 · 같은 칸(머리말) */
-  function openTemplate(tpl: TabTemplate): void {
+  /**
+   * 템플릿을 이 타일 자리에 연다 — 같은 탭 · 같은 칸(머리말). `firstAi` 를 주면 첫 AI 칸의 실행 줄(· 폴더)을 바꿔 연다(고른 템플릿 +
+   * 지난 대화 · CLI 단추). 그 칸의 타일 id 를 돌려준다(못 열었으면 `null`).
+   */
+  async function openTemplate(tpl: TabTemplate, firstAi?: FirstAiPatch): Promise<string | null> {
     const tab = tabOfPane(paneId);
-    if (!tab) return;
-    void openTabTemplate(tpl.id, {
-      kind: "replace",
-      tabId: tab.id,
-      paneId,
-      folder: start.folder,
-      ...(remoteAlias !== null ? { host: remoteAlias } : {}),
-    });
+    if (!tab) return null;
+    return openTabTemplate(
+      tpl.id,
+      {
+        kind: "replace",
+        tabId: tab.id,
+        paneId,
+        folder: start.folder,
+        ...(remoteAlias !== null ? { host: remoteAlias } : {}),
+      },
+      firstAi ? { firstAi } : {},
+    );
+  }
+
+  /**
+   * **고른 템플릿**(2026-11-17 — 목업 2판) — AI 타일이 든 템플릿 카드를 누르면(숫자키도) 곧장 열지 않고 고른 채 선다. 그 동안
+   * 지난 대화의 [재개](Enter · 더블클릭 · 확인의 [그래도 재개] — `resume` 으로 가는 길 전부)는 템플릿을 열고 첫 AI 칸이 그 대화를
+   * 이어 가고, 위 AI CLI 단추(글자키도)는 첫 AI 칸을 그 CLI 의 새 대화로 연다(템플릿 칸과 같은 CLI 면 저장된 그대로). 셸 단추는
+   * 고르기를 풀고 평소대로. 같은 카드를 다시 누르면(카드 위 Enter · 같은 숫자키도) **고르기만 푼다**(토글 — 2026-11-17 사용자) · Esc ·
+   * 빈 곳 클릭도 풀기 · 다른 카드는 그 카드로 바꾼다. 고른 동안 위 단추들의 모양은 바꾸지 않는다(사용자 — 강조 · 흐림 걷음). AI 타일이
+   * 없는 템플릿은 지금처럼 바로 연다.
+   */
+  let armed = $state<string | null>(null);
+  /** 고른 템플릿(목록에서 사라졌으면 `null`) */
+  const armedTpl = $derived(armed !== null ? (templates.find((x) => x.id === armed) ?? null) : null);
+  /** 안내(툴팁)의 CLI 이름 — 이 화면에 선 AI 단추들(하나면 그 이름만) */
+  const aiNames = $derived(actions.filter((a) => a.kind === "ai").map(actionLabel));
+  /** 고른 템플릿의 안내 — 카드 툴팁 · 숨은 상태 줄에만(본문에 띄우지 않는다 — 2026-11-17 사용자) */
+  const armedHint = $derived(
+    aiNames.length > 0
+      ? t("app.projectStart.template.armed", { clis: aiNames.join(" · ") })
+      : t("app.projectStart.template.armedNoCli"),
+  );
+
+  /** 카드 누르기 · 숫자키 */
+  function pickTemplate(tpl: TabTemplate): void {
+    // 고른 카드를 다시 누르면 고르기만 푼다(2026-11-17 사용자 — 여는 것이 아니라 토글). 저장된 그대로 열기는 같은 CLI 단추
+    if (armed === tpl.id) {
+      armed = null;
+      return;
+    }
+    if (firstAiLeaf(tpl.root) === null) {
+      armed = null;
+      void openTemplate(tpl);
+      return;
+    }
+    armed = tpl.id;
+  }
+
+  /** 빈 곳 클릭 — 고르기를 푼다. 손이 닿는 것(단추 · 카드 · 대화 줄 · 칸)은 제 일을 한다 */
+  function onRootClick(ev: MouseEvent): void {
+    if (armed === null) return;
+    const target = ev.target instanceof Element ? ev.target : null;
+    if (target?.closest("button, a, input, textarea, select, [role='option'], [role='menu'], [contenteditable='true']")) return;
+    armed = null;
+  }
+
+  /**
+   * 고른 템플릿으로 그 대화를 잇는다 — 재개 줄은 대화의 CLI 것이다(템플릿 AI 칸의 CLI 와 달라도 그 칸을 대화의 CLI 로 연다).
+   * 같은 CLI 면 그 칸의 실행 줄(사람이 적은 추가 인자 포함)에서 `resumeAutorunFor` 로, 아니면 지금 재개가 쓰는 Rust 한 줄
+   * (`agent_session_launch_spec` · 원격은 `agent_session_remote_launch_spec`)을 그대로 쓴다. 폴더는 늘 그 대화의 폴더(그 명세의 `cwd`)다.
+   * 첫 AI 칸이 그 대화를 열 수 없는 꼴이면(로컬 대화인데 SSH 칸 · 원격 대화인데 다른 호스트 칸) `false` — 부르는 쪽이 평소 재개로.
+   */
+  function resumeInTemplate(tpl: TabTemplate, s: AgentConversation): boolean {
+    const leaf = firstAiLeaf(tpl.root);
+    if (!leaf) return false;
+    const remote = isRemoteConversation(s);
+    if (remote ? !(leaf.kind === "ssh" && !leaf.adhoc && leaf.alias === s.host) : leaf.kind !== "local") return false;
+    void (async () => {
+      let spec;
+      try {
+        spec = remote
+          ? await agentSessionRemoteLaunchSpec(s.host, s.agent, s.id, "resume")
+          : await agentSessionLaunchSpec(s.agent, s.id, "resume");
+      } catch (e) {
+        showNotice(stripReason(String(e)));
+        return;
+      }
+      const autorun = resumeAutorunFor(leaf.autorun, s.agent, s.id) ?? spec.command;
+      const pane = await openTemplate(tpl, { autorun, cwd: spec.cwd });
+      // 재개면 id 를 이미 안다 — 첫 훅 신호 전에도 "열림" 이 서고 두 번 열리지 않는다(`openConversation` 과 같다)
+      if (pane) linkOpenedConversation(pane, s.agent, s.id);
+    })();
+    return true;
   }
 
   /** 카드 우클릭 메뉴 — 열려 있는 동안만 산다(항목은 통로 `runOnMenu` 하나 — 스냅샷 → 닫기 → 실행) */
@@ -439,7 +535,11 @@
   });
 
   function resume(s: AgentConversation): void {
-    if (goToOpenConversation(s)) return; // 열려 있는 대화 — 그 타일로(다른 창이면 그 창으로 · 이 화면은 남는다)
+    if (goToOpenConversation(s)) {
+      // 열려 있는 대화 — 그 타일로(다른 창이면 그 창으로 · 이 화면은 남는다). 템플릿은 쓰지 않으니 고르기를 푼다
+      armed = null;
+      return;
+    }
     if (!s.cwdExists) return;
     // aynx 밖에서 열려 있다 — 곧장 띄우지 않고 그 줄에서 한 번 묻는다(같은 대화를 두 곳에서 잇지 않게)
     if (elsewhere.has(keyOf(s)) && confirmKey !== keyOf(s)) {
@@ -447,6 +547,10 @@
       return;
     }
     confirmKey = null;
+    // 템플릿을 고른 채 — 그 배치로 열고 첫 AI 칸이 이 대화를 잇는다(그 칸이 열 수 없는 꼴이면 평소 재개)
+    const tpl = armedTpl;
+    armed = null;
+    if (tpl && resumeInTemplate(tpl, s)) return;
     const tab = tabOfPane(paneId);
     if (isRemoteConversation(s)) void openRemoteConversation(s, "resume", tab ? { tabId: tab.id, paneId } : undefined, "replace");
     else void openConversation(s, "resume", tab ? { tabId: tab.id, paneId } : undefined);
@@ -537,6 +641,13 @@
       cancelConfirm();
       return;
     }
+    // Esc — 고른 템플릿을 푼다(확인이 서 있으면 위에서 확인부터 거둔다)
+    if (armed !== null && ev.code === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      armed = null;
+      return;
+    }
     // Ctrl+Shift+Enter — 여기로 가져와 계속(상태줄 지난 대화와 같은 조합)
     if ((ev.code === "Enter" || ev.code === "NumpadEnter") && ev.ctrlKey && ev.shiftKey && !ev.altKey && !ev.metaKey && !onButton) {
       const s = selIndex >= 0 ? visible[selIndex] : null;
@@ -584,7 +695,7 @@
       const tpl = m ? templates[Number(m[1]) - 1] : undefined;
       if (tpl) {
         ev.preventDefault();
-        openTemplate(tpl);
+        pickTemplate(tpl);
         return;
       }
     }
@@ -619,6 +730,7 @@
   bind:this={root}
   onfocus={onRootFocus}
   onkeydown={onKeydown}
+  onclick={onRootClick}
 >
   <div class="inner">
     <header class="head">
@@ -690,23 +802,33 @@
                   <ConvoTitleEdit
                     value={tpl.name}
                     label={t("app.tabTemplates.rename.aria")}
-                    onsave={(name) => renameTabTemplate(tpl.id, name)}
+                    onsave={async (name) => void (await renameTabTemplate(tpl.id, name))}
                     ondone={tplRenameDone}
                   />
                 </span>
               </div>
             {:else}
+              {@const isArmed = armedTpl?.id === tpl.id}
               <button
                 type="button"
                 class="tcard"
+                class:armed={isArmed}
                 data-start-template={tpl.id}
-                title={key ? t("app.projectStart.template.open", { name: tpl.name, key }) : tpl.name}
-                onclick={() => openTemplate(tpl)}
+                data-armed={isArmed ? "" : undefined}
+                aria-pressed={isArmed}
+                title={isArmed
+                  ? armedHint
+                  : key
+                    ? t("app.projectStart.template.open", { name: tpl.name, key })
+                    : tpl.name}
+                onclick={() => pickTemplate(tpl)}
                 oncontextmenu={(ev) => openTplMenu(ev, tpl)}
               >
                 <TemplatePreview root={tpl.root} width={64} height={40} />
                 <span class="tmain">
-                  <span class="tname">{tpl.name}</span>
+                  <span class="tnameline"
+                    ><span class="tname">{tpl.name}</span>{#if isArmed}<span class="tcheck" aria-hidden="true">✓</span>{/if}</span
+                  >
                   <span class="tsum">{templateSummary(tpl.root)}</span>
                 </span>
                 {#if key}<span class="letter"><Keys combo={key} size="sm" /></span>{/if}
@@ -714,6 +836,10 @@
             {/if}
           {/each}
         </div>
+        {#if armedTpl}
+          <!-- 고른 템플릿의 안내 — 눈에는 카드 툴팁으로만, 화면 읽기 프로그램에는 이 숨은 상태 줄로 -->
+          <p class="thint" role="status" data-start-template-hint>{armedHint}</p>
+        {/if}
       </section>
     {/if}
 
@@ -971,7 +1097,7 @@
         class="menu-row"
         role="menuitem"
         data-tpl-act="delete"
-        onclick={() => runOnMenu(() => tplMenu?.id, closeTplMenu, (id) => deleteTabTemplate(id))}
+        onclick={() => runOnMenu(() => tplMenu?.id, closeTplMenu, (id) => void deleteTabTemplate(id))}
         >{t("app.tabTemplates.menu.delete")}</button
       >
     </div>
@@ -1394,6 +1520,56 @@
 
   .tcard.renaming {
     cursor: default;
+  }
+
+  /* 고른 템플릿(목업 2판) — 고른 판(`--control-sel-*` = secondaryContainer — 앱의 고른 칩 · 줄과 같은 판) + 강조 테두리(설정 카드 ·
+     프로필 카드의 "지금 쓰는 것" 과 같은 `--accent` 테두리 + 1px 그림자) */
+  .tcard.armed,
+  .tcard.armed:hover {
+    color: var(--control-sel-fg);
+    background: var(--control-sel-bg);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .tcard.armed:hover {
+    background: var(--control-sel-bg-hover);
+  }
+
+  .tcard.armed .tsum {
+    color: var(--control-sel-fg);
+    opacity: 0.8;
+  }
+
+  .tnameline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  /* 이름 옆 ✓ — 켜진 컨트롤 색(`--control-on-*` = primary) 동그라미 */
+  .tcheck {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--control-on-fg);
+    background: var(--control-on-bg);
+  }
+
+  /* 고른 템플릿의 안내 — 화면 읽기 프로그램에만(눈에는 고른 카드의 툴팁 — 2026-11-17 사용자) */
+  .thint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .tmain {

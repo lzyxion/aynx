@@ -29,6 +29,7 @@
   import { stripReason } from "$lib/error-reason";
   import { QUERY_DATA_PAGE_SIZES, type QueryDataTab } from "$lib/session";
   import ResultGrid from "./ResultGrid.svelte";
+  import type { KeptPick } from "./ResultChart.svelte";
   import DefinitionView from "./DefinitionView.svelte";
   import WhereField from "./WhereField.svelte";
   import { filterItems, sqlComplete, whereKeywords } from "./sql-complete";
@@ -132,6 +133,9 @@
   let shown = $state<{ result: DbQueryResult; hasNext: boolean; page: number } | null>(null);
   /** 사람이 끌어 바꾼 열 폭 — 쪽 · 정렬 · 조건을 바꿔도 남는다(탭이 사는 동안만 · 저장 안 함) */
   let colWidths = $state<Record<string, number>>({});
+  /** [표 | 차트] — 쪽 · 정렬 · 조건(WHERE)을 바꿔 다시 읽어도 남는다(탭이 사는 동안만 · 저장 안 함) */
+  let gridView = $state<"grid" | "chart">("grid");
+  let chartPick = $state<KeptPick | undefined>(undefined);
   let error = $state<string | null>(null);
   let loading = $state(false);
   /** 읽어야 한다(처음 · 조건 · 쪽 · 연결이 바뀜 · 새로 고침) */
@@ -549,6 +553,8 @@
             rowBase={shown.page * size}
             tail={pager}
             bind:colWidths
+            bind:view={gridView}
+            bind:chartPick
             onfilter={filterBy}
             {pks}
             {fks}

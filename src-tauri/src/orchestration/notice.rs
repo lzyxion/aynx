@@ -100,6 +100,30 @@ impl Notices {
 }
 
 /// 종류 낱말을 고정 글자로(이벤트 몸에서 다시 읽을 때 — 모르는 것은 `other`).
+/// 메신저로 보낼 사건의 **등급** — `None` 이면 메신저로 보내지 않는다(앱 안 알림만 — 진단성 사건: 종료 미확인 · 깨움 · 보고 없는 턴 ·
+/// 턴 시한 · 이어받음 · 모르는 낱말). 표는 프런트 `messenger-notify.ts` 의 `noticeGrade` 와 **같다**(창이 있으면 프런트가 보낸다).
+pub(crate) fn messenger_grade(kind: &str) -> Option<crate::messenger::Grade> {
+    use crate::messenger::Grade;
+    match kind {
+        "verify-approval" | "verify-needs-human" | "worker-blocked" | "auto-merge-stopped" | "repo-identity-changed"
+        | "commit-rejected" | "limit" | "coordinator-exited" => Some(Grade::Action),
+        "run-ended" => Some(Grade::Done),
+        "verify-failed" | "spawn-failed" | "worker-exited" | "reviewer-exited" => Some(Grade::Failed),
+        _ => None,
+    }
+}
+
+/// 메신저 이름표 — `앨범 «이름»`(이름을 모르면 "앨범"). 이름은 사람이 쓴 것이라 자른다.
+pub(crate) fn messenger_label(run_name: &str) -> String {
+    use crate::i18n::tr;
+    let name = clip(run_name, 60);
+    if name.is_empty() {
+        tr!(ko: "앨범", en: "Album")
+    } else {
+        tr!(ko: "앨범 «{name}»", en: "Album «{name}»")
+    }
+}
+
 pub(crate) fn kind_word(k: &str) -> &'static str {
     // (3차 6단계) 2차 PTY 작업자의 종류(`permission` · `bootstrap` · `stalled` · `needs-recovery`)는 걷었다 — 헤드리스 작업자에게는 권한 화면 ·
     // 첫 화면 · 붙여넣기가 없어 서지 않는다(모르는 낱말은 `other`).
@@ -267,6 +291,22 @@ mod tests {
 
     fn notice(id: &str, kind: &'static str) -> Notice {
         Notice { id: id.into(), run_id: "run-x".into(), run_name: "앨범".into(), kind, attempt_id: None, task_title: None, detail: None, at: 1 }
+    }
+
+    /// 메신저 등급 — 사람이 필요한 것 · 끝 · 실패만 보내고 진단성 사건은 보내지 않는다(프런트 `noticeGrade` 와 같은 표).
+    #[test]
+    fn messenger_grade_table() {
+        use crate::messenger::Grade;
+        assert_eq!(messenger_grade("verify-approval"), Some(Grade::Action));
+        assert_eq!(messenger_grade("worker-blocked"), Some(Grade::Action));
+        assert_eq!(messenger_grade("run-ended"), Some(Grade::Done));
+        assert_eq!(messenger_grade("verify-failed"), Some(Grade::Failed));
+        for quiet in ["exit-unconfirmed", "wake-limit", "wake-ignored", "wake-failed", "wake-turn-timeout", "worker-idle", "turn-timeout", "run-adopted", "other"] {
+            assert_eq!(messenger_grade(quiet), None, "{quiet}");
+        }
+        crate::i18n::set_lang(crate::i18n::Lang::Ko);
+        assert_eq!(messenger_label("결제 리팩터"), "앨범 «결제 리팩터»");
+        assert_eq!(messenger_label(""), "앨범");
     }
 
     /// 실기 b 고침 A — 확인된 사건은 미확인 큐에서 빠지고 최근 목록에 남는다(다시 뜬 주 창의 알림 센터) · 상한 · 확인 안 된 것은 남지 않는다.

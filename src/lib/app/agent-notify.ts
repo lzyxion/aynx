@@ -1,17 +1,15 @@
 import { agentNotifyMessage, shouldNotifyAgentStop, type AgentNotifyKind } from "$lib/agent-notify";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { aiDisplayName } from "$lib/pane-icons";
-import { paneName, type PaneSpec } from "$lib/session";
+import { type PaneSpec } from "$lib/session";
 import { settings } from "$lib/settings.svelte.js";
-import { focusedPane, tabOfPane } from "$lib/app/tabs.svelte.js";
-import { displayTabTitle } from "$lib/app/titles.svelte.js";
+import { focusedPane } from "$lib/app/tabs.svelte.js";
 import { APP, notifyOs, windowFocused } from "$lib/app/os-notify";
 import { pushAgentBanner } from "$lib/app/agent-banners.svelte.js";
 import { messengerAgent } from "$lib/app/messenger";
-import { buildScopes, scopeLabelForPath, type AgentLink } from "$lib/agent-sessions";
-import { projects } from "$lib/app/project-list.svelte.js";
-import { worktreesOf } from "$lib/app/worktrees.svelte.js";
-import { localFolderOf, type TurnCount } from "$lib/app/agent-turn";
+import { messengerLabel, scopeOf, tileLabel } from "$lib/app/messenger-label";
+import { type AgentLink } from "$lib/agent-sessions";
+import { type TurnCount } from "$lib/app/agent-turn";
 import { agentAlertGroup } from "$lib/dock-alert-groups";
 
 /**
@@ -35,35 +33,7 @@ import { agentAlertGroup } from "$lib/dock-alert-groups";
  * 적지 않는다.
  */
 
-/**
- * 알림에 적을 이름 — 그 타일이 든 **탭의 제목**(탭 바가 그리는 `displayTabTitle` 그대로, 예
- * `aynx · feat-y`). `paneName` 은 로컬 AI 타일에서 셸 라벨(`PowerShell 7`)이라 Claude 타일이 여럿이면
- * 어느 것이 끝났는지 못 가른다. 탭을 못 찾거나 제목이 비었으면 `paneName` 으로 떨어진다.
- */
-function tileLabel(pane: PaneSpec): string {
-  const tab = tabOfPane(pane.id);
-  return (tab ? displayTabTitle(tab).trim() : "") || paneName(pane, t);
-}
-
-/**
- * 메신저(Discord) 알림에 적을 이름 — 폰에서 **어느 일**인지 읽혀야 한다(docs/log/2026-09-27-discord-notify.md
- * "둘째 줄 — 맥락"). 로컬 타일이면 그 폴더가 든 등록 범위(`<프로젝트> · <워크트리>`), 아니면 그 탭의 고정 제목
- * (`TabSpec.pinnedTitle` — 프로젝트·워크트리로 연 탭), 그것도 없으면 창 안 알림과 같은 [`tileLabel`].
- */
-function messengerLabel(pane: PaneSpec): string {
-  return scopeOf(pane) || tabOfPane(pane.id)?.pinnedTitle?.trim() || tileLabel(pane);
-}
-
-/** 로컬 타일의 폴더가 든 등록 범위(`<프로젝트> · <워크트리>`) — 없으면 `null`. 메신저 이름과 지난 알림 묶음이 함께 쓴다 */
-function scopeOf(pane: PaneSpec): string | null {
-  const folder = localFolderOf(pane);
-  if (!folder) return null;
-  const ready = (id: string) => {
-    const w = worktreesOf(id);
-    return w?.state === "ok" ? w.list : null;
-  };
-  return scopeLabelForPath(folder, buildScopes(projects(), ready, null, null).rows) || null;
-}
+// 이름표(`tileLabel` · `scopeOf` · `messengerLabel`)는 `app/messenger-label` 에 산다 — 긴 명령 알림도 같은 이름을 쓴다(2026-11-16).
 
 /** 메신저 둘째 줄 · 대화 가리킴의 재료 — `agentSignal` 이 모아 온다 */
 export interface AgentNotifyExtra extends TurnCount {
@@ -93,6 +63,7 @@ export function notifyAgent(
   const name = tileLabel(pane);
   // 메신저(Discord) — 아래 표면 판정과 **독립**이다(제 켬/끔 · 자리 비움 표). docs/log/2026-09-27-discord-notify.md
   messengerAgent({
+    paneId: pane.id,
     label: messengerLabel(pane),
     kind,
     agent,

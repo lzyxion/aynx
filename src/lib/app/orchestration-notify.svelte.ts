@@ -18,6 +18,7 @@ import { toast } from "$lib/toast.svelte.js";
 import { recordNotification, recordPastNotification } from "$lib/app/notifications.svelte.js";
 import { openOrchNotice } from "$lib/app/orchestration.svelte.js";
 import { NOTICE_EVENT, noticeText, noticeUrgent, type OrchNotice } from "$lib/orchestration/model";
+import { messengerOrchNotice } from "$lib/app/messenger";
 
 /** 이 창이 이미 보인 사건 id */
 const seen = new Set<string>();
@@ -96,7 +97,12 @@ export function startOrchestrationNotify(): void {
   started = true;
   void listen<unknown>(NOTICE_EVENT, (ev) => {
     if (!isNotice(ev.payload)) return;
-    if (show(ev.payload, true)) void ack([ev.payload.id]);
+    if (show(ev.payload, true)) {
+      // 창이 붙어 있는 동안의 사건 — 메신저는 여기서(세션 서버는 붙은 창이 있으면 보내지 않는다). 꺼내 보이기(`drain`)의 사건은
+      // 창이 없던 동안 서버가 이미 보냈다.
+      messengerOrchNotice(ev.payload);
+      void ack([ev.payload.id]);
+    }
   }).catch(() => {});
   void drain().then(restoreRecent);
 }

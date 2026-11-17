@@ -1883,7 +1883,7 @@ fn messenger_prefs_skip_when_default_keep_zero_and_clamp() {
     assert!(text.contains("slack = false"), "{text}");
     assert_eq!(load_at(&path).messenger, sample().messenger);
 
-    // 대화 싣기는 안 정하면 끔 — 섹션이 없는 파일에서도, 다른 칸만 적힌 파일에서도.
+    // 대화 싣기는 안 정하면 비어 있다(= 켬 — 2026-11-16 · `messenger_include_conversation`) — 섹션이 없는 파일에서도, 다른 칸만 적힌 파일에서도.
     let path = tmp.path("no-convo.toml");
     std::fs::write(
         &path,

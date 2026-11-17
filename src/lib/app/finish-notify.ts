@@ -77,12 +77,14 @@ export function tileNotifyGroup(paneId: string, tileName: string): AlertGroup {
  * @param tileName    알림 제목에 넣을 타일 이름 (`aynx · web-01`)
  * @param block       방금 닫힌 블록
  * @param tileVisible 그 타일이 지금 보이는 탭에 있는가 (`Terminal` 의 `visible`)
+ * @param messengerName 메신저 이름표(프로젝트 / 워크트리 — `app/messenger-label`) · 없으면 `tileName`
  */
 export function notifyFinishedBlock(
   paneId: string,
   tileName: string,
   block: CommandBlock,
   tileVisible: boolean,
+  messengerName?: string,
 ): void {
   // 인위적으로 닫힌 블록은 알리지 않는다 — `D` 를 못 본 블록의 "끝난 시각" 은 다음 명령이
   // 시작한 시각이라, 걸린 시간도 종료 코드도 지어낸 값이 된다.
@@ -93,7 +95,7 @@ export function notifyFinishedBlock(
 
   // 메신저(Discord) — 아래 포커스·가시성 표와 **독립**이고 하한도 제 칸(`[messenger] command_min_secs`)이다
   // (docs/log/2026-09-27-discord-notify.md).
-  messengerCommandFinish(tileName, { commandLine: block.commandLine, durationMs, exit: block.exit });
+  messengerCommandFinish(messengerName || tileName, { commandLine: block.commandLine, durationMs, exit: block.exit });
 
   const where = shouldNotifyFinish({
     durationMs,

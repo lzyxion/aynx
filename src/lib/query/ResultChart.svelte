@@ -4,6 +4,17 @@
 
   /** 고른 축 · 종류 — 결과마다 기억한다(`RunResults` 의 `chosenTab` 과 같은 꼴 · 저장하지 않는다 — 다시 실행하면 기본 축으로) */
   const chosenPick = new WeakMap<DbQueryResult, ChartPick>();
+
+  /** 부르는 쪽이 들고 있는 고른 축(데이터 탭 — 다시 읽어도 남게). 열 이름 묶음 `cols` 가 같은 결과에만 쓴다 */
+  export interface KeptPick {
+    cols: string;
+    pick: ChartPick;
+  }
+
+  /** 열 이름 묶음 — 열 번호로 기억한 축이 같은 열을 가리키는지의 근거 */
+  export function columnsKey(result: DbQueryResult): string {
+    return JSON.stringify(result.columns.map((c) => c.name));
+  }
 </script>
 
 <script lang="ts">
@@ -47,17 +58,24 @@
     result,
     classes,
     lead,
+    kept = $bindable(),
   }: {
     result: DbQueryResult;
     /** `chart-model.classifyColumns(result)` — 부르는 쪽([표 | 차트] 단추의 비활성 판정)이 이미 지었다 */
     classes: ColClass[];
     /** 조절 줄 맨 앞(부르는 쪽의 [표 | 차트] 전환) */
     lead?: Snippet;
+    /** 묶으면 결과가 바뀌어도(데이터 탭의 조건 · 쪽 · 정렬) 고른 축 · 종류가 남는다 — 열 이름 묶음이 다르면 기본 축 */
+    kept?: KeptPick;
   } = $props();
 
   // `chosenPick` 에서 꺼낸 처음 값 — 결과가 바뀌면 부르는 쪽이 `{#key}` 로 새로 만든다
   // svelte-ignore state_referenced_locally
-  let pick = $state<ChartPick>(chosenPick.get(result) ?? defaultPick(classes));
+  const colsKey = columnsKey(result);
+  // svelte-ignore state_referenced_locally
+  let pick = $state<ChartPick>(
+    chosenPick.get(result) ?? (kept?.cols === colsKey ? normalizePick(kept.pick, classes) : defaultPick(classes)),
+  );
 
   function setPick(p: ChartPick) {
     const next = normalizePick(p, classes);
@@ -65,6 +83,7 @@
     if (next.ys.join() !== pick.ys.join()) hidden = new Set();
     pick = next;
     chosenPick.set(result, pick);
+    kept = { cols: colsKey, pick };
   }
 
   const columns = $derived(result.columns);

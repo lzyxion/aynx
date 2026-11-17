@@ -435,9 +435,14 @@
   const FLOATING = ".overlay, .modal, .menu, .menu-backdrop, [role='dialog'], [role='menu']";
 
   function onOutsidePointerDown(ev: PointerEvent): void {
-    if (!chatDockOpen() || chatDockPinned()) return;
     const target = ev.target;
     if (!(target instanceof Element)) return;
+    // 채팅 목록 — 목록 · 제목 단추(토글은 제 몫) · 떠 있는 줄 메뉴 밖을 누르면 목록만 닫는다(독 안 · 고정이어도 — 2026-11-17 사용자)
+    if (listOpen && !target.closest("[data-chat-dock-rows], [data-chat-dock-list]") && !target.closest(FLOATING)) {
+      if (renaming) commitRename(); // 이름 칸의 blur 와 같은 뜻(남긴다) — 목록이 먼저 사라져도 글을 잃지 않게
+      listOpen = false;
+    }
+    if (!chatDockOpen() || chatDockPinned()) return;
     if (dockEl?.contains(target)) return;
     if (target.closest(FLOATING)) return;
     if (target.closest("[data-chrome-toggle]")) return;

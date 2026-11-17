@@ -16,10 +16,10 @@ pub(crate) fn messenger_prefs() -> MessengerPrefs {
     settings_path().map(|path| load_at(&path).messenger).unwrap_or_default()
 }
 
-/// `[messenger] include_conversation` 이 켜져 있는가 — **블로킹**(파일을 읽는다). 메신저가 보내는 순간
+/// `[messenger] include_conversation` 이 켜져 있는가(안 정하면 켬 — 2026-11-16) — **블로킹**(파일을 읽는다). 메신저가 보내는 순간
 /// 프런트의 표시와 따로 **한 번 더** 본다: 대화에서 나온 글자는 켠 사람에게만 나간다([`crate::messenger`]).
 pub(crate) fn messenger_include_conversation() -> bool {
-    settings_path().is_some_and(|path| load_at(&path).messenger.include_conversation == Some(true))
+    settings_path().is_some_and(|path| load_at(&path).messenger.include_conversation != Some(false))
 }
 
 /// 저장된 `[app] language` 만 뽑아 읽는다 (안 정했으면 `None`).

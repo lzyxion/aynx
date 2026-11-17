@@ -100,15 +100,26 @@ impl FinishedRun {
         }
     }
 
-    /// 이름표 — 제목, 없으면(명령 줄을 싣기로 했으면) 명령 앞부분, 그것도 없으면 "작업안".
+    /// 이름표 — `작업안 «제목»`, 없으면(명령 줄을 싣기로 했으면) 명령 앞부분, 그것도 없으면 "작업안".
     pub(crate) fn label(&self, include_command: bool) -> String {
         if let Some(t) = &self.title {
-            return clip(t, 80);
+            return plan_label(Some(t));
         }
         if include_command && !self.command.trim().is_empty() {
             return clip(self.command.trim(), 80);
         }
-        tr!(ko: "작업안", en: "Task plan")
+        plan_label(None)
+    }
+
+    /// 메신저 등급 — 성공 = 완료 · 일부 실패 · 실패 = 실패 · 사람이 취소 = 표시 없음.
+    pub(crate) fn grade(&self) -> Option<crate::messenger::Grade> {
+        if self.cancelled_by_user || self.state == "cancelled" {
+            return None;
+        }
+        Some(match self.state.as_str() {
+            "succeeded" => crate::messenger::Grade::Done,
+            _ => crate::messenger::Grade::Failed,
+        })
     }
 
     /// 결과 한 토막 — `실행 성공` · `일부 실패` · `실패` · `취소됨`(+ ` · 자동 승인`).
@@ -127,6 +138,14 @@ impl FinishedRun {
         } else {
             word
         }
+    }
+}
+
+/// 메신저 이름표 `작업안 «제목»`(제목이 없으면 "작업안") — 결과 · 승인 대기가 같이 쓴다.
+fn plan_label(title: Option<&str>) -> String {
+    match title.map(|t| clip(t, 80)).filter(|t| !t.is_empty()) {
+        Some(t) => tr!(ko: "작업안 «{t}»", en: "Task plan «{t}»"),
+        None => tr!(ko: "작업안", en: "Task plan"),
     }
 }
 
@@ -170,7 +189,8 @@ pub(crate) async fn send_messenger(run: FinishedRun, log: impl Fn(String)) {
         return;
     }
     let label = run.label(prefs.include_command == Some(true));
-    let message = crate::messenger::Message::plain(crate::instance::window_title(crate::instance::DEV), label, run.outcome());
+    let message = crate::messenger::Message::plain(crate::instance::window_title(crate::instance::DEV), label, run.outcome())
+        .graded(run.grade());
     if let Err(e) = crate::messenger::send_plain(message, channels(&prefs)).await {
         log(format!("messenger — run result not sent: {e}"));
     }
@@ -309,34 +329,30 @@ fn targets_line(op: &Operation) -> String {
     tr!(ko: "대상: {s}", en: "Targets: {s}")
 }
 
-/// 만료 줄 — 이 PC 의 시계로 `HH:MM`(만료 없음이면 그렇게).
-fn expiry_line(op: &Operation) -> String {
+/// 만료 토막 — 이 PC 의 시계로 `HH:MM 만료`(만료 없음이면 그렇게). 첫 줄 사건 뒤에 붙는다(2026-11-16 — 덧줄에서 올림).
+fn expiry_part(op: &Operation) -> String {
     match op.expires_at.and_then(chrono::DateTime::from_timestamp_millis) {
         Some(t) => {
             let at = t.with_timezone(&chrono::Local).format("%H:%M").to_string();
-            tr!(ko: "만료: {at}", en: "Expires: {at}")
+            tr!(ko: "{at} 만료", en: "expires {at}")
         }
-        None => tr!(ko: "만료 없음", en: "No expiry"),
+        None => tr!(ko: "만료 없음", en: "no expiry"),
     }
 }
 
 /// **승인 대기 한 통** — 평문 구조(서식 · 걷기 · 멘션 막기는 채널이 — `messenger::Channel::render`). 순수(시험 대상).
 ///
-/// 첫 줄 `앱 · 원격 명령 승인 대기 — 제목`, 그 아래 요청 타일 · (켰으면) AI 설명 · 앱 분석 한 줄 · (어긋나면) 주의 · 대상 · 만료 ·
-/// (명령 줄 싣기를 켰으면) 원문 앞 300자 · 끝줄 "승인은 앱에서만". AI 가 쓴 글자(제목 · 설명)와 타일 이름은 **남의 글자**라 다른 줄과
-/// 똑같이 채널이 걷는다. 승인 단추 · 링크는 없다.
+/// 첫 줄 `🟡 확인 필요 · 작업안 «제목» — 원격 명령 승인 대기 · 15:35 만료`(2026-11-16 — 등급 · 만료를 첫 줄로), 그 아래 요청 타일 ·
+/// (켰으면) AI 설명 · 앱 분석 한 줄 · (어긋나면) 주의 · 대상 · (명령 줄 싣기를 켰으면) 원문 앞 300자 · 끝줄 "승인은 앱에서만". AI 가 쓴
+/// 글자(제목 · 설명)와 타일 이름은 **남의 글자**라 다른 줄과 똑같이 채널이 걷는다. 승인 단추 · 링크는 없다.
 pub(crate) fn pending_message(op: &Operation, include_summary: bool, include_command: bool, app: &str) -> crate::messenger::Message {
-    let label = if op.db.is_some() {
+    let what = if op.db.is_some() {
         tr!(ko: "DB 쓰기 승인 대기", en: "Database write awaiting approval")
     } else {
         tr!(ko: "원격 명령 승인 대기", en: "Remote command awaiting approval")
     };
-    let event = op
-        .title
-        .as_deref()
-        .map(|t| clip(t, 80))
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| tr!(ko: "작업안", en: "Task plan"));
+    let label = plan_label(op.title.as_deref());
+    let event = format!("{what} · {}", expiry_part(op));
     let mut lines = Vec::new();
     if let Some(who) = op.requested_by.as_deref().filter(|w| !w.trim().is_empty()) {
         lines.push(tr!(ko: "요청: AI · {who}", en: "Requested by: AI · {who}"));
@@ -354,7 +370,6 @@ pub(crate) fn pending_message(op: &Operation, include_summary: bool, include_com
         lines.push(l);
     }
     lines.push(targets_line(op));
-    lines.push(expiry_line(op));
     if include_command && !op.command.trim().is_empty() {
         let c = clip(&op.command, 300);
         lines.push(if op.db.is_some() {
@@ -364,7 +379,7 @@ pub(crate) fn pending_message(op: &Operation, include_summary: bool, include_com
         });
     }
     lines.push(tr!(ko: "승인은 {app} 앱(또는 원격 웹)에서만", en: "Approve only in the {app} app (or its remote web)"));
-    crate::messenger::Message::with_lines(app, label, event, lines, op.mismatch)
+    crate::messenger::Message::with_lines(app, label, event, lines, op.mismatch).graded(Some(crate::messenger::Grade::Action))
 }
 
 /// 창이 없을 때(트레이 GUI · 세션 서버 혼자)의 승인 대기 한 통 — 규칙을 지나면 보낸다. 실패는 로그 한 줄.
@@ -445,7 +460,11 @@ mod tests {
         assert!(text.contains("앱 분석: 삭제 · find · sudo · AI 설명과 다름"), "{text}");
         assert!(text.contains("확인해 주세요 — AI 설명은 '읽기'지만 원문에는 삭제(find -delete)"), "{text}");
         assert!(text.contains("대상: web-01, s-2"), "{text}");
-        assert!(text.contains("만료 없음"), "{text}");
+        assert!(
+            text.starts_with("작업안 «오래된 압축 로그 지우기» — 원격 명령 승인 대기 · 만료 없음"),
+            "첫 줄에 이름표 · 사건 · 만료: {text}"
+        );
+        assert_eq!(m.grade(), Some(crate::messenger::Grade::Action));
         assert!(!text.contains("명령:"), "명령 줄은 include_command 를 켠 사람에게만");
         assert!(text.contains("승인은 Aynx 앱(또는 원격 웹)에서만"), "{text}");
         assert!(m.is_alert(), "어긋나면 경고 색");
@@ -497,7 +516,7 @@ mod tests {
     #[test]
     fn label_prefers_title_then_command_only_when_allowed() {
         crate::i18n::set_lang(crate::i18n::Lang::Ko);
-        assert_eq!(run("succeeded", Some("nginx 재시작"), false).label(false), "nginx 재시작");
+        assert_eq!(run("succeeded", Some("nginx 재시작"), false).label(false), "작업안 «nginx 재시작»");
         assert_eq!(run("succeeded", None, false).label(true), "systemctl restart nginx");
         assert_eq!(run("succeeded", None, false).label(false), "작업안", "명령 줄은 include_command 를 켠 사람에게만");
     }
@@ -511,6 +530,11 @@ mod tests {
         let mut r = run("partial", None, false);
         r.cancelled_by_user = true;
         assert_eq!(r.outcome(), "실행 취소됨");
+        assert_eq!(r.grade(), None, "사람이 멈춘 것은 등급 없음");
+        use crate::messenger::Grade;
+        assert_eq!(run("succeeded", None, false).grade(), Some(Grade::Done));
+        assert_eq!(run("partial", None, false).grade(), Some(Grade::Failed));
+        assert_eq!(run("failed", None, false).grade(), Some(Grade::Failed));
     }
 
     #[test]

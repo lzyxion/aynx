@@ -77,8 +77,10 @@
     agentStateResumed,
     dropAgent,
     isAgentPane,
+    isLiveAgentPane,
     onAgentHookSignal,
   } from "$lib/app/agent-status.svelte.js";
+  import { messengerLabel } from "$lib/app/messenger-label";
   import { linkResumedAutorun, seedAgentLink } from "$lib/app/agent-sessions.svelte.js";
   import { forgetReportedCwd, noteReportedCwd, pathLinkPlace } from "$lib/app/pane-cwd.svelte.js";
   import { notifyFinishedBlock } from "$lib/app/finish-notify";
@@ -2998,7 +3000,7 @@
             // 사람에게 하는 말이다 (docs/log/2026-09-16-finish-notify-block-marks-bell.md).
             // `visible` 이 곧 "지금 보이는 탭에 있는가" 라, 포커스·가시성 판정의 절반이
             // 여기서 그대로 넘어간다.
-            notifyFinishedBlock(pane.id, paneName(pane, tr), block, visible);
+            notifyFinishedBlock(pane.id, paneName(pane, tr), block, visible, messengerLabel(pane));
             if (!aiOn) return;
             // **재생(떨어진 세션에 다시 붙기)이 다시 만든 블록은 올리지 않는다**(2026-11-10) — 그 바이트가 흐를 때 거울을 쥔 쪽(옛 페이지의
             // 프런트 · 창이 없던 동안의 서버 해석기)이 이미 올렸다. 다시 올리면 시작 시각이 달라 같은 명령이 다른 블록으로 하나 더 선다.
@@ -3072,6 +3074,9 @@
       name: () => paneName(pane, tr),
       get visible() {
         return visible;
+      },
+      get agent() {
+        return isLiveAgentPane(pane);
       },
     });
     const oscSetup = attachSetupOsc(t, {

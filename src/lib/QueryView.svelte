@@ -56,6 +56,7 @@
   import { comboFromEvent, effectiveCombo, resolveBindings } from "$lib/keybindings";
   import { settings } from "$lib/settings.svelte.js";
   import { toast } from "$lib/toast.svelte.js";
+  import type { KeptPick } from "$lib/query/ResultChart.svelte";
 
   /**
    * **쿼리 타일의 몸통** (`kind:"query"` — 쿼리 타일 6단계, docs/log/2026-10-12-query-tile.md).
@@ -206,6 +207,7 @@
     },
     dropResults(n) {
       ses.dropResults(n);
+      delete resultViews[n];
     },
   });
 
@@ -326,6 +328,11 @@
     const n = Number(v);
     if ((QUERY_ROW_LIMITS as readonly number[]).includes(n)) noteQueryMaxRows(pane.id, n as QueryRowLimit);
   }
+  /**
+   * 결과 칸의 [표 | 차트] 와 차트의 고른 축 — **스크립트 탭마다** 들고 있어 다시 실행해도 남는다(실행 중에는 결과 칸이 내려가
+   * `RunResults` 가 새로 서므로 여기 둔다 · 저장 안 함 · 닫은 탭은 `dropResults` 에서 걷는다). 축은 열 이름이 같을 때만 이어 쓴다.
+   */
+  const resultViews = $state<Record<number, { view?: "grid" | "chart"; chartPick?: KeptPick }>>({});
   const rowLimit = $derived<RowLimitProps>({ value: String(maxRows), options: rowItems, disabled: ses.running !== null, onchange: pickRows });
 
   // ── 스키마 트리 ─────────────────────────────────────────────────────────
@@ -1090,6 +1097,10 @@
             limit={rowLimit}
             begin={ses.txb.begin.shown ? { disabled: ses.txb.begin.disabled, onclick: () => void ses.txCall("begin") } : null}
             onlocate={ses.locate}
+            bind:view={() => resultViews[sc.activeN]?.view, (v) => (resultViews[sc.activeN] = { ...resultViews[sc.activeN], view: v })}
+            bind:chartPick={
+              () => resultViews[sc.activeN]?.chartPick, (p) => (resultViews[sc.activeN] = { ...resultViews[sc.activeN], chartPick: p })
+            }
           />
         {:else if ses.outcome.kind === "cancelled"}
           <p class="out-note" data-query-cancelled>{t("pane.query.cancelled")}</p>

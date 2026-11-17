@@ -20,7 +20,9 @@
  *
  * ## 기본은 최소한만 싣는다
  *
- * 한 통은 `aynx · <탭/타일 이름>` 과 `<사건>` 이다. 끝난 명령의 **명령 줄**은 `include_command` 를 켠
+ * 한 통은 `<등급> · <이름표>` 와 `<사건>` 이다(2026-11-16 — 🟡 확인 필요 · 🟢 완료 · ❌ 실패, [`MessengerGrade`]. 앱 이름은 첫 줄에
+ * 싣지 않는다 — 보낸 사람 이름이 앱이다). 진단성 사건(앨범의 깨움 · 종료 미확인 …) · AI 타일의 프로그램 알림 · 1분 미만 턴은 보내지 않고,
+ * 같은 타일의 같은 사건이 30초 안에 다시 오면 한 통으로 친다([`createCoalesceGate`]). 끝난 명령의 **명령 줄**은 `include_command` 를 켠
  * 사람에게만 싣는다 — 명령 줄에는 비밀(토큰·암호가 든 인자)이 섞일 수 있고, 그 글자가 메신저 서버로 간다.
  * 프로그램 알림(OSC 9·777)의 본문은 싣는다: 프로그램이 **알림으로 쓰라고** 보낸 글자다(이미 다듬어져 온다 —
  * `$lib/osc-notify` 의 `sanitizeNotifyText`).
@@ -32,8 +34,8 @@
  * (훅 `tool-done` 수) · 이번 턴에 바뀐 파일 수(로컬 타일만 — 턴 시작과 끝의 git 도장을 견준다). 모르는 칸은 뺀다.
  * 전부 **대화 밖**의 사실이라 기본으로 싣는다.
  *
- * 대화에서 나온 글자(대화 제목 · 에이전트 마지막 답 앞부분 · 권한을 묻는 도구)는 `include_conversation` 을
- * 켠 사람에게만, 그리고 **프런트를 지나지 않는다** — 여기는 대화의 가리킴만 넘기고 Rust 가 대화 파일에서 읽어
+ * 대화에서 나온 글자(대화 제목 · 에이전트 마지막 답 앞부분 · 권한을 묻는 도구와 입력 한 줄)는 `include_conversation`(2026-11-16 부터
+ * **기본 켬**)일 때만, 그리고 **프런트를 지나지 않는다** — 여기는 대화의 가리킴만 넘기고 Rust 가 대화 파일에서 읽어
  * 몸통에 붙인다(`src-tauri/src/messenger.rs`).
  */
 
@@ -46,9 +48,78 @@ export type MessengerKind =
   | "command-finish"
   | "osc"
   | "operation-result"
-  | "operation-pending";
+  | "operation-pending"
+  /** 앨범(오케스트레이션) 감독 사건 — 제 켬/끔 칸은 없고 전송 조건만 본다(창이 없으면 세션 서버가 같은 표로 보낸다) */
+  | "orchestration";
 
-/** 언제 보내나 — `settings.toml` 의 `[messenger] when` 값(키는 바꾸지 않는다) */
+/**
+ * 알림의 **등급** — 첫 줄 앞 표시(2026-11-16 · 목업 SLiVDZuGJvL9QYg4R93Kav): `action` 🟡 확인 필요 · `done` 🟢 완료 · `failed` ❌ 실패.
+ * `null` 은 표시 없음. 표시 · 낱말은 Rust 가 그린다(`messenger.rs` 의 `Grade`).
+ */
+export type MessengerGrade = "action" | "done" | "failed";
+
+/** 턴 끝 알림을 보내는 가장 짧은 턴 — 이보다 짧게 끝난 턴은 메신저로 보내지 않는다(자리를 비울 만한 일이 아니다) */
+export const AGENT_STOP_MIN_MS = 60_000;
+
+/** 같은 타일 · 같은 사건이 이 안에 다시 오면 한 통으로 친다(두 번째는 보내지 않는다) */
+export const MESSENGER_COALESCE_MS = 30_000;
+
+/**
+ * 앨범 감독 사건 → 등급. `null` 이면 메신저로 보내지 않는다(진단성 — 종료 미확인 · 깨움 · 보고 없는 턴 · 턴 시한 · 이어받음 · 모르는 낱말).
+ * 표는 Rust `orchestration/notice.rs` 의 `messenger_grade` 와 **같다**(창이 없으면 세션 서버가 보낸다).
+ */
+export function noticeGrade(kind: string): MessengerGrade | null {
+  switch (kind) {
+    case "verify-approval":
+    case "verify-needs-human":
+    case "worker-blocked":
+    case "auto-merge-stopped":
+    case "repo-identity-changed":
+    case "commit-rejected":
+    case "limit":
+    case "coordinator-exited":
+      return "action";
+    case "run-ended":
+      return "done";
+    case "verify-failed":
+    case "spawn-failed":
+    case "worker-exited":
+    case "reviewer-exited":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+/** 끝난 명령 → 등급 — 종료 코드가 0 이 아닌 수면 실패, 그 밖(0 · 모름)은 완료 */
+export function commandGrade(exit: number | null): MessengerGrade {
+  return typeof exit === "number" && exit !== 0 ? "failed" : "done";
+}
+
+/** 작업안 결과 토막의 색 → 등급 — 초록 = 완료 · 오류색 = 실패 · 무채(사람이 취소) = 표시 없음 */
+export function operationGrade(tone: "good" | "bad" | "plain"): MessengerGrade | null {
+  return tone === "good" ? "done" : tone === "bad" ? "failed" : null;
+}
+
+/**
+ * **한 통으로 묶기** — 같은 타일의 같은 사건이 [`MESSENGER_COALESCE_MS`] 안에 다시 오면 `false`(보내지 않는다). 순수 —
+ * 시계는 부르는 쪽이 넘긴다. 다른 사건(권한 물음 뒤의 턴 끝)은 새 소식이라 보낸다.
+ */
+export function createCoalesceGate(windowMs = MESSENGER_COALESCE_MS): (key: string, kind: string, now: number) => boolean {
+  const last = new Map<string, number>();
+  return (key, kind, now) => {
+    const k = `${key}\u0000${kind}`;
+    const at = last.get(k);
+    if (at !== undefined && now - at < windowMs) return false;
+    last.set(k, now);
+    if (last.size > 200) {
+      for (const [x, t] of last) if (now - t >= windowMs) last.delete(x);
+    }
+    return true;
+  };
+}
+
+/** 전송 조건(자리 비움 시 · 항상) — `settings.toml` 의 `[messenger] when` 값(키는 바꾸지 않는다) */
 export type MessengerWhen = "away" | "always";
 
 /** 후보 표 — 키는 저장 값, 값은 문구 키 (`TAB_STYLES` 와 같은 모양) */
@@ -124,7 +195,8 @@ export function resolveMessengerRules(raw: MessengerPrefsRaw | undefined): Messe
     operationPending: r.operation_pending ?? true,
     includeSummary: r.include_summary ?? true,
     includeCommand: r.include_command ?? false,
-    includeConversation: r.include_conversation ?? false,
+    // 2026-11-16 사용자 결정 — 기본 켬(그 전에는 끔). Rust `messenger_include_conversation` 과 같은 기본값.
+    includeConversation: r.include_conversation ?? true,
     awayAfterMin: r.away_after_min ?? DEFAULT_MESSENGER_AWAY_AFTER_MIN,
     discord: r.discord ?? true,
     slack: r.slack ?? true,
@@ -151,7 +223,7 @@ export interface MessengerFacts {
   veiled: boolean;
   /** 이 창에서 마지막 입력 뒤 지난 시간(ms) (`app/idle-lock` 의 `msSinceLastInput()`) */
   idleMs: number;
-  /** 긴 명령만 — 그 명령이 걸린 시간(ms) */
+  /** 긴 명령 — 그 명령이 걸린 시간(ms) · 턴 끝 — 그 턴이 걸린 시간(ms, 모르면 `null` — 그때는 거르지 않는다) */
   durationMs?: number | null;
 }
 
@@ -184,8 +256,13 @@ export function isAway(rules: Pick<MessengerRules, "awayAfterMin">, facts: Messe
 export function shouldSendMessenger(kind: MessengerKind, rules: MessengerRules, facts: MessengerFacts): boolean {
   if (messengerChannels(rules).length === 0) return false;
   switch (kind) {
-    case "agent-stop":
+    case "agent-stop": {
       if (!rules.agentStop) return false;
+      const ms = facts.durationMs;
+      if (typeof ms === "number" && Number.isFinite(ms) && ms < AGENT_STOP_MIN_MS) return false;
+      break;
+    }
+    case "orchestration":
       break;
     case "agent-permission":
       if (!rules.agentPermission) return false;
@@ -224,6 +301,8 @@ export interface MessengerMessage {
   event: string;
   /** 둘째 줄 — 없으면 빈 글자 */
   second: string;
+  /** 등급 — 없으면 앞 표시 없음 */
+  grade?: MessengerGrade | null;
 }
 
 /** 에이전트 턴 끝 · 권한 물음 — OS 알림 본문과 같은 낱말(`app.agent.*.body`) */

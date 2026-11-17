@@ -30,6 +30,8 @@ export interface ProgramNotifyHost {
   name(): string;
   /** 지금 보이는 탭에 있는가 */
   readonly visible: boolean;
+  /** 에이전트(AI)가 살아 있는 타일인가 — 그 타일의 프로그램 알림은 메신저로 보내지 않는다(턴 끝 · 권한 물음과 겹친다) */
+  readonly agent: boolean;
 }
 
 /** 설정 스크립트 끝 신호가 타일에서 읽고 쓰는 것 */
@@ -108,7 +110,7 @@ export function attachProgramNotify(t: Terminal, h: ProgramNotifyHost): IDisposa
     // 꺼져 있어도 알아본 시퀀스는 **삼킨다**(호출부가 `true` 를 돌려준다) — 띄우지만 않는다.
     if (!settings.oscNotify) return;
     if (!programNotifyGate(Date.now())) return;
-    notifyFromProgram(h.paneId, h.name(), notice, h.visible);
+    notifyFromProgram(h.paneId, h.name(), notice, h.visible, h.agent);
   };
   const osc9Notify = t.parser.registerOscHandler(9, (data) => {
     const notice = parseOsc9Notify(data);

@@ -1070,7 +1070,19 @@
   /** 경로 칸의 Enter — 읽혔으면 `true`(칸이 닫힌다), 못 읽었으면 `false`(칸이 남고 오류 줄이 이유를 말한다) */
   async function submitPath(path: string): Promise<boolean> {
     if (offline) return false;
-    return ls.load(path);
+    if (await ls.load(path)) return true;
+    // **파일 경로를 붙여넣었으면** 그 파일이 든 폴더를 열고 파일을 고른다(문서 타일 [경로 복사] → 경로 칸 —
+    // 폴더로 읽으면 Windows 는 "디렉터리 이름이 올바르지 않습니다"(os error 267)로 거절한다). 폴더가 아닌 것이
+    // 확인될 때만 이 길이고, 그 밖의 실패는 첫 읽기의 오류 줄을 그대로 둔다.
+    let entry: SftpEntry;
+    try {
+      entry = await backend.stat(path);
+    } catch {
+      return false;
+    }
+    const isDir = entry.kind === "dir" || (entry.kind === "symlink" && entry.linkIsDir);
+    if (isDir) return false;
+    return ls.load(backend.parentOf(entry.path), [entry.path]);
   }
 
   /**

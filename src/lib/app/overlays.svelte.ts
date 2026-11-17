@@ -284,6 +284,15 @@ export function openSnippetSettings(): void {
 }
 
 /**
+ * 팔레트의 **"템플릿 관리…"** 줄 — 설정 독을 열고 템플릿 섹션을 펴 준다(2026-11-17). [`openSnippetSettings`] 와 짝이고 배관도 같다
+ * (게시판 한 칸 `settingsNav` → 독 열기). 템플릿을 **여는** 길은 팔레트의 템플릿 줄이고, 이 함수는 이름 바꾸기 · 지우기로 가는 길만 맡는다.
+ */
+export function openTemplateSettings(): void {
+  settingsNav.want = "templates";
+  openDock("settings");
+}
+
+/**
  * **설정 › 보안**을 연다 — 부팅의 "설정에 없는 AI 위임" 알림이 누르는 단추
  * (docs/log/2026-09-21-fleet-delegation-ui.md).
  *

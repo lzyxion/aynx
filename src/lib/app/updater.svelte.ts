@@ -85,7 +85,7 @@ function accept(next: UpdateView): void {
     void invoke<UpdateView>("update_mark_toasted", { version }).catch(() => {});
     const title = t("app.update.toast.available.title", { version });
     const sub = t("app.update.toast.available.sub", { current: next.current });
-    // 알림 카드(목업 — 아이콘 · 굵은 제목 · 흐린 줄 · [바뀐 점 보기] 채움 · [나중에] 테) — 자리 · 시계 · 닫기는 다른 토스트와 같다
+    // 알림 카드(목업 — 아이콘 · 굵은 제목 · 흐린 줄 · [새 소식 보기] 채움 · [나중에] 테) — 자리 · 시계 · 닫기는 다른 토스트와 같다
     toast.info(`${title} · ${sub}`, {
       ms: 15000,
       tag: "update-available",

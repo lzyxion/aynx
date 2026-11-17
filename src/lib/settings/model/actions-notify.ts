@@ -118,9 +118,9 @@ export function setMessengerIncludeCommand(on: boolean) {
   settings.current.messenger.include_command = on ? true : undefined;
 }
 
-/** 대화 내용 싣기 — 끔이 기본이라 **켤 때만** 값을 남긴다 (글자는 Rust 가 붙인다 — `messenger.rs`) */
+/** 대화 내용 싣기 — 켬이 기본이라(2026-11-16 — 그 전에는 끔) **끌 때만** 값을 남긴다 (글자는 Rust 가 붙인다 — `messenger.rs`) */
 export function setMessengerIncludeConversation(on: boolean) {
-  settings.current.messenger.include_conversation = on ? true : undefined;
+  settings.current.messenger.include_conversation = on ? undefined : false;
 }
 
 /**

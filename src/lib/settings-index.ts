@@ -55,6 +55,10 @@ export const SETTINGS_SECTIONS = [
   { id: "snippets", labelKey: "settings.nav.snippets", icon: "snippet" },
   // 트리거는 터미널의 새 출력에 하이라이트·링크·툴팁을 붙이는 일이라 스니펫 곁이다.
   { id: "triggers", labelKey: "settings.nav.triggers", icon: "zap" },
+  // 템플릿(2026-11-17 사용자 — 트리거 아래)은 터미널 안의 일이 아니라 탭 하나를 여는 법이라, 터미널 일인 스니펫 · 트리거 뒤
+  // 묶음 끝에 둔다. 값은 스니펫처럼 자기 파일(`tab-templates.json`)에 살고 즉시 저장된다. 그림은 팔레트의 템플릿 줄과 같은
+  // 배치(`layout`)다.
+  { id: "templates", labelKey: "settings.nav.templates", icon: "layout" },
 
   // ── 묶음 3: **에이전트의 일** ──────────────────────────────────────────────────
   { id: "ai", labelKey: "settings.nav.ai", icon: "ai", dividerBefore: true },

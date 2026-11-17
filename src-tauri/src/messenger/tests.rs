@@ -6,6 +6,7 @@ const D: Channel = Channel::Discord;
 fn msg(app: &str, label: &str, event: &str, second: &str) -> Message {
     Message {
         app: app.into(),
+        grade: None,
         label: label.into(),
         event: event.into(),
         second: second.into(),
@@ -109,27 +110,27 @@ fn slack_escaping_blocks_mentions_and_links() {
 fn slack_render_shapes() {
     assert_eq!(
         S.render(&msg("aynx", "web-01", "끝", ""), &[]),
-        "*aynx · web-01* — 끝"
+        "*web-01* — 끝"
     );
     assert_eq!(
         S.render(&msg("aynx (dev)", "a<b>", "x & y", "  "), &[]),
-        "*aynx (dev) · a&lt;b&gt;* — x &amp; y"
+        "*a&lt;b&gt;* — x &amp; y"
     );
     assert_eq!(
         S.render(&msg("aynx", "a", "x", "12분 30초"), &[]),
-        "*aynx · a* — x\n12분 30초"
+        "*a* — x\n12분 30초"
     );
     // 실패 문구의 괄호는 Slack 에서 걷지 않는다(Discord 와 달리 제어 글자가 아니다)
     assert_eq!(
         S.render(&msg("aynx", "t", "명령 실패 · 3분 05초 (코드 1)", ""), &[]),
-        "*aynx · t* — 명령 실패 · 3분 05초 (코드 1)"
+        "*t* — 명령 실패 · 3분 05초 (코드 1)"
     );
     assert_eq!(
         S.render(
             &msg("aynx", "t", "프로그램 알림 — <!channel> [x](y)", ""),
             &[]
         ),
-        "*aynx · t* — 프로그램 알림 — &lt;!channel&gt; [x](y)"
+        "*t* — 프로그램 알림 — &lt;!channel&gt; [x](y)"
     );
     assert!(S
         .test_text()
@@ -150,7 +151,7 @@ fn slack_conversation_lines_keep_our_quote_marker() {
         stop,
         vec![
             "「제목 &lt;!here&gt;」".to_string(),
-            "> see &lt;https://evil|here&gt; &amp; more lines".to_string(),
+            "> see &lt;https://evil|here&gt; &amp; more\n> lines".to_string(),
         ]
     );
     let perm: Vec<String> = conversation_block(AgentEvent::Permission, None, &t)
@@ -168,7 +169,7 @@ fn slack_conversation_lines_keep_our_quote_marker() {
     );
     assert_eq!(
         body,
-        "*aynx · p* — e\n1분 00초\n> see &lt;https://evil|here&gt; &amp; more lines"
+        "*p* — e\n1분 00초\n> see &lt;https://evil|here&gt; &amp; more\n> lines"
     );
 }
 
@@ -312,20 +313,20 @@ fn discord_render_matches_the_old_front_format() {
     // 머리 — 앱 이름 · 이름표를 굵게
     assert_eq!(
         D.render(&msg("aynx", "web-01", "끝", ""), &[]),
-        "**aynx · web-01** — 끝"
+        "**web-01** — 끝"
     );
     assert_eq!(
         D.render(&msg("aynx (dev)", "a*b", "끝", ""), &[]),
-        r"**aynx \(dev\) · a\*b** — 끝"
+        r"**a\*b** — 끝"
     );
     // 둘째 줄 — 비면 한 줄
     assert_eq!(
         D.render(&msg("aynx", "a", "x", "  "), &[]),
-        "**aynx · a** — x"
+        "**a** — x"
     );
     assert_eq!(
         D.render(&msg("aynx", "a", "x", "12분 30초"), &[]),
-        "**aynx · a** — x\n12분 30초"
+        "**a** — x\n12분 30초"
     );
     // 사건에 섞인 남의 글자 — 명령 줄 · OSC 본문 · 에이전트 이름 · 여러 줄
     assert_eq!(
@@ -333,43 +334,123 @@ fn discord_render_matches_the_old_front_format() {
             &msg("aynx", "t", "\"npm run *build*\" 끝남 · 3분 05초", ""),
             &[]
         ),
-        r#"**aynx · t** — "npm run \*build\*" 끝남 · 3분 05초"#
+        r#"**t** — "npm run \*build\*" 끝남 · 3분 05초"#
     );
     assert_eq!(
         D.render(&msg("aynx", "t", "Program notification — [x](y)", ""), &[]),
-        r"**aynx · t** — Program notification — \[x\]\(y\)"
+        r"**t** — Program notification — \[x\]\(y\)"
     );
     assert_eq!(
         D.render(&msg("aynx", "t", "Claude Code 작업이 끝났습니다", ""), &[]),
-        "**aynx · t** — Claude Code 작업이 끝났습니다"
+        "**t** — Claude Code 작업이 끝났습니다"
     );
     assert_eq!(
         D.render(&msg("aynx", "t", "프로그램 알림 — a\n\nb", ""), &[]),
-        "**aynx · t** — 프로그램 알림 — a b"
+        "**t** — 프로그램 알림 — a b"
     );
     // 알려진 차이 하나: 실패 문구의 괄호 `(코드 1)` 는 이제 걷힌다(Discord 가 그리는 모양은 같다).
     assert_eq!(
         D.render(&msg("aynx", "t", "명령 실패 · 3분 05초 (코드 1)", ""), &[]),
-        r"**aynx · t** — 명령 실패 · 3분 05초 \(코드 1\)"
+        r"**t** — 명령 실패 · 3분 05초 \(코드 1\)"
     );
 }
 
 #[test]
-fn excerpt_collapses_cuts_on_char_boundary_then_escapes() {
-    let long = format!("{}\n\n{}", "가".repeat(200), "*".repeat(200));
-    let x = D.escape(&clip(&long, EXCERPT_MAX_CHARS));
-    assert!(x.ends_with('…'), "{x}");
-    // 자른 뒤 걷는다 — 글자 수(백슬래시 뺀)는 상한 그대로
-    assert_eq!(x.replace('\\', "").chars().count(), EXCERPT_MAX_CHARS);
-    assert!(!x.contains('\n'));
+fn clip_cuts_on_char_boundary() {
     assert_eq!(clip("짧다", EXCERPT_MAX_CHARS), "짧다");
     assert_eq!(clip("😀😀😀", 2), "😀…");
+    assert_eq!(clip("a\n\n b", 10), "a b");
+}
+
+fn chars(lines: &[String]) -> usize {
+    lines.iter().map(|l| l.chars().count()).sum()
+}
+
+#[test]
+fn excerpt_keeps_lines_and_tidies_markdown() {
+    let x = excerpt_lines("## 바뀐 것\n- `a.ts` — 고침\n* b\n+ c\n\n```rust\nlet x = 1;\n```\n---\n다음으로 할까요?");
+    assert_eq!(
+        x,
+        vec!["바뀐 것", "· `a.ts` — 고침", "· b", "· c", "let x = 1;", "다음으로 할까요?"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+    );
+    // `#해시` 처럼 공백이 없는 `#` 는 제목이 아니다 — 그대로.
+    assert_eq!(excerpt_lines("#123 고침"), vec!["#123 고침".to_string()]);
+    assert!(excerpt_lines(" \n \n").is_empty());
+}
+
+#[test]
+fn excerpt_long_keeps_first_and_last_paragraph() {
+    let middle = "가운데 ".repeat(60);
+    let text = format!("첫 문단입니다.\n\n{middle}\n\n{middle}\n\n다음으로 비밀번호 칸도 고칠까요?");
+    let x = excerpt_lines(&text);
+    assert_eq!(x.first().map(String::as_str), Some("첫 문단입니다."));
+    assert_eq!(x.last().map(String::as_str), Some("다음으로 비밀번호 칸도 고칠까요?"), "끝 문단이 먼저 자리를 잡는다");
+    assert!(x.iter().any(|l| l == "…"), "{x:?}");
+    assert!(chars(&x) <= EXCERPT_MAX_CHARS && x.len() <= EXCERPT_MAX_LINES, "{x:?}");
+
+    // 줄이 많으면 8줄 안
+    let many: String = (0..20).map(|i| format!("- 항목 {i}\n")).collect();
+    let x = excerpt_lines(&many);
+    assert_eq!(x.len(), EXCERPT_MAX_LINES);
+    assert!(x.last().unwrap().ends_with('…'), "{x:?}");
+
+    // 문단 하나가 너무 길면 앞에서부터 자른다(글자 경계)
+    let x = excerpt_lines(&"가".repeat(900));
+    assert_eq!(x.len(), 1);
+    assert_eq!(x[0].chars().count(), EXCERPT_MAX_CHARS);
+    assert!(x[0].ends_with('…'));
+}
+
+#[test]
+fn excerpt_lines_are_escaped_one_by_one() {
+    let t = tail_of(Some("<@123> **굵게**\n\n> 인용 [x](y)"), None);
+    let d = rendered(&conversation_block(AgentEvent::Stop, None, &t));
+    assert_eq!(d, vec![r"> \<@123\> \*\*굵게\*\*".to_string() + "\n" + r"> \> 인용 \[x\]\(y\)"]);
+    let s: Vec<String> = conversation_block(AgentEvent::Stop, None, &t).iter().map(|l| S.render_convo_line(l)).collect();
+    assert_eq!(s, vec!["> &lt;@123&gt; **굵게**\n> &gt; 인용 [x](y)".to_string()]);
+}
+
+#[test]
+fn permission_line_carries_the_tool_input() {
+    crate::i18n::set_lang(crate::i18n::Lang::Ko);
+    let mut t = tail_of(Some("고칠게요"), Some("Bash"));
+    t.pending_input = Some(format!("npm run *build* {}", "x".repeat(300)));
+    let perm = rendered(&conversation_block(AgentEvent::Permission, None, &t));
+    assert_eq!(perm.len(), 1);
+    assert!(perm[0].starts_with(r"> 묻는 도구: Bash · npm run \*build\* "), "{perm:?}");
+    assert!(perm[0].ends_with('…'), "200자에서 자른다: {perm:?}");
+    assert!(!perm[0].contains('\n'));
+}
+
+#[test]
+fn grade_heads_the_first_line() {
+    crate::i18n::set_lang(crate::i18n::Lang::Ko);
+    let m = msg("Aynx", "proj · feat", "Claude 턴 끝", "").graded(Some(Grade::Action));
+    assert_eq!(D.render(&m, &[]), "🟡 **확인 필요 · proj · feat** — Claude 턴 끝");
+    assert_eq!(S.render(&m, &[]), "🟡 *확인 필요 · proj · feat* — Claude 턴 끝");
+    let done = msg("Aynx", "p", "e", "").graded(Some(Grade::Done));
+    assert_eq!(D.render(&done, &[]), "🟢 **완료 · p** — e");
+    let failed = msg("Aynx", "p", "e", "").graded(Some(Grade::Failed));
+    assert_eq!(S.render(&failed, &[]), "❌ *실패 · p* — e");
+    // 이름표가 비면 앱 이름
+    assert_eq!(D.render(&msg("Aynx", " ", "e", ""), &[]), "**Aynx** — e");
+    // 프런트 몸통의 등급 — 소문자 글자 · 없거나 null 이면 표시 없음 · 모르는 글자는 거절
+    let front: Message =
+        serde_json::from_value(serde_json::json!({ "app": "a", "label": "b", "event": "c", "grade": "done" })).unwrap();
+    assert_eq!(front.grade, Some(Grade::Done));
+    let none: Message = serde_json::from_value(serde_json::json!({ "app": "a", "label": "b", "event": "c", "grade": null })).unwrap();
+    assert_eq!(none.grade, None);
+    assert!(serde_json::from_value::<Message>(serde_json::json!({ "app": "a", "label": "b", "event": "c", "grade": "loud" })).is_err());
 }
 
 fn tail_of(text: Option<&str>, tool: Option<&str>) -> crate::agent_transcript::TurnTail {
     crate::agent_transcript::TurnTail {
         text: text.map(str::to_owned),
         pending_tool: tool.map(str::to_owned),
+        pending_input: None,
     }
 }
 
@@ -385,7 +466,7 @@ fn conversation_block_shapes() {
         rendered(&stop),
         vec![
             r"「알림 \[센터\]」".to_string(),
-            r"> Split the \*\*center\*\* into two.".to_string()
+            "> Split the \\*\\*center\\*\\*\n> into two.".to_string()
         ]
     );
     let perm = rendered(&conversation_block(AgentEvent::Permission, None, &t));
@@ -403,10 +484,10 @@ fn conversation_block_shapes() {
         conversation_block(AgentEvent::Stop, Some("  "), &tail_of(Some(" \n "), None)).is_empty()
     );
     // 본문 뒤에 붙는 모양 — 첫 줄 · 둘째 줄 · 대화 줄들
-    assert_eq!(D.render(&msg("aynx", "p", "e", ""), &[]), "**aynx · p** — e");
+    assert_eq!(D.render(&msg("aynx", "p", "e", ""), &[]), "**p** — e");
     assert_eq!(
         D.render(&msg("aynx", "p", "e", "1분 00초"), &stop),
-        "**aynx · p** — e\n1분 00초\n「알림 \\[센터\\]」\n> Split the \\*\\*center\\*\\* into two."
+        "**p** — e\n1분 00초\n「알림 \\[센터\\]」\n> Split the \\*\\*center\\*\\*\n> into two."
     );
 }
 
@@ -444,7 +525,7 @@ fn claude_lines(answer: &str) -> Vec<serde_json::Value> {
 fn conversation_lines_read_title_and_excerpt_only_when_on() {
     let answer = format!(
         "NotificationCenter.svelte 에 두 칸을 나눴습니다.\n\n{}",
-        "자세히 ".repeat(100)
+        "자세히 ".repeat(200)
     );
     let root = claude_fixture("on", &claude_lines(&answer));
     let roots = vec![root.clone()];
@@ -461,7 +542,10 @@ fn conversation_lines_read_title_and_excerpt_only_when_on() {
         lines[1].starts_with("> NotificationCenter.svelte 에 두 칸을"),
         "{lines:?}"
     );
-    assert!(lines[1].ends_with('…'));
+    assert!(lines[1].ends_with('…'), "{lines:?}");
+    assert!(lines[1].contains("
+> …
+> 자세히"), "첫 문단 · … · 끝 문단: {lines:?}");
     assert!(
         lines.iter().all(|l| !l.contains("SECRET-THOUGHT")),
         "생각은 싣지 않는다"

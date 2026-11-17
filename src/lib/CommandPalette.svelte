@@ -132,6 +132,7 @@
     onmanagesnippets,
     templates = [],
     onopentemplate,
+    onmanagetemplates,
     oninserthistory,
     onselecttab,
     onrunaction,
@@ -267,6 +268,8 @@
      */
     templates?: readonly { id: string; name: string; detail: string; keywords: string }[];
     onopentemplate?: (id: string) => void;
+    /** "템플릿 관리…" — 설정 독의 템플릿 섹션을 연다 (목록이 비어 있어도 들어갈 길이다 · 스니펫 관리 줄과 짝) */
+    onmanagetemplates?: () => void;
     /**
      * 이력 한 줄을 **포커스된 터미널에 넣는다** — `run` 이 참이면 `\r` 까지
      * (`Shift+Enter`). 올려 보내는 것은 명령 문자열 하나이고, 어디에 쓸지·쓸 데가 있는지를
@@ -304,8 +307,11 @@
     | { kind: "group"; key: string; path: string; count: number }
     | { kind: "tab"; key: string; tab: TabSpec }
     | { kind: "theme"; key: string; profile: ThemeProfile }
-    /** 탭 템플릿 한 줄 — 누르면 지금 워크스페이스에 새 탭 하나 */
-    | { kind: "template"; key: string; id: string; name: string; detail: string }
+    /**
+     * 탭 템플릿 한 줄 — 누르면 지금 워크스페이스에 새 탭 하나. `id` 가 `null` 이면 **"템플릿 관리…"** 줄이다(스니펫 관리 줄과
+     * 같은 이유로 종류를 따로 만들지 않는다 — 머리글이 종류가 바뀌는 자리에 선다).
+     */
+    | { kind: "template"; key: string; id: string | null; name: string; detail: string }
     /**
      * 스니펫 한 줄. `id` 가 `null` 이면 **"스니펫 관리…"** 줄이다 — 종류를 따로 만들지 않은
      * 이유는 머리글이 **종류가 바뀌는 자리**에 생기기 때문이다 (위 주석). 별도 종류로 두면
@@ -613,7 +619,7 @@
     // 독의 알림 칸(2026-10-18) — 전용 단축키가 없는 칸이라 팔레트 줄 하나뿐이다(`dock.ts` 의 `paletteId` · 칸 없이 여는 길 — 상태바 독 단추 ·
     // 가장자리 호버 — 도 이 칸이다). DB 칸은 2026-10-21 `Ctrl+Shift+K` 를 받아 레지스트리(`ACTIONS`)로 올라갔다.
     { id: "open-alerts-dock", key: "commands.palette.action.alertsDock" },
-    // 탭 템플릿(2026-11-16) — 탭 우클릭 [템플릿으로 저장…] 과 같은 상자. 전역 단축키는 두지 않는다(사용자 결정).
+    // 탭 템플릿(2026-11-16) — 탭 우클릭 [템플릿 저장] 과 같은 상자. 전역 단축키는 두지 않는다(사용자 결정).
     { id: "save-tab-template", key: "commands.palette.action.saveTemplate" },
     { id: "new-workspace", key: "app.workspaces.new" },
     { id: "rename-workspace", key: "app.workspaces.edit" },
@@ -715,6 +721,11 @@
       for (const e of templates) {
         if (!fuzzyMatch(q, `${words} ${e.keywords}`)) continue;
         out.push({ kind: "template", key: `tpl:${e.id}`, id: e.id, name: e.name, detail: e.detail });
+      }
+      // 관리 줄은 **묶음의 맨 끝**이고, 위가 하나도 없어도 선다(스니펫 관리 줄과 같은 규칙 — 영문 키워드도 훑는다)
+      const manage = t("commands.palette.template.manage");
+      if (fuzzyMatch(q, `${manage} ${t("commands.palette.template.manageKeywords")}`)) {
+        out.push({ kind: "template", key: "tpl:manage", id: null, name: manage, detail: t("commands.palette.template.manageTail") });
       }
     }
 
@@ -966,7 +977,8 @@
         onapplythemeprofile?.(item.profile.id);
         break;
       case "template":
-        onopentemplate?.(item.id);
+        if (item.id === null) onmanagetemplates?.();
+        else onopentemplate?.(item.id);
         break;
       // `id === null` 은 "스니펫 관리…" 줄이다 (위 [`PaletteItem`] 주석). 넣는 쪽은 id 만
       // 올려 보낸다 — 실제로 쓰는 일(범위 재확인·자리표시자 묻기·`write_*`)은 상위의
@@ -1222,9 +1234,9 @@
               <span class="label">{t("commands.palette.theme.row", { name: item.profile.name })}</span>
               <span class="tail">{t("commands.palette.theme.tail")}</span>
             {:else if item.kind === "template"}
-              <!-- 탭 템플릿 — 그림은 배치(`layout`) · 오른쪽은 붙인 프로젝트(없으면 타일 요약) -->
-              <span class="lead"><UiIcon name="layout" size={14} /></span>
-              <span class="label" data-template-entry={item.id}>{item.name}</span>
+              <!-- 탭 템플릿 — 그림은 배치(`layout`) · 오른쪽은 붙인 프로젝트(없으면 타일 요약). 관리 줄만 설정(가는 곳이 설정 › 템플릿) -->
+              <span class="lead"><UiIcon name={item.id === null ? "settings" : "layout"} size={14} /></span>
+              <span class="label" data-template-entry={item.id ?? undefined}>{item.name}</span>
               <span class="tail">{item.detail}</span>
             {:else if item.kind === "snippet"}
               <!--

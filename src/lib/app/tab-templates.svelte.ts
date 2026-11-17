@@ -19,6 +19,8 @@ import {
 import { hostMeta } from "$lib/hosts";
 import { isRemote, type Project } from "$lib/projects";
 import { aiDisplayName } from "$lib/pane-icons";
+import { DB_ENGINE_ICON } from "$lib/db-conn";
+import { leafLogo, type LogoEnv, type TemplateLogo } from "$lib/template-icons";
 import { restoreNode, type SavedLeaf, type SavedNode } from "$lib/tabs";
 import { clampScrollback, findFirstPane, listPanes, restoredTab, shellLabel, type PaneNode, type TabSpec } from "$lib/session";
 import {
@@ -30,16 +32,18 @@ import {
   leafTarget,
   newTemplateId,
   parseTemplates,
+  rebaseTemplate,
   replaceMissing,
   resolveTemplate,
   serializeTemplates,
   templateFromTree,
   templateLeaves,
   templatesForProject,
-  templatesForTab,
   withoutProjectTemplates,
   withTemplate,
   withoutTemplate,
+  withFirstAi,
+  type FirstAiPatch,
   type FolderBase,
   type TabTemplate,
   type TemplateChip,
@@ -51,7 +55,7 @@ import type { Key } from "$lib/i18n/keys";
  * **탭 템플릿의 창 상태와 손잡이** (2026-11-16) — 목록과 `tab-templates.json` 왕복 · 저장 상자 · 여는 길 · 이름 바꾸기 · 덮어쓰기 · 지우기.
  * 규칙(모양 · 검증 · 폴더 상대화 · 트리 변환)은 순수 층 `$lib/tab-templates` 에 있다.
  *
- * 입구: 탭 우클릭 [템플릿으로 저장…] · 팔레트 [지금 탭을 템플릿으로 저장…](저장 상자 `TabTemplateSaveDialog.svelte` — 문 하나) /
+ * 입구: 탭 우클릭 [템플릿 저장] · 팔레트 [지금 탭을 템플릿으로 저장…](저장 상자 `TabTemplateSaveDialog.svelte` — 문 하나) /
  * 프로젝트 시작 화면의 템플릿 칸(그 자리를 템플릿 배치로) · 팔레트의 템플릿 줄(지금 워크스페이스에 새 탭 하나). 전역 단축키 · 독 줄은 없다.
  *
  * ## 쓰기는 조작 단위로 디스크 최신 위에
@@ -107,7 +111,7 @@ export async function reloadTabTemplates(): Promise<void> {
 
 /**
  * 조작 하나 — 디스크의 최신 위에 얹어 쓴다(머리말). 못 읽은 파일 위에는 쓰지 않고 안내만 한다. 쓰기 실패도 안내 한 줄(사본은 바뀐 채 —
- * 이번 실행에서는 그대로 쓴다).
+ * 이번 실행에서는 그대로 쓴다). **디스크에 써졌을 때만 `true`** — 부르는 쪽은 그때만 "저장했습니다"를 띄운다(실패 안내와 함께 뜨지 않게).
  */
 async function mutate(fn: (cur: TabTemplate[]) => TabTemplate[]): Promise<boolean> {
   const cur = await readFile();
@@ -122,6 +126,7 @@ async function mutate(fn: (cur: TabTemplate[]) => TabTemplate[]): Promise<boolea
     await invoke("save_tab_templates", { json: JSON.stringify(serializeTemplates(next)) });
   } catch (e) {
     showNotice(t("app.tabTemplates.notice.saveFailed", { error: e instanceof Error ? e.message : String(e) }));
+    return false;
   }
   return true;
 }
@@ -158,7 +163,7 @@ function saveBase(tab: TabSpec, p: Project): FolderBase {
   return { folder: p.path, remote };
 }
 
-/** 템플릿에 넣을 타일이 있는 탭인가 — 탭 우클릭의 [템플릿으로 저장…] · [템플릿 덮어쓰기] 가 같은 규칙으로 꺼진다 */
+/** 템플릿에 넣을 타일이 있는 탭인가 — 탭 우클릭의 [템플릿 저장] 가 이 규칙으로 꺼진다 */
 export function tabTemplateSavable(tab: TabSpec): boolean {
   return templateFromTree(tab.root, null).root !== null;
 }
@@ -221,7 +226,7 @@ export function setTabTemplateSaveField(patch: Partial<Pick<TabTemplateSaveForm,
 }
 
 /**
- * **저장 상자를 연다** — 탭 우클릭 [템플릿으로 저장…] · 팔레트의 저장 줄이 함께 쓰는 문 하나. 이름의 기본은 탭에 보이는 이름, 프로젝트의
+ * **저장 상자를 연다** — 탭 우클릭 [템플릿 저장] · 팔레트의 저장 줄이 함께 쓰는 문 하나. 이름의 기본은 탭에 보이는 이름, 프로젝트의
  * 기본은 그 탭이 열린 프로젝트(모르면 붙이지 않음). 남는 타일이 없는 탭(시작 화면 하나 · 오케스트레이션 탭)은 상자를 열지 않고 안내만.
  */
 export function openTabTemplateSave(tabId: string | null): void {
@@ -277,63 +282,57 @@ export async function commitTabTemplateSave(): Promise<void> {
   }
   save.open = false;
   returnFocus(FOCUS_TEMPLATE_SAVE);
-  await mutate((cur) => {
+  const ok = await mutate((cur) => {
     const hit = findByName(cur, name);
     return withTemplate(cur, { id: hit?.id ?? newTemplateId(), name, ...(projectId ? { projectId } : {}), root, savedAt: Date.now() });
   });
-  showNotice(t("app.tabTemplates.notice.saved", { name }));
+  if (ok) showNotice(t("app.tabTemplates.notice.saved", { name }));
 }
 
 // ---------------------------------------------------------------------------
-// 고치기 — 이름 바꾸기 · 지금 탭으로 덮어쓰기 · 지우기(프로젝트 시작 화면의 카드 메뉴)
+// 고치기 — 이름 바꾸기 · 지우기(프로젝트 시작 화면의 카드 메뉴) · 덮어쓰기는 같은 이름으로 다시 저장(저장 상자가 묻는다)
 // ---------------------------------------------------------------------------
 
-/** 이름을 바꾼다 — 같은 이름이 이미 있으면 던진다(문구 = 화면에 보일 것 · 이름 칸이 말풍선으로 보인다) */
-export async function renameTabTemplate(id: string, raw: string): Promise<void> {
+/**
+ * 이름을 바꾼다 — 같은 이름이 이미 있으면 던진다(문구 = 화면에 보일 것 · 이름 칸이 말풍선 · 설정 편집은 칸 아래 오류로 보인다).
+ * 파일에 남았는가를 돌려준다(못 읽거나 못 쓰면 [`mutate`] 가 안내 한 줄을 띄우고 `false`).
+ */
+export async function renameTabTemplate(id: string, raw: string): Promise<boolean> {
   const name = cleanTemplateName(raw);
   if (findByName(list, name, id)) throw new Error(t("app.tabTemplates.rename.taken", { name }));
-  await mutate((cur) => cur.map((x) => (x.id === id ? { ...x, name } : x)));
+  return mutate((cur) => cur.map((x) => (x.id === id ? { ...x, name } : x)));
 }
 
-/** 그 탭에서 덮어쓸 수 있는 템플릿 — 탭의 프로젝트 템플릿 + 프로젝트 없는 템플릿(탭 우클릭 [템플릿 덮어쓰기 ▸]) */
-export function overwritableTemplates(tab: TabSpec): TabTemplate[] {
-  return templatesForTab(list, tabProjectOf(tab)?.id ?? null);
+/** 프로젝트 주 폴더 기준 — 원격 프로젝트면 그 호스트 */
+function projectBase(p: Project): FolderBase {
+  return { folder: p.path, remote: isRemote(p) ? p.host : null };
 }
 
 /**
- * 그 탭의 배치로 그 템플릿을 갈아 끼운다(확인 상자 · 탭 우클릭 [템플릿 덮어쓰기 ▸]) — 이름은 그대로. 프로젝트 템플릿이면 프로젝트도
- * 그대로이고 폴더 상대화는 그 프로젝트 기준. **프로젝트 없는 템플릿을 프로젝트 탭으로 덮어쓰면** 그 탭의 프로젝트 템플릿이 된다(저장
- * 상자의 기본값과 같은 판정 [`tabProjectOf`] · 같은 상대화) — 확인 상자가 그 사실을 한 줄로 말한다. 옆목록에 없는 짝(다른 프로젝트
- * 템플릿)은 하지 않는다.
+ * **템플릿의 프로젝트를 바꾼다**(설정 › 템플릿 줄의 [프로젝트 ▸]) — `projectId` 가 `null` 이면 프로젝트 없음. 폴더는 옛 프로젝트의 주 폴더로
+ * 풀고 새 프로젝트의 주 폴더로 다시 상대화한다(순수 [`rebaseTemplate`] — 기준 밖 · 다른 호스트의 타일은 절대 경로 그대로). 이름 · 저장한 날 ·
+ * 목록 순서는 그대로다. **옛 프로젝트를 못 찾는데 상대 폴더가 있으면** 풀 기준이 없어 옮기지 않고 안내 한 줄(폴더를 잃지 않게).
+ * 옮겼는가(이미 그 프로젝트면 참)를 돌려준다 — 템플릿 · 새 프로젝트가 없거나 못 옮겼으면 `false`.
  */
-export async function overwriteTabTemplate(id: string, tabId: string): Promise<void> {
+export async function moveTabTemplateProject(id: string, projectId: string | null): Promise<boolean> {
   const tpl = list.find((x) => x.id === id);
-  const tab = residentWindowTabs().find((x) => x.id === tabId);
-  if (!tpl || !tab) return;
-  const tabProject = tabProjectOf(tab);
-  if (!templatesForTab([tpl], tabProject?.id ?? null).length) return;
-  const attach = !tpl.projectId && tabProject ? tabProject : null;
-  const projectId = tpl.projectId ?? attach?.id ?? null;
-  const d = treeOf(tab, projectId);
-  if (d.root === null) {
-    showNotice(t("app.tabTemplates.notice.nothing"));
-    return;
+  if (!tpl) return false;
+  if ((tpl.projectId ?? null) === projectId) return true;
+  const to = projectId ? projectById(projectId) : null;
+  if (projectId && !to) return false;
+  const stuck = (x: TabTemplate) => !!x.projectId && !projectById(x.projectId) && hasRelativeFolders(x.root);
+  if (stuck(tpl)) {
+    showNotice(t("app.tabTemplates.notice.moveProjectGone", { name: tpl.name }));
+    return false;
   }
-  const params = { name: tpl.name, tab: displayTabTitle(tab) };
-  const body = attach
-    ? t("app.tabTemplates.replace.bodyAttach", { ...params, project: attach.name })
-    : t("app.tabTemplates.replace.body", params);
-  const ok = await askConfirm(body, {
-    title: t("app.tabTemplates.replace.title"),
-    kind: "warning",
-    okLabel: t("app.tabTemplates.replace.ok"),
-  });
-  if (!ok) return;
-  const root = d.root;
-  await mutate((cur) =>
-    cur.map((x) => (x.id === id ? { ...x, ...(projectId ? { projectId } : {}), root, savedAt: Date.now() } : x)),
+  return mutate((cur) =>
+    cur.map((x) => {
+      if (x.id !== id || stuck(x)) return x;
+      const from = x.projectId ? projectById(x.projectId) : null;
+      const root = rebaseTemplate(x.root, from ? projectBase(from) : null, to ? projectBase(to) : null);
+      return { id: x.id, name: x.name, ...(to ? { projectId: to.id } : {}), root, savedAt: x.savedAt };
+    }),
   );
-  showNotice(t("app.tabTemplates.notice.saved", { name: tpl.name }));
 }
 
 /** 그 프로젝트 템플릿 수 — 파일의 최신으로 센다(프로젝트 삭제 확인 상자의 "템플릿 N개" 줄). 못 읽으면 사본으로 */
@@ -351,18 +350,18 @@ export async function dropProjectTemplates(projectId: string): Promise<void> {
   await mutate((cur) => withoutProjectTemplates(cur, projectId));
 }
 
-/** 지운다(확인 상자 · 위험) */
-export async function deleteTabTemplate(id: string): Promise<void> {
+/** 지운다(확인 상자 · 위험) — 지웠는가를 돌려준다(확인 상자에서 물렀거나 못 썼으면 `false`) */
+export async function deleteTabTemplate(id: string): Promise<boolean> {
   const tpl = list.find((x) => x.id === id);
-  if (!tpl) return;
+  if (!tpl) return false;
   const ok = await askConfirm(t("app.tabTemplates.delete.body", { name: tpl.name }), {
     title: t("app.tabTemplates.delete.title"),
     kind: "warning",
     danger: true,
     okLabel: t("app.tabTemplates.delete.ok"),
   });
-  if (!ok) return;
-  await mutate((cur) => withoutTemplate(cur, id));
+  if (!ok) return false;
+  return mutate((cur) => withoutTemplate(cur, id));
 }
 
 // ---------------------------------------------------------------------------
@@ -417,20 +416,32 @@ async function buildTree(tpl: TabTemplate, base: FolderBase | null): Promise<Pan
  * - `replace` — 프로젝트 시작 화면 타일 자리가 템플릿 배치로 바뀐다(탭의 유일한 타일이면 탭 내용 전체가, 분할 안이면 그 칸이). 폴더는
  *   그 시작 화면의 폴더(워크트리면 그 워크트리)에 붙여 푼다.
  * - `newTab` — 지금 워크스페이스에 새 탭 하나(이름 = 템플릿 이름). 붙인 프로젝트가 있으면 그 주 폴더에 붙여 푼다.
+ *
+ * `opts.firstAi` — **첫 AI 잎의 실행 줄(· 시작 폴더)을 바꿔** 연다(프로젝트 시작 화면에서 고른 템플릿을 지난 대화의 [재개] · AI CLI
+ * 단추로 열 때 — 순수 [`withFirstAi`]). 나머지 AI 잎은 저장된 그대로 새 대화다. 그 줄을 실은 타일의 id 를 돌려준다(못 열었거나 그 잎이
+ * 사라진 대상이라 빈 타일이 됐으면 `null`) — 재개면 부르는 쪽이 그 타일에 대화를 미리 적는다.
  */
-export async function openTabTemplate(id: string, where: TemplateOpenWhere): Promise<void> {
-  const tpl = list.find((x) => x.id === id);
-  if (!tpl) return;
+export async function openTabTemplate(
+  id: string,
+  where: TemplateOpenWhere,
+  opts: { firstAi?: FirstAiPatch } = {},
+): Promise<string | null> {
+  const found = list.find((x) => x.id === id);
+  if (!found) return null;
+  const tpl = opts.firstAi ? { ...found, root: withFirstAi(found.root, opts.firstAi) } : found;
   const project = tpl.projectId ? projectById(tpl.projectId) : null;
   let base: FolderBase | null = null;
   if (where.kind === "replace") base = { folder: where.folder, remote: where.host ?? (project && isRemote(project) ? project.host : null) };
   else if (project) base = { folder: project.path, remote: isRemote(project) ? project.host : null };
   const node = await buildTree(tpl, base);
   const first = findFirstPane(node);
+  // 바꾼 줄을 실은 타일 — 그 줄은 그 잎에만 있다(재개 줄은 대화 id 를 담아 하나뿐)
+  const firstAi = opts.firstAi ? (listPanes(node).find((p) => p.autorun === opts.firstAi?.autorun)?.id ?? null) : null;
   if (where.kind === "replace") {
     // 시작 화면이 탭에 혼자였으면(탭 전체가 템플릿이 된다) 탭 이름도 템플릿 이름 — 팔레트로 연 새 탭과 같다. 분할 안의 한 칸이면 그대로.
-    if (replaceTileWithTree(where.tabId, where.paneId, node, tpl.name)) focusTile(where.tabId, first.id);
-    return;
+    if (!replaceTileWithTree(where.tabId, where.paneId, node, tpl.name)) return null;
+    focusTile(where.tabId, first.id);
+    return firstAi;
   }
   const localFolder = base && base.remote === null ? base.folder : undefined;
   const fresh = restoredTab(node, undefined, tpl.name, undefined, localFolder);
@@ -438,6 +449,7 @@ export async function openTabTemplate(id: string, where: TemplateOpenWhere): Pro
   const tab = openTab(fresh);
   focusPane(tab.id, first.id);
   for (const p of listPanes(tab.root)) adoptPane(tab.id, p.id);
+  return firstAi;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +496,34 @@ export function leafChipLabel(leaf: SavedLeaf): string {
   const chip = leafChip(leaf);
   if (chip === "shell" && leaf.kind === "local" && leaf.shell) return shellLabel(leaf.shell, t);
   return chipLabel(chip);
+}
+
+/** 칸 로고가 앱 상태에서 찾는 것 — 호스트 아이콘 · 색(`PaneIcon` 과 같은 `hostMeta`), 연결의 엔진 로고(`DB_ENGINE_ICON`) */
+const LOGO_ENV: LogoEnv = {
+  hostOf(alias) {
+    const h = lookupHost(alias);
+    if (!h) return null;
+    const m = hostMeta(h);
+    return { icon: m.icon ?? null, color: m.color?.trim() || null };
+  },
+  engineIconOf(connId) {
+    const d = findDbConn(connId);
+    return d ? DB_ENGINE_ICON[d.engine] : null;
+  },
+};
+
+/**
+ * 배치 그림 칸 하나의 로고(`TemplatePreview`) — 그림 규칙은 순수 층 `$lib/template-icons`. 호스트 목록 · 연결 사본이 `$state` 라
+ * `$derived` 안에서 부르면 아이콘을 바꾸거나 연결을 읽어 오면 따라온다.
+ */
+export function templateLeafLogo(leaf: SavedLeaf): TemplateLogo {
+  return leafLogo(leaf, LOGO_ENV);
+}
+
+/** 칸 하나의 이름(툴팁) — 칸 글자의 낱말, AI 는 그 CLI 이름("Claude Code" — 로고가 이미 CLI 를 말하므로) */
+export function templateLeafLabel(leaf: SavedLeaf): string {
+  if (leafChip(leaf) === "ai" && leaf.autorun) return aiDisplayName(leaf.autorun) ?? chipLabel("ai");
+  return leafChipLabel(leaf);
 }
 
 /** 잎 하나의 대상 요약 — 저장 상자의 타일 목록 */

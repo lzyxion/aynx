@@ -3,10 +3,15 @@ import {
   agentEvent,
   agentStatsLine,
   commandFinishEvent,
+  commandGrade,
+  createCoalesceGate,
   messengerChannels,
+  noticeGrade,
+  operationGrade,
   oscEvent,
   shouldSendMessenger,
   type MessengerFacts,
+  type MessengerGrade,
   type MessengerKind,
   type MessengerMessage,
 } from "$lib/messenger-notify";
@@ -16,6 +21,7 @@ import { veilVisible } from "$lib/app/veil.svelte.js";
 import { msSinceLastInput } from "$lib/app/idle-lock.svelte.js";
 import { APP_TITLE } from "$lib/app/instance";
 import type { RunOutcome } from "$lib/operation-notify";
+import { noticeText, type OrchNotice } from "$lib/orchestration/model";
 
 /**
  * **메신저 알림을 보낸다** — 바깥 사실을 모으고 `messenger_send` 를 부른다
@@ -62,24 +68,42 @@ interface ConversationRef {
 }
 
 /** 켜진 채널로 보낸다 — 던지지 않는다. 켜진 채널이 없으면 부르지 않는다. 실패는 콘솔 한 줄 */
-function post(label: string, event: string, second = "", conversation: ConversationRef | null = null): void {
+function post(
+  label: string,
+  event: string,
+  second = "",
+  conversation: ConversationRef | null = null,
+  grade: MessengerGrade | null = null,
+): void {
   const channels = messengerChannels(settings.messenger);
   if (channels.length === 0) return;
-  const message: MessengerMessage = { app: APP_TITLE, label, event, second };
+  const message: MessengerMessage = { app: APP_TITLE, label, event, second, grade };
   invoke("messenger_send", { message, conversation, channels }).catch((e: unknown) => {
     console.warn("[messenger] 보내지 못했습니다:", e);
   });
 }
 
 /** 규칙을 지나면 한 통을 보낸다 — 던지지 않는다 */
-function send(kind: MessengerKind, tileName: string, event: () => string, extra?: Pick<MessengerFacts, "durationMs">): void {
+function send(
+  kind: MessengerKind,
+  tileName: string,
+  event: () => string,
+  extra?: Pick<MessengerFacts, "durationMs">,
+  grade: MessengerGrade | null = null,
+  second: () => string = () => "",
+): void {
   if (!shouldSendMessenger(kind, settings.messenger, facts(extra))) return;
-  post(tileName, event());
+  post(tileName, event(), second(), null, grade);
 }
+
+/** 같은 타일 · 같은 사건이 30초 안에 다시 오면 한 통으로(`$lib/messenger-notify` 의 `createCoalesceGate`) — 창 하나에 한 벌 */
+const coalesce = createCoalesceGate();
 
 /** [`messengerAgent`] 가 받는 것 — `app/agent-notify.ts` 가 모아 온다 */
 export interface MessengerAgentInput {
-  /** 첫 줄의 이름 — 프로젝트 · 워크트리(모르면 탭·타일 이름) */
+  /** 그 타일 — 한 통으로 묶는 열쇠 */
+  paneId: string;
+  /** 첫 줄의 이름 — 프로젝트 / 워크트리(모르면 탭·타일 이름) */
   label: string;
   kind: "stop" | "permission";
   /** 에이전트 이름(모르면 `null`) */
@@ -101,7 +125,9 @@ export interface MessengerAgentInput {
  */
 export function messengerAgent(input: MessengerAgentInput): void {
   const { kind, agent } = input;
-  if (!shouldSendMessenger(kind === "stop" ? "agent-stop" : "agent-permission", settings.messenger, facts())) return;
+  const extra = kind === "stop" ? { durationMs: input.turnMs } : undefined;
+  if (!shouldSendMessenger(kind === "stop" ? "agent-stop" : "agent-permission", settings.messenger, facts(extra))) return;
+  if (!coalesce(input.paneId, kind, Date.now())) return;
   const event = agentEvent(kind, agent, t);
   const conversation: ConversationRef | null =
     settings.messenger.includeConversation && input.conversation
@@ -111,25 +137,28 @@ export function messengerAgent(input: MessengerAgentInput): void {
   void (async () => {
     const files = measure ? await measure().catch(() => null) : null;
     const second = agentStatsLine({ turnMs: input.turnMs, tools: input.tools, files }, t);
-    post(input.label, event, second, conversation);
+    post(input.label, event, second, conversation, kind === "permission" ? "action" : "done");
   })();
 }
 
 /** 끝난 명령 — 명령 줄은 `[messenger] include_command` 일 때만 실린다 */
 export function messengerCommandFinish(
-  tileName: string,
+  label: string,
   block: { commandLine: string; durationMs: number; exit: number | null },
 ): void {
   send(
     "command-finish",
-    tileName,
+    label,
     () => commandFinishEvent({ ...block, includeCommand: settings.messenger.includeCommand }, t),
     { durationMs: block.durationMs },
+    commandGrade(block.exit),
   );
 }
 
 /** 프로그램 알림(OSC 9·777) — `text` 는 이미 다듬어진 본문(`programNotifyText`) */
-export function messengerProgramNotice(tileName: string, text: string): void {
+export function messengerProgramNotice(tileName: string, text: string, fromAgent: boolean): void {
+  // AI 타일의 프로그램 알림은 턴 끝 · 권한 물음과 같은 뜻이라 보내지 않는다(2026-11-16 — 같은 순간 두 통). 일반 셸은 그대로.
+  if (fromAgent) return;
   send("osc", tileName, () => oscEvent(text, t));
 }
 
@@ -161,11 +190,44 @@ export const PENDING_GRACE_MS = 5_000;
  * 곁 토막. 앱 창이 없을 때는 같은 칸(`[messenger] operation_results`)을 보고 Rust 가 보낸다(트레이 — GUI, GUI 없음 — 세션 서버).
  */
 export function messengerOperationResult(
-  outcome: Pick<RunOutcome, "headline" | "auto" | "approveAll" | "result" | "details" | "duration">,
+  outcome: Pick<RunOutcome, "headline" | "auto" | "approveAll" | "result" | "details" | "duration" | "tone">,
 ): void {
-  send("operation-result", outcome.headline, () => {
-    const parts = [outcome.result, ...outcome.details, ...(outcome.duration ? [outcome.duration] : [])];
-    const head = outcome.approveAll ? `${t("app.opnotify.all")} · ` : outcome.auto ? `${t("app.opnotify.auto")} · ` : "";
-    return `${t("app.opnotify.title")} — ${head}${parts.join(" · ")}`;
-  });
+  // `❌ 실패 · 작업안 «제목» — 일부 실패 2/3` + 둘째 줄 `실패: web-02 · 12.4초`(2026-11-16 목업).
+  const name = outcome.headline.trim();
+  const label = name ? t("app.messenger.plan", { name }) : t("app.messenger.plan.none");
+  send(
+    "operation-result",
+    label,
+    () => {
+      const head = outcome.approveAll ? `${t("app.opnotify.all")} · ` : outcome.auto ? `${t("app.opnotify.auto")} · ` : "";
+      return `${head}${outcome.result}`;
+    },
+    undefined,
+    operationGrade(outcome.tone),
+    () => [...outcome.details, ...(outcome.duration ? [outcome.duration] : [])].join(" · "),
+  );
+}
+
+/**
+ * **앨범 감독 사건**(2026-11-16) — 창이 붙어 있을 때는 주 창이 보낸다(이벤트로 받은 그 순간 한 번 · `app/orchestration-notify`). 창이 없을 때
+ * 일어난 사건은 세션 서버가 이미 보냈다(`server/ai.rs` `send_notice_messenger`) — 꺼내 보이기(`drain`)에서는 부르지 않는다. 등급 표가
+ * `null` 인 진단성 사건은 보내지 않는다. 전송 조건(자리 비움 / 항상)은 다른 사건과 같다.
+ */
+export function messengerOrchNotice(n: OrchNotice): void {
+  const grade = noticeGrade(n.kind);
+  if (grade === null) return;
+  const name = n.runName?.trim() ?? "";
+  const label = name ? t("app.messenger.album", { name }) : t("app.messenger.album.none");
+  send(
+    "orchestration",
+    label,
+    () => {
+      // 창 알림 문구의 앞머리(`Run · 이름 — `)는 이름표가 이미 말한다.
+      const text = noticeText(n, t);
+      const pre = `${t("orch.notice.prefix", { run: n.runName })} — `;
+      return text.startsWith(pre) ? text.slice(pre.length) : text;
+    },
+    undefined,
+    grade,
+  );
 }

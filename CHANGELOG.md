@@ -12,6 +12,16 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+### What's new
+
+- **Settings › Templates** lists every tab template, including ones without a project, newest first, each with its layout preview. Open a template to rename it, move it to another project (or to none) or delete it — folders inside the project are re-based on the new project's folder; **Manage templates…** in the command palette opens it. Template layout previews (here, on the project start page and in the save dialog) now show each tile's logo — shell, Claude/Codex, host, database engine — instead of a word. On the project start page, clicking a template that has an AI tile selects it first, so you can **Resume** a past conversation or pick Claude · Codex for a new one in that layout's first AI tile (click the card again to deselect it; the CLI the template already uses opens it as saved).
+- **Discord and Slack notifications** are easier to act on from a phone.
+  - Each message starts with its grade: 🟡 **Needs action** (a permission request, a task plan waiting for approval, an album that needs you), 🟢 **Done**, or ❌ **Failed**. The app name is no longer repeated on the first line.
+  - Messages are named by project / worktree, also for long commands, instead of the tile name.
+  - **Include conversation text** is now on by default. A finished turn carries up to 500 characters of the last reply with its line breaks kept (the first and last paragraphs when it is longer), and a permission request names the command being asked about.
+  - Album notices follow **Send when** even while the app window is open, and only the ones that need you, finish or fail are sent.
+  - Not sent anymore: program notifications from AI tiles (they repeat the turn-end alert), turns shorter than a minute, and the same alert from the same tile twice within 30 seconds.
+
 ## [0.1.3] - 2026-11-15
 
 If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and file upload stays blocked until it restarts.

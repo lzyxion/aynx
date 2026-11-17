@@ -1082,6 +1082,9 @@
     min-height: 0;
     overflow: hidden;
     outline: none;
+    /* 다른 크롬 타일(문서 · 쿼리 · diff …)과 같은 바탕 — 빠져 있어 그림 밖이 월페이퍼로 비쳤다(2026-11-17 사용자).
+       글래스 크롬 타일이면 판(흐림 + `--glass-mid`)은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
+    background: var(--tile-inner, var(--bg-panel));
   }
 
   /* ── 도구줄 — 문서 타일(`doc/DocToolbar`)과 같은 결 ── */

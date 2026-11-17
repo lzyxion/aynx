@@ -1163,6 +1163,8 @@ pub(crate) struct TurnTail {
     pub text: Option<String>,
     /// 마지막 에이전트 글 **뒤에** 선, 아직 결과가 없는 도구 호출의 이름 — 권한 물음이 묻는 도구.
     pub pending_tool: Option<String>,
+    /// 그 도구 호출의 입력 한 줄 요약(명령 · 파일 경로 …) — 자르는 것은 부르는 쪽. 없으면 `None`.
+    pub pending_input: Option<String>,
 }
 
 /// 파일 끝에서 거꾸로 — 사람이 친 말(이번 턴의 시작)을 만나기 전의 마지막 에이전트 글과, 그 뒤의 결과 없는
@@ -1188,11 +1190,12 @@ fn turn_tail_from<R: Read + Seek>(f: R, size: u64, parse: LineEvents) -> std::io
                 Ev::ToolResult { id, .. } => {
                     results.insert(id);
                 }
-                Ev::ToolUse { id, name, .. } => {
+                Ev::ToolUse { id, name, input } => {
                     if !tool_seen {
                         tool_seen = true;
                         if !id.is_empty() && !results.contains(&id) && !name.trim().is_empty() {
                             out.pending_tool = Some(name);
+                            out.pending_input = Some(tool_summary(&input)).filter(|s| !s.trim().is_empty());
                         }
                     }
                 }
