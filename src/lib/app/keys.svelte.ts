@@ -119,6 +119,12 @@ import { closeKeygen, keygenVisible } from "$lib/app/keygen.svelte.js";
 import { closeMasterPrompt, masterPromptVisible } from "$lib/app/vault.svelte.js";
 import { appIconCropVisible, closeAppIconCrop } from "$lib/app/app-icons.svelte.js";
 import { closeTermThemeDialog, termThemeDialogVisible } from "$lib/app/term-themes.svelte.js";
+import {
+  closeTransferDialog,
+  openSettingsExport,
+  openSettingsImport,
+  transferDialogVisible,
+} from "$lib/app/settings-transfer.svelte.js";
 import { remoteDialogOpen } from "$lib/app/remote-dialog.svelte.js";
 import { confirmDialogOpen, dismissConfirm } from "$lib/app/confirm-dialog.svelte.js";
 
@@ -220,6 +226,8 @@ export function anyModalOpen(): boolean {
     appIconCropVisible() ||
     // 터미널 테마 가져오기 · 관리 — 같은 이유(붙여넣기 칸 · 이름 칸). Escape 는 모달이 스스로 끊는다.
     termThemeDialogVisible() ||
+    // 설정 옮기기 모달(2026-11-17) — 화면을 덮는 상자다. Escape 는 모달이 스스로 끊는다.
+    transferDialogVisible() ||
     // 원격 창의 묻기 · 마스터 재확인(R4) — 제 키(Esc · Enter · Tab 되감기)를 스스로 다루고 전파를 끊는다.
     remoteDialogOpen() ||
     // 확인 · 알림 상자(OS 기본 상자 대신 — 10-16) — 다른 모달 위에도 뜬다. 제 키를 스스로 다루고 전파를 끊는다.
@@ -465,6 +473,13 @@ export function runAction(action: string): void {
     // 지금 탭을 템플릿으로 저장 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY` · 2026-11-16). 탭 우클릭 [템플릿 저장] 과 같은 상자.
     case "save-tab-template":
       openTabTemplateSave(null);
+      break;
+    // 설정 옮기기 — **팔레트 전용**(단축키 없음 · `PALETTE_ONLY` · 2026-11-17). 원격 창에서는 아무 일도 없다(메인 PC 전용).
+    case "export-settings":
+      void openSettingsExport();
+      break;
+    case "import-settings":
+      void openSettingsImport();
       break;
     // 테마 프로필 전환 — 위에서 내려오는 카드 줄을 연다 (docs/log/2026-09-28-profile-switcher.md). 팔레트 줄에서
     // 불려도 곧장 연다 — 위 두 목록과 같은 포커스 복귀 규칙.
@@ -854,6 +869,12 @@ export function onWindowKeydown(ev: KeyboardEvent): void {
     if (termThemeDialogVisible()) {
       ev.preventDefault();
       closeTermThemeDialog();
+      return;
+    }
+    // 설정 옮기기 — 설정 위에 뜬다(그물 — 모달 안의 Escape 는 모달이 먼저 잡는다).
+    if (transferDialogVisible()) {
+      ev.preventDefault();
+      closeTransferDialog();
       return;
     }
     // **새 키 만들기가 모달 사슬의 맨 앞이다.** 여는 길이 둘 다 이미 모달 위라(호스트 폼의

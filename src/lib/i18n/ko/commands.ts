@@ -232,6 +232,8 @@ export const commands = {
   // 탭 템플릿(2026-11-16)
   "palette.section.template": "템플릿",
   "palette.action.saveTemplate": "지금 탭을 템플릿으로 저장…",
+  "palette.action.exportSettings": "설정 내보내기…",
+  "palette.action.importSettings": "설정 가져오기…",
   "palette.template.keywords": "템플릿 template",
   "palette.template.manage": "템플릿 관리…",
   "palette.template.manageTail": "설정 › 템플릿",

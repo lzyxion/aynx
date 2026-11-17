@@ -38,7 +38,7 @@
 mod activity;
 mod auth;
 mod bridge;
-mod deny;
+pub(crate) mod deny;
 mod frames;
 mod funnel;
 mod gate;

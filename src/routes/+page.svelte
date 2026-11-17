@@ -110,6 +110,7 @@
   import MasterPromptDialog from "$lib/dialogs/MasterPromptDialog.svelte";
   import AppIconCropDialog from "$lib/dialogs/AppIconCropDialog.svelte";
   import TermThemeDialog from "$lib/dialogs/TermThemeDialog.svelte";
+  import SettingsTransferDialog from "$lib/dialogs/SettingsTransferDialog.svelte";
   import PasswordDialog from "$lib/dialogs/PasswordDialog.svelte";
   import PassphraseDialog from "$lib/dialogs/PassphraseDialog.svelte";
   import KeyPickDialog from "$lib/dialogs/KeyPickDialog.svelte";
@@ -1040,6 +1041,7 @@
 <!-- 사용자 앱 아이콘 자르기 — 설정 › 앱 테마 의 [＋] 가 연다. 마스터 암호 모달과 같은 까닭으로 독보다 뒤 -->
 <AppIconCropDialog />
 <TermThemeDialog />
+<SettingsTransferDialog />
 <PasswordDialog />
 <PassphraseDialog />
 <KeyPickDialog />

@@ -189,6 +189,8 @@ export const commands: Record<keyof typeof koCommands, string> = {
   // Tab templates (2026-11-16)
   "palette.section.template": "Templates",
   "palette.action.saveTemplate": "Save current tab as template…",
+  "palette.action.exportSettings": "Export settings…",
+  "palette.action.importSettings": "Import settings…",
   "palette.template.keywords": "template templates",
   "palette.template.manage": "Manage templates…",
   "palette.template.manageTail": "Settings › Templates",

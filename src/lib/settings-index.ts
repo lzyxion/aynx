@@ -173,6 +173,9 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   row("general", "settings.general.tray.label", "app-tray-on-close"),
   row("general", "settings.general.files_view.label", "files-default-view", "settings.general.files.heading"),
   row("general", "settings.general.files_refresh.label", "files-auto-refresh", "settings.general.files.heading"),
+  // 설정 옮기기(2026-11-17) — 일반의 끝 묶음
+  row("general", "settings.general.transfer.export.label", "settings-export", "settings.general.transfer.heading"),
+  row("general", "settings.general.transfer.import.label", "settings-import", "settings.general.transfer.heading"),
 
   // 터미널
   row("terminal", "settings.terminal.shell.label", "default-shell"),

@@ -119,6 +119,7 @@ English · [한국어](features.ko.md)
 - Glass or flat material for the app chrome; the opacity slider controls how much the wallpaper shows through panels and tiles.
 - Wallpapers with dim / blur / tinting, status bar styles (flush, panel, hug), tab styles, configurable tile header chips.
 - Theme profiles with quick switching (`Ctrl+Shift+U`).
+- Move settings to another PC as one `.zip` (hosts, AI permission, DB connections, projects, theme, shortcuts …) with a preview before import — no vault secrets, tokens or webhook URLs.
 - App icon picked from built-in characters (GPT by default, Claude, Gemini, Grok) or your own pictures, cropped to the same rounded shape.
 - English and Korean UI.
 

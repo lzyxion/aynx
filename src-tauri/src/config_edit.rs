@@ -294,7 +294,12 @@ pub(crate) fn format_block(host: &ValidHost) -> String {
 /// - 끝이 개행 하나 → 빈 줄 하나를 띄운다.
 /// - 이미 빈 줄로 끝남 → 더 띄우지 않는다 (호출할 때마다 빈 줄이 쌓이지 않게).
 pub(crate) fn append_text(existing: &str, host: &ValidHost) -> String {
-    let prefix = if existing.is_empty() {
+    format!("{}{}", append_prefix(existing), format_block(host))
+}
+
+/// [`append_text`] 의 개행 규칙 한 벌 — 설정 가져오기(`settings_transfer`)의 블록 덧붙이기도 이것을 지난다.
+fn append_prefix(existing: &str) -> &'static str {
+    if existing.is_empty() {
         ""
     } else if !existing.ends_with('\n') {
         "\n\n"
@@ -302,8 +307,63 @@ pub(crate) fn append_text(existing: &str, host: &ValidHost) -> String {
         ""
     } else {
         "\n"
-    };
-    format!("{prefix}{}", format_block(host))
+    }
+}
+
+/// `Host` 블록 하나의 원문 — 설정 옮기기(`crate::settings_transfer`)가 쓴다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HostBlockText {
+    /// `Host` 줄의 이름들(따옴표 벗김 · 적힌 표기 그대로).
+    pub names: Vec<String>,
+    /// `Host` 줄부터 다음 `Host`/`Match` 줄 직전까지(뒤 빈 줄은 걷음 · 개행으로 끝남).
+    pub text: String,
+}
+
+/// 파일에서 **구체 별칭만 적힌** `Host` 블록들을 원문 그대로 꺼낸다(순수).
+///
+/// 블록 범위는 [`remove_block`] 과 같다(다음 `Host`/`Match` 줄 직전까지). 패턴(`*` · `?` · `!`)이 하나라도 섞인 블록 ·
+/// `Match` 블록 · 첫 `Host` 앞 머리글은 담지 않는다 — 여러 호스트에 걸리는 사람의 규칙이라 다른 PC 의 파일에 옮겨 적을
+/// 대상이 아니다(앱이 다루는 것은 구체 별칭의 블록이다).
+pub(crate) fn concrete_host_blocks(content: &str) -> Vec<HostBlockText> {
+    let lines = split_lines_keep(content);
+    let mut starts: Vec<(usize, bool)> = Vec::new(); // (줄 번호, Host 인가 — 아니면 Match)
+    for (i, raw) in lines.iter().enumerate() {
+        if let Some(d) = parse_directive(raw) {
+            if d.keyword.eq_ignore_ascii_case("host") {
+                starts.push((i, true));
+            } else if d.keyword.eq_ignore_ascii_case("match") {
+                starts.push((i, false));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (n, &(start, is_host)) in starts.iter().enumerate() {
+        if !is_host {
+            continue;
+        }
+        let end = starts.get(n + 1).map_or(lines.len(), |&(e, _)| e);
+        let Some(d) = parse_directive(lines[start]) else { continue };
+        let names: Vec<String> = host_patterns(d.value).into_iter().map(|(_, _, t)| t).collect();
+        if names.is_empty() || names.iter().any(|n| n.is_empty() || n.contains(['*', '?', '!'])) {
+            continue;
+        }
+        let mut body: String = lines[start..end].concat();
+        let trimmed = body.trim_end().len();
+        body.truncate(trimmed);
+        body.push('\n');
+        out.push(HostBlockText { names, text: body });
+    }
+    out
+}
+
+/// 기존 내용 뒤에 붙일 **블록 원문들의 텍스트**([`append_text`] 와 같은 개행 규칙 · 블록 사이 빈 줄 하나). 빈 목록이면 빈 글자.
+pub(crate) fn append_blocks_text(existing: &str, blocks: &[&str]) -> String {
+    if blocks.is_empty() {
+        return String::new();
+    }
+    let joined: Vec<String> =
+        blocks.iter().map(|b| if b.ends_with('\n') { (*b).to_string() } else { format!("{b}\n") }).collect();
+    format!("{}{}", append_prefix(existing), joined.join("\n"))
 }
 
 // ---------------------------------------------------------------------------

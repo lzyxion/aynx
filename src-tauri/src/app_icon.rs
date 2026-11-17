@@ -53,7 +53,7 @@ use tauri::{AppHandle, Manager, Runtime, Window};
 
 use crate::i18n::tr;
 
-mod user;
+pub(crate) mod user;
 
 /// 기본값 — 빌드에 박힌 앱 아이콘(`tauri.conf.json` 의 `bundle.icon`)과 **같은 그림**인 GPT. 그래서 기본이면
 /// 새 창에 아무것도 걸지 않는다([`apply_to_window`]). 표([`CHARACTERS`])에 들어 있어야 한다(테스트가 본다).

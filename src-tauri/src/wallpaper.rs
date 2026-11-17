@@ -128,7 +128,7 @@ fn hashed_name(digest_hex: &str, ext: &str) -> String {
 ///
 /// 같은 폴더에 `settings.toml`·`theme-profiles.json`·볼트가 함께 산다 — 모양이 조금이라도
 /// 다르면 우리 것이 아니다.
-fn is_managed_name(name: &str) -> bool {
+pub(crate) fn is_managed_name(name: &str) -> bool {
     let Some((stem, ext)) = name.rsplit_once('.') else {
         return false;
     };

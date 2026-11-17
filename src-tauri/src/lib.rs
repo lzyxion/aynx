@@ -97,6 +97,7 @@ mod sftp_browser;
 mod shell_integration;
 mod side_chat;
 mod single_instance_gate;
+mod settings_transfer;
 mod snippets;
 mod socks5;
 mod ssh;
@@ -726,6 +727,11 @@ pub fn run() {
             // 탭 템플릿(2026-11-16) — 스니펫과 같은 관례의 불투명 blob(`tab-templates.json`). 백엔드는 스키마를 모른다.
             tab_templates::load_tab_templates,
             tab_templates::save_tab_templates,
+            // 설정 옮기기(2026-11-17) — 내보내기 · 미리 보기 · 가져오기(사람이 미리 보기에서 확정). 원격 창에서는 막힘(HOME_ONLY).
+            settings_transfer::settings_export_summary,
+            settings_transfer::settings_export,
+            settings_transfer::settings_import_preview,
+            settings_transfer::settings_import_apply,
             // 채팅 사이드 독(2026-10-23) — 채팅 목록 파일 · 채팅마다 폴더(`side_chat/store.rs`)
             side_chat::store::side_chats_load,
             side_chat::store::side_chats_save,

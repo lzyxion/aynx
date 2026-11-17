@@ -26,7 +26,8 @@
   import { clearHostHistory } from "$lib/app/host-history.svelte.js";
   import SessionServerRow from "$lib/settings/SessionServerRow.svelte";
   import UpdatesRows from "$lib/settings/UpdatesRows.svelte";
-  import { invoke } from "../ipc";
+  import { openSettingsExport, openSettingsImport } from "$lib/app/settings-transfer.svelte.js";
+  import { invoke, isRemote } from "../ipc";
   import { onMount } from "svelte";
 
   /**
@@ -338,6 +339,37 @@
 
 <!-- 앱 업데이트(2026-11-12) — 일반의 끝 소제목(새 섹션 없음): 자동 확인 · 판 · 건너뛴 판 · 출처 각주. 몸은 `UpdatesRows` -->
 <UpdatesRows />
+
+<!--
+  설정 옮기기(2026-11-17 — docs/log/2026-11-17-settings-transfer.md) — 일반의 맨 끝 묶음. 설정값이 아니라 **지금 하는 동작**이라
+  [저장] · [취소] 바깥이다(접속 이력 지우기 · 세션 서버 줄과 같다). 모달은 `dialogs/SettingsTransferDialog.svelte`(+page).
+  원격 창에서는 그리지 않는다 — 네 명령이 메인 PC 전용이다(`remote/deny.rs` HOME_ONLY).
+-->
+{#if !isRemote}
+  <h4 class="subhead">{t("settings.general.transfer.heading")}</h4>
+  <SettingRow
+    id="settings-export"
+    label={t("settings.general.transfer.export.label")}
+    tip={tipOf(t("settings.general.transfer.export.tip"))}
+  >
+    {#snippet control()}
+      <button type="button" id="settings-export" class="btn btn-sm btn-secondary" onclick={() => void openSettingsExport()}>
+        {t("settings.general.transfer.export.button")}
+      </button>
+    {/snippet}
+  </SettingRow>
+  <SettingRow
+    id="settings-import"
+    label={t("settings.general.transfer.import.label")}
+    tip={tipOf(t("settings.general.transfer.import.tip"))}
+  >
+    {#snippet control()}
+      <button type="button" id="settings-import" class="btn btn-sm btn-secondary" onclick={() => void openSettingsImport()}>
+        {t("settings.general.transfer.import.button")}
+      </button>
+    {/snippet}
+  </SettingRow>
+{/if}
 
 <style>
   /* 앱 글꼴 칸 — 줄의 오른쪽 손잡이라 `settings.css` 의 `.value`(width:100%)를 그대로 두면 라벨과

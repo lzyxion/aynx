@@ -621,6 +621,9 @@
     { id: "open-alerts-dock", key: "commands.palette.action.alertsDock" },
     // 탭 템플릿(2026-11-16) — 탭 우클릭 [템플릿 저장] 과 같은 상자. 전역 단축키는 두지 않는다(사용자 결정).
     { id: "save-tab-template", key: "commands.palette.action.saveTemplate" },
+    // 설정 옮기기(2026-11-17) — 설정 › 일반의 [내보내기…] · [가져오기…] 와 같은 모달. 단축키는 두지 않는다.
+    { id: "export-settings", key: "commands.palette.action.exportSettings" },
+    { id: "import-settings", key: "commands.palette.action.importSettings" },
     { id: "new-workspace", key: "app.workspaces.new" },
     { id: "rename-workspace", key: "app.workspaces.edit" },
     { id: "delete-workspace", key: "app.workspaces.delete" },

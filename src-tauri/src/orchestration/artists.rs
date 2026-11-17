@@ -13,7 +13,7 @@ use crate::orchestration::config::{
 
 const FILE_NAME: &str = "orchestration-artists.toml";
 const ARTISTS_MAX: usize = 32;
-const CHANGED: &str = "orchestration-artists-changed";
+pub(crate) const CHANGED: &str = "orchestration-artists-changed";
 const HEADER: &str = "# orchestration-artists.toml — 오케스트레이션 아티스트 (aynx 전용)\n# 오케스트레이션 탭이 통째로 다시 씁니다(손으로 적은 주석은 남지 않습니다).\n\n";
 
 /// 권한 · 허용 명령 · 한도는 이 타입에도 파일 해석에도 없다.

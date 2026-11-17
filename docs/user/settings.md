@@ -103,6 +103,27 @@ How newly opened file tiles (both This PC and remote) show folders. The default 
 - A tile whose view you changed with the toolbar's view buttons (`Ctrl+1/2/3`) remembers its own view. A new tile opens in the view last picked from a toolbar on this device, and uses this value if there is none. Picking a value here clears the last-picked view, so new tiles open in this value again.
 - The old values "tree" and "navigate" are read as **Details** (the old strings in settings files and layout files still load).
 
+<a id="settings-export"></a>
+### Move settings
+
+**Export…** saves your settings as one `.zip` file (default name `aynx-settings-YYYY-MM-DD.zip`); **Import…** reads such a file on
+this or another PC. Both are also in the command palette.
+
+- Export lists categories with a count each: hosts, AI permission, DB connections, projects, templates, theme, shortcuts · snippets · triggers,
+  agent instructions, external MCP servers, artists, general and notifications (notifications start unticked).
+- **Excluded:** vault secrets, MCP and tile tokens, webhook URLs, remote devices, sessions, conversations and album history.
+  DB connections travel without passwords, and external MCP servers keep only the vault reference names of their secrets.
+  Hosts carry the `Host` blocks of `~/.ssh/config` as text — key files are not included.
+- Import first shows a **preview** and changes nothing until you confirm. Each category shows what is new, different or the same:
+  - Hosts: only new hosts are appended to the end of `~/.ssh/config`; a block with a name you already have is left as it is.
+  - AI permission comes in **as in the file** by default — pick **Import as Off** to leave it off. Where a host or DB connection
+    on this PC points somewhere else, its permission turns off by itself.
+  - For other differences pick **Overwrite**, **Skip** or (for named lists) **Keep both**.
+  - Projects whose folder is not on this PC are listed with a folder button to choose the folder on this PC.
+  - Theme profiles are only added; the profile you use now stays.
+- Before anything changes, your current settings are saved to `backups/aynx-before-import-<time>.zip` in the settings folder.
+- Not available from a remote window.
+
 ---
 
 ## Theme

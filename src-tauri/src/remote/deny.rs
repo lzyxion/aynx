@@ -95,6 +95,12 @@ pub(crate) const HOME_ONLY: &[&str] = &[
     "update_install",
     "update_skip",
     "update_mark_toasted",
+    // 설정 옮기기(2026-11-17) — 메인 PC 의 파일 대화상자로 고른 자리에 쓰고 읽으며, 가져오기는 AI 권한(위임)까지 바꾼다 —
+    // 메인 PC 사람이 미리 보기에서 확정하는 일이다(원격 창에는 단추도 없다). 요약 · 미리 보기도 같은 쪽(설정 루트 전체를 읽는다).
+    "settings_export_summary",
+    "settings_export",
+    "settings_import_preview",
+    "settings_import_apply",
 ];
 
 /// 그 순간 마스터 암호를 다시 확인(설계 3절 단계 3) — 마스터가 없으면 그대로 통과.
@@ -341,6 +347,8 @@ pub(crate) fn command_label(cmd: &str) -> String {
         "update_state" | "update_check" | "update_download" | "update_install" | "update_skip" | "update_mark_toasted" => {
             tr!(ko: "Aynx 업데이트", en: "updating Aynx")
         }
+        "settings_export_summary" | "settings_export" => tr!(ko: "설정 내보내기", en: "exporting settings"),
+        "settings_import_preview" | "settings_import_apply" => tr!(ko: "설정 가져오기", en: "importing settings"),
         "side_chats_load" => tr!(ko: "사이드 채팅 목록 읽기", en: "reading the side chats"),
         "side_chats_save" => tr!(ko: "사이드 채팅 목록 저장", en: "saving the side chats"),
         "side_chat_dir" => tr!(ko: "사이드 채팅 폴더 만들기", en: "creating a side chat folder"),
