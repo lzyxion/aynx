@@ -12,14 +12,20 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-18
+
 ### What's new
 
+- **Tab templates**: right-click a tab and choose **Save template** to keep its layout and what each tile connects to — shell, AI agent, host, database. Opening a template builds the same tab again with new sessions, so you don't have to reconnect the same hosts and databases for every task.
+  - A template saved with a project shows on that project's start page (pick one with a click or the number keys 1–9) and in the command palette.
+  - AI tiles always start a new conversation. Folders are kept relative to the project, so a template follows whichever worktree you open it in.
+  - Saving under a name that already exists asks before replacing it. Deleting a project deletes its templates too.
+- **Settings › Templates** lists every tab template, including ones without a project, newest first, each with its layout preview. Open a template to rename it, move it to another project (or to none) or delete it — folders inside the project are re-based on the new project's folder; **Manage templates…** in the command palette opens it. Template layout previews (here, on the project start page and in the save dialog) show each tile's logo — shell, Claude/Codex, host, database engine. On the project start page, clicking a template that has an AI tile selects it first, so you can **Resume** a past conversation or pick Claude · Codex for a new one in that layout's first AI tile (click the card again to deselect it; the CLI the template already uses opens it as saved).
 - **Move settings to another PC**: **Settings › General › Move settings** exports your settings to one .zip and imports them on another PC.
   - Hosts, AI permissions, database connections, projects, templates, themes, shortcuts, agent instructions, MCP servers, artists and other settings can be picked by category. The vault, tokens, webhook URLs, remote devices, sessions, conversations and album records are never included, and neither are key files or database passwords.
   - Importing shows a preview first: what each category adds or changes, a list of the changed items, and what to do with values that differ. AI permissions come in as they are in the file by default, or you can bring them in Off.
   - `~/.ssh/config` is never overwritten — only new hosts are added at the end. Projects whose folder isn't on this PC are listed with a button to choose the folder here.
   - Your current settings are backed up before anything is changed.
-- **Settings › Templates** lists every tab template, including ones without a project, newest first, each with its layout preview. Open a template to rename it, move it to another project (or to none) or delete it — folders inside the project are re-based on the new project's folder; **Manage templates…** in the command palette opens it. Template layout previews (here, on the project start page and in the save dialog) now show each tile's logo — shell, Claude/Codex, host, database engine — instead of a word. On the project start page, clicking a template that has an AI tile selects it first, so you can **Resume** a past conversation or pick Claude · Codex for a new one in that layout's first AI tile (click the card again to deselect it; the CLI the template already uses opens it as saved).
 - **Discord and Slack notifications** are easier to act on from a phone.
   - Each message starts with its grade: 🟡 **Needs action** (a permission request, a task plan waiting for approval, an album that needs you), 🟢 **Done**, or ❌ **Failed**. The app name is no longer repeated on the first line.
   - Messages are named by project / worktree, also for long commands, instead of the tile name.
