@@ -110,7 +110,7 @@ Hover the right edge of the window or press `Ctrl+Shift+[` to open the side chat
 
 ![The side chat](../images/getting-started/side-chat.png)
 
-Ask a quick question without leaving your work. The chips under the message box choose the agent, the effort level and a **linked session**: link a terminal and the AI can read that session for context.
+Ask a quick question without leaving your work. The chips under the message box choose the agent, the effort level and the **linked sessions**: link one or more terminals (up to 8) and the AI can read those sessions for context.
 
 ## 8. Session sheet
 

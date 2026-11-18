@@ -5,7 +5,7 @@
 //!
 //! 1. 감싸개가 있는 타일([`has_wrapper`] — PowerShell · Git Bash, 로컬 셸 통합 켬)을 열면 GUI 가 그 타일 환경에 장식 파일의 **경로**
 //!    (`AYNX_TILE_AGENT` — [`crate::tile_env::TILE_AGENT_ENV`])를 넣고, 세션 서버 `open` 에 `mcp` 를 켜 타일 MCP 토큰을 받게 한다
-//!    (`ai` 는 거짓 — AI 타일이 아니다, 서버 표의 `is_ai_tile` · 그 타일의 AI 읽기 허용은 예전 그대로). 경로는 스트림에서 정해진다([`path_for`]) — 토큰은 `open` 에서
+//!    (`ai` 는 거짓 — 지금 서버는 그 칸을 버린다 · AI 읽기 허용은 AI 타일과 같이 타일별로 사람이 켠다). 경로는 스트림에서 정해진다([`path_for`]) — 토큰은 `open` 에서
 //!    뽑히므로 파일은 열기가 선 **뒤에** 쓴다(`server::proxy::open_local_session` → [`prepare`]).
 //! 2. 파일 = 에이전트마다 한 줄 `AYNX_ARGS_<ID>=<낱말을 \x1f 로 이은 값>`([`body`]). 낱말은 autorun 한 문
 //!    (`crate::agent_autorun::agent_autorun_command`)과 **같은 장식**이다: 추가 인자 `[ai.args]`(`crate::agent_args::parse_args`) ·

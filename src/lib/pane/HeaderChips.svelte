@@ -28,7 +28,7 @@
   import { paneGitHead, refreshPaneGit, watchPaneGit } from "$lib/app/pane-git.svelte.js";
   import { openBranchGraphOfPane } from "$lib/app/branch-graph.svelte.js";
   import { settings } from "$lib/settings.svelte.js";
-  import { localAiTile } from "$lib/app/delegation.svelte.js";
+  import { setLocalAiRead } from "$lib/pane/local-ai";
   import { resourceOutdated, resourceRing, resourceTop, watchResources } from "$lib/app/resources.svelte.js";
   import { openResourceView } from "$lib/app/usage-view.svelte.js";
   import { formatCpu, formatMem, tileUsage, topLine } from "$lib/resources";
@@ -64,7 +64,7 @@
    *
    * 칩의 호버 카드(tmux · 포워딩)는 타일 상자 **밖**에서 `PaneHost` 가 그린다 — 여기는 값을 짓고 `ontmuxcard` ·
    * `onforwardcard` 로 올리기만 한다(상자마다 `isolation: isolate` 라 안에서 그리면 이웃 타일에 덮인다).
-   * `data-*` 손잡이(`data-ai-menu-btn` · `data-ai-read-chip`(로컬 타일의 AI 권한 칩 — 10-23 부터 같은 칩) · `data-tmux-menu-btn` · `data-jump-chip` · `data-forward-chip` ·
+   * `data-*` 손잡이(`data-ai-menu-btn` · `data-ai-read-chip`(로컬 타일의 눈 칩 — 11-18) · `data-tmux-menu-btn` · `data-jump-chip` · `data-forward-chip` ·
    * `data-folder-chip` · `data-branch-chip` · `data-resource-chip`)는 하네스 · 바깥 클릭 판정이 잡는 이름이라 바꾸지 않는다.
    */
   let {
@@ -92,7 +92,7 @@
   }: {
     pane: PaneSpec;
     host?: HostEntry | null;
-    /** AI 가 이 타일을 볼 수 있는가 — 로컬이면 AI 권한 칩의 Read(원격은 `aiStage` 칩) */
+    /** AI 가 이 타일을 볼 수 있는가 — 로컬이면 켜졌을 때만 눈 칩이 선다(원격은 `aiStage` 칩) */
     shared?: boolean;
     /** 원격 타일의 AI 권한 단계 — 로컬·그 밖이면 `null` */
     aiStage?: AiStage | null;
@@ -430,17 +430,16 @@
 {/snippet}
 
 <!--
-  AI 권한 칩 — **종류로 갈린다** (2026-10-07). **끔이어도 선다**(10-23 사용자 결정 — 빈 게이지 + Off, 흐린 색 `--chip-ai-off`.
+  AI 권한 칩 — **종류로 갈린다** (2026-10-07). 원격 · 쿼리는 **끔이어도 선다**(10-23 사용자 결정 — 빈 게이지 + Off, 흐린 색 `--chip-ai-off`.
   보기 싫으면 설정 › 터미널 › 타일 머리줄 칩의 AI 권한을 끈다 — 원격 · 쿼리 · 로컬이 함께 숨는다):
   - 원격 — 호스트의 AI 권한 단계를 **미니 게이지(막대 넷) + 짧은 단계 이름**으로(10-23 — 막대가 지금 자리까지 차고 단계 색을 입는다:
     읽기 · 승인 후 · 자동 = 강조색 계열 · 모두 = 주황). **버튼이다** — 누르면 권한 팝오버(단계 게이지 · 헤드리스 접속)가 뜬다.
     호스트 목록에 없는 타일(빠른 접속 — 별칭 없음)은 팝오버가 열리지 않으므로 Off 칩이 **흐린 채**(`aria-disabled`) 서고 말풍선이
     이유를 말한다(⋯ 메뉴의 흐린 "AI 권한…" 과 같은 글 `app.ai.adhoc`).
   - 쿼리 타일 — DB 연결의 AI 권한(아래). 연결이 목록에 없으면 같은 흐린 Off 칩(⋯ 메뉴와 같은 글 `pane.menu.dbaiperm.missing`).
-  - 로컬 타일(10-23 — 사용자 결정 A, 예전 따로 선 'AI 읽기' 칩 `ai_read`) — **같은 칩**: 막대 하나 + Read 또는 빈 게이지 + Off.
-    누르면 같은 팝오버(Off · Read 만 — Ask 부터 잠김)가 뜬다.
-    **예외 — 로컬 AI CLI 타일(Claude · Codex 가 도는 타일, 판정 `localAiTile`)에는 칩이 없다**(10-23 사용자 결정 — AI 타일에는 AI 읽기
-    권한이 아예 없다: ⋯ 메뉴의 "AI 권한…" 줄도 없고 `paneAiReadable` 이 늘 `false`). 평범한 로컬 셸 · 원격 · 쿼리는 위 규칙대로 늘 선다.
+  - 로컬 타일(11-18 사용자 결정 — 로컬 셸 · 로컬 AI CLI 타일 같은 규칙) — 단계가 Off · Read 둘뿐이라 게이지가 아니다. **꺼짐이면 칩이 없고**,
+    켜졌을 때만 **눈 그림 하나**(글자 없음 · 중성 `--chip-ai-read`)가 선다. 누르면 팝오버 없이 **바로 끈다**(`setLocalAiRead` — 끄기는
+    원격 창에서도 묻지 않는다). 켜는 곳은 ⋯ 메뉴(와 터미널 우클릭)의 체크 줄 "AI 읽기 허용" 하나다.
 -->
 {#snippet aiChip()}
 {#if aiStage !== null}
@@ -493,27 +492,18 @@
   </button>
 {:else if pane.kind === "query"}
   {@render aiChipDisabled(t("pane.menu.dbaiperm.missing"))}
-{:else if pane.kind === "local" && !localAiTile(pane)}
-  <!-- 로컬 타일의 AI 권한 칩(10-23) — 원격 칩과 같은 칩 · 같은 손잡이. 단계는 Off · Read 둘뿐이다 -->
-  {@const localStage = shared ? "read" : "off"}
-  {@const localAt = shared ? 1 : 0}
-  {@const localTip = t("app.ai.stage.chip", { stage: t(AI_STAGE_NAME[localStage]) })}
+{:else if pane.kind === "local" && shared}
+  <!-- 로컬 타일의 눈 칩(11-18) — 켜졌을 때만 · 누르면 바로 끈다(팝오버 없음). 접을 글자가 없다(꼴 1) -->
   <button
     type="button"
     class="hchip ai-chip"
-    {...fitAttrs("ai", 2, true)}
-    data-stage={localStage}
-    data-ai-tone={gaugeTone(localAt)}
-    data-ai-menu-btn
+    {...fitAttrs("ai", 1, true)}
     data-ai-read-chip={pane.id}
-    aria-haspopup="menu"
-    aria-expanded={aiMenuOpen}
-    title={localTip}
-    aria-label={localTip}
-    onclick={(ev) => onaimenu?.(ev)}
+    title={t("pane.header.aiRead.title")}
+    aria-label={t("pane.header.aiRead.title")}
+    onclick={() => setLocalAiRead(pane.id, false)}
   >
-    <AiGaugeMini at={localAt} />
-    <span class="hchip-t" data-fold="1">{t(AI_STAGE_NAME[localStage])}</span>
+    <UiIcon name="ai-read" size={ICON_SIZE - 2} />
   </button>
 {/if}
 {/snippet}

@@ -11,19 +11,19 @@ import { displayName } from "$lib/app/titles.svelte.js";
 import { knownAiClis } from "$lib/app/panes.svelte.js";
 import { openChatDockAt } from "$lib/app/chat-dock.svelte.js";
 import { addForkedSideChat, currentSideChat, lastSideChatPick, newSideChat, sideChats } from "$lib/app/side-chats.svelte.js";
-import { fillSideChatComposer, linkSideChat, sideChatErrorText } from "$lib/app/side-chat-live.svelte.js";
+import { addSideChatLink, fillSideChatComposer, setSideChatLinks, sideChatErrorText } from "$lib/app/side-chat-live.svelte.js";
 import { newSideChatId, sideChatCliOk, sideChatForkSource, sideChatForkTitle, sideChatNewDefault, sideChatPickFor } from "$lib/side-chat";
 import { sideChatClose, sideChatOpen, type SideChatCli, type SideChatSnapshot } from "$lib/side-chat-api";
 import { agentLinkOf } from "$lib/app/agent-sessions.svelte.js";
-import { linkTileName, orderLinkTiles, type LinkTile, type SideChatTileLink } from "$lib/side-chat-link";
+import { SIDE_CHAT_LINK_MAX, linkTileName, orderLinkTiles, type LinkTile, type SideChatTileLink } from "$lib/side-chat-link";
 import { settings } from "$lib/settings.svelte.js";
 
 /**
  * **사이드 채팅의 맥락 잇기**(v2 5단계 — docs/log/2026-10-23-side-chat-dock.md 결정 10 · 11) — 연결 칩이 고를 이 창의 타일들 · [AI에게 묻기] →
  * 사이드 채팅 · 터미널 우클릭 "사이드 채팅에 묻기" · (6단계) AI 타일 ⋯ · 우클릭 "사이드 채팅에서 이어 가기"(그 타일의 대화를 갈라 온다).
  *
- * 방향이 **사람 → 사이드 채팅 입력 칸**이다: 글은 칸에 **채우기만** 하고 보내기는 사람이 누른다. 연결은 그 블록 · 선택이 있던 타일로 건다 —
- * 그 채팅의 AI 는 MCP 읽기 도구로 그 세션만 읽고(판정은 서버가 호출마다 — 로컬 'AI 읽기 허용' · 원격 호스트 AI 권한) 앱은 값을 붙여 넣지
+ * 방향이 **사람 → 사이드 채팅 입력 칸**이다: 글은 칸에 **채우기만** 하고 보내기는 사람이 누른다. 연결은 그 블록 · 선택이 있던 타일을 묶음에 더한다 —
+ * 그 채팅의 AI 는 MCP 읽기 도구로 연결한 세션들만 읽고(판정은 서버가 호출마다 — 로컬 'AI 읽기 허용' · 원격 호스트 AI 권한) 앱은 값을 붙여 넣지
  * 않는다(넘긴 글 자체는 사람이 보낼 때 그 대화에 남는다). 사이드 채팅은 **사람 창**(메인 PC 주 창 · 원격 웹 창 — 2026-11-01)에 선다 —
  * 데스크톱 폭은 채팅 독, 원격 폰 배치는 폰 덮개(`MobileChat`). 보조 창에서는 안내 한 줄.
  */
@@ -55,6 +55,7 @@ function linkTileOf(pane: PaneSpec & { kind: "local" | "ssh" }, tabId: string, f
     kind: pane.kind,
     readable: paneAiReadable(pane),
     focused: pane.id === focusedId,
+    pane,
   };
 }
 
@@ -110,7 +111,7 @@ export function tileForkSource(pane: PaneSpec): { agent: SideChatCli; conv: stri
  * **사이드 채팅에서 이어 가기**(6단계 — 타일 ⋯ · 우클릭 메뉴) — 그 AI 타일의 대화를 **새 사이드 채팅으로 갈라 온다**(원본 · 도는 타일은 그대로 —
  * Claude 는 쓰는 이 잠금이 없어 그냥 이어 가면 대화가 갈라진다). 순서: 서버에 먼저 연다(`side_chat_open{fork{from}}` — 서버가 그 CLI 의 대화
  * 색인에서 원본을 찾고 **기록된 폴더**를 cwd 로 정한다 · 화면은 경로를 주지 않는다) → 되면 목록에 적고(제목 `↪ <타일 이름>` · 폴더 이름표 ·
- * 원본) 고른다 → 독을 연다 → 그 타일을 연결 칩에 건다. 거절(색인에 없음 · 폴더 없음)이면 안내 한 줄 · 목록에 남기지 않는다. 띄우지는 않는다
+ * 원본) 고른다 → 독을 연다 → 그 타일 하나짜리 묶음으로 연결을 건다. 거절(색인에 없음 · 폴더 없음)이면 안내 한 줄 · 목록에 남기지 않는다. 띄우지는 않는다
  * (첫 보내기가 띄운다 — 그 전엔 원본의 기록을 보인다).
  */
 export async function continueTileInSideChat(paneId: string): Promise<void> {
@@ -157,12 +158,13 @@ export async function continueTileInSideChat(paneId: string): Promise<void> {
   }
   openSideChatHere();
   const link = tileLinkOf(paneId);
-  if (link) await linkSideChat(id, link);
+  if (link) await setSideChatLinks(id, [link]);
 }
 
 /**
  * **사이드 채팅에 묻기** — 독을 열고(닫혀 있으면) 지금 채팅을 고르고(없으면 켠 CLI 로 하나 만든다) 입력 칸에 글을 **채우고**(보내지 않는다)
- * 그 타일을 연결 칩에 건다(연결할 수 없는 타일이면 연결은 그대로). 사람 창이 아니면 안내 한 줄.
+ * 그 타일을 그 채팅의 연결 묶음에 **더한다**(이미 있으면 그대로 · 연결할 수 없는 타일이면 묶음은 그대로 · 찼으면 더하지 않고 안내 한 줄 —
+ * 채우기는 그대로). 사람 창이 아니면 안내 한 줄.
  */
 export async function askSideChat(sourcePaneId: string, text: string): Promise<void> {
   if (!sideChatWindow()) {
@@ -181,6 +183,6 @@ export async function askSideChat(sourcePaneId: string, text: string): Promise<v
   }
   openSideChatHere();
   const link = tileLinkOf(sourcePaneId);
-  if (link) await linkSideChat(id, link);
+  if (link && !(await addSideChatLink(id, link))) showNotice(t("app.chatDock.link.full", { max: SIDE_CHAT_LINK_MAX }));
   fillSideChatComposer(id, text);
 }

@@ -125,6 +125,8 @@ const WANTED = [
    * 이름이고, 뜻이 다르면 그림이 같아도 이름을 따로 둔다(나중에 한쪽만 그림을 바꿀 수 있게).
    */
   ["ai-off", "material-symbols:block-outline-rounded"],
+  /** 로컬 타일의 "AI 읽기 허용" 눈 칩(11-18 — 켜졌을 때만 머리줄에 선다). 그림은 `header-always` · `show-hidden` 과 같은 눈, 뜻이 달라 이름을 따로 */
+  ["ai-read", "material-symbols:visibility-outline-rounded"],
   /**
    * **AI 권한 게이지 글리프**(2026-10-23) — 머리줄 칩의 미니 게이지(`AiGaugeMini.svelte` 의 `bars` — 세로 막대 넷)를 메뉴 아이콘 한 칸에.
    * 끝 수가 게이지 자리(`ai-gauge.ts` — 0 = 끔 · 1~4 = 찬 막대 수)이고 이름은 `gaugeIconName` 이 고른다. 타일 ⋯ 메뉴의 "AI 권한…" 줄 · 호스트 목록의 AI 권한 표식이

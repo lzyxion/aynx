@@ -1,6 +1,5 @@
 import { listen } from "../ipc";
 import { isShared } from "$lib/ai.svelte.js";
-import { paneAi } from "$lib/app/titles.svelte.js";
 import type { PaneSpec } from "$lib/session";
 import { refreshDbAi } from "$lib/app/db-ai.svelte.js";
 import {
@@ -148,18 +147,12 @@ export function paneAiStage(pane: { kind: string; alias?: string; adhoc?: unknow
  * 하나다(`Terminal.svelte` · 머리줄 · 대시보드 · 블록 넘기기가 함께 읽는다).
  *
  * - 원격: 호스트 단계가 `read` 이상. 타일의 `opted_in` 토글은 원격에서 뜻이 없다(Rust 도 그 값을 안 본다).
- * - 로컬: 타일별 "AI 읽기 허용"(`ai.svelte.ts`) 그대로 — **단 로컬 AI CLI 타일(Claude · Codex 가 도는 타일 — `paneAi`)은 늘 `false`**
- *   (10-23 사용자 결정: AI 타일에는 AI 읽기 권한이 아예 없다 — 칩 · ⋯ 메뉴 줄도 없고 켜져 있던 값은 `Terminal.svelte` 가 끈다).
+ * - 로컬: 타일별 "AI 읽기 허용"(`ai.svelte.ts`) 그대로 — 로컬 셸 타일과 로컬 AI CLI 타일(Claude · Codex)이 같은 규칙이다.
  */
 export function paneAiReadable(pane: PaneSpec): boolean {
   const stage = paneAiStage(pane);
   if (stage !== null) return stageAtLeast(stage, "read");
-  return isShared(pane.id) && !localAiTile(pane);
-}
-
-/** 로컬 AI CLI 타일인가(10-23 — AI 읽기 권한이 없는 타일). 판정은 탭 점 · 머리줄과 같은 `paneAi` 한 벌. 반응형 */
-export function localAiTile(pane: PaneSpec): boolean {
-  return pane.kind === "local" && paneAi(pane) !== null;
+  return isShared(pane.id);
 }
 
 /**

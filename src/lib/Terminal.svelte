@@ -97,8 +97,8 @@
     tileCode,
     updateSessionContext,
   } from "$lib/context";
-  import { dropShared, isShared, setShared } from "$lib/ai.svelte.js";
-  import { localAiTile, paneAiReadable } from "$lib/app/delegation.svelte.js";
+  import { dropShared, setShared } from "$lib/ai.svelte.js";
+  import { paneAiReadable } from "$lib/app/delegation.svelte.js";
   import { aiHostAlias } from "$lib/delegation";
   import { sessionOf } from "$lib/app/sessions.svelte.js";
   import {
@@ -564,15 +564,6 @@
     if (aiReadSent === mark) return;
     aiReadSent = mark;
     setSessionAiRead(contextKeyOf, on);
-  });
-
-  /**
-   * **로컬 AI CLI 타일에는 AI 읽기 허용이 없다**(10-23 사용자 결정) — 되살아난 · 옮겨 온 타일에 켜진 값이 남아 있거나 셸에서 CLI 가
-   * 떠 AI 타일이 되면 같은 끄기 길(`setShared(…, false)`)로 끈다. 서버 메타는 위 `$effect` 가 `aiOn`(= `paneAiReadable` — AI 타일은
-   * 늘 `false`)을 따라 `false` 로 고친다.
-   */
-  $effect(() => {
-    if (localAiTile(pane) && isShared(pane.id)) setShared(pane.id, false);
   });
 
   /**
@@ -2048,7 +2039,7 @@
       shell?.resetSource();
       // 로컬 타일의 "AI 읽기 허용" 은 세션 서버의 세션 메타에 남아 있다(③-4) — 세션을 알리기 전에 되살려, 거울이 첫
       // 보고부터 켜진 채 나가게 한다.
-      if (pane.kind === "local" && plan.aiRead && !localAiTile(pane)) setShared(pane.id, true);
+      if (pane.kind === "local" && plan.aiRead) setShared(pane.id, true);
       onsession?.(pane.id, s.id);
       // 같은 세션이다 — 에이전트 상태는 Rust 표의 것을 그대로 받는다(이관 재부착과 같은 자리).
       agentStateResumed(pane);

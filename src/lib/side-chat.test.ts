@@ -29,6 +29,7 @@ import {
   type SideChat,
   type SideChatLast,
 } from "$lib/side-chat";
+import { SIDE_CHAT_LINK_MAX } from "$lib/side-chat-link";
 
 const ID = "0123456789abcdef";
 const UUID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
@@ -44,7 +45,7 @@ function chat(over: Partial<SideChat> = {}): SideChat {
     usedAt: 0,
     used: [],
     links: {},
-    tile: null,
+    tiles: [],
     forkedFrom: null,
     cwd: "",
     ...over,
@@ -263,19 +264,47 @@ describe("sideChatEffortChoices", () => {
   });
 });
 
-describe("연결 칩 저장(tile — v2 5단계)", () => {
-  it("모양이 맞으면 되살리고 틀리면 버린다(줄은 남는다) · 저장 왕복", () => {
+describe("연결 칩 저장(tiles — v2 5단계 · 여러 타일)", () => {
+  it("옛 파일의 tile(하나)은 한 칸짜리 묶음으로 · 틀리면 빈 묶음(줄은 남는다)", () => {
     const raw = JSON.stringify({
       chats: [
         { id: ID, cli: "claude", tile: { stream: "s-pane-2", name: "p2 pwsh" } },
         { id: "fedcba9876543210", cli: "codex", tile: { stream: "bad stream", name: "x" } },
+        { id: "aaaaaaaaaaaaaaaa", cli: "claude" },
       ],
     });
     const f = parseSideChats(raw);
-    expect(f.chats[0].tile).toEqual({ stream: "s-pane-2", name: "p2 pwsh" });
-    expect(f.chats[1].tile).toBeNull();
-    const again = parseSideChats(serializeSideChats(f));
-    expect(again.chats.map((c) => c.tile)).toEqual([{ stream: "s-pane-2", name: "p2 pwsh" }, null]);
+    expect(f.chats.map((c) => c.tiles)).toEqual([[{ stream: "s-pane-2", name: "p2 pwsh" }], [], []]);
+  });
+
+  it("새 tiles — 모양 검사 · 같은 스트림은 처음 것만 · 8개에서 자른다 · tiles 가 있으면 옛 tile 은 보지 않는다", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ stream: `s-${i}`, name: `t${i}` }));
+    const raw = JSON.stringify({
+      chats: [
+        {
+          id: ID,
+          cli: "claude",
+          tile: { stream: "old", name: "옛" },
+          tiles: [{ stream: "s-a", name: "A" }, { stream: "bad stream" }, { stream: "s-a", name: "A2" }, { stream: "s-b", name: "B" }, "x"],
+        },
+        { id: "fedcba9876543210", cli: "claude", tiles: many },
+      ],
+    });
+    const f = parseSideChats(raw);
+    expect(f.chats[0].tiles).toEqual([
+      { stream: "s-a", name: "A" },
+      { stream: "s-b", name: "B" },
+    ]);
+    expect(f.chats[1].tiles.map((x) => x.stream)).toEqual(many.slice(0, SIDE_CHAT_LINK_MAX).map((x) => x.stream));
+  });
+
+  it("쓰기는 tiles 만(tile 칸 없음) · 왕복", () => {
+    const raw = JSON.stringify({ chats: [{ id: ID, cli: "claude", tile: { stream: "s-pane-2", name: "p2 pwsh" } }] });
+    const out = serializeSideChats(parseSideChats(raw));
+    const written = JSON.parse(out).chats[0];
+    expect(written.tiles).toEqual([{ stream: "s-pane-2", name: "p2 pwsh" }]);
+    expect("tile" in written).toBe(false);
+    expect(parseSideChats(out).chats[0].tiles).toEqual([{ stream: "s-pane-2", name: "p2 pwsh" }]);
   });
 });
 
@@ -290,7 +319,7 @@ describe("mergeSideChats — 여러 창이 함께 고친 목록(2026-11-01)", ()
     usedAt: 0,
     used: [],
     links: {},
-    tile: null,
+    tiles: [],
     forkedFrom: null,
     cwd: "",
   });

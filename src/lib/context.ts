@@ -559,12 +559,13 @@ export interface TranscriptTool {
 }
 
 /**
- * 사람 말 맨 앞의 **앱 연결 머리글**이 알린 연결(사이드 채팅 — Rust `side_chat::event::LinkNote`). `label` = 보낼 때의 타일 표시 이름(입력 칸
- * 칩과 같은 이름 · 10-24 전 기록은 `p6 로컬` 처럼 코드가 붙은 꼴 그대로 · 비면 이름 없는 타일) · `unlinked` = 사람이 연결을 끊었다. 세션 id 는 오지 않는다.
+ * 사람 말 맨 앞의 **앱 연결 머리글**이 알린 연결(사이드 채팅 — Rust `side_chat::event::LinkNote`). `labels` = 보낼 때의 타일 표시 이름들(연결
+ * 순서 · 입력 칸 칩과 같은 이름 · 10-24 전 기록은 `p6 로컬` 처럼 코드가 붙은 꼴 그대로 · `""` = 이름 없는 타일) · `unlinked` = 사람이 모두
+ * 끊었다(그때 `labels` 는 비어 있다). 세션 id 는 오지 않는다.
  */
 export interface TranscriptLink {
-  label?: string;
-  unlinked?: boolean;
+  labels: string[];
+  unlinked: boolean;
 }
 
 /** 기록의 항목 하나 — 오래된 것부터 온다. `interrupted` = 끊긴 턴(글 없음 — "중단함" 한 줄) */

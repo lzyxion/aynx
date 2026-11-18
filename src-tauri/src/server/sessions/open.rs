@@ -59,8 +59,9 @@ pub(crate) const SSH_OPEN: &str = "ssh-open";
 
 /// `open` 몸 — 스트림(GUI 가 늘 채운다 — 없는 타일엔 이름을 지어 준다) · 창 라벨 · 띄울 재료 · **신호를 받을 타일인가**
 /// (프런트가 스트림 id 를 준 타일 — 지어 준 이름의 타일은 훅이 가리킬 스트림이 없어 받지 않는다) · **MCP 토큰을 받을 타일인가**(`mcp` — 3차 4단계
-/// 로컬 AI 타일 · 2026-10-26 감싸개가 있는 로컬 셸 타일도, AI 타일인가는 `ai`:
+/// 로컬 AI 타일 · 2026-10-26 감싸개가 있는 로컬 셸 타일도:
 /// 서버가 그 타일만의 MCP 토큰을 뽑아 셸 환경에 넣는다 · 신호를 받는 타일일 때만 — 같은 주인 번호로 함께 거둔다).
+/// GUI 가 싣는 `ai`(AI 타일인가)는 받아서 버린다 — 서버는 둘을 가르지 않는다(AI 읽기 허용은 둘 다 타일별 · 모르는 칸이라 serde 가 버린다).
 #[derive(Deserialize)]
 pub(super) struct Open {
     stream: String,
@@ -70,9 +71,6 @@ pub(super) struct Open {
     signal: bool,
     #[serde(default)]
     mcp: bool,
-    /// 앱이 띄운 AI 타일인가(2026-10-26 — 감싸개가 있는 로컬 셸 타일도 `mcp` 를 켠다). 없으면 `mcp` 와 같다(옛 GUI).
-    #[serde(default)]
-    ai: Option<bool>,
 }
 
 /// 진행 중인 열기의 스트림 예약 — 서지 못한 채 떨어지면(실패) 스스로 푼다.
@@ -115,11 +113,11 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
     let signal_key = grant.as_ref().map(crate::agent_signal::SignalGrant::key);
     drop(grant);
     // **타일 MCP 토큰**(3차 4단계 — `crate::tile_token`): MCP 토큰은 이제 GUI 가 주지 않는다 — 서버가 AI 타일 · 감싸개가 있는 로컬 셸 타일
-    // (`mcp` — 2026-10-26 · 둘의 구분은 `ai`)마다 뽑아 넣고(신호 토큰과
+    // (`mcp` — 2026-10-26)마다 뽑아 넣고(신호 토큰과
     // 같은 주인 번호 · 같은 수명), 회차가 서면 그 회차에 묶는다. GUI 가 같은 이름을 실어 보냈으면 지운다(전역 토큰이 타일로 새지 않게).
     spec.env.retain(|(k, _)| k != crate::tile_env::MCP_TOKEN_ENV);
     let tile_owner = match (&signal_key, o.mcp) {
-        (Some((s, owner)), true) => crate::tile_token::issue(s, *owner, o.ai.unwrap_or(true)).map(|tok| {
+        (Some((s, owner)), true) => crate::tile_token::issue(s, *owner).map(|tok| {
             spec.env.push((crate::tile_env::MCP_TOKEN_ENV.to_string(), tok));
             *owner
         }),

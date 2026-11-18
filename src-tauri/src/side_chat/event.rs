@@ -322,6 +322,15 @@ pub(crate) fn link_header(link: Option<(&str, &str)>) -> String {
     }
 }
 
+/// **연결 묶음의 머리글** — 연결된 타일마다 [`link_header`] 조각 하나씩, 연결 순서대로 이어 붙인다. 빈 묶음이면 [`LINK_HEADER_NONE`]
+/// (사람이 모두 끊었다). [`parse_link_note`] 가 같은 글을 되읽는다.
+pub(crate) fn link_headers(links: &[(&str, &str)]) -> String {
+    if links.is_empty() {
+        return LINK_HEADER_NONE.to_string();
+    }
+    links.iter().map(|l| link_header(Some(*l))).collect()
+}
+
 /// **머리글의 이름 고르기** — 화면이 보낼 때 실은 입력 칸 칩의 이름(`hint` — 프런트 `linkChipState` 의 이름 = 타일 표시 이름)이 먼저,
 /// 없으면(옛 화면 · 칸 없음) 서버 거울의 타일 이름(`fallback` — 코드는 붙이지 않는다). 그래서 같은 타일이면 기록 칩과 입력 칸 칩이 같은 글자다.
 pub(crate) fn link_display_name(hint: Option<&str>, fallback: Option<&str>) -> String {
@@ -342,23 +351,33 @@ fn link_stream_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')
 }
 
-/// **머리글이 알린 연결**(기록 보기의 칩 · `op_send` 의 답) — `{label}`(타일 표시 이름 — 옛 기록은 코드가 붙은 꼴 그대로 · 비면 이름 없는 타일) 또는 `{unlinked: true}`.
-/// 스트림 id 는 싣지 않는다(화면에 보이지 않는다).
+/// **머리글이 알린 연결**(기록 보기의 칩 · `op_send` 의 답) — `{labels, unlinked}`. `labels` = 머리글이 알린 타일 표시 이름들(연결 순서 · 옛 기록은
+/// 코드가 붙은 꼴 그대로 · 이름 없는 타일은 빈 글자) · `unlinked: true` 면 `labels` 는 비었다(사람이 모두 끊음). 스트림 id 는 싣지 않는다(화면에
+/// 보이지 않는다).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct LinkNote {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub labels: Vec<String>,
     pub unlinked: bool,
 }
 
-/// **머리글 읽기** — 글이 [`link_header`] 가 짓는 꼴 그대로 **맨 앞에서** 시작하면 (연결, 머리글 뒤의 사람 글). 아니면 `None`(닮은 글 ·
-/// 가운데의 머리글은 손대지 않는다). 이름은 짓기가 남기는 모양(한 줄 · 대괄호 없음 · 공백 하나씩 · [`LINK_NAME_MAX`] 글자)만,
-/// 스트림 id 는 [`link_stream_char`] 글자만 받는다.
+/// **머리글 읽기** — 글이 [`link_headers`] 가 짓는 꼴 그대로 **맨 앞에서** 시작하면 (연결, 머리글 뒤의 사람 글). 머리글 조각이 이어지는
+/// 동안 모두 읽는다(한 개짜리 옛 기록은 `labels` 한 칸). 아니면 `None`(닮은 글 · 가운데의 머리글은 손대지 않는다).
 pub(crate) fn parse_link_note(text: &str) -> Option<(LinkNote, &str)> {
     if let Some(rest) = text.strip_prefix(LINK_HEADER_NONE) {
-        return Some((LinkNote { label: None, unlinked: true }, rest));
+        return Some((LinkNote { labels: Vec::new(), unlinked: true }, rest));
     }
+    let mut labels = Vec::new();
+    let mut rest = text;
+    while let Some((label, after)) = parse_one_header(rest) {
+        labels.push(label.to_string());
+        rest = after;
+    }
+    (!labels.is_empty()).then_some((LinkNote { labels, unlinked: false }, rest))
+}
+
+/// 머리글 조각 하나(맨 앞) — (이름, 조각 뒤의 글). 이름은 짓기가 남기는 모양(한 줄 · 대괄호 없음 · 공백 하나씩 · [`LINK_NAME_MAX`] 글자)만,
+/// 스트림 id 는 [`link_stream_char`] 글자만 받는다.
+fn parse_one_header(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix(LINK_HEADER_OPEN)?;
     let end = rest.find(']')?;
     let body = rest[end..].strip_prefix(LINK_HEADER_CLOSE)?;
@@ -372,7 +391,7 @@ pub(crate) fn parse_link_note(text: &str) -> Option<(LinkNote, &str)> {
     let name_ok = name.chars().count() <= LINK_NAME_MAX
         && !name.chars().any(|c| c.is_control() || c == '[')
         && name.split_whitespace().collect::<Vec<_>>().join(" ") == name;
-    (stream_ok && name_ok).then(|| (LinkNote { label: Some(name.to_string()), unlinked: false }, body))
+    (stream_ok && name_ok).then_some((name, body))
 }
 
 /// **파일 첨부 꼬리**의 줄 머리(판 32 — `server::side_chat::with_file_refs` 가 짓고 [`parse_file_refs`] 가 읽는다 · 같은 글자).

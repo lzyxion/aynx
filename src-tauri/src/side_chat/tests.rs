@@ -885,7 +885,11 @@ fn link_header_is_one_fixed_line() {
 }
 
 fn linked(label: &str) -> LinkNote {
-    LinkNote { label: Some(label.into()), unlinked: false }
+    LinkNote { labels: vec![label.into()], unlinked: false }
+}
+
+fn unlinked() -> LinkNote {
+    LinkNote { labels: Vec::new(), unlinked: true }
 }
 
 /// 머리글 읽기 — 짓기가 내는 꼴은 모두 되읽히고(이름 · 이름 없음 · 끊기 · 걷힌 이름 · 상한 이름 · 이름 안의 `· 세션`), 뒤의 사람 글은
@@ -910,7 +914,7 @@ fn link_note_reads_back_every_header_form() {
             assert_eq!(rest, body);
             match &label {
                 Some(l) => assert_eq!(note, linked(l)),
-                None => assert_eq!(note, LinkNote { label: None, unlinked: true }),
+                None => assert_eq!(note, unlinked()),
             }
         }
     }
@@ -919,10 +923,33 @@ fn link_note_reads_back_every_header_form() {
         parse_link_note("[연결된 타일: p2 PowerShell 7 · 세션 8dd8bbdab0b3d4136ee55ab8e750d144] p2 타일의 dir 목록 확인 가능??").unwrap();
     assert_eq!((note, rest), (linked("p2 PowerShell 7"), "p2 타일의 dir 목록 확인 가능??"));
     let (note, rest) = parse_link_note("[연결된 타일 없음 — 사람이 연결을 끊었습니다] Write 40 facts.").unwrap();
-    assert!(note.unlinked && note.label.is_none() && rest == "Write 40 facts.");
+    assert!(note == unlinked() && rest == "Write 40 facts.");
     // 답(`op_send`) · 기록 항목의 꼴 — 스트림 id 는 싣지 않는다
-    assert_eq!(serde_json::to_value(linked("p1")).unwrap(), json!({"label": "p1"}));
-    assert_eq!(serde_json::to_value(LinkNote { label: None, unlinked: true }).unwrap(), json!({"unlinked": true}));
+    assert_eq!(serde_json::to_value(linked("p1")).unwrap(), json!({"labels": ["p1"], "unlinked": false}));
+    assert_eq!(serde_json::to_value(unlinked()).unwrap(), json!({"labels": [], "unlinked": true}));
+}
+
+/// 연결 묶음 머리글 — 타일마다 한 조각 · 연결 순서대로 이어 붙이고 · 빈 묶음은 끊기 문장. 읽기는 이어지는 조각을 모두 읽는다(이름 없는
+/// 타일은 빈 글자 칸) · 뒤의 사람 글이 닮은 꼴로 시작해도 조각 모양이 아니면 그대로 남는다.
+#[test]
+fn link_headers_join_one_piece_per_tile() {
+    assert_eq!(link_headers(&[]), LINK_HEADER_NONE);
+    assert_eq!(link_headers(&[("s1", "pwsh")]), link_header(Some(("s1", "pwsh"))));
+    let h = link_headers(&[("s1", "pwsh"), ("s-2", "  "), ("s3", "Claude Code · dev-01")]);
+    assert_eq!(h, "[연결된 타일: pwsh · 세션 s1] [연결된 타일: 세션 s-2] [연결된 타일: Claude Code · dev-01 · 세션 s3] ");
+    let text = format!("{h}둘 다 봐 줘");
+    let (note, rest) = parse_link_note(&text).unwrap();
+    assert_eq!(
+        (note, rest),
+        (LinkNote { labels: vec!["pwsh".into(), String::new(), "Claude Code · dev-01".into()], unlinked: false }, "둘 다 봐 줘")
+    );
+    let text = format!("{}[연결된 타일: p2] x", link_headers(&[("s1", "a")]));
+    let (note, rest) = parse_link_note(&text).unwrap();
+    assert_eq!((note, rest), (linked("a"), "[연결된 타일: p2] x"));
+    // 끊기 문장 뒤에는 조각을 읽지 않는다(짓기가 내지 않는 꼴)
+    let text = format!("{LINK_HEADER_NONE}[연결된 타일: a · 세션 s1] x");
+    let (note, rest) = parse_link_note(&text).unwrap();
+    assert_eq!((note, rest), (unlinked(), "[연결된 타일: a · 세션 s1] x"));
 }
 
 /// 닮은 글은 걷지 않는다 — 맨 앞이 아님 · 닫는 `] ` 없음 · 빈 스트림 · 스트림에 공백/모르는 글자 · 이름 앞뒤 · 겹친 공백 · 이름 안 `[` ·

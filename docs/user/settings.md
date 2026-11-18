@@ -349,11 +349,10 @@ When to show the name tag and button row on a tile (tile menu · maximize · clo
   Join broadcast input · Detach to a new window. Right-clicking the header opens the same menu.
 - The header of a remote tile always shows the AI permission chip (the level name Off · Read · Ask · Auto · YOLO and a small gauge; when off, an empty gauge + dimmed **Off**). Pressing it changes the level and the headless connection on the spot. See [AI permission in host settings](hosts.md#host-ai).
   A remote tile not in the host list (quick connect) shows a dimmed **Off** chip that cannot be pressed. Its tooltip says "Save it as a host to give the AI access".
-  Local tiles have **the same chip**: if reading is allowed, one bar + **Read**, otherwise an empty gauge + **Off**. If you would rather not see the chip, turn off the **AI permission** chip in
-  [Tile header chips](#header-chips). Pressing it (or **AI access…** in the tile menu)
-  shows the same gauge as "AI access for this tile", and a local tile can only choose **Off · Read**. Ask · Auto · YOLO are
-  locked, because local tiles are not AI execution targets (only remote hosts are). The value you pick applies to that one tile only.
-  However, **AI tiles** (local tiles running Claude or Codex) have no AI permission at all: there is neither a chip nor **AI access…** in the tile menu, and it is always off.
+  Local tiles (shell tiles and AI tiles running Claude Code or Codex alike) have no gauge: the tile menu has an **Allow AI to read** check row
+  instead of **AI access…**, and pressing it turns reading on or off for that one tile. While it is on, the header shows an eye chip (no text);
+  pressing the chip turns it off at once. When it is off there is no chip. Local tiles are never AI execution targets (only remote hosts are).
+  The eye chip follows the **AI permission** chip in [Tile header chips](#header-chips).
 - Turn header chips on or off and reorder them in [Terminal › Tile header chips](#header-chips).
 - Start screen tiles never get a header at any value.
 

@@ -196,7 +196,7 @@ export type ErrorReason =
    * CLI 가 시한 안에 준비되지 않음 · 준비 전에 끝남 · 기다리는 권한 요청이 아님 · 주 창이 아닌 창의 호출. 타일 대화 이어 가기(6단계)의 거절 둘 =
    * 그 CLI 의 대화 색인에 없는 대화(`conversation-not-found`) · 기록된 폴더가 없음(`conversation-folder-missing`).
    * 서버 표에 없는 채팅은 위의 `session-gone`(다시 open). `bad-effort` = 악수가 알린 목록 밖의 추론 강도. `bad-link`(5단계 연결 칩) = 서버
-   * 거울에 없는 타일(닫힘 · 창 타일이 아님).
+   * 거울에 없는 타일(닫힘 · 창 타일이 아님)이 묶음에 섞임 · `too-many-links` = 묶음이 8개를 넘음.
    */
   | "stale-chat"
   | "start-timeout"
@@ -207,6 +207,7 @@ export type ErrorReason =
   | "main-window-only"
   | "bad-effort"
   | "bad-link"
+  | "too-many-links"
   /** 2026-11-03 첫 설치 점검: 사이드 채팅 · 프로듀서 · 작업자가 띄울 CLI 의 `.exe` 를 PATH 에서 못 찾음(Rust `orchestration::spawn::find_exe` — `.cmd` 는 받지 않는다). */
   | "cli-not-found"
   /**
@@ -338,6 +339,7 @@ export const REASONS: readonly ErrorReason[] = [
   "main-window-only",
   "bad-effort",
   "bad-link",
+  "too-many-links",
   "cli-not-found",
   "too-many-attachments",
   "too-many-images",

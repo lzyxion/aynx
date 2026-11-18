@@ -127,22 +127,23 @@ fn side_chat_stdin_only_human() {
     assert!(body_of(SRC, "fn attach_read(").contains("crate::orchestration::spawn::claude_read_rule(Path::new(&dir))"));
     assert_eq!(crate::side_chat::claude::TOOLS, "Read,Grep,Glob,WebSearch,WebFetch", "첨부 폴더 허용은 읽기뿐");
     // (5단계) 사람 글 앞의 **앱 고정 연결 머리글**도 이 몸에서만 붙는다 — 글 = 머리글(서버가 아는 연결 · 칩 이름 또는 거울 이름) + 사람 글,
-    // 그 밖은 사람 글 그대로. 이름은 화면이 실어도 스트림은 서버 표의 것(`chat_token::link_of`)뿐이다.
+    // 그 밖은 사람 글 그대로. 이름은 화면이 실어도 스트림은 서버 표의 것(`chat_token::links_of`)뿐이다.
     assert!(send.contains(
-        "let text = if st.link_note { format!(\"{}{}\", link_header_now(&chat.id, b.link_name.as_deref()), b.text) } else { b.text.clone() };"
+        "let text = if st.link_note { format!(\"{}{}\", link_header_now(&chat.id, b.link_names.as_ref()), b.text) } else { b.text.clone() };"
     ));
     // (2026-11-01) 다른 창에 보일 본문은 **사람 글 그대로**(머리글 없이) — 장부에 적을 뿐 stdin 에는 가지 않는다.
     assert!(send.contains("st.sent.push_back(Sent { client_id: b.client_id, text: b.text, files });"));
     let now = body_of(SRC, "fn link_header_now(");
-    assert!(now.contains("crate::chat_token::link_of(chat)") && now.contains("link_display_name(hint, label.as_deref())"));
+    assert!(now.contains("crate::chat_token::links_of(chat)") && now.contains("link_display_name(hint, label.as_deref())"));
     assert_eq!(SRC.matches("link_header_now(&").count(), 1, "머리글을 붙이는 곳은 op_send 하나");
-    assert_eq!(SRC.matches("event::link_header(").count(), 1, "머리글을 짓는 곳은 link_header_now 하나");
-    assert!(body_of(SRC, "fn link_header_now(").contains("crate::side_chat::event::link_header("));
+    assert_eq!(SRC.matches("event::link_header(").count(), 0, "조각은 link_headers 만 짓는다");
+    assert_eq!(SRC.matches("event::link_headers(").count(), 1, "머리글을 짓는 곳은 link_header_now 하나");
+    assert!(body_of(SRC, "fn link_header_now(").contains("crate::side_chat::event::link_headers(&pairs)"));
     assert_eq!(SRC.matches(".encode_decision(").count(), 1);
     assert!(body_of(SRC, "fn op_decide(").contains(".encode_decision(&b.request_id, decision, b.message.as_deref())"));
     assert!(SRC.contains("\"side_chat_decide\" => op_decide(body(b)?)"));
-    assert_eq!(SRC.matches("crate::chat_token::set_link(").count(), 1);
-    assert!(body_of(SRC, "fn op_link(").contains("crate::chat_token::set_link(&b.chat, b.stream)"));
+    assert_eq!(SRC.matches("crate::chat_token::set_links(").count(), 1);
+    assert!(body_of(SRC, "fn op_link(").contains("crate::chat_token::set_links(&b.chat, streams)"));
     assert!(SRC.contains("\"side_chat_link\" => op_link(body(b)?)"));
     assert_eq!(SRC.matches("crate::chat_token::issue(").count(), 1);
     assert!(body_of(SRC, "fn chat_mcp(").contains("crate::chat_token::issue(id, proc)"));
@@ -171,12 +172,12 @@ fn side_chat_stdin_only_human() {
         if name.starts_with("src/side_chat/") || name == "src/server/side_chat.rs" || name.starts_with("src/server/producer/") {
             continue;
         }
-        for bad in ["encode_user(", "encode_decision(", "encode_interrupt(", "encode_set_model(", "encode_set_effort(", "link_header("] {
+        for bad in ["encode_user(", "encode_decision(", "encode_interrupt(", "encode_set_model(", "encode_set_effort(", "link_header(", "link_headers("] {
             assert!(!src.contains(bad), "{name} 가 {bad} 를 부른다");
         }
         // (5단계) 연결을 바꾸는 것은 op `side_chat_link` 하나 — MCP · 오케스트레이션 · GUI 어디서도 표를 직접 바꾸지 않는다.
         if name != "src/chat_token.rs" {
-            assert!(!src.contains("chat_token::set_link(") && !src.contains("chat_token::issue("), "{name} 가 연결 · 채팅 토큰을 바꾼다");
+            assert!(!src.contains("chat_token::set_links(") && !src.contains("chat_token::issue("), "{name} 가 연결 · 채팅 토큰을 바꾼다");
         }
         let mcp_or_orch = name.starts_with("src/mcp/")
             || name == "src/mcp.rs"
@@ -924,9 +925,10 @@ mod live {
 
     /// 5단계 — **채팅 MCP 토큰 · 연결 칩**(가짜 CLI · 실제 `/mcp`): 띄울 때 그 세대의 토큰이 임시 `--mcp-config`(Aynx 서버 + 사람이 사이드
     /// 채팅에 고른 외부 서버만 — 2026-10-25 · 볼트가 잠겨 비밀 값을 못 준비한 서버는 빼고 `mcp-locked`)에만 들고 →
-    /// 목록은 세션 읽기 일곱(작업안 · DB · 조율 없음) → 연결 없으면 `not-linked` → `side_chat_link` 는 서버 거울의 창 타일만(`bad-link`) ·
-    /// 연결된 세션 하나만(다른 id · `sessions` 는 `not-the-linked-session` · `list_sessions` 는 그 하나) · 읽기 허용이 꺼진 타일은 `not-readable` →
-    /// 연결이 바뀐 뒤 첫 글에만 앱 고정 머리글 → 닫으면 토큰 폐기(401) · 임시 파일 지움 · 연결도 잊음. 전역 토큰의 판정은 그대로.
+    /// 목록은 세션 읽기 일곱(작업안 · DB · 조율 없음) → 연결 없으면 `not-linked` → `side_chat_link` 는 서버 거울의 창 타일만(`bad-link` — 하나라도
+    /// 아니면 아무것도 바꾸지 않음) · 상한(`too-many-links`) · 연결된 세션들만(다른 id · `sessions` 는 `not-the-linked-session` · `list_sessions` 는
+    /// 읽을 수 있는 연결) · 읽기 허용이 꺼진 타일은 그것만 `not-readable` → 연결이 바뀐 뒤 첫 글에만 앱 고정 머리글 → 닫으면 토큰 폐기(401) ·
+    /// 임시 파일 지움 · 연결도 잊음. 전역 토큰의 판정은 그대로.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn side_chat_link_and_chat_token_with_fake_cli() {
         let _g = SESSION_STATE.lock().await;
@@ -972,13 +974,17 @@ mod live {
         let chat = "lnk001";
         let open = json!({ "chat": chat, "cli": "claude", "model": "haiku", "mode": { "kind": "fresh" }, "window": "main" });
         let opened = a.ok(Grade::Write, "side_chat_open", open.clone()).await;
-        assert!(opened["link"].is_null());
+        assert_eq!(opened["links"], json!([]));
         // (2026-11-13) 띄우기 전에도 실을 예정 이름 — 고른 것만 · 볼트가 잠겨 못 실을 `secret` 은 빠진다 · 이름뿐
         assert_eq!(opened["mcpServers"], json!(["plain"]), "열기의 예정 이름");
         // 연결 — 모르는 스트림 · 없는 채팅 · 읽기 등급은 거절.
-        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": "nope-x" })).await.contains("[bad-link]"));
-        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": "nochat", "stream": sa })).await.contains("[session-gone]"));
-        assert_eq!(err_code(a.call(Grade::Read, "side_chat_link", json!({ "chat": chat, "stream": sa })).await), code::GRADE_MISMATCH);
+        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": ["nope-x"] })).await.contains("[bad-link]"));
+        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [sa, "nope-x"] })).await.contains("[bad-link]"));
+        let nine: Vec<String> = (0..9).map(|i| format!("{sa}-{i}")).collect();
+        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": nine })).await.contains("[too-many-links]"));
+        assert_eq!(a.ok(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": "main" })).await["links"], json!([]), "거절은 아무것도 바꾸지 않는다");
+        assert!(a.err(Grade::Write, "side_chat_link", json!({ "chat": "nochat", "streams": [sa] })).await.contains("[session-gone]"));
+        assert_eq!(err_code(a.call(Grade::Read, "side_chat_link", json!({ "chat": chat, "streams": [sa] })).await), code::GRADE_MISMATCH);
 
         // ── 첫 보내기 = 띄우기 — 토큰은 그 세대의 임시 `--mcp-config` 에만 ──
         let r = a.ok(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": 0, "text": "hello" })).await;
@@ -1026,10 +1032,11 @@ mod live {
             assert!(err && text.starts_with("Unknown tool"), "{other}: {text}");
         }
 
-        // ── 연결 A(읽기 허용) — 그 세션 하나만 ──
-        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "epoch": e, "stream": sa })).await;
-        assert_eq!((l["changed"].as_bool(), l["link"]["readable"].as_bool(), l["link"]["code"].as_str()), (Some(true), Some(true), Some("p1")));
-        assert_eq!(a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": sa })).await["changed"], false);
+        // ── 연결 A(읽기 허용) — 그 세션 하나만 · 같은 스트림을 겹쳐 줘도 처음 것만 ──
+        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "epoch": e, "streams": [sa, sa] })).await;
+        assert_eq!(l["links"].as_array().map(Vec::len), Some(1), "{l}");
+        assert_eq!((l["changed"].as_bool(), l["links"][0]["readable"].as_bool(), l["links"][0]["code"].as_str()), (Some(true), Some(true), Some("p1")));
+        assert_eq!(a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [sa] })).await["changed"], false);
         let (err, text) = mcp_call(port, &tok, "get_scrollback", json!({ "session": sa })).await;
         assert!(!err && text.contains("link-line-1"), "{text}");
         let (err, text) = mcp_call(port, &tok, "get_scrollback", json!({ "session": sb })).await;
@@ -1039,11 +1046,18 @@ mod live {
         let (err, text) = mcp_call(port, &tok, "list_sessions", json!({})).await;
         let rows: Value = serde_json::from_str(&text).unwrap();
         assert!(!err && rows.as_array().unwrap().len() == 1 && rows[0]["id"] == sa.as_str(), "{text}");
-        assert!(a.ok(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": "main" })).await["link"]["stream"] == sa.as_str());
+        assert!(a.ok(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": "main" })).await["links"][0]["stream"] == sa.as_str());
 
         // ── 연결이 바뀐 뒤 첫 글에만 머리글(가짜 CLI 의 둘째 글 = 권한 요청 → 허용) ──
-        let r = a.ok(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": e, "text": "second", "linkName": " Claude Code " })).await;
-        assert_eq!(r["link"], json!({ "label": "Claude Code" }), "붙인 머리글의 연결(화면의 칩 — 보낼 때 실은 칩 이름 · 코드 없음) — 스트림 id 는 없다");
+        let mut names = serde_json::Map::new();
+        names.insert(sa.clone(), json!(" Claude Code "));
+        names.insert(sb.clone(), json!("연결 안 된 타일 이름은 쓰지 않는다"));
+        let r = a.ok(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": e, "text": "second", "linkNames": names })).await;
+        assert_eq!(
+            r["link"],
+            json!({ "labels": ["Claude Code"], "unlinked": false }),
+            "붙인 머리글의 연결(화면의 칩 — 보낼 때 실은 칩 이름 · 코드 없음) — 스트림 id 는 없다"
+        );
         let evs = a.until(chat, |e| t(e) == "permission").await;
         let req = evs.last().unwrap()["ev"]["requestId"].as_str().unwrap().to_string();
         a.ok(Grade::Write, "side_chat_decide", json!({ "chat": chat, "epoch": e, "requestId": req, "decision": "allow" })).await;
@@ -1051,25 +1065,37 @@ mod live {
         let users = user_lines(&log);
         assert_eq!(users, vec!["hello".to_string(), format!("[연결된 타일: Claude Code · 세션 {sa}] second")], "{users:?}");
 
-        // ── 연결 B(읽기 허용 꺼짐) = not-readable · 끊기 = not-linked ──
-        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": sb })).await;
-        assert_eq!(l["link"]["readable"], false);
+        // ── 연결 A + B(B 는 읽기 허용 꺼짐) — A 는 그대로 읽히고 B 만 not-readable · 목록에는 A 만 ──
+        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [sa, sb] })).await;
+        assert_eq!(l["changed"], true);
+        let views: Vec<(Value, Value)> = l["links"].as_array().unwrap().iter().map(|v| (v["stream"].clone(), v["readable"].clone())).collect();
+        assert_eq!(views, vec![(json!(sa), json!(true)), (json!(sb), json!(false))], "연결 순서 그대로");
         let (err, text) = mcp_call(port, &tok, "get_scrollback", json!({ "session": sb })).await;
         assert!(err && text.starts_with("not-readable:") && !text.contains("secret"), "{text}");
-        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": null })).await;
-        assert!(l["changed"] == true && l["link"].is_null());
+        let (err, text) = mcp_call(port, &tok, "get_scrollback", json!({ "session": sa })).await;
+        assert!(!err && text.contains("link-line-1"), "{text}");
+        let (err, text) = mcp_call(port, &tok, "list_sessions", json!({})).await;
+        let rows: Value = serde_json::from_str(&text).unwrap();
+        assert!(!err && rows.as_array().unwrap().len() == 1 && rows[0]["id"] == sa.as_str(), "{text}");
+        // ── 연결 B 만 = not-readable · 끊기 = not-linked ──
+        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [sb] })).await;
+        assert_eq!(l["links"][0]["readable"], false);
+        let (err, text) = mcp_call(port, &tok, "list_sessions", json!({})).await;
+        assert!(err && text.starts_with("not-readable:"), "{text}");
+        let l = a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [] })).await;
+        assert!(l["changed"] == true && l["links"] == json!([]));
         let (err, text) = mcp_call(port, &tok, "get_last_command", json!({ "session": sa })).await;
         assert!(err && text.starts_with("not-linked:"), "{text}");
 
         // ── 닫기 = 토큰 폐기 · 임시 파일 지움 · 연결 잊음 ──
-        a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "stream": sa })).await;
+        a.ok(Grade::Write, "side_chat_link", json!({ "chat": chat, "streams": [sa] })).await;
         a.ok(Grade::Write, "side_chat_close", json!({ "chat": chat })).await;
         a.until(chat, |e| t(e) == "exited").await;
         let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }).to_string();
         let (st, _) = post_mcp(port, &tok, init).await;
         assert!(st.starts_with("HTTP/1.1 401"), "닫힌 채팅의 토큰: {st}");
         assert!(!cfg_path.exists(), "토큰이 든 임시 파일은 프로세스와 함께 지워진다");
-        assert!(a.ok(Grade::Write, "side_chat_open", open).await["link"].is_null(), "닫으면 연결도 잊는다");
+        assert_eq!(a.ok(Grade::Write, "side_chat_open", open).await["links"], json!([]), "닫으면 연결도 잊는다");
 
         assert_eq!(a.ok(Grade::Write, "shutdown", json!({})).await["stopping"], true);
         let _ = tokio::time::timeout(Duration::from_secs(5), server).await;

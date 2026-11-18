@@ -248,9 +248,9 @@ Sets what the AI can do on this host. It applies **the same way to tiles a perso
 ![The AI access tab set to Ask](../images/guides/host-ai-access.png)
 
 - Only this form and the tile header (a person) can change the permission. The AI has no way to widen its own permission.
-- **Local tiles** have only **Off · Read**, per tile. Choose them with the same permission chip in the header or **AI access…** in the tile menu. Ask, Auto and YOLO are locked. They have no permission to run anything (they cannot be task plan targets). **AI tiles** (local tiles running a Claude or Codex that the app started or that you ran from a shell) have no AI access at all: there is no chip or menu row, and it is always **Off** (another AI does not read that conversation through MCP). A tile restored with it on is turned off.
+- **Local tiles** have no levels — only **Allow AI to read**, per tile (off by default). Turn it on or off with the **Allow AI to read** check row in the tile menu (also in the terminal right-click menu). While it is on, an eye chip shows in the header; pressing the chip turns it off. They have no permission to run anything (they cannot be task plan targets). **AI tiles** (local tiles running Claude Code or Codex) follow the same rule.
 - **Remote tiles not in the host list** (quick connect) are always **Off** (a dim **Off** chip in the header that cannot be clicked). Save the target as a host to give it permission.
-- The permission chip in the header **stays visible even at Off** (an empty gauge + **Off** — except on AI tiles). To hide it, turn off the **AI permission** chip in Settings › Terminal › [Tile header chips](settings.md#header-chips).
+- The permission chip in the header **stays visible even at Off** (an empty gauge + **Off** — remote and query tiles; local tiles show the eye chip only while reading is allowed). To hide it, turn off the **AI permission** chip in Settings › Terminal › [Tile header chips](settings.md#header-chips).
 - Headless runs have no terminal (PTY), so `sudo` password prompts and interactive commands simply fail.
 
 <a id="host-ai-stage"></a>

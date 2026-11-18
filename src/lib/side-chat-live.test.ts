@@ -39,7 +39,7 @@ function only<K extends LiveEntry["kind"]>(s: LiveState, kind: K): Extract<LiveE
 
 function snap(over: Partial<SideChatSnapshot> = {}): SideChatSnapshot {
   return {
-    link: null,
+    links: [],
     chat: "c1",
     cli: "claude",
     model: "sonnet",
@@ -352,12 +352,13 @@ describe("seedLive — 스냅숏으로 다시 세우기", () => {
 describe("setSentLink — 서버가 붙인 연결 머리글의 칩", () => {
   it("그 말에만 붙고 entryItem 이 기록 항목처럼 싣는다 · 없거나 모르는 clientId 는 그대로", () => {
     const s = addSent(addSent(emptyLive(), "첫", "a"), "둘", "b");
-    const linked = setSentLink(s, "b", { label: "p2 PowerShell 7" });
-    expect(only(linked, "user").map((e) => e.link ?? null)).toEqual([null, { label: "p2 PowerShell 7" }]);
-    expect(entryItem(only(linked, "user")[1])?.link).toEqual({ label: "p2 PowerShell 7" });
+    const link = { labels: ["PowerShell 7", "Claude Code"], unlinked: false };
+    const linked = setSentLink(s, "b", link);
+    expect(only(linked, "user").map((e) => e.link ?? null)).toEqual([null, link]);
+    expect(entryItem(only(linked, "user")[1])?.link).toEqual(link);
     expect(entryItem(only(linked, "user")[0])?.link).toBeNull();
     expect(setSentLink(s, "b", null)).toBe(s);
-    expect(setSentLink(s, "zz", { unlinked: true })).toBe(s);
+    expect(setSentLink(s, "zz", { labels: [], unlinked: true })).toBe(s);
   });
 });
 

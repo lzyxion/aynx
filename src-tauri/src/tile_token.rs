@@ -40,9 +40,6 @@ struct Entry {
     token: String,
     owner: u64,
     epoch: Option<u64>,
-    /// 앱이 띄운 로컬 AI 타일인가(`open` 몸의 `ai` — 2026-10-26: 감싸개가 있는 로컬 셸 타일도 토큰을 받으므로 표에 칸이 있다는 것만으로는
-    /// AI 타일이 아니다 · [`is_ai_tile`]).
-    ai: bool,
 }
 
 /// 토큰 확인 결과.
@@ -63,7 +60,7 @@ pub(crate) struct TileTokens {
 impl TileTokens {
     /// 토큰 하나를 적는다(같은 스트림의 옛 칸은 갈아 치운다 — 새 세션 = 새 토큰).
     pub(crate) fn insert(&mut self, stream: &str, token: String, owner: u64) {
-        self.map.insert(stream.to_string(), Entry { token, owner, epoch: None, ai: true });
+        self.map.insert(stream.to_string(), Entry { token, owner, epoch: None });
     }
 
     /// 열기가 섰다 — 그 주인의 칸에 회차를 묶는다(주인이 다르면 아무것도 안 한다).
@@ -141,18 +138,14 @@ fn live_epoch(stream: &str) -> Option<u64> {
 }
 
 /// 스트림 하나에 토큰을 뽑는다(서버의 `open` — 셸을 띄우기 **전에**). `owner` 는 그 세션의 신호 토큰 주인 번호(회수가 같은 열쇠로 거둔다).
-/// `ai` 는 앱이 띄운 AI 타일인가(아니면 감싸개가 있는 로컬 셸 타일 — 2026-10-26, 토큰 · 수명은 같다 · [`is_ai_tile`] 만 다르다).
-/// 스트림 모양이 틀렸거나 OS 난수를 못 얻으면 `None`(그 타일은 MCP 토큰 없이 연다).
-pub(crate) fn issue(stream: &str, owner: u64, ai: bool) -> Option<String> {
+/// AI 타일과 감싸개가 있는 로컬 셸 타일은 토큰 · 수명이 같고 이 표는 둘을 가르지 않는다(AI 읽기 허용은 둘 다 사람이 타일마다 켠다 —
+/// 세션 메타 `session_ai_read` · 거울 보고의 `opted_in`). 스트림 모양이 틀렸거나 OS 난수를 못 얻으면 `None`(그 타일은 MCP 토큰 없이 연다).
+pub(crate) fn issue(stream: &str, owner: u64) -> Option<String> {
     if !stream_ok(stream) {
         return None;
     }
     let token = crate::token::generate_token()?;
-    let mut t = tiles();
-    t.insert(stream, token.clone(), owner);
-    if let Some(e) = t.map.get_mut(stream) {
-        e.ai = ai;
-    }
+    tiles().insert(stream, token.clone(), owner);
     Some(token)
 }
 
@@ -173,13 +166,6 @@ pub(crate) fn authenticate(header: Option<&str>) -> Option<Auth> {
         Some(e) if live_epoch(&stream) == Some(e) => Auth::Tile(stream),
         _ => Auth::Stale,
     })
-}
-
-/// 이 스트림이 **앱이 띄운 로컬 AI 타일**인가(10-23) — 표에 칸이 있고 `open` 이 AI 타일(`ai`)로 적은 것. 감싸개가 있는 로컬 셸 타일도
-/// 토큰을 받지만(2026-10-26) AI 타일이 아니다 — 그 타일의 AI 읽기 허용은 예전 그대로 사람이 켠다.
-/// AI 타일에는 AI 읽기 허용이 없다 — 거울 신원 보고(`server::ai` 의 `Report`)와 세션 메타(`session_ai_read`)가 이 판정으로 켬을 끈다.
-pub(crate) fn is_ai_tile(stream: &str) -> bool {
-    tiles().map.get(stream).is_some_and(|e| e.ai)
 }
 
 /// 그 스트림의 토큰 — **GUI Rust 만**(서버 op `mcp_tile_token` — Claude 실행 설정 파일에 쓰려고). 로그 금지.
@@ -222,7 +208,7 @@ impl FakeTile {
 
     /// 열기 = 서버 `open` 과 같은 순서(뽑고 → 회차가 서면 묶는다).
     fn reopen_session(&mut self) {
-        self.token = issue(&self.stream, self.owner, true).expect("토큰");
+        self.token = issue(&self.stream, self.owner).expect("토큰");
         let keys = crate::session_core::core().commit(
             &self.stream,
             crate::session_core::Kind::Local,

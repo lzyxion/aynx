@@ -235,8 +235,8 @@ describe("쿼리 타일 머리줄 AI 권한 칩(10-14)", () => {
     expect(host).toContain("<PanePopovers");
     expect(host).not.toContain("<AiPermMenu");
     const pops = readFileSync(fileURLToPath(new URL("./pane/PanePopovers.svelte", import.meta.url)), "utf8");
-    // 원격 · 쿼리 · 로컬(10-23) 셋이 같은 상자
-    expect(pops.match(/<AiPermMenu\s/g)?.length).toBe(3);
+    // 원격 · 쿼리 둘이 같은 상자(로컬은 11-18 부터 팝오버 없이 ⋯ 메뉴의 체크 줄)
+    expect(pops.match(/<AiPermMenu\s/g)?.length).toBe(2);
     const chips = readFileSync(fileURLToPath(new URL("./pane/HeaderChips.svelte", import.meta.url)), "utf8");
     expect(chips).toContain("data-db-ai-chip");
   });

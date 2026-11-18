@@ -110,8 +110,8 @@
     included = false,
     /**
      * **AI 가 이 타일을 볼 수 있는가** — 터미널 타일에서만 참이다. 로컬은 타일의 "AI 읽기 허용", 원격은
-     * 호스트의 AI 권한 단계가 읽기 이상(`app/delegation.svelte.ts` 의 `paneAiReadable`). 로컬은 AI 권한 칩이
-     * 이 값으로 Read · Off 를 그린다(10-23 — 원격과 같은 칩 · 끔이어도 선다. 원격은 아래 [`aiStage`] 칩이 그 자리를 쥔다).
+     * 호스트의 AI 권한 단계가 읽기 이상(`app/delegation.svelte.ts` 의 `paneAiReadable`). 로컬은 이 값이
+     * 참일 때만 눈 칩이 선다(11-18 — 꺼짐이면 칩 없음. 원격은 아래 [`aiStage`] 칩이 그 자리를 쥔다).
      */
     shared = false,
     /**
@@ -847,7 +847,8 @@
    * **터미널 · AI 타일** — 머리줄을 칠하지 않는다: 타일 판(`.tile-frame` 의 `--term-bg-fill` — 터미널 테마 바탕 × 터미널 투명도)이 그대로
    * 비쳐 몸과 한 장이 된다. 글자는 터미널 글자색(`--term-fg` — `applySettings` 가 테마에서 옮겨 적는다), 단추는 그 색을 조금 흐리게.
    * 칩은 색 토큰을 이 스코프에서 터미널 글자색으로 바꿔 입힌다(칩 한 벌 `header-chip.css` 가 `--c` 로 판 · 글자를 만든다 — 판은 그 색의 옅은
-   * 반투명). AI 권한의 승인 · 자동 단계 색(강조 · 경고)은 단계를 말하는 신호라 그대로 둔다.
+   * 반투명). AI 권한의 승인 · 자동 · 모두 단계 색은 단계를 말하는 신호라 터미널 글자색으로 바꾸지 않고, 터미널 바탕의 밝기를 따르는
+   * 단계 색(`theme.css` 의 `--ai-term-lv*`)으로 바꿔 입는다 — 대화 면과 섞는 식은 아래 `--flip-ink` 블록.
    */
   .pane-head.term {
     --head-dim: color-mix(in srgb, var(--head-fg) 62%, transparent);
@@ -878,6 +879,20 @@
     --logo-mono: color-mix(in srgb, var(--logo-mono-chrome) calc(var(--flip-ink) * 100%), var(--term-fg));
     --logo-mono-inverse: color-mix(in srgb, var(--logo-mono-chrome-inverse) calc(var(--flip-ink) * 100%), var(--term-bg));
     background: color-mix(in srgb, var(--surface-raised-solid) calc(var(--flip-ink) * 100%), transparent);
+    /* AI 권한 단계 색(승인 후 · 자동 · 모두) — 터미널 면이면 터미널 바탕 기준(`--ai-term-lv*`), 대화 면(앱 면)이면 앱 테마 것(`--ai-lv*`).
+       칩 글자 · 판은 `--chip-ai-*`, 미니 게이지의 찬 막대(`--ai-c` ← `--ai-lv*`)는 칩 안에서 같은 값으로 다시 선언한다 */
+    --head-ai-lv2: color-mix(in srgb, var(--ai-lv2) calc(var(--flip-ink) * 100%), var(--ai-term-lv2));
+    --head-ai-lv3: color-mix(in srgb, var(--ai-lv3) calc(var(--flip-ink) * 100%), var(--ai-term-lv3));
+    --head-ai-lv4: color-mix(in srgb, var(--ai-lv4) calc(var(--flip-ink) * 100%), var(--ai-term-lv4));
+    --chip-ai-approve: var(--head-ai-lv2);
+    --chip-ai-auto: var(--head-ai-lv3);
+    --chip-ai-all: var(--head-ai-lv4);
+  }
+
+  .pane-head.term :global(.ai-chip) {
+    --ai-lv2: var(--head-ai-lv2);
+    --ai-lv3: var(--head-ai-lv3);
+    --ai-lv4: var(--head-ai-lv4);
   }
 
   .pane-head.term.talk {

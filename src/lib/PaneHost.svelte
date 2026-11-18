@@ -42,7 +42,6 @@
   import { TmuxMenuController } from "$lib/pane/tmux-menu.svelte.js";
   import { AiPermMenuController } from "$lib/pane/ai-perm-menu.svelte.js";
   import { DbAiMenuController, queryAiOf } from "$lib/pane/db-ai-menu.svelte.js";
-  import { LocalAiMenuController } from "$lib/pane/local-ai-menu.svelte.js";
   import { ForwardMenuController, type ForwardsCardView } from "$lib/pane/forward-menu.svelte.js";
   import { paneAiReadable, paneAiStage } from "$lib/app/delegation.svelte.js";
   import { untrack } from "svelte";
@@ -348,9 +347,6 @@
     get dbm() {
       return dbm;
     },
-    get lam() {
-      return lam;
-    },
   });
   const { openTileMenu, closeTileMenu, toggleTileMenu, runMenuAction } = tmc;
 
@@ -379,14 +375,6 @@
   // 쿼리 타일의 AI 권한 팝오버 (10-14) — 원격과 같은 상자(`AiPermMenu`) · 같은 칩 메뉴. 대상은 DB 연결 하나이고 저장은
   // `setDbConnAi`(확인 대화 없이 바로)다 — `pane/db-ai-menu.svelte.ts`.
   const dbm = new DbAiMenuController({
-    get boxes() {
-      return boxes;
-    },
-  });
-
-  // 로컬 타일의 AI 권한 팝오버 (10-23 — 예전 "AI 읽기 허용" 토글) — 원격과 같은 상자 · 같은 칩 메뉴. Off · Read 만 고르고 저장은
-  // 예전 그대로 타일별 읽기 허용(원격 창에서 켤 때 마스터 재확인 포함)이다 — `pane/local-ai-menu.svelte.ts`.
-  const lam = new LocalAiMenuController({
     get boxes() {
       return boxes;
     },
@@ -780,9 +768,7 @@
           shared={isTerminalPane(item.pane) && paneAiReadable(item.pane)}
           aiStage={isTerminalPane(item.pane) ? paneAiStage(item.pane) : null}
           dbAi={item.pane.kind === "query" ? queryAiOf(item.pane) : null}
-          aiMenuOpen={ai.aiMenu?.paneId === item.pane.id ||
-            dbm.at?.paneId === item.pane.id ||
-            lam.at?.paneId === item.pane.id}
+          aiMenuOpen={ai.aiMenu?.paneId === item.pane.id || dbm.at?.paneId === item.pane.id}
           zoomed={item.zoomed}
           {zoomCombo}
           flip={isTerminalPane(item.pane) && canFlipPane(item.pane) ? flipViewOf(item.pane.id) : null}
@@ -800,12 +786,7 @@
           onforwardcard={(view) => setForwardsCard(item.pane.id, view)}
           onmenu={(ev) => toggleTileMenu(ev.currentTarget as HTMLElement, item)}
           ontmuxmenu={(ev) => tm.toggleTmuxMenu(ev, item)}
-          onaimenu={(ev) =>
-            item.pane.kind === "query"
-              ? dbm.toggle(ev, item)
-              : item.pane.kind === "local"
-                ? lam.toggle(ev, item)
-                : ai.toggleAiMenu(ev, item)}
+          onaimenu={(ev) => (item.pane.kind === "query" ? dbm.toggle(ev, item) : ai.toggleAiMenu(ev, item))}
           onforwardmenu={(ev) => fm.toggleForwardMenu(ev, item)}
           onchipmore={(ev, items) => cm.toggle(ev, item, items)}
           onfiles={() => onopenfiles?.(item.tab.id, item.pane.id)}
@@ -1142,7 +1123,6 @@
     {fm}
     {ai}
     {dbm}
-    {lam}
     {cm}
     {sessionOf}
     {forwardsOf}

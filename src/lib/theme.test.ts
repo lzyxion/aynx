@@ -7,11 +7,13 @@ import {
   LIGHT_OF,
   TERM_PRESETS,
   canonicalPreset,
+  isLightBackground,
   pairedPreset,
   presetSwatches,
   termPresetGroups,
   termTheme,
   termThemeOf,
+  termTone,
   withScrollbarSlider,
   withTransparentCanvas,
 } from "$lib/theme";
@@ -256,6 +258,28 @@ describe("withScrollbarSlider", () => {
   it("모든 정적 프리셋이 이 함수를 지나면 손잡이 색을 갖는다", () => {
     for (const [key, preset] of Object.entries(TERM_PRESETS)) {
       expect(withScrollbarSlider(preset.theme).scrollbarSliderBackground, key).toBeTruthy();
+    }
+  });
+});
+
+describe("termTone", () => {
+  it("바탕이 글자색보다 어두우면 dark · 밝으면 light", () => {
+    expect(termTone("#12140d", "#e3e3d8")).toBe("dark");
+    expect(termTone("#fcfaff", "#1a1b21")).toBe("light");
+  });
+
+  it("글자색을 못 읽으면 바탕만으로 · 바탕을 못 읽으면 판정 없음", () => {
+    expect(termTone("#0b111c", undefined)).toBe("dark");
+    expect(termTone("#fdf6e3", "rgb(0,0,0)")).toBe("light");
+    expect(termTone(undefined, "#ffffff")).toBeNull();
+    expect(termTone("transparent", "#ffffff")).toBeNull();
+    expect(termTone("", "")).toBeNull();
+  });
+
+  it("내장 프리셋은 전부 바탕 밝기(isLightBackground)와 같은 쪽으로 판정된다", () => {
+    for (const [key, preset] of Object.entries(TERM_PRESETS)) {
+      const want = isLightBackground(preset.theme.background) ? "light" : "dark";
+      expect(termTone(preset.theme.background, preset.theme.foreground), key).toBe(want);
     }
   });
 });

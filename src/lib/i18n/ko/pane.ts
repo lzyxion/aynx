@@ -97,6 +97,8 @@ export const pane = {
   "header.forward.relaying": "연결 {n}개 중계 중",
   // 머리줄 "+N" 칩(넘쳐서 숨은 칩 — pane/HeaderChips · 2026-10-23)
   "header.more.aria": "숨은 칩 {n}개 — {list}",
+  // 로컬 타일의 눈 칩(11-18 — 읽기 허용이 켜졌을 때만 선다 · 누르면 바로 끈다)
+  "header.aiRead.title": "AI 읽기 허용 켜짐 — 누르면 끕니다",
   "header.sync.title": "동시 입력 중",
   "header.menu.title": "타일 메뉴",
   "header.menu.aria": "타일 메뉴",
@@ -232,8 +234,9 @@ export const pane = {
     "이 세션은 로그를 남기지 않습니다 — 호스트 설정의 '세션 로깅' 을 켜면 다음 접속부터 쌓입니다",
   // "로그 폴더 열기" 는 2026-09-17 에 이 메뉴를 떠났다 — 대상이 타일이 아니라 앱 전역의
   // 한 폴더라, 지금은 설정 › 터미널(`settings.terminal.logs_folder.*`)과 호스트 폼에 있다.
-  // 로컬 타일의 "AI 권한…"(10-23 — 예전 체크 "AI 읽기 허용". 같은 팝오버 · Off · Read 만)
-  "menu.localaiperm.title": "{stage} — 이 타일에만 적용됩니다 · 로컬 타일은 실행 권한이 없습니다",
+  // 로컬 타일의 체크 줄(11-18 — 로컬 셸 · 로컬 AI CLI 타일 같은 규칙). 누르면 그 자리에서 켜고 끈다
+  "menu.aiRead": "AI 읽기 허용",
+  "menu.aiRead.title": "AI(MCP)가 이 타일의 화면과 명령 기록을 읽습니다 — 이 타일에만 적용됩니다 · 끄면 이 타일의 서버 데이터도 지워집니다",
   // 원격 타일 — 권한은 타일이 아니라 **호스트 하나의 단계**다(2026-10-07). 누르면 권한 팝오버가 뜬다.
   "menu.aiperm": "AI 권한…",
   "menu.aiperm.title": "{stage} — 이 호스트의 타일과 헤드리스 세션에 함께 적용됩니다",
@@ -330,12 +333,6 @@ export const pane = {
   "aiperm.failed": "AI 권한을 저장하지 못했습니다: {error}",
   "dbaiperm.sub": "이 DB 연결에 적용됩니다 — 경유 호스트의 AI 권한과는 별개입니다",
   "dbaiperm.settings": "DB 연결 설정",
-  // 로컬 타일(10-23 — 예전 "AI 읽기 허용" 토글을 같은 팝오버로). Off · Read 만 고르고 Ask · Auto · YOLO 는 잠김
-  "localaiperm.title": "이 타일의 AI 권한",
-  "localaiperm.sub": "이 타일 하나에만 적용됩니다",
-  "localaiperm.foot": "로컬 타일은 AI 실행 대상이 아닙니다 — Ask · Auto · YOLO 는 원격 호스트에만",
-  "localaiperm.off.desc": "AI 가 이 타일을 보지 못합니다.",
-  "localaiperm.read.desc": "AI(MCP)가 이 타일의 화면과 명령 기록을 읽기만 합니다. 끄면 이 타일의 서버 데이터도 지워집니다.",
   "askai.pasted": "붙여 넣기만 됐습니다 — Enter 를 눌러야 보냅니다",
   "askai.no_block": "넘길 블록이 없습니다 — 셸 통합이 있는 타일에서 명령이 끝나야 합니다",
   "askai.no_agents": "넘길 AI 타일이 없고 사용 중인 에이전트도 없습니다 — 설정 › AI 에이전트에서 켭니다",

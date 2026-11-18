@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { FILE_FOLD_MIN_WIDTH } from "$lib/pane/head-span";
 import { describe, expect, it } from "vitest";
 import {
@@ -141,5 +143,33 @@ describe("toPaneMenuItems — 타일 ⋯ 의 줄로", () => {
     for (const name of ["refresh", "show-hidden", "layout", "preview", "folder-plus", "upload", "search", "check"]) {
       expect(UI_ICONS[name as keyof typeof UI_ICONS]).toBeDefined();
     }
+  });
+});
+
+describe("ToolbarMenu — 타일 고르는 줄(사이드 채팅 타일 연결 · 2026-11-18)", () => {
+  const src = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8").replace(/\r\n/g, "\n");
+  const menu = src("./ToolbarMenu.svelte");
+  const controls = src("../chat/side-chat-controls.svelte.ts");
+
+  it("`pane` 이면 그림 칸이 PaneIcon(머리줄 · 탭과 같은 그림) — logo · icon 보다 먼저", () => {
+    expect(menu).toContain('{#if row.pane}\n        <span class="menu-mark tb-pane"><PaneIcon pane={row.pane} size={14} /></span>');
+    expect(menu.indexOf("{#if row.pane}")).toBeLessThan(menu.indexOf("{:else if row.logo}"));
+  });
+
+  it("`code` 는 이름 뒤 흐린 작은 글자(이름 카드 `.s-code` 모양) · 없으면 예전 이름 칸 그대로", () => {
+    expect(menu).toContain('<span class="tb-name">{row.label}</span><span class="tb-code">{row.code}</span>');
+    expect(menu).toContain('{:else}\n        <span class="tb-label">{row.label}</span>');
+    const code = menu.slice(menu.indexOf("  .tb-code {"), menu.indexOf("}", menu.indexOf("  .tb-code {")));
+    expect(code).toContain("font-family: var(--font-mono)");
+    expect(code).toContain("font-size: var(--t-xs)");
+    expect(code).toContain("color: var(--fg-3)");
+    const card = src("../pane/SessionInfoCard.svelte");
+    expect(card).toContain("color: var(--fg-3)");
+  });
+
+  it("타일 연결 줄은 그 타일 · 이름(칩과 같은 `linkTileName`) · 코드를 따로 싣는다", () => {
+    expect(controls).toContain("pane: x.pane,");
+    expect(controls).toContain("label: linkTileName(x),");
+    expect(controls).toContain("code: x.code,");
   });
 });

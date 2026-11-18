@@ -72,6 +72,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "header.forward.relaying": "{n} connection(s) relaying",
   // Tile header "+N" chip (chips hidden by overflow — pane/HeaderChips · 2026-10-23)
   "header.more.aria": "{n} hidden chip(s) — {list}",
+  "header.aiRead.title": "Allow AI to read is on — click to turn it off",
   "header.sync.title": "Broadcasting input",
   "header.menu.title": "Tile menu",
   "header.menu.aria": "Tile menu",
@@ -206,7 +207,8 @@ export const pane: Record<keyof typeof koPane, string> = {
     "This session keeps no log — turn on 'Session logging' in the host settings and it starts on the next connection",
   // "Open logs folder" left this menu on 2026-09-17 — it targets one app-wide folder, not the
   // tile, so it now lives in Settings › Terminal (`settings.terminal.logs_folder.*`).
-  "menu.localaiperm.title": "{stage} — applies to this tile only · Local tiles have no run permission",
+  "menu.aiRead": "Allow AI to read",
+  "menu.aiRead.title": "The AI (MCP) reads this tile's screen and command history — this tile only · Turning it off also clears this tile's data on the server",
   "menu.aiperm": "AI access…",
   "menu.aiperm.title": "{stage} — applies to this host's tiles and headless sessions together",
   "menu.dbaiperm.title": "{stage} — applies to this DB connection",
@@ -301,11 +303,6 @@ export const pane: Record<keyof typeof koPane, string> = {
   "aiperm.failed": "Couldn't save AI access: {error}",
   "dbaiperm.sub": "Applies to this DB connection — separate from the via host's AI access",
   "dbaiperm.settings": "DB connection settings",
-  "localaiperm.title": "AI access for this tile",
-  "localaiperm.sub": "Applies to this tile only",
-  "localaiperm.foot": "Local tiles are never AI execution targets — Ask · Auto · YOLO are for remote hosts only",
-  "localaiperm.off.desc": "The AI can't see this tile.",
-  "localaiperm.read.desc": "The AI (MCP) only reads this tile's screen and command history. Turning it off also clears this tile's data on the server.",
   "askai.pasted": "Pasted only — press Enter to send",
   "askai.no_block": "No block to paste — a command has to finish in a tile with shell integration",
   "askai.no_agents": "No AI tile to paste into and no agent in use — turn one on in Settings › AI agents",

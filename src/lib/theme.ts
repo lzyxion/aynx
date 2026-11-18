@@ -543,6 +543,18 @@ export function isLightBackground(background: string | undefined): boolean {
   return !!background && luminance(background) >= 0.4;
 }
 
+const HEX6 = /^#[0-9a-f]{6}$/i;
+
+/**
+ * 터미널 바탕의 밝기 — 바탕 휘도가 글자색보다 낮으면 `dark`, 아니면 `light`. 글자색을 못 읽으면 바탕만으로([`isLightBackground`]),
+ * 바탕을 못 읽으면 `null`(판정 없음 — 터미널 바탕 위의 AI 권한 단계 색이 앱 테마 것을 그대로 쓴다). `applySettings` 가 `<html data-term-tone>` 에 단다.
+ */
+export function termTone(background: string | undefined, foreground: string | undefined): "dark" | "light" | null {
+  if (!background || !HEX6.test(background)) return null;
+  if (!foreground || !HEX6.test(foreground)) return isLightBackground(background) ? "light" : "dark";
+  return luminance(background) < luminance(foreground) ? "dark" : "light";
+}
+
 /** 설정 화면의 미리보기 견본 — 배경·글자에 이어 대표 ANSI 6색 (없는 값은 건너뛴다) */
 export function presetSwatches(theme: ITheme): string[] {
   return [

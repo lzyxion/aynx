@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 32, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 33, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -238,11 +238,13 @@ fn grades_are_checked_per_op() {
     assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
     // 판 30(데이터 탭의 읽기 전용 조회 — 새 op 없음 · `db_query` 의 `readOnly`) — MIN 은 그대로.
     assert_eq!(frame::DB_READ_QUERY_PROTOCOL, 30);
-    assert_eq!(frame::PROTOCOL_MAX, 32);
+    assert_eq!(frame::PROTOCOL_MAX, 33);
     // 판 31(사이드 채팅 완료 확인 공유 — side_chat_seen · side-chat-seen) — MIN 은 그대로.
     assert_eq!(frame::SIDE_CHAT_SEEN_PROTOCOL, 31);
     // 판 32(사이드 채팅 파일 첨부 — 새 op 없음 · `side_chat_send` 의 `files`) — MIN 은 그대로.
     assert_eq!(frame::SIDE_CHAT_FILES_PROTOCOL, 32);
+    // 판 33(사이드 채팅 여러 타일 연결 — 새 op 없음 · `streams` · `links` · `linkNames`) — MIN 은 그대로 · 낮은 서버면 GUI 프록시가 옮긴다.
+    assert_eq!(frame::SIDE_CHAT_LINKS_PROTOCOL, 33);
     assert!(frame::check_grade("side_chat_seen", Grade::Write).is_ok());
     assert_eq!(frame::check_grade("side_chat_seen", Grade::Read).unwrap_err().code, code::GRADE_MISMATCH);
     let keep = vec!["local-1".to_string(), "query:tk-1".to_string()];
@@ -1267,14 +1269,13 @@ pub(in crate::server) mod live {
             call_skip(&mut a, 6, Grade::Write, "open", json!({ "stream": plain, "window": "main", "spec": spec2, "signal": true })).await,
         );
         assert_eq!(ok_body(call_skip(&mut a, 7, Grade::Read, "mcp_tile_token", json!({ "stream": plain })).await)["token"], Value::Null);
-        // ③-2 (10-23) AI 타일에는 AI 읽기 허용이 없다 — 켬을 보내도 세션 메타는 끔이고(probe `aiRead`), 평범한 셸은 그대로 켜진다.
-        assert!(crate::tile_token::is_ai_tile(&stream) && !crate::tile_token::is_ai_tile(&plain));
+        // ③-2 (2026-11-18) AI 타일도 AI 읽기 허용은 사람이 켠 대로다 — 켬을 보내면 세션 메타가 켜지고(probe `aiRead`), 평범한 셸도 같다.
         for (i, s) in [&stream, &plain].into_iter().enumerate() {
             ok_body(call_skip(&mut a, 20 + i as u64, Grade::Write, "session_ai_read", json!({ "stream": s, "on": true })).await);
         }
-        assert_eq!(ok_body(call_skip(&mut a, 22, Grade::Read, "probe", json!({ "stream": stream })).await)["aiRead"], false);
+        assert_eq!(ok_body(call_skip(&mut a, 22, Grade::Read, "probe", json!({ "stream": stream })).await)["aiRead"], true);
         assert_eq!(ok_body(call_skip(&mut a, 23, Grade::Read, "probe", json!({ "stream": plain })).await)["aiRead"], true);
-        // ③-3 (2026-10-26) 감싸개가 있는 로컬 셸 타일(`mcp` · `ai:false`)은 토큰을 받지만 AI 타일이 아니다 — AI 읽기 허용은 사람이 켠 대로.
+        // ③-3 (2026-10-26) 감싸개가 있는 로컬 셸 타일(`mcp` · `ai:false` — 서버는 `ai` 를 버린다)도 제 토큰을 받고, AI 읽기 허용은 사람이 켠 대로.
         let spec3 = json!({ "cols": 80, "rows": 24, "shellId": "cmd", "integration": null, "env": [], "cwd": null });
         let opened3 = ok_body(
             call_skip(&mut a, 30, Grade::Write, "open", json!({ "stream": shell, "window": "main", "spec": spec3, "signal": true, "mcp": true, "ai": false }))
@@ -1282,7 +1283,6 @@ pub(in crate::server) mod live {
         );
         let shell_tok = ok_body(call_skip(&mut a, 31, Grade::Read, "mcp_tile_token", json!({ "stream": shell })).await)["token"].clone();
         assert!(shell_tok.as_str().is_some_and(|t| t.len() == 64 && t != tile), "셸 타일도 제 토큰: {shell_tok}");
-        assert!(!crate::tile_token::is_ai_tile(&shell));
         ok_body(call_skip(&mut a, 32, Grade::Write, "session_ai_read", json!({ "stream": shell, "on": true })).await);
         assert_eq!(ok_body(call_skip(&mut a, 33, Grade::Read, "probe", json!({ "stream": shell })).await)["aiRead"], true);
         ok_body(call_skip(&mut a, 34, Grade::Write, "close", opened3["lease"].clone()).await);
@@ -2354,7 +2354,7 @@ pub(in crate::server) mod live {
         cfg.db_conns = Some(list.clone());
         let server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
-        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 32);
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 33);
         let db = super::super::db_ops::DB;
         let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
         let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });

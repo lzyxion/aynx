@@ -52,7 +52,9 @@ describe("shouldReportMirror", () => {
     const term = readFileSync(fileURLToPath(new URL("./Terminal.svelte", import.meta.url)), "utf8");
     expect(term).toContain("if (!shouldReportMirror(on, mirrorAnnounced, live !== null && live !== undefined)) return;");
     // 붙기는 토글을 되살린 뒤 세션을 알린다 — 같은 틱이라 첫 보고가 켜진 채 나간다
-    expect(term).toMatch(/plan\.aiRead && !localAiTile\(pane\)\) setShared\(pane\.id, true\);\s*onsession\?\.\(pane\.id, s\.id\);/);
+    // 로컬 AI CLI 타일도 같은 규칙이다(11-18 — 읽기 허용을 켤 수 있다)
+    expect(term).toMatch(/pane\.kind === "local" && plan\.aiRead\) setShared\(pane\.id, true\);\s*onsession\?\.\(pane\.id, s\.id\);/);
+    expect(term).not.toContain("localAiTile");
     expect(term).toMatch(/if \(!aiOn\) return;\s*(\/\/.*\s*)*if \(replaying\) return;\s*void pushSessionBlock\(contextKeyOf, block\);/);
   });
 });

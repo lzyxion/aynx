@@ -1,39 +1,43 @@
 <script lang="ts">
   /**
-   * **연결 칩**(2026-11-13 — 사이드 채팅 입력 칸 안 위쪽 · 목업 D1) — 이 채팅이 MCP 로 읽는 타일을 첨부처럼 `🔗 이름 ×`(× = 끊기)로 보인다.
-   * 연결이 없으면 칩도 없다(고르기는 `[+]` › 타일 연결). 닫힌 타일은 흐린 점선 · "· 닫힘", AI 가 못 읽으면 그림이 `ai-off` — 안내 한 줄
-   * (`link-note`)은 부르는 쪽(독)이 칸 위에 그대로 세운다.
+   * **연결 칩**(2026-11-13 — 사이드 채팅 입력 칸 안 위쪽 · 목업 D1) — 이 채팅이 MCP 로 읽는 타일 **하나**를 첨부처럼 `[그림] 이름 ×`(× = 그 타일만
+   * 끊기)로 보인다. 부르는 쪽이 연결 순서대로 타일마다 하나씩 세운다(좁으면 줄바꿈 — `FlipComposer` 의 `.above`). 고르기는 `[+]` › 타일 연결.
+   * 앞 그림은 `linkChipIcon` — 이 창에 있고 열려 있고 읽을 수 있으면 그 타일의 로고(`PaneIcon`), 닫혔거나 AI 가 못 읽으면 `ai-off`, 이 창에서
+   * 찾지 못했으면 `link`. 닫힌 타일은 흐린 점선 · "· 닫힘" — 안내 줄(`link-note`)은 부르는 쪽(독)이 칸 위에 세운다.
    */
   import UiIcon from "$lib/UiIcon.svelte";
+  import PaneIcon from "$lib/PaneIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
-  import type { LinkChip } from "$lib/side-chat-link";
+  import { linkChipIcon, type LinkChip } from "$lib/side-chat-link";
 
-  let { chipLink, unlink, touch = false }: { chipLink: LinkChip; unlink: () => void; touch?: boolean } = $props();
+  let { chip, unlink, touch = false }: { chip: LinkChip; unlink: () => void; touch?: boolean } = $props();
+
+  const icon = $derived(linkChipIcon(chip));
 </script>
 
-{#if chipLink.kind === "linked"}
-  <span
-    class="link-chip"
-    class:closed={chipLink.closed}
-    class:off={chipLink.readable === false}
-    class:touch
-    title={t("app.chatDock.link.title")}
-    data-chat-link-chip={chipLink.closed ? "closed" : "linked"}
+<span
+  class="link-chip"
+  class:closed={chip.closed}
+  class:off={chip.readable === false}
+  class:touch
+  title={t("app.chatDock.link.title")}
+  data-chat-link-chip={chip.closed ? "closed" : "linked"}
+>
+  {#if icon === "pane" && chip.tile?.pane}
+    <span class="logo"><PaneIcon pane={chip.tile.pane} size={13} /></span>
+  {:else}
+    <UiIcon name={icon === "ai-off" ? "ai-off" : "link"} size={13} />
+  {/if}
+  <span class="name">{chip.closed ? t("app.chatDock.link.chipClosed", { name: chip.name }) : chip.name}</span>
+  <button
+    type="button"
+    class="x"
+    data-chat-link-unlink
+    title={t("app.chatDock.link.unlink")}
+    aria-label={t("app.chatDock.link.unlink")}
+    onclick={unlink}><UiIcon name="close" size={12} /></button
   >
-    <UiIcon name={chipLink.readable === false || chipLink.closed ? "ai-off" : "link"} size={13} />
-    <span class="name"
-      >{chipLink.closed ? t("app.chatDock.link.chipClosed", { name: chipLink.name }) : chipLink.name}</span
-    >
-    <button
-      type="button"
-      class="x"
-      data-chat-link-unlink
-      title={t("app.chatDock.link.unlink")}
-      aria-label={t("app.chatDock.link.unlink")}
-      onclick={unlink}><UiIcon name="close" size={12} /></button
-    >
-  </span>
-{/if}
+</span>
 
 <style>
   /* 첨부처럼 — secondaryContainer 알약(고른 칩과 같은 역할 색) */
@@ -56,6 +60,13 @@
 
   .link-chip :global(svg) {
     flex: none;
+  }
+
+  /* 타일 로고(원격 AI 타일은 로고 둘) — 줄지 않게 */
+  .logo {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
   }
 
   /* 닫힌 타일 — 흐린 점선(판 없음) */

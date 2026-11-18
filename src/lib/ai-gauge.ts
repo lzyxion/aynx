@@ -36,13 +36,13 @@ export function segmentShape(seg: number): "start" | "mid" | "end" {
 /**
  * 화살표 ←→ 로 옮겨 갈 자리 — **끝에서 돌지 않는다**(예전 세그먼트는 돌았다: '모두 승인' 에서 → 한 번에 '끔', '끔' 에서 ← 한 번에 '모두
  * 승인' 으로 뛰었다 — 게이지에서 그 도약은 확인 상자를 부르는 실수다). 고른 것이 없으면(-1) 어느 쪽이든 첫 자리(끔).
- * 다른 키 · 옮길 데가 없으면 `null`. `lockedFrom`(10-23 — 로컬 타일은 Off · Read 만)부터의 자리는 잠겨 있어 그 앞에서 멈춘다. **순수**
+ * 다른 키 · 옮길 데가 없으면 `null`. **순수**
  */
-export function gaugeKeyStep(at: number, key: string, count: number, lockedFrom: number = count): number | null {
+export function gaugeKeyStep(at: number, key: string, count: number): number | null {
   if (key !== "ArrowRight" && key !== "ArrowLeft") return null;
   if (at < 0) return 0;
   const next = at + (key === "ArrowRight" ? 1 : -1);
-  return next < 0 || next >= Math.min(count, lockedFrom) ? null : next;
+  return next < 0 || next >= count ? null : next;
 }
 
 /**

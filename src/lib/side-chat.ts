@@ -4,7 +4,7 @@
 
 import { nextHistoryStreamId } from "$lib/session";
 import type { SideChatCli, SideChatMode } from "$lib/side-chat-api";
-import { parseTileLink, type SideChatTileLink } from "$lib/side-chat-link";
+import { parseTileLink, parseTileLinks, type SideChatTileLink } from "$lib/side-chat-link";
 
 /**
  * **v1 사이드 채팅 타일의 스트림 머리**(PTY 세션 — v2 에서 걷었다). v2 첫 부팅이 저장의 `stream` 칸 · 떨어진 세션 목록에서 이 머리의
@@ -31,8 +31,11 @@ export interface SideChat {
   used: string[];
   /** CLI 별로 마지막에 안 대화 id — 있으면 그 대화를 이어 간다(`resume`). CLI 를 바꿔도 각자 자기 대화를 쥔다 */
   links: Record<string, string>;
-  /** **연결 칩**(5단계) — 이 채팅이 MCP 로 읽을 타일(없으면 `null`). 다시 붙을 때(서버가 잊었으면) 독이 다시 건다 */
-  tile: SideChatTileLink | null;
+  /**
+   * **연결 칩**(5단계) — 이 채팅이 MCP 로 읽을 타일 묶음(연결 순서 · 최대 `SIDE_CHAT_LINK_MAX` · 없으면 빈 배열). 다시 붙을 때(서버가
+   * 잊었으면) 독이 다시 건다. 옛 파일의 `tile`(하나)은 읽을 때 한 칸짜리 묶음으로 옮기고, 쓰기는 이 칸만
+   */
+  tiles: SideChatTileLink[];
   /**
    * **갈라 온 원본**(6단계 "타일 대화 이어 가기") — 그 타일의 에이전트 · 대화 id(없으면 `null`). 그 CLI 로 열 때 첫 띄우기는 이 대화에서
    * 갈라 오고(`fork`), 턴이 선 뒤에는 `links[agent]` 의 새 대화를 그 폴더에서 잇는다(`resume{project}`). 경로는 여기 없다 — 서버가 색인에서 정한다
@@ -130,10 +133,16 @@ function parseChat(raw: unknown): SideChat | null {
     usedAt: num(o.usedAt),
     used: Array.isArray(o.used) ? o.used.filter((x): x is string => typeof x === "string") : [],
     links,
-    tile: parseTileLink(o.tile),
+    tiles: Array.isArray(o.tiles) ? parseTileLinks(o.tiles) : parseOldTile(o.tile),
     forkedFrom: parseForkedFrom(o.forkedFrom),
     cwd: str(o.cwd).slice(0, 1024),
   };
+}
+
+/** 옛 파일의 `tile`(하나) → 한 칸짜리 묶음(틀리거나 없으면 빈 배열) */
+function parseOldTile(raw: unknown): SideChatTileLink[] {
+  const link = parseTileLink(raw);
+  return link ? [link] : [];
 }
 
 /** 저장의 `forkedFrom` — 아는 CLI · UUID 대화 id 만(틀리면 갈라 오기 없음) */

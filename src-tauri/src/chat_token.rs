@@ -18,10 +18,11 @@
 //!
 //! ## 연결(link)
 //!
-//! 채팅마다 **사람이 칩으로 고른 세션 하나**(스트림 id — 서버 op `side_chat_link` 만 바꾼다 · Tauri 명령 · 주 창 · 원격 HOME_ONLY).
+//! 채팅마다 **사람이 칩으로 고른 세션들**(스트림 id 목록 · 고른 순서 · 최대 [`LINKS_MAX`] — 서버 op `side_chat_link` 만 통째로 바꾼다 ·
+//! Tauri 명령 · 주 창 · 원격 HOME_ONLY).
 //! 프로세스와 따로 산다(띄우기 전에도 걸 수 있다 · 프로세스가 다시 떠도 그대로) — 채팅이 서버 표에서 빠지면 함께 빠지고([`forget`]),
 //! 프런트가 `chats.json` 에 적어 두었다가 다시 붙을 때 다시 건다. MCP(`mcp/chat_read.rs`)는 **연결된 동안만** 읽기 도구를 받아 주고
-//! 그 세션 하나만 보게 한다 — 판정은 요청마다 서버가(목록은 바뀌지 않는다 — Codex 는 대화 중 목록 갱신을 받지 않는다).
+//! 그 세션들만 보게 한다 — 판정은 요청마다 서버가(목록은 바뀌지 않는다 — Codex 는 대화 중 목록 갱신을 받지 않는다).
 //!
 //! ## 불변식
 //!
@@ -115,11 +116,14 @@ pub(crate) enum Auth {
     Stale,
 }
 
-/// 채팅 → 토큰 칸 · 채팅 → 연결된 스트림. 순수 자료구조라 시험이 제 것을 만든다 — 서버는 전역 하나([`TABLE`]).
+/// 채팅 하나에 걸 수 있는 연결 수 상한(서버 op `side_chat_link` 가 넘으면 `[too-many-links]`).
+pub(crate) const LINKS_MAX: usize = 8;
+
+/// 채팅 → 토큰 칸 · 채팅 → 연결된 스트림들. 순수 자료구조라 시험이 제 것을 만든다 — 서버는 전역 하나([`TABLE`]).
 #[derive(Default)]
 pub(crate) struct ChatTokens {
     tokens: HashMap<String, Entry>,
-    links: HashMap<String, String>,
+    links: HashMap<String, Vec<String>>,
 }
 
 impl ChatTokens {
@@ -213,22 +217,19 @@ impl ChatTokens {
         Some(if alive { Auth::Chat { chat, kind, proc } } else { Auth::Stale })
     }
 
-    /// 연결을 바꾼다 — 바뀌었나.
-    pub(crate) fn set_link(&mut self, chat: &str, stream: Option<String>) -> bool {
-        let before = self.links.get(chat).cloned();
-        match &stream {
-            Some(s) => {
-                self.links.insert(chat.to_string(), s.clone());
-            }
-            None => {
-                self.links.remove(chat);
-            }
+    /// 연결 묶음을 통째로 놓는다(준 순서 · 빈 목록 = 모두 끊기 — 거르기 · 상한은 부르는 쪽 `op_link`) — 바뀌었나.
+    pub(crate) fn set_links(&mut self, chat: &str, streams: Vec<String>) -> bool {
+        let changed = self.links(chat) != streams;
+        if streams.is_empty() {
+            self.links.remove(chat);
+        } else {
+            self.links.insert(chat.to_string(), streams);
         }
-        before != stream
+        changed
     }
 
-    pub(crate) fn link(&self, chat: &str) -> Option<String> {
-        self.links.get(chat).cloned()
+    pub(crate) fn links(&self, chat: &str) -> Vec<String> {
+        self.links.get(chat).cloned().unwrap_or_default()
     }
 
     /// 채팅이 서버 표에서 빠졌다 — 토큰 · 연결 모두.
@@ -439,14 +440,14 @@ impl Drop for FakeProducer {
     }
 }
 
-/// 연결을 바꾼다(서버 op `side_chat_link` 만) — 바뀌었나.
-pub(crate) fn set_link(chat: &str, stream: Option<String>) -> bool {
-    table().set_link(chat, stream)
+/// 연결 묶음을 놓는다(서버 op `side_chat_link` 만) — 바뀌었나.
+pub(crate) fn set_links(chat: &str, streams: Vec<String>) -> bool {
+    table().set_links(chat, streams)
 }
 
-/// 그 채팅에 연결된 스트림(MCP 판정 · 머리글).
-pub(crate) fn link_of(chat: &str) -> Option<String> {
-    table().link(chat)
+/// 그 채팅에 연결된 스트림들 — 연결 순서(MCP 판정 · 머리글). 없으면 빈 목록.
+pub(crate) fn links_of(chat: &str) -> Vec<String> {
+    table().links(chat)
 }
 
 /// 채팅이 서버 표에서 빠졌다(닫기 · TTL · 모두 닫기).
@@ -534,7 +535,7 @@ mod tests {
         for f in ["fn snapshot(", "fn list(", "fn link_view(", "fn op_link("] {
             let at = srv.find(f).unwrap();
             let body = &srv[at..at + srv[at..].find("\n}").unwrap()];
-            // 연결을 읽는 `chat_token::link_of` 는 된다 — 토큰 값(`.token`) · 뽑기(`issue(`)는 안 된다.
+            // 연결을 읽는 `chat_token::links_of` 는 된다 — 토큰 값(`.token`) · 뽑기(`issue(`)는 안 된다.
             assert!(!body.contains(".token") && !body.contains("issue(") && !body.contains("\"token"), "{f} 에 토큰");
         }
         // (2') 프로듀서(2단계 단계 2 — 종류 둘): GUI 껍데기는 표를 모르고, 레지스트리 · 실행 재료의 로그 · 사건 · 스냅숏에 토큰이 없다. 값이
@@ -613,24 +614,28 @@ mod tests {
         assert_eq!(t.begin_request("pc-x", p2, "r1", "start_run", "h"), Ok(None), "새 세대의 기록은 새로");
     }
 
-    /// 연결은 토큰과 따로 산다 — 바뀌었나를 돌려주고(같은 값을 다시 걸면 false — 머리글을 되풀이하지 않게), 잊으면 둘 다 빠진다.
+    /// 연결은 토큰과 따로 산다 — 묶음을 통째로 놓고 바뀌었나를 돌려주고(같은 묶음을 다시 걸면 false — 머리글을 되풀이하지 않게 · 순서가
+    /// 바뀌면 바뀐 것), 잊으면 둘 다 빠진다.
     #[test]
     fn link_lives_apart_from_the_token() {
+        let v = |x: &[&str]| x.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let mut t = ChatTokens::default();
-        assert!(t.set_link("c1", Some("tile-a".into())));
-        assert!(!t.set_link("c1", Some("tile-a".into())), "같은 연결 = 바뀐 것 아님");
-        assert!(t.set_link("c1", Some("tile-b".into())));
-        assert_eq!(t.link("c1").as_deref(), Some("tile-b"));
+        assert!(t.set_links("c1", v(&["tile-a"])));
+        assert!(!t.set_links("c1", v(&["tile-a"])), "같은 연결 = 바뀐 것 아님");
+        assert!(t.set_links("c1", v(&["tile-a", "tile-b"])));
+        assert!(t.set_links("c1", v(&["tile-b", "tile-a"])), "순서도 묶음의 일부");
+        assert_eq!(t.links("c1"), v(&["tile-b", "tile-a"]));
         let p3 = ProcId::next();
         t.insert("c1", "tok".into(), p3);
         assert!(t.revoke("c1", p3));
-        assert_eq!(t.link("c1").as_deref(), Some("tile-b"), "프로세스가 끝나도 연결은 남는다");
-        assert!(t.set_link("c1", None));
-        assert!(!t.set_link("c1", None));
-        t.set_link("c1", Some("tile-c".into()));
+        assert_eq!(t.links("c1"), v(&["tile-b", "tile-a"]), "프로세스가 끝나도 연결은 남는다");
+        assert!(t.set_links("c1", Vec::new()));
+        assert!(!t.set_links("c1", Vec::new()));
+        assert!(t.links("c1").is_empty());
+        t.set_links("c1", v(&["tile-c"]));
         t.insert("c1", "tok".into(), ProcId::next());
         t.forget("c1");
-        assert_eq!(t.link("c1"), None);
+        assert!(t.links("c1").is_empty());
         assert_eq!(t.len(), 0);
     }
 }

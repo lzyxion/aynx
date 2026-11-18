@@ -1539,7 +1539,8 @@
     container: trust-row / inline-size;
   }
 
-  /* 안내 말풍선 — 옅게 누런 면 + 입력 칸을 가리키는 꼬리(목업 ECxt7kCXrca2NqrTJU93jf · Codex · Claude 공용) */
+  /* 안내 말풍선 — 옅게 누런 면 + 입력 칸을 가리키는 꼬리(목업 ECxt7kCXrca2NqrTJU93jf · Codex · Claude 공용).
+     사이드 채팅 독의 안내 말풍선(`ChatDock.svelte` 의 `.link-note` · `.link-go`)이 같은 값을 적는다 — 바꾸면 함께 */
   .trust-hint {
     position: relative;
     display: flex;

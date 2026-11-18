@@ -46,17 +46,19 @@ export function pillToolOpen(tool: TranscriptTool | null | undefined, pilled: bo
 }
 
 /**
- * 사람 말 위의 **연결 칩**(사이드 채팅 — 연결 머리글이 알린 것) — 사전 열쇠와 이름. 세션 id 는 없다(Rust 가 싣지 않는다).
- * 이름이 비면 이름 없는 연결, 끊었으면 "연결 끊음", 머리글이 없었으면 `null`(칩 없음).
+ * 사람 말 위의 **연결 칩들**(사이드 채팅 — 연결 머리글이 알린 것) — 타일마다 사전 열쇠와 이름 하나(연결 순서). 세션 id 는 없다(Rust 가
+ * 싣지 않는다). 이름이 비면 이름 없는 연결, 모두 끊었으면 "연결 끊음" 하나, 머리글이 없었으면 빈 배열(칩 없음).
  */
-export function linkChip(
+export function linkChips(
   link: TranscriptLink | null | undefined,
-): { key: "board.viewer.link" | "board.viewer.link.bare" | "board.viewer.unlinked"; label: string } | null {
-  if (!link) return null;
-  if (link.unlinked) return { key: "board.viewer.unlinked", label: "" };
-  if (typeof link.label !== "string") return null;
-  const label = link.label.trim();
-  return label === "" ? { key: "board.viewer.link.bare", label: "" } : { key: "board.viewer.link", label };
+): { key: "board.viewer.link" | "board.viewer.link.bare" | "board.viewer.unlinked"; label: string }[] {
+  if (!link) return [];
+  if (link.unlinked) return [{ key: "board.viewer.unlinked", label: "" }];
+  const labels = Array.isArray(link.labels) ? link.labels : [];
+  return labels.map((raw) => {
+    const label = typeof raw === "string" ? raw.trim() : "";
+    return label === "" ? { key: "board.viewer.link.bare" as const, label: "" } : { key: "board.viewer.link" as const, label };
+  });
 }
 
 /** 더 오래된 쪽을 앞에 붙인다 — 새 배열(항목은 그대로 — 화면이 붙인 열쇠도 따라간다) */

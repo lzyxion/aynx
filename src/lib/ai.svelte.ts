@@ -33,19 +33,11 @@ export function isShared(paneId: string): boolean {
   return shared.has(paneId);
 }
 
-/** 공유를 뒤집고 **바뀐 뒤의 값**을 돌려준다 (헤더 버튼) */
-export function toggleShared(paneId: string): boolean {
-  const next = !shared.has(paneId);
-  if (next) shared.add(paneId);
-  else shared.delete(paneId);
-  return next;
-}
-
 /**
- * 공유 여부를 **값으로** 세운다 (창 이관 — `tear.ts` 의 `restoreTab`).
+ * 공유 여부를 **값으로** 세운다 (창 이관 — `tear.ts` 의 `restoreTab` · 사람 손의 켜고 끄기 — `pane/local-ai.ts` 의 `setLocalAiRead`).
  *
  * 토글이 아니라 대입인 이유는 부르는 쪽이 "저쪽 창에서 켜져 있었다" 는 **사실**을 옮겨
- * 심기 때문이다. 뒤집기(`toggleShared`)로 하면 이 창의 현재 값에 따라 결과가 달라진다.
+ * 심기 때문이다. 뒤집기로 하면 이 창의 현재 값에 따라 결과가 달라진다.
  *
  * 이관이 이 문을 쓰기 전에는 뜯어낸 타일의 공유가 **말없이 꺼졌다** — 공유 집합은 창마다
  * 따로 살고 페이로드에 실리지 않았다 (docs/log/2026-09-08-block-history-store.md).

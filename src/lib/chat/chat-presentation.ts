@@ -1,6 +1,6 @@
 /**
  * **채팅 독의 순수 표시 계산**(룬 · DOM 없음) — `ChatDock.svelte` 에서 그대로 옮겼다.
- * - `targetOf` — 저장 모양 → 붙을 뜻(그 CLI 의 기록된 대화 id 로 이어 가기 · 갈라 올 원본 · 연결 타일).
+ * - `targetOf` — 저장 모양 → 붙을 뜻(그 CLI 의 기록된 대화 id 로 이어 가기 · 갈라 올 원본 · 연결 타일들).
  * - `Dot` · `mostUrgentDot` — 상태 점과 머리줄 ▾ 의 점(모든 채팅 중 가장 급한 것).
  */
 import { sideChatCliOk, sideChatConversation, sideChatForkFrom, type SideChat } from "$lib/side-chat";
@@ -15,7 +15,7 @@ export function targetOf(c: SideChat, cli = c.cli, model = c.model): SideChatTar
     effort: c.effort,
     conversation: sideChatConversation(c, cli),
     fork: sideChatForkFrom(c, cli),
-    link: c.tile?.stream ?? null,
+    links: c.tiles.map((x) => x.stream),
   };
 }
 

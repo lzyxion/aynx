@@ -531,6 +531,8 @@ export const M3_ROLES = {
   "--m3-error-container": "errorContainer",
   "--m3-on-error-container": "onErrorContainer",
   "--m3-inverse-surface": "inverseSurface",
+  // 반대 밝기의 primary — 앱 테마와 밝기가 다른 터미널 바탕 위의 AI 권한 단계 색(`theme.css` 의 `--ai-term-lv*`)
+  "--m3-inverse-primary": "inversePrimary",
 } as const satisfies Record<string, keyof DynamicScheme>;
 
 type M3RoleToken = keyof typeof M3_ROLES;

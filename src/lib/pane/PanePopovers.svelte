@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * **타일 상자 밖의 메뉴 · 호버 카드 층** — `PaneHost.svelte` 에서 뗀 표시 조립(2026-10-26 분할 3차): 타일 ⋯ 메뉴 · tmux 세션 ·
-   * 포워딩 목록 · AI 권한(원격 · 쿼리 · 로컬) · "+N" 칩 메뉴 · 이름 카드 · tmux 카드 · 포워딩 카드. 새 상태는 없다 — 열림 · 자리 · 줄 실행은
-   * `PaneHost` 가 만든 컨트롤러(`tmc` · `tm` · `fm` · `ai` · `dbm` · `lam` · `cm`)를 그대로 받아 읽고, 카드 값은 부모의 `$state` 를 프롭으로 받는다.
+   * 포워딩 목록 · AI 권한(원격 · 쿼리) · "+N" 칩 메뉴 · 이름 카드 · tmux 카드 · 포워딩 카드. 새 상태는 없다 — 열림 · 자리 · 줄 실행은
+   * `PaneHost` 가 만든 컨트롤러(`tmc` · `tm` · `fm` · `ai` · `dbm` · `cm`)를 그대로 받아 읽고, 카드 값은 부모의 `$state` 를 프롭으로 받는다.
    * 감싸개 없음 — `PaneHost` 의 `.host` 안, 분할선 층 뒤에 그대로 선다(바깥 누름 · Esc 는 각 그림의 몫).
    */
   import PaneMenu from "$lib/pane/PaneMenu.svelte";
@@ -20,8 +20,6 @@
   import type { TmuxMenuController } from "$lib/pane/tmux-menu.svelte.js";
   import { HOST_STAGE_ROWS, type AiPermMenuController } from "$lib/pane/ai-perm-menu.svelte.js";
   import { DB_STAGE_ROWS, dbAiMenuNotes, queryAiOf, type DbAiMenuController } from "$lib/pane/db-ai-menu.svelte.js";
-  import type { LocalAiMenuController } from "$lib/pane/local-ai-menu.svelte.js";
-  import { LOCAL_LOCKED_FROM, LOCAL_STAGE_ROWS, localAiStage } from "$lib/pane/local-ai";
   import type { ForwardMenuController, ForwardsCardView } from "$lib/pane/forward-menu.svelte.js";
   import { openForwardUrl, stopPaneForward } from "$lib/app/forwards.svelte.js";
   import { delegationGrantsOf, paneAiStage } from "$lib/app/delegation.svelte.js";
@@ -37,7 +35,6 @@
     fm,
     ai,
     dbm,
-    lam,
     cm,
     sessionOf,
     forwardsOf,
@@ -53,7 +50,6 @@
     fm: ForwardMenuController;
     ai: AiPermMenuController;
     dbm: DbAiMenuController;
-    lam: LocalAiMenuController;
     cm: ChipMoreMenuController;
     /** "+N" 메뉴의 줄 하나 — 그 칩을 누른 것과 같은 일(`PaneHost`) */
     pickChipMore: (item: ChipMoreItem) => void;
@@ -163,27 +159,6 @@
     onpick={(level) => void dbm.pick(dbConn, level)}
     onsettings={dbm.openConnSettings}
     onclose={dbm.close}
-  />
-{/if}
-
-<!--
-  로컬 타일의 AI 권한 팝오버 (10-23) — 위와 **같은 상자**. 단계는 원격과 같은 다섯이되 Ask 부터 잠기고(로컬 타일은 AI 실행 대상이
-  아니다) 아래 각주가 그 이유를 말한다. 고르면 타일별 읽기 허용이 바뀐다 → 칩 · 이 상자가 함께 맞는다.
--->
-{#if lam.at && lam.box}
-  {@const localPaneId = lam.box.pane.id}
-  <AiPermMenu
-    title={tr("pane.localaiperm.title")}
-    sub={tr("pane.localaiperm.sub")}
-    code={tileCode(currentWindowLabel(), localPaneId)}
-    stages={LOCAL_STAGE_ROWS}
-    stage={localAiStage(localPaneId)}
-    lockedFrom={LOCAL_LOCKED_FROM}
-    footnote={tr("pane.localaiperm.foot")}
-    left={lam.at.left}
-    top={lam.at.top}
-    onpick={(stage) => lam.pick(localPaneId, stage)}
-    onclose={lam.close}
   />
 {/if}
 

@@ -15,16 +15,20 @@ function chat(over: Partial<SideChat> = {}): SideChat {
     createdAt: 1,
     usedAt: 1,
     links: {},
-    tile: null,
+    tiles: [],
     forkedFrom: null,
     ...over,
   } as SideChat;
 }
 
 describe("targetOf", () => {
-  it("저장 모양을 붙을 뜻으로 — 그 CLI 의 대화 id · 연결 타일 스트림", () => {
-    const t = targetOf(chat({ model: "opus", effort: "high", links: { claude: CONV }, tile: { stream: "s-1", name: "셸" } }));
-    expect(t).toEqual({ id: "c1", cli: "claude", model: "opus", effort: "high", conversation: CONV, fork: null, link: "s-1" });
+  it("저장 모양을 붙을 뜻으로 — 그 CLI 의 대화 id · 연결 타일 스트림들(연결 순서)", () => {
+    const tiles = [
+      { stream: "s-1", name: "셸" },
+      { stream: "s-2", name: "Claude Code" },
+    ];
+    const t = targetOf(chat({ model: "opus", effort: "high", links: { claude: CONV }, tiles }));
+    expect(t).toEqual({ id: "c1", cli: "claude", model: "opus", effort: "high", conversation: CONV, fork: null, links: ["s-1", "s-2"] });
   });
 
   it("다른 CLI · 모델로 물으면 그 CLI 의 대화(없으면 null) · 갈라 올 원본은 그 CLI 가 원본의 에이전트일 때만", () => {

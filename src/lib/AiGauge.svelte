@@ -12,13 +12,10 @@
    * - 넓은 꼴(폼): 카드 · 단추 높이 44px 이상. 좁은 꼴(`compact` — 칩 팝오버): 카드 없이 · 32px 이상(이름은 넓은 꼴과 같은 글자 — 10-23 이름이 짧은 영어 낱말이 됐다).
    * - **고르는 규칙은 모른다** — 누르면 `onpick(단계)` 만 올린다. 확인 상자(YOLO) · 저장 · 원격 웹 재확인은 부르는 쪽 그대로다.
    *   값이 바뀌었을 때 포커스가 이 안에 있으면 새로 고른 단추로 옮긴다(저장이 비동기여도 · 확인 상자가 포커스를 가져갔으면 손대지 않는다).
-   * - **잠긴 자리**(`lockedFrom` — 10-23 로컬 타일: Off · Read 만, Ask · Auto · YOLO 는 원격 호스트에만): 그 자리부터의 단추는 `disabled` ·
-   *   `aria-disabled` · 이름 "… (잠김)" 이고, 칸은 빗금 · 이름은 흐린 글자 + 작은 자물쇠다. ←→ 는 잠긴 자리 앞에서 멈춘다(`gaugeKeyStep`).
    */
   import { tick } from "svelte";
   import { GAUGE_SEGMENTS, gaugeIndex, gaugeKeyStep, gaugeTone, segmentShape } from "$lib/ai-gauge";
   import { t } from "$lib/i18n/i18n.svelte.js";
-  import UiIcon from "$lib/UiIcon.svelte";
 
   let {
     levels,
@@ -30,7 +27,6 @@
     label,
     compact = false,
     itemAttr = "stage",
-    lockedFrom,
     onpick,
     ...rest
   }: {
@@ -49,8 +45,6 @@
     compact?: boolean;
     /** 단추에 다는 `data-*` 이름 — 호스트 `stage` · DB `level`(예전 세그먼트 단추와 같은 손잡이) */
     itemAttr?: "stage" | "level";
-    /** 이 자리부터는 잠겨 고를 수 없다(없으면 모두 고를 수 있다) — 로컬 타일은 2(Off · Read 만) */
-    lockedFrom?: number;
     onpick: (s: S) => void;
     [key: `data-${string}`]: unknown;
   } = $props();
@@ -58,7 +52,6 @@
   const at = $derived(gaugeIndex(levels, value));
   const tone = $derived(gaugeTone(at));
   const yolo = $derived(at === GAUGE_SEGMENTS);
-  const lockAt = $derived(lockedFrom ?? levels.length);
 
   let group = $state<HTMLElement | null>(null);
   const buttons: HTMLButtonElement[] = $state([]);
@@ -77,7 +70,7 @@
     if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
     ev.preventDefault();
     ev.stopPropagation();
-    const next = gaugeKeyStep(at, ev.key, levels.length, lockAt);
+    const next = gaugeKeyStep(at, ev.key, levels.length);
     if (next !== null) onpick(levels[next]);
   }
 </script>
@@ -99,25 +92,21 @@
   >
     {#each levels as lv, i (lv)}
       {@const on = i === at}
-      {@const locked = i >= lockAt}
       <button
         type="button"
         role="radio"
         class="lv"
         class:off={i === 0}
         class:on
-        class:locked
         aria-checked={on}
-        aria-label={locked ? t("app.ai.gauge.locked", { name: nameOf(lv) }) : nameOf(lv)}
-        aria-disabled={locked ? "true" : undefined}
-        disabled={locked}
-        title={locked ? t("app.ai.gauge.locked", { name: nameOf(lv) }) : descOf(lv)}
+        aria-label={nameOf(lv)}
+        title={descOf(lv)}
         tabindex={on || (at < 0 && i === 0) ? 0 : -1}
         data-gauge-stop={on || (at < 0 && i === 0) ? "" : undefined}
         {...{ [`data-${itemAttr}`]: lv }}
         bind:this={buttons[i]}
         onclick={() => {
-          if (!on && !locked) onpick(lv);
+          if (!on) onpick(lv);
         }}
       >
         <span class="mark" aria-hidden="true">
@@ -127,9 +116,7 @@
             <span class="seg" class:filled={at >= i} data-shape={segmentShape(i)}></span>
           {/if}
         </span>
-        <span class="tick" aria-hidden="true"
-          >{#if locked}<UiIcon name="lock" size={9} />{/if}{nameOf(lv)}</span
-        >
+        <span class="tick" aria-hidden="true">{nameOf(lv)}</span>
       </button>
     {/each}
   </div>
@@ -282,32 +269,6 @@
   .lv.on .tick {
     font-weight: 700;
     color: var(--ai-c);
-  }
-
-  /* 잠긴 자리(로컬 타일의 Ask · Auto · YOLO — 10-23 목업 A) — 칸은 빗금 · 이름은 흐린 글자 + 자물쇠. 눌러도 · 호버해도 바뀌지 않는다 */
-  .lv.locked {
-    cursor: not-allowed;
-  }
-
-  .lv.locked .seg,
-  .lv.locked:hover .seg:not(.filled) {
-    background: repeating-linear-gradient(
-      135deg,
-      var(--ai-track) 0 3px,
-      color-mix(in srgb, var(--ai-track) 40%, transparent) 3px 6px
-    );
-  }
-
-  .lv.locked .tick,
-  .lv.locked:hover .tick {
-    color: var(--fg-3);
-    opacity: 0.75;
-  }
-
-  .lv.locked .tick :global(svg) {
-    display: inline-block;
-    margin-right: 2px;
-    vertical-align: -1px;
   }
 
   /* 설명 한 줄 — 우물 상자. 모두 승인이면 따뜻한 판 */

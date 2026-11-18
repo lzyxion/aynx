@@ -168,7 +168,12 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 판 32(2026-11-14 사이드 채팅 파일 첨부): 새 op 없음 — `side_chat_send` 몸의 `files`(그림 밖 첨부 — 서버가 그 채팅 cwd 의 `attachments/` 에 사본을
 /// 두고 글 끝에 경로를 붙인다). 옛 서버는 모르는 칸을 **버리므로**(사람이 붙인 파일이 소리 없이 빠진다) 판 30 과 같은 규칙으로 **`MIN` 을 올리지 않되**
 /// GUI 가 판 31 서버에는 파일이 든 보내기를 보내지 않는다(`[server-outdated]` — [`SIDE_CHAT_FILES_PROTOCOL`]).
-pub(crate) const PROTOCOL_MAX: u32 = 32;
+///
+/// 판 33(2026-11-18 사이드 채팅 여러 타일 연결): 새 op 없음 — `side_chat_link` 몸이 `stream` 하나 → `streams` 배열(최대 8 · `[too-many-links]`) ·
+/// 답과 스냅숏의 `link` → `links` 배열 · `side_chat_send` 의 `linkName` → `linkNames`(스트림 → 칩 이름) · 보내기 답의 `link` 가
+/// `{labels, unlinked}`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 32 서버에 붙은 GUI 는 프록시(`server::side_chat_proxy`)가 옛 모양으로
+/// 옮겨 보내고 답을 새 모양으로 옮겨 프런트에 준다(연결 0~1개) · 둘 이상이면 `[server-outdated]`([`SIDE_CHAT_LINKS_PROTOCOL`]).
+pub(crate) const PROTOCOL_MAX: u32 = 33;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -243,6 +248,10 @@ pub(crate) const SIDE_CHAT_SEEN_PROTOCOL: u32 = 31;
 
 /// 사이드 채팅 보내기의 파일 첨부(`side_chat_send` 의 `files`)가 서는 판 — 낮으면 GUI 가 파일이 든 보내기를 보내지 않는다(옛 서버는 칸을 버린다).
 pub(crate) const SIDE_CHAT_FILES_PROTOCOL: u32 = 32;
+
+/// 사이드 채팅 여러 타일 연결(`side_chat_link` 의 `streams` · `links` · `linkNames`)이 서는 판 — 낮으면 GUI 프록시가 옛 모양(`stream` · `link` ·
+/// `linkName`)으로 옮기고 둘 이상 연결은 보내지 않는다.
+pub(crate) const SIDE_CHAT_LINKS_PROTOCOL: u32 = 33;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;

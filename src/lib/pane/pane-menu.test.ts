@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   docPathShown,
@@ -24,6 +26,8 @@ const ko = (key: Parameters<typeof translate>[1], params?: Record<string, string
   translate("ko", key, params);
 const en = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
   translate("en", key, params);
+
+const src = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 const off: PaneMenuCtx = {
   shared: false,
@@ -100,7 +104,7 @@ describe("menuItemsFor — 종류별 항목 표", () => {
       "split-col",
       "folder-conversations",
       "output",
-      "ai-permission",
+      "toggle-ai-read",
       "toggle-sync",
       "detach",
       "close",
@@ -212,32 +216,37 @@ describe("menuItemsFor — 종류별 항목 표", () => {
 });
 
 describe("menuItemsFor — 토글 상태", () => {
-  it("로컬 타일도 'AI 권한…'(10-23 — 예전 체크 'AI 읽기 허용') — 게이지 글리프 · 툴팁이 Off · Read 와 '실행 권한 없음' 을 말한다", () => {
-    const offItem = itemOf("local", "ai-permission", off);
-    expect(offItem?.checkbox).toBeUndefined();
+  it("로컬 타일은 체크 줄 'AI 읽기 허용'(11-18) — 켜졌으면 ✓ · 권한 묶음의 선을 이고 · 'AI 권한…' 줄은 없다", () => {
+    const offItem = itemOf("local", "toggle-ai-read", off);
+    expect(offItem?.checkbox).toBe(true);
+    expect(offItem?.checked).toBe(false);
+    expect(offItem?.icon).toBeNull();
     expect(offItem?.disabled).toBeUndefined();
-    expect(offItem?.label).toBe("AI 권한…");
-    expect(offItem?.icon).toBe("ai-gauge-0");
-    expect(offItem?.title).toContain("Off");
-    expect(offItem?.title).toContain("실행 권한이 없습니다");
+    expect(offItem?.separator).toBe(true);
+    expect(offItem?.label).toBe("AI 읽기 허용");
+    expect(offItem?.title).toContain("이 타일에만");
 
-    const onItem = itemOf("local", "ai-permission", { ...off, shared: true });
-    expect(onItem?.icon).toBe("ai-gauge-1");
-    expect(onItem?.title).toContain("Read");
+    const onItem = itemOf("local", "toggle-ai-read", { ...off, shared: true });
+    expect(onItem?.checked).toBe(true);
+    expect(onItem?.icon).toBe("check");
     // 원격 단계는 로컬 줄에 뜻이 없다
-    expect(itemOf("local", "ai-permission", { ...off, shared: true, aiStage: "all" })).toEqual(onItem);
-    expect(flatten(menuItemsFor("local", off, en)).find((i) => i.action === "ai-permission")?.title).toContain(
-      "no run permission",
-    );
+    expect(itemOf("local", "toggle-ai-read", { ...off, shared: true, aiStage: "all" })).toEqual(onItem);
+    expect(itemOf("local", "ai-permission", off)).toBeUndefined();
+    expect(itemOf("local", "toggle-sync", off)?.separator).toBeUndefined();
+    expect(flatten(menuItemsFor("local", off, en)).find((i) => i.action === "toggle-ai-read")?.label).toBe("Allow AI to read");
+    // 원격 · 쿼리에는 체크 줄이 서지 않는다
+    expect(itemOf("ssh", "toggle-ai-read", { ...off, aiStage: "read" })).toBeUndefined();
+    expect(itemOf("query", "toggle-ai-read", { ...off, dbAi: { level: "read", broken: false } })).toBeUndefined();
   });
 
-  it("로컬 AI CLI 타일(10-23)에는 'AI 권한…' 줄이 없다 — 동시 입력 줄이 권한 묶음의 선을 긋는다", () => {
-    expect(itemOf("local", "ai-permission", { ...off, aiTile: true })).toBeUndefined();
-    expect(itemOf("local", "ai-permission", { ...off, aiTile: true, shared: true })).toBeUndefined();
-    expect(itemOf("local", "toggle-sync", { ...off, aiTile: true })?.separator).toBe(true);
-    expect(itemOf("local", "toggle-sync", off)?.separator).toBeUndefined();
-    // 원격 타일에서는 뜻이 없다
-    expect(itemOf("ssh", "ai-permission", { ...off, aiStage: "read", aiTile: true })).toBeDefined();
+  it("로컬 AI CLI 타일도 같은 체크 줄이다(11-18 — 판정 갈래 없음)", () => {
+    const tm = src("./tile-menu-controller.svelte.ts");
+    expect(tm).not.toContain("localAiTile");
+    expect(tm).not.toContain("aiTile:");
+    // 실행은 `runTileMenu`(runOnMenu 통로) 안의 배선표 한 칸 — 켜고 끄는 몸통은 `local-ai.ts` 하나
+    expect(tm).toMatch(/case "toggle-ai-read":\s*return toggleLocalAiRead\(m\.pane\.id\);/);
+    expect(tm).not.toContain("h.lam");
+    expect(src("./pane-menu.ts")).not.toContain("noAiRow");
   });
 
   it("원격 타일은 체크가 아니라 'AI 권한…' — 그림과 툴팁이 호스트 단계를 말한다", () => {
@@ -892,21 +901,21 @@ describe("terminalMenuItems — 사이드 채팅에 묻기(사이드 채팅 v2 5
 describe("오케스트레이션 탭(2026-10-29 — 노트 D11 · 0-3 Q1=B)", () => {
   const ids = (rows: PaneMenuRow[]) => rows.map(rowId);
   it("탭 밖의 로컬 AI 타일에만 [오케스트레이션으로 이어 가기]", () => {
-    const on = menuItemsFor("local", { ...off, aiTile: true, orchContinue: true }, ko);
+    const on = menuItemsFor("local", { ...off, orchContinue: true }, ko);
     expect(ids(on)).toContain("continue-orchestration");
     const item = on.find((r) => rowId(r) === "continue-orchestration") as PaneMenuItem;
     expect(item.label).toBe(ko("pane.menu.continueOrch"));
     // 대화·저장소를 고정한 초안 — 사이드 채팅 이어 가기와 같은 무리에 나란히.
     expect(item.title).toBe(ko("pane.menu.continueOrch.title"));
     expect(item.title).toContain("새 앨범 초안");
-    const both = ids(menuItemsFor("local", { ...off, aiTile: true, orchContinue: true, sideChatFork: true }, ko));
+    const both = ids(menuItemsFor("local", { ...off, orchContinue: true, sideChatFork: true }, ko));
     expect(both.indexOf("continue-orchestration")).toBe(both.indexOf("continue-side-chat") + 1);
     expect(UI_ICONS).toHaveProperty(item.icon!);
-    expect(ids(menuItemsFor("local", { ...off, aiTile: true }, ko))).not.toContain("continue-orchestration");
+    expect(ids(menuItemsFor("local", off, ko))).not.toContain("continue-orchestration");
     expect(ids(menuItemsFor("ssh", { ...off, orchContinue: true }, ko))).not.toContain("continue-orchestration");
   });
   it("오케스트레이션 탭의 타일 — 분할 둘 · 새 창으로 분리를 그리지 않는다(닫기는 남는다)", () => {
-    const rows = ids(menuItemsFor("local", { ...off, aiTile: true, orchTab: true }, ko));
+    const rows = ids(menuItemsFor("local", { ...off, orchTab: true }, ko));
     for (const gone of ["split-row", "split-col", "detach"]) expect(rows).not.toContain(gone);
     expect(rows).toContain("close");
     expect(ids(menuItemsFor("run", { ...off, orchTab: true }, en))).not.toContain("split-row");

@@ -68,6 +68,7 @@
   --m3-error-container: #93000a;
   --m3-on-error-container: #ffdad6;
   --m3-inverse-surface: #e2e2e9;
+  --m3-inverse-primary: #415f91;
   /* 크롬 원시 토큰 = 위 역할의 별칭(머리 표). 저장 칸 여덟은 인라인으로 이 별칭을 덮는다(값은 같은 역할) */
   --bg-base: var(--m3-surface);
   --bg-panel-base: var(--m3-surface-container);
@@ -233,6 +234,12 @@
   --ai-lv4: #f5a05a;
   --on-ai-lv4: #2a1400;
   --ai-all-ink: color-mix(in srgb, var(--ai-lv4) 55%, white);
+  /* **터미널 바탕 위의 단계 색**(2 · 3 · 4 — 11-18) — 터미널 · AI 타일 머리줄(`PaneHeader` 의 `.pane-head.term`)과 설정의 칩 막대
+     (`HeaderChipsSetting` 의 `.hc-bar`)가 입는다. 터미널 밝기(`<html data-term-tone>` — `applySettings`)가 앱 테마와 같으면 앱 값 그대로,
+     다르면 아래 블록이 반대 모드의 식을 반대 톤 primary(`--m3-inverse-primary`)로 다시 쓴다 */
+  --ai-term-lv2: var(--ai-lv2);
+  --ai-term-lv3: var(--ai-lv3);
+  --ai-term-lv4: var(--ai-lv4);
   /* 자원 칩(CPU · 메모리 — 2026-10-17) — 읽기 전용 수치라 중성. AI 읽기 전용 칩과 같은 섞음(4.73) */
   --chip-resource: color-mix(in srgb, var(--fg) 40%, var(--fg-muted));
   /*
@@ -332,6 +339,7 @@
   --m3-error-container: #ffdad6;
   --m3-on-error-container: #93000a;
   --m3-inverse-surface: #2e3036;
+  --m3-inverse-primary: #aac7ff;
   --warn: #906816;
   --warn-soft: #ffdeaa;
   --on-warn-soft: #271900;
@@ -386,6 +394,19 @@
      위에서는 같은 비율도 대비가 덜 나오기 때문이다. */
   --start-card-bg-hover: color-mix(in srgb, var(--bg-panel-base) 82%, transparent);
   color-scheme: light;
+}
+
+/* 터미널 바탕 위의 단계 색 — 앱 테마와 터미널 밝기가 다를 때만(위 다크 블록의 `--ai-term-lv*`). 식은 그 밝기 쪽 블록의 `--ai-lv*` 그대로이고
+   강조색 자리에 반대 톤 primary 가 들어간다 */
+:root[data-theme="light"][data-term-tone="dark"] {
+  --ai-term-lv2: var(--m3-inverse-primary);
+  --ai-term-lv3: color-mix(in srgb, var(--m3-inverse-primary) 55%, white);
+  --ai-term-lv4: #f5a05a;
+}
+:root:not([data-theme="light"])[data-term-tone="light"] {
+  --ai-term-lv2: color-mix(in srgb, var(--m3-inverse-primary) 75%, black);
+  --ai-term-lv3: color-mix(in srgb, var(--m3-inverse-primary) 55%, black);
+  --ai-term-lv4: #803800;
 }
 
 /* ── 의미 토큰층 (2026-09-25 — docs/log/2026-09-25-design-tokens.md) ─────────────

@@ -11,7 +11,7 @@
 //! | op | 등급 | 몸 → 답 |
 //! | --- | --- | --- |
 //! | `side_chat_open` | 쓰기 | `{chat, cli, model, effort?, mode: {kind: fresh} \| {kind: resume, conv, project?} \| {kind: fork, from}, window}` → 스냅숏(아래) · **띄우지 않는다**(뜻만 적는다) · 같은 채팅 · 같은 CLI 면 다시 붙기 · `fork` · `project` 는 아래 "타일 대화 이어 가기" |
-//! | `side_chat_send` | 쓰기 | `{chat, epoch, text, clientId?, linkName?, images?, files?}` → `{epoch, link}` · 프로세스가 없으면 **여기서 띄운다**(악수 · 준비를 기다려 — `turn::START_MS`) · `images` = 붙인 그림 경로(첨부 자리 안만 — `chat_images`) · `files` = 그림 밖 첨부(판 32 — 첨부 자리 안만 · 서버가 채팅 자기 폴더의 `attachments/` 에 사본 — `chat_files`) |
+//! | `side_chat_send` | 쓰기 | `{chat, epoch, text, clientId?, linkNames?: {스트림: 칩 이름}, images?, files?}` → `{epoch, link: null \| {labels, unlinked}}`(판 33) · 프로세스가 없으면 **여기서 띄운다**(악수 · 준비를 기다려 — `turn::START_MS`) · `images` = 붙인 그림 경로(첨부 자리 안만 — `chat_images`) · `files` = 그림 밖 첨부(판 32 — 첨부 자리 안만 · 서버가 채팅 자기 폴더의 `attachments/` 에 사본 — `chat_files`) |
 //! | `side_chat_interrupt` | 쓰기 | `{chat, epoch}` → bool(끊기를 보냈나 — 도는 턴이 없으면 false) |
 //! | `side_chat_set_model` | 쓰기 | `{chat, epoch, model}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기에 쓴다) |
 //! | `side_chat_set_effort` | 쓰기 | `{chat, epoch, effort: 낱말 \| null}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기의 `--effort` · 첫 `turn/start`) · `null` = CLI 기본 · 악수가 알린 목록 밖이면 `[bad-effort]` |
@@ -19,11 +19,11 @@
 //! | `side_chat_close` | 쓰기 | `{chat}` → bool(표에 있었나) · 프로세스는 잡째 끝낸다 |
 //! | `side_chat_attach` | 읽기 | `{chat, window}` → 스냅숏 · 그 창을 보는 창에 **덧붙인다**(F5 · 웹뷰 크래시 뒤 새 페이지 · 다른 창) · 없으면 `[session-gone]` |
 //! | `side_chat_list` | 읽기 | `{}` → `[{chat, cli, model, effort, epoch, status, conversationId, viewers, detached}]`(`viewers` = 보는 창 **수** — 남의 창 라벨은 돌려주지 않는다) |
-//! | `side_chat_link` | 쓰기 | `{chat, epoch?, stream: 스트림 \| null}` → `{link, changed}` · 서버 거울의 창 타일만(`[bad-link]`) · 바뀌면 다음 보내기에 연결 머리글(5단계 — 아래 "연결") |
+//! | `side_chat_link` | 쓰기 | `{chat, epoch?, streams: [스트림]}` → `{links: [연결 보기], changed}`(판 33) · 묶음을 통째로 놓는다(준 순서 · 같은 스트림은 처음 것만 · 빈 배열 = 모두 끊기) · 하나라도 서버 거울의 창 타일이 아니면 `[bad-link]` · `chat_token::LINKS_MAX` 를 넘으면 `[too-many-links]`(둘 다 아무것도 바꾸지 않는다) · 바뀌면 다음 보내기에 연결 머리글(5단계 — 아래 "연결") |
 //! | `side_chat_seen` | 쓰기 | `{chat, epoch, seq}` → `{sent}` · 어느 창에서 사람이 그 채팅의 턴 끝(사건 `turnEnded` 의 `epoch` · `seq`)을 봤다 — 표는 그대로 · 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 `side-chat-seen{chat, epoch, seq}` 방송(판 31 — 아래 "완료 확인 공유") |
 //!
-//! 스냅숏 = `{link, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, liveTurn: [Ev], pending: [Ev]}`
-//! (`link` = `null` \| `{stream, code, label, kind, readable, closed}` · `cwd` = CLI 가 도는 폴더(`null` = 채팅 자기 폴더) — 화면의 이름표일
+//! 스냅숏 = `{links, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, liveTurn: [Ev], pending: [Ev]}`
+//! (`links` = 연결 순서의 `[{stream, code, label, kind, readable, closed}]`(판 33 — 없으면 빈 배열) · `cwd` = CLI 가 도는 폴더(`null` = 채팅 자기 폴더) — 화면의 이름표일
 //! 뿐 다시 받지 않는다) — 그 뒤 사건은
 //! `side-chat-event{windows, chat, epoch, seq, ev}`(`windows` = 지금 보는 창 라벨들 · `seq` 는 채팅마다 1씩 — 빈틈이면 다시 attach). 옛 `epoch` 는
 //! `[stale-chat]`. `leaseEpoch` 는 그 채팅에 창이 붙을 때마다 +1.
@@ -86,8 +86,10 @@
 //!   띄우기 실패가 거둔다. 값은 Claude 임시 자리의 `--mcp-config`(Aynx 서버 하나 · `--strict-mcp-config` 그대로) · Codex 프로세스 환경
 //!   (`bearer_token_env_var` · 사용자 MCP 는 그대로 끈다)에만 — 로그 · 이벤트 · 스냅숏에 없다. 읽기 도구 일곱은 CLI 에 미리 허용한다(판정은 서버).
 //! - **연결**은 op `side_chat_link` 만 바꾸고 채팅과 함께 산다(닫기 · TTL · 모두 닫기에서 잊는다 — 프런트가 `chats.json` 에서 다시 건다).
-//!   바뀌면 `link_note` → [`op_send`] 가 사람 글 앞에 **앱 고정 머리글**(`side_chat::event::link_header` — 타일 표시 이름(입력 칸 칩이
-//!   보낼 때 실은 `linkName` · 없으면 거울 이름 — 타일 코드 없음) · 스트림 id 만)을 붙인다. 값 · 출력은 붙이지 않는다(AI 가 도구로 읽는다).
+//!   채팅마다 **사람이 고른 세션들**(최대 `chat_token::LINKS_MAX` — 읽기 권한은 연결된 타일마다 따로 · 판정은 MCP 호출마다 `mcp/chat_read.rs`).
+//!   묶음이 바뀌면 `link_note` → [`op_send`] 가 사람 글 앞에 **앱 고정 머리글**(`side_chat::event::link_headers` — 연결 순서로 타일마다 한 조각:
+//!   타일 표시 이름(입력 칸 칩이 보낼 때 실은 `linkNames` 의 그 스트림 이름 · 없으면 거울 이름 — 타일 코드 없음) · 스트림 id 만)을 지금 묶음
+//!   전체로 한 번 붙인다. 값 · 출력은 붙이지 않는다(AI 가 도구로 읽는다).
 //!
 //! ## 외부 MCP(2026-10-25)
 //!
@@ -722,9 +724,9 @@ struct SendBody {
     text: String,
     #[serde(default)]
     client_id: Option<String>,
-    /// 입력 칸 연결 칩의 지금 이름(머리글을 붙일 때만 쓴다 — `link_header_now`). 없으면 거울의 타일 이름.
+    /// 입력 칸 연결 칩들의 지금 이름 — 스트림 id → 이름(머리글을 붙일 때만 쓴다 — `link_header_now`). 없는 스트림은 거울의 타일 이름.
     #[serde(default)]
-    link_name: Option<String>,
+    link_names: Option<HashMap<String, String>>,
     /// 사람이 이 글에 붙인 그림의 경로(입력 칸 칩 — 앱 첨부 자리의 사본). 서버가 다시 본다(`chat_images`).
     #[serde(default)]
     images: Vec<String>,
@@ -816,10 +818,10 @@ pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> 
     }
 }
 
-/// 스냅숏 — `link` 는 [`link_view`](부르는 쪽이 채팅 잠금 **앞**에서 — 권한 파일 읽기를 잠금 위에서 하지 않게).
-fn snapshot(chat: &Chat, st: &State, link: Value) -> Value {
+/// 스냅숏 — `links` 는 [`link_views`](부르는 쪽이 채팅 잠금 **앞**에서 — 권한 파일 읽기를 잠금 위에서 하지 않게).
+fn snapshot(chat: &Chat, st: &State, links: Value) -> Value {
     json!({
-        "link": link,
+        "links": links,
         "chat": chat.id,
         "cli": st.cli,
         "model": st.model,
@@ -938,7 +940,7 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
                         detached: None,
                         core: Core::new(),
                         // 이미 걸린 연결(같은 채팅 — CLI 를 바꿈)은 새 프로세스의 첫 글에 다시 알린다.
-                        link_note: crate::chat_token::link_of(&b.chat).is_some(),
+                        link_note: !crate::chat_token::links_of(&b.chat).is_empty(),
                         mcp: Vec::new(),
                     }),
                     cv: Condvar::new(),
@@ -954,7 +956,7 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     if let Some(o) = old {
         lock(&o.st).core.kill("closed");
     }
-    let link = link_view(&chat.id);
+    let links = link_views(&chat.id);
     let mut st = lock(&chat.st);
     // 다시 붙기 — 프로세스가 없을 때만 띄울 뜻(모델 · 이어 갈 대화)을 바꾼다(도는 프로세스는 그대로).
     if !st.core.has_proc() {
@@ -973,19 +975,19 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     if !alive {
         wake_reaper();
     }
-    Ok(snapshot(&chat, &st, link))
+    Ok(snapshot(&chat, &st, links))
 }
 
 fn op_attach(b: AttachBody, conn: u64) -> Result<Value, WireError> {
     let chat = find(&b.chat)?;
     let alive = lock(&TABLE).conns.contains(&conn);
-    let link = link_view(&chat.id);
+    let links = link_views(&chat.id);
     let mut st = lock(&chat.st);
     add_viewer(&chat, &mut st, b.window, conn, alive);
     if !alive {
         wake_reaper();
     }
-    Ok(snapshot(&chat, &st, link))
+    Ok(snapshot(&chat, &st, links))
 }
 
 /// **사람이 보낸 글** — 이 함수가 `encode_user` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`). 프로세스가 없으면 여기서
@@ -1018,8 +1020,8 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
         st = chat.cv.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
     }
     let epoch = st.core.id();
-    // 연결이 서거나 바뀐 뒤의 첫 글 — 앱 고정 연결 머리글을 앞에 붙인다(5단계 · 서버가 아는 연결 · 거울의 타일 이름으로만 짓는다).
-    let text = if st.link_note { format!("{}{}", link_header_now(&chat.id, b.link_name.as_deref()), b.text) } else { b.text.clone() };
+    // 연결 묶음이 서거나 바뀐 뒤의 첫 글 — 앱 고정 연결 머리글을 앞에 붙인다(5단계 · 서버가 아는 연결 · 칩 이름이나 거울의 타일 이름으로만 짓는다).
+    let text = if st.link_note { format!("{}{}", link_header_now(&chat.id, b.link_names.as_ref()), b.text) } else { b.text.clone() };
     let text = with_file_refs(&text, &attached);
     let Some(a) = st.core.adapter() else {
         return Err(fail("exited", "the side chat CLI exited before it was ready"));
@@ -1350,9 +1352,8 @@ struct LinkBody {
     chat: String,
     #[serde(default)]
     epoch: Option<u64>,
-    /// 연결할 타일의 스트림 id(`historyStreamId`) · `None` = 연결 끊기.
-    #[serde(default)]
-    stream: Option<String>,
+    /// 연결할 타일들의 스트림 id(`historyStreamId`) — 연결 순서 · 빈 배열 = 모두 끊기.
+    streams: Vec<String>,
 }
 
 /// 연결해도 되는 스트림인가 — **순수**: 모양이 맞고, 서버 거울에 있는 **창 타일**의 세션이다(헤드리스 · 모르는 스트림은 아니다). 읽기
@@ -1369,46 +1370,77 @@ fn mirror_of(stream: &str) -> Option<(String, String, String, crate::context::Se
     m.get(stream).map(|c| (c.code.clone(), c.label.clone(), c.kind.clone(), crate::context::permission_view(c)))
 }
 
-/// 그 채팅의 연결 — 화면용(`null` = 연결 없음 · `closed` = 거울에 없음 — 타일이 닫혔다 · `readable` = 지금 AI 가 읽을 수 있나).
-fn link_view(chat: &str) -> Value {
-    let Some(stream) = crate::chat_token::link_of(chat) else { return Value::Null };
-    match mirror_of(&stream) {
+/// 그 채팅의 연결들 — 화면용 [`link_view`] 배열(연결 순서 · 없으면 빈 배열).
+fn link_views(chat: &str) -> Value {
+    let delegation = crate::delegation::Delegation::load_default();
+    Value::Array(crate::chat_token::links_of(chat).iter().map(|s| link_view(s, &delegation)).collect())
+}
+
+/// 연결 하나 — 화면용(`closed` = 거울에 없음 — 타일이 닫혔다 · `readable` = 지금 AI 가 읽을 수 있나).
+fn link_view(stream: &str, delegation: &crate::delegation::Delegation) -> Value {
+    match mirror_of(stream) {
         Some((code, label, kind, view)) => {
-            let readable = crate::context::ai_readable(&view, &crate::delegation::Delegation::load_default());
+            let readable = crate::context::ai_readable(&view, delegation);
             json!({ "stream": stream, "code": code, "label": label, "kind": kind, "readable": readable, "closed": false })
         }
         None => json!({ "stream": stream, "code": null, "label": null, "kind": null, "readable": false, "closed": true }),
     }
 }
 
-/// 지금 연결의 머리글(`side_chat::event::link_header`) — 이름은 화면이 보낼 때 실은 칩 이름(`hint`), 없으면 거울의 타일 이름
-/// (`link_display_name` — 타일 코드는 넣지 않는다). 스트림은 늘 서버가 아는 연결이다(화면이 고를 수 없다).
-fn link_header_now(chat: &str, hint: Option<&str>) -> String {
-    let link = crate::chat_token::link_of(chat);
-    let label = link.as_deref().and_then(mirror_of).map(|(_, label, ..)| label);
-    let name = crate::side_chat::event::link_display_name(hint, label.as_deref());
-    crate::side_chat::event::link_header(link.as_deref().map(|s| (s, name.as_str())))
+/// 지금 연결 묶음의 머리글(`side_chat::event::link_headers` — 연결 순서로 타일마다 한 조각) — 이름은 화면이 보낼 때 실은 그 스트림의 칩 이름
+/// (`hints`), 없으면 거울의 타일 이름(`link_display_name` — 타일 코드는 넣지 않는다). 스트림은 늘 서버가 아는 연결이다(화면이 고를 수 없다).
+fn link_header_now(chat: &str, hints: Option<&HashMap<String, String>>) -> String {
+    let links = crate::chat_token::links_of(chat);
+    let names: Vec<String> = links
+        .iter()
+        .map(|s| {
+            let label = mirror_of(s).map(|(_, label, ..)| label);
+            let hint = hints.and_then(|h| h.get(s)).map(String::as_str);
+            crate::side_chat::event::link_display_name(hint, label.as_deref())
+        })
+        .collect();
+    let pairs: Vec<(&str, &str)> = links.iter().map(String::as_str).zip(names.iter().map(String::as_str)).collect();
+    crate::side_chat::event::link_headers(&pairs)
 }
 
-/// **연결을 바꾼다**(사람이 칩에서 — Tauri 명령 `side_chat_link` · 주 창 · 원격 창). 스트림은 서버 거울에 있는 창 타일만
-/// ([`link_target_ok`]). 바뀌었으면 다음 보내기에 머리글을 붙인다. → `{link, changed}`.
+/// 연결 묶음 정리 — **순수**: 준 순서 그대로 · 같은 스트림은 처음 것만.
+pub(crate) fn dedup_streams(streams: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(streams.len());
+    for s in streams {
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    out
+}
+
+/// **연결 묶음을 놓는다**(사람이 칩에서 — Tauri 명령 `side_chat_link` · 주 창 · 원격 창). 스트림은 모두 서버 거울에 있는 창 타일이어야
+/// 하고([`link_target_ok`] — 하나라도 아니면 `[bad-link]`) 수는 `chat_token::LINKS_MAX` 까지(`[too-many-links]`) — 거절이면 아무것도 바꾸지
+/// 않는다. 바뀌었으면 다음 보내기에 머리글을 붙인다. → `{links, changed}`.
 fn op_link(b: LinkBody) -> Result<Value, WireError> {
     let chat = find(&b.chat)?;
     if let Some(e) = b.epoch {
         check_epoch(&lock(&chat.st), e)?;
     }
-    if let Some(s) = b.stream.as_deref() {
+    let streams = dedup_streams(b.streams);
+    if streams.len() > crate::chat_token::LINKS_MAX {
+        return Err(fail("too-many-links", "too many tiles linked to one side chat"));
+    }
+    if !streams.is_empty() {
         let plane = hub::ai().ok_or_else(|| fail("no-mirror", "the session mirror is not available"))?;
-        let ok = link_target_ok(&plane.ctx().lock().unwrap_or_else(|e| e.into_inner()), s);
+        let ok = {
+            let map = plane.ctx().lock().unwrap_or_else(|e| e.into_inner());
+            streams.iter().all(|s| link_target_ok(&map, s))
+        };
         if !ok {
             return Err(fail("bad-link", "that tile is not an open session the server knows"));
         }
     }
-    let changed = crate::chat_token::set_link(&b.chat, b.stream);
+    let changed = crate::chat_token::set_links(&b.chat, streams);
     if changed {
         lock(&chat.st).link_note = true;
     }
-    Ok(json!({ "link": link_view(&b.chat), "changed": changed }))
+    Ok(json!({ "links": link_views(&b.chat), "changed": changed }))
 }
 
 /// 그 채팅의 **지금 산 프로세스 세대**(채팅 토큰 판정 — `crate::chat_token::authenticate`). 프로세스가 없거나 닫는 중이면 `None`.

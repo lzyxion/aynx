@@ -39,7 +39,7 @@
 
   /**
    * 칩마다의 그림 · 색 — `pane/HeaderChips` 의 그 칩과 같다. 터미널 타일 머리줄(10-20 개편)처럼 칩은 **터미널 글자색**(`--term-fg`)이고,
-   * 단계를 말하는 신호인 AI 권한 칩만 제 색을 둔다(`PaneHeader` 의 `.pane-head.term` 과 같은 규칙). 글자는 실제 값 샘플이 아니라 **칩 이름**이다
+   * 단계를 말하는 신호인 AI 권한 칩만 단계 색을 둔다 — 터미널 바탕 기준의 단계 색(`.hc-bar` 가 바꿔 입힌다 · `PaneHeader` 의 `.pane-head.term` 과 같은 규칙). 글자는 실제 값 샘플이 아니라 **칩 이름**이다
    * (10-18 사용자 — 샘플(`aynx` · `3.2% · 412 MB` …)이면 막대가 넘쳐 가로 스크롤이 생겼다). 그림이 `null` 이면 AI 권한 칩이다 — 그림 자리에
    * 진짜 칩과 같은 미니 게이지(아래 `AI_SAMPLE_AT`)가 선다(10-23). AI 권한 칩 하나가 원격 · 쿼리 · 로컬 타일을 함께 켜고 끈다
    * (10-23 — 예전 따로 선 로컬 'AI 읽기' 칩 `ai_read` 를 합쳤다. 옛 설정의 옮기기는 `$lib/header-chips` 의 `migrateLegacyChips`).
@@ -238,6 +238,13 @@
     padding: 0 6px; /* (36 − 테두리 2 − 칩 22) / 2 — 칩 알약이 막대 알약과 같은 중심의 끝을 갖는다 */
     /* 막대 = 터미널 타일 머리줄 — 터미널 바탕 위에 칩(10-20 개편: 머리줄이 터미널 바탕을 그대로 비춘다) */
     background: var(--term-bg);
+    /* AI 권한 칩의 단계 색도 머리줄처럼 터미널 바탕 기준(`theme.css` 의 `--ai-term-lv*`) — 칩 글자 · 판과 미니 게이지의 찬 막대(`--ai-c`) */
+    --chip-ai-approve: var(--ai-term-lv2);
+    --chip-ai-auto: var(--ai-term-lv3);
+    --chip-ai-all: var(--ai-term-lv4);
+    --ai-lv2: var(--ai-term-lv2);
+    --ai-lv3: var(--ai-term-lv3);
+    --ai-lv4: var(--ai-term-lv4);
     border: 1px solid var(--line);
     border-radius: 999px; /* 칩과 같은 알약(2026-10-19) */
     overflow-x: auto;

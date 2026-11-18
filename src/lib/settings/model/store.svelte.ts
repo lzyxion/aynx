@@ -14,6 +14,7 @@ import { DEFAULT_UI_SCALE, compensatedFontSize, noteAppliedZoom, zoomFactor } fr
 import {
   DEFAULT_TERM_PRESET,
   termThemeOf,
+  termTone,
   withScrollbarSlider,
   withTransparentCanvas,
   type FixedDynamicTerms,
@@ -576,6 +577,10 @@ export function applySettings() {
   const termFg = settings.termTheme.foreground;
   if (termFg) root.style.setProperty("--term-fg", termFg);
   else root.style.removeProperty("--term-fg");
+  // 터미널 바탕의 밝기 — 터미널 바탕 위의 AI 권한 단계 색(`theme.css` 의 `--ai-term-lv*`)이 앱 테마가 아니라 이것을 따른다
+  const tone = termTone(termBg, termFg);
+  if (tone) root.dataset.termTone = tone;
+  else delete root.dataset.termTone;
 
   // 앱 글꼴 — `--font-ui` 를 인라인으로 덮는다. 비우면 걷어 `theme.css` 의 기본 스택이 이긴다
   // (색 토큰과 같은 규칙이다 — theme.css 는 건드리지 않는다).
@@ -816,6 +821,8 @@ export async function saveSettings(): Promise<void> {
 /** 사용자 터미널 테마 목록을 건다 — 읽기 · 넣기 · 이름 바꾸기 · 지우기 뒤에 `app/term-themes.svelte.ts` 가 부른다 */
 export function setUserTermThemes(list: UserTermTheme[]): void {
   settings.userTermThemes = list;
+  // `user:` 키의 팔레트가 이제 풀린다 — 부팅 때는 설정 적용 **뒤**에 목록이 오므로 `--term-bg` · `--term-fg` · `data-term-tone` 을 다시 옮겨 적는다
+  applySettings();
 }
 
 /**

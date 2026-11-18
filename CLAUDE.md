@@ -120,7 +120,7 @@ tauri.conf.json · Cargo.toml) 뒤 설치 파일 둘 + SHA-256 + 서명된 `late
 7. 포트 포워드는 **127.0.0.1 전용**. `port_forward.rs` → [전문 7](docs/invariants.md#inv-7)
 8. **DB 비밀번호는 볼트 `db_password`(대상 = DB 연결 id)에만 저장한다** — 예외 있음: 그 연결의 사람 쿼리 타일이 붙어 있는 동안 인증한 값을 세션 서버 메모리에 빌려 AI 연결이 쓴다(전문). AI 는 사람이 준 연결별 AI 권한 안에서 **사람 타일과 따로 연 AI 전용 읽기 전용 연결**로만 읽고(**Read 이상이면 조회 결과 행이 모델 제공자로 간다**), **AI 의 쓰기는 작업안뿐**. 타일 없이 볼트 값으로 새로 여는 것은 헤드리스 위임이 켜진 연결만. `src-tauri/src/db/` · `db/borrowed.rs` → [전문 8](docs/invariants.md#inv-8)
 9. **타일 토큰은 Run 을 열지도 이어받지도 조율하지도 못한다** · **조정자 토큰은 없다 — 조정자는 프로듀서 채팅의 채팅 토큰(종류 `producer`)에 서버 표가 붙인 역할** · **역할 토큰 · 타일 토큰 · 채팅 토큰은 같은 계정 안의 보안 경계가 아니다**. 토큰 값은 프런트·로그·`Debug`·영속 파일에 나가지 않는다. `src-tauri/src/tile_token.rs` · `chat_token.rs` → [전문 9](docs/invariants.md#inv-9)
-10. **대화 기록이 MCP 로 나가는 길은 조정자 `read_worker` 하나 — 자기 Run 작업자의 고정 대화만**. → [전문 10](docs/invariants.md#inv-10)
+10. **대화 기록이 MCP 로 나가는 길은 조정자 `read_worker` 하나 — 자기 Run 작업자의 고정 대화만**. 터미널 화면 거울은 여기 들지 않고 사람이 준 읽기 권한을 따른다(AI CLI 타일의 화면도 — 로컬은 타일별 읽기 허용). → [전문 10](docs/invariants.md#inv-10)
 11. **원격 타일에는 MCP 토큰을 주지 않는다 — 신호 전용 토큰(스트림별)만.** 원격 **셸에는 스트림 id 만** 넘기고, 신호 토큰은 **파이프·GUI 를 지나지 않는다**. 로컬 MCP 토큰은 감싸개 셸 타일 · AI 타일마다 따로이고 권한 결정 토큰은 신호 토큰과 따로다. `ssh/open.rs` · `src-tauri/src/remote_signal_file.rs` → [전문 11](docs/invariants.md#inv-11)
 12. 에이전트 포워딩은 **호스트별 옵트인(기본 꺼짐)**, 헤드리스 위임 접속에는 없다. → [전문 12](docs/invariants.md#inv-12)
 13. **원격 웹 클라이언트는 tailnet 안 브라우저만** — 관문은 **127.0.0.1 에만** 묶이고 노출은 `tailscale serve`(Funnel 길 없음), **앱 명령의 문은 `remote/deny.rs` 하나**. 볼트 값·MCP 토큰·웹훅 URL 은 원격으로 나가지 않는다. `src-tauri/src/remote/` → [전문 13](docs/invariants.md#inv-13)

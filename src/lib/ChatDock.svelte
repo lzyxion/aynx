@@ -33,7 +33,7 @@
   } from "$lib/app/side-chats.svelte.js";
   import {
     joinSideChat,
-    linkSideChat,
+    removeSideChatLink,
     restartSideChat,
     setShownSideChat,
     sideChatDot,
@@ -57,9 +57,9 @@
   import { veilVisible } from "$lib/app/veil.svelte.js";
   import { handheld, mobileLayout } from "$lib/app/mobile.svelte.js";
   import { shortcutTitle } from "$lib/status-items";
-  import { linkChipState, type LinkTile } from "$lib/side-chat-link";
+  import { linkChipStates, type LinkTile } from "$lib/side-chat-link";
   import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
-  import { isShared, toggleShared } from "$lib/ai.svelte.js";
+  import { setLocalAiRead } from "$lib/pane/local-ai";
   import { focusTile } from "$lib/app/tabs.svelte.js";
   import { targetOf, type Dot } from "$lib/chat/chat-presentation";
   import ChatHistory from "$lib/chat/ChatHistory.svelte";
@@ -106,7 +106,7 @@
   // ## 표시 조각 (2026-10-26)
   //
   // 목록 `chat/ChatHistory` · 순수 계산 `chat/chat-presentation` 은 props · 콜백만 받는다. 입력 칸 손잡이(`[+]` · 모델 메뉴 · 연결 칩)는 대화 면
-  // (`SideChatFace`)이 쥐고, 이 파일은 연결 칩 상태(`chipLink`)와 그 안내 한 줄(`linkNote`)만 준다. 머리줄 · 목록 메뉴(`ToolbarMenu` — 독 DOM 안에
+  // (`SideChatFace`)이 쥐고, 이 파일은 연결 칩들(`chipLinks`)과 그 안내 줄(`linkNote`)만 준다. 머리줄 · 목록 메뉴(`ToolbarMenu` — 독 DOM 안에
   // 그대로) · 가장자리 · 바깥 누르기 · Esc · 폭과 두 몸통(`hidden`)은 이 파일이 쥔다.
   // ---------------------------------------------------------------------------
 
@@ -300,20 +300,18 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 연결(5단계 — 결정 10 · 목업 ⑥A) — 이 채팅이 MCP 로 읽을 타일 하나. 고르기 · 끊기는 대화 면의 `[+]`(`chat/side-chat-controls`), 여기는 상태와 안내
+  // 연결(5단계 — 결정 10 · 목업 ⑥A) — 이 채팅이 MCP 로 읽을 타일 묶음(최대 8). 고르기 · 끊기는 대화 면의 `[+]`(`chat/side-chat-controls`), 여기는 상태와 안내
   // ---------------------------------------------------------------------------
 
   /** 이 창의 연결할 수 있는 타일(포커스된 것이 위) */
   const linkTiles = $derived<LinkTile[]>(current ? linkTilesHere() : []);
 
-  /** 칩 상태 — 이 창의 타일 → 서버가 아는 것 → 닫힘(순수 `linkChipState`) */
-  const chipLink = $derived(
-    current ? linkChipState(current.tile, linkTiles, sideChatLiveOf(current.id)?.link ?? null) : ({ kind: "none" } as const),
-  );
+  /** 칩들 — 연결 순서대로 타일마다 이 창의 타일 → 서버가 아는 것 → 닫힘(순수 `linkChipStates`) */
+  const chipLinks = $derived(current ? linkChipStates(current.tiles, linkTiles, sideChatLiveOf(current.id)?.links ?? []) : []);
 
-  /** [읽기 허용 켜기] — 로컬 타일의 'AI 읽기 허용'(사람 손 — 머리줄 토글과 같은 문) */
+  /** [읽기 허용 켜기] — 로컬 타일의 'AI 읽기 허용'(사람 손 — ⋯ 메뉴의 체크 줄과 같은 문 · 원격 창이면 마스터 재확인) */
   function allowRead(tile: LinkTile): void {
-    if (tile.kind === "local" && !isShared(tile.paneId)) toggleShared(tile.paneId);
+    if (tile.kind === "local") setLocalAiRead(tile.paneId, true);
   }
 
   /** 연결한 원격 타일로 가기(호스트 AI 권한은 그 타일 머리줄의 칩에서 바꾼다) */
@@ -728,41 +726,45 @@
           cli={c.cli}
           cliName={cliName(c.cli)}
           {offered}
-          {chipLink}
+          {chipLinks}
           onsent={(text) => noteSideChatSent(c.id, text)}
           onrestart={() => restart(c)}
           cwd={c.cwd}
           phone={handheld()}
         >
           {#snippet linkNote()}
-            {#if c.forkedFrom && c.forkedFrom.agent === c.cli && c.cwd}
-              <!-- 갈라 온 채팅(6단계) — CLI 가 그 대화의 기록된 폴더에서 돈다(도구가 그 폴더를 읽는다) -->
-              <div class="link-note" role="note" data-chat-fork-note title={c.cwd}>
-                <span class="link-note-text">{t("app.chatDock.fork.note", { folder: sideChatCwdLabel(c.cwd) })}</span>
-              </div>
-            {/if}
-            {#if chipLink.kind === "linked" && (chipLink.closed || chipLink.readable === false)}
-              <div class="link-note" role="status" data-chat-link-note={chipLink.closed ? "closed" : "read-off"}>
-                {#if chipLink.closed}
-                  <span class="link-note-text">{t("app.chatDock.link.closedNote", { name: chipLink.name })}</span>
-                  <button type="button" class="btn btn-secondary btn-sm" onclick={() => void linkSideChat(c.id, null)}
-                    >{t("app.chatDock.link.unlink")}</button
-                  >
-                {:else if chipLink.tile?.kind === "local"}
-                  {@const tile = chipLink.tile}
-                  <span class="link-note-text">{t("app.chatDock.link.readOffNote")}</span>
-                  <button type="button" class="btn btn-secondary btn-sm" data-chat-link-allow onclick={() => allowRead(tile)}
-                    >{t("app.chatDock.link.allowRead")}</button
-                  >
-                {:else}
-                  <span class="link-note-text">{t("app.chatDock.link.readOffRemote")}</span>
-                  {#if chipLink.tile}
-                    {@const tile = chipLink.tile}
-                    <button type="button" class="btn btn-secondary btn-sm" onclick={() => revealLinked(tile)}>{t("app.chatDock.link.reveal")}</button>
+            <!-- 안내 말풍선들의 그릇 — 꼬리는 맨 아래(입력 칸에 가장 가까운) 하나에만(`.link-note:last-child`) -->
+            <div class="link-notes">
+              {#if c.forkedFrom && c.forkedFrom.agent === c.cli && c.cwd}
+                <!-- 갈라 온 채팅(6단계) — CLI 가 그 대화의 기록된 폴더에서 돈다(도구가 그 폴더를 읽는다) -->
+                <div class="link-note" role="note" data-chat-fork-note title={c.cwd}>
+                  <span class="link-note-text">{t("app.chatDock.fork.note", { folder: sideChatCwdLabel(c.cwd) })}</span>
+                </div>
+              {/if}
+              <!-- 문제 있는 연결마다 한 줄(닫힘 · 읽기 꺼짐) — 그 타일 이름 · 그 타일에 대한 단추 -->
+              {#each chipLinks.filter((x) => x.closed || x.readable === false) as chip (chip.stream)}
+                <div class="link-note" role="status" data-chat-link-note={chip.closed ? "closed" : "read-off"}>
+                  {#if chip.closed}
+                    <span class="link-note-text">{t("app.chatDock.link.closedNote", { name: chip.name })}</span>
+                    <button type="button" class="link-go" onclick={() => void removeSideChatLink(c.id, chip.stream)}
+                      >{t("app.chatDock.link.unlink")}</button
+                    >
+                  {:else if chip.tile?.kind === "local"}
+                    {@const tile = chip.tile}
+                    <span class="link-note-text">{t("app.chatDock.link.readOffNote", { name: chip.name })}</span>
+                    <button type="button" class="link-go" data-chat-link-allow onclick={() => allowRead(tile)}
+                      >{t("app.chatDock.link.allowRead")}</button
+                    >
+                  {:else}
+                    <span class="link-note-text">{t("app.chatDock.link.readOffRemote", { name: chip.name })}</span>
+                    {#if chip.tile}
+                      {@const tile = chip.tile}
+                      <button type="button" class="link-go" onclick={() => revealLinked(tile)}>{t("app.chatDock.link.reveal")}</button>
+                    {/if}
                   {/if}
-                {/if}
-              </div>
-            {/if}
+                </div>
+              {/each}
+            </div>
           {/snippet}
         </SideChatFace>
       {/key}
@@ -1105,24 +1107,69 @@
     margin: 0;
   }
 
-  /* 입력 칸 위 한 줄 — 연결한 타일을 AI 가 못 읽는다 · 닫혔다 */
+  /* 입력 칸 위 안내 말풍선들 — 갈라 온 채팅 · 연결한 타일을 AI 가 못 읽는다 · 닫혔다 */
+  .link-notes {
+    flex: 0 0 auto;
+  }
+
+  /* 말풍선 하나 — 면 · 테두리 · 글 · 모서리 · 꼬리는 AI 타일 대화 면의 신뢰 말풍선(`pane/AiFlip.svelte` 의 `.trust-hint`)과 같은 값.
+     좌우 여백은 좁은 독에 맞춰 입력 칸(`FlipComposer` 의 `.compact` — `--space-3`)과 같다 */
   .link-note {
+    position: relative;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1) var(--space-2);
     margin: 0 var(--space-3) var(--space-1);
-    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     font-size: var(--t-xs);
-    color: var(--fg-2);
-    background: color-mix(in srgb, var(--warn) 10%, var(--surface-field));
-    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line-strong));
-    border-radius: 8px;
+    line-height: 1.45;
+    color: var(--hint-bubble-fg);
+    background: var(--hint-bubble-bg);
+    border: 1px solid var(--hint-bubble-line);
+    border-radius: var(--radius-surface-inner);
+  }
+
+  /* 꼬리 — 입력 칸을 가리킨다(맨 아래 하나만 — 위 말풍선의 꼬리가 아래 말풍선을 찌르지 않게). 끝은 말풍선 아래 약 8px —
+     아래 여백(`--space-1`) + 입력 칸 위 여백(`--space-2`) 안이라 알약에 닿지 않는다 */
+  .link-note:last-child::after {
+    content: "";
+    position: absolute;
+    left: 30px;
+    bottom: -6px;
+    width: 10px;
+    height: 10px;
+    background: var(--hint-bubble-bg);
+    border-right: 1px solid var(--hint-bubble-line);
+    border-bottom: 1px solid var(--hint-bubble-line);
+    transform: rotate(45deg);
   }
 
   .link-note-text {
-    flex: 1;
+    flex: 1 1 12em;
     min-width: 0;
+    word-break: keep-all; /* 한글을 음절 가운데서 끊지 않는다 */
     overflow-wrap: anywhere;
+  }
+
+  /* 말풍선 안 실행 단추 — `.trust-go`(AiFlip)와 같은 알약(말풍선 글자색 면 + 바탕색 글자). 좁으면 글 아래 줄 오른쪽 */
+  .link-go {
+    flex: none;
+    margin-left: auto;
+    padding: 3px 10px;
+    font: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--hint-bubble-bg);
+    background: var(--hint-bubble-fg);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .link-go:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
   }
 
   /* 폭 손잡이 — 안쪽 끝의 6px 띠(런처 독 `.grip` 과 같은 모양). 왼쪽 독이면 오른쪽 끝, 오른쪽 독이면 왼쪽 끝 */

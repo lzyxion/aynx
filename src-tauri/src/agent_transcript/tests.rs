@@ -183,9 +183,10 @@ fn link_headers_are_stripped_into_a_link_field() {
         sdk(json!("[연결된 타일: 세션 s1] <div>html</div>")),
         sdk(json!("앞에 글 [연결된 타일: p2 · 세션 s1] 뒤")),
         sdk(json!("[연결된 타일: p2 · 세션 s 1] 닮은 글")),
+        sdk(json!("[연결된 타일: pwsh · 세션 s1] [연결된 타일: 세션 s2] [연결된 타일: Claude Code · dev-01 · 세션 s3] 셋 다 봐 줘")),
     ]);
     let p = page(&file, None, 40, claude_events);
-    assert_eq!(roles(&p), ["user", "assistant", "user", "user", "user", "user"]);
+    assert_eq!(roles(&p), ["user", "assistant", "user", "user", "user", "user", "user"]);
     assert_eq!(
         texts(&p),
         [
@@ -195,14 +196,17 @@ fn link_headers_are_stripped_into_a_link_field() {
             "<div>html</div>",
             "앞에 글 [연결된 타일: p2 · 세션 s1] 뒤",
             "[연결된 타일: p2 · 세션 s 1] 닮은 글",
+            "셋 다 봐 줘",
         ]
     );
     let link = |i: usize| p.items[i].link.as_ref().map(|l| serde_json::to_value(l).unwrap());
-    assert_eq!(link(0), Some(json!({"label": "p2 PowerShell 7"})));
+    assert_eq!(link(0), Some(json!({"labels": ["p2 PowerShell 7"], "unlinked": false})));
     assert_eq!(link(1), None);
-    assert_eq!(link(2), Some(json!({"unlinked": true})));
-    assert_eq!(link(3), Some(json!({"label": ""})));
+    assert_eq!(link(2), Some(json!({"labels": [], "unlinked": true})));
+    assert_eq!(link(3), Some(json!({"labels": [""], "unlinked": false})));
     assert_eq!((link(4), link(5)), (None, None));
+    // 여러 타일 연결의 머리글 — 연결 순서 그대로 · 이름 없는 타일은 빈 글자
+    assert_eq!(link(6), Some(json!({"labels": ["pwsh", "", "Claude Code · dev-01"], "unlinked": false})));
     // 화면으로 가는 꼴 — 없으면 칸이 없고, 스트림 id 는 어디에도 없다
     let wire = serde_json::to_string(&p.items).unwrap();
     assert!(!wire.contains("8dd8bbdab0b3d4136ee55ab8e750d144"));
@@ -215,7 +219,7 @@ fn link_headers_are_stripped_into_a_link_field() {
     ]);
     let p = page(&codex, None, 40, codex_events);
     assert_eq!(texts(&p), ["마지막 명령?"]);
-    assert_eq!(serde_json::to_value(p.items[0].link.as_ref().unwrap()).unwrap(), json!({"label": "p1 pwsh"}));
+    assert_eq!(serde_json::to_value(p.items[0].link.as_ref().unwrap()).unwrap(), json!({"labels": ["p1 pwsh"], "unlinked": false}));
 }
 
 /// 프로듀서(단계 5) — 갈라 온 Codex 프로듀서의 첫 사람 말 앞 **앱 지침 머리글**(`server::producer::launch::fork_brief`)은 걷혀 `brief` 칸이

@@ -645,9 +645,6 @@ pub(crate) fn apply_mirror(plane: &AiPlane, op: MirrorOp) -> Value {
             owner,
         } => {
             let is_ssh = kind == "ssh";
-            // 앱이 띄운 로컬 AI 타일에는 AI 읽기 허용이 없다(10-23 사용자 결정 — 프런트 `paneAiReadable` 과 같은 규칙의 서버 쪽 겹):
-            // 켬이 실려 와도 끔으로 적는다(옵트아웃처럼 라이브 필드도 비운다 · 뒤따르는 갱신은 `opted_in` 문이 막는다).
-            let opted_in = opted_in && !(kind == "local" && crate::tile_token::is_ai_tile(&key));
             {
                 let mut map = plane.ctx().lock().unwrap_or_else(|e| e.into_inner());
                 crate::context::report(&mut map, key.clone(), label, kind, code, opted_in);
@@ -982,15 +979,15 @@ mod tests {
         assert!(plane.ctx().lock().unwrap().is_empty());
     }
 
-    /// 10-23 — 앱이 띄운 로컬 AI 타일(타일 MCP 토큰이 있는 스트림)의 거울 보고는 켬이 실려 와도 끔으로 적힌다(읽기 게이트
-    /// `context::ai_readable` 이 보지 않는다 · 뒤따르는 갱신도 막힌다). 평범한 로컬 셸은 그대로 켜진다.
+    /// 2026-11-18 — 앱이 띄운 로컬 AI 타일(타일 MCP 토큰이 있는 스트림)의 거울 보고도 평범한 로컬 셸처럼 사람이 켠 대로 적힌다
+    /// (켬이면 읽기 게이트 `context::ai_readable` 이 보고 뒤따르는 갱신도 실린다).
     #[test]
-    fn local_ai_tile_report_is_never_opted_in() {
+    fn local_ai_tile_report_follows_opt_in() {
         let (tx, _rx) = broadcast::channel(16);
         let plane = AiPlane::new(tx, None, None, None);
         let ai = format!("ai-tile-optin-{}", std::process::id());
         let shell = format!("shell-optin-{}", std::process::id());
-        assert!(crate::tile_token::issue(&ai, 9_001, true).is_some());
+        assert!(crate::tile_token::issue(&ai, 9_001).is_some());
         for key in [&ai, &shell] {
             apply_mirror(
                 &plane,
@@ -1007,9 +1004,9 @@ mod tests {
         let d = crate::delegation::Delegation::default();
         {
             let m = plane.ctx().lock().unwrap();
-            assert!(!m[&ai].opted_in && m[&ai].scrollback.is_empty());
-            assert!(!crate::context::ai_readable(&m[&ai], &d));
-            assert!(m[&shell].opted_in && crate::context::ai_readable(&m[&shell], &d));
+            for key in [&ai, &shell] {
+                assert!(m[key].opted_in && !m[key].scrollback.is_empty() && crate::context::ai_readable(&m[key], &d), "{key}");
+            }
         }
         assert!(crate::tile_token::revoke(&ai, 9_001));
     }

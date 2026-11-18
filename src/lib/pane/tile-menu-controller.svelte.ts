@@ -22,9 +22,9 @@ import { isTerminalPane } from "$lib/pane/tile-presentation";
 import type { TmuxMenuController } from "$lib/pane/tmux-menu.svelte.js";
 import type { AiPermMenuController } from "$lib/pane/ai-perm-menu.svelte.js";
 import { queryAiOf, type DbAiMenuController } from "$lib/pane/db-ai-menu.svelte.js";
-import type { LocalAiMenuController } from "$lib/pane/local-ai-menu.svelte.js";
+import { toggleLocalAiRead } from "$lib/pane/local-ai";
 import type { ForwardMenuController } from "$lib/pane/forward-menu.svelte.js";
-import { localAiTile, paneAiStage } from "$lib/app/delegation.svelte.js";
+import { paneAiStage } from "$lib/app/delegation.svelte.js";
 import { aiHostAlias } from "$lib/delegation";
 import { currentWindowLabel } from "$lib/context";
 import {
@@ -113,7 +113,6 @@ export interface TileMenuHost
   readonly fm: ForwardMenuController;
   readonly ai: AiPermMenuController;
   readonly dbm: DbAiMenuController;
-  readonly lam: LocalAiMenuController;
 }
 
 /** 타일 ⋯ 메뉴 하나를 만든다 — 상태(`tileMenu`)는 이 안에 살고 읽기는 게터로 */
@@ -154,8 +153,6 @@ export function createTileMenu(h: TileMenuHost) {
     const ctx = {
       // 로컬 타일의 "AI 읽기 허용" (원격에서는 보지 않는다 — 아래 `aiStage`)
       shared: isShared(menuBox.pane.id),
-      // 로컬 AI CLI 타일(10-23) — AI 읽기 권한이 없어 "AI 권한…" 줄이 없다
-      aiTile: localAiTile(menuBox.pane),
       // 원격 타일의 호스트 AI 권한 단계 — 호스트 목록에 없는 타일(빠른 접속)은 `null`(줄이 흐려진다)
       aiStage: aiHostAlias(menuBox.pane) === null ? null : paneAiStage(menuBox.pane),
       // 쿼리 타일의 DB AI 권한(10-14) — 연결이 목록에 없으면 `null`(줄이 흐려진다)
@@ -333,13 +330,12 @@ export function createTileMenu(h: TileMenuHost) {
           return h.onopenfiles?.(m.tab.id, m.pane.id);
         case "tmux-sessions":
           return h.tm.openTmuxMenu(m, at);
-        // AI 권한 — 메뉴가 서 있던 자리에 권한 팝오버를 연다(tmux 세션… 과 같은 몸짓). 원격 · 쿼리 · 로컬(10-23 — Off · Read 만)이 같은 상자
+        // AI 권한 — 메뉴가 서 있던 자리에 권한 팝오버를 연다(tmux 세션… 과 같은 몸짓). 원격 · 쿼리가 같은 상자
         case "ai-permission":
-          return m.pane.kind === "query"
-            ? h.dbm.open(m, at)
-            : m.pane.kind === "local"
-              ? h.lam.open(m, at)
-              : h.ai.openAiMenu(m, at);
+          return m.pane.kind === "query" ? h.dbm.open(m, at) : h.ai.openAiMenu(m, at);
+        // 로컬 타일의 체크 줄 "AI 읽기 허용"(11-18) — 그 자리에서 뒤집는다(켜기는 원격 창이면 마스터 재확인 — `pane/local-ai.ts`)
+        case "toggle-ai-read":
+          return toggleLocalAiRead(m.pane.id);
         case "copy-output":
           return void copyPaneOutput(m.pane.id);
         // 문서 타일의 경로 복사(10-20) — 파일 타일 우클릭의 "경로 복사"(`browser/file-actions` 의 `copyPath`)와 같은 문 · 같은 알림:

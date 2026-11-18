@@ -7,10 +7,10 @@
 //   CLI 가 제 대화 id 를 쥔다 — 모델 · 강도는 그 CLI 의 마지막 선택). **"CLI 기본"** 모델도 닫고 다시 연다. 닫는 길은 답하는 중이면 한 번 묻는다.
 // - **강도** = 두 CLI 모두 산 프로세스에 곧바로. 고를 강도는 지어낸 값 없이(`sideChatEffortChoices`) — 빈 목록이면 게이지를 숨긴다(이미
 //   고른 강도가 있으면 "기본" 으로 되돌릴 수 있게 남긴다).
-// - **연결** = 이 채팅이 MCP 로 읽을 타일 하나(새 채팅은 아무것도 보지 않는다) · **MCP** = 지금 프로세스에 실린 외부 MCP 서버 이름(없으면 줄 없음).
+// - **연결** = 이 채팅이 MCP 로 읽을 타일 묶음(최대 8 · 새 채팅은 아무것도 보지 않는다) · **MCP** = 지금 프로세스에 실린 외부 MCP 서버 이름(없으면 줄 없음).
 //
 // 메뉴 통로: `[+]` 는 `ToolbarMenu`(갈래 셋 — 뿌리 · 연결 · MCP, 갈래를 바꾸면 메뉴를 다시 세운다)이고 고르기는 `runOnMenu`(스냅샷 → 닫기 →
-// 실행). 모델 메뉴(`ChatModelPopover`)는 **고른 뒤에도 열려 있다**(모델과 Effort 를 한 번에) — 그래도 고르기는 같은 통로를 지난다(닫기 자리가
+// 실행). 연결 갈래의 타일 체크 줄은 **닫지 않는다**(여러 개를 이어서 고르게 — 닫기 자리가 빈 같은 통로). 모델 메뉴(`ChatModelPopover`)는 **고른 뒤에도 열려 있다**(모델과 Effort 를 한 번에) — 그래도 고르기는 같은 통로를 지난다(닫기 자리가
 // 비어 있을 뿐 · 스냅샷이 먼저다). 바깥 누르기 · Esc 로 닫는다.
 // ---------------------------------------------------------------------------
 import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
@@ -26,7 +26,9 @@ import {
   type CodexModels,
 } from "$lib/app/side-chats.svelte.js";
 import {
-  linkSideChat,
+  addSideChatLink,
+  removeSideChatLink,
+  setSideChatLinks,
   setSideChatEffort,
   setSideChatModel,
   sideChatLiveOf,
@@ -34,14 +36,14 @@ import {
 } from "$lib/app/side-chat-live.svelte.js";
 import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
 import { sideChatCliOk, sideChatEffortChoices, sideChatModelChoices, sideChatModelOk, type SideChat } from "$lib/side-chat";
-import { linkTileName, linkTilePickLabel, type LinkChip, type LinkTile } from "$lib/side-chat-link";
+import { SIDE_CHAT_LINK_MAX, linkTileName, type LinkChip, type LinkTile } from "$lib/side-chat-link";
 import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "$lib/orchestration/config";
 import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
 import { targetOf } from "$lib/chat/chat-presentation";
 import type { AiCli } from "$lib/session";
 import { t } from "$lib/i18n/i18n.svelte.js";
 
-/** `[+]` 메뉴의 갈래 — 뿌리 · 타일 연결(고르기 · 끊기) · MCP(실린 서버 이름 · 설정) */
+/** `[+]` 메뉴의 갈래 — 뿌리 · 타일 연결(체크 줄 · 모두 끊기) · MCP(실린 서버 이름 · 설정) */
 export type PlusView = "root" | "link" | "mcp";
 
 /** 모델 메뉴의 줄 하나 — 값(`""` = CLI 기본) · 보이는 글자 · 고른 것 */
@@ -56,8 +58,8 @@ interface Opts {
   chat: () => SideChat | null;
   /** 고를 수 있는 CLI(설치 · 켬 · 서버가 아는 것) — 감지 전엔 `null` */
   offered: () => readonly Pick<AiCli, "id" | "name">[] | null;
-  /** 연결 칩 상태(부르는 쪽의 `linkChipState`) */
-  chipLink: () => LinkChip;
+  /** 연결 칩들(부르는 쪽의 `linkChipStates` — 연결 순서) */
+  chipLinks: () => readonly LinkChip[];
   /** 바꾼 뒤 키보드를 입력 칸으로 */
   focusHome: () => void;
   /** 사진 · 파일 고르기(숨은 `<input type=file>`) — 메뉴 줄의 누름 안에서 곧바로 불러야 브라우저가 연다 */
@@ -151,24 +153,33 @@ export class SideChatControls {
 
   /** 이 창의 연결할 수 있는 타일(포커스된 것이 위) */
   readonly linkTiles = $derived.by<LinkTile[]>(() => (this.chat ? linkTilesHere() : []));
-  readonly chipLink = $derived.by(() => this.#o.chipLink());
+  readonly chipLinks = $derived.by(() => this.#o.chipLinks());
   /** 지금 프로세스에 실린 외부 MCP 서버 이름 */
   readonly mcp = $derived<string[]>(this.#live?.state.mcp ?? []);
 
   readonly #linkRows = $derived.by<ToolbarMenuRow[]>(() => {
     const c = this.chat;
     if (!c) return [];
-    const out: ToolbarMenuRow[] = this.linkTiles.map((x) => ({
-      key: `tile:${x.paneId}`,
-      icon: x.kind === "ssh" ? "server" : "terminal",
-      label: linkTilePickLabel(x),
-      hint: x.readable ? (x.focused ? t("app.chatDock.link.focused") : "") : t("app.chatDock.link.readOff"),
-      title: x.readable ? undefined : t("app.chatDock.link.readOff.title"),
-      checked: c.tile?.stream === x.stream,
-      radio: true,
-    }));
+    // 앞 그림 = 그 타일의 `PaneIcon`(머리줄 · 탭과 같은 그림) · 글자 = 이름 + 흐린 코드(같은 이름의 타일을 코드로 가려 고르게 — 칩 · 머리글은 이름만)
+    // 여러 개를 고르는 체크 줄 — 찼으면 체크 안 된 줄은 흐리게(까닭은 말풍선)
+    const full = c.tiles.length >= SIDE_CHAT_LINK_MAX;
+    const out: ToolbarMenuRow[] = this.linkTiles.map((x) => {
+      const checked = c.tiles.some((l) => l.stream === x.stream);
+      const blocked = full && !checked;
+      return {
+        key: `tile:${x.paneId}`,
+        icon: x.kind === "ssh" ? "server" : "terminal",
+        pane: x.pane,
+        label: linkTileName(x),
+        code: x.code,
+        hint: x.readable ? (x.focused ? t("app.chatDock.link.focused") : "") : t("app.chatDock.link.readOff"),
+        title: blocked ? t("app.chatDock.link.full", { max: SIDE_CHAT_LINK_MAX }) : x.readable ? undefined : t("app.chatDock.link.readOff.title"),
+        checked,
+        disabled: blocked,
+      };
+    });
     if (out.length === 0) out.push({ key: "none", icon: "", label: t("app.chatDock.link.noTiles"), disabled: true });
-    out.push({ key: "unlink", icon: "close", label: t("app.chatDock.link.unlink"), disabled: !c.tile, sep: true });
+    out.push({ key: "unlink", icon: "close", label: t("app.chatDock.link.unlinkAll"), disabled: c.tiles.length === 0, sep: true });
     return out;
   });
 
@@ -189,11 +200,13 @@ export class SideChatControls {
         { key: "settings", icon: "settings", label: t("app.chatDock.mcp.settings"), sep: true },
       ];
     }
-    const link = this.chipLink;
+    // 타일 연결 줄의 흐린 글자 — 하나면 그 이름, 둘 이상이면 개수(MCP 줄이 서버 수를 보이는 것과 같은 식)
+    const links = this.chipLinks;
+    const linkMore = links.length === 1 ? links[0].name : links.length > 1 ? String(links.length) : "";
     const rows: ToolbarMenuRow[] = [
       // 이름 · 그림은 AI 타일 대화 면 `[+]`(`pane/AiFlip` 의 `attachPlus` — 같은 문구 키)와 같다 · 그림은 클립 `attach-file`(2026-11-14 사용자 결정)
       { key: "attach", icon: "attach-file", label: t("pane.flip.composer.attach") },
-      { key: "link", icon: "link", label: t("app.chatDock.plus.link"), more: link.kind === "linked" ? link.name : "" },
+      { key: "link", icon: "link", label: t("app.chatDock.plus.link"), more: linkMore },
     ];
     if (this.mcp.length > 0) {
       rows.push({ key: "mcp", icon: "mcp", label: t("app.chatDock.plus.mcp"), more: String(this.mcp.length), sep: true });
@@ -246,29 +259,40 @@ export class SideChatControls {
       );
       return;
     }
-    // 연결 갈래의 줄 — 스냅샷(그 채팅 · 그 타일) → 닫기 → 연결 바꾸기
+    if (key === "unlink") {
+      // 모두 끊기 — 스냅샷(그 채팅) → 닫기 → 빈 묶음
+      runOnMenu(
+        () => this.chat?.id ?? null,
+        () => this.closePlus(false),
+        (chat) => {
+          void setSideChatLinks(chat, []).then(() => {
+            if (currentSideChat()?.id === chat) this.#o.focusHome();
+          });
+        },
+      );
+      return;
+    }
+    // 타일 체크 줄 — 스냅샷(그 채팅 · 그 타일 · 지금 체크) → (닫지 않는다 — 이어서 고르게) → 묶음에 넣거나 빼기
     runOnMenu(
       () => {
         const c = this.chat;
-        if (!c) return null;
-        if (key === "unlink") return { chat: c.id, tile: null };
-        const tile = key.startsWith("tile:") ? this.linkTiles.find((x) => x.paneId === key.slice(5)) : undefined;
-        return tile ? { chat: c.id, tile: { stream: tile.stream, name: linkTileName(tile) } } : null;
+        const tile = c && key.startsWith("tile:") ? this.linkTiles.find((x) => x.paneId === key.slice(5)) : undefined;
+        if (!c || !tile) return null;
+        const on = c.tiles.some((l) => l.stream === tile.stream);
+        return { chat: c.id, on, tile: { stream: tile.stream, name: linkTileName(tile) } };
       },
-      () => this.closePlus(false),
-      ({ chat, tile }) => {
-        void linkSideChat(chat, tile).then(() => {
-          if (currentSideChat()?.id === chat) this.#o.focusHome();
-        });
+      () => {},
+      ({ chat, on, tile }) => {
+        void (on ? removeSideChatLink(chat, tile.stream) : addSideChatLink(chat, tile));
       },
     );
   }
 
-  /** 입력 칸 위 연결 칩의 × */
-  unlink(): void {
+  /** 입력 칸 위 연결 칩의 × — 그 타일만 끊는다 */
+  unlink(stream: string): void {
     const c = this.chat;
     if (!c) return;
-    void linkSideChat(c.id, null).then(() => this.#o.focusHome());
+    void removeSideChatLink(c.id, stream).then(() => this.#o.focusHome());
   }
 
   // ── 모델 메뉴 ──────────────────────────────────────────────────────────────

@@ -3,8 +3,8 @@
 //!
 //! | Tauri 명령 | 서버 op | 등급 | 인자 → 답 |
 //! | --- | --- | --- | --- |
-//! | [`side_chat_open`] | 같은 이름 | 쓰기 | `chat, cli, model, effort?, mode` → 스냅숏(띄우지 않는다) |
-//! | [`side_chat_send`] | 같은 이름 | 쓰기 | `chat, epoch, text, clientId?, linkName?, images?, files?` → `{epoch, link}`(프로세스가 없으면 서버가 여기서 띄운다 · `files` 는 판 32 — 낮은 서버면 `[server-outdated]`) |
+//! | [`side_chat_open`] | 같은 이름 | 쓰기 | `chat, cli, model, effort?, mode` → 스냅숏(띄우지 않는다 · `links` 배열) |
+//! | [`side_chat_send`] | 같은 이름 | 쓰기 | `chat, epoch, text, clientId?, linkNames?, images?, files?` → `{epoch, link: null \| {labels, unlinked}}`(프로세스가 없으면 서버가 여기서 띄운다 · `files` 는 판 32 — 낮은 서버면 `[server-outdated]`) |
 //! | [`side_chat_interrupt`] | 같은 이름 | 쓰기 | `chat, epoch` → bool |
 //! | [`side_chat_set_model`] | 같은 이름 | 쓰기 | `chat, epoch, model` → bool |
 //! | [`side_chat_set_effort`] | 같은 이름 | 쓰기 | `chat, epoch, effort?`(없음 = CLI 기본) → bool |
@@ -13,7 +13,7 @@
 //! | [`side_chat_attach`] | 같은 이름 | 읽기 | `chat` → 스냅숏(이 창을 보는 창에 덧붙인다 — F5 · 웹뷰 크래시 뒤 · 다른 창) |
 //! | [`side_chat_list`] | 같은 이름 | 읽기 | → 서버 표의 채팅들(`viewers` = 보는 창 수 — 창 라벨 없음) |
 //! | [`side_chat_subscribe`] | (없음 — GUI 안) | — | `channel` → —(이 창의 사건 통로를 건다 · 다시 부르면 갈음) |
-//! | [`side_chat_link`] | 같은 이름 | 쓰기 | `chat, epoch?, stream?`(없음 = 연결 끊기) → `{link, changed}`(5단계 — 연결 칩 · 서버 거울의 창 타일만) |
+//! | [`side_chat_link`] | 같은 이름 | 쓰기 | `chat, epoch?, streams`(연결 묶음 통째로 · 빈 배열 = 모두 끊기) → `{links, changed}`(5단계 — 연결 칩 · 서버 거울의 창 타일만 · 판 33) |
 //! | [`side_chat_seen`] | 같은 이름 | 쓰기 | `chat, epoch, seq` → `{sent}`(완료 확인 공유 — 판 31 · 방송 `side-chat-seen` 은 몸이 id · 번호뿐이라 `client::RELAYED`) |
 //!
 //! - **창 이름은 GUI 가 채운다** — 부른 웹뷰의 창 라벨(`webview.window().label()`)이고, 프런트가 준 값은 받지 않는다. 그리고 **사람 창만**
@@ -31,6 +31,9 @@
 //!   창이 부서지면(원격 ws 끝 포함) `server::proxy::close_window` 가 [`forget_window`] 로 그 통로를 걷고, 서버는 `close_window` 에서 그 창을 뗀다.
 //! - **창마다 통로 하나**(라벨 열쇠 — 다시 걸면 갈음). F5 의 새 페이지는 같은 라벨로 갈음하므로 `detach_window` 에서는 통로를 걷지 않는다.
 //! - **로그**: 몸(사람 글 · 모델 답 · 도구 출력)은 어디에도 남기지 않는다 — 실패도 창 라벨까지만.
+//! - **판 32 이하 서버**(여러 타일 연결 전 — `frame::SIDE_CHAT_LINKS_PROTOCOL`)에 붙어 있으면 여기서 옮긴다 — 프런트는 늘 새 모양만 본다:
+//!   스냅숏 · 연결 답의 `link` → `links`(0~1칸 · [`links_from_old`]) · 연결 0~1개는 옛 몸 `stream` 으로, 둘 이상은 `[server-outdated]` ·
+//!   보내기의 `linkNames` → 옛 `linkName`(이름이 하나일 때 그 이름) · 답의 옛 `link{label | unlinked}` → `{labels, unlinked}`([`note_from_old`]).
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -42,7 +45,7 @@ use tauri::Manager;
 
 use super::ai_proxy::wire_message;
 use super::client;
-use super::ipc::frame::{SIDE_CHAT_FILES_PROTOCOL, SIDE_CHAT_SEEN_PROTOCOL, SIDE_CHAT_VIEWERS_PROTOCOL};
+use super::ipc::frame::{SIDE_CHAT_FILES_PROTOCOL, SIDE_CHAT_LINKS_PROTOCOL, SIDE_CHAT_SEEN_PROTOCOL, SIDE_CHAT_VIEWERS_PROTOCOL};
 use super::ipc::Grade;
 use crate::errors::{with_reason, SERVER_OUTDATED};
 use crate::i18n::tr;
@@ -102,6 +105,51 @@ async fn call(kind: Grade, op: &str, body: Value) -> Result<Value, String> {
     client::request(kind, op, body).await.map_err(wire_message)
 }
 
+/// 붙은 서버가 여러 타일 연결 전 판(32 이하)인가 — 그러면 연결 칸을 옮긴다(머리말).
+fn links_outdated() -> bool {
+    client::negotiated_protocol().is_some_and(|p| p < SIDE_CHAT_LINKS_PROTOCOL)
+}
+
+/// 옛 판 서버의 스냅숏 · 연결 답 — `link`(하나 | `null`) → `links`(0~1칸). **순수** · 이미 `links` 가 있으면 그대로.
+pub(crate) fn links_from_old(mut v: Value) -> Value {
+    if let Some(o) = v.as_object_mut() {
+        if !o.contains_key("links") {
+            let one = o.remove("link").unwrap_or(Value::Null);
+            o.insert("links".into(), if one.is_null() { json!([]) } else { json!([one]) });
+        }
+    }
+    v
+}
+
+/// 옛 판 서버의 보내기 답 — `link: null | {label} | {unlinked: true}` → `null | {labels, unlinked}`. **순수** · 이미 새 모양이면 그대로.
+pub(crate) fn note_from_old(mut v: Value) -> Value {
+    if let Some(l) = v.get_mut("link") {
+        if let Some(o) = l.as_object().filter(|o| !o.contains_key("labels")) {
+            let unlinked = o.get("unlinked").and_then(Value::as_bool).unwrap_or(false);
+            let label = o.get("label").and_then(Value::as_str).filter(|_| !unlinked);
+            *l = json!({ "labels": label.into_iter().collect::<Vec<_>>(), "unlinked": unlinked });
+        }
+    }
+    v
+}
+
+/// 옛 판 서버의 `linkName` — 칩 이름이 하나뿐일 때 그 이름(옛 서버의 연결은 0~1개). 여럿이면 없음(서버가 거울 이름으로). **순수**.
+pub(crate) fn old_link_name(names: Option<&HashMap<String, String>>) -> Option<String> {
+    let names = names?;
+    (names.len() == 1).then(|| names.values().next().cloned()).flatten()
+}
+
+/// 연결 묶음 — 준 순서 · 같은 스트림은 처음 것만(서버 `side_chat::dedup_streams` 와 같은 규칙 — 옛 서버에 몇 개를 보낼지 셀 때). **순수**.
+fn dedup(streams: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(streams.len());
+    for s in streams {
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    out
+}
+
 /// 채팅을 연다 — **띄우지 않는다**(뜻만 적고 임대를 이 창으로). `mode` = `{kind: fresh}` · `{kind: resume, conv, project?}` ·
 /// `{kind: fork, from}`(타일 대화 이어 가기 — 6단계: 경로는 받지 않고 서버가 대화 색인의 기록된 cwd 로 정한다 · `server::side_chat` 머리말).
 /// 같은 채팅 · 같은 CLI 면 서버가 다시 붙인다.
@@ -115,12 +163,13 @@ pub async fn side_chat_open(
     mode: Value,
 ) -> Result<Value, String> {
     let window = caller(&webview)?;
-    call(
+    let snap = call(
         Grade::Write,
         "side_chat_open",
         json!({ "chat": chat, "cli": cli, "model": model, "effort": effort, "mode": mode, "window": window }),
     )
-    .await
+    .await?;
+    Ok(if links_outdated() { links_from_old(snap) } else { snap })
 }
 
 /// **사람이 보낸 글** — 프로세스가 없으면 서버가 여기서 띄우고 준비를 기다린다(그래서 시한이 길다 — [`send_timeout`]).
@@ -133,7 +182,7 @@ pub async fn side_chat_send(
     epoch: u64,
     text: String,
     client_id: Option<String>,
-    link_name: Option<String>,
+    link_names: Option<HashMap<String, String>>,
     images: Option<Vec<String>>,
     files: Option<Vec<String>>,
 ) -> Result<Value, String> {
@@ -149,14 +198,16 @@ pub async fn side_chat_send(
             ),
         ));
     }
-    client::request_timed(
-        Grade::Write,
-        "side_chat_send",
-        json!({ "chat": chat, "epoch": epoch, "text": text, "clientId": client_id, "linkName": link_name, "images": images.unwrap_or_default(), "files": files }),
-        send_timeout(),
-    )
-    .await
-    .map_err(wire_message)
+    let images = images.unwrap_or_default();
+    let old = links_outdated();
+    let body = if old {
+        let link_name = old_link_name(link_names.as_ref());
+        json!({ "chat": chat, "epoch": epoch, "text": text, "clientId": client_id, "linkName": link_name, "images": images, "files": files })
+    } else {
+        json!({ "chat": chat, "epoch": epoch, "text": text, "clientId": client_id, "linkNames": link_names, "images": images, "files": files })
+    };
+    let r = client::request_timed(Grade::Write, "side_chat_send", body, send_timeout()).await.map_err(wire_message)?;
+    Ok(if old { note_from_old(r) } else { r })
 }
 
 /// **완료 확인 공유**(2026-11-13 — `server::side_chat` 머리말) — 이 창에서 사람이 그 채팅의 턴 끝(`epoch` · `seq`)을 봤다. 서버가 낡지 않았으면
@@ -222,15 +273,31 @@ pub async fn side_chat_close(webview: tauri::Webview, chat: String) -> Result<Va
 #[tauri::command]
 pub async fn side_chat_attach(webview: tauri::Webview, chat: String) -> Result<Value, String> {
     let window = caller(&webview)?;
-    call(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": window })).await
+    let snap = call(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": window })).await?;
+    Ok(if links_outdated() { links_from_old(snap) } else { snap })
 }
 
-/// **연결 칩**(5단계) — 그 채팅이 MCP 로 읽을 타일을 사람이 고른다(`stream` = 타일의 `historyStreamId` · 없음 = 끊기). 서버가 거울에
-/// 있는 창 타일인지 다시 보고(`[bad-link]`), 바뀌었으면 다음 보내기에 앱 고정 연결 머리글을 붙인다. 읽기 판정은 MCP 호출마다 서버가.
+/// **연결 칩**(5단계) — 그 채팅이 MCP 로 읽을 타일들을 사람이 고른다(`streams` = 타일들의 `historyStreamId` · 연결 묶음 통째로 · 빈 배열 =
+/// 모두 끊기). 서버가 모두 거울에 있는 창 타일인지 다시 보고(`[bad-link]`) 상한을 넘으면 `[too-many-links]`, 바뀌었으면 다음 보내기에 앱 고정
+/// 연결 머리글을 붙인다. 읽기 판정은 MCP 호출마다 서버가. 판 32 이하 서버면 0~1개만 옛 몸으로 보낸다(머리말).
 #[tauri::command]
-pub async fn side_chat_link(webview: tauri::Webview, chat: String, epoch: Option<u64>, stream: Option<String>) -> Result<Value, String> {
+pub async fn side_chat_link(webview: tauri::Webview, chat: String, epoch: Option<u64>, streams: Vec<String>) -> Result<Value, String> {
     caller(&webview)?;
-    call(Grade::Write, "side_chat_link", json!({ "chat": chat, "epoch": epoch, "stream": stream })).await
+    if !links_outdated() {
+        return call(Grade::Write, "side_chat_link", json!({ "chat": chat, "epoch": epoch, "streams": streams })).await;
+    }
+    let streams = dedup(streams);
+    if streams.len() > 1 {
+        return Err(with_reason(
+            SERVER_OUTDATED,
+            tr!(
+                ko: "세션 서버가 이전 판이라 타일을 여러 개 연결할 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
+                en: "The session server is an older version and cannot link more than one tile — restart it in Settings › Session server (open shell sessions will close)"
+            ),
+        ));
+    }
+    let r = call(Grade::Write, "side_chat_link", json!({ "chat": chat, "epoch": epoch, "stream": streams.first() })).await?;
+    Ok(links_from_old(r))
 }
 
 /// 서버 표의 채팅들(`[{chat, cli, model, effort, epoch, status, conversationId, viewers, detached}]`).
@@ -345,6 +412,29 @@ mod tests {
         sent.sort();
         assert_eq!(sent, ["dead", "main"], "remote-b-1 은 이 채팅을 보지 않는다");
         assert!(!chs.contains_key("remote-a-1") && chs.contains_key("main") && chs.contains_key("remote-b-1"));
+    }
+
+    /// 판 32 이하 서버의 답을 새 모양으로 — 스냅숏 · 연결 답의 `link` → `links`(0~1칸) · 보내기 답의 `link` → `{labels, unlinked}` ·
+    /// 칩 이름은 하나일 때만 옛 `linkName` 으로. 이미 새 모양이면 그대로.
+    #[test]
+    fn old_server_link_shapes_become_new() {
+        let view = json!({ "stream": "s1", "code": "p1", "label": "pwsh", "kind": "local", "readable": true, "closed": false });
+        assert_eq!(links_from_old(json!({ "link": view, "chat": "c1" })), json!({ "links": [view], "chat": "c1" }));
+        assert_eq!(links_from_old(json!({ "link": null, "changed": true })), json!({ "links": [], "changed": true }));
+        assert_eq!(links_from_old(json!({ "changed": false })), json!({ "links": [], "changed": false }));
+        assert_eq!(links_from_old(json!({ "links": [view] })), json!({ "links": [view] }));
+        assert_eq!(note_from_old(json!({ "epoch": 3, "link": null })), json!({ "epoch": 3, "link": null }));
+        assert_eq!(note_from_old(json!({ "epoch": 3, "link": { "label": "pwsh" } }))["link"], json!({ "labels": ["pwsh"], "unlinked": false }));
+        assert_eq!(note_from_old(json!({ "epoch": 3, "link": { "label": "" } }))["link"], json!({ "labels": [""], "unlinked": false }));
+        assert_eq!(note_from_old(json!({ "epoch": 3, "link": { "unlinked": true } }))["link"], json!({ "labels": [], "unlinked": true }));
+        let new = json!({ "epoch": 3, "link": { "labels": ["a", "b"], "unlinked": false } });
+        assert_eq!(note_from_old(new.clone()), new);
+        let names = |x: &[(&str, &str)]| x.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>();
+        assert_eq!(old_link_name(None), None);
+        assert_eq!(old_link_name(Some(&names(&[]))), None);
+        assert_eq!(old_link_name(Some(&names(&[("s1", "pwsh")]))).as_deref(), Some("pwsh"));
+        assert_eq!(old_link_name(Some(&names(&[("s1", "a"), ("s2", "b")]))), None);
+        assert_eq!(dedup(vec!["a".into(), "b".into(), "a".into()]), vec!["a".to_string(), "b".to_string()]);
     }
 
     /// 사람 창(주 창 · 원격 웹 창)만 부를 수 있다 — 보조 · 떼어 낸 창은 거절.

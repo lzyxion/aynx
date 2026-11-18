@@ -8,10 +8,7 @@
 
   /**
    * **머리줄 AI 권한 팝오버** — 원격 타일(2026-10-07 — 원격 세션의 AI 권한 = 호스트 하나의 단계)과
-   * 쿼리 타일(10-14 — DB 연결 하나의 단계)이 **같은 상자**를 쓴다.
-   *
-   * 로컬 타일(10-23 — 예전 "AI 읽기 허용" 토글)도 같은 상자다: 단계는 원격과 같은 다섯이되 Ask 부터 잠기고(`lockedFrom`), 아래에
-   * 각주 한 줄(`footnote` — "로컬 타일은 AI 실행 대상이 아닙니다 …")이 서며 설정 링크는 없다(`settingsLabel` 없음).
+   * 쿼리 타일(10-14 — DB 연결 하나의 단계)이 **같은 상자**를 쓴다. 로컬 타일은 이 상자가 없다(11-18 — ⋯ 메뉴의 체크 줄 "AI 읽기 허용").
    *
    * 머리줄의 권한 칩과 ⋯ 메뉴의 "AI 권한…" 이 연다. 안에 드는 것은 제목("{이름} 의 AI 권한") · 부제 ·
    * (있으면) 안내 줄 · 단계 게이지(`AiGauge` 좁은 꼴 — 10-23, 예전 단계 라디오 줄) · 구분선 · (원격만) 헤드리스 접속 토글(단계 < 승인 후
@@ -47,8 +44,6 @@
     /** 헤드리스 접속 토글 — 원격만(없으면 그 줄과 구분선을 그리지 않는다) */
     headless = null,
     settingsLabel = null,
-    lockedFrom,
-    footnote = null,
     left,
     top,
     onpick,
@@ -62,12 +57,8 @@
     stage: S | null;
     notes?: readonly string[];
     headless?: { on: boolean; allowed: boolean; onchange: (on: boolean) => void } | null;
-    /** 상자를 닫고 설정 화면을 여는 줄 — 없으면(로컬 타일) 그 줄과 구분선을 그리지 않는다 */
+    /** 상자를 닫고 설정 화면을 여는 줄 — 없으면 그 줄과 구분선을 그리지 않는다 */
     settingsLabel?: string | null;
-    /** 이 자리부터 잠긴다(게이지 `lockedFrom`) — 로컬 타일은 2(Off · Read 만) */
-    lockedFrom?: number;
-    /** 맨 아래 흐린 한 줄(로컬 타일 — 왜 잠겼는가) */
-    footnote?: string | null;
     left: number;
     top: number;
     onpick: (stage: S) => void;
@@ -146,7 +137,6 @@
       descOf={(id) => tr(rowOf(id).desc)}
       label={title}
       compact
-      {lockedFrom}
       onpick={(id) => onpick(id)}
     />
   </div>
@@ -182,11 +172,6 @@
       <span>{settingsLabel}</span>
       <span class="menu-kbd"><UiIcon name="chevron" size={12} /></span>
     </button>
-  {/if}
-
-  {#if footnote}
-    <hr class="menu-sep" />
-    <p class="foot" role="note" data-ai-menu-foot>{footnote}</p>
   {/if}
 </div>
 
@@ -303,16 +288,6 @@
   .switch {
     flex: none;
     margin-top: 2px;
-  }
-
-  /* 각주(로컬 타일 — 왜 Ask 부터 잠겼는가) — 부제와 같은 흐린 글자 */
-  .foot {
-    margin: 0;
-    padding: var(--space-1) var(--space-2) var(--space-1);
-    font-size: var(--t-xs);
-    line-height: 1.45;
-    color: var(--fg-3);
-    word-break: keep-all;
   }
 
   /* "호스트 설정 › AI" — 메뉴 줄 한 벌 + 오른쪽 `›` */

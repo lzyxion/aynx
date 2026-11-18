@@ -1,6 +1,7 @@
 <script lang="ts">
   import UiIcon from "$lib/UiIcon.svelte";
   import HostIcon from "$lib/HostIcon.svelte";
+  import PaneIcon from "$lib/PaneIcon.svelte";
   import { nextMenuIndex, type ToolbarMenuRow } from "$lib/browser/toolbar-tools";
 
   /**
@@ -18,6 +19,9 @@
    *
    * 하위 갈래(2026-11-13 — 사이드 채팅 `[+]`): `more` 가 있는 줄은 오른쪽 끝에 흐린 글자 + `›` 이고 → 로도 고른다. ← 는 `onback` 을 부른다
    * (부르는 쪽이 줄을 바꾼다 — 갈래마다 이 메뉴를 다시 세우면 포커스가 새 줄로 간다). `touch`(폰)는 줄 높이 44px.
+   *
+   * 타일 고르는 줄(2026-11-18 — 사이드 채팅 타일 연결): `pane` 이면 그림 칸이 그 타일의 `PaneIcon`(머리줄 · 탭과 같은 그림 — 컬러 로고 ·
+   * AI 아바타), `code` 면 이름 뒤에 흐린 작은 코드. 둘 다 선택 칸이라 안 주면 예전 줄 그대로다.
    */
 
   let {
@@ -168,12 +172,18 @@
       onclick={() => onpick(row.key)}
     >
       <!-- `.menu-mark` 안에는 공백도 넣지 않는다 — inline-flex 칸이라 공백 노드가 그림을 민다(`PaneMenu` 와 같은 규칙) -->
-      {#if row.logo}
+      {#if row.pane}
+        <span class="menu-mark tb-pane"><PaneIcon pane={row.pane} size={14} /></span>
+      {:else if row.logo}
         <span class="menu-mark"><HostIcon icon={row.logo} size={14} mono /></span>
       {:else if row.icon}
         <span class="menu-mark"><UiIcon name={row.icon} size={14} /></span>
       {/if}
-      <span class="tb-label">{row.label}</span>
+      {#if row.code}
+        <span class="tb-label tb-named"><span class="tb-name">{row.label}</span><span class="tb-code">{row.code}</span></span>
+      {:else}
+        <span class="tb-label">{row.label}</span>
+      {/if}
       {#if row.hint}<kbd class="menu-kbd">{row.hint}</kbd>{/if}
       {#if row.more !== undefined}
         {#if row.more}<span class="menu-kbd tb-more">{row.more}</span>{/if}
@@ -206,6 +216,32 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* 타일 앞자리 아이콘(`pane`) — 원격 AI 타일은 로고 둘이라 16px 칸을 넘는다 */
+  .tb-pane {
+    width: auto;
+    min-width: 16px;
+  }
+
+  /* 이름 + 흐린 코드(`code`) — 이름 카드 머리줄(`SessionInfoCard` 의 `.s-title` · `.s-code`)과 같은 사이 · 글꼴 · 색 · 크기.
+     좁으면 이름만 말줄임되고 코드는 남는다 */
+  .tb-named {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .tb-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tb-code {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: var(--t-xs);
+    color: var(--fg-3);
+    white-space: nowrap;
   }
 
   /* 하위 갈래 줄의 오른쪽 흐린 글자(지금 연결 이름 · MCP 수) — 길면 말줄임 */

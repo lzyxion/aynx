@@ -12,8 +12,8 @@
    *   명령을 묻지 않고 돌리고 샌드박스 밖(권한 상승)만 묻는다는 한 줄을 붙인다(설계 spike3 규칙 4).
    * - **입력 칸**: `FlipComposer` 의 알약 모양(Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 칸 안 오른쪽 아래 = 둥근 보내기).
    *   칸 한 줄 안에 `[+]  입력 … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다): 왼쪽 `[+]` =
-   *   파일 업로드 · 타일 연결(고르기 · 끊기) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
-   *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽 칩(`chat/ChatLinkChip` · × = 끊기). 상태 · 바꾸기는
+   *   파일 업로드 · 타일 연결(여러 개 체크 · 모두 끊기 — 최대 8) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
+   *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽에 타일마다 칩 하나(`chat/ChatLinkChip` · × = 그 타일만 끊기). 상태 · 바꾸기는
    *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 메인 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
    *   서버가 CLI 를 띄운다 — 그동안 "{cli} 시작 중…". 턴이 도는 동안 보내기 자리는 **[중단]**(치기는 늘 된다). Esc 는 칸이 쓰지 않으니 독까지
    *   올라가 독을 닫는다(`ChatDock` 의 `onKeydown`).
@@ -101,7 +101,7 @@
   import ChatModelKeyword from "$lib/chat/ChatModelKeyword.svelte";
   import ChatLinkChip from "$lib/chat/ChatLinkChip.svelte";
   import { SideChatControls } from "$lib/chat/side-chat-controls.svelte";
-  import { linkSendName, type LinkChip } from "$lib/side-chat-link";
+  import { linkSendNames, type LinkChip } from "$lib/side-chat-link";
   import type { SideChat } from "$lib/side-chat";
   import type { AiCli } from "$lib/session";
 
@@ -111,7 +111,7 @@
     cli,
     cliName,
     offered,
-    chipLink,
+    chipLinks,
     linkNote,
     onsent,
     onrestart,
@@ -128,8 +128,8 @@
     cliName: string;
     /** 고를 수 있는 CLI(모델 메뉴의 CLI 스위치) — 감지 전엔 `null` */
     offered: readonly Pick<AiCli, "id" | "name">[] | null;
-    /** 연결 칩 상태(`linkChipState`) — 칸 안 칩 · `[+]` 의 타일 연결 줄 · 보낼 때 실을 이름(`linkSendName` — 머리글이 같은 이름이 되게) */
-    chipLink: LinkChip;
+    /** 연결 칩들(`linkChipStates` — 연결 순서) — 칸 안 칩 · `[+]` 의 타일 연결 줄 · 보낼 때 실을 이름(`linkSendNames` — 머리글이 같은 이름이 되게) */
+    chipLinks: readonly LinkChip[];
     /** 입력 칸 위 한 줄(연결 칩의 안내 — 읽기 허용이 꺼진 타일 · 닫힌 타일 · 5단계) */
     linkNote?: Snippet;
     /** 보냈다(제목 · 시각 — `app/side-chats`) */
@@ -144,13 +144,13 @@
   } = $props();
 
   let pickEl = $state<HTMLInputElement | null>(null);
-  const linkName = $derived(linkSendName(chipLink));
+  const linkNames = $derived(linkSendNames(chipLinks));
 
   /** 입력 칸 손잡이(`[+]` · 모델 키워드)의 상태 · 바꾸기 — 머리말 */
   const ctl = new SideChatControls({
     chat: () => chat,
     offered: () => offered,
-    chipLink: () => chipLink,
+    chipLinks: () => chipLinks,
     focusHome: () => inputEl?.focus({ preventScroll: true }),
     pickFiles: () => pickEl?.click(),
   });
@@ -388,7 +388,7 @@
   function send(text: string): boolean {
     // 칩은 모두 준비된 뒤에만 보낸다(`FlipComposer` 의 `canSend`)
     const images = attachments.flatMap((a) => (a.path === null ? [] : [{ path: a.path, name: a.name }]));
-    const cid = sendSideChat(chatId, text, linkName, images);
+    const cid = sendSideChat(chatId, text, linkNames, images);
     if (cid === null) return false;
     const pics = takeComposerPictures(attachKey);
     if (pics.length > 0) sentPics = { ...sentPics, [sentKey(cid)]: pics };
@@ -552,7 +552,9 @@
 {/snippet}
 
 {#snippet linkAbove()}
-  <ChatLinkChip {chipLink} unlink={() => ctl.unlink()} touch={phone} />
+  {#each chipLinks as chip (chip.stream)}
+    <ChatLinkChip {chip} unlink={() => ctl.unlink(chip.stream)} touch={phone} />
+  {/each}
 {/snippet}
 
 {#snippet keyword()}
@@ -603,7 +605,7 @@
     onsend={send}
     onterminal={() => {}}
     leading={plus}
-    above={chipLink.kind === "linked" ? linkAbove : undefined}
+    above={chipLinks.length > 0 ? linkAbove : undefined}
     inField={keyword}
     {gate}
     {busy}
@@ -713,7 +715,8 @@
     color: var(--fg-1);
     background: color-mix(in srgb, var(--err) 12%, var(--surface-field));
     border: 1px solid color-mix(in srgb, var(--err) 40%, var(--line-strong));
-    border-radius: 8px;
+    /* 입력 칸 위 안내 말풍선(`ChatDock` 의 `.link-note`)과 같은 모서리 — 색은 오류 톤 그대로 */
+    border-radius: var(--radius-surface-inner);
   }
 
   .error-text {
@@ -851,7 +854,8 @@
     font-size: var(--t-sm);
     background: var(--surface-field);
     border: 1px solid var(--line-strong);
-    border-radius: 10px;
+    /* 오류 줄(`.error`) · 입력 칸 위 안내 말풍선과 같은 모서리 */
+    border-radius: var(--radius-surface-inner);
   }
 
   .exited .btn {

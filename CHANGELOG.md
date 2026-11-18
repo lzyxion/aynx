@@ -12,6 +12,13 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+### What's new
+
+- **Claude Code and Codex tiles can let the AI read them too**, per tile and off by default — the same **Allow AI to read** as a shell tile.
+- **Local tiles show AI reading more simply**: **Allow AI to read** is now a check row in the tile ⋯ menu (and the terminal right-click menu) instead of the **AI access…** popover. While it is on, an eye chip shows in the tile header; press it to turn reading off. When it is off, there is no chip. Remote and query tiles are unchanged.
+- **The side chat can link several tiles at once** — up to 8. Check them in **+** › **Link a tile** (the menu stays open while you pick), and each linked tile gets its own chip above the message box; its × unlinks just that tile. The list shows each tile's icon — the same logo as its tab and header (shell, Claude/Codex or avatar, host) — with the tile code dimmed after the name.
+- **AI access chips are readable on any terminal theme**: with a light app theme and a dark terminal (or the other way round), the **Ask**, **Auto** and **YOLO** chips in terminal and AI tile headers — and in the header chip preview in **Settings › Terminal** — blended into the background. Their colors now follow the terminal background instead of the app theme.
+
 ## [0.1.4] - 2026-11-18
 
 ### What's new

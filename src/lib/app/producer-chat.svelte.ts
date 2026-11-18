@@ -153,7 +153,7 @@ export function producerErrorText(e: unknown): string {
 /** 스냅숏 → 접기의 씨앗 모양(사이드 채팅 스냅숏과 같은 칸만 읽는다) */
 function asSeed(s: ProducerSnapshot): SideChatSnapshot {
   return {
-    link: null,
+    links: [],
     chat: s.chat,
     cli: s.cli,
     model: s.model,

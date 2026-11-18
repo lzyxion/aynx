@@ -13,7 +13,7 @@
  * | 타일 종류 | 줄 |
  * | --- | --- |
  * | `ssh` | 분할 2 · **서버 ▸** · **출력 ▸** · AI 권한… · 동시 입력 · 분리 · 닫기 (8) |
- * | `local` | 분할 2 · **출력 ▸** · AI 권한… · 동시 입력 · 분리 · 닫기 (7) |
+ * | `local` | 분할 2 · **출력 ▸** · AI 읽기 허용(체크) · 동시 입력 · 분리 · 닫기 (7) |
  * | `query` | 분할 2 · AI 권한… · 분리 · 닫기 (5) — DB 연결 하나의 단계(10-14) |
  * | `settings`·`localfs`·`branches`·`diff`·`plans` | 분할 2 · 분리 · 닫기 (4) |
  * | `doc` (로컬 파일) | 분할 2 · 경로 복사 · 새 문서… · 분리 · 닫기 (6) |
@@ -28,10 +28,10 @@
  * 옆목록에 든 것 — **서버**: 포트 포워딩… · 원격 파일 · 원격 파일 편집… (+ tmux 타일이면
  * tmux 세션…) · **출력**: 마지막 출력 복사 · 스크롤백 저장… · 세션 로그 열기.
  *
- * **AI 줄은 어느 종류나 "AI 권한…" 하나다** (2026-10-07 원격 · 10-14 쿼리 · 10-23 로컬): 누르면 권한 팝오버
- * (`AiPermMenu.svelte`)를 연다. 원격은 **호스트 하나의 단계**, 로컬은 타일별 읽기 허용(Off · Read 만 — Ask 부터 잠김, 실행 권한
- * 없음 · 예전 체크 "AI 읽기 허용")이다. 호스트 목록에 없는 원격 타일(빠른 접속)은 흐리게 두고
- * "호스트로 저장하면 AI 권한을 줄 수 있습니다" 를 말한다.
+ * **AI 줄은 원격 · 쿼리가 "AI 권한…" 하나**다 (2026-10-07 원격 · 10-14 쿼리): 누르면 권한 팝오버
+ * (`AiPermMenu.svelte`)를 연다. 원격은 **호스트 하나의 단계**다. 호스트 목록에 없는 원격 타일(빠른 접속)은 흐리게 두고
+ * "호스트로 저장하면 AI 권한을 줄 수 있습니다" 를 말한다. **로컬은 체크 줄 "AI 읽기 허용"**(11-18 — 로컬 셸 · 로컬 AI CLI 타일 같은
+ * 규칙 · 실행 권한 없음)이고 누르면 그 자리에서 켜고 끈다.
  *
  * SSH 타일의 줄이 열다섯까지 자라 있었다 — 한 화면에 열다섯 줄이면 목록은 읽는 것이지
  * 겨누는 것이 아니게 된다. 접은 기준은 **대상**이다: `서버` 는 저 끝의 기계에 거는 일,
@@ -122,8 +122,10 @@ export type PaneMenuAction =
   /** 이 세션이 쓰고 있는 **세션 로그 파일**을 OS 기본 앱으로 (로깅이 켜진 타일만 눌린다) */
   | "session-log"
   // `logs-folder` 는 2026-09-17 에 이 메뉴를 떠났다 (설정 › 터미널 · 호스트 폼).
-  /** **원격 · 쿼리 · 로컬 타일** — 호스트(원격) · DB 연결(쿼리) · 이 타일(로컬 — Off · Read 만)의 AI 권한 팝오버를 연다 */
+  /** **원격 · 쿼리 타일** — 호스트(원격) · DB 연결(쿼리)의 AI 권한 팝오버를 연다 */
   | "ai-permission"
+  /** **로컬 타일**(11-18 — 셸 · AI CLI 타일 모두) — 체크 줄 "AI 읽기 허용". 그 자리에서 켜고 끈다(`pane/local-ai.ts`) */
+  | "toggle-ai-read"
   /**
    * **문서 타일만**(10-20) — 그 문서의 전체 경로(원격이면 원격 경로 — 별칭 없이)를 클립보드로. 머리줄 도구줄의 경로 글자를 걷은 대신
    * 이 줄의 말풍선이 경로를 보여 준다([`PaneMenuCtx.docPath`]). 파일 타일 우클릭의 "경로 복사" 와 같은 이름 · 같은 알림.
@@ -245,8 +247,6 @@ function flyoutRow(
 export interface PaneMenuCtx {
   /** 이 타일이 AI(MCP)에 공유되고 있는가 — **로컬 타일의 "AI 읽기 허용"** (원격은 [`aiStage`]) */
   shared: boolean;
-  /** 로컬 **AI CLI 타일**인가(10-23) — 그러면 "AI 권한…" 줄이 없다(AI 타일에는 AI 읽기 권한이 아예 없다). 로컬에서만 본다 */
-  aiTile?: boolean;
   /**
    * **원격 타일의 AI 권한 단계** — 호스트 하나의 단계(`$lib/delegation` 의 `stageOf`). 호스트 목록에 없는
    * 원격 타일(빠른 접속)은 `null` 이고 그때 "AI 권한…" 줄은 흐려진다. 로컬·그 밖의 종류에서는 보지 않는다.
@@ -571,8 +571,6 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
     );
     // 권한 묶음은 여기서 시작한다 — 위 묶음은 "내용을 밖으로", 아래 둘은 "이 세션을
     // 누구에게 열어 줄 것인가" 라 같은 선 안에 둘 수 없다.
-    // 로컬 AI CLI 타일(10-23)에는 AI 읽기 권한이 아예 없다 — 줄이 없고, 권한 묶음의 선은 동시 입력 줄이 긋는다.
-    const noAiRow = kind === "local" && ctx.aiTile === true;
     const aiRow: PaneMenuItem =
       kind === "ssh"
         ? // 원격 — 권한은 **호스트 하나의 단계**라(2026-10-07) 체크 하나로 말할 수 없다. 누르면 권한
@@ -589,25 +587,24 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
                 ? tr("app.ai.adhoc")
                 : tr("pane.menu.aiperm.title", { stage: tr(AI_STAGE_NAME[ctx.aiStage]) }),
           }
-        : // 로컬 — 예전 체크 "AI 읽기 허용"(10-23 까지)을 원격과 같은 "AI 권한…" 줄로. 누르면 같은 팝오버(Off · Read 만 — 로컬 타일은
-          // 실행 권한이 없어 Ask 부터 잠김). 그림은 게이지 글리프(끔 = 빈 막대 · 읽기 = 하나).
+        : // 로컬(11-18 — 로컬 셸 타일 · 로컬 AI CLI 타일 같은 규칙) — 체크 줄 "AI 읽기 허용". 누르면 그 자리에서 켜고 끈다(팝오버 없음 ·
+          // 원격 창에서 켤 때는 마스터 재확인 — `pane/local-ai.ts`). 단계가 Off · Read 둘뿐이라 게이지가 아니라 체크 하나로 말한다.
           {
-            action: "ai-permission",
+            action: "toggle-ai-read",
             separator: true,
-            label: tr("pane.menu.aiperm"),
-            icon: gaugeIconName(ctx.shared ? 1 : 0),
-            title: tr("pane.menu.localaiperm.title", {
-              stage: tr(AI_STAGE_NAME[ctx.shared ? "read" : "off"]),
-            }),
+            label: tr("pane.menu.aiRead"),
+            icon: ctx.shared ? "check" : null,
+            checkbox: true,
+            checked: ctx.shared,
+            title: tr("pane.menu.aiRead.title"),
           };
     items.push(
-      ...(noAiRow ? [] : [aiRow]),
+      aiRow,
       // 동시 입력 **참여** — 탭의 동시 입력이 꺼져 있으면 참여도 뜻이 없으므로
       // 흐리게 두고 툴팁이 어디서 켜는지를 말한다 (탭 우클릭 메뉴). 항목을 아예 숨기지
       // 않는 이유는, 이 기능이 있다는 사실 자체가 여기서 읽혀야 하기 때문이다.
       {
         action: "toggle-sync",
-        ...(noAiRow ? { separator: true } : {}),
         label: tr("pane.menu.sync"),
         icon: ctx.included ? "check" : null,
         checkbox: true,

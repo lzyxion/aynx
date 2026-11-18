@@ -385,7 +385,8 @@ pub async fn open_local_session(
         spec.env.push((crate::tile_env::TILE_AGENT_ENV.to_string(), path.clone()));
     }
     // **타일 MCP 토큰**(3차 4단계): AI 타일(`injectMcpToken`) · 감싸개가 있는 로컬 셸 타일이면 세션 서버가 `open` 에서 그 타일만의 토큰을 뽑아 셸 환경에
-    // 넣는다(`mcp` — GUI 는 값을 싣지 않는다 · `(stream, sessionEpoch)` 에 묶임 · AI 타일인가는 `ai` — 셸 타일의 AI 읽기 허용은 예전 그대로). (3차 6단계)
+    // 넣는다(`mcp` — GUI 는 값을 싣지 않는다 · `(stream, sessionEpoch)` 에 묶임). `ai`(AI 타일인가)는 지금 서버가 버리지만 그대로 싣는다 —
+    // 2026-11-18 전 서버는 그 칸이 없으면 AI 타일로 보고 AI 읽기 허용을 끈다(셸 타일이 그렇게 되지 않게). (3차 6단계)
     // 사람이 띄우는 조정자 타일(`orchestrationRunId`)은 걷었다 — 어느 AI 타일이든 `start_run` · `adopt_run` 으로 조정자가 되고, 묶음은 서버가 그 잠금
     // 안에서 세운다(GUI 는 묶지 않는다).
     let mcp = ai || decorate.is_some();

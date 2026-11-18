@@ -12,6 +12,7 @@
  */
 
 import type { PaneMenuItem } from "$lib/pane/pane-menu";
+import type { PaneSpec } from "$lib/session";
 
 // 접는 폭은 여기 없다 — 타일 폭 판정 하나(`pane/head-span` 의 `filePlacesLayout` · `FILE_FOLD_MIN_WIDTH`, 2026-10-20)가 정한다.
 
@@ -43,7 +44,14 @@ export interface ToolbarMenuRow {
   icon: string;
   /** 앞 로고(`HostIcon` 값 — `iconRef(...)`) — 있으면 `icon` 대신 단색 로고가 선다(사용자가 바꾼 앱 아이콘을 따른다) */
   logo?: string;
+  /**
+   * 앞 그림을 **그 타일의 앞자리 아이콘**(`PaneIcon` — 타일 머리줄 · 탭과 같은 그림)으로(사이드 채팅 `[+]` › 타일 연결 — 2026-11-18).
+   * 있으면 `logo` · `icon` 대신 선다. 원격 AI 타일은 로고 둘이라 그림 칸이 넓어진다
+   */
+  pane?: PaneSpec;
   label: string;
+  /** 이름 뒤 흐린 작은 글자(타일 코드 `p34` — 이름 카드 `SessionInfoCard` 의 `.s-code` 모양). 줄이 좁으면 이름이 말줄임되고 이것은 남는다 */
+  code?: string;
   /** 오른쪽 단축키 글자 (빈 값이면 없음) */
   hint?: string;
   /**

@@ -33,7 +33,7 @@
   import { joinSideChat, restartSideChat, setShownSideChat, sideChatDot, sideChatLiveOf } from "$lib/app/side-chat-live.svelte.js";
   import { joinListedSideChats, removeSideChat, sideChatsHeadDot } from "$lib/app/side-chat-surface.svelte.js";
   import { linkTilesHere } from "$lib/app/side-chat-ask.svelte.js";
-  import { linkChipState } from "$lib/side-chat-link";
+  import { linkChipStates } from "$lib/side-chat-link";
   import { sideChatCliOk, sideChatNewDefault, sortSideChats, type SideChat } from "$lib/side-chat";
   import { targetOf, type Dot } from "$lib/chat/chat-presentation";
   import { knownAiClis } from "$lib/app/panes.svelte.js";
@@ -85,9 +85,7 @@
   });
 
   /** 연결 이름 — 보낼 때 서버가 머리글을 같은 이름으로 짓게(독의 연결 칩과 같은 판정 · 고르기는 없다) */
-  const chipLink = $derived(
-    current ? linkChipState(current.tile, linkTilesHere(), sideChatLiveOf(current.id)?.link ?? null) : ({ kind: "none" } as const),
-  );
+  const chipLinks = $derived(current ? linkChipStates(current.tiles, linkTilesHere(), sideChatLiveOf(current.id)?.links ?? []) : []);
 
   let creating = false;
 
@@ -263,7 +261,7 @@
           chat={c}
           cliName={cliName(c.cli)}
           {offered}
-          {chipLink}
+          {chipLinks}
           onsent={(text) => noteSideChatSent(c.id, text)}
           onrestart={() => void restartSideChat(targetOf(c))}
           cwd={c.cwd}

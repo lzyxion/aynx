@@ -66,7 +66,7 @@
   import { toast } from "$lib/toast.svelte.js";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
-    linkChip,
+    linkChips,
     liveCut,
     mergeLatestPage,
     parseMarkdown,
@@ -699,16 +699,16 @@
       <span class="wake-in"><UiIcon name="bell" size={13} /><span>{mark.pill}</span></span>
     </li>
   {:else if item.role === "user"}
-    {@const chip = linkChip(item.link)}
+    {@const chips = linkChips(item.link)}
     {@const pics = pictures ? (item.pictures ?? []) : []}
     {@const hidden = hiddenImageCount(item, !!pictures, (p) => pictures?.state(p).status === "fail")}
     <!-- 그림이 모두 그려지면 맨 앞의 `[Image #N]` 자리표는 뗀다(판정은 여기 — 불러오기 실패는 화면만 안다 · `withoutImagePlaceholders`) -->
     {@const shownText = item.text ? withoutImagePlaceholders(unwrapPasted(item.text), item.images > 0 && pics.length > 0 && hidden === 0) : ""}
     {@const utext = copyable ? shownText : ""}
-    {#if chip}
-      <!-- 앱 연결 머리글이 알린 연결(사이드 채팅) — 말풍선 위의 작은 칩 · 세션 id 는 없다 -->
-      <li class="item linkchip" data-item="link" data-link={chip.key === "board.viewer.unlinked" ? "off" : "on"}>
-        <span>{t(chip.key, { label: chip.label })}</span>
+    {#if chips.length > 0}
+      <!-- 앱 연결 머리글이 알린 연결(사이드 채팅) — 말풍선 위의 작은 칩(타일마다 하나) · 세션 id 는 없다 -->
+      <li class="item linkchip" data-item="link" data-link={chips[0].key === "board.viewer.unlinked" ? "off" : "on"}>
+        {#each chips as chip, i (i)}<span>{t(chip.key, { label: chip.label })}</span>{/each}
       </li>
     {/if}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1353,6 +1353,8 @@
   /* 연결 칩 — 사람 말 위의 작은 조용한 표지(대화 모양이면 말풍선과 같은 오른쪽) */
   .item.linkchip {
     display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
     margin-bottom: calc(-1 * var(--space-3));
     font-size: var(--t-xs);
     line-height: 1.4;

@@ -112,7 +112,7 @@ function cloneChat(c: SideChat): SideChat {
     ...c,
     links: { ...c.links },
     used: [...c.used],
-    tile: c.tile ? { ...c.tile } : null,
+    tiles: c.tiles.map((x) => ({ ...x })),
     forkedFrom: c.forkedFrom ? { ...c.forkedFrom } : null,
   };
 }
@@ -292,7 +292,7 @@ export async function newSideChat(cli: string, model: string, effort = ""): Prom
     usedAt: 0,
     used: [],
     links: {},
-    tile: null,
+    tiles: [],
     forkedFrom: null,
     cwd: "",
   };
@@ -327,7 +327,7 @@ export async function addForkedSideChat(a: {
     usedAt: 0,
     used: [],
     links: {},
-    tile: null,
+    tiles: [],
     forkedFrom: { agent: a.forkedFrom.agent, conv: a.forkedFrom.conv.toLowerCase() },
     cwd: a.cwd.slice(0, 1024),
   };
@@ -368,12 +368,15 @@ export function noteSideChatConversation(id: string, cli: string, conv: string):
   scheduleSave();
 }
 
-/** **연결 칩**(5단계)을 적는다 — 타일의 스트림 · 그때 이름(`null` = 끊기). 서버 op 는 부르는 쪽(`app/side-chat-live` 의 `linkSideChat`) */
-export function setSideChatTile(id: string, tile: SideChatTileLink | null): void {
+/**
+ * **연결 칩**(5단계)의 묶음을 통째로 적는다 — 타일마다 스트림 · 그때 이름(연결 순서 · 빈 배열 = 모두 끊기). 서버 op 는 부르는 쪽
+ * (`app/side-chat-live` 의 `setSideChatLinks`)
+ */
+export function setSideChatTiles(id: string, tiles: readonly SideChatTileLink[]): void {
   const c = chats.find((x) => x.id === id);
   if (!c) return;
-  if (c.tile?.stream === tile?.stream && c.tile?.name === tile?.name) return;
-  c.tile = tile ? { ...tile } : null;
+  if (c.tiles.length === tiles.length && c.tiles.every((x, i) => x.stream === tiles[i].stream && x.name === tiles[i].name)) return;
+  c.tiles = tiles.map((x) => ({ ...x }));
   scheduleSave();
 }
 

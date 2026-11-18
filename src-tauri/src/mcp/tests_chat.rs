@@ -113,24 +113,40 @@ fn side_chat_tools_are_the_seven_session_reads() {
     assert!(!text.contains("create_execution_plan") && !text.contains("db_query") && !text.contains("start_run"));
 }
 
-/// 판정(순수) — 연결 없음 → 닫힌 타일 → 읽기 권한 → 다른 세션 순. 지나면 그 세션 하나만 든 거울.
+fn links(x: &[&str]) -> Vec<String> {
+    x.iter().map(|s| s.to_string()).collect()
+}
+
+/// 판정(순수) — 연결 없음 → (가리킨 세션마다) 묶음 밖 → 닫힌 타일 → 읽기 권한 순. 지나면 묶음 가운데 읽을 수 있는 세션들만 든 거울.
 #[test]
 fn scope_judges_link_then_permission_then_target() {
     let m = mirror();
     let d = crate::delegation::Delegation::default();
-    let err = |link: Option<&str>, args: Value| scope(link, Some(&args), &m, &d).unwrap_err();
-    assert!(err(None, json!({})).starts_with(&format!("{NOT_LINKED}:")));
-    assert!(err(Some("sc-gone"), json!({})).starts_with(&format!("{LINKED_TILE_CLOSED}:")));
-    let off = err(Some("sc-b"), json!({ "session": "sc-b" }));
+    let err = |l: &[&str], args: Value| scope(&links(l), Some(&args), &m, &d).unwrap_err();
+    assert!(err(&[], json!({})).starts_with(&format!("{NOT_LINKED}:")));
+    assert!(err(&["sc-gone"], json!({})).starts_with(&format!("{LINKED_TILE_CLOSED}:")));
+    let off = err(&["sc-b"], json!({ "session": "sc-b" }));
     assert!(off.starts_with(&format!("{NOT_READABLE}:")) && off.contains("allow AI to read"), "{off}");
-    let remote = err(Some("sc-r"), json!({}));
+    let remote = err(&["sc-r"], json!({}));
     assert!(remote.starts_with(&format!("{NOT_READABLE}:")) && remote.contains("host"), "{remote}");
-    assert!(err(Some("sc-a"), json!({ "session": "sc-b" })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
-    assert!(err(Some("sc-a"), json!({ "sessions": ["sc-a", "sc-b"] })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
-    assert!(err(Some("sc-a"), json!({ "sessions": [1] })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
-    let ok = scope(Some("sc-a"), Some(&json!({ "session": "sc-a", "sessions": ["sc-a"] })), &m, &d).unwrap();
+    assert!(err(&["sc-a"], json!({ "session": "sc-b" })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
+    assert!(err(&["sc-a"], json!({ "sessions": ["sc-a", "sc-b"] })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
+    assert!(err(&["sc-a"], json!({ "sessions": [1] })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
+    let ok = scope(&links(&["sc-a"]), Some(&json!({ "session": "sc-a", "sessions": ["sc-a"] })), &m, &d).unwrap();
     assert_eq!(ok.keys().collect::<Vec<_>>(), vec!["sc-a"]);
-    assert!(scope(Some("sc-a"), None, &m, &d).is_ok());
+    assert!(scope(&links(&["sc-a"]), None, &m, &d).is_ok());
+    // 여럿 — 읽기 권한은 세션마다: 꺼진 sc-b · 닫힌 sc-gone 을 가리키면 그것만 거절, 거울에는 읽을 수 있는 sc-a 만.
+    let many = ["sc-b", "sc-a", "sc-gone"];
+    assert!(err(&many, json!({ "session": "sc-b" })).starts_with(&format!("{NOT_READABLE}:")));
+    assert!(err(&many, json!({ "session": "sc-gone" })).starts_with(&format!("{LINKED_TILE_CLOSED}:")));
+    assert!(err(&many, json!({ "sessions": ["sc-a", "sc-b"] })).starts_with(&format!("{NOT_READABLE}:")));
+    assert!(err(&many, json!({ "session": "sc-r" })).starts_with(&format!("{NOT_THE_LINKED_SESSION}:")));
+    let ok = scope(&links(&many), Some(&json!({ "session": "sc-a" })), &m, &d).unwrap();
+    assert_eq!(ok.keys().collect::<Vec<_>>(), vec!["sc-a"]);
+    assert_eq!(scope(&links(&many), None, &m, &d).unwrap().len(), 1);
+    // 읽을 수 있는 연결이 하나도 없으면 첫 연결의 까닭.
+    assert!(err(&["sc-b", "sc-gone"], json!({})).starts_with(&format!("{NOT_READABLE}:")));
+    assert!(err(&["sc-gone", "sc-b"], json!({})).starts_with(&format!("{LINKED_TILE_CLOSED}:")));
 }
 
 /// 디스패치 — 연결은 서버 표(`crate::chat_token`)에서만 읽고, 연결된 세션 하나만 · 기존 읽기 구현 그대로 · 작업안 · DB · 조율 · 대기 도구는
@@ -141,7 +157,7 @@ fn side_chat_reads_only_the_linked_session() {
     let c = Caller::SideChat { chat: chat.into() };
     let (e, t) = call(&c, "list_sessions", json!({}));
     assert!(e && t.starts_with("not-linked:"), "{t}");
-    crate::chat_token::set_link(chat, Some("sc-a".into()));
+    crate::chat_token::set_links(chat, links(&["sc-a"]));
     let (e, t) = call(&c, "get_scrollback", json!({ "session": "sc-a" }));
     assert!(!e && t.contains("a-line"), "{t}");
     let (e, t) = call(&c, "list_sessions", json!({}));
@@ -156,8 +172,45 @@ fn side_chat_reads_only_the_linked_session() {
     // 다른 채팅의 연결은 보지 않는다.
     let (e, t) = call(&Caller::SideChat { chat: "tread02".into() }, "list_sessions", json!({}));
     assert!(e && t.starts_with("not-linked:"), "{t}");
-    crate::chat_token::set_link(chat, Some("sc-b".into()));
+    crate::chat_token::set_links(chat, links(&["sc-b"]));
     let (e, t) = call(&c, "get_scrollback", json!({ "session": "sc-b" }));
     assert!(e && t.starts_with("not-readable:"), "{t}");
+    crate::chat_token::forget(chat);
+}
+
+/// 여러 타일 연결 — 둘 다 읽히고 연결하지 않은 셋째는 거절 · 하나의 읽기 권한이 꺼지면 그것만 `not-readable` · 목록에는 읽을 수 있는 것만.
+#[test]
+fn side_chat_reads_each_linked_session_on_its_own() {
+    let chat = "tread03";
+    let c = Caller::SideChat { chat: chat.into() };
+    let mut m = mirror();
+    report(&mut m, "sc-c".into(), "bash".into(), "local".into(), "p4".into(), true);
+    m.get_mut("sc-c").unwrap().scrollback = vec!["c-line".into()];
+    let call_in = |m: &HashMap<String, SessionContext>, name: &str, args: Value| {
+        let v = rpc(&c, m.clone(), json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": name, "arguments": args } }));
+        let r = &v["result"];
+        (r["isError"].as_bool().unwrap_or(false), r["content"][0]["text"].as_str().unwrap().to_string())
+    };
+    crate::chat_token::set_links(chat, links(&["sc-a", "sc-c"]));
+    let (e, t) = call_in(&m, "get_scrollback", json!({ "session": "sc-a" }));
+    assert!(!e && t.contains("a-line"), "{t}");
+    let (e, t) = call_in(&m, "get_scrollback", json!({ "session": "sc-c" }));
+    assert!(!e && t.contains("c-line"), "{t}");
+    let (e, t) = call_in(&m, "get_scrollback", json!({ "session": "sc-b" }));
+    assert!(e && t.starts_with("not-the-linked-session:"), "{t}");
+    let (e, t) = call_in(&m, "list_sessions", json!({}));
+    let rows: Value = serde_json::from_str(&t).unwrap();
+    let mut ids: Vec<&str> = rows.as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
+    ids.sort();
+    assert!(!e && ids == ["sc-a", "sc-c"], "{t}");
+    // sc-c 의 읽기 허용을 끈다 — 그것만 not-readable, sc-a 는 그대로 · 목록에서 빠진다.
+    m.get_mut("sc-c").unwrap().opted_in = false;
+    let (e, t) = call_in(&m, "get_scrollback", json!({ "session": "sc-c" }));
+    assert!(e && t.starts_with("not-readable:"), "{t}");
+    let (e, t) = call_in(&m, "get_scrollback", json!({ "session": "sc-a" }));
+    assert!(!e && t.contains("a-line"), "{t}");
+    let (e, t) = call_in(&m, "list_sessions", json!({}));
+    let rows: Value = serde_json::from_str(&t).unwrap();
+    assert!(!e && rows.as_array().unwrap().len() == 1 && rows[0]["id"] == "sc-a", "{t}");
     crate::chat_token::forget(chat);
 }

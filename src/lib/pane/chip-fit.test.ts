@@ -229,8 +229,10 @@ describe("머리줄 칩 접기 — 배선", () => {
     }
     for (const id of ["folder", "branch", "jump", "tmux", "forward"]) expect(chips).toContain(`fitAttrs("${id}"`);
     expect(chips).toContain('fitAttrs("resource", 3)');
-    // AI 권한 칩 네 갈래 모두 숨지 않음(pin)
-    expect(chips.match(/fitAttrs\("ai", 2, true\)/g)?.length).toBe(4);
+    // AI 권한 칩 네 갈래 모두 숨지 않음(pin) — 원격 · 쿼리 · 흐린 Off 셋은 글자를 접고, 로컬 눈 칩(11-18)은 접을 글자가 없다
+    expect(chips.match(/fitAttrs\("ai", 2, true\)/g)?.length).toBe(3);
+    expect(chips.match(/fitAttrs\("ai", 1, true\)/g)?.length).toBe(1);
+    expect(chips).toContain("data-ai-read-chip={pane.id}");
     expect(chips).toContain("data-chip-more={pane.id}");
   });
 

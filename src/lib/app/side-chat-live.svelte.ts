@@ -35,8 +35,8 @@ import { sideChatOpenMode } from "$lib/side-chat";
 import { sideChatResolvedBy, sideChatTurnNotifyKind } from "$lib/side-chat-notify";
 import { notifySideChat } from "$lib/app/side-chat-notify";
 import { sideChatBannerSignal } from "$lib/app/agent-banners.svelte.js";
-import { noteSideChatConversation, setSideChatTile } from "$lib/app/side-chats.svelte.js";
-import type { SideChatTileLink } from "$lib/side-chat-link";
+import { noteSideChatConversation, setSideChatTiles, sideChats } from "$lib/app/side-chats.svelte.js";
+import { pushKnownLinks, sameLinkStreams, withTileLink, withoutTileLink, type SideChatTileLink } from "$lib/side-chat-link";
 import { t } from "$lib/i18n/i18n.svelte.js";
 
 /**
@@ -64,9 +64,10 @@ import { t } from "$lib/i18n/i18n.svelte.js";
  *
  * ## 연결 칩(5단계)
  *
- * 채팅의 연결(MCP 로 읽을 타일 하나)은 저장(`chats.json` 의 `tile`)이 사람의 뜻이고 서버 표(`side_chat_link`)가 그것을 따른다 — 스냅숏의
- * `link` 가 저장과 다르면(서버 재시작 · TTL 로 잊음) 붙을 때 다시 건다(닫힌 타일이면 서버가 `[bad-link]` — 저장은 두고 칩이 "닫힘").
- * 사람이 칩으로 바꾸면 [`linkSideChat`]. 칩이 읽는 서버 쪽 사실은 `SideChatLive.link`.
+ * 채팅의 연결(MCP 로 읽을 타일 묶음 — 최대 8 · 연결 순서)은 저장(`chats.json` 의 `tiles`)이 사람의 뜻이고 서버 표(`side_chat_link` — 묶음을
+ * 통째로 놓는다)가 그것을 따른다 — 스냅숏의 `links` 가 저장과 다르면(서버 재시작 · TTL 로 잊음) 붙을 때 다시 건다. 서버가 모르는 타일이
+ * 섞이면(`[bad-link]` — 아무것도 안 바뀐다) 하나씩 더해 보며 아는 것만 걸고, 모르는 것은 저장에 둔 채 칩이 "닫힘"([`sendLinks`]).
+ * 사람이 바꾸면 [`setSideChatLinks`] · [`addSideChatLink`] · [`removeSideChatLink`]. 칩이 읽는 서버 쪽 사실은 `SideChatLive.links`.
  *
  * 창마다 하나의 사본이고 **주 창만** 쓴다(독이 주 창에만 있다 — 서버 명령도 주 창만 받는다). 저장하지 않는다(F5 = 다시 attach).
  */
@@ -82,8 +83,8 @@ export interface SideChatTarget {
   conversation: string | null;
   /** 갈라 올 원본 대화(6단계 — 그 CLI 가 원본의 에이전트일 때만 · `sideChatForkFrom`). 여는 모양은 `sideChatOpenMode` */
   fork: string | null;
-  /** 연결된 타일의 스트림(`tile.stream` — 5단계) */
-  link: string | null;
+  /** 연결된 타일들의 스트림(`tiles[].stream` — 5단계 · 연결 순서) */
+  links: string[];
 }
 
 export interface SideChatLive {
@@ -101,8 +102,8 @@ export interface SideChatLive {
   unseen: boolean;
   /** 기록을 읽는 대화 id(머리말 "대화 id") */
   historyConv: string | null;
-  /** 서버가 아는 연결(스냅숏 · 연결 답 — 5단계) */
-  link: SideChatLinkView | null;
+  /** 서버가 아는 연결 묶음(스냅숏 · 연결 답 — 5단계 · 서버가 모르는 타일은 "닫힘" 보기로 채운다) */
+  links: SideChatLinkView[];
 }
 
 const lives = $state<Record<string, SideChatLive>>({});
@@ -180,6 +181,7 @@ export function sideChatErrorText(e: unknown): string {
   if (hasReason(msg, "session-gone")) return t("app.chatDock.err.gone");
   if (hasReason(msg, "bad-effort")) return t("app.chatDock.err.badEffort");
   if (hasReason(msg, "bad-link")) return t("app.chatDock.err.badLink");
+  if (hasReason(msg, "too-many-links")) return t("app.chatDock.err.tooManyLinks");
   if (hasReason(msg, "conversation-not-found")) return t("app.chatDock.err.forkNotFound");
   if (hasReason(msg, "conversation-folder-missing")) return t("app.chatDock.err.forkFolder");
   if (hasReason(msg, "cli-not-found")) return t("app.chatDock.err.cliNotFound");
@@ -235,11 +237,11 @@ function adopt(id: string, cli: SideChatCli, snap: SideChatSnapshot, prev: SideC
       (same ? prev.historyConv : null) ??
       known ??
       (snap.status === "running" || (same && state.ended > prev.state.ended) ? conv : null),
-    link: snap.link ?? null,
+    links: snap.links ?? [],
   };
   // 저장된 연결(사람의 뜻)과 서버 표가 다르면 다시 건다 — 서버 재시작 · TTL 로 잊었다
-  const want = targets.get(id)?.link ?? null;
-  if (want !== (snap.link?.stream ?? null)) void pushLink(id, want);
+  const want = targets.get(id)?.links ?? [];
+  if (!sameLinkStreams(want.map((stream) => ({ stream })), snap.links ?? [])) void pushLinks(id);
   if (snap.status === "running" && conv) noteConversation(id, cli, conv);
   // 기다리는 동안 온 사건 — `seq` 로 겹친 것을 버리고 나머지를 차례로
   const buf = buffers.get(id) ?? [];
@@ -278,7 +280,7 @@ export function joinSideChat(tg: SideChatTarget): Promise<void> {
         error: sideChatErrorText(e),
         unseen: false,
         historyConv: tg.conversation ?? tg.fork,
-        link: prev?.link ?? null,
+        links: prev?.links ?? [],
       };
     } finally {
       joining.delete(tg.id);
@@ -411,7 +413,7 @@ async function withEpoch<T>(id: string, run: (epoch: number) => Promise<T>): Pro
 export function sendSideChat(
   id: string,
   text: string,
-  linkName: string | null = null,
+  linkNames: Readonly<Record<string, string>> | null = null,
   images: readonly { path: string; name: string }[] = [],
 ): string | null {
   const l = lives[id];
@@ -425,7 +427,7 @@ export function sendSideChat(
       // 그림은 `images`(Claude 바이트 · Codex 경로), 그 밖은 `files`(서버가 채팅 자기 폴더로 옮겨 적는다) — 판정 표는 서버와 같다(`isImageName`)
       const pics = images.filter((im) => isImageName(im.path)).map((im) => im.path);
       const files = images.filter((im) => !isImageName(im.path)).map((im) => im.path);
-      const r = await withEpoch(id, (epoch) => sideChatSend(id, epoch, text, clientId, linkName, pics, files));
+      const r = await withEpoch(id, (epoch) => sideChatSend(id, epoch, text, clientId, linkNames, pics, files));
       const now = lives[id];
       if (now && r.epoch > now.epoch) now.epoch = r.epoch;
       // 서버가 붙인 연결 머리글 — 말풍선 위 칩(F5 뒤 기록 쪽과 같은 그림)
@@ -562,33 +564,84 @@ export async function restartSideChat(tg: SideChatTarget): Promise<void> {
 // 연결 칩(5단계)
 // ---------------------------------------------------------------------------
 
-/** 서버 표에 연결을 건다(다시 걸기 · 사람의 고르기 공용) — 답의 연결 보기를 들인다. 닫힌 타일(`[bad-link]`)이면 서버 쪽 보기를 "닫힘" 으로 */
-async function pushLink(id: string, stream: string | null): Promise<void> {
-  try {
-    const r = await sideChatLink(id, stream);
-    const l = lives[id];
-    if (l) l.link = r.link;
-  } catch (e) {
-    const l = lives[id];
-    if (!l) return;
-    if (hasReason(String(e), "bad-link") && stream) {
-      l.link = { stream, code: null, label: null, kind: null, readable: false, closed: true };
-      return;
-    }
-    if (!hasReason(String(e), "session-gone")) l.error = sideChatErrorText(e);
-  }
+/** 그 채팅의 서버 표 걸기 차례(채팅마다 하나씩 — 빨리 여러 번 고쳐도 서버가 마지막 뜻으로 끝나게) */
+const linkPushes = new Map<string, Promise<void>>();
+
+/** 서버 표에 **지금 뜻의 묶음**(`targets` 의 `links`)을 건다(다시 걸기 · 사람의 고치기 공용) — 채팅마다 앞의 걸기가 끝난 뒤에 */
+function pushLinks(id: string): Promise<void> {
+  const p = (linkPushes.get(id) ?? Promise.resolve()).then(() => sendLinks(id));
+  linkPushes.set(id, p);
+  void p.finally(() => {
+    if (linkPushes.get(id) === p) linkPushes.delete(id);
+  });
+  return p;
+}
+
+/** 서버가 모르는 타일의 보기 — 칩이 "닫힘" */
+function closedView(stream: string): SideChatLinkView {
+  return { stream, code: null, label: null, kind: null, readable: false, closed: true };
+}
+
+/** 걸기 실패 → 오류 한 줄(서버 표에 없음은 조용히 — 다시 붙을 때 건다 · 옛 서버에 둘 이상은 그 안내) */
+function linkFailed(id: string, e: unknown): void {
+  const l = lives[id];
+  const msg = String(e);
+  if (!l || hasReason(msg, "session-gone")) return;
+  l.error = hasReason(msg, "server-outdated") ? t("app.chatDock.err.linksOutdated") : sideChatErrorText(e);
 }
 
 /**
- * **연결을 바꾼다**(사람이 칩에서 · [AI에게 묻기] → 사이드 채팅) — 저장(`tile`)과 다시 붙을 뜻에 적고 서버 표에 건다(`side_chat_link` —
- * 서버가 거울의 창 타일인지 다시 본다). `null` = 끊기. 서버 표에 아직 없으면(붙기 전) 붙을 때 [`adopt`] 가 건다.
+ * 한 번 건다 — 답의 보기를 지금 뜻의 순서로 들인다. 모르는 타일이 섞여(`[bad-link]`) 거절되면 아는 것만 건다(순수 `pushKnownLinks`). 모르는
+ * 것은 저장에 둔 채 보기만 "닫힘"(사람이 × 로 뺀다).
  */
-export async function linkSideChat(id: string, tile: SideChatTileLink | null): Promise<void> {
-  setSideChatTile(id, tile);
-  const tg = targets.get(id);
-  if (tg) targets.set(id, { ...tg, link: tile?.stream ?? null });
+async function sendLinks(id: string): Promise<void> {
   if (!lives[id]?.attached) return;
-  await pushLink(id, tile?.stream ?? null);
+  const want = [...(targets.get(id)?.links ?? [])];
+  let views: SideChatLinkView[];
+  try {
+    views = await pushKnownLinks(
+      want,
+      async (streams) => (await sideChatLink(id, streams)).links,
+      (e) => hasReason(String(e), "bad-link"),
+    );
+  } catch (e) {
+    linkFailed(id, e);
+    return;
+  }
+  const l = lives[id];
+  if (!l) return;
+  const known = new Map(views.map((v) => [v.stream, v]));
+  l.links = want.map((s) => known.get(s) ?? closedView(s));
+}
+
+/**
+ * **연결 묶음을 통째로 놓는다**(사람이 칩 · 메뉴에서 · [AI에게 묻기] → 사이드 채팅) — 저장(`tiles`)과 다시 붙을 뜻에 적고 서버 표에 건다
+ * (`side_chat_link` — 서버가 거울의 창 타일인지 다시 본다). 빈 배열 = 모두 끊기. 서버 표에 아직 없으면(붙기 전) 붙을 때 [`adopt`] 가 건다.
+ */
+export async function setSideChatLinks(id: string, tiles: readonly SideChatTileLink[]): Promise<void> {
+  setSideChatTiles(id, tiles);
+  const tg = targets.get(id);
+  if (tg) targets.set(id, { ...tg, links: tiles.map((x) => x.stream) });
+  if (!lives[id]?.attached) return;
+  await pushLinks(id);
+}
+
+/** 그 채팅의 지금 묶음(저장 — 사람의 뜻) */
+function storedLinks(id: string): SideChatTileLink[] {
+  return sideChats().find((c) => c.id === id)?.tiles ?? [];
+}
+
+/** 묶음에 타일 하나를 더한다 — 이미 있으면 그대로 · 찼으면 더하지 않고 `false`(부르는 쪽이 안내) */
+export async function addSideChatLink(id: string, tile: SideChatTileLink): Promise<boolean> {
+  const next = withTileLink(storedLinks(id), tile);
+  if (next.full) return false;
+  await setSideChatLinks(id, next.links);
+  return true;
+}
+
+/** 묶음에서 그 타일을 뺀다(칩의 × · 메뉴의 체크 풀기 · 닫힌 타일 안내의 [연결 끊기]) */
+export async function removeSideChatLink(id: string, stream: string): Promise<void> {
+  await setSideChatLinks(id, withoutTileLink(storedLinks(id), stream));
 }
 
 /** 입력 칸 채우기(보내지 않는다 — [AI에게 묻기] → 사이드 채팅) — 채팅 id → 글 · 번호(같은 글을 두 번 채워도 다시 선다) */

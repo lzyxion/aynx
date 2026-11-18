@@ -205,9 +205,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         }
         "session_ai_read" => {
             let a: AiRead = body(b)?;
-            // 앱이 띄운 로컬 AI 타일에는 AI 읽기 허용이 없다(10-23) — 켬은 끔으로 적는다(되살리기 probe 의 `aiRead` 도 끔)
-            let on = a.on && !crate::tile_token::is_ai_tile(&a.stream);
-            Ok(json!(core().set_ai_read(&a.stream, on)))
+            Ok(json!(core().set_ai_read(&a.stream, a.on)))
         }
         "detach_window" => {
             let d: WindowIds = body(b)?;

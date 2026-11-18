@@ -84,8 +84,8 @@ export interface SideChatLinkView {
 
 /** `side_chat_open` · `side_chat_attach` 의 답 — 그 뒤 사건은 `seq` 다음부터. */
 export interface SideChatSnapshot {
-  /** 연결(없으면 `null`) — 서버가 재시작 · TTL 로 잊었으면 독이 저장된 연결을 다시 건다 */
-  link: SideChatLinkView | null;
+  /** 연결 묶음(연결 순서 · 없으면 빈 배열 — 옛 서버의 `link` 하나는 GUI Rust 가 이 모양으로 옮긴다) — 서버가 재시작 · TTL 로 잊었으면 독이 저장된 묶음을 다시 건다 */
+  links: SideChatLinkView[];
   chat: string;
   cli: SideChatCli;
   model: string;
@@ -147,8 +147,8 @@ export function sideChatOpen(a: SideChatOpenArgs): Promise<SideChatSnapshot> {
 
 /**
  * 사람이 보낸 글 — 프로세스가 없으면 서버가 띄우고 준비를 기다린다(길 수 있다). 답의 `epoch` 가 이제 쓸 세대다. `link` = 서버가 이 글 앞에
- * 붙인 연결 머리글(붙이지 않았으면 `null` · 옛 서버는 칸 없음 — 세션 id 는 없다). `linkName` = 입력 칸 연결 칩의 지금 이름(머리글을 붙일
- * 때만 서버가 그 이름으로 짓는다 — 기록 칩 = 입력 칸 칩 · 없으면 거울 이름). `images` = 붙인 그림의 경로(2026-10-24 — 앱 첨부 자리의
+ * 붙인 연결 머리글(붙이지 않았으면 `null` · 옛 서버는 칸 없음 — 세션 id 는 없다). `linkNames` = 스트림 id → 입력 칸 연결 칩의 지금 이름(머리글을
+ * 붙일 때만 서버가 그 이름으로 짓는다 — 기록 칩 = 입력 칸 칩 · 없는 타일은 거울 이름). `images` = 붙인 그림의 경로(2026-10-24 — 앱 첨부 자리의
  * 사본만 · 서버가 다시 본다: 8장 · 10 MB · png/jpeg/gif/webp — 밖이면 `[image-*]` · `[too-many-images]`). `files` = 그림 밖 첨부의 경로(판 32 —
  * 같은 첨부 자리의 사본만 · 서버가 그 채팅 cwd 의 `attachments/` 에 옮겨 적고 글 끝에 경로를 붙인다 · 그림과 합쳐 8개 · 하나 10 MB — 밖이면
  * `[file-*]` · `[too-many-attachments]` · 판 31 서버면 `[server-outdated]`). 첨부만이면 글이 빌 수 있다.
@@ -158,11 +158,11 @@ export function sideChatSend(
   epoch: number,
   text: string,
   clientId?: string | null,
-  linkName?: string | null,
+  linkNames?: Readonly<Record<string, string>> | null,
   images: readonly string[] = [],
   files: readonly string[] = [],
 ): Promise<{ epoch: number; link?: TranscriptLink | null }> {
-  return invoke("side_chat_send", { chat, epoch, text, clientId: clientId ?? null, linkName: linkName ?? null, images, files });
+  return invoke("side_chat_send", { chat, epoch, text, clientId: clientId ?? null, linkNames: linkNames ?? null, images, files });
 }
 
 /**
@@ -210,11 +210,13 @@ export function sideChatAttach(chat: string): Promise<SideChatSnapshot> {
 }
 
 /**
- * **연결 칩**(5단계) — 그 채팅이 MCP 로 읽을 타일(`stream` = 타일의 `historyStreamId` · `null` = 끊기). 서버는 거울에 있는 창 타일만 받는다
- * (`[bad-link]`). 바뀌었으면 다음 보내기에 앱 고정 연결 머리글이 붙는다. 읽기 판정은 MCP 호출마다 서버가 한다.
+ * **연결 칩**(5단계) — 그 채팅이 MCP 로 읽을 타일 묶음을 **통째로 놓는다**(`streams` = 타일의 `historyStreamId` · 연결 순서 · 빈 배열 = 모두
+ * 끊기 · 최대 8 — 넘으면 `[too-many-links]`). 서버는 거울에 있는 창 타일만 받는다 — 모르는 것이 하나라도 섞이면 `[bad-link]` 이고 아무것도
+ * 바뀌지 않는다. 옛 세션 서버에 둘 이상을 걸면 `[server-outdated]`. 바뀌었으면 다음 보내기에 앱 고정 연결 머리글이 붙는다. 읽기 판정은
+ * MCP 호출 · 타일마다 서버가 한다.
  */
-export function sideChatLink(chat: string, stream: string | null): Promise<{ link: SideChatLinkView | null; changed: boolean }> {
-  return invoke("side_chat_link", { chat, epoch: null, stream });
+export function sideChatLink(chat: string, streams: readonly string[]): Promise<{ links: SideChatLinkView[]; changed: boolean }> {
+  return invoke("side_chat_link", { chat, epoch: null, streams: [...streams] });
 }
 
 /** 서버 표의 채팅들. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hiddenImageCount, pictureKey, userPictures, isViewKey, linkChip, mergeLatestPage, runningToolIndexes, parseInline, parseMarkdown, prependItems, toolFlag, toolHeadline, unwrapPasted, agentTurnCopies, withoutImagePlaceholders } from "$lib/transcript";
+import { hiddenImageCount, pictureKey, userPictures, isViewKey, linkChips, mergeLatestPage, runningToolIndexes, parseInline, parseMarkdown, prependItems, toolFlag, toolHeadline, unwrapPasted, agentTurnCopies, withoutImagePlaceholders } from "$lib/transcript";
 import type { TranscriptItem } from "$lib/context";
 
 describe("parseInline", () => {
@@ -217,13 +217,17 @@ describe("toolFlag · linkChip — 기록에서 다시 세운 표지(사이드 �
     expect(toolFlag(tool({ error: false, output: null }))).toBeNull();
   });
 
-  it("연결 칩 — 이름 · 이름 없음 · 끊음 · 머리글 없음(칩 없음) — 세션 id 는 문구에 없다", () => {
-    expect(linkChip({ label: "p2 PowerShell 7" })).toEqual({ key: "board.viewer.link", label: "p2 PowerShell 7" });
-    expect(linkChip({ label: "  " })).toEqual({ key: "board.viewer.link.bare", label: "" });
-    expect(linkChip({ unlinked: true })).toEqual({ key: "board.viewer.unlinked", label: "" });
-    expect(linkChip(null)).toBeNull();
-    expect(linkChip(undefined)).toBeNull();
-    expect(linkChip({})).toBeNull();
+  it("연결 칩 — 타일마다 하나(연결 순서) · 이름 없음 · 모두 끊음 · 머리글 없음(칩 없음) — 세션 id 는 문구에 없다", () => {
+    expect(linkChips({ labels: ["p2 PowerShell 7"], unlinked: false })).toEqual([{ key: "board.viewer.link", label: "p2 PowerShell 7" }]);
+    expect(linkChips({ labels: ["Claude Code", "  ", "bash"], unlinked: false })).toEqual([
+      { key: "board.viewer.link", label: "Claude Code" },
+      { key: "board.viewer.link.bare", label: "" },
+      { key: "board.viewer.link", label: "bash" },
+    ]);
+    expect(linkChips({ labels: [], unlinked: true })).toEqual([{ key: "board.viewer.unlinked", label: "" }]);
+    expect(linkChips({ labels: [], unlinked: false })).toEqual([]);
+    expect(linkChips(null)).toEqual([]);
+    expect(linkChips(undefined)).toEqual([]);
   });
 });
 

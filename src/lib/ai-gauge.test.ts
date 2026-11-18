@@ -57,13 +57,6 @@ describe("AI 권한 게이지 — 자리 · 칸(10-23)", () => {
     expect(gaugeKeyStep(1, "Home", 5)).toBeNull();
   });
 
-  it("잠긴 자리(로컬 타일 — Off · Read 만, 10-23)에서는 그 앞에서 멈춘다", () => {
-    expect(gaugeKeyStep(0, "ArrowRight", 5, 2)).toBe(1);
-    expect(gaugeKeyStep(1, "ArrowRight", 5, 2)).toBeNull();
-    expect(gaugeKeyStep(1, "ArrowLeft", 5, 2)).toBe(0);
-    expect(gaugeKeyStep(-1, "ArrowRight", 5, 2)).toBe(0);
-  });
-
   it("이름 — 모든 언어에서 같은 짧은 영어 낱말(10-23): Off · Read · Ask · Auto · YOLO / Off · Schema · Read · Ask · YOLO", () => {
     for (const dict of [ko, en]) {
       const k = (key: string) => (dict as Record<string, Record<string, string>>)[key.split(".")[0]][key.slice(key.indexOf(".") + 1)];
@@ -94,32 +87,35 @@ describe("게이지 하나로 — 네 자리가 같은 고르개(10-23)", () => 
     const g = src("./AiGauge.svelte");
     expect(g).toContain('role="radiogroup"');
     expect(g).toContain('role="radio"');
-    expect(g).toContain(': nameOf(lv)}');
-    // 잠긴 자리(10-23 로컬 타일) — 고를 수 없고 이름이 "(잠김)" 을 말한다
-    expect(g).toContain("disabled={locked}");
-    expect(g).toContain('aria-disabled={locked ? "true" : undefined}');
-    expect(g).toContain('t("app.ai.gauge.locked"');
+    expect(g).toContain("aria-label={nameOf(lv)}");
+    // 잠긴 자리(10-23 로컬 팝오버 전용)는 11-18 에 팝오버와 함께 걷혔다
+    expect(g).not.toContain("lockedFrom");
+    expect(src("./pane/AiPermMenu.svelte")).not.toContain("lockedFrom");
+    expect(ko.app).not.toHaveProperty(["ai.gauge.locked"]);
+    expect(en.app).not.toHaveProperty(["ai.gauge.locked"]);
     expect(g).toContain("gaugeKeyStep(");
   });
 
   it("머리줄 칩 · 설정 › 보안 표는 미니 게이지를 단다", () => {
-    // 원격 · 쿼리 · 로컬(10-23 — 예전 'AI 읽기' 칩) 셋 + 권한을 줄 수 없는 타일의 흐린 Off 칩 하나
+    // 원격 · 쿼리 둘 + 권한을 줄 수 없는 타일의 흐린 Off 칩 하나(로컬은 11-18 부터 게이지가 아니라 눈 칩)
     const chips = src("./pane/HeaderChips.svelte");
-    expect(chips.match(/<AiGaugeMini /g)?.length).toBe(4);
+    expect(chips.match(/<AiGaugeMini /g)?.length).toBe(3);
     // 10-23 사용자 결정 — 끔이어도 칩이 선다(빈 게이지 + Off · 흐린 색). 숨기는 길은 설정의 'ai' 칩 하나
     expect(chips).not.toContain('aiStage !== "off"');
     expect(chips).not.toContain("dbAi.shown");
     expect(chips).toContain("--c: var(--chip-ai-off);");
     expect(src("./theme.css")).toContain("--chip-ai-off: var(--ai-lv0);");
-    // 10-23 사용자 결정 — 로컬 AI CLI 타일에는 AI 읽기 권한이 아예 없다: 칩 없음 · 팝오버 안 열림 · 판정이 늘 끔 · 켜진 값은 끈다
-    expect(chips).toContain('{:else if pane.kind === "local" && !localAiTile(pane)}');
-    expect(src("./pane/local-ai-menu.svelte.ts")).toContain('box.pane.kind === "local" && !localAiTile(box.pane)');
-    expect(src("./app/delegation.svelte.ts")).toContain("return isShared(pane.id) && !localAiTile(pane);");
-    const term = src("./Terminal.svelte");
-    expect(term).toContain("if (localAiTile(pane) && isShared(pane.id)) setShared(pane.id, false);");
-    expect(term).toContain("plan.aiRead && !localAiTile(pane)");
-    // ⋯ 메뉴의 항목 판정은 타일 메뉴 컨트롤러(2026-10-26 PaneHost 에서 뗌)
-    expect(src("./pane/tile-menu-controller.svelte.ts")).toContain("aiTile: localAiTile(menuBox.pane),");
+    // 11-18 사용자 결정 — 로컬 타일(셸 · AI CLI 타일 같은 규칙)은 꺼짐이면 칩이 없고 켜졌을 때만 눈 칩 · 누르면 바로 끈다
+    expect(chips).toContain('{:else if pane.kind === "local" && shared}');
+    expect(chips).toContain('<UiIcon name="ai-read" ');
+    expect(chips).toContain("onclick={() => setLocalAiRead(pane.id, false)}");
+    expect(chips).toContain('title={t("pane.header.aiRead.title")}');
+    expect(chips).not.toContain("localAiTile");
+    expect(UI_ICONS).toHaveProperty("ai-read");
+    // 판정 · 되살리기에 AI 타일만 빼는 갈래가 없다
+    expect(src("./app/delegation.svelte.ts")).toContain("return isShared(pane.id);");
+    expect(src("./app/delegation.svelte.ts")).not.toContain("localAiTile");
+    expect(src("./Terminal.svelte")).not.toContain("localAiTile");
     // 별칭 없는 원격 · 목록에 없는 DB 연결 — 팝오버가 없으니 흐린 Off 칩이 ⋯ 메뉴와 같은 이유를 말한다
     expect(chips).toContain("data-ai-chip-disabled");
     expect(chips).toContain('t("app.ai.adhoc")');
@@ -130,6 +126,17 @@ describe("게이지 하나로 — 네 자리가 같은 고르개(10-23)", () => 
     const chipsSetting = src("./settings/HeaderChipsSetting.svelte");
     expect(chipsSetting).toContain("<AiGaugeMini ");
     expect(chipsSetting).toContain("data-ai-tone=");
+    // 11-18 — 터미널 바탕 위의 두 자리(머리줄 · 설정 막대)는 단계 색을 터미널 밝기 기준 토큰으로 바꿔 입는다(Off · Read 는 그대로)
+    expect(chipsSetting).toContain("--chip-ai-approve: var(--ai-term-lv2);");
+    expect(chipsSetting).toContain("--ai-lv2: var(--ai-term-lv2);");
+    const head = src("./pane/PaneHeader.svelte");
+    expect(head).toContain("var(--ai-term-lv2));");
+    expect(head).toContain("--chip-ai-approve: var(--head-ai-lv2);");
+    expect(head).toContain("--ai-lv2: var(--head-ai-lv2);");
+    const css = src("./theme.css");
+    expect(css).toContain("--ai-term-lv2: var(--ai-lv2);");
+    expect(css).toContain(':root[data-theme="light"][data-term-tone="dark"] {');
+    expect(css).toContain(':root:not([data-theme="light"])[data-term-tone="light"] {');
   });
 
   it("단계 그림 표는 걷혔다 — 단계는 게이지(칩 · 미니 게이지 · 메뉴 글리프)가 말한다", () => {

@@ -4,10 +4,12 @@
 //! 불변식:
 //! - **목록은 늘 같다** — 세션 읽기 도구 일곱([`TOOLS`] · 스키마는 전역 13개의 그 칸 그대로). DB · 작업안 · 결과 읽기 · 조율 도구는 없다.
 //!   Codex 는 대화 중 목록 갱신을 받지 않으므로 "연결된 동안만" 은 목록이 아니라 **호출마다 서버 판정**이다([`scope`]).
-//! - 판정 순서: 연결 없음 = `not-linked` → 연결된 세션이 거울에 없음(타일이 닫힘) = `linked-tile-closed` → 기존 읽기 권한
-//!   (`crate::context::ai_readable` — 로컬 타일 'AI 읽기 허용' · 원격 호스트 AI 권한 읽기 전용 이상)이 아님 = `not-readable` → 다른 세션을
-//!   가리킴 = `not-the-linked-session`. 지나면 **그 세션 하나만 든 거울**로 같은 읽기 구현을 부른다(`list_sessions` · `compare_command_results`
-//!   도 그 하나만 본다).
+//! - 연결은 채팅마다 **사람이 고른 세션들**(`crate::chat_token::links_of` — 최대 `LINKS_MAX`). 읽기 권한은 연결된 세션마다 따로다.
+//! - 판정 순서: 연결 없음 = `not-linked` → 인자(`session` · `sessions`)가 가리킨 세션마다: 연결 묶음 밖 = `not-the-linked-session` → 거울에
+//!   없음(타일이 닫힘) = `linked-tile-closed` → 기존 읽기 권한(`crate::context::ai_readable` — 로컬 타일 'AI 읽기 허용' · 원격 호스트 AI 권한
+//!   읽기 전용 이상)이 아님 = `not-readable`. 지나면 **연결 묶음 가운데 지금 읽을 수 있는 세션들만 든 거울**로 같은 읽기 구현을 부른다
+//!   (`list_sessions` · `sessions` 없는 `compare_command_results` 는 그 세션들을 본다). 읽을 수 있는 연결이 하나도 없으면 연결 순서로 첫 연결의
+//!   까닭(`linked-tile-closed` · `not-readable`)으로 거절한다.
 //! - 대화 기록(CLI 대화 파일)은 여기서 나가지 않는다 — 대화 기록이 MCP 로 나가는 길은 조정자 `read_worker` 하나 그대로다.
 //! - 연결을 바꾸는 갈래는 없다 — 연결은 사람이 칩으로만(서버 op `side_chat_link`).
 
@@ -30,10 +32,11 @@ pub(crate) const NOT_THE_LINKED_SESSION: &str = "not-the-linked-session";
 
 /// `initialize` 안내 — 사이드 채팅만 받는다(작업안 · DB 절 없음 — 그 도구가 없다).
 pub(super) const INSTRUCTIONS: &str = "\
-This server (the session server of the aynx app) lets this side chat read **one terminal tile that the person linked** with the Link chip under the input box — it runs nothing. \
-When a link is set or changes, the person's next message starts with an app header like `[연결된 타일: <name> · 세션 <id>]`; pass that id as the `session` argument. \
+This server (the session server of the aynx app) lets this side chat read **the terminal tiles that the person linked** with the Link chip under the input box — it runs nothing. \
+When the links are set or change, the person's next message starts with app headers, one per linked tile, like `[연결된 타일: <name> · 세션 <id>] [연결된 타일: <name> · 세션 <id>]`; \
+pass one of those ids as the `session` argument (list_sessions shows the linked tiles you may read now). \
 With no link every tool answers not-linked: tell the person to link a tile first instead of retrying. \
-Only the linked session is visible, and the app's read permission still applies (a local tile needs 'allow AI to read'; a remote tile needs its host's AI permission at Read only or higher) — \
+Only the linked sessions are visible, and the app's read permission still applies to each tile on its own (a local tile needs 'allow AI to read'; a remote tile needs its host's AI permission at Read only or higher) — \
 on not-readable or linked-tile-closed tell the person exactly that. \
 Whatever you read is sent to your model provider, so read only what the question needs (get_last_command or get_command before a long get_scrollback). \
 A session with `mode:\"screen\"` (tmux) has no command blocks — read it with get_scrollback.";
@@ -47,7 +50,7 @@ pub(super) fn tools_list() -> Value {
     v
 }
 
-/// 도구 하나 — 연결 · 권한 판정([`scope`]) 뒤 그 세션 하나만 든 거울로 같은 읽기 구현을 부른다. 권한(`delegation.toml`)은 잠금 **앞**에서 한 번.
+/// 도구 하나 — 연결 · 권한 판정([`scope`]) 뒤 읽을 수 있는 연결 세션들만 든 거울로 같은 읽기 구현을 부른다. 권한(`delegation.toml`)은 잠금 **앞**에서 한 번.
 pub(super) fn call(
     chat: &str,
     name: Option<&str>,
@@ -61,27 +64,63 @@ pub(super) fn call(
     if !TOOLS.contains(&name) {
         return Err(format!("Unknown tool: {name}"));
     }
-    let link = crate::chat_token::link_of(chat);
+    let links = crate::chat_token::links_of(chat);
     let delegation = load_delegation();
     crate::screen_mirror::flush_dirty();
     let guard = store.lock().map_err(|_| "internal error".to_string())?;
-    let scoped = scope(link.as_deref(), args, &guard, &delegation)?;
+    let scoped = scope(&links, args, &guard, &delegation)?;
     drop(guard);
     run(name, &scoped, &delegation, args)
 }
 
-/// **판정 — 순수**(시험 대상): 연결 · 거울 · 읽기 권한 · 대상 세션. 지나면 그 세션 하나만 든 거울(복제)을 돌려준다.
+/// **판정 — 순수**(시험 대상): 연결 묶음 · 대상 세션 · 거울 · 읽기 권한. 지나면 연결 묶음 가운데 지금 읽을 수 있는 세션들만 든 거울(복제)을
+/// 돌려준다.
 pub(super) fn scope(
-    link: Option<&str>,
+    links: &[String],
     args: Option<&Value>,
     map: &HashMap<String, SessionContext>,
     delegation: &crate::delegation::Delegation,
 ) -> Result<HashMap<String, SessionContext>, String> {
-    let Some(stream) = link else {
+    if links.is_empty() {
         return Err(format!(
             "{NOT_LINKED}: the person has not linked a tile to this side chat — ask them to pick one with the Link chip (연결) under the input box, then try again"
         ));
-    };
+    }
+    let not_linked = || format!("{NOT_THE_LINKED_SESSION}: this side chat may read only the linked sessions {}", links.join(", "));
+    let mut named: Vec<&str> = Vec::new();
+    if let Some(s) = args.and_then(|a| a.get("session")).and_then(Value::as_str) {
+        named.push(s);
+    }
+    if let Some(list) = args.and_then(|a| a.get("sessions")).and_then(Value::as_array) {
+        for v in list {
+            named.push(v.as_str().ok_or_else(not_linked)?);
+        }
+    }
+    for s in named {
+        if !links.iter().any(|l| l == s) {
+            return Err(not_linked());
+        }
+        readable_link(s, map, delegation)?;
+    }
+    let scoped: HashMap<String, SessionContext> = links
+        .iter()
+        .filter_map(|s| readable_link(s, map, delegation).ok().map(|c| (s.clone(), c.clone())))
+        .collect();
+    if scoped.is_empty() {
+        // 읽을 수 있는 연결이 없다 — 연결 순서로 첫 연결의 까닭(하나일 때의 판정 그대로).
+        if let Some(e) = links.iter().find_map(|s| readable_link(s, map, delegation).err()) {
+            return Err(e);
+        }
+    }
+    Ok(scoped)
+}
+
+/// 연결된 세션 하나 — 거울에 있고(아니면 `linked-tile-closed`) AI 가 읽을 수 있다(아니면 `not-readable`).
+fn readable_link<'a>(
+    stream: &str,
+    map: &'a HashMap<String, SessionContext>,
+    delegation: &crate::delegation::Delegation,
+) -> Result<&'a SessionContext, String> {
     let Some(ctx) = map.get(stream) else {
         return Err(format!(
             "{LINKED_TILE_CLOSED}: the linked tile (session {stream}) is closed or not reporting — ask the person to link another tile"
@@ -97,18 +136,7 @@ pub(super) fn scope(
             "{NOT_READABLE}: the person linked session {stream}, but the app does not let AI read it — {why}. Tell the person; only they can change it in the app"
         ));
     }
-    let other = |s: &str| s != stream;
-    if let Some(s) = args.and_then(|a| a.get("session")).and_then(Value::as_str) {
-        if other(s) {
-            return Err(format!("{NOT_THE_LINKED_SESSION}: this side chat may read only the linked session {stream}"));
-        }
-    }
-    if let Some(list) = args.and_then(|a| a.get("sessions")).and_then(Value::as_array) {
-        if list.iter().any(|v| v.as_str().is_none_or(other)) {
-            return Err(format!("{NOT_THE_LINKED_SESSION}: this side chat may read only the linked session {stream}"));
-        }
-    }
-    Ok(HashMap::from([(stream.to_string(), ctx.clone())]))
+    Ok(ctx)
 }
 
 fn run(
