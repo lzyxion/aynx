@@ -180,10 +180,17 @@
    * 칸은 이 호스트의 **자기 값**(`hostForm.agentArgs`)을 쥐고, 비어 있으면 상속값을 곁말(출처 칩 · placeholder)로만 보인다.
    */
   let argsTargets = $state<AgentArgsTarget[]>([]);
+  /** 이번 열림에 이미 읽었나 — 반응형이 아니다. 빈 표(`[]` — 실패도 이리 떨어진다)를 넣어도 새 배열이라 이 효과가 다시 돌므로,
+   *  이 표시 없이는 IPC 가 끝없이 돈다(`ProjectForm.svelte` 의 `agentTargetsTried` 와 같은 꼴). 닫히면 되돌린다. */
+  let argsTargetsTried = false;
   $effect(() => {
-    if (hostFormVisible() && argsTargets.length === 0) {
-      void agentArgsTargets().then((list) => (argsTargets = list));
+    if (!hostFormVisible()) {
+      argsTargetsTried = false;
+      return;
     }
+    if (argsTargets.length > 0 || argsTargetsTried) return;
+    argsTargetsTried = true;
+    void agentArgsTargets().then((list) => (argsTargets = list));
   });
   /** 에이전트 id → 지금 값(자기 값 또는 상속값)의 미리보기 */
   let argsPreview = $state<Record<string, AgentLaunchPreview | null>>({});

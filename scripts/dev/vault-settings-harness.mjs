@@ -14,6 +14,7 @@
 //   ④ 호스트 목록의 볼트 표식 + 호스트 폼(F2)의 "저장된 자격증명" 칸 · [지우기]
 //   ⑤ AI 권한 호스트 표 — 부팅 고아 알림 · 요약 칩 · 권한 칩 셋(단계 + 헤드리스 둘) · 고아 줄의 "정리 필요" 칩(말풍선에 이유)과
 //      흐림 · [정리 필요] 거르기 · [제거]는 두 번 눌러야 지운다 · [호스트 설정…]이 호스트 폼을 **AI 권한** 칸으로 연다
+//   ⑥ (회귀) 스텁이 `agent_args_targets` 에 빈 목록을 주면 호스트 폼이 그 명령을 몇 번 부르는가(≤ 2) · 폼이 Escape 로 닫히나
 //
 // 2026-10-21 — 보안은 **들어갈 때마다 관문**(`.gate` 카드)을 지나야 보이고, 목록 셋은 요약의 [관리 ›]이 여는 하위 화면이다.
 // 2026-11-19 — 지금 화면에 맞춰 다시 짰다. 옛 판은 (가) `Page.reload` 뒤 고정 `sleep(4500)` 이라 찬 vite 에서 부팅 전에 Ctrl+, 를 쳐 ①이
@@ -230,6 +231,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
         return Promise.resolve(null);
       }
       if (cmd === 'vault_delete_all') { noteVault(cmd, args); window.__items = []; return Promise.resolve(null); }
+      // ⑥ — 빈 에이전트 표(실패하는 길과 같다: agentArgsTargets 가 [] 로 떨어진다)
+      if (cmd === 'agent_args_targets' && V.argsEmpty) return Promise.resolve([]);
       if (cmd === 'delegation_list_targets') return Promise.resolve(window.__delegation.slice());
       if (cmd === 'delegation_remove_targets') {
         const aliases = args?.aliases ?? [];
@@ -584,6 +587,26 @@ await run("⑤ AI delegation table", 60000, async () => {
   check("폼이 AI 권한 칸으로", tab === "AI 권한", tab);
   check("이름 칸 = web-01", (await ev(`document.querySelector('.host-modal #f-name')?.value ?? null`)) === "web-01");
   await key("Escape", 0, "Escape");
+});
+
+// ═══ ⑥ 빈 에이전트 표 — 호스트 폼이 `agent_args_targets` 를 끝없이 부르지 않는다 (2026-11-20) ══════
+// 빈 목록(또는 실패 → [])을 받을 때마다 `$effect` 가 다시 돌던 고리(머리말 2026-11-19 (나))의 회귀 검사. 이번 열림에 한 번만 부른다.
+await run("⑥ empty agent targets", 40000, async () => {
+  if (!(await scenario({ state: "unlocked", hasMaster: false, argsEmpty: true }))) return;
+  const ROW = `[...document.querySelectorAll('.dock .item[data-id]')].find((e) => e.querySelector('.name')?.textContent.trim() === 'web-01')`;
+  const count = `window.__calls.filter((c) => c === 'agent_args_targets').length`;
+  await key("KeyH", 10, "H");
+  check("호스트 독에 web-01 줄", await waitFor(`!!(${ROW})`));
+  await ev(`(() => { const b = ${ROW}; b?.click(); b?.focus(); return 1; })()`);
+  const before = await ev(count);
+  await key("F2", 0, "F2");
+  check("F2 = 호스트 폼(수정)", await waitFor(`!!document.querySelector('.host-modal #f-identity')`, 6000));
+  await sleep(1500);
+  const after = await ev(count);
+  const n = typeof before === "number" && typeof after === "number" ? after - before : null;
+  check("열린 1.5초 동안 agent_args_targets ≤ 2번", n !== null && n <= 2, `calls=${n} (before=${before} after=${after})`);
+  await key("Escape", 0, "Escape");
+  check("Escape = 폼 닫힘(페이지가 반응)", await waitFor(`!document.querySelector('.host-modal')`, 4000));
 });
 
 // ── 끝 ──

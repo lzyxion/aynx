@@ -525,6 +525,8 @@ node scripts/dev/run-harness.mjs vault-settings-harness.mjs <outdir> --size 1200
 - 2026-11-19 다시 짰다 — 옛 판은 고정 `sleep(4500)` 뒤 Ctrl+, 를 쳐 찬 vite 에서 ①이 흰 화면으로 찍혔고, ④의 F2 에서 페이지가 멈춰 600초
   시한에 걸렸다(옛 스텁이 `agent_args_targets` 를 곧바로 거절 → 호스트 폼의 그 `$effect` 가 빈 목록을 받을 때마다 다시 불러 마이크로태스크
   고리가 렌더러를 붙잡았다 — 머리말 · 이 판의 스텁은 그 명령에 답한다).
+- **⑥ 회귀(2026-11-20)** — 스텁이 `agent_args_targets` 에 빈 목록을 주게 한 채 F2 호스트 폼을 열고 1.5초 동안 그 명령이 **2번 이하**인지 ·
+  Escape 로 폼이 닫히는지 본다(고치기 전 코드는 렌더러가 붙잡혀 시한 FAIL — `HostForm.svelte` 의 `argsTargetsTried`).
 - **비밀은 절대 찍지 않는다** — 금고 명령이 받은 값은 `typeof`·길이로만 기록한다.
 
 ## vault-veil-harness.mjs — 볼트가 가림막과 함께 잠긴다
