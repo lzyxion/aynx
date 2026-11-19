@@ -194,7 +194,11 @@ const on = await read();
 console.log("connected:", JSON.stringify(on));
 check(on.state === "connected", `연결됨 (${on.state})`);
 check(on.openCards.join() === "access", `[연결] 이 성공해도 보던 카드를 닫지 않는다 (${on.openCards})`);
-check(!on.text.includes(`https://${HOST}/`) && (await ev(`document.querySelector('[data-remote-connect-on]')?.textContent`)) === "serve 열림", "연결 줄은 주소 대신 serve 열림");
+check(!on.text.includes(`https://${HOST}/`) && (await ev(`document.querySelector('[data-remote-connect-on]')?.textContent?.trim()`)) === "serve 열림", "연결 줄은 주소 대신 serve 열림");
+check(
+  (await ev(`(() => { const c = document.querySelector('[data-remote-connect-on]'); return !!c && c.matches('.status-chip.ok') && !!c.querySelector('i.dot.ok'); })()`)) === true,
+  "serve 열림은 상태 칩(.status-chip.ok · 점 있음)",
+);
 check((await ev(`document.querySelector('[data-remote-access-url]')?.textContent`)) === `https://${HOST}/`, "주소는 카드 머리에");
 check(on.buttons.length === 1 && on.buttons[0].text === "serve 끄기", "단추 [serve 끄기]");
 check(String(on.checked) === "true", `토글 켜짐 (${on.checked})`);

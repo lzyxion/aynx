@@ -7,7 +7,8 @@
  * - Telegram 은 **봇 토큰이 있고(`configured`) 계정을 짝지었을 때(`paired`)** 연결된 것이다 — 토큰만 있으면 "계정 연결 대기".
  * - **두 방식 채널**(Discord · Slack — [`DualChannel`])은 **한 번에 한 방식**이다(2026-11-19 사용자 A안 · Slack 은 같은 뼈대) — 웹훅(알림만)이면
  *   등록으로, 봇(알림 + 말하기)이면 Telegram 과 같은 규칙으로 연결된 것이다. 어느 쪽인지는 `messenger_status` 의 `via` 와 봇 상태가 말한다
- *   ([`dualMode`]). 몸통의 "연결 방식" 고르기 · 바꾸기 확인 · 머리줄 방식 칩은 [`dualView`] · [`dualKind`].
+ *   ([`dualMode`]). 몸통의 "연결 방식" 고르기 · 바꾸기 확인 · 머리줄 방식 칩은 [`dualView`] · [`dualKind`]. Telegram 은 방식이 봇
+ *   하나라 "연결 방식" 줄은 없고 머리줄 방식 칩만 같은 꼴로 선다([`telegramHead`]).
  * - Slack 봇은 토큰이 둘이다(봇 `xoxb-` · 앱 `xapp-`) — 한 글자열(`"<봇>\n<앱>"`)로 넘기고 서버가 접두사로 가른다([`joinTokens`]).
  * - 봇 상태에는 토큰이 없다(백엔드가 `configured` 하나만 준다). 짝지은 이름 · 짝짓기를 청한 이름은 **남의 글자**라 글자로만 그린다.
  */
@@ -233,7 +234,7 @@ export interface ChannelChip {
 
 /** 머리줄 딸린 줄 — 칩들 + (있으면) 칩 뒤의 곁글 */
 export interface ChannelHead {
-  /** 맨 앞의 종류 칩(두 방식 채널의 봇 · 웹훅 — 점 없는 회색 칩 · 상태가 아니다). Telegram 은 없다 */
+  /** 맨 앞의 종류 칩(두 방식 채널의 봇 · 웹훅 · Telegram 의 봇 — 점 없는 회색 칩 · 상태가 아니다). 없으면 칩 없음 */
   kind?: Key | null;
   chips: ChannelChip[];
   /** 곁글 — `bot` = 봇 이름(계정 연결 대기) · `conflict` = 다른 프로그램이 이 봇을 쓴다 */
@@ -286,6 +287,14 @@ export function botHead(s: BotStatus | null, send: boolean, chat: boolean): Chan
 export function dualHead(mode: DualMode, bot: BotStatus | null, send: boolean, chat: boolean): ChannelHead {
   const head = mode === "bot" ? botHead(bot, send, chat) : webhookHead(mode === "webhook", send);
   return { ...head, kind: dualKind(mode) };
+}
+
+/**
+ * Telegram 의 머리 — 봇 채널([`botHead`])에 두 방식 채널과 같은 꼴의 방식 칩(2026-11-19 사용자 결정 · 모양 맞춤). 방식이 봇 하나뿐이라
+ * 몸통의 "연결 방식" 줄은 없다. 봇 토큰이 있으면(계정 연결 대기 포함) 봇, 없거나 모르면 `null`.
+ */
+export function telegramHead(s: BotStatus | null, send: boolean, chat: boolean): ChannelHead {
+  return { ...botHead(s, send, chat), kind: s?.configured ? "settings.messenger.kind.bot" : null };
 }
 
 /** 채널이 "연결됨" 인가 — Telegram 은 토큰 + 짝, 두 방식 채널은 그 방식대로(목록의 스위치 · 규칙 묶음이 본다) */

@@ -241,9 +241,24 @@ const TONE_SELECTION = 40;
 const TONE_SELECTION_LIGHT = 80;
 const ALPHA_SELECTION = 0.4;
 
-/** `--ok` 로 인정하는 초록 hue 범위. tertiary 가 이 안이면 그대로 쓴다 */
-const GREEN_HUE_MIN = 105;
-const GREEN_HUE_MAX = 170;
+/** tertiary 를 `--ok` 의 출발 hue 로 받는 범위 — 이 안이면 tertiary hue, 밖이면 [`ANSI_HUES`] 의 초록 */
+const OK_TERTIARY_HUE_MIN = 105;
+const OK_TERTIARY_HUE_MAX = 170;
+
+/**
+ * `--ok` 의 최종 hue 범위(HCT). 따뜻한 원천에서는 harmonize 가 초록을 노랑 쪽으로 끌어 경고색(`--warn` ≈ 75°)과
+ * 헷갈렸다 — 그래서 결과를 이 안에 가둔다. 범위 안의 색은 hex 그대로 두고, 벗어난 것만 경계 hue 로 다시 만든다.
+ */
+const OK_HUE_MIN = 140;
+const OK_HUE_MAX = 155;
+/**
+ * `--warn` 의 최종 hue 범위(HCT). 노랑(90°)에 harmonize 가 걸려 75°~105° 를 오가는데, 파랑 · 청록 원천에서는 105° 쪽으로
+ * 밀려 연두로 보였다 — 그래서 위쪽을 노랑에서 자른다. 아래쪽 75° 는 harmonize 의 끝(보라 · 따뜻한 원천)이라 그대로 남는다.
+ */
+const WARN_HUE_MIN = 75;
+const WARN_HUE_MAX = 90;
+/** 경계 판정의 여유 — 8비트 반올림으로 경계를 살짝 넘은 hue(155.x · 74.x 등)를 다시 만들지 않는다 */
+const STATUS_HUE_SLACK = 0.5;
 
 /** `--ok`·`--warn` 의 톤 — 어두운 크롬 위의 상태 표시라 bright ANSI 와 같은 밝기로 둔다 */
 const TONE_STATUS = 78;
@@ -329,15 +344,6 @@ export function paletteFromSource(sourceArgb: number, isDark = true): DynamicPal
     brightWhite: hexFromArgb(neutral.tone(TONE_BRIGHT_WHITE)),
   };
 
-  // `--ok` 는 tertiary 를 **먼저** 본다: MD3 의 tertiary 는 소스색과 어울리도록 이미 색상환에서
-  // 떨어뜨려 고른 색이라, 그것이 마침 초록 계열이면 팔레트에 가장 자연스럽게 앉는다.
-  // 초록이 아니면 의미(정상·성공)를 지키려고 초록 hue 로 고정하고 harmonize 만 건다.
-  const tertiary = Hct.fromInt(scheme.tertiary);
-  const okHue =
-    tertiary.hue >= GREEN_HUE_MIN && tertiary.hue <= GREEN_HUE_MAX
-      ? tertiary.hue
-      : ANSI_HUES.green;
-
   const statusTone = isDark ? TONE_STATUS : TONE_STATUS_LIGHT;
 
   // 창 = MD3 surface · 뜬 면 = surfaceContainer (2026-10-18 — End-4 식 MD3 방향). 터미널 배경(위 `termBg`)은 그 전 면 계단
@@ -349,11 +355,53 @@ export function paletteFromSource(sourceArgb: number, isDark = true): DynamicPal
     fg: hexFromArgb(scheme.onSurface),
     border: hexFromArgb(scheme.outlineVariant),
     err: hexFromArgb(scheme.error),
-    ok: ansi(okHue, statusTone),
-    warn: ansi(ANSI_HUES.yellow, statusTone),
+    ok: hexFromArgb(clampHue(unclampedOk(scheme, chroma, statusTone), OK_HUE_MIN, OK_HUE_MAX, chroma, statusTone)),
+    warn: hexFromArgb(clampHue(unclampedWarn(scheme, chroma, statusTone), WARN_HUE_MIN, WARN_HUE_MAX, chroma, statusTone)),
   };
 
   return { source: hexFromArgb(sourceArgb), chrome, term };
+}
+
+/**
+ * `--ok` 의 출발값: tertiary 가 초록 계열([`OK_TERTIARY_HUE_MIN`]~[`OK_TERTIARY_HUE_MAX`])이면 그 hue, 아니면 ANSI 초록 —
+ * 거기에 ANSI 와 같은 harmonize(최대 15°). MD3 의 tertiary 는 소스색과 어울리게 고른 색이라 초록이면 팔레트에 가장 자연스럽다.
+ */
+function unclampedOk(scheme: SchemeTonalSpot, chroma: number, tone: number): number {
+  const tertiaryHue = Hct.fromInt(scheme.tertiary).hue;
+  const hue = tertiaryHue >= OK_TERTIARY_HUE_MIN && tertiaryHue <= OK_TERTIARY_HUE_MAX ? tertiaryHue : ANSI_HUES.green;
+  return Blend.harmonize(Hct.from(hue, chroma, tone).toInt(), scheme.primary);
+}
+
+/** `--warn` 의 출발값: ANSI 노랑에 ANSI 와 같은 harmonize(최대 15°) — 터미널 yellow 와 같은 hue 다 */
+function unclampedWarn(scheme: SchemeTonalSpot, chroma: number, tone: number): number {
+  return Blend.harmonize(Hct.from(ANSI_HUES.yellow, chroma, tone).toInt(), scheme.primary);
+}
+
+/** 출발값의 hue 가 `min`~`max` 밖이면 가까운 경계 hue 로 다시 만든다(chroma · tone 은 같은 식) */
+function clampHue(argb: number, min: number, max: number, chroma: number, tone: number): number {
+  const hue = Hct.fromInt(argb).hue;
+  if (hue < min - STATUS_HUE_SLACK) return Hct.from(min, chroma, tone).toInt();
+  if (hue > max + STATUS_HUE_SLACK) return Hct.from(max, chroma, tone).toInt();
+  return argb;
+}
+
+/** 옛 의미색의 바탕 — 원천 하나의 스킴 · ANSI 진하기 · 상태 톤 */
+function statusBasis(sourceArgb: number, isDark: boolean): [SchemeTonalSpot, number, number] {
+  const scheme = new SchemeTonalSpot(Hct.fromInt(sourceArgb), isDark, 0);
+  return [scheme, Math.max(ANSI_MIN_CHROMA, scheme.primaryPalette.chroma), isDark ? TONE_STATUS : TONE_STATUS_LIGHT];
+}
+
+/**
+ * 2026-11-19 전 [`paletteFromSource`] 의 `ok`(hue 를 가두지 않은 출발값). 옛 설정 파일의 여덟 칸이 어느 테마 · 원천에서
+ * 왔는지 알아보는 데만 쓴다(`app-color-themes.ts` 의 `upgradeLegacyAppColors`).
+ */
+export function legacyOk(sourceArgb: number, isDark: boolean): string {
+  return hexFromArgb(unclampedOk(...statusBasis(sourceArgb, isDark)));
+}
+
+/** 2026-11-19 전 [`paletteFromSource`] 의 `warn`(hue 를 가두지 않은 출발값) — [`legacyOk`] 와 같이 옛 파일 알아보기 전용 */
+export function legacyWarn(sourceArgb: number, isDark: boolean): string {
+  return hexFromArgb(unclampedWarn(...statusBasis(sourceArgb, isDark)));
 }
 
 /**

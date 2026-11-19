@@ -94,10 +94,24 @@
             <span class="head">
               <span class="target" title={v.id}>{name}</span>
               {#if orphan}
-                <span class="warn" title={t("settings.credentials.dbai.orphan.title")}>{t("settings.credentials.dbai.orphan")}</span>
+                <span
+                  class="warn"
+                  role="note"
+                  title={t("settings.credentials.dbai.orphan.title")}
+                  data-tip-place="above"
+                  aria-label={`${t("settings.credentials.dbai.orphan")}: ${t("settings.credentials.dbai.orphan.title")}`}
+                  >{t("settings.credentials.dbai.orphan")}</span
+                >
               {:else}
                 {#if broken}
-                  <span class="warn" title={t("settings.credentials.dbai.broken.title")}>{t("settings.credentials.dbai.broken")}</span>
+                  <span
+                    class="warn"
+                    role="note"
+                    title={t("settings.credentials.dbai.broken.title")}
+                    data-tip-place="above"
+                    aria-label={`${t("settings.credentials.dbai.broken")}: ${t("settings.credentials.dbai.broken.title")}`}
+                    >{t("settings.credentials.dbai.broken")}</span
+                  >
                 {/if}
                 <button
                   type="button"

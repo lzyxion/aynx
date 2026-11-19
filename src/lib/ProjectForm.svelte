@@ -696,9 +696,11 @@
     flex: 1 1 auto;
     min-width: 0;
     overflow-y: auto;
-    /* 포커스 링(2px + 1px 틈)이 스크롤 자리에 잘리지 않을 만큼 안쪽을 비우고, 바깥 여백으로 되돌려 칸 자리는 그대로 둔다 */
-    padding: 3px;
-    margin: -3px;
+    /* 포커스 링이 스크롤 자리에 잘리지 않을 만큼 안쪽을 비우고, 바깥 여백으로 되돌려 칸 자리는 그대로 둔다.
+       4px = 큰 쪽인 `.btn` 의 링(2px + 2px 틈 — 입력 칸 `.value` 는 2 + 1). 3px 였을 때 끝에 선 [찾아보기…] 등의 링이
+       오른쪽 1px 잘렸다(2026-11-19 — `scripts/dev/focus-ring-clip-harness.mjs --outside`). */
+    padding: 4px;
+    margin: -4px;
     /* 좁은 패널에서 라벨·입력을 위아래로 쌓는 기준 (아래 `@container`) */
     container-type: inline-size;
   }

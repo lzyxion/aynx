@@ -382,7 +382,7 @@
                   : cli.installed ? "settings.ai.cli.install.yes" : "settings.ai.cli.install.no.short")}
               </StatusChip>
               {#if hookTarget}
-                <!-- 훅 상태 요약 — 몸통의 훅 줄과 같은 값(`hooks`)을 짧게 -->
+                <!-- 훅 상태 — 이 칩 하나뿐이다(몸통의 훅 줄은 단추만 · 2026-11-19). 값은 `hooks` -->
                 <StatusChip
                   tone={hst?.installed ? "ok" : hookPartial ? "warn" : hst ? "off" : "idle"}
                   data-agent-hooks-badge={agent.id}
@@ -431,8 +431,9 @@
                     **에이전트 훅** — 탭 상태 점이 추정 대신 쓰는 정확한 신호 (docs/log/2026-09-24-agent-hook-signals.md ·
                     docs/log/2026-09-26-codex-hooks.md). 저장 버튼과 무관하게 누르는 즉시 그 에이전트의 훅 설정 파일을
                     고친다(확인 창을 거친 뒤). 신뢰 단계가 있는 에이전트(Codex `/hooks`)는 안내 한 줄이 붙는다.
-                    "업데이트 필요"(Rust `Installed::Partial` — 이전 버전의 훅 · 일부 이벤트만)는 짧은 상태 글자 + 툴팁이고,
-                    그때 설치 단추는 "업데이트…"(동작은 다시 설치와 같다).
+                    상태(설치됨 · "업데이트 필요" · 없음)는 이 줄에 두지 않고 머리줄 칩(`data-agent-hooks-badge`)만 보인다.
+                    "업데이트 필요"(Rust `Installed::Partial` — 이전 버전의 훅 · 일부 이벤트만)이면 설치 단추는 "업데이트…"
+                    (동작은 다시 설치와 같다).
                   -->
                   {@const st = hooks[agent.id] ?? null}
                   {@const trust = hookTarget.needsTrustNote ? t("settings.ai.hooks.trust", { agent: hookTarget.display }) : null}
@@ -446,26 +447,6 @@
                       tip={t("settings.ai.hooks.note")}
                     />
                     <div class="size-row wrap-row" data-agent-hooks={agent.id}>
-                      <span
-                        class="state"
-                        class:warn={st !== null && !st.installed && st.partial}
-                        title={st !== null && !st.installed && st.partial ? t("settings.ai.hooks.partial.tip") : undefined}
-                        data-tip-place="above"
-                      >
-                        <span
-                          class="mcp-chip"
-                          class:ok={st?.installed}
-                          class:warn={st !== null && !st.installed && st.partial}
-                          class:no={st !== null && !st.installed && !st.partial}
-                        ></span>
-                        {st === null
-                          ? t("settings.ai.hooks.unknown")
-                          : st.installed
-                            ? t("settings.ai.hooks.installed")
-                            : st.partial
-                              ? t("settings.ai.hooks.partial")
-                              : t("settings.ai.hooks.none")}
-                      </span>
                       <button
                         type="button"
                         class="btn btn-sm btn-secondary"
@@ -608,41 +589,7 @@
     border-radius: var(--radius-surface-inner);
   }
 
-  /* 상태 한 조각 — 칩 + 문구. 줄 오른쪽 칸에 선다 */
-  .state {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    font-size: var(--t-sm);
-    color: var(--fg-2);
-  }
-
-  .state.warn {
-    color: var(--warn);
-  }
-
-  .mcp-chip {
-    flex: 0 0 auto;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--fg-3); /* 알 수 없음(확인 중) — 회색 */
-  }
-
-  .mcp-chip.ok {
-    background: var(--ok);
-  }
-
-  .mcp-chip.no {
-    background: var(--err);
-  }
-
-  .mcp-chip.warn {
-    background: var(--warn);
-  }
-
-  /* 상태 + 버튼 둘 (훅) — 좁은 폭에서는 버튼이 다음 줄로 접힌다 */
+  /* 버튼 둘 (훅) — 좁은 폭에서는 버튼이 다음 줄로 접힌다 · 늘 오른쪽 끝에 맞춘다 */
   .wrap-row {
     flex-wrap: wrap;
     justify-content: flex-end;

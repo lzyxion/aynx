@@ -3,7 +3,8 @@
   import type { HTMLAttributes } from "svelte/elements";
 
   /**
-   * 설정의 **상태 칩 한 벌**(2026-11-05 · 목업 V2Gc8whrqUWN76GmksHaZf A안) — 메신저 채널 · AI 에이전트 · 원격 접속 · 세션 서버.
+   * 설정의 **상태 칩 한 벌**(2026-11-05 · 목업 V2Gc8whrqUWN76GmksHaZf A안) — 메신저 채널 · AI 에이전트 · 원격 접속 · 세션 서버
+   * (일반 · MCP 하위 화면) · 지침의 사이드 채팅 지침.
    * **켜짐 · 실패 · 일부만(`ok` · `bad` · `warn`)은 면까지 그 색**이다(2026-11-19 — 전체 색 안): 면 = 그 색의 container(`--ok-soft` ·
    * `--err-soft` · `--warn-soft`), 점 = 그 색, 글자 = 그 container 의 짝 글자색(`--on-ok-soft` · `--m3-on-error-container` · `--on-warn-soft` —
    * 색 그대로의 글자는 12px 에서 대비가 4.5:1 에 못 미친다 · 작업안 상태 알약과 같은 짝). 나머지(`idle` · `off` · `info`)는 회색 면 그대로.

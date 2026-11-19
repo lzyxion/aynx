@@ -40,13 +40,13 @@
     accordionEdges,
     BOT_CHANNELS,
     botHandle,
-    botHead,
     channelConnected,
     DUAL_CHANNELS,
     dualHead,
     dualMode,
     parseBotStatus,
     parseHookStatus,
+    telegramHead,
     type BotChannel,
     type BotStatus,
     type ChannelHead,
@@ -245,9 +245,9 @@
     slack: setMessengerSlackChat,
   };
 
-  /** 채널 머리의 칩 — Telegram 은 봇, Discord · Slack 은 그 방식대로 */
+  /** 채널 머리의 칩 — Telegram 은 봇(토큰이 있으면 방식 칩 "봇"), Discord · Slack 은 그 방식대로 */
   function headOf(id: ChannelId): ChannelHead {
-    if (id === "telegram") return botHead(bots.telegram, rules.telegram, rules.telegramChat);
+    if (id === "telegram") return telegramHead(bots.telegram, rules.telegram, rules.telegramChat);
     return dualHead(modes[id], bots[id], rules[id], chatOf[id]);
   }
 

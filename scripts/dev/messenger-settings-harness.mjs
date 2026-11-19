@@ -8,7 +8,7 @@
 //
 // 스텁: 웹훅 채널 `messenger_status`(채널별 · `window.__hooks` · Discord 봇 토큰이 있으면 `via: "bot"`) · `messenger_set_webhook` ·
 // `messenger_replace_bot_with_webhook`(주소 모양만 본다) · `messenger_test`, 봇
-// `messenger_bot_status`(채널별 `window.__bots`) · `messenger_bot_set_token` · `messenger_bot_pair` · `messenger_bot_unpair` · `messenger_bot_test`,
+// `messenger_bot_status`(채널별 `window.__bots` — telegram · discord · slack, Slack 은 연결 전만 쓴다) ·`messenger_bot_set_token` · `messenger_bot_pair` · `messenger_bot_unpair` · `messenger_bot_test`,
 // 설정 읽기 · 저장(`load_settings` · `save_settings` — 받은 payload 를 `__calls` 에 적는다). 서버 사건 `messenger-bot-event` 는 리스너 표로 쏜다
 // (`window.__emit`). 원격 창은 `window.__AYNX_REMOTE__ = true` 를 둘째 주입 스크립트로 얹고 다시 읽는다(file-ui-remote-harness 와 같은 표식).
 // 테마는 `document.documentElement.dataset.theme`(settings-modal-harness 와 같은 길).
@@ -84,8 +84,8 @@ const STUB = `
   window.__emit = (event, payload) => (window.__listeners[event] ?? []).forEach((h) => cbs.get(h)?.({ event, id: h, payload }));
   window.__hooks = { discord: true, slack: false };
   const NOBOT = () => ({ configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' });
-  // 봇 채널마다 — Telegram · Discord(2026-11-19 A안)
-  window.__bots = { telegram: NOBOT(), discord: NOBOT() };
+  // 봇 채널마다 — Telegram · Discord(2026-11-19 A안) · Slack(연결 전 그대로 — 봇 흐름은 여기서 보지 않는다)
+  window.__bots = { telegram: NOBOT(), discord: NOBOT(), slack: NOBOT() };
   window.__discordOutdated = false;
   window.__settings = { app: { status_bar: 'bottom' }, messenger: {}, remote: { enabled: true, host: 'mypc.tail1234.ts.net' } };
   const botNow = (ch) => JSON.parse(JSON.stringify(window.__bots[ch]));
@@ -335,14 +335,41 @@ await ev(`[...${CH("discord")}.querySelectorAll('.slist-body button')].find(b =>
 await sleep(300);
 check(JSON.stringify(await calls("messenger_test")) === '[{"channel":"discord"}]', "[테스트 보내기] → messenger_test{channel:discord}");
 await clickHead("slack");
-const sBody = await evj(`(() => { const b = ${CH("slack")}.querySelector('.slist-body'); const i = b.querySelector('#messenger-slack-webhook'); return { input: !!i, type: i?.type, text: b.innerText.replace(/\\s+/g, ' ') }; })()`);
-check(sBody.input && sBody.type === "password", `Slack 몸통 = 웹훅 주소 칸(비밀번호형) (${sBody.text})`);
+// Slack 은 Discord 와 같은 두 방식 몸통(MessengerDual) — 연결 전엔 "연결 방식"[봇] + 봇 토큰 · 앱 토큰 칸 · 매니페스트 복사가 먼저 선다
+const sBodyOf = () =>
+  evj(`(() => { const c = ${CH("slack")}; const b = c.querySelector('.slist-body');
+    const ty = (id) => document.getElementById(id)?.type ?? null;
+    return { text: b.innerText.replace(/\\s+/g, ' '), via: c.querySelector('#messenger-slack-via [aria-pressed=true]')?.dataset.value ?? null,
+      token: ty('messenger-slack-token'), app: ty('messenger-slack-app-token'), manifest: !!document.getElementById('messenger-slack-manifest-copy'),
+      webhook: ty('messenger-slack-webhook') }; })()`);
+let sBody = await sBodyOf();
+check(
+  sBody.via === "bot" && sBody.token === "password" && sBody.app === "password" && sBody.manifest && sBody.webhook === null && /연결 방식/.test(sBody.text),
+  `Slack 연결 전 몸통 = 연결 방식[봇] · 봇 토큰 · 앱 토큰(비밀번호형) · 매니페스트 복사 · 웹훅 칸 없음 (${JSON.stringify({ ...sBody, text: undefined })} · ${sBody.text})`,
+);
+check(!/is not valid JSON|undefined/.test(sBody.text), `Slack 몸통에 오류 문구 없음 (${sBody.text})`);
 await shotChannels("06b-slack-open-not-connected");
+await ev(`${CH("slack")}.querySelector('#messenger-slack-via [data-value=webhook]').click()`);
+await sleep(300);
+sBody = await sBodyOf();
+check(sBody.via === "webhook" && sBody.webhook === "password" && sBody.token === null, `Slack [웹훅] → 웹훅 주소 칸(비밀번호형) (${JSON.stringify({ ...sBody, text: undefined })})`);
+await ev(`${CH("slack")}.querySelector('#messenger-slack-via [data-value=bot]').click()`);
+await sleep(300);
+sBody = await sBodyOf();
+check(sBody.via === "bot" && sBody.token === "password", `Slack [봇] 으로 되돌림 (${JSON.stringify({ ...sBody, text: undefined })})`);
 await clickHead("slack");
 
 // ── 2. Telegram 펼침 · 연결 전 ──────────────────────────────────────────────
 await clickHead("telegram");
 check(await ev(`!!document.getElementById('messenger-telegram-token')`), "Telegram 연결 전 = 봇 토큰 칸");
+// 머리줄 방식 칩 — Discord · Slack 과 같은 꼴(2026-11-19 사용자 결정): 봇 토큰이 있으면(계정 연결 대기도) 첫 칩 = 봇 · 없으면 칩 없음
+const tgKind = () =>
+  evj(`(() => { const sup = ${CH("telegram")}.querySelector('[data-messenger-state]'); const kind = sup.querySelector('[data-messenger-kind]');
+    return { kind: kind ? kind.textContent.trim() : null, kindFirst: !!kind && sup.firstElementChild === kind, kindDot: !!kind?.querySelector('.dot') }; })()`);
+{
+  const k = await tgKind();
+  check(k.kind === null, `Telegram 연결 전 = 방식 칩 없음 (${JSON.stringify(k)})`);
+}
 await shotChannels("02-telegram-open-no-token");
 
 // [연결] 뒤 칸은 비어 있다 — 거절된 값(칸이 남는 길)으로 본다
@@ -368,6 +395,10 @@ await sleep(600);
 const pairIdle = await evj(`(() => { const c = ${CH("telegram")}; return { pairing: c.querySelector('[data-messenger-pairing]')?.dataset.messengerPairing ?? null, head: c.querySelector('[data-messenger-state]').textContent.replace(/\\s+/g, ' ').trim(), toggle: !!document.getElementById('messenger-telegram'), open: c.hasAttribute('data-messenger-open') }; })()`);
 check(pairIdle.pairing === "idle" && /계정 연결 대기/.test(pairIdle.head) && /@my_aynx_bot/.test(pairIdle.head), `토큰만 = 계정 연결 안내 · 머리 칩 + 봇 이름 (${pairIdle.head})`);
 check(!pairIdle.toggle, "짝 전에는 Telegram 보내기 스위치가 없다");
+{
+  const k = await tgKind();
+  check(k.kind === "봇" && k.kindFirst && !k.kindDot, `Telegram 토큰만(계정 연결 대기) → 머리줄 첫 칩 = 봇(점 없음) (${JSON.stringify(k)})`);
+}
 await shotChannels("03-telegram-token-no-pair");
 
 // ── 4. pending — 접힌 채 사건으로 저절로 펼쳐진다 ────────────────────────────
@@ -403,6 +434,10 @@ await ev(`document.getElementById('messenger-telegram').click()`);
 await sleep(300);
 const tgHead = await ev(`${CH("telegram")}.querySelector('[data-messenger-state]').textContent.replace(/\\s+/g, ' ').trim()`);
 check(/보내는 중/.test(tgHead) && /말하기 켜짐/.test(tgHead), `연결됨 머리 칩 = 보내는 중 · 말하기 켜짐 (${tgHead})`);
+{
+  const k = await tgKind();
+  check(k.kind === "봇" && k.kindFirst, `Telegram 연결됨 → 머리줄 첫 칩 = 봇 (${JSON.stringify(k)})`);
+}
 const edges = await evj(`[...${LIST}.querySelectorAll('[data-messenger-channel]')].map(e => ({ c: e.dataset.messengerChannel, first: e.classList.contains('g-first'), last: e.classList.contains('g-last'), r: getComputedStyle(e).borderTopLeftRadius + '/' + getComputedStyle(e).borderBottomLeftRadius }))`);
 console.log("edges:", JSON.stringify(edges));
 check(edges[1].last && edges[2].first && edges[2].last, `Telegram 펼침 → Slack 은 위 묶음의 끝 · Telegram 은 홀로 (${JSON.stringify(edges)})`);
@@ -717,7 +752,8 @@ collecting = false;
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: `window.__AYNX_REMOTE__ = true;
   window.__bots = { telegram: { configured: true, bot: 'my_aynx_bot', paired: true, pairName: 'Jin', pending: null, link: 'ok' },
-    discord: { configured: true, bot: 'aynx-bot', paired: true, pairName: 'my_account', pending: null, link: 'ok' } };
+    discord: { configured: true, bot: 'aynx-bot', paired: true, pairName: 'my_account', pending: null, link: 'ok' },
+    slack: { configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' } };
   window.__hooks = { discord: true, slack: false };`,
 });
 await reloadBoot(send, ev);

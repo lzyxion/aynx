@@ -16,6 +16,7 @@
   import type { Key } from "$lib/i18n/keys";
   import SettingsSubView from "./SettingsSubView.svelte";
   import AgentChip from "./AgentChip.svelte";
+  import StatusChip from "./StatusChip.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import Toggle from "$lib/Toggle.svelte";
 
@@ -120,10 +121,11 @@
   <div class="slist">
     <div class="slist-row">
       <span class="slist-text"><span class="slist-name">{t("settings.ai.server.label")}</span></span>
-      <span class="slist-trail state">
-        <span class="dot" class:ok={mcp?.running} class:err={mcp && !mcp.running}></span>
-        <span>{mcp === null ? t("settings.ai.checking")
-          : t(mcp.running ? "settings.ai.server.running" : "settings.ai.server.stopped")}</span>
+      <span class="slist-trail">
+        <StatusChip tone={mcp === null ? "idle" : mcp.running ? "ok" : "bad"}>
+          {mcp === null ? t("settings.ai.checking")
+            : t(mcp.running ? "settings.ai.server.running" : "settings.ai.server.stopped")}
+        </StatusChip>
       </span>
     </div>
     <div class="slist-row">
@@ -255,11 +257,7 @@
 </SettingsSubView>
 
 <style>
-  .state {
-    gap: var(--space-2);
-    font-size: var(--t-sm);
-    color: var(--fg-2);
-  }
+  /* 최근 호출 줄 앞의 결과 점 */
   .dot {
     flex: 0 0 auto;
     width: 8px;

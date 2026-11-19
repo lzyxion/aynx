@@ -440,8 +440,7 @@
             {t(row.step === "off" ? "settings.remote.connect.busyOff" : "settings.remote.connect.busy")}
           {:else if row.state === "connected"}
             <!-- serve 는 걸려 있어도 관문이 닫혔거나 Funnel 로 공개 중이면 초록이 아니다(상태 줄과 같은 판정) -->
-            <span class="ok-dot" class:down={stateView.tone === "bad"} aria-hidden="true"></span>
-            <span data-remote-connect-on>{t("settings.remote.connect.on")}</span>
+            <StatusChip tone={stateView.tone === "bad" ? "bad" : "ok"} data-remote-connect-on>{t("settings.remote.connect.on")}</StatusChip>
           {:else if row.state === "other"}
             <span>{otherParts.before}<span class="mono">{row.target}</span>{otherParts.after}</span>
           {:else if row.state === "admin" || row.state === "failed"}
@@ -926,18 +925,6 @@
 
   .connect-row .line2.warn {
     color: var(--warn);
-  }
-
-  .connect-row .ok-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ok);
-  }
-
-  .connect-row .ok-dot.down {
-    background: var(--err);
   }
 
 

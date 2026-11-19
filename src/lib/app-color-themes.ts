@@ -2,7 +2,7 @@ import {
   argbFromHex, DynamicScheme, Hct, hexFromArgb, SchemeTonalSpot, TonalPalette, Variant,
 } from "@material/material-color-utilities";
 import {
-  CHROME_KEYS, SOURCE_KEY, cachedPaletteFromSource, chromeFromSource, contrastRatio, dynamicTermTheme, legacySurfaces,
+  CHROME_KEYS, SOURCE_KEY, cachedPaletteFromSource, chromeFromSource, contrastRatio, dynamicTermTheme, legacyOk, legacySurfaces, legacyWarn,
   m3RoleTokens, paletteFromSource, sourceArgbFromHex, type ChromeTokens, type DynamicPalette, type M3Token,
 } from "$lib/dynamic-color";
 import type { Key } from "$lib/i18n/keys";
@@ -219,6 +219,7 @@ export function defaultM3Tokens(isDark: boolean): Record<M3Token, string> {
 /**
  * 2026-10-18 전의 한 벌 — 터미널 21색과 의미색(ok · warn)은 **지금도 이 값**이고(터미널은 이번 범위 밖), 크롬 여섯 칸은
  * 옛 파일을 알아보는 데만 쓴다([`upgradeLegacyAppColors`]). 생성 테마는 그 전 면 계단([`legacySurfaces`]) 위에 바탕 칸을 물들였다.
+ * `ok` · `warn` 은 지금 규칙의 값이다 — 옛 파일에 적힌 의미색은 알아보는 쪽이 [`legacyOk`] · [`legacyWarn`] 로 얹는다.
  */
 function legacyFromSource(argb: number, isDark: boolean): DynamicPalette {
   const p = paletteFromSource(argb, isDark);
@@ -308,17 +309,21 @@ export function selectedAppColorTheme(app: AppTheme): AppColorThemeId | null {
   return matchBuiltIn(app)?.id ?? null;
 }
 
-/** 8칸이 정확히 같은 내장 테마와 그 모드(기본 제외). 모드는 문서 속성이 아니라 일치한 쪽에서 읽는다 */
+/**
+ * 8칸이 정확히 같은 내장 테마와 그 모드(기본 제외). 모드는 문서 속성이 아니라 일치한 쪽에서 읽는다.
+ * `chromes` 는 한 테마 · 모드에서 견줄 크롬들이다(기본은 지금 한 벌 — 옛 파일은 [`legacyCandidates`]).
+ */
 function matchBuiltIn(
   app: AppTheme,
-  palette: (id: AppColorThemeId, isDark: boolean) => DynamicPalette = builtInPalette,
+  chromes: (id: AppColorThemeId, isDark: boolean) => readonly ChromeTokens[] = (id, isDark) => [builtInPalette(id, isDark).chrome],
 ): { id: AppColorThemeId; isDark: boolean } | null {
   for (const family of APP_COLOR_FAMILIES) {
     for (const variant of family.variants) {
       if (variant.id === "aynx") continue;
       for (const isDark of [true, false]) {
-        const p = palette(variant.id, isDark);
-        if (CHROME_KEYS.every((key) => app[key] === p.chrome[key])) return { id: variant.id, isDark };
+        if (chromes(variant.id, isDark).some((chrome) => CHROME_KEYS.every((key) => app[key] === chrome[key]))) {
+          return { id: variant.id, isDark };
+        }
       }
     }
   }
@@ -374,31 +379,70 @@ export function selectedCustomSource(settings: Pick<AppSettings, "app" | "termin
   return null;
 }
 
+/** 2026-11-19 전 의미색 둘(hue 를 가두지 않은 `ok` · `warn`) */
+type LegacyStatus = Pick<ChromeTokens, "ok" | "warn">;
+
+function legacyStatus(sourceArgb: number, isDark: boolean): LegacyStatus {
+  return { ok: legacyOk(sourceArgb, isDark), warn: legacyWarn(sourceArgb, isDark) };
+}
+
+/** 내장 테마의 옛 의미색 — 생성 테마(Classic)만 달랐고 Signal · Monochrome 은 고정값이라 지금 값 그대로다 */
+const legacyBuiltInStatuses = new Map<string, LegacyStatus>();
+function legacyBuiltInStatus(id: AppColorThemeId, isDark: boolean): LegacyStatus {
+  const key = id + ":" + isDark;
+  let status = legacyBuiltInStatuses.get(key);
+  if (!status) {
+    const variant = (appColorFamily(familyOf(id)).variants as readonly { id: string; source?: string }[]).find((entry) => entry.id === id)!;
+    const { ok, warn } = builtInPalette(id, isDark).chrome;
+    status = variant.source ? legacyStatus(argbFromHex(variant.source), isDark) : { ok, warn };
+    legacyBuiltInStatuses.set(key, status);
+  }
+  return status;
+}
+
 /**
- * 옛 파일(2026-10-18 전 크롬)의 여덟 칸을 **같은 테마 · 원천의 MD3 크롬**으로 바꾼다 — 내장 테마 · 사용자 색 · 월페이퍼 full.
- * 터미널 칸은 생성값이 그대로라 손대지 않는다. 바꿨으면 `true`. 아무 테마와도 안 맞는 손 고친 칸은 그대로 둔다
+ * 옛 파일 후보 — 각 한 벌의 크롬에서 의미색 둘을 옛 값으로 바꿔 끼운 것: (`ok`, `warn`) ∈ {옛, 지금}² 에서 (지금, 지금)을 뺀 셋.
+ * 공개 판(0.1.4 이하)은 (옛, 옛), `ok` 만 가둔 개발 빌드는 (지금, 옛)이다. (옛, 지금)은 `ok` 만 바뀐 원천(따뜻한 쪽)에서 (옛, 옛)과 같다.
+ */
+function legacyCandidates(palettes: readonly DynamicPalette[], old: LegacyStatus): ChromeTokens[] {
+  return palettes.flatMap(({ chrome }) => [{ ...chrome, ...old }, { ...chrome, ok: old.ok }, { ...chrome, warn: old.warn }]);
+}
+
+/**
+ * 옛 파일의 여덟 칸을 **같은 테마 · 원천의 지금 크롬**으로 바꾼다 — 내장 테마 · 사용자 색 · 월페이퍼 full(크롬은 저장값이다).
+ * 알아보는 옛 꼴은 2026-10-18 전 크롬(옛 면 계단)과 지금 크롬, 각각에 2026-11-19 전 의미색([`legacyOk`] · [`legacyWarn`])을
+ * 끼운 것이다([`legacyCandidates`]). 터미널 칸은 손대지 않는다. 바꿨으면 `true`. 아무 테마와도 안 맞는 손 고친 칸은 그대로 둔다
  * (MD3 역할은 강조색을 원천으로 본다 — [`appM3Spec`]).
  */
 export function upgradeLegacyAppColors(settings: Pick<AppSettings, "app" | "terminal">): boolean {
   const app = settings.app;
   if (CHROME_KEYS.every((key) => !app[key])) return false;
   const same = (chrome: ChromeTokens) => CHROME_KEYS.every((key) => app[key] === chrome[key]);
+  // 옛 의미색이 지금 값과 같은 원천(Signal · Monochrome 등)은 후보가 지금 크롬과 같아 바꿀 것이 없다
   const write = (chrome: ChromeTokens) => {
+    if (same(chrome)) return false;
     for (const key of CHROME_KEYS) app[key] = chrome[key];
     return true;
   };
   const source = sourceArgbFromHex(settings.terminal.dynamic?.[SOURCE_KEY]);
   if (source !== null) {
     for (const isDark of [true, false]) {
-      if (same(legacyFromSource(source, isDark).chrome)) return write(cachedPaletteFromSource(source, isDark).chrome);
+      const current = cachedPaletteFromSource(source, isDark);
+      if (legacyCandidates([legacyFromSource(source, isDark), current], legacyStatus(source, isDark)).some(same)) {
+        return write(current.chrome);
+      }
     }
   }
-  const builtIn = matchBuiltIn(app, legacyAppColorPalette);
+  const builtIn = matchBuiltIn(app, (id, isDark) =>
+    legacyCandidates([legacyAppColorPalette(id, isDark), builtInPalette(id, isDark)], legacyBuiltInStatus(id, isDark)));
   if (builtIn) return write(builtInPalette(builtIn.id, builtIn.isDark).chrome);
   if (source !== null) {
     const hex = hexFromArgb(source);
     for (const isDark of [true, false]) {
-      if (same(legacyCustomPalette(hex, isDark).chrome)) return write(customPalette(hex, isDark).chrome);
+      const current = customPalette(hex, isDark);
+      if (legacyCandidates([legacyCustomPalette(hex, isDark), current], legacyStatus(source, isDark)).some(same)) {
+        return write(current.chrome);
+      }
     }
   }
   return false;

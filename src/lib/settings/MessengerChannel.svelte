@@ -12,7 +12,7 @@
    * **메신저 채널 한 칸** — 채널 목록(`MessengerSettings`)의 펼침 칸 하나
    * (docs/log/2026-11-18-messenger-bridge.md "1b" · 사용자 확정 목업 B안 — AI 에이전트 설정과 같은 틀).
    *
-   * - **머리 줄**(공용 `.slist` 줄) — 브랜드 마크 · 이름 · (Discord · Slack 만) 방식 칩(`info` — 점 없는 회색 · 상태가 아니라 종류) · 상태 칩(+ 곁글) · 끝 칸의 "이 채널로 알림 보내기" 스위치 · 펼침 꺾쇠. 머리를 누르면
+   * - **머리 줄**(공용 `.slist` 줄) — 브랜드 마크 · 이름 · 방식 칩(Discord · Slack 의 봇 · 웹훅, Telegram 의 봇 — `info` — 점 없는 회색 · 상태가 아니라 종류) · 상태 칩(+ 곁글) · 끝 칸의 "이 채널로 알림 보내기" 스위치 · 펼침 꺾쇠. 머리를 누르면
    *   몸통이 펼쳐진다(한 번에 하나만 — 상태는 부모가 쥔다). 스위치는 **연결된 채널만** 서고, 연결 전이면 자리를 비워 둔다(꺾쇠 열이 맞게).
    *   스위치는 머리 단추 **밖**이라 눌러도 펼침이 바뀌지 않는다(`McpSection` 의 사용 토글과 같다).
    * - **몸통** — 채널마다 다른 줄들(`MessengerBot` · `MessengerDual`)을 `children` 으로 받는다. 접혀 있으면 `inert`.
@@ -55,7 +55,7 @@
     sendId: string;
     send: boolean;
     onSendChange: (on: boolean) => void;
-    /** 머리의 칩들 — `botHead` · `dualHead` */
+    /** 머리의 칩들 — `telegramHead` · `dualHead`(맨 앞 방식 칩은 `head.kind`) */
     head: ChannelHead;
     /** 칩 뒤의 곁글(봇 이름 · 겹침 안내) — 남의 글자일 수 있어 글자로만 그린다 */
     aside?: string;

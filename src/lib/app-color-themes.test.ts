@@ -8,7 +8,7 @@ import {
 } from "./app-color-themes";
 import {
   BEFORE_KEY, CHIP_TOKENS, CHROME_KEYS, M3_TOKENS, SOURCE_KEY, TERM_KEYS, cachedPaletteFromSource,
-  contrastRatio, derivedChromeTokens, dynamicTermTheme, legacySurfaces, m3RoleTokens, paletteFromSource, type DynamicPalette,
+  contrastRatio, derivedChromeTokens, dynamicTermTheme, legacyOk, legacySurfaces, legacyWarn, m3RoleTokens, paletteFromSource, type DynamicPalette,
 } from "./dynamic-color";
 import { emptySettings, normalizeSettings } from "./settings/model/normalize";
 import { toPayload } from "./settings/model/payload";
@@ -39,6 +39,14 @@ function cssValue(block: string, name: string): string {
   return block.match(new RegExp(name + ": ([^;]+);"))![1].trim();
 }
 const hct = (hex: string) => Hct.fromInt(argbFromHex(hex));
+/** 2026-11-19 전 내장 테마의 `ok` — Classic 은 hue 를 가두기 전 생성값, Signal · Monochrome 은 고정 초록(지금과 같다) */
+function oldBuiltInOk(v: (typeof variants)[number], dark: boolean): string {
+  return "source" in v ? legacyOk(argbFromHex(v.source), dark) : appColorPalette(v.id, dark)?.chrome.ok ?? "";
+}
+/** 2026-11-19 전 내장 테마의 `warn` — Classic 은 hue 를 가두기 전 생성값, Signal · Monochrome 은 고정 노랑(지금과 같다) */
+function oldBuiltInWarn(v: (typeof variants)[number], dark: boolean): string {
+  return "source" in v ? legacyWarn(argbFromHex(v.source), dark) : appColorPalette(v.id, dark)?.chrome.warn ?? "";
+}
 /** 크롬 — 의미색 둘(ok · warn)을 뺀 여섯 칸은 MD3 역할(2026-10-18), 의미색은 그 전 생성값 */
 function expectM3Chrome(p: DynamicPalette, tokens: Record<string, string>, legacyChrome: DynamicPalette["chrome"]): void {
   expect(p.chrome).toEqual({ ...m3Chrome(tokens as never), ok: legacyChrome.ok, warn: legacyChrome.warn });
@@ -100,7 +108,8 @@ describe("테마 전체 — 계열", () => {
       // 터미널 · 의미색 · 바탕 아닌 크롬 칸은 a8915e4^와 바이트까지 같고, 바탕 두 칸은 그 전 면 계단(legacySurfaces) 자리로 옮겼다
       const before = classicBefore[v.id + ":" + dark];
       expect(generated.term).toEqual(before.term);
-      expect({ ...generated.chrome, ...legacySurfaces(argb, dark) }).toEqual(before.chrome);
+      // `ok` · `warn` 은 2026-11-19 에 hue 를 140~155° · 75~90° 에 가뒀다 — 고정값은 그 전 값(legacyOk · legacyWarn)이다
+      expect({ ...generated.chrome, ...legacySurfaces(argb, dark), ok: legacyOk(argb, dark), warn: legacyWarn(argb, dark) }).toEqual(before.chrome);
       expectM3Chrome(p, m3Tokens({ source: v.source }, dark), generated.chrome);
       expect(p.chrome.bg).toBe(generated.chrome.bg); // 월페이퍼 full 과 같은 surface
       expectTintedTerm(p, generated);
@@ -478,7 +487,7 @@ describe("MD3 원천 고르기 · 옛 파일 올리기 (2026-10-18)", () => {
     const oldOceanDark = { ...classicBefore["ocean:true"].chrome };
     // full — 옛 크롬(옛 면 계단) + 원천
     const argb = argbFromHex("#33aa55");
-    const legacyFull = { ...paletteFromSource(argb, false).chrome, ...legacySurfaces(argb, false) };
+    const legacyFull = { ...paletteFromSource(argb, false).chrome, ...legacySurfaces(argb, false), ok: legacyOk(argb, false), warn: legacyWarn(argb, false) };
     const s2 = { app: { ...legacyFull, dynamic: "full" }, terminal: { dynamic: { [SOURCE_KEY]: "#33aa55" } } };
     expect(upgradeLegacyAppColors(s2 as never)).toBe(true);
     expect(s2.app).toMatchObject(cachedPaletteFromSource(argb, false).chrome);
@@ -493,7 +502,7 @@ describe("MD3 원천 고르기 · 옛 파일 올리기 (2026-10-18)", () => {
     }
     // 모든 내장 테마 × 두 모드의 옛 크롬은 같은 테마 · 같은 모드의 새 크롬으로
     for (const v of variants.filter((entry) => entry.id !== "aynx")) for (const dark of [true, false]) {
-      const legacy = { app: { ...legacyAppColorPalette(v.id, dark).chrome }, terminal: {} };
+      const legacy = { app: { ...legacyAppColorPalette(v.id, dark).chrome, ok: oldBuiltInOk(v, dark), warn: oldBuiltInWarn(v, dark) }, terminal: {} };
       expect(upgradeLegacyAppColors(legacy as never), v.id).toBe(true);
       expect(legacy.app).toEqual(appColorPalette(v.id, dark)!.chrome);
     }
@@ -503,6 +512,163 @@ describe("MD3 원천 고르기 · 옛 파일 올리기 (2026-10-18)", () => {
     const hand = { app: { ...oldOceanDark, accent: "#123456" }, terminal: {} };
     expect(upgradeLegacyAppColors(hand as never)).toBe(false);
     expect(upgradeLegacyAppColors({ app: {}, terminal: {} } as never)).toBe(false);
+  });
+});
+
+describe("성공색 hue 가두기 — 옛 `ok` 올리기 (2026-11-19)", () => {
+  const warm = ["sunset", "rose", "amber"] as const;
+
+  it("Classic 의 따뜻한 셋만 `ok` 가 바뀌고 나머지 내장 테마는 그대로다", () => {
+    const expected: Record<string, [string, string]> = {
+      sunset: ["#9ece88", "#436e32"], rose: ["#9ece88", "#436e32"], amber: ["#9ece88", "#436e32"],
+      ocean: ["#8bd09c", "#2b7043"], forest: ["#8bd09b", "#2d7043"], lavender: ["#8bd09c", "#2b7043"], slate: ["#8bd09c", "#2b7043"],
+    };
+    for (const v of variants.filter((entry) => entry.id !== "aynx")) for (const dark of [true, false]) {
+      const ok = appColorPalette(v.id, dark)!.chrome.ok;
+      if (familyOf(v.id) === "classic") expect(ok, v.id).toBe(expected[v.id][dark ? 0 : 1]);
+      else expect(ok, v.id).toBe(dark ? "#6fb37c" : "#397c47");
+      expect(ok !== oldBuiltInOk(v, dark), v.id).toBe((warm as readonly string[]).includes(v.id));
+    }
+  });
+
+  it("옛 `ok` 로 저장된 따뜻한 내장 테마는 그 테마로 다시 읽힌다 — 새 `ok`", () => {
+    for (const id of warm) for (const dark of [true, false]) {
+      const v = variants.find((entry) => entry.id === id)!;
+      const s = { app: { ...appColorPalette(id, dark)!.chrome, ok: oldBuiltInOk(v, dark) }, terminal: {} };
+      expect(selectedAppColorTheme(s.app)).toBeNull();
+      expect(upgradeLegacyAppColors(s as never), id).toBe(true);
+      expect(selectedAppColorTheme(s.app)).toBe(id);
+      expect(s.app).toEqual(appColorPalette(id, dark)!.chrome);
+      expect(upgradeLegacyAppColors(s as never)).toBe(false); // 이미 새 값
+    }
+  });
+
+  it("따뜻한 사용자 색 · 월페이퍼 원천도 옛 `ok` 에서 새 한 벌로", () => {
+    for (const source of ["#d5793c", "#c0392b"]) for (const dark of [true, false]) {
+      const argb = argbFromHex(source);
+      const custom = customPalette(source, dark);
+      expect(legacyOk(argb, dark)).not.toBe(custom.chrome.ok);
+      const c = { app: { ...custom.chrome, ok: legacyOk(argb, dark), dynamic: "off" }, terminal: { dynamic: { [SOURCE_KEY]: source } } };
+      expect(selectedCustomSource(c as never)).toBeNull();
+      expect(upgradeLegacyAppColors(c as never), source).toBe(true);
+      expect(c.app).toMatchObject(custom.chrome);
+      expect(selectedCustomSource(c as never)).toBe(source);
+
+      const full = cachedPaletteFromSource(argb, dark);
+      const w = { app: { ...full.chrome, ok: legacyOk(argb, dark), dynamic: "full" }, terminal: { dynamic: { [SOURCE_KEY]: source } } };
+      expect(upgradeLegacyAppColors(w as never), source).toBe(true);
+      expect(w.app).toMatchObject(full.chrome);
+      expect(upgradeLegacyAppColors(w as never)).toBe(false);
+    }
+  });
+
+  it("2026-10-18 전 크롬 + 옛 `ok` 도 한 번에 새 한 벌로(내장 · 사용자 색 · 월페이퍼)", () => {
+    for (const id of warm) for (const dark of [true, false]) {
+      const v = variants.find((entry) => entry.id === id)!;
+      const s = { app: { ...legacyAppColorPalette(id, dark).chrome, ok: oldBuiltInOk(v, dark) }, terminal: {} };
+      expect(upgradeLegacyAppColors(s as never), id).toBe(true);
+      expect(s.app).toEqual(appColorPalette(id, dark)!.chrome);
+    }
+    // 옛 `ok` 는 a8915e4^ 고정값의 그 칸이다
+    expect(oldBuiltInOk(variants.find((entry) => entry.id === "sunset")!, true)).toBe(classicBefore["sunset:true"].chrome.ok);
+    expect(classicBefore["sunset:true"].chrome.ok).toBe("#b3ca76");
+    const argb = argbFromHex("#d5793c");
+    for (const dark of [true, false]) {
+      const full = { app: { ...paletteFromSource(argb, dark).chrome, ...legacySurfaces(argb, dark), ok: legacyOk(argb, dark), dynamic: "full" }, terminal: { dynamic: { [SOURCE_KEY]: "#d5793c" } } };
+      expect(upgradeLegacyAppColors(full as never)).toBe(true);
+      expect(full.app).toMatchObject(cachedPaletteFromSource(argb, dark).chrome);
+    }
+  });
+
+  it("손 고친 칸 · 파랑 계열은 건드리지 않는다", () => {
+    const hand = { ...appColorPalette("sunset", true)!.chrome, ok: "#b3ca77" };
+    const h = { app: { ...hand }, terminal: {} };
+    expect(upgradeLegacyAppColors(h as never)).toBe(false);
+    expect(h.app).toEqual(hand);
+    const handAccent = { ...appColorPalette("sunset", true)!.chrome, ok: "#b3ca76", accent: "#123456" };
+    const ha = { app: { ...handAccent }, terminal: {} };
+    expect(upgradeLegacyAppColors(ha as never)).toBe(false);
+    expect(ha.app).toEqual(handAccent);
+    for (const id of ["ocean", "forest", "lavender", "slate", "tide", "mono-silver"] as const) for (const dark of [true, false]) {
+      const s = { app: { ...appColorPalette(id, dark)!.chrome }, terminal: {} };
+      expect(upgradeLegacyAppColors(s as never), id).toBe(false);
+    }
+    const blue = argbFromHex("#3a7bd5");
+    const w = { app: { ...cachedPaletteFromSource(blue, true).chrome, dynamic: "full" }, terminal: { dynamic: { [SOURCE_KEY]: "#3a7bd5" } } };
+    expect(upgradeLegacyAppColors(w as never)).toBe(false);
+  });
+});
+
+describe("경고색 hue 가두기 — 옛 `warn` 올리기 (2026-11-19)", () => {
+  const cool = ["ocean", "forest", "slate"] as const;
+  /** 옛 의미색 조합 — 공개 판(0.1.4 이하)은 옛 `ok` + 옛 `warn`, `ok` 만 가둔 개발 빌드는 지금 `ok` + 옛 `warn` */
+  const combos = (v: (typeof variants)[number], dark: boolean) => [
+    { ok: oldBuiltInOk(v, dark), warn: oldBuiltInWarn(v, dark) },
+    { warn: oldBuiltInWarn(v, dark) },
+  ];
+
+  it("파랑 · 청록 셋만 `warn` 이 바뀌고 나머지 내장 테마는 그대로다", () => {
+    const expected: Record<string, [string, string]> = {
+      ocean: ["#e1bd5c", "#7b5f00"], forest: ["#e1bd5c", "#7b5f00"], slate: ["#e1bd5c", "#7b5f00"],
+      sunset: ["#f1b65f", "#875a06"], rose: ["#f1b65f", "#875a06"], lavender: ["#f1b65f", "#875a06"], amber: ["#e5bb5c", "#7e5e00"],
+    };
+    for (const v of variants.filter((entry) => entry.id !== "aynx")) for (const dark of [true, false]) {
+      const warn = appColorPalette(v.id, dark)!.chrome.warn;
+      if (familyOf(v.id) === "classic") expect(warn, v.id).toBe(expected[v.id][dark ? 0 : 1]);
+      else expect(warn, v.id).toBe(dark ? "#d9a441" : "#906816");
+      expect(warn !== oldBuiltInWarn(v, dark), v.id).toBe((cool as readonly string[]).includes(v.id));
+    }
+    for (const id of cool) expect(oldBuiltInWarn(variants.find((entry) => entry.id === id)!, true)).toBe("#cec363");
+  });
+
+  it("옛 `warn` 으로 저장된 파랑 · 청록 내장 테마는 그 테마로 다시 읽힌다 — 지금 크롬 · 2026-10-18 전 크롬 모두", () => {
+    for (const id of cool) for (const dark of [true, false]) {
+      const v = variants.find((entry) => entry.id === id)!;
+      for (const old of combos(v, dark)) for (const base of [appColorPalette(id, dark)!, legacyAppColorPalette(id, dark)]) {
+        const s = { app: { ...base.chrome, ...old }, terminal: {} };
+        expect(selectedAppColorTheme(s.app)).toBeNull();
+        expect(upgradeLegacyAppColors(s as never), id).toBe(true);
+        expect(selectedAppColorTheme(s.app)).toBe(id);
+        expect(s.app).toEqual(appColorPalette(id, dark)!.chrome);
+        expect(upgradeLegacyAppColors(s as never)).toBe(false); // 이미 새 값
+      }
+    }
+  });
+
+  it("파랑 사용자 색 · 월페이퍼 원천도 옛 `warn` 에서 새 한 벌로", () => {
+    // 내장 원천(#4285c5 등)은 사용자 색이 아니라 그 내장 테마로 읽히니 그 밖의 파랑 · 청록으로
+    for (const source of ["#3a7bd5", "#2a9d8f"]) for (const dark of [true, false]) {
+      const argb = argbFromHex(source);
+      const olds = [{ ok: legacyOk(argb, dark), warn: legacyWarn(argb, dark) }, { warn: legacyWarn(argb, dark) }];
+      const custom = customPalette(source, dark);
+      expect(legacyWarn(argb, dark)).not.toBe(custom.chrome.warn);
+      for (const old of olds) {
+        const c = { app: { ...custom.chrome, ...old, dynamic: "off" }, terminal: { dynamic: { [SOURCE_KEY]: source } } };
+        expect(selectedCustomSource(c as never)).toBeNull();
+        expect(upgradeLegacyAppColors(c as never), source).toBe(true);
+        expect(c.app).toMatchObject(custom.chrome);
+        expect(selectedCustomSource(c as never)).toBe(source);
+
+        const full = cachedPaletteFromSource(argb, dark);
+        for (const chrome of [full.chrome, { ...paletteFromSource(argb, dark).chrome, ...legacySurfaces(argb, dark) }]) {
+          const w = { app: { ...chrome, ...old, dynamic: "full" }, terminal: { dynamic: { [SOURCE_KEY]: source } } };
+          expect(upgradeLegacyAppColors(w as never), source).toBe(true);
+          expect(w.app).toMatchObject(full.chrome);
+          expect(upgradeLegacyAppColors(w as never)).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("손 고친 칸은 건드리지 않는다", () => {
+    const hand = { ...appColorPalette("ocean", true)!.chrome, warn: "#cec364" };
+    const h = { app: { ...hand }, terminal: {} };
+    expect(upgradeLegacyAppColors(h as never)).toBe(false);
+    expect(h.app).toEqual(hand);
+    const handAccent = { ...appColorPalette("ocean", true)!.chrome, warn: "#cec363", accent: "#123456" };
+    const ha = { app: { ...handAccent }, terminal: {} };
+    expect(upgradeLegacyAppColors(ha as never)).toBe(false);
+    expect(ha.app).toEqual(handAccent);
   });
 });
 

@@ -412,7 +412,7 @@
   />
   <div class="size-row cred-summary">
     {#if vaultStatus().state === "locked"}
-      <span class="hint">{t("settings.credentials.state.locked")}</span>
+      <span class="sum-chip"><UiIcon name="lock" size={13} />{t("settings.credentials.state.locked")}</span>
     {:else if kindCounts.length === 0}
       <span class="hint">{t("settings.credentials.items.empty")}</span>
     {:else}
@@ -572,33 +572,42 @@
     margin-top: 0;
   }
 
-  /* 종류별 개수 · 정리 필요 칩 — 위임 표의 켜진 권한 칩과 같은 판(강조색 없음), 정리 필요만 경고색 글자 */
+  /* 종류별 개수 · 정리 필요 칩 — 회색 면(강조색 없음) · 모양은 공용 `StatusChip` 의 20px 알약(하위 화면의 권한 칩 `.gchip` 도
+     같은 알약). 정리 필요만 경고색 — 아래 상태 줄의 warn 칩과 같은 옅은 노랑 면 */
   .sum-chip {
-    padding: 0 var(--space-2);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    /* 볼트가 잠겼을 때의 "잠김" 칩만 앞에 자물쇠 아이콘이 든다 — 간격은 `.vchip` 과 같은 4px */
+    gap: 4px;
+    height: 20px;
+    padding: 0 8px;
     font-size: var(--t-xs);
-    line-height: 20px;
+    line-height: 1;
     white-space: nowrap;
-    border-radius: var(--radius-sm);
+    border-radius: 999px;
     color: var(--fg-1);
     background: var(--surface-hover);
   }
 
+  /* 면은 `WarnChip` 과 같은 식(경고색 14%) */
   .sum-chip.warn {
     color: var(--warn);
-    background: transparent;
-    box-shadow: inset 0 0 0 1px currentColor;
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
   }
 
-  /* 상태 줄의 사실 칩 — 줄 자체는 공용 `StateRow` */
+  /* 상태 줄의 사실 칩 — 줄 자체는 공용 `StateRow`. 모양은 `StatusChip` 의 20px 알약, 아이콘 · 색은 look 마다 */
   .vchip {
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 0 var(--space-2);
+    height: 20px;
+    padding: 0 8px;
     font-size: var(--t-xs);
-    line-height: 22px;
+    line-height: 1;
     white-space: nowrap;
-    border-radius: var(--radius-sm);
+    border-radius: 999px;
     color: var(--fg-1);
     background: var(--surface-hover);
   }
@@ -608,11 +617,10 @@
     background: var(--control-sel-bg);
   }
 
+  /* 면은 `WarnChip` 과 같은 식(경고색 14% · 테두리 없음) */
   .vchip[data-look="warn"] {
     color: var(--warn);
-    background: transparent;
-    border: 1px dashed currentColor;
-    line-height: 20px;
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
   }
 
   /* ── 들어가기 관문 — 가운데 카드 한 장(묶음 카드와 같은 판 · 24px 둥글게) ── */

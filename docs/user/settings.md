@@ -1032,7 +1032,7 @@ The list of hosts given AI permission (`~/.aynx/delegation.toml`). Each row show
 - Here you can only view and delete them. To change them, use the **AI access** tab of the host settings ([Host settings…] opens that tab) and the permission chip in a
   remote tile's header. See [AI permission of a host](hosts.md#host-ai).
 - Permission applies **to the tiles a person opens and to headless sessions together** for that host.
-- A row with an alias not in `~/.ssh/config` is marked "Not in config — needs tidying". It will never connect, so delete it.
+- A row with an alias not in `~/.ssh/config` is marked "Needs tidying" (hover it for why). It will never connect, so delete it.
 
 <a id="lock-idle"></a>
 ### Auto-lock when idle

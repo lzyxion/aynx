@@ -18,6 +18,7 @@ import {
   parseBotStatus,
   parseHookStatus,
   SLACK_MANIFEST,
+  telegramHead,
   tokenFields,
   webhookHead,
   type BotStatus,
@@ -169,6 +170,25 @@ describe("머리줄 상태 칩", () => {
     // 짝 전에도 — 짝짓기도 받는 고리로 온다
     expect(keys(botHead({ ...base, link: "conflict" }, true, false))).toEqual(["idle:pairing", "bad:no_receive"]);
   });
+
+  it("Telegram 머리 — 봇 토큰이 있으면(계정 연결 대기도) 맨 앞 방식 칩 봇 · 없거나 모르면 칩 없음 · 상태 칩 · 곁글은 botHead 그대로", () => {
+    expect(telegramHead(null, true, false).kind).toBeNull();
+    expect(telegramHead({ ...base, configured: false }, true, true).kind).toBeNull();
+    expect(telegramHead(base, true, false).kind).toBe("settings.messenger.kind.bot");
+    expect(telegramHead({ ...base, paired: true }, true, true).kind).toBe("settings.messenger.kind.bot");
+    const cases: [BotStatus | null, boolean, boolean][] = [
+      [null, true, false],
+      [{ ...base, configured: false }, true, true],
+      [base, true, true],
+      [{ ...base, paired: true }, false, false],
+      [{ ...base, paired: true }, true, true],
+      [{ ...base, paired: true, link: "conflict" }, true, false],
+    ];
+    for (const [s, send, chat] of cases) {
+      const { kind: _kind, ...rest } = telegramHead(s, send, chat);
+      expect(rest).toEqual(botHead(s, send, chat));
+    }
+  });
 });
 
 describe("Discord 머리 — 방식대로", () => {
@@ -185,7 +205,7 @@ describe("Discord 머리 — 방식대로", () => {
     expect(keys(dualHead("bot", { ...base, paired: true, link: "error" }, true, false))).toEqual(["ok:sending", "bad:no_receive"]);
   });
 
-  it("맨 앞 방식 칩 — 서 있는 방식(계정 연결 대기도 봇) · 없으면 칩 없음 · 다른 채널 머리에는 없다", () => {
+  it("맨 앞 방식 칩 — 서 있는 방식(계정 연결 대기도 봇) · 없으면 칩 없음 · 방식 없는 머리 조각(botHead · webhookHead)에는 없다", () => {
     expect(dualHead("none", null, true, true).kind).toBeNull();
     expect(dualHead("webhook", null, true, false).kind).toBe("settings.messenger.kind.webhook");
     expect(dualHead("bot", base, true, false).kind).toBe("settings.messenger.kind.bot");

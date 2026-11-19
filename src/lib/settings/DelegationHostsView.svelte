@@ -133,8 +133,13 @@
             <span class="head">
               <span class="target" title={target.alias}>{target.alias}</span>
               {#if orphan}
-                <!-- 영영 붙지 않는 줄 — 경고 톤으로 한 마디, 자세한 말은 말풍선에 -->
-                <span class="warn" title={t("settings.credentials.delegation.orphan.title")}
+                <!-- 영영 붙지 않는 줄 — 짧은 경고 칩 하나, 왜 그런지는 말풍선에(읽기 프로그램에는 둘을 함께) -->
+                <span
+                  class="warn"
+                  role="note"
+                  title={t("settings.credentials.delegation.orphan.title")}
+                  data-tip-place="above"
+                  aria-label={`${t("settings.credentials.delegation.orphan")}: ${t("settings.credentials.delegation.orphan.title")}`}
                   >{t("settings.credentials.delegation.orphan")}</span
                 >
               {:else}

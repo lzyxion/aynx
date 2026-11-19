@@ -295,10 +295,13 @@
     margin-top: var(--space-1);
   }
 
+  /* 좌우 4px 안쪽 여백 + 같은 음수 margin = 스크롤 상자에 포커스 링이 설 자리(내용 자리는 그대로). 4 = 줄 양 끝의 체크박스
+     (가져오기 목록 왼쪽) · [삭제] `.btn`(관리 목록 오른쪽)의 링 2 + 틈 2 — 3px 이면 그 링이 1px 잘린다(2026-11-19). 이름 칸 `.value`
+     식 링은 2 + 1. 위아래는 세로 스크롤 상자라 3px 그대로 둔다(줄 자리가 움직이지 않게). */
   .list {
     list-style: none;
-    margin: var(--space-3) -3px 0;
-    padding: 3px;
+    margin: var(--space-3) -4px 0;
+    padding: 3px 4px;
     display: flex;
     flex-direction: column;
     gap: var(--space-1);

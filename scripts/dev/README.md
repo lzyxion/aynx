@@ -510,15 +510,21 @@ node scripts/dev/vault-harness.mjs <outdir> 9226   # <outdir>/vault-save-check.p
 (docs/log/2026-09-19-vault.md ③ · docs/log/2026-09-21-fleet-delegation-ui.md).
 
 ```bash
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9227   --user-data-dir=%TEMP%/edge-aynx-vault3 --window-size=1200,900 http://localhost:1420/
-node scripts/dev/vault-settings-harness.mjs <outdir> 9227   # <outdir>/vault-settings.png · vault-host-form.png · delegation.png
+node scripts/dev/run-harness.mjs vault-settings-harness.mjs <outdir> --size 1200x900   # 약 30초 · <outdir>/vault-settings.png · vault-host-form.png · delegation.png
 ```
 
-- 시나리오 다섯: ① 볼트 없음 + 마스터 설정 모달 · ② 열림+마스터(삭제·변경) · ③ 잠김 ·
-  ④ 호스트 목록 표식 + 호스트 폼의 저장된 자격증명 · **⑤ AI 위임 호스트 표**(2026-09-21).
-- ⑤가 보는 것: 권한 칩 넷의 켜짐/꺼짐 · 고아 줄(`alias_known:false`)의 경고 한 마디와
-  흐림 · [제거]는 **두 번 눌러야** 지운다(첫 번째는 글자만 바뀐다) · [호스트 설정…]이
-  호스트 폼을 **세션 탭**으로 연다. 부팅 알림("설정에 없는 AI 위임 n개")도 같은 화면에 뜬다.
+- 단언마다 `PASS`/`FAIL` 한 줄, 끝 줄 `SUMMARY pass=… fail=…` · 종료 코드는 FAIL 이 있으면 1. CDP 호출 · 기다리기마다 시한(10초 안팎)이
+  있고 시나리오마다 · 전체(300초)에 상한이 있어 멈추지 않고 FAIL 로 떨어진다.
+- 시나리오 다섯(볼트 상태마다 `reloadBoot` 로 깨끗한 페이지): ① 볼트 없음 — 관문 [열기] · 상태 줄 · 마스터 설정 모달(불일치는 명령 0번 ·
+  `vault_create`) · 사실 칩 · ② 열림+마스터 — 관문 = 마스터 확인(틀리면 모달에 남음) · 저장된 항목 하위 화면의 줄 [삭제] · Escape 뒤 포커스 ·
+  [변경…] · ③ 잠김 — 마스터가 있으면 부팅 가림막이 먼저 선다(그것만 확인) · **마스터 없는** 잠긴 볼트로 관문 = 잠금 해제 모달 · Escape 면
+  관문에 남음 · 빈 칸이면 `vault_unlock(null)` · ④ 호스트 독 줄의 볼트 표식 + F2 호스트 폼의 저장된 자격증명 · [지우기] ·
+  **⑤ AI 권한 호스트 표** — 부팅 고아 알림 [설정 열기] → 관문 뒤 [정리 필요] · 요약 칩 · 권한 칩 셋(단계 + 헤드리스 둘) · 고아 줄의 칩
+  "정리 필요"(말풍선에 이유) · [제거]는 **두 번 눌러야** 지운다 · [호스트 설정…]이 호스트 폼을 **AI 권한** 칸으로 연다.
+  칩 `.vchip` · `.sum-chip` · `.gchip` · 고아 칩은 20px 알약인지도 본다.
+- 2026-11-19 다시 짰다 — 옛 판은 고정 `sleep(4500)` 뒤 Ctrl+, 를 쳐 찬 vite 에서 ①이 흰 화면으로 찍혔고, ④의 F2 에서 페이지가 멈춰 600초
+  시한에 걸렸다(옛 스텁이 `agent_args_targets` 를 곧바로 거절 → 호스트 폼의 그 `$effect` 가 빈 목록을 받을 때마다 다시 불러 마이크로태스크
+  고리가 렌더러를 붙잡았다 — 머리말 · 이 판의 스텁은 그 명령에 답한다).
 - **비밀은 절대 찍지 않는다** — 금고 명령이 받은 값은 `typeof`·길이로만 기록한다.
 
 ## vault-veil-harness.mjs — 볼트가 가림막과 함께 잠긴다
@@ -1222,6 +1228,31 @@ Discord 만 `[server-outdated]`) · `_set_token`(Telegram `\d+:` · Discord `a.b
 - 스크롤은 설정 본문의 스크롤 칸만 직접 민다 — `scrollIntoView` 는 `overflow: hidden` 인 설정 창까지 밀어 창 아래가 빈 채로 찍혔다.
 - 보지 않는 것: 진짜 세션 서버 · Telegram · Discord(롱폴 · 게이트웨이 · 짝짓기 코드 생성 · 봇 답장 · 웹훅이 실제로 지워지는가) · 원격 관문의 실제 거절(`remote/deny.rs` 는 cargo 시험).
   **비밀은 찍지 않는다** — 토큰 · 웹훅 주소는 `typeof` · 길이만 기록한다.
+
+## focus-ring-clip-harness.mjs — 설정의 포커스 링이 조상에게 잘리는 컨트롤 찾기
+
+```bash
+node scripts/dev/run-harness.mjs focus-ring-clip-harness.mjs <outdir> --size 1200x900 --timeout 500 -- --tag before
+node scripts/dev/run-harness.mjs focus-ring-clip-harness.mjs <outdir> --size 1200x900 --timeout 580 -- --tag after --baseline <outdir>/before-layout.json [--outside]
+```
+
+2026-11-19 보고(보안 › 저장된 항목의 찾기 칸 · 지침 › 사이드 채팅 지침의 입력 상자 링이 좌우로 잘림)의 재는 판. 설정 섹션 14개 + 하위 화면 · 펼침 칸
+(id 단추 표 `OPENERS` + 줄 단추 `.slist-open` 앞 6개)을 차례로 열고, 화면마다 보이는 포커스 가능한 컨트롤에 키보드 포커스(CDP Shift 한 번 +
+`focus({ focusVisible: true })`)를 주어 **링 사각형**(링을 그리는 요소 = 자신 또는 `:has()` 로 받는 조상, outline-width + offset)이 overflow 가
+visible 이 아닌 조상의 **자르는 사각형**(padding box · clip 축은 + `overflow-clip-margin`)을 넘는지 잰다. 설정 본문은 한 화면씩 내리며 재고, 세로 스크롤
+상자(와 그 바깥)의 위 · 아래는 세지 않는다. 걸린 것은 링 한가운데(상자 밖 2px)를 포커스 전 · 후로 3×3 잘라 찍어 **실제로 칠해졌는지**(`painted`)도 본다 —
+`overflow-clip-margin` 처럼 계산값은 있어도 엔진이 무시하는 경우를 가린다(한 축만 `clip` 이면 Chromium 이 무시한다 — 이 판이 찾았다).
+스텁: 볼트 열림 · 마스터 없음(관문 [열기]) · 저장된 항목 셋 · AI 권한 호스트 둘(하나는 고아) · DB 권한 하나 · 지침 하나 + 사이드 채팅 지침 · 템플릿 하나.
+
+- 출력: `<tag>-clips.json`(화면별 수 · 잘림 목록 — 화면 · 컨트롤 · 링 주인 · 변 · px · 가장 많이 자르는 조상 + 모두) · `<tag>-layout.json`(화면마다 컨트롤
+  사각형) · `<tag>-NN-<화면>.png` · `<tag>-focus-cred-search.png` · `<tag>-focus-sidechat-body.png`(대표 장면 — 링 왼쪽 · 오른쪽 칠함을 함께 찍는다) ·
+  `<tag>-chip-*.png`(보안 요약 · AI 권한 호스트 · MCP 세션 서버 · 지침 사이드 채팅 칩 · AI 에이전트 훅 줄).
+- `--baseline` — 같은 화면 · 같은 컨트롤의 사각형을 비교해 달라진 것을 센다(고친 뒤 0 이어야 한다 — "보이는 배치가 1px 도 안 움직인다").
+  하위 화면을 열 때(미끄러지는 200ms) 설정 본문의 가로 넘침도 프레임마다 재어 `hscroll_max` 로 찍는다(0 이어야 한다 — `.sub-views` 가 자르는 까닭).
+- `--outside` — 설정 밖(호스트 · 프로젝트 · DB 연결 폼과 그 내비 면 · 명령 팔레트 · 독 넷 · 채팅 독)도 같은 재기로 본다(보고만). 화면마다 다시 읽고 연다.
+  스크롤 상자 안에서 아래로 가려진 컨트롤은 거기서는 재지 않는다(팔레트 결과 목록 등).
+- 끝 줄 `SUMMARY clips=… unpainted=… openers=… hscroll_max=… moved=…`. 종료 코드는 늘 0 — 판정은 사람이 숫자로 한다(재는 판이라).
+- 보지 않는 것: 키보드로 Tab 을 눌러 가며 도는 순서 · 팝오버(독 밖 `fixed`) 안의 컨트롤 · 좁은 창.
 
 ## new-shell-cwd-harness.mjs — 새로 여는 셸·AI 타일이 뜰 폴더
 

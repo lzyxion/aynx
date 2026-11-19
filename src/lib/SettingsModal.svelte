@@ -474,12 +474,18 @@
   }
 
   /* 우측 내용 패널 — 활성 카테고리만 보이고, 넘치면 여기서만 스크롤한다.
-     오른쪽 안쪽 여백은 스크롤 막대가 손잡이에 붙지 않게 하는 몫이다. */
+     오른쪽 안쪽 여백은 스크롤 막대가 손잡이에 붙지 않게 하는 몫이다.
+     왼쪽 12px 는 **포커스 링이 설 자리**다 — 스크롤 상자는 가로로도 padding box 에서 자르므로, 여백이 0 이면 왼쪽 끝에 붙은
+     칸 · 단추의 링(상자 밖 3~4px — `.btn` 2+2 · `.value` 2+1)이 잘렸다(2026-11-19 — 보안 › 저장된 항목의 찾기 칸). 12 = 하위 화면의
+     [‹ 돌아가기](본문보다 8px 왼쪽 — `SettingsSubView` 의 `.back`) + 링 4. 같은 크기의 음수 margin 으로 내용 자리는 그대로다
+     (내비와의 간격 · 칸 폭 · 640px 열이 1px 도 안 움직인다 — `scripts/dev/focus-ring-clip-harness.mjs` 의 배치 비교).
+     하위 화면의 가로 자르기(`SubViewStack` 의 `.sub-views`)가 이 여백 안으로 같은 12px 를 넓혀 쓴다. */
   .settings-panel {
     flex: 1 1 auto;
     min-width: 0;
     overflow-y: auto;
-    padding: 0 var(--space-2) var(--space-4) 0;
+    margin-left: -12px;
+    padding: 0 var(--space-2) var(--space-4) 12px;
   }
 
   /* 내용 열 — 넓은 창에서도 줄이 640px 을 넘지 않는다. 이름과 손잡이가 화면 양 끝으로

@@ -11,7 +11,9 @@ import {
   CHIP_TOKENS,
   M3_ROLES,
   M3_TOKENS,
+  legacyOk,
   legacySurfaces,
+  legacyWarn,
   m3RoleTokens,
   TINT_OWNER,
   TINT_TOKENS,
@@ -264,6 +266,99 @@ describe("밝기 관계", () => {
     const light = paletteFromSource(argb, false);
     for (const key of ["black", "brightBlack", "white", "brightWhite"] as const) {
       expect(brightness(light.term[key])).toBeCloseTo(brightness(dark.term[key]), 0);
+    }
+  });
+});
+
+describe("성공색 `ok` — HCT hue 140~155° (2026-11-19)", () => {
+  const hctHue = (hex: string) => Hct.fromInt(argbFromHex(hex)).hue;
+  /** 8비트 반올림 여유 — 경계 hue 로 다시 만든 색도 hex 로 접으면 경계를 조금 벗어난다 */
+  const EPS = 0.5;
+
+  it("색상환 전체(원천 hue 3° 간격 · chroma · tone · 두 모드)에서 ok 는 140~155° 이고 warn 과 49° 이상 떨어진다", () => {
+    let min = 360, max = 0, gap = 360;
+    // 전체 게이트에서 시한(5초)에 걸리지 않게 960벌만 — 한 벌이 1ms 쯤이다
+    for (let h = 0; h < 360; h += 3) for (const c of [8, 48]) for (const t of [30, 70]) for (const isDark of [true, false]) {
+      const { ok, warn } = paletteFromSource(Hct.from(h, c, t).toInt(), isDark).chrome;
+      const hue = hctHue(ok);
+      min = Math.min(min, hue);
+      max = Math.max(max, hue);
+      gap = Math.min(gap, hueDistance(hue, hctHue(warn)));
+    }
+    expect(min).toBeGreaterThanOrEqual(140 - EPS);
+    expect(max).toBeLessThanOrEqual(155 + EPS);
+    expect(gap).toBeGreaterThanOrEqual(49); // warn 도 75~90° 에 가둔 뒤(2026-11-19) — 그 전에는 34°
+  });
+
+  it("범위 안이던 원천의 ok 는 hex 가 그대로다", () => {
+    const expected: Record<string, [string, string]> = {
+      "#4285c5": ["#8bd09c", "#2b7043"],
+      "#398568": ["#8bd09b", "#2d7043"],
+      "#9074ce": ["#8bd09c", "#2b7043"],
+      "#627d8c": ["#8bd09c", "#2b7043"],
+    };
+    for (const [source, [dark, light]] of Object.entries(expected)) {
+      expect(paletteFromSource(argbFromHex(source), true).chrome.ok, source).toBe(dark);
+      expect(paletteFromSource(argbFromHex(source), false).chrome.ok, source).toBe(light);
+      expect(legacyOk(argbFromHex(source), true)).toBe(dark);
+      expect(legacyOk(argbFromHex(source), false)).toBe(light);
+    }
+  });
+
+  it("140° 아래로 밀리던 따뜻한 원천은 hue 만 140° 로 — 옛 값은 legacyOk 에 남는다", () => {
+    for (const source of ["#df7654", "#c66187", "#bd9136", "#d5793c"]) {
+      const argb = argbFromHex(source);
+      expect(paletteFromSource(argb, true).chrome.ok, source).toBe("#9ece88");
+      expect(paletteFromSource(argb, false).chrome.ok, source).toBe("#436e32");
+      expect(hctHue(legacyOk(argb, true))).toBeLessThan(140);
+      expect(hctHue(legacyOk(argb, false))).toBeLessThan(140);
+    }
+    expect(legacyOk(argbFromHex("#df7654"), true)).toBe("#b3ca76");
+    expect(legacyOk(argbFromHex("#d5793c"), true)).toBe("#dcbf5d");
+  });
+});
+
+describe("경고색 `warn` — HCT hue 75~90° (2026-11-19)", () => {
+  const hctHue = (hex: string) => Hct.fromInt(argbFromHex(hex)).hue;
+  /** 8비트 반올림 여유 — 경계 hue 로 다시 만든 색도 hex 로 접으면 경계를 조금 벗어난다 */
+  const EPS = 0.5;
+
+  it("색상환 전체(원천 hue 3° 간격 · chroma · tone · 두 모드)에서 warn 은 75~90° 이다", () => {
+    let min = 360, max = 0;
+    // 전체 게이트에서 시한(5초)에 걸리지 않게 960벌만 — 한 벌이 1ms 쯤이다
+    for (let h = 0; h < 360; h += 3) for (const c of [8, 48]) for (const t of [30, 70]) for (const isDark of [true, false]) {
+      const hue = hctHue(paletteFromSource(Hct.from(h, c, t).toInt(), isDark).chrome.warn);
+      min = Math.min(min, hue);
+      max = Math.max(max, hue);
+    }
+    expect(min).toBeGreaterThanOrEqual(75 - EPS);
+    expect(max).toBeLessThanOrEqual(90 + EPS);
+  });
+
+  it("범위 안이던 원천의 warn 은 hex 가 그대로다", () => {
+    const expected: Record<string, [string, string]> = {
+      "#9074ce": ["#f1b65f", "#875a06"],
+      "#df7654": ["#f1b65f", "#875a06"],
+      "#c66187": ["#f1b65f", "#875a06"],
+      "#bd9136": ["#e5bb5c", "#7e5e00"],
+    };
+    for (const [source, [dark, light]] of Object.entries(expected)) {
+      expect(paletteFromSource(argbFromHex(source), true).chrome.warn, source).toBe(dark);
+      expect(paletteFromSource(argbFromHex(source), false).chrome.warn, source).toBe(light);
+      expect(legacyWarn(argbFromHex(source), true)).toBe(dark);
+      expect(legacyWarn(argbFromHex(source), false)).toBe(light);
+    }
+  });
+
+  it("90° 위로 밀리던 파랑 · 청록 원천은 hue 만 90° 로 — 옛 값은 legacyWarn 에 남는다", () => {
+    for (const source of ["#4285c5", "#398568", "#627d8c", "#3a7bd5"]) {
+      const argb = argbFromHex(source);
+      expect(paletteFromSource(argb, true).chrome.warn, source).toBe("#e1bd5c");
+      expect(paletteFromSource(argb, false).chrome.warn, source).toBe("#7b5f00");
+      expect(legacyWarn(argb, true)).toBe("#cec363");
+      expect(legacyWarn(argb, false)).toBe("#6d640a");
+      // 터미널 노랑은 그대로 harmonize 값이다(범위 밖)
+      expect(hctHue(paletteFromSource(argb, true).term.yellow)).toBeGreaterThan(100);
     }
   });
 });

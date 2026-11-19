@@ -12,6 +12,7 @@
   import InfoNote from "./InfoNote.svelte";
   import Toggle from "$lib/Toggle.svelte";
   import AgentChip from "./AgentChip.svelte";
+  import StatusChip from "./StatusChip.svelte";
   import SubViewStack from "./SubViewStack.svelte";
   import InstructionEditor from "./InstructionEditor.svelte";
   import InstructionsApply from "./InstructionsApply.svelte";
@@ -205,7 +206,7 @@
             <span class="slist-title">
               <span class="slist-name">{t("settings.instructions.side_chat.name")}</span>
               {#if sideText !== null}
-                <span class="slist-pill">{t(sideText.trim() ? "settings.instructions.side_chat.state.set" : "settings.instructions.side_chat.state.empty")}</span>
+                <StatusChip tone={sideText.trim() ? "ok" : "off"}>{t(sideText.trim() ? "settings.instructions.side_chat.state.set" : "settings.instructions.side_chat.state.empty")}</StatusChip>
               {/if}
             </span>
           </span>
