@@ -2,8 +2,12 @@
 
 use super::logic::*;
 use super::*;
+use crate::telegram::Api;
 use crate::agent_state::Phase;
 use std::sync::atomic::{AtomicI64, Ordering};
+
+/// 3b — 루프백 가짜 Discord 통합(이 모듈의 도우미를 같이 쓴다).
+mod dc_tests;
 
 // ---------------------------------------------------------------------------
 // 순수
@@ -195,10 +199,10 @@ fn answer_waits_for_the_file() {
         let env = Arc::new(FakeEnv::default());
         *env.answers.lock().unwrap() = script.into_iter().map(|(t, n)| (t.map(str::to_string), n)).collect();
         let cfg = Arc::new(Config {
-            api: Api::at("http://127.0.0.1:9"),
+            telegram: tg::Conf { api: Api::at("http://127.0.0.1:9"), poll_timeout_secs: 1 },
+            discord: dc::Conf::release(),
             dir: None,
             env: env.clone(),
-            poll_timeout_secs: 1,
             backoff: Duration::from_millis(50),
             conflict_backoff: Duration::from_millis(50),
             enter_delay: Duration::from_millis(5),
@@ -331,13 +335,30 @@ fn card_message_text() {
     let patch = json!({"command": "*** Begin Patch\n*** Update File: b.rs\n*** Add File: a.rs\n*** End Patch"});
     assert_eq!(card_summary("apply_patch", &patch), "a.rs, b.rs");
     assert_eq!(card_summary("Other", &json!({"weird": 1})), "");
-    let h = card_html("<tile>", "Bash", "a && b <c>");
+    // 걷기는 전송(Telegram — 중립 글 → HTML)
+    let h = tg::render(&Text::plain(card_text("<tile>", "Bash", "a && b <c>")));
     assert!(h.contains("&lt;tile&gt;") && h.contains("Bash · a &amp;&amp; b &lt;c&gt;") && !h.contains("<c>"), "{h}");
     assert!(tool_line("Read", "").ends_with("Read"));
     let b = card_buttons(&id32());
     assert_eq!((b.len(), parse_card_press(&b[0].1).map(|x| x.0), parse_card_press(&b[1].1).map(|x| x.0)), (2, Some(true), Some(false)));
-    assert_eq!(result_html("x<", "y"), "x&lt; · y");
-    assert_eq!(result_html("", "y"), "y");
+    assert_eq!(tg::render(&Text::plain(result_text("x<", "y"))), "x&lt; · y");
+    assert_eq!(tg::render(&Text::plain(result_text("", "y"))), "y");
+    // 3a — 중립 글의 Telegram 모양(1a · 2단계의 글자 그대로): 굵은 머리 줄 · 그려 둔 알림(자르기) · 알림 + 도구 줄
+    assert_eq!(tg::render(&Text::headed("🟢 a<b", "x & y")), "<b>🟢 a&lt;b</b>\nx &amp; y");
+    assert_eq!(tg::render(&Text::Rendered { text: "<b>t</b>".into(), tail: None }), "<b>t</b>");
+    assert_eq!(tg::render(&Text::Rendered { text: "<b>t</b>".into(), tail: Some("Tool: a<b".into()) }), "<b>t</b>\nTool: a&lt;b");
+    let long = format!("<b>x</b> {}", "가".repeat(5000));
+    let r = tg::render(&Text::Rendered { text: long.clone(), tail: Some("Tool: z".into()) });
+    assert!(r.ends_with("…\nTool: z") && crate::telegram::units(&r) <= crate::telegram::TEXT_MAX, "{}", r.len());
+    assert_eq!(tg::render(&Text::Rendered { text: long.clone(), tail: None }), crate::telegram::clip_html(&long, crate::telegram::TEXT_MAX));
+    // 답 나누기의 자리 = 1a 의 `TEXT_MAX - (units(이름표) + 8)`(머리 줄 `🟢 <이름표>`)
+    let label = "proj / wt";
+    let body = "z".repeat(9000);
+    let more = "…";
+    assert_eq!(
+        tg::split_answer(&format!("🟢 {label}"), &body, more),
+        crate::telegram::split_text(&body, crate::telegram::TEXT_MAX - (crate::telegram::units(label) + 8), crate::telegram::MAX_PARTS, more)
+    );
 }
 
 fn id32() -> String {
@@ -426,6 +447,12 @@ fn pty_writes_have_two_sites() {
     let inject = &bridge[bridge.find("async fn inject(").unwrap()..];
     let inject = &inject[..inject.find("\n}\n").unwrap()];
     assert_eq!(inject.matches(".write_pty(").count(), 2, "둘 다 inject 안");
+    // 전송(3a · 3b)은 넣기 길을 갖지 않는다 — 바깥(`Env`)도 넣기 함수도 부르지 않는다.
+    for (name, src) in [("tg.rs", include_str!("tg.rs")), ("dc.rs", include_str!("dc.rs"))] {
+        for bad in ["write_pty", "inject(", "deliver(", ".env", "Env", "pty::", "ssh::write"] {
+            assert!(!src.lines().any(|l| l.split("//").next().unwrap_or("").contains(bad)), "{name}: {bad}");
+        }
+    }
 }
 
 /// 다리는 승인 등급 프레임을 만들지 않고 작업안 · 권한 카드 · 위임 · 앨범 · 볼트로 가는 길이 없다.
@@ -435,7 +462,8 @@ fn bridge_has_no_approval_path() {
         "Grade::Approve", "request_approve", "approve_operation", "ops_approve", "approve_in", "tile_permission_decide", "decide(",
         "delegation::", "orchestration::", "vault_ops", "hub::vault", "producer::",
     ];
-    let server_side = [include_str!("../messenger_bridge.rs"), include_str!("logic.rs"), include_str!("../../telegram.rs")];
+    let server_side =
+        [include_str!("../messenger_bridge.rs"), include_str!("logic.rs"), include_str!("tg.rs"), include_str!("dc.rs"), include_str!("../../telegram.rs")];
     for (i, src) in server_side.iter().chain([include_str!("../messenger_bridge_proxy.rs")].iter()).enumerate() {
         let src = src.replace("\r\n", "\n");
         let src = src.split("#[cfg(test)]\nmod tests {").next().unwrap();
@@ -498,17 +526,36 @@ fn gui_never_reads_the_token_file() {
     for (path, body) in sources() {
         let code: String = body.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
         let allowed = path.starts_with("server/messenger_bridge");
-        if code.contains("Channel::Telegram.secret_file()") || has_word(&code, "CHAT_FILE") || code.contains("load_token(") {
-            assert!(allowed || path == "instance.rs", "{path} 가 Telegram 비밀 파일을 만진다");
+        let chat_names = ["CHAT_FILE", "DISCORD_CHAT_FILE", "CHAT_FILES"];
+        if chat_names.iter().any(|w| has_word(&code, w)) || code.contains("load_token(") {
+            assert!(allowed || path == "instance.rs", "{path} 가 봇 짝 파일 · 토큰 읽기를 만진다");
         }
-        if code.contains("\"telegram-bot\"") {
-            assert!(path == "messenger.rs", "{path} — 이름은 `Channel::secret_file` 한 곳에만");
+        // 다리는 채널 값으로 봇 토큰 파일 이름을 묻는다(`chan.bot_file()` — 3b: Telegram · Discord). 묻는 곳은 이름의 주인 · 다리뿐이다
+        // (`messenger.rs` 는 상태 · 알림의 갈래를 고를 때 "봇이 있는 채널인가" 만 본다 — 파일을 열지 않는다).
+        if code.contains(".bot_file()") {
+            assert!(allowed || path == "messenger.rs", "{path} 가 봇 토큰 파일 이름을 묻는다");
+        }
+        // 비밀 파일 이름 전부(`secret_files`)는 씨앗 시험 · 이름의 주인만
+        if code.contains(".secret_files()") {
+            assert!(path == "messenger.rs" || path == "instance.rs", "{path} 가 비밀 파일 이름을 묻는다");
+        }
+        for name in ["\"telegram-bot\"", "\"discord-bot\""] {
+            if code.contains(name) {
+                assert!(path == "messenger.rs", "{path} — {name} 은 `Channel::bot_file` 한 곳에만");
+            }
+        }
+        if code.contains("\"discord-chat\"") || code.contains("\"telegram-chat\"") {
+            assert!(path == "server/messenger_bridge.rs", "{path} — 짝 파일 이름은 다리에만");
         }
     }
     let messenger = include_str!("../../messenger.rs");
     let telegram_arm = messenger.split("Channel::Telegram").count();
     assert!(telegram_arm > 1);
     assert!(!messenger.contains("load_token") && !messenger.contains("BotToken::parse"));
+    // `messenger.rs` 가 여는 파일은 웹훅 파일뿐 — 읽는 함수(`load_at`)의 길은 `webhook_path` 하나다.
+    let reads: Vec<&str> = messenger.lines().filter(|l| l.split("//").next().unwrap_or("").contains("read_to_string(")).collect();
+    assert_eq!(reads.len(), 1, "{reads:?}");
+    assert!(!messenger.contains("bot_file()?)") && !messenger.contains("join(channel.bot_file"), "봇 토큰 파일 경로를 짓지 않는다");
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +648,8 @@ impl Fake {
 #[derive(Default)]
 struct FakeEnv {
     chat_on: std::sync::atomic::AtomicBool,
+    /// `[messenger] discord_chat`(3b)
+    discord_on: std::sync::atomic::AtomicBool,
     tiles: Mutex<HashMap<String, (TileView, u32)>>,
     writes: Mutex<Vec<(u32, Vec<u8>)>>,
     /// 답 읽기의 각본 — 앞에서 하나씩(마지막 하나는 계속) · 비면 고정 답
@@ -610,7 +659,11 @@ struct FakeEnv {
 
 impl Env for FakeEnv {
     fn prefs(&self) -> MessengerPrefs {
-        MessengerPrefs { telegram_chat: Some(self.chat_on.load(Ordering::SeqCst)), ..Default::default() }
+        MessengerPrefs {
+            telegram_chat: Some(self.chat_on.load(Ordering::SeqCst)),
+            discord_chat: Some(self.discord_on.load(Ordering::SeqCst)),
+            ..Default::default()
+        }
     }
     fn streams(&self) -> Vec<String> {
         let mut v: Vec<String> = self.tiles.lock().unwrap().keys().cloned().collect();
@@ -665,10 +718,10 @@ fn live_bridge_with_fake_telegram() {
     let dir = std::env::temp_dir().join(format!("aynx-bridge-{}-{}", std::process::id(), now_ms()));
     let env = Arc::new(FakeEnv::default());
     let cfg = Config {
-        api: Api::at(&base),
+        telegram: tg::Conf { api: Api::at(&base), poll_timeout_secs: 1 },
+        discord: dc::Conf::release(),
         dir: Some(dir.clone()),
         env: env.clone(),
-        poll_timeout_secs: 1,
         backoff: Duration::from_millis(50),
         conflict_backoff: Duration::from_millis(50),
         enter_delay: Duration::from_millis(5),
@@ -681,6 +734,12 @@ fn live_bridge_with_fake_telegram() {
     let op = |name: &str, body: Value| rt.block_on(handle(name, body));
     assert_eq!(op("messenger_bot_status", Value::Null).unwrap()["configured"], false);
     assert_eq!(op("messenger_bot_status", Value::Null).unwrap()["link"], "off");
+    // 3a — 몸의 `channel`: 없으면 Telegram · 전송이 없는 채널은 거절(파일을 만지지 않는다)
+    assert_eq!(op("messenger_bot_status", json!({ "channel": "telegram" })).unwrap(), op("messenger_bot_status", Value::Null).unwrap());
+    for o in ["messenger_bot_status", "messenger_bot_set_token", "messenger_bot_unpair", "messenger_bot_test", "messenger_bot_notify"] {
+        assert!(op(o, json!({ "channel": "slack", "token": null, "text": "x" })).unwrap_err().message.starts_with("[unsupported]"), "{o}");
+    }
+    assert!(op("messenger_bot_status", json!({ "channel": "nope" })).is_err());
 
     // 토큰 — 틀린 모양 · Telegram 거절 · 등록(`getMe`) · 파일 · 상태에 토큰 없음.
     let e = op("messenger_bot_set_token", json!({ "token": "nope" })).unwrap_err();
@@ -752,12 +811,12 @@ fn live_bridge_with_fake_telegram() {
     assert!(texts[before..].iter().all(|t| crate::telegram::units(&parsed(t)) <= crate::telegram::TEXT_MAX));
     let answer_id = 1000 + sends_before;
     let before = fake.texts().len();
-    rt.block_on(notify(Notice { text: "<b>턴 끝</b>".into(), stream: Some("local-s1".into()), kind: Some("stop".into()), label: Some("내 타일".into()) })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>턴 끝</b>".into(), stream: Some("local-s1".into()), kind: Some("stop".into()), label: Some("내 타일".into()), channel: None, has_tool: false })).unwrap();
     assert_eq!(fake.texts().len(), before, "다리 턴의 같은 알림은 한 번 더 가지 않는다");
-    rt.block_on(notify(Notice { text: "<b>작업안</b>".into(), stream: None, kind: None, label: None })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>작업안</b>".into(), stream: None, kind: None, label: None, channel: None, has_tool: false })).unwrap();
     assert_eq!(fake.texts().len(), before + 1);
     // 알림의 이름(`label`)은 다리 이름표가 아니다 — 다리가 맡지 않은 알림이어도 적지 않는다(이름표를 적는 길은 `messenger_bot_label` 하나).
-    rt.block_on(notify(Notice { text: "<b>권한</b>".into(), stream: Some("local-s1".into()), kind: Some("osc".into()), label: Some("내 타일".into()) })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>권한</b>".into(), stream: Some("local-s1".into()), kind: Some("osc".into()), label: Some("내 타일".into()), channel: None, has_tool: false })).unwrap();
     assert!(!state().labels.contains_key("local-s1"), "notify 는 이름표를 덮어쓰지 않는다");
 
     // 답장 → 그 타일로(이름표는 알림의 이름이 아니라 대체 이름 — 미리 알린 것이 없다).
@@ -839,9 +898,11 @@ fn live_bridge_with_fake_telegram() {
     assert_eq!((st["configured"].as_bool(), st["link"].as_str()), (Some(false), Some("off")));
     assert!(!dir.join("telegram-bot").exists());
     // 받은 글 본문 · 토큰은 로그 갈래에 없다 — 로그는 고정 글자뿐(소스가 `log::line(` 에 변수를 싣는 곳은 오류 종류뿐).
-    let src = include_str!("../messenger_bridge.rs");
-    for l in src.lines().filter(|l| l.contains("log::line(format!")) {
-        assert!(l.contains("err_kind"), "{l}");
+    for src in [include_str!("../messenger_bridge.rs"), include_str!("tg.rs"), include_str!("dc.rs")] {
+        for l in src.lines().filter(|l| l.contains("log::line(format!")) {
+            // 실을 수 있는 변수는 오류 종류와 게이트웨이 닫힘 코드 숫자(`u16`)뿐
+            assert!(l.contains("err_kind") || l.contains("(code {code})"), "{l}");
+        }
     }
     server.unblock();
     drop(rt);
@@ -913,8 +974,9 @@ fn bash(cli: &str, tool: &str, cmd: &str) -> Value {
 /// 다리 턴처럼 돌본다(넣기 함수가 하는 것과 같은 두 줄).
 fn tend_as_bridge_turn(stream: &str) {
     let mut s = state();
-    s.turns.begin(stream, now_ms());
-    s.tending.tend(stream);
+    let c = s.chan(Channel::Telegram);
+    c.turns.begin(stream, now_ms());
+    c.tending.tend(stream);
 }
 
 impl Fake {
@@ -958,10 +1020,10 @@ fn live_card_buttons_with_fake_telegram() {
     let env = Arc::new(FakeEnv::default());
     env.chat_on.store(true, Ordering::SeqCst);
     let cfg = Config {
-        api: Api::at(&base),
+        telegram: tg::Conf { api: Api::at(&base), poll_timeout_secs: 1 },
+        discord: dc::Conf::release(),
         dir: Some(dir.clone()),
         env: env.clone(),
-        poll_timeout_secs: 1,
         backoff: Duration::from_millis(50),
         conflict_backoff: Duration::from_millis(50),
         enter_delay: Duration::from_millis(5),
@@ -1074,20 +1136,20 @@ fn live_card_buttons_with_fake_telegram() {
     wait_for("카드", || standing(&c.stream) == 1);
     std::thread::sleep(Duration::from_millis(200));
     assert!(fake.button_message(&label_c).is_none() && !tends(&c.stream), "돌보지 않는 동안은 단추 통이 없다");
-    rt.block_on(notify(Notice { text: "<b>권한 확인</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>권한 확인</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None, channel: None, has_tool: false })).unwrap();
     assert!(tends(&c.stream), "알림에 단추를 단 스트림은 돌본다");
     let (text, allow, _) = fake.button_message("<b>권한 확인</b>").expect("알림에 단추");
     assert!(text.starts_with("<b>권한 확인</b>\n") && text.contains("Bash · npm publish"), "{text}");
     // 같은 카드의 알림이 또 와도 한 통 더 보내지 않는다
     let n = fake.texts().len();
-    rt.block_on(notify(Notice { text: "<b>권한 확인</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>권한 확인</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None, channel: None, has_tool: false })).unwrap();
     assert_eq!(fake.texts().len(), n);
     c.detach();
     fake.press("c5", 42, &allow);
     let got = waiter.join().unwrap();
     assert!(got.contains(r#""behavior":"allow""#), "{got}");
     // 카드가 없는 권한 알림은 지금처럼 글만
-    rt.block_on(notify(Notice { text: "<b>또 권한</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None })).unwrap();
+    rt.block_on(notify(Notice { text: "<b>또 권한</b>".into(), stream: Some(c.stream.clone()), kind: Some("permission".into()), label: None, channel: None, has_tool: false })).unwrap();
     let (_, last) = fake.sent().into_iter().rfind(|(m, _)| m == "sendMessage").unwrap();
     assert!(last["text"] == "<b>또 권한</b>" && last.get("reply_markup").is_none());
     // 턴이 끝나면 돌봄을 걷는다
@@ -1096,7 +1158,19 @@ fn live_card_buttons_with_fake_telegram() {
     on_turn_event(&a.stream, TurnEvent::Gone, None, None);
     assert!(!tends(&a.stream));
 
-    for t in [&a, &b, &c] {
+    // ⑧ 알림 글이 이미 "묻는 도구" 줄을 실었으면(`has_tool` — 대화 글자 싣기) 단추를 달 때 다시 덧붙이지 않는다(실기 2026-11-19 — 두 번 나왔다).
+    let d = open_tile("d", 4);
+    let waiter = ask(&d, bash("claude", "Bash", "npm test"));
+    wait_for("카드", || standing(&d.stream) == 1);
+    rt.block_on(notify(Notice { text: "<b>도구 줄 있음</b>".into(), stream: Some(d.stream.clone()), kind: Some("permission".into()), label: None, channel: None, has_tool: true })).unwrap();
+    let (text, allow, _) = fake.button_message("<b>도구 줄 있음</b>").expect("알림에 단추");
+    assert_eq!(text, "<b>도구 줄 있음</b>", "도구 줄을 덧붙이지 않는다");
+    fake.press("c6", 42, &allow);
+    let got = waiter.join().unwrap();
+    assert!(got.contains(r#""behavior":"allow""#), "{got}");
+    on_turn_event(&d.stream, TurnEvent::Done, Some("claude"), None);
+
+    for t in [&a, &b, &c, &d] {
         t.close();
     }
     let st = op("messenger_bot_set_token", json!({ "token": null })).unwrap();

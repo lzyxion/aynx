@@ -5,6 +5,7 @@
     NOTIFY_AFTER_MAX_SECS,
     setMessengerChannel,
     setMessengerTelegramChat,
+    setMessengerDiscordChat,
     setMessengerWhen,
     setMessengerAgentStop,
     setMessengerAgentPermission,
@@ -30,18 +31,26 @@
   import Toggle from "$lib/Toggle.svelte";
   import MessengerChannel from "$lib/settings/MessengerChannel.svelte";
   import MessengerWebhook from "$lib/settings/MessengerWebhook.svelte";
-  import MessengerTelegram from "$lib/settings/MessengerTelegram.svelte";
+  import MessengerBot from "$lib/settings/MessengerBot.svelte";
+  import MessengerDiscord from "$lib/settings/MessengerDiscord.svelte";
   import TipName, { tipOf } from "$lib/settings/TipName.svelte";
   import WarnChip from "$lib/settings/WarnChip.svelte";
   import ChoiceChips, { type ChoiceIcons } from "$lib/settings/ChoiceChips.svelte";
   import {
     accordionEdges,
+    BOT_CHANNELS,
     botHandle,
+    botHead,
     channelConnected,
+    discordHead,
+    discordMode,
     parseBotStatus,
-    telegramHead,
+    parseHookStatus,
     webhookHead,
+    type BotChannel,
     type BotStatus,
+    type ChannelHead,
+    type HookStatus,
   } from "$lib/settings/messenger-view";
 
   /**
@@ -58,15 +67,18 @@
    * - **채널** — Discord · Slack · Telegram 이 연결 여부와 상관없이 늘 셋 다 **펼침 목록**(`.slist.accordion` — AI 에이전트 설정과 같은 틀)에
    *   선다(`MessengerChannel`). 줄을 누르면 그 채널의 설정 줄이 펼쳐지고(한 번에 하나만 — 펼친 칸은 목록에서 떨어진다), 끝 칸의 스위치는
    *   "이 채널로 알림 보내기"(연결된 채널만). 웹훅 URL · 봇 토큰은 비밀이라 설정 파일 바깥(백엔드의 채널별 자기 파일)이다 — [저장]·[취소]
-   *   바깥에서 곧바로 쓰인다. Telegram 은 봇 토큰 + 계정 연결(짝짓기)까지 해야 연결된 것이다(`messenger-view.ts`).
+   *   바깥에서 곧바로 쓰인다. Telegram 은 봇 토큰 + 계정 연결(짝짓기)까지 해야 연결된 것이다(`messenger-view.ts`). Discord 는 한 번에
+   *   한 방식 — 웹훅(알림만) 또는 봇(Telegram 과 같은 몸통 · 2026-11-19 A안 · `MessengerDiscord` — "연결 방식" 줄이 늘 맨 위 · 바꾸기는 확인
+   *   뒤 · 지금 방식은 머리줄 첫 칩).
    * - **규칙** — 연결된 채널이 하나라도 있을 때만. 없으면 안내 한 줄이 대신 선다(보낼 곳이 없는데 규칙을
    *   고르게 두지 않는다). 규칙은 `settings.toml` 의 `[messenger]` — 다른 설정과 같이 [저장] 이 쓴다.
    *
    * "연결됐는가" 는 여기서 쥔다(몸통이 등록·해제 결과를 올려 준다). **채널을 연결하는 순간** 그 채널 토글을 켠다 —
    * 사람이 토글을 켠 것과 같다([저장] 규칙도 같다). 연결된 채널의 토글이 모두 꺼지면 규칙 줄이 잠긴다.
    *
-   * Telegram 봇 상태는 이 화면이 **보이는 동안**(`active`) 읽고, 세션 서버의 사건(`messenger-bot-event` — 짝짓기 요청 · 연결 · 토큰 ·
-   * 받는 고리)이 오면 다시 읽는다 — 짝짓기 코드는 아무것도 누르지 않아도 선다(요청이 새로 서면 Telegram 칸을 펼친다).
+   * 봇 상태(Telegram · Discord 각각)는 이 화면이 **보이는 동안**(`active`) 읽고, 세션 서버의 사건(`messenger-bot-event` — 짝짓기 요청 ·
+   * 연결 · 토큰 · 받는 고리 · 어느 채널이든)이 오면 두 채널을 다 다시 읽는다 — 짝짓기 코드는 아무것도 누르지 않아도 선다(요청이 새로
+   * 서면 그 채널 칸을 펼친다).
    *
    * 규칙 줄의 설명은 이름 툴팁(`TipName`)이다 — 늘 보이는 설명 줄·ⓘ·소제목 머리말은 걷었다. 선택지 둘인 "언제" 는
    * 칩 줄(`ChoiceChips`). 단 **싣기 두 칸의 주의**(비밀이 메신저 서버로 간다)는 툴팁에 더해, 실제로 실려 나가는
@@ -78,40 +90,40 @@
   /** "언제" 칩 앞 아이콘 — 값 키 → `UiIcon` 이름 */
   const WHEN_ICONS: ChoiceIcons = { away: "away", always: "bell" };
 
-  /** 채널 표 — 화면 순서. `domId` 는 칸의 id(= 팔레트 색인의 anchor) · `sendId` 는 보내기 스위치 */
+  /** 채널 표 — 화면 순서. `domId` 는 칸의 id(= 팔레트 색인의 anchor) · `sendId` 는 보내기 스위치 · `chatId` 는 봇 몸통 안의 말하기 줄 */
   const CHANNELS: {
     id: ChannelId;
     nameKey: Key;
     domId: string;
     sendId: string;
-    /** 웹훅 채널만 */
-    webhook: { howtoKey: Key; placeholder: string } | null;
+    /** 몸통 — Slack 은 웹훅, Telegram 은 봇, Discord 는 둘 중 하나(`MessengerDiscord`) */
+    body: "webhook" | "bot" | "discord";
+    chatId?: string;
   }[] = [
     {
       id: "discord",
       nameKey: "settings.messenger.channel.discord",
       domId: "messenger-channel-discord",
       sendId: "messenger-discord",
-      webhook: { howtoKey: "settings.messenger.discord.howto", placeholder: "https://discord.com/api/webhooks/…" },
+      body: "discord",
+      chatId: "messenger-channel-discord-chat",
     },
     {
       id: "slack",
       nameKey: "settings.messenger.channel.slack",
       domId: "messenger-channel-slack",
       sendId: "messenger-slack",
-      webhook: { howtoKey: "settings.messenger.slack.howto", placeholder: "https://hooks.slack.com/services/…" },
+      body: "webhook",
     },
     {
       id: "telegram",
       nameKey: "settings.messenger.channel.telegram",
       domId: "messenger-channel-telegram",
       sendId: "messenger-telegram",
-      webhook: null,
+      body: "bot",
+      chatId: "messenger-channel-telegram-chat",
     },
   ];
-
-  /** Telegram 몸통 안의 말하기 줄(팔레트 색인 anchor) — 짝짓기 전에는 없어 Telegram 칸으로 떨어진다 */
-  const TELEGRAM_CHAT_ANCHOR = "messenger-channel-telegram-chat";
 
   /**
    * 채널이 하나도 없어 숨는 줄들의 id(팔레트 색인에 오른 것) — 색인이 그 줄을 찾아오면 채널 상자로 떨어진다
@@ -125,52 +137,59 @@
     "messenger-include-conversation",
   ].join(" ");
 
-  /** 웹훅 채널마다 등록돼 있는가 (`null` = 아직 모름) */
-  const configured = $state<Partial<Record<ChannelId, boolean | null>>>({ discord: null, slack: null });
+  /** 웹훅 채널(Discord · Slack)의 `messenger_status` (`null` = 아직 모름) — Discord 는 `via` 로 봇인지도 말한다 */
+  const hooks = $state<Partial<Record<ChannelId, HookStatus | null>>>({ discord: null, slack: null });
+
+  function refreshHook(id: ChannelId): void {
+    invoke<unknown>("messenger_status", { channel: id })
+      .then((s) => (hooks[id] = parseHookStatus(s)))
+      .catch(() => (hooks[id] = { configured: false, via: null }));
+  }
 
   $effect(() => {
-    for (const c of CHANNELS) {
-      if (!c.webhook) continue;
-      invoke<{ configured: boolean }>("messenger_status", { channel: c.id })
-        .then((s) => (configured[c.id] = s.configured))
-        .catch(() => (configured[c.id] = false));
-    }
+    refreshHook("discord");
+    refreshHook("slack");
   });
 
-  /** Telegram 봇 상태 (`null` = 아직 모름 · 못 읽음) */
-  let bot = $state<BotStatus | null>(null);
+  /** 봇 채널마다의 상태 (`null` = 아직 모름 · 못 읽음) */
+  const bots = $state<Record<BotChannel, BotStatus | null>>({ telegram: null, discord: null });
   /** 봇 상태를 못 읽은 까닭(옛 세션 서버 등) */
-  let botError = $state<string | null>(null);
-  /** 늦게 온 답이 새 답을 덮지 않게 */
-  let botSeq = 0;
+  const botErrors = $state<Record<BotChannel, string | null>>({ telegram: null, discord: null });
+  /** 늦게 온 답이 새 답을 덮지 않게 — 채널마다 */
+  const botSeq: Record<BotChannel, number> = { telegram: 0, discord: 0 };
 
-  async function refreshBot(): Promise<void> {
-    const seq = ++botSeq;
+  async function refreshBot(channel: BotChannel): Promise<void> {
+    const seq = ++botSeq[channel];
     try {
-      const next = parseBotStatus(await invoke<unknown>("messenger_bot_status"));
-      if (seq !== botSeq) return;
-      adoptBot(next);
-      botError = null;
+      const next = parseBotStatus(await invoke<unknown>("messenger_bot_status", { channel }));
+      if (seq !== botSeq[channel]) return;
+      adoptBot(channel, next);
+      botErrors[channel] = null;
     } catch (e) {
-      if (seq !== botSeq) return;
-      botError = stripReason(e instanceof Error ? e.message : String(e));
+      if (seq !== botSeq[channel]) return;
+      botErrors[channel] = stripReason(e instanceof Error ? e.message : String(e));
     }
   }
 
-  /** 새 상태 — 짝짓기 요청이 **새로** 섰으면 Telegram 칸을 펼친다(코드가 저절로 보이게) */
-  function adoptBot(next: BotStatus | null) {
-    const fresh = !!next?.pending && next.pending.code !== bot?.pending?.code;
-    bot = next;
-    if (fresh) expanded = "telegram";
+  /** 새 상태 — 짝짓기 요청이 **새로** 섰으면 그 채널 칸을 펼친다(코드가 저절로 보이게) */
+  function adoptBot(channel: BotChannel, next: BotStatus | null) {
+    const fresh = !!next?.pending && next.pending.code !== bots[channel]?.pending?.code;
+    // Discord 의 봇 토큰이 생기거나 사라졌다 — 웹훅을 지웠거나(토큰 등록) 방식이 비었다. `via` 를 다시 읽는다
+    const tokenFlip = channel === "discord" && !!next?.configured !== !!bots.discord?.configured;
+    bots[channel] = next;
+    if (fresh) expanded = channel;
+    if (tokenFlip) refreshHook("discord");
   }
 
-  // 보이는 동안 — 한 번 읽고, 서버 사건이 오면 다시 읽는다. 화면을 떠나면 듣기를 걷는다.
+  // 보이는 동안 — 한 번 읽고, 서버 사건이 오면 두 채널 모두 다시 읽는다(사건의 `channel` 칸에 기대지 않는다). 화면을 떠나면 듣기를 걷는다.
   $effect(() => {
     if (!active) return;
-    void refreshBot();
+    for (const c of BOT_CHANNELS) void refreshBot(c);
     let stopped = false;
     let unlisten: (() => void) | null = null;
-    listen("messenger-bot-event", () => void refreshBot())
+    listen("messenger-bot-event", () => {
+      for (const c of BOT_CHANNELS) void refreshBot(c);
+    })
       .then((fn) => {
         if (stopped) fn();
         else unlisten = fn;
@@ -183,29 +202,43 @@
   });
 
   const connected = $derived(
-    Object.fromEntries(CHANNELS.map((c) => [c.id, channelConnected(c.id, configured, bot)])) as Record<ChannelId, boolean>,
+    Object.fromEntries(CHANNELS.map((c) => [c.id, channelConnected(c.id, hooks, bots)])) as Record<ChannelId, boolean>,
   );
   const anyConnected = $derived(CHANNELS.some((c) => connected[c.id]));
+  const discordModeNow = $derived(discordMode(hooks.discord ?? null, bots.discord));
 
   /** 웹훅을 등록·해제했다 — 연결했으면 그 채널 토글을 켠다 */
   function onConfigured(id: ChannelId, next: boolean) {
-    configured[id] = next;
+    hooks[id] = { configured: next, via: next ? "webhook" : null };
     if (next) setMessengerChannel(id, true);
   }
 
-  /** Telegram 몸통이 새 상태를 올렸다 — 방금 계정을 허용해 연결됐으면 그 채널 토글을 켠다 */
-  function onBotStatus(next: BotStatus, paired: boolean) {
-    botSeq++;
-    botError = null;
-    adoptBot(next);
-    if (paired) setMessengerChannel("telegram", true);
+  /** 봇 몸통이 새 상태를 올렸다 — 방금 계정을 허용해 연결됐으면 그 채널 토글을 켠다 */
+  function onBotStatus(channel: BotChannel, next: BotStatus, paired: boolean) {
+    botSeq[channel]++;
+    botErrors[channel] = null;
+    adoptBot(channel, next);
+    if (paired) setMessengerChannel(channel, true);
   }
 
   const rules = $derived(settings.messenger);
   /** 보낼 곳이 없다 — 연결된 채널의 토글이 모두 꺼졌다. 규칙 줄을 잠근다 */
   const noChannelOn = $derived(!CHANNELS.some((c) => connected[c.id] && rules[c.id]));
-  /** 원격 창은 말하기를 켜지 못한다 — 저장된 값이 켬일 때만 손잡이가 산다(끄기는 된다 · `remote/deny.rs` `settings_home_only`) */
-  const chatLocked = $derived(isRemote && settings.saved.messenger.telegram_chat !== true);
+  /** 원격 창은 말하기를 켜지 못한다 — 저장된 값이 켬일 때만 손잡이가 산다(끄기는 된다 · `remote/deny.rs` `settings_home_only`). 채널마다 따로 */
+  const telegramChatLocked = $derived(isRemote && settings.saved.messenger.telegram_chat !== true);
+  const discordChatLocked = $derived(isRemote && settings.saved.messenger.discord_chat !== true);
+
+  /** 채널 머리의 칩 — Slack 은 웹훅, Telegram 은 봇, Discord 는 그 방식대로 */
+  function headOf(id: ChannelId): ChannelHead {
+    if (id === "telegram") return botHead(bots.telegram, rules.telegram, rules.telegramChat);
+    if (id === "discord") return discordHead(discordModeNow, bots.discord, rules.discord, rules.discordChat);
+    return webhookHead(hooks[id]?.configured ?? null, rules[id]);
+  }
+
+  /** 봇 몸통 안의 말하기 줄이 지금 그려져 있는가 — 짝지은 봇일 때만(웹훅으로 연결한 Discord 에는 없다) */
+  function chatRowShown(id: ChannelId): boolean {
+    return connected[id] && (id === "telegram" || (id === "discord" && discordModeNow === "bot"));
+  }
 
   /** **펼친 채널 하나**(아코디언 — 하나를 펴면 다른 것은 접힌다 · 다시 누르면 닫힘) — 화면 상태일 뿐 저장하지 않는다 */
   let expanded = $state<ChannelId | null>(null);
@@ -214,11 +247,11 @@
   let instant = $state(false);
 
   /**
-   * 팔레트의 설정 색인이 채널 칸(`messenger-channel-<채널>`) · Telegram 의 말하기 줄을 가리키면 그 채널 **하나만** 펼친다 —
+   * 팔레트의 설정 색인이 채널 칸(`messenger-channel-<채널>`) · 봇 채널의 말하기 줄을 가리키면 그 채널 **하나만** 펼친다 —
    * `SettingsModal` 의 `revealPendingAnchor` 가 스크롤 전에 부른다(`NotificationsSection` 을 거쳐). 규칙 줄은 펼침과 무관하다.
    */
   export function expandForAnchor(anchor: string): void {
-    const target = anchor === TELEGRAM_CHAT_ANCHOR ? "telegram" : CHANNELS.find((c) => c.domId === anchor)?.id;
+    const target = CHANNELS.find((c) => c.domId === anchor || c.chatId === anchor)?.id;
     if (!target) return;
     if (expanded !== target) instant = true;
     expanded = target;
@@ -233,7 +266,8 @@
   {#each CHANNELS as c, i (c.id)}
     {@const name = t(c.nameKey)}
     {@const edges = accordionEdges(i, CHANNELS.length, openIndex)}
-    {@const head = c.webhook ? webhookHead(configured[c.id] ?? null, rules[c.id]) : telegramHead(bot, rules.telegram, rules.telegramChat)}
+    {@const head = headOf(c.id)}
+    {@const botOf = c.id === "telegram" || c.id === "discord" ? c.id : null}
     <MessengerChannel
       channel={c.id}
       {name}
@@ -248,27 +282,44 @@
       send={rules[c.id]}
       onSendChange={(on) => setMessengerChannel(c.id, on)}
       {head}
-      aside={head.aside === "bot" ? botHandle(bot?.bot ?? null) : head.aside === "conflict" ? t("settings.messenger.status.conflict") : ""}
-      anchorFor={c.webhook || connected.telegram ? undefined : TELEGRAM_CHAT_ANCHOR}
+      aside={head.aside === "bot" && botOf
+        ? botHandle(bots[botOf]?.bot ?? null, botOf)
+        : head.aside === "conflict"
+          ? t("settings.messenger.status.conflict")
+          : ""}
+      anchorFor={c.chatId && !chatRowShown(c.id) ? c.chatId : undefined}
     >
-      {#if c.webhook}
+      {#if c.body === "webhook"}
         <MessengerWebhook
           channel={c.id}
           {name}
-          howtoKey={c.webhook.howtoKey}
-          placeholder={c.webhook.placeholder}
-          configured={configured[c.id] ?? null}
+          howtoKey="settings.messenger.slack.howto"
+          placeholder="https://hooks.slack.com/services/…"
+          configured={hooks[c.id] ? hooks[c.id]!.configured : null}
           onconfigured={(next) => onConfigured(c.id, next)}
         />
-      {:else}
-        <MessengerTelegram
+      {:else if c.body === "discord"}
+        <MessengerDiscord
           {name}
-          status={bot}
-          loadError={botError}
+          hook={hooks.discord ?? null}
+          status={bots.discord}
+          loadError={botErrors.discord}
+          chat={rules.discordChat}
+          chatLocked={discordChatLocked}
+          onchat={setMessengerDiscordChat}
+          onstatus={(next, paired) => onBotStatus("discord", next, paired)}
+          onconfigured={(next) => onConfigured("discord", next)}
+        />
+      {:else}
+        <MessengerBot
+          channel="telegram"
+          {name}
+          status={bots.telegram}
+          loadError={botErrors.telegram}
           chat={rules.telegramChat}
-          {chatLocked}
+          chatLocked={telegramChatLocked}
           onchat={setMessengerTelegramChat}
-          onstatus={onBotStatus}
+          onstatus={(next, paired) => onBotStatus("telegram", next, paired)}
         />
       {/if}
     </MessengerChannel>

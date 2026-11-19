@@ -950,28 +950,41 @@ Shows notifications that programs such as builds and tests send with terminal se
 
 Sends notifications to your phone through a messenger while you are away from the PC. Press a channel row to expand it. The switch at the end of a connected row turns sending to that channel on or off.
 
-- **Discord · Slack**: paste a webhook URL and press **Connect**. The expanded row has **Send test** and **Disconnect**.
+- **Slack**: paste a webhook URL and press **Connect**. The expanded row has **Send test** and **Disconnect**.
 - **Telegram**: uses a bot instead of a webhook.
   1. In Telegram, send `/newbot` to `@BotFather` and copy the token it gives you.
   2. Paste the token into the Telegram row and press **Connect**. The token is not shown again.
   3. Send any message to your bot from your phone. The bot replies with a 6-digit code, and the same code appears in the Telegram row. If they match, press **Allow**. Only that one account is accepted from then on.
+- **Discord**: uses one method at a time — a **Bot** (notifications, and you can [talk to AI tiles](#messenger-chat)) or a **Webhook** (notifications only). The first line of the expanded row is always **Connect with** (**Bot** · **Webhook**), which chooses the method whose settings are shown below it. The method connected now is the first chip in the Discord row header.
+  - Webhook: paste the URL created under the Discord channel's settings › Integrations › Webhooks and press **Connect**. The expanded row then has **Send test** and **Disconnect webhook**.
+  - Bot: create one in the Discord Developer Portal.
+    1. In the [Developer Portal](https://discord.com/developers/applications), press **Create App**, enter a name and press **Create**.
+    2. On the **Bot** page, under **Token**, press **Reset Token** and copy the token. Discord shows it only once. Leave the privileged gateway intents off — Aynx reads only direct messages to the bot, which do not need them.
+    3. So that you can send the bot a direct message, add it to a server you are in: on the **Installation** page, add the `bot` scope under **Default Install Settings** › **Guild Install** (no permissions are needed), open the **Install Link** in a browser and choose **Add to server**.
+    4. Paste the token into the Discord row and press **Connect**. The token is not shown again.
+    5. In Discord, send the bot any direct message. The bot replies with a 6-digit code, and the same code appears in the Discord row. If they match, press **Allow**. Only that one account is accepted from then on.
+  - The bot answers only direct messages; messages in servers are ignored.
+  - With a bot connected, the row works like the Telegram row. **Disconnect bot** removes the token and the linked account.
+  - To switch methods, choose the other one under **Connect with**, paste its token or URL and press **Connect**. Nothing changes until you press **Switch** in the confirmation that appears; **Cancel** returns to the field. Switching from a webhook to a bot removes the webhook (then link your account as above); switching from a bot to a webhook removes the bot token and the linked account, so you can no longer talk to AI tiles from Discord. If the token or URL is refused, the current method stays connected. Switching in either direction is done at the main PC, not from a remote window.
+- Each bot channel has its own linked account (one per channel). Telegram and Discord can both be connected at the same time.
 - The bot token and the linked account can be set, changed or removed only at the main PC, not from a remote window.
-- One bot can be used by one program at a time. If another program (another Aynx, or another tool using the same bot) is receiving its messages, the row shows **Not receiving**.
+- One bot can be used by one program at a time. For Telegram, if another program (another Aynx, or another tool using the same bot) is receiving its messages, the row shows **Not receiving**. Discord gives no such signal: if two programs use the same Discord bot, both receive every message, so give each Aynx install its own bot.
+- Discord resets a bot token whose program logs in to Discord too many times in a day. When Discord refuses the connection this way (for example the token was reset), Aynx stops reconnecting until you register the token again or the session server restarts.
 
 <a id="messenger-chat"></a>
 #### Talk to AI tiles from the messenger
 
-**Off by default**, and can be turned on only at the main PC. When on, the linked Telegram account can send messages to local Claude Code and Codex tiles and get the answers back.
+**Off by default**, and can be turned on only at the main PC, separately for Telegram and for a Discord bot. When on, the linked account of that channel (for Discord, in direct messages with the bot) can send messages to local Claude Code and Codex tiles and get the answers back. An answer goes back to the channel your message came from.
 
 - **Reply to a message from the bot** (a notification, an answer, or a `→ tile` line) to send your message to the tile it came from. A message that is not a reply goes to the only tile waiting for input; if several are waiting, the bot asks you to pick one. Tiles are named by agent and project / worktree (for example `Claude Code · aynx / main`), or by the folder name outside a project; when two tiles have the same name, the conversation title is added.
-- When the turn ends, the **full answer** arrives in the chat (split into several messages if long).
+- When the turn ends, the **full answer** arrives in the chat (split into several messages if long). On Discord a message holds up to 2000 characters and an answer uses at most 5 messages; a longer answer is cut and ends with "see the full reply in the app". Discord formatting characters in the answer are shown as typed, not as formatting.
 - A message is delivered only when the agent in that tile has finished a turn and is waiting for input. The bot tells you why otherwise: still running, waiting on a permission prompt, the agent has exited, text is already typed in the input line, or the tile is remote (not supported yet). When no tile is waiting, it lists each AI tile with its reason. The first message to a newly started agent must be sent at the PC.
-- **Permission prompts**: when the agent asks for permission during a turn you started from Telegram — or a permission notification reaches Telegram while you are away — the message has **Allow** and **Deny** buttons. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
+- **Permission prompts**: when the agent asks for permission during a turn you started from the messenger — or a permission notification reaches the messenger while you are away — the message has **Allow** and **Deny** buttons. If both Telegram and Discord show buttons for the same prompt, the first press counts. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
 - Messages sent while the PC or the app was off are not delivered later.
 - It keeps working while the privacy veil is up.
 - Task plan approvals are never answered from the messenger — they arrive as notifications only.
 
-The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through Telegram's servers.
+The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through the servers of the messenger you use (Telegram's or Discord's).
 
 ---
 

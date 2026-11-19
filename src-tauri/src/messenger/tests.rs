@@ -217,6 +217,26 @@ fn errors_never_contain_the_url() {
     }
 }
 
+/// 봇 → 웹훅 바꾸기(2026-11-19) — Discord 만 · 주소가 틀리면 봇 해제(서버 op)에 가기 전에 거절한다(아무것도 안 바뀜 · 문구에 URL 없음).
+#[test]
+fn replace_bot_with_webhook_checks_before_touching_the_bot() {
+    let run = |c: Channel, url: &str| tauri::async_runtime::block_on(messenger_replace_bot_with_webhook(c, url.into()));
+    for c in [S, Channel::Telegram] {
+        assert!(run(c, GOOD).is_err(), "{c:?}");
+    }
+    assert!(run(D, "  ").is_err());
+    let secret = "https://evil.com/api/webhooks/1/SECRET-TOKEN";
+    let err = run(D, secret).unwrap_err();
+    assert!(!err.contains("SECRET-TOKEN"), "{err}");
+    // 순서를 소스로 지킨다 — 검사 → 봇 해제 → 저장
+    let src = include_str!("../messenger.rs").replace("\r\n", "\n");
+    let body = &src[src.find("pub async fn messenger_replace_bot_with_webhook(").unwrap()..];
+    let body = &body[..body.find("\n}\n").unwrap()];
+    let (v, r, s) = (body.find(".validate(").unwrap(), body.find("messenger_bot_set_token(None").unwrap(), body.find("save_at(").unwrap());
+    assert!(v < r && r < s, "검사 → 봇 해제 → 저장");
+    assert!(!body.contains("bot_file") && !body.contains("read_to_string"), "토큰 파일을 읽지 않는다");
+}
+
 #[test]
 fn debug_is_redacted() {
     let url = WD.validate(GOOD).unwrap();
@@ -589,7 +609,7 @@ fn webhook_file_lives_in_the_config_root() {
     for c in Webhook::ALL {
         let path = webhook_path(*c).expect("설정 루트");
         assert_eq!(path.file_name().unwrap(), c.webhook_file());
-        assert_eq!(c.channel().secret_file(), c.webhook_file());
+        assert_eq!(c.channel().secret_files()[0], c.webhook_file());
         assert_eq!(path.parent(), crate::instance::config_root().as_deref());
     }
     assert_eq!(
@@ -634,7 +654,11 @@ fn telegram_renders_escaped_html() {
     const T: Channel = Channel::Telegram;
     assert_eq!(serde_json::to_string(&T).unwrap(), "\"telegram\"");
     assert!(T.webhook().is_none());
-    assert_eq!(T.secret_file(), "telegram-bot");
+    assert_eq!((T.bot_file(), T.secret_files()), (Some("telegram-bot"), vec!["telegram-bot"]));
+    // 3b — Discord 는 웹훅 · 봇 두 비밀 파일 · Slack 은 웹훅 하나
+    assert_eq!(Channel::Discord.secret_files(), ["discord-webhook", "discord-bot"]);
+    assert_eq!(Channel::Slack.secret_files(), ["slack-webhook"]);
+    assert_eq!(Channel::Slack.bot_file(), None);
     let m = msg("aynx", "<a href=x>tile</a>", "턴 끝 & 다음", "2분").graded(Some(Grade::Done));
     let s = T.render(&m, &[ConvoLine::Excerpt(vec!["<b>굵게</b> & 끝".into()])]);
     assert!(s.starts_with("🟢 <b>"), "{s}");

@@ -79,8 +79,8 @@ English · [한국어](features.ko.md)
 - Auto-approval policy with allow patterns and argument-aware command bundles (pipes are opt-in).
 - Database connections get their own AI permission (Off, Schema, Read, Ask, YOLO). The AI reads through
   a separate read-only connection; writes are only drafts that you approve.
-- Notifications in the app, in the OS, and optionally to Discord or Slack webhooks or a Telegram bot (including "awaiting approval").
-- With a Telegram bot you can also talk back: reply to a notification to send a message to that AI tile, get the full answer in the chat, and allow or deny the agent's permission prompts. Off by default.
+- Notifications in the app, in the OS, and optionally to Discord or Slack webhooks or a Telegram or Discord bot (including "awaiting approval").
+- With a Telegram or Discord bot (Discord: direct messages) you can also talk back: reply to a notification to send a message to that AI tile, get the full answer in the chat, and allow or deny the agent's permission prompts. Off by default.
 
 ![An approval card: the AI's summary, the app's own analysis of each statement, and the row limit](images/features/approval.png)
 

@@ -296,6 +296,7 @@ export function sameSettings(a: AppSettings, b: AppSettings): boolean {
     a.messenger.slack === b.messenger.slack &&
     a.messenger.telegram === b.messenger.telegram &&
     a.messenger.telegram_chat === b.messenger.telegram_chat &&
+    a.messenger.discord_chat === b.messenger.discord_chat &&
     a.remote.enabled === b.remote.enabled &&
     a.remote.port === b.remote.port &&
     a.remote.host === b.remote.host
@@ -577,6 +578,7 @@ function normalizeMessenger(raw: unknown): MessengerPrefs {
     slack: bool(m.slack),
     telegram: bool(m.telegram),
     telegram_chat: bool(m.telegram_chat),
+    discord_chat: bool(m.discord_chat),
   };
 }
 

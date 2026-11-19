@@ -686,6 +686,21 @@ describe("③-4 — 트레이 · 메신저 작업안 결과", () => {
     expect(normalizeSettings({ messenger: { telegram_chat: "yes" } }).messenger.telegram_chat).toBeUndefined();
   });
 
+  it("messenger.discord_chat 은 telegram_chat 과 같다 — 켤 때만 남고 왕복에서 사라지지 않는다", () => {
+    const s = emptySettings();
+    expect(toPayload(s).messenger).not.toHaveProperty("discord_chat");
+    s.messenger.discord_chat = true;
+    expect(toPayload(s).messenger).toEqual({ discord_chat: true });
+    const back = normalizeSettings(toPayload(s));
+    expect(back.messenger.discord_chat).toBe(true);
+    expect(back.messenger.telegram_chat).toBeUndefined();
+    expect(sameSettings(back, s)).toBe(true);
+    expect(sameSettings(back, emptySettings())).toBe(false);
+    s.messenger.discord_chat = false;
+    expect(toPayload(s).messenger).toEqual({});
+    expect(normalizeSettings({ messenger: { discord_chat: "yes" } }).messenger.discord_chat).toBeUndefined();
+  });
+
   it("messenger.include_conversation 은 끈 값이 저장에 남는다(기본 켬 — 2026-11-16)", () => {
     const s = emptySettings();
     s.messenger.include_conversation = false;

@@ -26,7 +26,7 @@ pub(crate) const TURN_KEEP_MS: u64 = 120_000;
 // 보낸 이 · 지난 글
 // ---------------------------------------------------------------------------
 
-/// 짝지은 계정 — `<설정 루트>/telegram-chat` 의 몸.
+/// 짝지은 계정 — 채널마다 짝 파일(Telegram `<설정 루트>/telegram-chat`)의 몸.
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Paired {
@@ -132,7 +132,7 @@ pub(crate) struct TileView {
 /// 거절의 까닭 — 답장 문구가 된다([`refusal_text`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// 다리(`[messenger] telegram_chat`)가 꺼져 있다
+    /// 그 채널의 다리(`[messenger]` 의 채널 칸 — Telegram `telegram_chat`)가 꺼져 있다
     Off,
     /// 세션이 없다
     NoTile,
@@ -805,7 +805,7 @@ pub(crate) fn parse_card_press(data: &str) -> Option<(bool, String)> {
     (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())).then(|| (allow, id.to_string()))
 }
 
-/// 누름 판정(짝지은 계정은 이미 지났다) — 다리가 보낸 카드인가 → `telegram_chat` 이 **지금** 켜져 있나.
+/// 누름 판정(짝지은 계정은 이미 지났다) — 다리가 보낸 카드인가 → 그 채널의 다리가 **지금** 켜져 있나.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Press {
     /// 다리가 보낸 (풀리지 않은) 카드가 아니다 — "이미 처리됐습니다"
@@ -826,7 +826,7 @@ pub(crate) fn judge_press(known: bool, chat_on: bool) -> Press {
 }
 
 /// 단추 통의 도구 입력 한 줄 — `apply_patch` 는 파일 경로들, 그 밖은 대화 기록 보기와 같은 요약(`agent_transcript::tool_summary`).
-/// 제어 글자를 걷고 [`SUMMARY_MAX_CHARS`] 에서 자른다(HTML 걷기는 [`card_html`]).
+/// 제어 글자를 걷고 [`SUMMARY_MAX_CHARS`] 에서 자른다(채널 서식 걷기는 전송).
 pub(crate) fn card_summary(tool: &str, input: &serde_json::Value) -> String {
     let raw = if crate::tile_permission::tool_kind(tool) == "patch" {
         input.get("command").and_then(serde_json::Value::as_str).map(|p| crate::tile_permission::patch_files(p).join(", ")).unwrap_or_default()
@@ -852,15 +852,17 @@ pub(crate) fn tool_line(tool: &str, summary: &str) -> String {
     }
 }
 
-/// 단추 통의 몸(HTML) — `🟡 확인 필요 · <이름표>` / 도구 한 줄.
-pub(crate) fn card_html(label: &str, tool: &str, summary: &str) -> String {
+/// 단추 하나 — (글자, 단추 데이터). 채널의 모양(Telegram 인라인 단추 …)은 전송이 짓는다.
+pub(crate) type Button = (String, String);
+
+/// 단추 통의 몸(걷지 않은 글) — `🟡 확인 필요 · <이름표>` / 도구 한 줄. 이름표 120자 · 도구 120자 · 요약 300자라 어느 채널 상한에도 들어간다.
+pub(crate) fn card_text(label: &str, tool: &str, summary: &str) -> String {
     let head = tr!(ko: "🟡 확인 필요 · {label}", en: "🟡 Needs action · {label}");
-    let html = format!("{}\n{}", crate::telegram::escape_html(&head), crate::telegram::escape_html(&tool_line(tool, summary)));
-    crate::telegram::clip_html(&html, crate::telegram::TEXT_MAX)
+    format!("{head}\n{}", tool_line(tool, summary))
 }
 
 /// 단추 둘 — [허용] · [거절](한 줄에 하나).
-pub(crate) fn card_buttons(id: &str) -> Vec<crate::telegram::Button> {
+pub(crate) fn card_buttons(id: &str) -> Vec<Button> {
     vec![
         (tr!(ko: "허용", en: "Allow"), card_press_data(true, id)),
         (tr!(ko: "거절", en: "Deny"), card_press_data(false, id)),
@@ -907,10 +909,13 @@ pub(crate) fn press_text(r: PressResult) -> String {
     }
 }
 
-/// 바꿔 쓴 통의 몸(HTML) — `<이름표> · <결과>`.
-pub(crate) fn result_html(label: &str, line: &str) -> String {
-    let text = if label.is_empty() { line.to_string() } else { format!("{label} · {line}") };
-    crate::telegram::escape_html(&text)
+/// 바꿔 쓴 통의 몸(걷지 않은 글) — `<이름표> · <결과>`.
+pub(crate) fn result_text(label: &str, line: &str) -> String {
+    if label.is_empty() {
+        line.to_string()
+    } else {
+        format!("{label} · {line}")
+    }
 }
 
 /// 이름표가 없을 때(창이 이름표를 알리지 않음) — `<CLI 표시 이름> · <기록된 cwd 끝 폴더>`(폴더를 모르면 CLI 이름만). 프로젝트 밖 타일은 프런트

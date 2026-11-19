@@ -15,7 +15,13 @@
 //!
 //! **Telegram(2026-11-18 메신저 다리)** 은 웹훅이 아니라 봇이다 — 서식(HTML `parse_mode` · 굵게 `<b>` · `& < >` 걷기 · 상한 4096)만 여기서 그리고,
 //! 보내기 · 받기 · 봇 토큰(`<설정 루트>/telegram-bot`)은 **세션 서버**의 `server::messenger_bridge` 가 쥔다. 이 파일은 토큰 파일을 읽지 않는다 —
-//! 그린 한 통을 세션 서버 안이면 다리 함수로, GUI 면 서버 op `messenger_bot_notify` 로 넘긴다([`send_telegram`]).
+//! 그린 한 통을 세션 서버 안이면 다리 함수로, GUI 면 서버 op `messenger_bot_notify` 로 넘긴다([`send_bot`]).
+//!
+//! **Discord 봇(2026-11-19 3b)** — Discord 는 방법이 **한 번에 하나**다: 웹훅(알림만 — 이 파일) 또는 봇(알림 + 말하기 — 세션 서버의 다리 ·
+//! 토큰 `<설정 루트>/discord-bot`). 웹훅이 등록돼 있으면 웹훅으로, 없으면 Telegram 과 같은 봇 길로 보낸다(봇 · 짝이 없으면 서버가 조용히
+//! 건너뛴다). 봇 토큰을 등록하면 GUI 껍데기(`messenger_bridge_proxy`)가 Discord 웹훅 파일을 지우고, 봇이 등록돼 있는 동안 웹훅 등록은 거절한다
+//! (서버의 봇 상태를 묻는다 — 토큰 파일은 읽지 않는다). 봇에서 웹훅으로는 따로 둔 [`messenger_replace_bot_with_webhook`](메인 PC 전용 —
+//! 주소 검사 → 서버 op 로 봇 해제 → 웹훅 저장)만 간다. 상태 명령은 `{configured, via: "webhook" | "bot" | null}`.
 //!
 //! ## 서식은 여기 한 층에서만
 //!
@@ -114,8 +120,8 @@ const DISCORD_HOSTS: &[&str] = &[
 const DISCORD_PATH_PREFIX: &str = "/api/webhooks/";
 /// 승인 대기 · 선언 어긋남 embed 의 색(붉은 실패색 — `#E5484D`).
 const DISCORD_ALERT_COLOR: u32 = 0xE5_48_4D;
-/// Discord 마크다운 기호 — 앞에 `\` 를 붙이면 글자 그대로 그려진다.
-const DISCORD_MARKDOWN_CHARS: &[char] = &[
+/// Discord 마크다운 기호 — 앞에 `\` 를 붙이면 글자 그대로 그려진다. 다리의 Discord 전송(`server::messenger_bridge::dc`)도 같은 셋으로 걷는다.
+pub(crate) const DISCORD_MARKDOWN_CHARS: &[char] = &[
     '\\', '`', '*', '_', '~', '|', '>', '[', ']', '(', ')', '<', '#',
 ];
 
@@ -196,7 +202,7 @@ impl Channel {
     pub(crate) const ALL: &'static [Channel] = &[Channel::Discord, Channel::Slack, Channel::Telegram];
 
     /// 사람이 읽는 이름(오류 문구에 쓴다).
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Channel::Discord => "Discord",
             Channel::Slack => "Slack",
@@ -213,13 +219,20 @@ impl Channel {
         }
     }
 
-    /// 이 채널의 **비밀 파일** 이름(설정 루트 바로 아래) — 웹훅 URL · 봇 토큰. 씨앗 · 설정 옮기기 제외 시험이 센다. Telegram 의 파일을
-    /// **읽는 것은 세션 서버뿐**이다(`server::messenger_bridge` — 이 파일은 이름만 안다).
-    pub(crate) fn secret_file(self) -> &'static str {
-        match self.webhook() {
-            Some(w) => w.webhook_file(),
-            None => "telegram-bot",
+    /// 이 채널의 **봇 토큰 파일** 이름(설정 루트 바로 아래 — 메신저 다리가 있는 채널만). 그 파일을 **읽는 것은 세션 서버뿐**이다
+    /// (`server::messenger_bridge` — 이 파일은 이름만 안다).
+    pub(crate) fn bot_file(self) -> Option<&'static str> {
+        match self {
+            Channel::Telegram => Some("telegram-bot"),
+            Channel::Discord => Some("discord-bot"),
+            Channel::Slack => None,
         }
+    }
+
+    /// 이 채널의 **비밀 파일** 이름 전부 — 웹훅 URL · 봇 토큰(Discord 는 둘 — 3b). 씨앗 · 설정 옮기기 제외 시험이 센다.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn secret_files(self) -> Vec<&'static str> {
+        self.webhook().map(Webhook::webhook_file).into_iter().chain(self.bot_file()).collect()
     }
 
     /// 남의 글자를 한 줄로 펴고 이 채널의 서식 기호를 걷는다.
@@ -909,10 +922,10 @@ fn not_registered(channel: Channel) -> String {
     }
 }
 
-/// Telegram 몫 한 통 — **세션 서버가 보낸다**(봇 토큰을 읽는 것은 서버뿐 — `server::messenger_bridge` 머리말). 세션 서버 안에서 부르면
-/// (작업안 결과 · 승인 대기 · 앨범 사건 — `send_plain`) 다리 함수를 곧장, GUI 프로세스면 서버 op `messenger_bot_notify` 로(`messenger_bridge_proxy`).
-/// 봇이 없거나 짝이 없으면 조용히 건너뛴다(웹훅의 "등록 안 됨" 과 같다).
-async fn send_telegram(notice: crate::server::messenger_bridge::Notice) -> Result<(), String> {
+/// 봇 채널(Telegram · 웹훅이 없는 Discord) 몫 한 통 — **세션 서버가 보낸다**(봇 토큰을 읽는 것은 서버뿐 — `server::messenger_bridge` 머리말).
+/// 세션 서버 안에서 부르면(작업안 결과 · 승인 대기 · 앨범 사건 — `send_plain`) 다리 함수를 곧장, GUI 프로세스면 서버 op `messenger_bot_notify` 로
+/// (`messenger_bridge_proxy`). 봇이 없거나 짝이 없으면 조용히 건너뛴다(웹훅의 "등록 안 됨" 과 같다).
+async fn send_bot(notice: crate::server::messenger_bridge::Notice) -> Result<(), String> {
     if crate::server::hub::in_server() {
         crate::server::messenger_bridge::notify(notice).await
     } else {
@@ -920,43 +933,84 @@ async fn send_telegram(notice: crate::server::messenger_bridge::Notice) -> Resul
     }
 }
 
+/// 그 채널의 봇이 세션 서버에 등록돼 있는가(토큰은 오가지 않는다 — 상태의 `configured`). 서버 안이면 다리 표를, GUI 면 서버 op 를 본다.
+async fn bot_configured(channel: Channel) -> bool {
+    if crate::server::hub::in_server() {
+        crate::server::messenger_bridge::configured(channel)
+    } else {
+        crate::server::messenger_bridge_proxy::configured(channel).await
+    }
+}
+
+/// Discord 웹훅 파일을 지운다 — Discord 봇 토큰을 등록하면(방법은 한 번에 하나 — 3b 사용자 결정) `messenger_bridge_proxy` 가 부른다.
+pub(crate) async fn remove_discord_webhook() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| match webhook_path(Webhook::Discord) {
+        Some(path) => save_at(&path, None).map_err(|e| tr!(ko: "웹훅 주소를 지우지 못했습니다: {e}", en: "Could not remove the webhook URL: {e}")),
+        None => Ok(()),
+    })
+    .await
+    .map_err(|e| tr!(ko: "웹훅 지우기를 실행하지 못했습니다: {e}", en: "Could not run the webhook removal: {e}"))?
+}
+
 // ---------------------------------------------------------------------------
 // 명령 — 전부 `async fn` (docs/conventions.md). 값을 돌려주는 명령은 없다.
 // ---------------------------------------------------------------------------
 
-/// 프런트가 받는 상태 — **등록됐는가** 하나. URL 은 싣지 않는다.
+/// 프런트가 받는 상태 — **등록됐는가**와 **어느 방법으로**(`"webhook"` · `"bot"` · 없음). URL · 토큰은 싣지 않는다.
 #[derive(Debug, serde::Serialize)]
 pub struct MessengerStatus {
     pub configured: bool,
+    pub via: Option<&'static str>,
 }
 
-/// 그 채널의 웹훅이 등록돼 있는가. Telegram 은 세션 서버의 봇 상태(`configured`)를 묻는다(토큰은 오가지 않는다).
+impl MessengerStatus {
+    fn of(via: Option<&'static str>) -> MessengerStatus {
+        MessengerStatus { configured: via.is_some(), via }
+    }
+}
+
+/// 그 채널이 등록돼 있는가 · 어느 방법인가 — Slack: 웹훅 · Telegram: 봇(세션 서버의 상태) · Discord: 웹훅이 있으면 웹훅, 없으면 봇(방법은 한 번에
+/// 하나 — 3b).
 #[tauri::command]
 pub async fn messenger_status(channel: Channel) -> MessengerStatus {
-    let configured = match channel.webhook() {
-        Some(w) => load_async(w).await.ok().flatten().is_some(),
-        None => crate::server::messenger_bridge_proxy::configured().await,
-    };
-    MessengerStatus { configured }
+    if let Some(w) = channel.webhook() {
+        if load_async(w).await.ok().flatten().is_some() {
+            return MessengerStatus::of(Some("webhook"));
+        }
+    }
+    if channel.bot_file().is_some() && bot_configured(channel).await {
+        return MessengerStatus::of(Some("bot"));
+    }
+    MessengerStatus::of(None)
 }
 
 /// 그 채널의 웹훅을 등록한다(`Some`) · 지운다(`None` 또는 빈 글자). 틀린 주소는 까닭과 함께 거절한다. Telegram 봇 토큰은 이 명령이 아니라
-/// `messenger_bot_set_token` 으로 등록한다(세션 서버가 받는다).
+/// `messenger_bot_set_token` 으로 등록한다(세션 서버가 받는다). Discord 는 방법이 한 번에 하나라 봇 토큰이 등록돼 있으면 등록을 거절한다
+/// (지우기는 된다 · 서버의 봇 상태를 묻는다 — 토큰 파일은 읽지 않는다). 봇을 웹훅으로 바꾸는 것은 [`messenger_replace_bot_with_webhook`] —
+/// 이 명령은 원격 창에도 열려 있어 봇을 지우지 않는다.
 #[tauri::command]
 pub async fn messenger_set_webhook(
     channel: Channel,
     url: Option<String>,
 ) -> Result<MessengerStatus, String> {
-    let Some(channel) = channel.webhook() else {
+    let Some(webhook) = channel.webhook() else {
         return Err(tr!(
             ko: "Telegram 은 웹훅이 아니라 봇 토큰으로 연결합니다",
             en: "Telegram connects with a bot token, not a webhook",
         ));
     };
+    let channel = webhook;
     let parsed = match url.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(raw) => Some(channel.validate(raw)?),
     };
+    if parsed.is_some() && channel.channel().bot_file().is_some() && bot_configured(channel.channel()).await {
+        let name = channel.channel().name();
+        return Err(tr!(
+            ko: "{name} 봇이 연결돼 있어 웹훅을 등록할 수 없습니다 — 봇 연결을 먼저 해제하세요(방법은 하나만)",
+            en: "A {name} bot is connected, so a webhook cannot be registered — remove the bot first (one method at a time)",
+        ));
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let Some(path) = webhook_path(channel) else {
             return Err(tr!(
@@ -967,22 +1021,60 @@ pub async fn messenger_set_webhook(
         save_at(&path, parsed.as_ref()).map_err(|e| {
             tr!(ko: "웹훅 주소를 저장하지 못했습니다: {e}", en: "Could not save the webhook URL: {e}")
         })?;
-        Ok(MessengerStatus { configured: parsed.is_some() })
+        Ok(MessengerStatus::of(parsed.is_some().then_some("webhook")))
     })
     .await
     .map_err(|e| tr!(ko: "웹훅 저장을 실행하지 못했습니다: {e}", en: "Could not run the webhook save: {e}"))?
 }
 
-/// 고정된 시험 문구 한 줄을 그 채널로 보낸다 — 설정 화면의 "테스트 보내기". Telegram 은 `messenger_bot_test` 와 같은 길.
+/// **Discord 봇을 웹훅으로 바꾼다**(2026-11-19 — 설정의 "연결 방식" 확인 [바꾸기]). 순서: 주소 검사(틀리면 거절 · 아무것도 안 바뀜) → 봇 해제
+/// (서버 op `messenger_bot_set_token{token: null}` — 짝도 지운다 · 실패하면 거절 · 웹훅은 저장하지 않음) → 웹훅 저장. 원격 창은 막힌다(`remote/deny.rs`
+/// HOME_ONLY — 봇 토큰 해제와 같은 쪽 · 웹훅만 넣는 [`messenger_set_webhook`] 은 원격 허용이라 봇을 지우지 않는다). 토큰 파일은 읽지 않는다.
+/// Discord 만 — 다른 채널은 거절.
+#[tauri::command]
+pub async fn messenger_replace_bot_with_webhook(channel: Channel, url: String) -> Result<MessengerStatus, String> {
+    if channel != Channel::Discord {
+        return Err(tr!(
+            ko: "봇을 웹훅으로 바꾸는 것은 Discord 만 됩니다",
+            en: "Only Discord can switch from a bot to a webhook",
+        ));
+    }
+    let webhook = Webhook::Discord;
+    let raw = url.trim();
+    if raw.is_empty() {
+        return Err(tr!(ko: "웹훅 주소를 넣으세요", en: "Enter a webhook URL"));
+    }
+    let parsed = webhook.validate(raw)?;
+    let st = crate::server::messenger_bridge_proxy::messenger_bot_set_token(None, Some(channel)).await?;
+    if st.get("configured").and_then(serde_json::Value::as_bool) != Some(false) {
+        return Err(tr!(ko: "Discord 봇 연결을 해제하지 못했습니다", en: "Could not remove the Discord bot"));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = webhook_path(webhook) else {
+            return Err(tr!(ko: "설정 폴더를 찾지 못했습니다", en: "Could not find the settings folder"));
+        };
+        save_at(&path, Some(&parsed))
+            .map_err(|e| tr!(ko: "웹훅 주소를 저장하지 못했습니다: {e}", en: "Could not save the webhook URL: {e}"))?;
+        Ok(MessengerStatus::of(Some("webhook")))
+    })
+    .await
+    .map_err(|e| tr!(ko: "웹훅 저장을 실행하지 못했습니다: {e}", en: "Could not run the webhook save: {e}"))?
+}
+
+/// 고정된 시험 문구 한 줄을 그 채널로 보낸다 — 설정 화면의 "테스트 보내기". Telegram 은 `messenger_bot_test` 와 같은 길 · Discord 는 등록된
+/// 방법으로(웹훅이 있으면 웹훅, 없으면 봇).
 #[tauri::command]
 pub async fn messenger_test(channel: Channel) -> Result<(), String> {
     let Some(w) = channel.webhook() else {
-        return crate::server::messenger_bridge_proxy::messenger_bot_test().await;
+        return crate::server::messenger_bridge_proxy::messenger_bot_test(Some(channel)).await;
     };
-    let Some(url) = load_async(w).await? else {
-        return Err(not_registered(channel));
-    };
-    post(w, &url, &channel.test_text(), false).await
+    match load_async(w).await? {
+        Some(url) => post(w, &url, &channel.test_text(), false).await,
+        None if channel.bot_file().is_some() && bot_configured(channel).await => {
+            crate::server::messenger_bridge_proxy::messenger_bot_test(Some(channel)).await
+        }
+        None => Err(not_registered(channel)),
+    }
 }
 
 /// 알림 한 통을 `channels` 가운데 **등록된 채널 각각**에 보낸다. 무엇을 언제 보낼지는 프런트가 정한다
@@ -1019,23 +1111,28 @@ pub async fn messenger_send(
         return Ok(());
     }
     let mut targets: Vec<(Webhook, WebhookUrl)> = Vec::new();
-    let mut telegram = false;
+    // 봇으로 보낼 채널(Telegram · 웹훅이 없는 Discord — 봇 · 짝이 없으면 서버가 조용히 건너뛴다)
+    let mut bots: Vec<Channel> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
     for channel in channels {
         let Some(w) = channel.webhook() else {
-            telegram = true;
+            if !bots.contains(&channel) {
+                bots.push(channel);
+            }
             continue;
         };
-        if targets.iter().any(|(c, _)| *c == w) {
+        if targets.iter().any(|(c, _)| *c == w) || bots.contains(&channel) {
             continue;
         }
         match load_async(w).await {
             Ok(Some(url)) => targets.push((w, url)),
-            Ok(None) => {} // 등록 안 됨 — 조용히 건너뛴다
+            // 등록 안 됨 — 봇이 있는 채널(Discord)은 봇으로, 아니면 조용히 건너뛴다
+            Ok(None) if channel.bot_file().is_some() => bots.push(channel),
+            Ok(None) => {}
             Err(e) => errors.push(e),
         }
     }
-    if !targets.is_empty() || telegram {
+    if !targets.is_empty() || !bots.is_empty() {
         let convo = match conversation {
             Some(c) => tauri::async_runtime::spawn_blocking(move || conversation_lines(&c))
                 .await
@@ -1048,11 +1145,14 @@ pub async fn messenger_send(
                 errors.push(e);
             }
         }
-        if telegram {
-            let text = Channel::Telegram.clip_rendered(Channel::Telegram.render(&message, &convo));
+        for channel in bots {
+            let text = channel.clip_rendered(channel.render(&message, &convo));
             let label = (!message.label.trim().is_empty()).then(|| message.label.clone());
-            let notice = crate::server::messenger_bridge::Notice { text, stream, kind, label };
-            if let Err(e) = send_telegram(notice).await {
+            // Telegram 은 와이어에 채널을 싣지 않는다(3a 그대로 — 없으면 Telegram)
+            let wire = (channel != Channel::Telegram).then_some(channel);
+            let has_tool = convo.iter().any(|l| matches!(l, ConvoLine::PendingTool { .. }));
+            let notice = crate::server::messenger_bridge::Notice { text, stream: stream.clone(), kind: kind.clone(), label, channel: wire, has_tool };
+            if let Err(e) = send_bot(notice).await {
                 errors.push(e);
             }
         }

@@ -44,8 +44,8 @@
 //! | `db_ops` | **DB 평면 op**(판 8 — 쿼리 타일: `db_open`·`db_query`·`db_cancel`·`db_schema`·`db_objects`·`db_table_detail`·`db_definition`·`db_set_write`·`db_close`) — 몸은 `crate::db` | 서버 |
 //! | `db_proxy` | 쿼리 타일 Tauri 명령(같은 이름) — 판 8 미만 서버면 보내지 않고 "재시작 필요" | GUI |
 //! | `log` | `data_root()/server.log`(1 MiB × 2) | 서버 |
-//! | `messenger_bridge` | **메신저 다리**(판 34) — Telegram 롱폴 · 짝짓기 · 로컬 AI 타일 넣기 · 답 보내기 · op `messenger_bot_*` · 봇 토큰을 읽는 유일한 자리 | 서버 |
-//! | `messenger_bridge_proxy` | 메신저 다리 Tauri 명령(`messenger_bot_*`) · 알림의 Telegram 몫을 서버로 | GUI |
+//! | `messenger_bridge` | **메신저 다리**(판 34 · Discord 판 35) — Telegram 롱폴 · Discord 게이트웨이 · 짝짓기 · 로컬 AI 타일 넣기 · 답 보내기 · op `messenger_bot_*` · 봇 토큰을 읽는 유일한 자리 | 서버 |
+//! | `messenger_bridge_proxy` | 메신저 다리 Tauri 명령(`messenger_bot_*` · `channel?`) · 알림의 봇 몫(Telegram · 웹훅 없는 Discord)을 서버로 | GUI |
 //! | `resources` | **로컬 자원 모니터**(판 18) — op `resource_snapshot`(읽기 · 관찰 임대) · 표본 스레드(보일 때만) + Tauri 명령 같은 이름 | 둘 다 |
 //!
 //! ## 불변식

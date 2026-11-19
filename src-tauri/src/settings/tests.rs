@@ -221,6 +221,7 @@ fn sample() -> AppSettings {
             include_summary: Some(false),
             telegram: Some(false),
             telegram_chat: Some(true),
+            discord_chat: Some(true),
         },
         remote: RemotePrefs {
             enabled: Some(true),

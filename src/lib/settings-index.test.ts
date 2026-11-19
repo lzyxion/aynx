@@ -47,7 +47,7 @@ const SECTION_FILE: Record<SettingsSectionId, string> = {
 /** 섹션이 품은 하위 컴포넌트 — 그 줄들의 id 는 이 파일들에 적힌다 (알림 › 메신저) */
 const SECTION_CHILDREN: Partial<Record<SettingsSectionId, string[]>> = {
   theme: ["AvatarsSection"],
-  notifications: ["MessengerSettings", "MessengerChannel", "MessengerTelegram"],
+  notifications: ["MessengerSettings", "MessengerChannel", "MessengerBot", "MessengerDiscord", "MessengerWebhook"],
   mcp: ["ExternalMcpServers", "McpSessionsView"],
 };
 
@@ -123,7 +123,9 @@ describe("설정 색인", () => {
         src.includes(`id="${e.anchor}"`) ||
         src.includes(`for="${e.anchor}"`) ||
         (part !== undefined && src.includes(`agentAnchor(agent.id, "${part}")`)) ||
-        src.includes(`domId: "${e.anchor}"`);
+        src.includes(`domId: "${e.anchor}"`) ||
+        // 봇 채널의 말하기 줄 — 몸통(`MessengerBot`)이 채널로 id 를 짓고, 그 글자는 채널 표의 `chatId` 에 적힌다
+        src.includes(`chatId: "${e.anchor}"`);
       expect(found, `${e.section} › ${e.anchor}`).toBe(true);
     }
   });

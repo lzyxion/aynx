@@ -206,9 +206,13 @@ sha2 = "0.11"
 # 원격 관문의 기기 토큰 해시 비교(R1a-2 — `remote/auth.rs`, 상수시간). 이미 전이 의존(2.6 — RustCrypto)이라 새로 받는 크레이트가 없다.
 subtle = "2.6"
 # 원격 창의 WebSocket(R1a-3 — `remote/ws.rs`). **새로 받는 크레이트 둘**(tokio-tungstenite · tungstenite 0.30) — 나머지 의존(bytes·log·
-# rand·thiserror·utf-8)은 이미 잠금 파일에 있다. 기본 기능(connect·handshake — 클라이언트 연결·http 핸드셰이크)은 끈다: 업그레이드
-# 핸드셰이크는 관문의 hyper 가 하고(`Sec-WebSocket-Accept` 는 이미 있는 sha1 + data-encoding), TLS 는 사용자의 `tailscale serve` 다.
-tokio-tungstenite = { version = "0.30", default-features = false }
+# rand·thiserror·utf-8)은 이미 잠금 파일에 있다. 기본 기능 `connect`(클라이언트 연결)는 끈다: 관문의 업그레이드 핸드셰이크는 hyper 가
+# 하고(`Sec-WebSocket-Accept` 는 이미 있는 sha1 + data-encoding), TLS 는 사용자의 `tailscale serve` 다. `handshake` 는 아래 줄(3b).
+# 메신저 다리의 Discord 게이트웨이(2026-11-19 3b — `server/messenger_bridge/dc.rs`)는 **클라이언트**라 `handshake` 하나만 켠다(클라이언트
+# 업그레이드 `client_async` — 그 의존 http · httparse · sha1 · data-encoding 은 이미 잠금 파일에 있어 **새로 받는 크레이트가 없다**). TCP 연결과
+# TLS 는 우리가 한다: 위의 tokio-rustls + aws-lc-rs 공급자 + webpki-roots(DB TLS 와 같은 기준) — `connect`(tokio/net)와 `rustls-tls-*` 기능은
+# 켜지 않는다(공급자를 고르지 않는 rustls 기능 묶음 · webpki-roots 0.26 이 따로 오른다 — `cargo tree -i ring` 이 빈 채로 둔다).
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 # 같은 ws 의 split·SinkExt/StreamExt. 이미 전이 의존(0.3)이라 새로 받는 크레이트가 없다.
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 # 관문의 쿼리 값(`/remote/asset?path=` · `/remote/ws?t=`) 퍼센트 디코딩. 이미 전이 의존(2.3)이라 새로 받는 크레이트가 없다.

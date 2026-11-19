@@ -245,12 +245,13 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   row("notifications", "settings.automation.notify.label", "notify-review", "settings.notifications.app.subhead"),
   // 메신저 채널 줄은 칸 자체를 가리킨다(색인으로 오면 그 칸을 펼친다). 규칙 줄은 채널이 하나도 없으면 숨는데, 그때는 채널 상자로 떨어진다
   // (`MessengerSettings` 의 `RULE_ANCHORS` → `data-anchor-for` · docs/log/2026-09-28-messenger-channels.md "3단계")
+  // 봇 채널(Telegram · Discord — 메신저 다리)은 몸통 안의 말하기 줄도 오른다. 접혀 있으면 `MessengerSettings.expandForAnchor` 가 펼치고, 짝짓기 전
+  // (Discord 는 웹훅일 때도)이라 줄이 없으면 그 채널 칸으로 떨어진다(`data-anchor-for`). 말하기 줄은 이름이 같아 소제목 자리에 채널 이름을 단다
   row("notifications", "settings.messenger.channel.discord", "messenger-channel-discord", "settings.messenger.heading"),
+  row("notifications", "settings.messenger.bot.chat.label", "messenger-channel-discord-chat", "settings.messenger.channel.discord"),
   row("notifications", "settings.messenger.channel.slack", "messenger-channel-slack", "settings.messenger.heading"),
-  // Telegram(2026-11-19 메신저 다리) — 칸과 몸통 안의 말하기 줄. 접혀 있으면 `MessengerSettings.expandForAnchor` 가 펼치고, 짝짓기 전이라 줄이
-  // 없으면 Telegram 칸으로 떨어진다(`data-anchor-for`)
   row("notifications", "settings.messenger.channel.telegram", "messenger-channel-telegram", "settings.messenger.heading"),
-  row("notifications", "settings.messenger.telegram.chat.label", "messenger-channel-telegram-chat", "settings.messenger.heading"),
+  row("notifications", "settings.messenger.bot.chat.label", "messenger-channel-telegram-chat", "settings.messenger.channel.telegram"),
   row("notifications", "settings.messenger.when.label", "messenger-when", "settings.messenger.heading"),
   row("notifications", "settings.messenger.away.label", "messenger-away-after", "settings.messenger.heading"),
   row("notifications", "settings.messenger.command.label", "messenger-command-min", "settings.messenger.heading"),

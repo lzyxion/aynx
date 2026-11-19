@@ -53,6 +53,7 @@ describe("resolveMessengerRules — 안 정한 칸의 기본값", () => {
       slack: true,
       telegram: true,
       telegramChat: false,
+      discordChat: false,
     });
   });
 
@@ -74,6 +75,15 @@ describe("resolveMessengerRules — 안 정한 칸의 기본값", () => {
     expect(resolveMessengerRules({ telegram_chat: null }).telegramChat).toBe(false);
     expect(resolveMessengerRules({ telegram_chat: true }).telegramChat).toBe(true);
     expect(messengerChannels(resolveMessengerRules({ telegram: false, telegram_chat: true }))).not.toContain("telegram");
+  });
+
+  it("Discord 말하기(discord_chat)도 안 정하면 끔 · Telegram 말하기와 따로다", () => {
+    expect(resolveMessengerRules({}).discordChat).toBe(false);
+    expect(resolveMessengerRules({ discord_chat: null }).discordChat).toBe(false);
+    const r = resolveMessengerRules({ discord_chat: true });
+    expect(r.discordChat).toBe(true);
+    expect(r.telegramChat).toBe(false);
+    expect(messengerChannels(resolveMessengerRules({ discord: false, discord_chat: true }))).not.toContain("discord");
   });
 
   it("모르는 when 은 기본(away)으로 떨어지고, 0 은 살아남는다", () => {

@@ -1,10 +1,14 @@
 // 헤드리스 검증 — **설정 › 알림 › 채널(메신저 다리 1b)** 과 **설정 상태 칩 색(전체 색)** 을 찍고 단언한다
-// (docs/log/2026-11-18-messenger-bridge.md "구현 기록 — 1b" · 사용자 확정 목업 "설정 › 알림 › 채널").
+// (docs/log/2026-11-18-messenger-bridge.md "구현 기록 — 1b" · 사용자 확정 목업 "설정 › 알림 › 채널"). 11 · 12 는 Discord 봇(3c — 한 번에
+// 한 방식 · 2026-11-19 A안 · 목업 "Discord 채널 줄" ①–⑥): "연결 방식" 줄이 늘 맨 위 · 머리줄 첫 칩 = 지금 방식 · 웹훅 → [봇] → 토큰 → 확인
+// ([취소] · 거절 · [바꾸기] — 웹훅이 지워진다) → 짝짓기 → 연결됨 → [웹훅] → 주소 → 확인 → 웹훅(`messenger_replace_bot_with_webhook`) → 해제 →
+// 연결 전 등록(확인 없음) · 옛 세션 서버 · 원격 잠금(바꾸기는 어느 방향이든 메인 PC 전용).
 //
 //   node scripts/dev/run-harness.mjs messenger-settings-harness.mjs <outdir> --size 1200x900
 //
-// 스텁: 웹훅 채널 `messenger_status`(채널별 · `window.__hooks`) · `messenger_set_webhook` · `messenger_test`, Telegram 봇
-// `messenger_bot_status`(`window.__bot`) · `messenger_bot_set_token` · `messenger_bot_pair` · `messenger_bot_unpair` · `messenger_bot_test`,
+// 스텁: 웹훅 채널 `messenger_status`(채널별 · `window.__hooks` · Discord 봇 토큰이 있으면 `via: "bot"`) · `messenger_set_webhook` ·
+// `messenger_replace_bot_with_webhook`(주소 모양만 본다) · `messenger_test`, 봇
+// `messenger_bot_status`(채널별 `window.__bots`) · `messenger_bot_set_token` · `messenger_bot_pair` · `messenger_bot_unpair` · `messenger_bot_test`,
 // 설정 읽기 · 저장(`load_settings` · `save_settings` — 받은 payload 를 `__calls` 에 적는다). 서버 사건 `messenger-bot-event` 는 리스너 표로 쏜다
 // (`window.__emit`). 원격 창은 `window.__AYNX_REMOTE__ = true` 를 둘째 주입 스크립트로 얹고 다시 읽는다(file-ui-remote-harness 와 같은 표식).
 // 테마는 `document.documentElement.dataset.theme`(settings-modal-harness 와 같은 길).
@@ -79,9 +83,13 @@ const STUB = `
   window.__listeners = {};
   window.__emit = (event, payload) => (window.__listeners[event] ?? []).forEach((h) => cbs.get(h)?.({ event, id: h, payload }));
   window.__hooks = { discord: true, slack: false };
-  window.__bot = { configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' };
+  const NOBOT = () => ({ configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' });
+  // 봇 채널마다 — Telegram · Discord(2026-11-19 A안)
+  window.__bots = { telegram: NOBOT(), discord: NOBOT() };
+  window.__discordOutdated = false;
   window.__settings = { app: { status_bar: 'bottom' }, messenger: {}, remote: { enabled: true, host: 'mypc.tail1234.ts.net' } };
-  const botNow = () => JSON.parse(JSON.stringify(window.__bot));
+  const botNow = (ch) => JSON.parse(JSON.stringify(window.__bots[ch]));
+  const chOf = (args) => (args && args.channel) || 'telegram';
   const answers = {
     list_hosts: { hosts: [], warnings: [] }, get_host_meta: {}, list_group_meta: {}, list_host_meta: {},
     list_shells: { shells: [{ id: 'pwsh', label: 'PowerShell 7' }], default_id: 'pwsh' },
@@ -129,22 +137,43 @@ const STUB = `
       if (cmd === 'load_settings') return Promise.resolve(window.__settings);
       if (cmd === 'save_settings') return Promise.resolve(null);
       if (cmd === 'agent_hooks_status') return Promise.resolve({ installed: args.agent === 'claude', partial: args.agent === 'codex', settingsPath: '~/.' + args.agent + '/settings.json', scriptPath: '~/.aynx/hook', preview: '{}', error: null });
-      if (cmd === 'messenger_status') return Promise.resolve({ configured: window.__hooks[args.channel] === true });
-      if (cmd === 'messenger_set_webhook') { window.__hooks[args.channel] = typeof args.url === 'string'; return Promise.resolve({ configured: window.__hooks[args.channel] }); }
+      if (cmd === 'messenger_status') {
+        if (args.channel === 'discord' && window.__bots.discord.configured) return Promise.resolve({ configured: true, via: 'bot' });
+        const on = window.__hooks[args.channel] === true;
+        return Promise.resolve({ configured: on, via: on ? 'webhook' : null });
+      }
+      if (cmd === 'messenger_set_webhook') {
+        if (args.channel === 'discord' && window.__bots.discord.configured) return Promise.reject(new Error('[bot-configured] 봇이 연결돼 있습니다'));
+        window.__hooks[args.channel] = typeof args.url === 'string'; return Promise.resolve({ configured: window.__hooks[args.channel] });
+      }
+      // 봇 → 웹훅 바꾸기(2026-11-19) — 주소 검사 → 봇 해제 → 웹훅 저장(백엔드 계약 · 틀리면 아무것도 안 바뀜)
+      if (cmd === 'messenger_replace_bot_with_webhook') {
+        if (args.channel !== 'discord') return Promise.reject(new Error('Discord 만'));
+        if (!/^https:\\/\\/discord\\.com\\/api\\/webhooks\\/\\d+\\/\\S+$/.test(args.url)) return Promise.reject(new Error('Discord 웹훅 주소가 아닙니다'));
+        window.__bots.discord = NOBOT(); window.__hooks.discord = true;
+        return Promise.resolve({ configured: true, via: 'webhook' });
+      }
       if (cmd === 'messenger_test' || cmd === 'messenger_bot_test') return Promise.resolve(null);
-      if (cmd === 'messenger_bot_status') return Promise.resolve(botNow());
+      if (cmd === 'messenger_bot_status') {
+        if (chOf(args) === 'discord' && window.__discordOutdated) return Promise.reject(new Error('[server-outdated] 세션 서버를 다시 시작하세요'));
+        return Promise.resolve(botNow(chOf(args)));
+      }
       if (cmd === 'messenger_bot_set_token') {
-        if (args.token === null) { window.__bot = { configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' }; return Promise.resolve(botNow()); }
-        if (!/^\\d+:/.test(args.token)) return Promise.reject(new Error('[bad-token] 봇 토큰이 맞지 않습니다'));
-        window.__bot = { ...window.__bot, configured: true, bot: 'my_aynx_bot', link: 'ok' };
-        return Promise.resolve(botNow());
+        const ch = chOf(args);
+        if (args.token === null) { window.__bots[ch] = NOBOT(); return Promise.resolve(botNow(ch)); }
+        const ok = ch === 'discord' ? /^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/.test(args.token) : /^\\d+:/.test(args.token);
+        if (!ok) return Promise.reject(new Error('[bad-token] 봇 토큰이 맞지 않습니다'));
+        // Discord — 봇 토큰을 받으면 웹훅을 지운다(백엔드 계약)
+        if (ch === 'discord') window.__hooks.discord = false;
+        window.__bots[ch] = { ...window.__bots[ch], configured: true, bot: ch === 'discord' ? 'aynx-bot' : 'my_aynx_bot', link: 'ok' };
+        return Promise.resolve(botNow(ch));
       }
       if (cmd === 'messenger_bot_pair') {
-        if (args.allow) window.__bot = { ...window.__bot, paired: true, pairName: window.__bot.pending?.name ?? null, pending: null };
-        else window.__bot = { ...window.__bot, pending: null };
-        return Promise.resolve(botNow());
+        const ch = chOf(args); const b = window.__bots[ch];
+        window.__bots[ch] = args.allow ? { ...b, paired: true, pairName: b.pending?.name ?? null, pending: null } : { ...b, pending: null };
+        return Promise.resolve(botNow(ch));
       }
-      if (cmd === 'messenger_bot_unpair') { window.__bot = { ...window.__bot, paired: false, pairName: null }; return Promise.resolve(botNow()); }
+      if (cmd === 'messenger_bot_unpair') { const ch = chOf(args); window.__bots[ch] = { ...window.__bots[ch], paired: false, pairName: null }; return Promise.resolve(botNow(ch)); }
       if (cmd in answers) return Promise.resolve(answers[cmd]);
       window.__unstubbed.push(cmd);
       return Promise.reject(new Error('stub: ' + cmd));
@@ -189,9 +218,9 @@ const setTheme = async (theme) => {
   await ev(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
   await sleep(250);
 };
-/** 봇 상태를 바꾸고 서버 사건을 쏜다(화면이 다시 읽는다) */
-const setBot = async (bot) => {
-  await ev(`(() => { window.__bot = ${JSON.stringify(bot)}; window.__emit('messenger-bot-event', { kind: 'status' }); })()`);
+/** 봇 상태를 바꾸고 서버 사건을 쏜다(화면이 두 채널을 다 다시 읽는다 — 사건 몸통에 `channel` 을 싣지 않는다) */
+const setBot = async (bot, channel = "telegram") => {
+  await ev(`(() => { window.__bots[${JSON.stringify(channel)}] = ${JSON.stringify(bot)}; window.__emit('messenger-bot-event', { changed: true }); })()`);
   await sleep(500);
 };
 const calls = (cmd) => evj(`window.__calls.filter(c => c[0] === '${cmd}').map(c => c[1])`);
@@ -354,7 +383,7 @@ await resetCalls();
 await ev(`[...${CH("telegram")}.querySelectorAll('.pair button')].find(b => /허용/.test(b.textContent)).click()`);
 await sleep(600);
 const pairCalls = await calls("messenger_bot_pair");
-check(JSON.stringify(pairCalls) === '[{"code":"482913","allow":true}]', `[허용] → messenger_bot_pair{code, allow:true} (${JSON.stringify(pairCalls)})`);
+check(JSON.stringify(pairCalls) === '[{"channel":"telegram","code":"482913","allow":true}]', `[허용] → messenger_bot_pair{code, allow:true} (${JSON.stringify(pairCalls)})`);
 
 // ── 5. 연결됨 ───────────────────────────────────────────────────────────────
 const linked = await evj(`(() => { const c = ${CH("telegram")}; return { toggle: !!document.getElementById('messenger-telegram'), send: document.getElementById('messenger-telegram')?.checked ?? null, name: c.querySelector('[data-messenger-pair-name]')?.textContent ?? null, chat: !!document.getElementById('messenger-channel-telegram-chat'), open: c.hasAttribute('data-messenger-open') }; })()`);
@@ -427,6 +456,245 @@ await clickHead("slack");
 await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
 await sleep(500);
 
+// ── 11. Discord — 한 번에 한 방식(2026-11-19 A안 · 목업 "Discord 채널 줄" ①–⑥): "연결 방식" 줄이 늘 맨 위 · 머리줄 첫 칩 = 지금 방식 ·
+//        웹훅 → [봇] → 토큰 → 확인([취소] · 거절 · [바꾸기]) → 짝짓기 → 연결됨 → [웹훅] → 주소 → 확인 → 웹훅 → 해제 → 연결 전 등록(확인 없음) ──
+const dBodyOf = () =>
+  evj(`(() => { const c = ${CH("discord")}; const b = c.querySelector('.slist-body');
+    const names = [...b.querySelectorAll(':scope > .srow > .name, :scope > form.srow > .name, :scope > .srow.pair-row > .name')].map(e => e.textContent.trim());
+    const tok = document.getElementById('messenger-discord-token'); const wh = document.getElementById('messenger-discord-webhook');
+    const sup = c.querySelector('[data-messenger-state]'); const kind = sup.querySelector('[data-messenger-kind]');
+    const confirm = b.querySelector('[data-messenger-confirm]');
+    return { names, text: b.innerText.replace(/\\s+/g, ' '), token: tok ? { type: tok.type, value: tok.value, placeholder: tok.placeholder, disabled: tok.disabled, title: tok.title } : null,
+      webhook: !!wh, hookInput: wh ? { value: wh.value, disabled: wh.disabled, title: wh.title } : null,
+      via: c.querySelector('#messenger-discord-via [aria-pressed=true]')?.dataset.value ?? null,
+      kind: kind ? kind.textContent.trim() : null, kindFirst: !!kind && sup.firstElementChild === kind, kindDot: !!kind?.querySelector('.dot'),
+      confirm: confirm ? confirm.innerText.replace(/\\s+/g, ' ').trim() : null,
+      head: sup.textContent.replace(/\\s+/g, ' ').trim(), toggle: !!document.getElementById('messenger-discord'),
+      open: c.hasAttribute('data-messenger-open') }; })()`);
+const dButton = (re) => `[...${CH("discord")}.querySelectorAll('.slist-body button')].find(b => ${re}.test(b.textContent))`;
+const pickVia = async (v) => {
+  await ev(`${CH("discord")}.querySelector('#messenger-discord-via [data-value=${v}]').click()`);
+  await sleep(300);
+};
+/** 칸에 넣고 [연결] — 바꾸기 몸통이면 확인이 선다 */
+const typeInto = async (id, v) => {
+  await ev(`(() => { const i = document.getElementById('${id}'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await sleep(120);
+  await ev(`document.getElementById('${id}').closest('form').querySelector('button[type=submit]').click()`);
+  await sleep(400);
+};
+const confirmGo = async () => {
+  await ev(`${CH("discord")}.querySelector('[data-messenger-confirm-go]').click()`);
+  await sleep(600);
+};
+const confirmCancel = async () => {
+  await ev(`${CH("discord")}.querySelector('[data-messenger-confirm-cancel]').click()`);
+  await sleep(300);
+};
+const alertOf = (id) => ev(`document.getElementById('${id}')?.closest('form')?.querySelector('[role=alert]')?.textContent ?? null`);
+await collapseAll();
+await clickHead("discord");
+// ① 웹훅 연결됨
+let d = await dBodyOf();
+check(
+  JSON.stringify(d.names) === JSON.stringify(["연결 방식", "웹훅", "웹훅 연결 해제"]) && d.via === "webhook" && !d.token && /보내는 중/.test(d.head),
+  `① 웹훅 연결됨 = 연결 방식[웹훅] · 웹훅 · 웹훅 연결 해제 (${JSON.stringify(d.names)} · via ${d.via} · ${d.head})`,
+);
+check(d.kind === "웹훅" && d.kindFirst && !d.kindDot, `① 머리줄 첫 칩 = 웹훅(점 없음) (${JSON.stringify([d.kind, d.kindFirst, d.kindDot])})`);
+check(!/봇으로 바꾸기/.test(d.text), "[봇으로 바꾸기] 줄은 없다");
+await shotChannels("11a-state1-webhook-connected");
+// ② [봇] — 봇 토큰 칸 + 바꾸기 안내 · 아무것도 안 바뀜
+await resetCalls();
+await pickVia("bot");
+d = await dBodyOf();
+check(
+  JSON.stringify(d.names) === JSON.stringify(["연결 방식", "봇 토큰"]) && d.via === "bot" && d.token?.type === "password" && /^MT/.test(d.token.placeholder) && !d.webhook,
+  `② [봇] → 봇 토큰 칸 하나(비밀번호형 · Discord 자리표시) (${JSON.stringify(d.names)} · ${d.token?.placeholder})`,
+);
+check(/개발자 포털/.test(d.text) && /지금은 웹훅으로 연결돼 있습니다/.test(d.text), `② 요령 + "지금은 웹훅으로…" 한 줄 (${d.text})`);
+check(d.kind === "웹훅" && (await ev(`window.__hooks.discord`)) === true && (await calls("messenger_bot_set_token")).length === 0, "② 머리줄 칩은 웹훅 그대로 · 아무 명령도 없음");
+await shotChannels("11b-state2-webhook-pick-bot");
+await pickVia("webhook");
+d = await dBodyOf();
+check(JSON.stringify(d.names) === JSON.stringify(["연결 방식", "웹훅", "웹훅 연결 해제"]), `② 에서 [웹훅] → ① 로 돌아감 (${JSON.stringify(d.names)})`);
+await pickVia("bot");
+// ③ [연결] → 확인 — 칸은 비고 사라진다 · [취소] 는 칸으로
+await typeInto("messenger-discord-token", "MTIzNDU2Nzg5MDEy.Gx1a2b.abcdefghijklmnop");
+d = await dBodyOf();
+check(!!d.confirm && /웹훅을 봇으로 바꿀까요\?/.test(d.confirm) && /바꾸기/.test(d.confirm) && /취소/.test(d.confirm) && !d.token, `③ [연결] → 칸 자리에 확인 · 토큰 칸 없음 (${d.confirm})`);
+check((await calls("messenger_bot_set_token")).length === 0 && d.kind === "웹훅", "③ 확인 전에는 명령이 없다 · 칩은 웹훅");
+const noSecret = await ev(`!${CH("discord")}.innerHTML.includes('abcdefghijklmnop')`);
+check(noSecret === true, "③ 친 토큰이 화면(DOM)에 남지 않는다");
+await shotChannels("11c-state3-confirm-to-bot");
+await confirmCancel();
+d = await dBodyOf();
+check(!d.confirm && d.token?.value === "" && (await calls("messenger_bot_set_token")).length === 0 && (await ev(`window.__hooks.discord`)) === true, `③ [취소] → 빈 칸으로 · 명령 없음 · 웹훅 그대로 (${JSON.stringify(d.token)})`);
+// 틀린 토큰 → [바꾸기] → 거절 — 아무것도 안 바뀜
+await typeInto("messenger-discord-token", "123456789:AAtelegram-shape");
+await confirmGo();
+const dRejAlert = await alertOf("messenger-discord-token");
+d = await dBodyOf();
+check(d.token?.value === "" && !!dRejAlert && !/\[bad-token\]/.test(dRejAlert) && !d.confirm, `틀린 토큰 → 칸으로 · 문구 칸 밑 · 표식 없음 (${dRejAlert})`);
+check((await ev(`window.__hooks.discord`)) === true && d.kind === "웹훅" && (await calls("messenger_bot_set_token")).length === 1, "거절되면 웹훅 그대로 · 칩 웹훅");
+await shotChannels("11c2-discord-to-bot-rejected");
+// 맞는 토큰 → [바꾸기] → 계정 연결 화면 · 칩 봇
+await resetCalls();
+await typeInto("messenger-discord-token", "MTIzNDU2Nzg5MDEy.Gx1a2b.abcdefghijklmnop");
+await confirmGo();
+const dSet = await calls("messenger_bot_set_token");
+const dStatusCalls = await calls("messenger_status");
+check(
+  dSet.length === 1 && dSet[0].channel === "discord" && dSet[0].token?.type === "string",
+  `[바꾸기] → messenger_bot_set_token{channel:discord} 한 번(토큰은 모양만 ${JSON.stringify(dSet)})`,
+);
+check(dStatusCalls.some((c) => c.channel === "discord"), `토큰이 받아들여지면 messenger_status{discord} 를 다시 읽는다 (${JSON.stringify(dStatusCalls)})`);
+d = await dBodyOf();
+check(
+  !d.token && !d.webhook && !/등록됨/.test(d.text) && d.via === "bot" && JSON.stringify(d.names) === JSON.stringify(["연결 방식", "계정 연결", "봇 연결 해제"]),
+  `바꾼 뒤 = 연결 방식[봇] · 계정 연결 · 봇 연결 해제(웹훅 줄 없음) (${JSON.stringify(d.names)})`,
+);
+check(d.kind === "봇" && d.kindFirst, `바꾼 뒤 머리줄 첫 칩 = 봇 (${d.kind})`);
+check(/계정 연결 대기/.test(d.head) && /aynx-bot/.test(d.head) && !/@aynx-bot/.test(d.head) && !d.toggle, `머리 = 계정 연결 대기 + aynx-bot(@ 없음) · 보내기 스위치 없음 (${d.head})`);
+check(/DM/.test(d.text) && /같은 서버/.test(d.text), `짝짓기 요령 = DM · 설치 또는 같은 서버 (${d.text})`);
+await shotChannels("11b-discord-bot-pairing");
+
+// pending — 접힌 채 사건(채널 칸 없음)으로 두 채널을 다시 읽고 Discord 칸이 저절로 펼쳐진다
+await collapseAll();
+await resetCalls();
+await setBot({ configured: true, bot: "aynx-bot", paired: false, pairName: null, pending: { code: "135790", name: "my_account" }, link: "ok" }, "discord");
+await sleep(300);
+const reread = (await calls("messenger_bot_status")).map((c) => c?.channel);
+check(reread.includes("telegram") && reread.includes("discord"), `사건 하나 → 두 채널 봇 상태를 다시 읽는다 (${JSON.stringify(reread)})`);
+const dPend = await evj(`(() => { const c = ${CH("discord")}; const code = c.querySelector('.code'); return { open: [...document.querySelectorAll('[data-messenger-open]')].map(e => e.dataset.messengerChannel), code: code?.textContent.trim() ?? null, who: c.querySelector('.who')?.textContent ?? '' }; })()`);
+check(JSON.stringify(dPend.open) === '["discord"]' && dPend.code === "135 790" && /my_account/.test(dPend.who), `Discord pending → 저절로 펼침 · 코드 · 이름 (${JSON.stringify(dPend)})`);
+await shotChannels("11c-discord-pending-code");
+await resetCalls();
+await ev(`[...${CH("discord")}.querySelectorAll('.pair button')].find(b => /허용/.test(b.textContent)).click()`);
+await sleep(600);
+check(JSON.stringify(await calls("messenger_bot_pair")) === '[{"channel":"discord","code":"135790","allow":true}]', "[허용] → messenger_bot_pair{channel:discord, code, allow:true}");
+d = await dBodyOf();
+check(
+  JSON.stringify(d.names) === JSON.stringify(["연결 방식", "메신저에서 AI 타일에 말하기", "연결된 계정", "봇", "봇 연결 해제"]) && !d.webhook && d.toggle && d.open && d.via === "bot",
+  `④ Discord 봇 연결됨 = 연결 방식[봇] · 말하기 · 연결된 계정 · 봇 · 봇 연결 해제(웹훅 줄 없음) · 보내기 스위치 (${JSON.stringify(d.names)})`,
+);
+check(d.kind === "봇" && d.kindFirst, `④ 머리줄 첫 칩 = 봇 (${d.kind})`);
+const dLinked = await evj(`(() => { const c = ${CH("discord")}; return { name: c.querySelector('[data-messenger-pair-name]')?.textContent ?? null, send: document.getElementById('messenger-discord')?.checked ?? null, chat: document.getElementById('messenger-channel-discord-chat')?.checked ?? null }; })()`);
+check(dLinked.name === "my_account" && dLinked.send === true && dLinked.chat === false, `연결된 계정 my_account · 보내기 켬 · 말하기 끔 (${JSON.stringify(dLinked)})`);
+const tgChatBefore = await ev(`(async () => (await ${setMod}).settings.messenger.telegramChat)()`);
+await ev(`document.getElementById('messenger-channel-discord-chat').click()`);
+await sleep(300);
+const dChat = JSON.parse(await ev(`(async () => { const s = (await ${setMod}).settings.messenger; return JSON.stringify({ discord: s.discordChat, telegram: s.telegramChat }); })()`));
+check(dChat.discord === true && dChat.telegram === tgChatBefore, `Discord 말하기 → discordChat true · telegramChat 그대로 (${JSON.stringify(dChat)})`);
+const dWarn = await ev(`!!${CH("discord")}.querySelector('.slist-body .warn-chip, .slist-body [class*="warn"]')`);
+check(dWarn === true, "Discord 말하기 켬 → 경고 칩");
+d = await dBodyOf();
+check(/보내는 중/.test(d.head) && /말하기 켜짐/.test(d.head), `Discord 머리 = 보내는 중 · 말하기 켜짐 (${d.head})`);
+await resetCalls();
+await ev(`${dButton("/테스트 보내기/")}.click()`);
+await sleep(300);
+check(JSON.stringify(await calls("messenger_bot_test")) === '[{"channel":"discord"}]', "봇 [테스트 보내기] → messenger_bot_test{channel:discord}");
+await shotChannels("11d-discord-bot-connected-chat-on");
+await setTheme("light");
+await shotChannels("11d-light-discord-bot-connected");
+await setTheme("dark");
+await resetCalls();
+await ev(`(() => { const b = [...document.querySelectorAll('.settings-view button')].find(x => x.textContent.trim() === '저장'); b?.click(); })()`);
+await sleep(600);
+const dSaved = await calls("save_settings");
+check(dSaved[0]?.settings?.messenger?.discord_chat === true, `[저장] payload 의 [messenger] discord_chat = true (${JSON.stringify(dSaved[0]?.settings?.messenger)})`);
+
+// 색인 — 말하기 줄
+await collapseAll();
+await ev(`(async () => (await ${overlays}).openSettingsAt('general'))()`);
+await sleep(400);
+await openNotifications("messenger-channel-discord-chat");
+const dAnchor = await evj(`({ open: [...document.querySelectorAll('[data-messenger-open]')].map(e => e.dataset.messengerChannel), inView: (() => { const r = document.getElementById('messenger-channel-discord-chat')?.getBoundingClientRect(); return !!r && r.top >= 0 && r.bottom <= innerHeight; })() })`);
+check(JSON.stringify(dAnchor.open) === '["discord"]' && dAnchor.inView, `색인 messenger-channel-discord-chat → Discord 펼침 · 줄이 보인다 (${JSON.stringify(dAnchor)})`);
+
+// ⑤ 봇 연결됨에서 [웹훅] — 주소 칸 + 바꾸기 안내 · 아무것도 안 바뀜
+await resetCalls();
+await pickVia("webhook");
+d = await dBodyOf();
+check(
+  JSON.stringify(d.names) === JSON.stringify(["연결 방식", "Discord 웹훅 주소"]) && d.via === "webhook" && d.hookInput && !d.hookInput.disabled && !d.token,
+  `⑤ [웹훅] → 웹훅 주소 칸 하나 (${JSON.stringify(d.names)})`,
+);
+check(/지금은 봇으로 연결돼 있습니다/.test(d.text) && /웹후크/.test(d.text), `⑤ 요령 + "지금은 봇으로…" 한 줄 (${d.text})`);
+check(d.kind === "봇" && (await calls("messenger_replace_bot_with_webhook")).length === 0 && (await calls("messenger_set_webhook")).length === 0, "⑤ 머리줄 칩은 봇 그대로 · 명령 없음");
+await shotChannels("11e-state5-bot-pick-webhook");
+await pickVia("bot");
+d = await dBodyOf();
+check(JSON.stringify(d.names) === JSON.stringify(["연결 방식", "메신저에서 AI 타일에 말하기", "연결된 계정", "봇", "봇 연결 해제"]), `⑤ 에서 [봇] → ④ 로 돌아감 (${JSON.stringify(d.names)})`);
+await pickVia("webhook");
+// ⑥ [연결] → 확인 · [취소]
+const GOOD_HOOK = "https://discord.com/api/webhooks/123456789/abcDEF-token_xyz";
+await typeInto("messenger-discord-webhook", GOOD_HOOK);
+d = await dBodyOf();
+check(!!d.confirm && /봇을 웹훅으로 바꿀까요\?/.test(d.confirm) && /AI 타일에 말할 수 없습니다/.test(d.confirm) && !d.webhook, `⑥ [연결] → 확인 · 주소 칸 없음 (${d.confirm})`);
+check((await calls("messenger_replace_bot_with_webhook")).length === 0 && d.kind === "봇", "⑥ 확인 전에는 명령이 없다 · 칩은 봇");
+await shotChannels("11f-state6-confirm-to-webhook");
+await confirmCancel();
+d = await dBodyOf();
+check(!d.confirm && d.hookInput?.value === "" && (await ev(`window.__bots.discord.configured`)) === true, `⑥ [취소] → 빈 칸 · 봇 그대로 (${JSON.stringify(d.hookInput)})`);
+// 틀린 주소 → [바꾸기] → 거절 — 봇 그대로
+await typeInto("messenger-discord-webhook", "https://evil.example/api/webhooks/1/x");
+await confirmGo();
+const hookRej = await alertOf("messenger-discord-webhook");
+d = await dBodyOf();
+check(!!hookRej && d.hookInput?.value === "" && (await ev(`window.__bots.discord.configured`)) === true && d.kind === "봇", `틀린 주소 → 칸 밑 문구 · 봇 그대로 (${hookRej})`);
+check((await calls("messenger_replace_bot_with_webhook")).length === 1 && (await calls("messenger_set_webhook")).length === 0, "거절도 새 명령 한 번 · messenger_set_webhook 은 부르지 않는다");
+// 맞는 주소 → [바꾸기] → 웹훅
+await resetCalls();
+await typeInto("messenger-discord-webhook", GOOD_HOOK);
+await confirmGo();
+const rep = await calls("messenger_replace_bot_with_webhook");
+check(rep.length === 1 && rep[0].channel === "discord" && rep[0].url?.type === "string" && (await calls("messenger_set_webhook")).length === 0, `[바꾸기] → messenger_replace_bot_with_webhook{channel:discord, url} 한 번 (${JSON.stringify(rep)})`);
+d = await dBodyOf();
+check(
+  JSON.stringify(d.names) === JSON.stringify(["연결 방식", "웹훅", "웹훅 연결 해제"]) && d.via === "webhook" && d.kind === "웹훅" && d.kindFirst && d.toggle && /보내는 중/.test(d.head) && !/말하기 켜짐/.test(d.head),
+  `바꾼 뒤 = 웹훅 몸통 · 칩 웹훅 · 말하기 칩 없음 (${JSON.stringify(d.names)} · ${d.head})`,
+);
+await shotChannels("11g-discord-switched-to-webhook");
+// 웹훅 해제 → 연결 전 — 방식 고르기(처음은 봇) · 칩 없음
+await resetCalls();
+await ev(`${dButton("/^\\s*연결 해제\\s*$/")}.click()`);
+await sleep(600);
+check(JSON.stringify(await calls("messenger_set_webhook")) === '[{"channel":"discord","url":null}]', "웹훅 연결 해제 → messenger_set_webhook{channel:discord, url:null}");
+d = await dBodyOf();
+check(
+  d.via === "bot" && !!d.token && !d.webhook && /연결 안 됨/.test(d.head) && !d.toggle && d.kind === null && JSON.stringify(d.names) === JSON.stringify(["연결 방식", "봇 토큰"]),
+  `해제 뒤 = 연결 방식 [봇] + 봇 토큰 칸 · 연결 안 됨 · 방식 칩 없음 (${JSON.stringify(d.names)} · via ${d.via} · ${d.kind})`,
+);
+check(!/지금은/.test(d.text), "연결 전 칸에는 바꾸기 안내가 없다");
+await shotChannels("11h-discord-not-connected-bot");
+await pickVia("webhook");
+d = await dBodyOf();
+check(d.via === "webhook" && d.webhook && !d.token && JSON.stringify(d.names) === JSON.stringify(["연결 방식", "Discord 웹훅 주소"]), `[웹훅] → 웹훅 주소 칸 하나 (${JSON.stringify(d.names)})`);
+await shotChannels("11i-discord-not-connected-webhook");
+await pickVia("bot");
+// 연결 전 봇 등록은 확인 없이 곧바로 → 봇 연결 해제
+await resetCalls();
+await typeInto("messenger-discord-token", "MTIzNDU2Nzg5MDEy.Gx1a2b.abcdefghijklmnop");
+await sleep(300);
+d = await dBodyOf();
+check(!d.confirm && (await calls("messenger_bot_set_token")).length === 1 && JSON.stringify(d.names) === JSON.stringify(["연결 방식", "계정 연결", "봇 연결 해제"]), `연결 전 봇 토큰 → 확인 없이 등록 (${JSON.stringify(d.names)})`);
+await resetCalls();
+await ev(`${dButton("/^\\s*연결 해제\\s*$/")}.click()`);
+await sleep(600);
+check(JSON.stringify(await calls("messenger_bot_set_token")) === '[{"channel":"discord","token":null}]', "봇 연결 해제 → messenger_bot_set_token{channel:discord, token:null}");
+d = await dBodyOf();
+check(d.via === "bot" && !!d.token && d.kind === null, `봇 해제 뒤 = 연결 전 (${JSON.stringify(d.names)})`);
+
+// 옛 세션 서버 — Discord 봇 상태가 [server-outdated] 로 거절되면 토큰 칸 밑에 표식 없이
+await ev(`(() => { window.__discordOutdated = true; window.__emit('messenger-bot-event', { changed: true }); })()`);
+await sleep(500);
+const outdated = await ev(`document.getElementById('messenger-discord-token')?.closest('form')?.querySelector('[role=alert]')?.textContent ?? null`);
+check(!!outdated && /세션 서버/.test(outdated) && !/\[server-outdated\]/.test(outdated), `옛 세션 서버 → 토큰 칸 밑 문구 · 표식 없음 (${outdated})`);
+await shotChannels("11j-discord-server-outdated");
+await ev(`(() => { window.__discordOutdated = false; window.__emit('messenger-bot-event', { changed: true }); })()`);
+await sleep(400);
+await collapseAll();
+
 // ── 10. 칩 색 — AI 에이전트 · 원격 접속 · 일반 › 세션 서버, 어두운 · 밝은 ────────
 for (const theme of ["dark", "light"]) {
   await setTheme(theme);
@@ -448,7 +716,8 @@ errors.length = 0;
 collecting = false;
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: `window.__AYNX_REMOTE__ = true;
-  window.__bot = { configured: true, bot: 'my_aynx_bot', paired: true, pairName: 'Jin', pending: null, link: 'ok' };
+  window.__bots = { telegram: { configured: true, bot: 'my_aynx_bot', paired: true, pairName: 'Jin', pending: null, link: 'ok' },
+    discord: { configured: true, bot: 'aynx-bot', paired: true, pairName: 'my_account', pending: null, link: 'ok' } };
   window.__hooks = { discord: true, slack: false };`,
 });
 await reloadBoot(send, ev);
@@ -476,6 +745,64 @@ await clickHead("slack");
 const remoteSlack = await evj(`(() => { const i = document.getElementById('messenger-slack-webhook'); return { input: !!i, disabled: i?.disabled ?? null }; })()`);
 console.log("remote slack webhook input:", JSON.stringify(remoteSlack));
 await clickHead("slack");
+// 원격 창 — 봇으로 연결한 Discord: 다시 연결 · 연결 해제 · 말하기 켜기 잠김(Telegram 과 따로 · 저장된 discord_chat 이 꺼짐)
+await clickHead("discord");
+const remoteD = await evj(`(() => {
+  const c = ${CH("discord")}; const body = c.querySelector('.slist-body');
+  const btn = (re) => [...body.querySelectorAll('button')].find(b => re.test(b.textContent));
+  const chat = document.getElementById('messenger-channel-discord-chat');
+  const re = btn(/다시 연결/); const un = btn(/연결 해제/); const test = btn(/테스트 보내기/);
+  return { open: c.hasAttribute('data-messenger-open'), repair: re ? { disabled: re.disabled, title: re.title } : null, unbot: un ? { disabled: un.disabled, title: un.title } : null,
+    test: test ? test.disabled : null, chat: chat ? { disabled: chat.disabled, checked: chat.checked, title: chat.title } : null };
+})()`);
+console.log("remote discord:", JSON.stringify(remoteD));
+check(
+  remoteD.open && remoteD.repair?.disabled === true && remoteD.unbot?.disabled === true && /메인 PC/.test(remoteD.unbot?.title ?? "") && remoteD.test === false,
+  `원격 창 · Discord 봇 → [다시 연결] · [연결 해제] 잠김 + "메인 PC" · [테스트 보내기] 는 산다 (${JSON.stringify([remoteD.repair, remoteD.unbot, remoteD.test])})`,
+);
+check(remoteD.chat?.disabled === true && /메인 PC/.test(remoteD.chat?.title ?? ""), `원격 창 · Discord 말하기 잠금 (${JSON.stringify(remoteD.chat)})`);
+await shotChannels("12a-remote-discord-bot-locked");
+await setBot({ configured: true, bot: "aynx-bot", paired: false, pairName: null, pending: { code: "246810", name: "my_account" }, link: "ok" }, "discord");
+const remotePair = await evj(`[...${CH("discord")}.querySelectorAll('.pair button')].map(b => ({ t: b.textContent.trim(), disabled: b.disabled, title: b.title }))`);
+check(remotePair.length === 2 && remotePair.every((b) => b.disabled && /메인 PC/.test(b.title)), `원격 창 · Discord [허용] · [거절] 잠김 (${JSON.stringify(remotePair)})`);
+// 봇으로 연결된 Discord 에서 [웹훅] — 주소 칸 · [연결] 잠김 + "메인 PC"(봇을 지우는 바꾸기는 메인 PC 전용)
+await setBot({ configured: true, bot: "aynx-bot", paired: true, pairName: "my_account", pending: null, link: "ok" }, "discord");
+await pickVia("webhook");
+const remoteToHook = await evj(`(() => { const i = document.getElementById('messenger-discord-webhook'); const s = i?.closest('form')?.querySelector('button[type=submit]'); return i ? { disabled: i.disabled, title: i.title, submit: s?.disabled ?? null, submitTitle: s?.title ?? '' } : null; })()`);
+check(remoteToHook?.disabled === true && remoteToHook.submit === true && /메인 PC/.test(remoteToHook.title) && /메인 PC/.test(remoteToHook.submitTitle), `원격 창 · 봇 Discord → [웹훅] 칸 · [연결] 잠김 + "메인 PC" (${JSON.stringify(remoteToHook)})`);
+await shotChannels("12b-remote-discord-bot-to-webhook-locked");
+await pickVia("bot");
+// 웹훅으로 연결된 Discord 에서 [봇] — 토큰 칸 · [연결] 잠김
+await ev(`(() => { window.__hooks.discord = true; })()`);
+await setBot({ configured: false, bot: null, paired: false, pairName: null, pending: null, link: "off" }, "discord");
+await sleep(300);
+d = await dBodyOf();
+check(d.kind === "웹훅" && JSON.stringify(d.names) === JSON.stringify(["연결 방식", "웹훅", "웹훅 연결 해제"]), `원격 창 · 웹훅 Discord = ① 과 같다 (${JSON.stringify(d.names)})`);
+await pickVia("bot");
+d = await dBodyOf();
+const remoteToBotSubmit = await evj(`(() => { const s = document.getElementById('messenger-discord-token')?.closest('form')?.querySelector('button[type=submit]'); return s ? { disabled: s.disabled, title: s.title } : null; })()`);
+check(d.token?.disabled === true && /메인 PC/.test(d.token.title) && remoteToBotSubmit?.disabled === true, `원격 창 · 웹훅 Discord → [봇] 토큰 칸 · [연결] 잠김 + "메인 PC" (${JSON.stringify([d.token, remoteToBotSubmit])})`);
+await shotChannels("12c-remote-discord-webhook-to-bot-locked");
+// 연결 전 — 웹훅 등록은 원격에서도 되고 봇 토큰은 잠긴다(그대로). `messenger_status` 는 화면이 설 때 읽으므로 셋째 주입 스크립트로 비우고 다시 읽는다
+await clickHead("discord");
+collecting = false;
+await send("Page.addScriptToEvaluateOnNewDocument", {
+  source: `window.__hooks = { discord: false, slack: false };
+  window.__bots.discord = { configured: false, bot: null, paired: false, pairName: null, pending: null, link: 'off' };`,
+});
+await reloadBoot(send, ev);
+await sleep(800);
+collecting = true;
+await openNotifications();
+await clickHead("discord");
+d = await dBodyOf();
+console.log("remote none:", JSON.stringify({ names: d.names, kind: d.kind, token: d.token }));
+check(d.kind === null && d.via === "bot" && d.token?.disabled === true, `원격 창 · 연결 전 [봇] → 토큰 칸 잠김 (${JSON.stringify([d.names, d.token])})`);
+await pickVia("webhook");
+d = await dBodyOf();
+check(d.hookInput && d.hookInput.disabled === false && !/지금은/.test(d.text), `원격 창 · 연결 전 [웹훅] → 주소 칸은 산다 (${JSON.stringify(d.hookInput)})`);
+await shotChannels("12d-remote-discord-not-connected-webhook");
+await clickHead("discord");
 const remoteErrors = errors.filter((e) => !/stub: /.test(e));
 const unstubbedR = await evj(`[...new Set(window.__unstubbed)]`);
 console.log("unstubbed commands (remote):", JSON.stringify(unstubbedR));

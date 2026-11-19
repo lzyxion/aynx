@@ -311,6 +311,10 @@ pub struct MessengerPrefs {
     /// 다리가 글마다 이 칸을 다시 읽는다 — 끄면 곧바로 넣지 않는다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub telegram_chat: Option<bool>,
+    /// **메신저에서 타일에 말하기 — Discord**(3b · 짝지은 Discord 계정의 DM) (안 정하면 **끔**). `telegram_chat` 과 같은 뜻 — 다리가 글마다 다시
+    /// 읽는다. 봇 토큰은 이 구조체에 없다(`<설정 루트>/discord-bot` — 읽는 것은 세션 서버뿐).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discord_chat: Option<bool>,
 }
 
 impl MessengerPrefs {

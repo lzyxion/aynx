@@ -178,7 +178,11 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// `_test` · `_notify`(쓰기) · 이벤트 `messenger-bot-event{changed}`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 새 GUI 가 판 33 서버에 붙으면 봇 명령은
 /// `[server-outdated]` · 알림의 Telegram 몫은 보내지 않는다([`MESSENGER_BOT_PROTOCOL`]). 같은 판(아직 공개 전 — 판 올리지 않음)에 op
 /// `messenger_bot_label`(쓰기 — 이름표 미리 알리기 · 실기 후속 2026-11-19)을 더했다.
-pub(crate) const PROTOCOL_MAX: u32 = 34;
+///
+/// 판 35(2026-11-19 메신저 다리 Discord — `server::messenger_bridge::dc`): 새 op 없음 — `messenger_bot_*` 몸의 `channel: "discord"` · 사건
+/// 몸에 `channel`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 34 서버는 몸의 `channel` 을 Telegram 으로 다룰 수 있어 새 GUI 는 Discord 채널의
+/// 봇 명령을 `[server-outdated]` 로 · 알림의 Discord 봇 몫은 보내지 않는다([`DISCORD_BOT_PROTOCOL`] — Telegram 몫은 판 34 그대로).
+pub(crate) const PROTOCOL_MAX: u32 = 35;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -260,6 +264,9 @@ pub(crate) const SIDE_CHAT_LINKS_PROTOCOL: u32 = 33;
 
 /// 메신저 다리 op(`messenger_bot_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const MESSENGER_BOT_PROTOCOL: u32 = 34;
+
+/// 메신저 다리의 Discord 채널(`messenger_bot_*` 의 `channel: "discord"`)이 서는 판 — 낮으면 GUI 가 그 채널의 op 를 보내지 않는다.
+pub(crate) const DISCORD_BOT_PROTOCOL: u32 = 35;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;

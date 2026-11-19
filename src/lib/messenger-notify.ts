@@ -171,7 +171,7 @@ export interface MessengerRules {
   includeConversation: boolean;
   /** `0` = 입력 시계는 보지 않는다 (가림막만) */
   awayAfterMin: number;
-  /** Discord 채널로 보내는가 (웹훅이 등록돼 있을 때) — 안 정하면 켬 */
+  /** Discord 채널로 보내는가 (웹훅 또는 봇 — 한 번에 하나 · 어느 쪽으로 갈지는 Rust 가 고른다) — 안 정하면 켬 */
   discord: boolean;
   /** Slack 채널로 보내는가 (웹훅이 등록돼 있을 때) — 안 정하면 켬 */
   slack: boolean;
@@ -182,6 +182,8 @@ export interface MessengerRules {
    * 세션 서버가 글마다 설정 파일의 칸을 다시 읽는다. 원격 창은 켜지 못한다(`remote/deny.rs` 의 `settings_home_only`).
    */
   telegramChat: boolean;
+  /** Discord 봇의 말하기(`[messenger] discord_chat`) — `telegramChat` 과 같은 규칙. 짝지은 계정은 채널마다 하나 */
+  discordChat: boolean;
 }
 
 /** `settings.toml` 의 `[messenger]` 한 칸씩 — 안 정한 칸은 `undefined` (Rust `MessengerPrefs` 와 1:1) */
@@ -201,6 +203,7 @@ export interface MessengerPrefsRaw {
   slack?: boolean | null;
   telegram?: boolean | null;
   telegram_chat?: boolean | null;
+  discord_chat?: boolean | null;
 }
 
 /** 안 정한 칸에 기본값을 채운다 — 설정 화면과 규칙이 같은 값을 보게 */
@@ -223,6 +226,7 @@ export function resolveMessengerRules(raw: MessengerPrefsRaw | undefined): Messe
     slack: r.slack ?? true,
     telegram: r.telegram ?? true,
     telegramChat: r.telegram_chat ?? false,
+    discordChat: r.discord_chat ?? false,
   };
 }
 

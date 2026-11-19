@@ -62,7 +62,7 @@ export function notifyAgent(
   const agent = logo ? aiDisplayName(logo) : null;
   const name = tileLabel(pane);
   const label = messengerLabel(pane);
-  // 메신저 다리(Telegram)의 이름표 — 보내기 판정과 무관하게 로컬 AI 타일의 신호마다. 알림의 이름과 다르다(`<CLI> · <범위>` — `bridgeLabel`)
+  // 메신저 다리(Telegram · Discord 봇)의 이름표 — 보내기 판정과 무관하게 로컬 AI 타일의 신호마다. 알림의 이름과 다르다(`<CLI> · <범위>` — `bridgeLabel`)
   if (pane.kind === "local") messengerBotLabel(sessionStreamOf(pane), bridgeLabel(pane, agent));
   // 메신저(Discord) — 아래 표면 판정과 **독립**이다(제 켬/끔 · 자리 비움 표). docs/log/2026-09-27-discord-notify.md
   messengerAgent({

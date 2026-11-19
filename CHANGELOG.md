@@ -18,6 +18,7 @@ Write the next version's section before tagging it — the release workflow stop
   - Turn on **Talk to AI tiles from the messenger** (off by default, main PC only) to reply from your phone: reply to a notification and your message goes to that Claude Code or Codex tile, and the full answer comes back when the turn ends.
   - Permission prompts arrive with **Allow** and **Deny** buttons. Task plan approvals stay notifications only.
   - Works for local AI tiles that are waiting for input. Remote tiles are not supported yet.
+- **Discord bot, with talking back**: the Discord row in **Settings › Notifications** can now connect a bot instead of a webhook (one method at a time — switch either way under **Connect with**, after a confirmation, at the main PC). The bot sends the notifications and works like the Telegram bot in direct messages: confirm a 6-digit code, then talk to AI tiles and answer permission prompts. Telegram and Discord can be connected together, each with its own account.
 - **Messenger channels in Settings are rows you expand**, like the AI agents list: connect, send a test and disconnect inside the row. The **+ Connect** button and the ⋯ menu are gone.
 - **Status chips in Settings are colored**: on, failed and partial states now color the whole chip instead of only the dot.
 - Fixed: turning off **Include conversation text** for messenger notifications was not saved.

@@ -1,22 +1,26 @@
 <script lang="ts">
   import { invoke, isRemote } from "../ipc";
   import { t } from "$lib/i18n/i18n.svelte.js";
+  import type { Key } from "$lib/i18n/keys";
   import { stripReason } from "$lib/error-reason";
   import { toast } from "$lib/toast.svelte.js";
   import Toggle from "$lib/Toggle.svelte";
   import TipName from "$lib/settings/TipName.svelte";
   import WarnChip from "$lib/settings/WarnChip.svelte";
-  import { botHandle, formatPairCode, parseBotStatus, type BotStatus } from "$lib/settings/messenger-view";
+  import { botHandle, formatPairCode, parseBotStatus, type BotChannel, type BotStatus } from "$lib/settings/messenger-view";
 
   /**
-   * **Telegram 칸의 몸통** — 봇 연결 · 계정 연결(짝짓기) · 말하기(메신저 다리 1b — docs/log/2026-11-18-messenger-bridge.md ·
-   * 사용자 확정 목업 "설정 › 알림 › 채널").
+   * **봇 채널 칸의 몸통**(Telegram · 봇으로 연결한 Discord) — 봇 연결 · 계정 연결(짝짓기) · 말하기(메신저 다리 1b —
+   * docs/log/2026-11-18-messenger-bridge.md · 사용자 확정 목업 "설정 › 알림 › 채널" · Discord 는 2026-11-19 A안).
    *
    * | 상태 | 줄 |
    * | --- | --- |
    * | 토큰 없음 | 봇 토큰 칸(비밀번호형) + [연결] + 요령 |
    * | 토큰만 | 계정 연결(요령 · 짝짓기를 청한 계정이 있으면 이름 · 코드 · [허용] · [거절]) · 봇 연결 해제 |
    * | 짝지음 | 메신저에서 AI 타일에 말하기 · 연결된 계정 [다시 연결] · 봇 [테스트 보내기] · 봇 연결 해제 |
+   *
+   * 두 채널의 줄은 같고, 요령 글 · 토큰 자리표시 · 연결 해제 설명만 채널마다 다르다(`TEXT`). 명령은 모두 `channel` 을 싣는다
+   * (`messenger_bot_*` — 짝지은 계정은 채널마다 하나). 줄 id 는 `messenger-<채널>-…` · 말하기만 `messenger-channel-<채널>-chat`(설정 색인 anchor).
    *
    * - **봇 토큰은 화면에 다시 보여 주지 않는다** — 칸은 [연결] 을 누르자마자 비우고, 상태(`messenger_bot_status`)에는 토큰이 없다.
    *   토큰을 읽는 것은 세션 서버뿐이다(`server/messenger_bridge_proxy.rs`).
@@ -26,6 +30,7 @@
    * - 상태는 부모가 쥔다(머리줄 칩 · 규칙 묶음이 같은 값을 본다) — 이 몸통은 명령을 부르고 새 상태를 `onstatus` 로 올린다.
    */
   let {
+    channel,
     name,
     status,
     loadError,
@@ -34,12 +39,13 @@
     onchat,
     onstatus,
   }: {
+    channel: BotChannel;
     name: string;
     /** 봇 상태(`null` = 아직 모름 · 못 읽음) */
     status: BotStatus | null;
     /** 상태를 못 읽은 까닭(옛 세션 서버 등) — 이미 표식을 뗀 글 */
     loadError: string | null;
-    /** `[messenger] telegram_chat` */
+    /** `[messenger] <채널>_chat` */
     chat: boolean;
     /** 말하기 손잡이를 잠근다(원격 창 · 저장된 값이 꺼짐) */
     chatLocked: boolean;
@@ -48,24 +54,45 @@
     onstatus: (next: BotStatus, paired: boolean) => void;
   } = $props();
 
+  /** 채널마다 다른 글 — 나머지 줄은 `settings.messenger.bot.*` 를 함께 쓴다 */
+  const TEXT: Record<BotChannel, { howto: Key; pairHowto: Key; chatNote: Key; unbotNote: Key; placeholder: string }> = {
+    telegram: {
+      howto: "settings.messenger.telegram.howto",
+      pairHowto: "settings.messenger.telegram.pair.howto",
+      chatNote: "settings.messenger.telegram.chat.note",
+      unbotNote: "settings.messenger.telegram.unbot.note",
+      placeholder: "123456789:AA…",
+    },
+    discord: {
+      howto: "settings.messenger.discord.bot.howto",
+      pairHowto: "settings.messenger.discord.pair.howto",
+      chatNote: "settings.messenger.discord.chat.note",
+      unbotNote: "settings.messenger.discord.unbot.note",
+      placeholder: "MTIz….Gx….…",
+    },
+  };
+
   let draft = $state("");
   let busy = $state(false);
   /** 토큰 칸 밑 한 줄 — 등록 거절 문구 */
   let rejection = $state<string | null>(null);
 
+  const text = $derived(TEXT[channel]);
+  const tokenId = $derived(`messenger-${channel}-token`);
+  const chatId = $derived(`messenger-channel-${channel}-chat`);
   const homeOnly = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
-  const bot = $derived(botHandle(status?.bot ?? null));
+  const bot = $derived(botHandle(status?.bot ?? null, channel));
 
   function message(e: unknown): string {
     return stripReason(e instanceof Error ? e.message : String(e));
   }
 
-  /** 명령 하나 — 새 상태를 올린다. 실패는 토스트(`inline` 이면 칸 밑) */
-  async function run(command: string, args: Record<string, unknown> | undefined, opts: { inline?: boolean; paired?: boolean } = {}) {
+  /** 명령 하나(`channel` 을 싣는다) — 새 상태를 올린다. 실패는 토스트(`inline` 이면 칸 밑) */
+  async function run(command: string, args: Record<string, unknown>, opts: { inline?: boolean; paired?: boolean } = {}) {
     busy = true;
     rejection = null;
     try {
-      const next = parseBotStatus(await invoke<unknown>(command, args));
+      const next = parseBotStatus(await invoke<unknown>(command, { channel, ...args }));
       if (next) onstatus(next, opts.paired === true && next.configured && next.paired);
     } catch (e) {
       if (opts.inline) rejection = message(e);
@@ -86,7 +113,7 @@
   async function sendTest() {
     busy = true;
     try {
-      await invoke("messenger_bot_test");
+      await invoke("messenger_bot_test", { channel });
       toast.success(t("settings.messenger.test.ok", { channel: name }));
     } catch (e) {
       toast.error(t("settings.messenger.test.failed", { channel: name, error: message(e) }));
@@ -98,7 +125,7 @@
 
 {#snippet unbot()}
   <div class="srow">
-    <TipName id="messenger-telegram-unbot" label={t("settings.messenger.telegram.unbot.label")} tip={t("settings.messenger.telegram.unbot.note")} />
+    <TipName id="messenger-{channel}-unbot" label={t("settings.messenger.bot.unbot.label")} tip={t(text.unbotNote)} />
     <div class="size-row">
       <button
         type="button"
@@ -119,15 +146,15 @@
       connect();
     }}
   >
-    <label class="name" for="messenger-telegram-token">{t("settings.messenger.telegram.token.label")}</label>
+    <label class="name" for={tokenId}>{t("settings.messenger.bot.token.label")}</label>
     <div class="size-row">
       <input
-        id="messenger-telegram-token"
+        id={tokenId}
         class="value"
         type="password"
         spellcheck="false"
         autocomplete="off"
-        placeholder="123456789:AA…"
+        placeholder={text.placeholder}
         bind:value={draft}
         disabled={busy || isRemote}
         title={homeOnly}
@@ -138,19 +165,19 @@
     </div>
     <p class="footnote">
       {#if rejection ?? loadError}<span class="rejection" role="alert">{rejection ?? loadError}</span><br />{/if}
-      {t("settings.messenger.telegram.howto")}
+      {t(text.howto)}
     </p>
   </form>
 {:else if !status.paired}
   <div class="srow pair-row" data-messenger-pairing={status.pending ? "pending" : "idle"}>
-    <span class="name">{t("settings.messenger.telegram.pair.label")}</span>
-    <p class="footnote">{t("settings.messenger.telegram.pair.howto", { bot: bot || "Telegram" })}</p>
+    <span class="name">{t("settings.messenger.bot.pair.label")}</span>
+    <p class="footnote">{t(text.pairHowto, { bot: bot || name })}</p>
     {#if status.pending}
       {@const pending = status.pending}
-      <div class="pair" role="group" aria-label={t("settings.messenger.telegram.pair.label")}>
+      <div class="pair" role="group" aria-label={t("settings.messenger.bot.pair.label")}>
         <span class="who">
-          <span>{t("settings.messenger.telegram.pair.request", { name: pending.name || "?" })}</span>
-          <span class="code" aria-label={t("settings.messenger.telegram.pair.code")}>{formatPairCode(pending.code)}</span>
+          <span>{t("settings.messenger.bot.pair.request", { name: pending.name || "?" })}</span>
+          <span class="code" aria-label={t("settings.messenger.bot.pair.code")}>{formatPairCode(pending.code)}</span>
         </span>
         <span class="pair-actions">
           <button
@@ -159,7 +186,7 @@
             disabled={busy || isRemote}
             title={homeOnly}
             onclick={() => void run("messenger_bot_pair", { code: pending.code, allow: true }, { paired: true })}
-            >{t("settings.messenger.telegram.pair.allow")}</button
+            >{t("settings.messenger.bot.pair.allow")}</button
           >
           <button
             type="button"
@@ -167,7 +194,7 @@
             disabled={busy || isRemote}
             title={homeOnly}
             onclick={() => void run("messenger_bot_pair", { code: pending.code, allow: false })}
-            >{t("settings.messenger.telegram.pair.deny")}</button
+            >{t("settings.messenger.bot.pair.deny")}</button
           >
         </span>
       </div>
@@ -176,18 +203,13 @@
   {@render unbot()}
 {:else}
   <div class="srow">
-    <TipName
-      id="messenger-channel-telegram-chat"
-      for="messenger-channel-telegram-chat"
-      label={t("settings.messenger.telegram.chat.label")}
-      tip={t("settings.messenger.telegram.chat.note")}
-    />
+    <TipName id={chatId} for={chatId} label={t("settings.messenger.bot.chat.label")} tip={t(text.chatNote)} />
     <div class="size-row">
       {#if chat}
-        <WarnChip label={t("settings.messenger.telegram.chat.chip")} detail={t("settings.messenger.telegram.chat.warn")} />
+        <WarnChip label={t("settings.messenger.bot.chat.chip")} detail={t("settings.messenger.bot.chat.warn", { channel: name })} />
       {/if}
       <Toggle
-        id="messenger-channel-telegram-chat"
+        id={chatId}
         checked={chat}
         disabled={chatLocked}
         title={chatLocked ? t("settings.remote.homeOnly") : undefined}
@@ -197,9 +219,9 @@
   </div>
   <div class="srow">
     <TipName
-      id="messenger-telegram-account"
-      label={t("settings.messenger.telegram.account.label")}
-      tip={t("settings.messenger.telegram.account.note")}
+      id="messenger-{channel}-account"
+      label={t("settings.messenger.bot.account.label")}
+      tip={t("settings.messenger.bot.account.note")}
     />
     <div class="size-row">
       <span class="val" data-messenger-pair-name>{status.pairName ?? ""}</span>
@@ -208,12 +230,12 @@
         class="btn btn-sm btn-secondary"
         disabled={busy || isRemote}
         title={homeOnly}
-        onclick={() => void run("messenger_bot_unpair", undefined)}>{t("settings.messenger.telegram.repair")}</button
+        onclick={() => void run("messenger_bot_unpair", {})}>{t("settings.messenger.bot.repair")}</button
       >
     </div>
   </div>
   <div class="srow">
-    <span class="name">{t("settings.messenger.telegram.bot.label")}</span>
+    <span class="name">{t("settings.messenger.bot.row")}</span>
     <div class="size-row">
       <span class="val">{bot}</span>
       <button type="button" class="btn btn-sm btn-secondary" disabled={busy} onclick={() => void sendTest()}
