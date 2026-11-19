@@ -701,6 +701,21 @@ describe("③-4 — 트레이 · 메신저 작업안 결과", () => {
     expect(normalizeSettings({ messenger: { discord_chat: "yes" } }).messenger.discord_chat).toBeUndefined();
   });
 
+  it("messenger.slack_chat 도 같다 — 켤 때만 남고 왕복에서 사라지지 않는다 · 다른 채널 칸과 따로", () => {
+    const s = emptySettings();
+    expect(toPayload(s).messenger).not.toHaveProperty("slack_chat");
+    s.messenger.slack_chat = true;
+    expect(toPayload(s).messenger).toEqual({ slack_chat: true });
+    const back = normalizeSettings(toPayload(s));
+    expect(back.messenger.slack_chat).toBe(true);
+    expect(back.messenger.discord_chat).toBeUndefined();
+    expect(sameSettings(back, s)).toBe(true);
+    expect(sameSettings(back, emptySettings())).toBe(false);
+    s.messenger.slack_chat = false;
+    expect(toPayload(s).messenger).toEqual({});
+    expect(normalizeSettings({ messenger: { slack_chat: "yes" } }).messenger.slack_chat).toBeUndefined();
+  });
+
   it("messenger.include_conversation 은 끈 값이 저장에 남는다(기본 켬 — 2026-11-16)", () => {
     const s = emptySettings();
     s.messenger.include_conversation = false;

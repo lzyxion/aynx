@@ -47,7 +47,7 @@ const SECTION_FILE: Record<SettingsSectionId, string> = {
 /** 섹션이 품은 하위 컴포넌트 — 그 줄들의 id 는 이 파일들에 적힌다 (알림 › 메신저) */
 const SECTION_CHILDREN: Partial<Record<SettingsSectionId, string[]>> = {
   theme: ["AvatarsSection"],
-  notifications: ["MessengerSettings", "MessengerChannel", "MessengerBot", "MessengerDiscord", "MessengerWebhook"],
+  notifications: ["MessengerSettings", "MessengerChannel", "MessengerBot", "MessengerDual", "MessengerWebhook"],
   mcp: ["ExternalMcpServers", "McpSessionsView"],
 };
 

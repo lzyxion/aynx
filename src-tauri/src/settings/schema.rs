@@ -315,6 +315,10 @@ pub struct MessengerPrefs {
     /// 읽는다. 봇 토큰은 이 구조체에 없다(`<설정 루트>/discord-bot` — 읽는 것은 세션 서버뿐).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discord_chat: Option<bool>,
+    /// **메신저에서 타일에 말하기 — Slack**(4단계 · 짝지은 Slack 계정의 DM) (안 정하면 **끔**). `telegram_chat` 과 같은 뜻 — 다리가 글마다 다시
+    /// 읽는다. 봇 토큰은 이 구조체에 없다(`<설정 루트>/slack-bot` — 읽는 것은 세션 서버뿐).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slack_chat: Option<bool>,
 }
 
 impl MessengerPrefs {

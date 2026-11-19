@@ -134,6 +134,7 @@ pub(crate) const ROOT_FILES: &[(&str, Option<&str>, &str)] = &[
     ("discord-webhook · slack-webhook", None, "웹훅 URL — 비밀(전문 6)"),
     ("telegram-bot · telegram-chat", None, "Telegram 봇 토큰(비밀) · 짝지은 계정 — 다른 PC 에서 다시 짝짓는다"),
     ("discord-bot · discord-chat", None, "Discord 봇 토큰(비밀) · 짝지은 계정 — 다른 PC 에서 다시 짝짓는다"),
+    ("slack-bot · slack-chat", None, "Slack 봇 · 앱 수준 토큰(비밀) · 짝지은 계정 — 다른 PC 에서 다시 짝짓는다"),
     ("remote-devices.json", None, "원격 기기 · 페어링(전문 13)"),
     ("~/.aynx/mcp.json", None, "MCP 포트 · 토큰"),
     ("agent-mcp/", None, "타일별 MCP 설정 · 토큰 env"),

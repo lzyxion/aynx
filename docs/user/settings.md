@@ -111,7 +111,7 @@ this or another PC. Both are also in the command palette.
 
 - Export lists categories with a count each: hosts, AI permission, DB connections, projects, templates, theme, shortcuts · snippets · triggers,
   agent instructions, external MCP servers, artists, general and notifications (notifications start unticked).
-- **Excluded:** vault secrets, MCP and tile tokens, webhook URLs, remote devices, sessions, conversations and album history.
+- **Excluded:** vault secrets, MCP and tile tokens, webhook URLs and bot tokens, remote devices, sessions, conversations and album history.
   DB connections travel without passwords, and external MCP servers keep only the vault reference names of their secrets.
   Hosts carry the `Host` blocks of `~/.ssh/config` as text — key files are not included.
 - Import first shows a **preview** and changes nothing until you confirm. Each category shows what is new, different or the same:
@@ -950,7 +950,17 @@ Shows notifications that programs such as builds and tests send with terminal se
 
 Sends notifications to your phone through a messenger while you are away from the PC. Press a channel row to expand it. The switch at the end of a connected row turns sending to that channel on or off.
 
-- **Slack**: paste a webhook URL and press **Connect**. The expanded row has **Send test** and **Disconnect**.
+- **Slack**: uses one method at a time, like the Discord row below — a **Bot** (notifications, and you can [talk to AI tiles](#messenger-chat)) or a **Webhook** (notifications only), chosen under **Connect with**. The method connected now is the first chip in the Slack row header.
+  - Webhook: paste the URL created for a channel under your Slack app › Incoming Webhooks and press **Connect**. The expanded row then has **Send test** and **Disconnect webhook**.
+  - Bot: needs two tokens.
+    1. Press **Copy manifest** in the Slack row. At [api.slack.com/apps](https://api.slack.com/apps), choose **Create New App** › **From a manifest** and paste it. The app gets two permissions: `chat:write` (send messages) and `im:history` (read direct messages with the bot). It receives messages over Socket Mode, so no public address is needed.
+    2. Install the app to your workspace under **Install App**. The **Bot User OAuth Token** it shows (`xoxb-…`) is the bot token.
+    3. Under **Basic Information** › **App-Level Tokens**, create a token with the `connections:write` scope. That token (`xapp-…`) is the app token.
+    4. Paste both into the Slack row (**Bot token** · **App token**) and press **Connect**. The tokens are not shown again.
+    5. In Slack, open the app from your app list and send any message in its **Messages** tab. The bot replies with a 6-digit code, and the same code appears in the Slack row. If they match, press **Allow**. Slack shows the account as a member ID (for example `U024BE7LH`) instead of a name.
+  - The bot answers only direct messages (the app's Messages tab).
+  - With a bot connected, the row works like the Telegram row. **Disconnect bot** removes both tokens and the linked account.
+  - Switching between bot and webhook works as in the Discord row.
 - **Telegram**: uses a bot instead of a webhook.
   1. In Telegram, send `/newbot` to `@BotFather` and copy the token it gives you.
   2. Paste the token into the Telegram row and press **Connect**. The token is not shown again.
@@ -966,25 +976,26 @@ Sends notifications to your phone through a messenger while you are away from th
   - The bot answers only direct messages; messages in servers are ignored.
   - With a bot connected, the row works like the Telegram row. **Disconnect bot** removes the token and the linked account.
   - To switch methods, choose the other one under **Connect with**, paste its token or URL and press **Connect**. Nothing changes until you press **Switch** in the confirmation that appears; **Cancel** returns to the field. Switching from a webhook to a bot removes the webhook (then link your account as above); switching from a bot to a webhook removes the bot token and the linked account, so you can no longer talk to AI tiles from Discord. If the token or URL is refused, the current method stays connected. Switching in either direction is done at the main PC, not from a remote window.
-- Each bot channel has its own linked account (one per channel). Telegram and Discord can both be connected at the same time.
+- Each bot channel has its own linked account (one per channel). Telegram, Discord and Slack can all be connected at the same time.
 - The bot token and the linked account can be set, changed or removed only at the main PC, not from a remote window.
-- One bot can be used by one program at a time. For Telegram, if another program (another Aynx, or another tool using the same bot) is receiving its messages, the row shows **Not receiving**. Discord gives no such signal: if two programs use the same Discord bot, both receive every message, so give each Aynx install its own bot.
+- One bot can be used by one program at a time. For Telegram, if another program (another Aynx, or another tool using the same bot) is receiving its messages, the row shows **Not receiving**. Discord gives no such signal: if two programs use the same Discord bot, both receive every message, so give each Aynx install its own bot. Slack gives no signal either: if two programs use the same Slack app, Slack delivers each message to only one of them, so give each Aynx install its own Slack app.
 - Discord resets a bot token whose program logs in to Discord too many times in a day. When Discord refuses the connection this way (for example the token was reset), Aynx stops reconnecting until you register the token again or the session server restarts.
 
 <a id="messenger-chat"></a>
 #### Talk to AI tiles from the messenger
 
-**Off by default**, and can be turned on only at the main PC, separately for Telegram and for a Discord bot. When on, the linked account of that channel (for Discord, in direct messages with the bot) can send messages to local Claude Code and Codex tiles and get the answers back. An answer goes back to the channel your message came from.
+**Off by default**, and can be turned on only at the main PC, separately for Telegram, a Discord bot and a Slack bot. When on, the linked account of that channel (for Discord and Slack, in direct messages with the bot) can send messages to local Claude Code and Codex tiles and get the answers back. An answer goes back to the channel your message came from.
 
 - **Reply to a message from the bot** (a notification, an answer, or a `→ tile` line) to send your message to the tile it came from. A message that is not a reply goes to the only tile waiting for input; if several are waiting, the bot asks you to pick one. Tiles are named by agent and project / worktree (for example `Claude Code · aynx / main`), or by the folder name outside a project; when two tiles have the same name, the conversation title is added.
-- When the turn ends, the **full answer** arrives in the chat (split into several messages if long). On Discord a message holds up to 2000 characters and an answer uses at most 5 messages; a longer answer is cut and ends with "see the full reply in the app". Discord formatting characters in the answer are shown as typed, not as formatting.
+- **On Slack, use a thread instead of a reply**: post in the thread of the bot's message to send your message to that tile; the answer and any permission prompts of that turn arrive in the same thread. The answer to a message sent outside a thread arrives as a new message.
+- When the turn ends, the **full answer** arrives in the chat (split into several messages if long). On Discord a message holds up to 2000 characters and on Slack about 3,000; an answer uses at most 5 messages, and a longer answer is cut and ends with "see the full reply in the app". Discord and Slack formatting characters in the answer are shown as typed, not as formatting, and on Slack links in the answer arrive as plain text that cannot be clicked.
 - A message is delivered only when the agent in that tile has finished a turn and is waiting for input. The bot tells you why otherwise: still running, waiting on a permission prompt, the agent has exited, text is already typed in the input line, or the tile is remote (not supported yet). When no tile is waiting, it lists each AI tile with its reason. The first message to a newly started agent must be sent at the PC.
-- **Permission prompts**: when the agent asks for permission during a turn you started from the messenger — or a permission notification reaches the messenger while you are away — the message has **Allow** and **Deny** buttons. If both Telegram and Discord show buttons for the same prompt, the first press counts. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
+- **Permission prompts**: when the agent asks for permission during a turn you started from the messenger — or a permission notification reaches the messenger while you are away — the message has **Allow** and **Deny** buttons. If more than one channel shows buttons for the same prompt, the first press counts. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
 - Messages sent while the PC or the app was off are not delivered later.
 - It keeps working while the privacy veil is up.
 - Task plan approvals are never answered from the messenger — they arrive as notifications only.
 
-The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through the servers of the messenger you use (Telegram's or Discord's).
+The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through the servers of the messenger you use (Telegram's, Discord's or Slack's).
 
 ---
 

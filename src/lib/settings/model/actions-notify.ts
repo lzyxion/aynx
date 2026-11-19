@@ -144,6 +144,11 @@ export function setMessengerDiscordChat(on: boolean) {
   settings.current.messenger.discord_chat = on ? true : undefined;
 }
 
+/** Slack 봇의 말하기(`[messenger] slack_chat`) — [`setMessengerTelegramChat`] 과 같은 규칙(켤 때만 · 원격 창은 켜지 못한다) */
+export function setMessengerSlackChat(on: boolean) {
+  settings.current.messenger.slack_chat = on ? true : undefined;
+}
+
 /** 자리 비움 무입력(분) — `0` 은 "가림막만" 이라 지우지 않는다 */
 export function setMessengerAwayAfterMin(min: number) {
   const v = Number.isFinite(min) ? Math.max(0, Math.round(min)) : DEFAULT_MESSENGER_AWAY_AFTER_MIN;

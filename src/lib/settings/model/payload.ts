@@ -80,6 +80,7 @@ function messengerToPayload(m: MessengerPrefs): MessengerPrefs {
   // 말하기는 끔이 기본이라 켤 때만 싣는다
   if (m.telegram_chat === true) out.telegram_chat = true;
   if (m.discord_chat === true) out.discord_chat = true;
+  if (m.slack_chat === true) out.slack_chat = true;
   return out;
 }
 

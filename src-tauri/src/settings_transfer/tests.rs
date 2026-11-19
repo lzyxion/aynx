@@ -135,6 +135,9 @@ fn seed(base: &Path) -> Roots {
     put(c("telegram-chat"), r#"{"userId":1,"chatId":1,"name":"me"}"#);
     put(c("discord-bot"), "SECRET-WEBHOOK-VALUE.discord.bot-token");
     put(c("discord-chat"), r#"{"userId":2,"chatId":3,"name":"me"}"#);
+    put(c("slack-bot"), "SECRET-WEBHOOK-VALUE-slack-bot
+SECRET-WEBHOOK-VALUE-slack-app");
+    put(c("slack-chat"), r#"{"userId":4,"chatId":5,"name":"U024BE7LH"}"#);
     put(c("remote-devices.json"), &format!(r#"{{"devices":[{{"id":"d1","token":"{REMOTE_TOKEN}"}}]}}"#));
     put(c("workspaces.json"), r#"{"tabs":[]}"#);
     put(c("history.json"), r#"{"web-01":1}"#);
@@ -223,7 +226,7 @@ fn export_never_contains_secrets() {
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     // (a) 빼야 할 파일이 하나도 없다 — 이름의 어느 조각에도.
     for bad in [
-        "vault", "webhook", "telegram", "discord-bot", "discord-chat", "remote-devices", "mcp.json", "agent-mcp", "workspaces", "history", "server.json", "updater",
+        "vault", "webhook", "telegram", "discord-bot", "discord-chat", "slack-bot", "slack-chat", "remote-devices", "mcp.json", "agent-mcp", "workspaces", "history", "server.json", "updater",
         "instructions-written", "worktrees", "hooks", "integration", "sidechat", "backups", "current.ico", "id_ed25519",
         "known_hosts",
     ] {

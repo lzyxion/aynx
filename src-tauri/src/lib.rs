@@ -822,7 +822,7 @@ pub fn run() {
             // 볼트와 같은 선: URL 을 돌려주는 명령은 없다(`configured` 하나). MCP 에도 대응하는 도구가 없다.
             messenger::messenger_status,
             messenger::messenger_set_webhook,
-            // Discord 봇 → 웹훅(2026-11-19) — 봇 토큰 · 짝을 서버 op 로 지운 뒤 웹훅을 저장한다(메인 PC 전용 — `remote/deny.rs`).
+            // Discord · Slack 봇 → 웹훅(2026-11-19) — 봇 토큰 · 짝을 서버 op 로 지운 뒤 웹훅을 저장한다(메인 PC 전용 — `remote/deny.rs`).
             messenger::messenger_replace_bot_with_webhook,
             messenger::messenger_test,
             messenger::messenger_send,

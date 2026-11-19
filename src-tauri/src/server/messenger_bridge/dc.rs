@@ -13,7 +13,8 @@
 //! - **IDENTIFY 예산**(24시간에 1000번 — 넘으면 Discord 가 토큰을 바꾼다): RESUME 을 먼저 쓰고, "다시 붙지 말라" 는 닫힘 코드
 //!   ([`FATAL_CLOSE`] — 4004 인증 실패 · 4010–4014)면 상태 `error` 로 두고 고리를 끝낸다(토큰을 다시 등록 · 서버를 다시 띄울 때까지). 갓
 //!   IDENTIFY 한 세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 앞에서 5초부터 두 배씩 5분까지 기다리고, 오래 산 세션 뒤에는 처음으로
-//!   돌린다. 그 밖의 방어 기계는 없다(CLAUDE.md "작업 방식"). 연결 실패는 Telegram 과 같은 고정 물러남(`Config::backoff`).
+//!   돌린다(`logic::Flap` — Slack 과 함께 쓴다). 그 밖의 방어 기계는 없다(CLAUDE.md "작업 방식"). 연결 실패는 Telegram 과 같은 고정 물러남(`Config::backoff`).
+//!   TCP · TLS · WebSocket 붙기와 받은 것을 코어에 넣는 일꾼은 `sock`(Slack 과 공용 — 4단계에 옮김).
 //! - Telegram 의 409 같은 것은 없다 — 같은 봇을 두 프로그램이 받으면 둘 다 사건을 받는다(상태 `conflict` 를 쓰지 않는다).
 //! - REST 의 429 는 평소 일이다 — `retry_after`(초 · 최대 [`RETRY_CAP`])만큼 쉬고 **한 번만** 다시 보낸다. 큐는 없다.
 //!
@@ -29,19 +30,18 @@
 //! (초 · 소수) · 스노플레이크 시각 = `(id >> 22) + 1420070400000` ms. **확인하지 못한 것**: `content` 2000자를 무엇으로 세는지(문서에 없다 —
 //! UTF-16 단위로 보수적으로 재고 [`CONTENT_ROOM`] 까지만 쓴다).
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::logic::Button;
+use super::sock::{self, Event, Ws};
 use super::{ButtonPress, Config, Incoming, Link, Text};
-use crate::i18n::tr;
 use crate::messenger::Channel;
 use crate::server::log;
 
@@ -77,10 +77,9 @@ const FRESH_CLOSE: &[u16] = &[4007, 4009];
 const RESUMABLE_CLOSE: u16 = 4000;
 /// 스노플레이크의 기원(2015-01-01 UTC · ms).
 const DISCORD_EPOCH_MS: i64 = 1_420_070_400_000;
-/// 요청 시한 · 429 쉼 상한 · 연결 · HELLO 시한.
+/// 요청 시한 · 429 쉼 상한 · HELLO 시한(연결 시한은 `sock`).
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const RETRY_CAP: Duration = Duration::from_secs(5);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const HELLO_TIMEOUT: Duration = Duration::from_secs(20);
 /// IDENTIFY 물러남(처음 · 상한) · 이만큼 살면 안정한 세션.
 const IDENTIFY_BACKOFF: Duration = Duration::from_secs(5);
@@ -192,54 +191,11 @@ fn escaped_units(text: &str) -> usize {
     text.chars().map(width).sum()
 }
 
-/// 앞에서 걷은 뒤 `max` 단위 안의 마지막 문자 경계(바이트 위치).
-fn cut_at(text: &str, max: usize) -> usize {
-    let mut used = 0;
-    for (i, c) in text.char_indices() {
-        used += width(c);
-        if used > max {
-            return i;
-        }
-    }
-    text.len()
-}
-
-/// **나누기** — `telegram::split_text` 와 같은 꼴(문단 → 줄 → 글자 경계 · 최대 `parts` 조각 · 넘치면 마지막 조각 끝에 `more`)이되 조각의 길이를
-/// **걷은 뒤**로 잰다(부르는 쪽이 조각마다 걷는다 — 기호가 많은 답도 한 통 상한 안).
-pub(crate) fn split_text(text: &str, max: usize, parts: usize, more: &str) -> Vec<String> {
-    let mut rest = text.trim_end();
-    let mut out: Vec<String> = Vec::new();
-    while !rest.is_empty() && out.len() < parts {
-        let last = out.len() + 1 == parts;
-        if escaped_units(rest) <= max {
-            out.push(rest.to_string());
-            rest = "";
-            break;
-        }
-        let budget = if last { max.saturating_sub(escaped_units(more) + 1) } else { max };
-        let hard = cut_at(rest, budget).max(rest.chars().next().map_or(0, char::len_utf8));
-        let head = &rest[..hard];
-        let at = head
-            .rfind("\n\n")
-            .filter(|&i| i > hard / 3)
-            .or_else(|| head.rfind('\n').filter(|&i| i > hard / 3))
-            .unwrap_or(hard);
-        out.push(rest[..at].trim_end().to_string());
-        rest = rest[at..].trim_start_matches(['\n', '\r']);
-    }
-    if !rest.is_empty() {
-        if let Some(last) = out.last_mut() {
-            last.push('\n');
-            last.push_str(more);
-        }
-    }
-    out
-}
-
-/// 답 전문 나누기 — 첫 통은 굵은 머리 줄 `head` 와 함께 간다(통마다 같은 자리 = 상한 − (걷은 머리 줄 + `**` 둘 + 줄바꿈 + 여유)).
+/// 답 전문 나누기 — 첫 통은 굵은 머리 줄 `head` 와 함께 간다(통마다 같은 자리 = 상한 − (걷은 머리 줄 + `**` 둘 + 줄바꿈 + 여유)). 조각의 길이는
+/// **걷은 뒤**로 잰다(`logic::split_by` — 부르는 쪽이 조각마다 걷는다 · 기호가 많은 답도 한 통 상한 안).
 pub(crate) fn split_answer(head: &str, body: &str, more: &str) -> Vec<String> {
     let room = CONTENT_ROOM.saturating_sub(escaped_units(head) + 4 + 1 + 4);
-    split_text(body, room, MAX_PARTS, more)
+    super::logic::split_by(body, room, MAX_PARTS, more, width)
 }
 
 /// 그린 글을 `max` 단위 안으로 — 걷기 `\` 와 그 짝 사이를 가르지 않고, 열린 `**` 는 닫고 `…` 를 단다.
@@ -526,46 +482,6 @@ pub(crate) fn parse_press(d: &Value) -> Option<(i64, String, ButtonPress)> {
 // 게이트웨이
 // ---------------------------------------------------------------------------
 
-trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
-
-type Ws = tokio_tungstenite::WebSocketStream<Box<dyn Io>>;
-
-/// TLS — rustls + aws-lc-rs(이 잠금의 공급자 · ring 없음) · 내장 공개 CA(webpki-roots — DB TLS 와 같은 기준).
-fn tls() -> Option<Arc<rustls::ClientConfig>> {
-    static TLS: OnceLock<Option<Arc<rustls::ClientConfig>>> = OnceLock::new();
-    TLS.get_or_init(|| {
-        let roots = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
-        rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
-            .with_safe_default_protocol_versions()
-            .ok()
-            .map(|b| Arc::new(b.with_root_certificates(roots).with_no_client_auth()))
-    })
-    .clone()
-}
-
-/// 게이트웨이에 붙는다 — `wss`(TLS), 시험만 `ws://127.0.0.1`.
-async fn connect(url: &str) -> Option<Ws> {
-    let u = reqwest::Url::parse(url).ok()?;
-    let host = u.host_str()?.to_string();
-    let secure = match u.scheme() {
-        "wss" => true,
-        "ws" if host == "127.0.0.1" => false,
-        _ => return None,
-    };
-    let port = u.port_or_known_default()?;
-    let tcp = tokio::time::timeout(CONNECT_TIMEOUT, tokio::net::TcpStream::connect((host.as_str(), port))).await.ok()?.ok()?;
-    let io: Box<dyn Io> = if secure {
-        let name = rustls::pki_types::ServerName::try_from(host).ok()?;
-        let s = tokio::time::timeout(CONNECT_TIMEOUT, tokio_rustls::TlsConnector::from(tls()?).connect(name, tcp)).await.ok()?.ok()?;
-        Box::new(s)
-    } else {
-        Box::new(tcp)
-    };
-    let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::client_async(url, io)).await.ok()?.ok()?;
-    Some(ws)
-}
-
 /// RESUME 주소 — `resume_gateway_url` 에 같은 질의를 붙인다. **이 주소로 토큰을 다시 보낸다** — `wss` 이고 호스트가 `discord.gg`(또는 그
 /// 아래)일 때만 쓴다(시험은 루프백 `ws`). 아니면 `None` — 부른 쪽이 기본 게이트웨이로 붙는다.
 fn resume_url(base: &str) -> Option<String> {
@@ -597,40 +513,30 @@ enum End {
     Fresh,
 }
 
-/// 받기 고리가 일꾼에게 넘기는 것 — 차례대로 코어에 넣는다(받기 고리는 박동 · 누름 알림을 놓치지 않게 기다리지 않는다).
-enum Event {
-    Message(Incoming),
-    Press(ButtonPress),
-}
-
 /// 게이트웨이 고리 — 세대가 바뀌면(토큰을 다시 등록 · 지움 — 코어가 이 태스크를 걷는다) 끝난다.
 pub(super) async fn gateway_loop(gen: u64) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
-    tokio::spawn(worker(gen, rx));
+    tokio::spawn(sock::worker(CHAN, gen, rx));
     let mut session: Option<Session> = None;
     let mut seq: Option<i64> = None;
     let mut me: Option<i64> = None;
     // 마지막 IDENTIFY 때 · 지금의 물러남
     let mut identified: Option<tokio::time::Instant> = None;
-    let mut wait = None::<Duration>;
+    let mut flap = super::logic::Flap::default();
     loop {
         let Some((client, cfg, token)) = hands(Some(gen)) else { return };
         if session.is_none() {
             // IDENTIFY 예산 — 갓 IDENTIFY 한 세션이 오래 살지 못했으면 기다린다(5초부터 두 배 · 상한), 오래 살았으면 처음으로.
-            match identified {
-                Some(at) if at.elapsed() < cfg.discord.stable => {
-                    let w = wait.unwrap_or(cfg.discord.identify_backoff);
-                    wait = Some((w * 2).min(cfg.discord.identify_backoff_max));
-                    tokio::time::sleep(w).await;
-                    if hands(Some(gen)).is_none() {
-                        return;
-                    }
+            let short = identified.is_some_and(|at| at.elapsed() < cfg.discord.stable);
+            if let Some(w) = flap.delay(short, cfg.discord.identify_backoff, cfg.discord.identify_backoff_max) {
+                tokio::time::sleep(w).await;
+                if hands(Some(gen)).is_none() {
+                    return;
                 }
-                _ => wait = None,
             }
         }
         let url = session.as_ref().and_then(|s| resume_url(&s.resume)).unwrap_or_else(|| cfg.discord.gateway.clone());
-        let Some(mut ws) = connect(&url).await else {
+        let Some(mut ws) = sock::connect(&url).await else {
             log::line("messenger bridge — discord gateway connect failed");
             super::set_link(CHAN, gen, Link::Error);
             tokio::time::sleep(cfg.backoff).await;
@@ -823,32 +729,6 @@ async fn next_json(ws: &mut Ws) -> Option<Value> {
             Ok(Message::Text(t)) => return serde_json::from_str(t.as_str()).ok(),
             Ok(Message::Close(_)) | Err(_) => return None,
             Ok(_) => continue,
-        }
-    }
-}
-
-/// 일꾼 — 받은 것을 차례대로 코어에. 지난 글은 줄이 빌 때 한 통으로 알린다(RESUME 이 놓친 사건을 한꺼번에 다시 준다 — Telegram 의 묶음과 같은 자리).
-async fn worker(gen: u64, mut rx: tokio::sync::mpsc::UnboundedReceiver<Event>) {
-    let mut stale = 0usize;
-    let mut last_chat = None;
-    while let Some(ev) = rx.recv().await {
-        let Some((_, cfg, _)) = hands(Some(gen)) else { return };
-        match ev {
-            Event::Message(m) => {
-                if let Some(chat) = super::on_message(CHAN, &cfg, m).await {
-                    stale += 1;
-                    last_chat = Some(chat);
-                }
-            }
-            Event::Press(p) => super::on_press(CHAN, &cfg, p).await,
-        }
-        if let (n @ 1.., Some(chat), true) = (stale, last_chat, rx.is_empty()) {
-            let text = tr!(
-                ko: "서버가 꺼져 있던 동안 온 글 {n}개는 타일에 보내지 않았습니다 — 필요하면 다시 보내 주세요",
-                en: "{n} message(s) that arrived while the server was off were not sent to any tile — send again if needed",
-            );
-            super::send(CHAN, chat, &Text::plain(text), None, &[], None).await;
-            stale = 0;
         }
     }
 }

@@ -525,6 +525,8 @@ pub(crate) fn parse_pick(data: &str) -> Option<(u64, usize)> {
 struct Turn {
     ended_ms: Option<u64>,
     asked: bool,
+    /// 그 턴을 시작한 글(메시지 id) — 답 · 물음을 그 글의 자리에 다는 채널(Slack 의 스레드)이 쓴다
+    source: Option<i64>,
 }
 
 /// 다리 턴 표 — 넣은 순간 서고, `stop`(알림)이 끝내고, 끝난 뒤 [`TURN_KEEP_MS`] 동안 그 턴의 프런트 알림을 거른다.
@@ -540,7 +542,20 @@ impl Turns {
 
     pub(crate) fn begin(&mut self, stream: &str, now: u64) {
         self.prune(now);
-        self.map.insert(stream.to_string(), Turn { ended_ms: None, asked: false });
+        self.map.insert(stream.to_string(), Turn { ended_ms: None, asked: false, source: None });
+    }
+
+    /// [`Turns::begin`] + 그 턴을 시작한 글.
+    pub(crate) fn begin_from(&mut self, stream: &str, now: u64, source: i64) {
+        self.begin(stream, now);
+        if let Some(t) = self.map.get_mut(stream) {
+            t.source = Some(source);
+        }
+    }
+
+    /// **돌고 있는** 다리 턴을 시작한 글(끝난 턴 · 다리 턴이 아닌 것은 `None` — 지난 턴의 자리에 새 글을 달지 않는다).
+    pub(crate) fn source(&self, stream: &str) -> Option<i64> {
+        self.map.get(stream).filter(|t| t.ended_ms.is_none()).and_then(|t| t.source)
     }
 
     /// 그 턴이 돌고 있었으면 끝내고 참(답을 보낼 차례).
@@ -928,5 +943,74 @@ pub(crate) fn fallback_label(cli: &str, cwd: Option<&str>) -> String {
     match folder {
         Some(f) => format!("{cli} · {f}"),
         None => cli.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 전송 공용 — 답 나누기 · 갓 붙은 연결의 물러남(Discord · Slack — 4단계에 dc 에서 옮김)
+// ---------------------------------------------------------------------------
+
+/// `width` 로 잰 `max` 안의 마지막 문자 경계(바이트 위치).
+fn cut_by(text: &str, max: usize, width: &impl Fn(char) -> usize) -> usize {
+    let mut used = 0;
+    for (i, c) in text.char_indices() {
+        used += width(c);
+        if used > max {
+            return i;
+        }
+    }
+    text.len()
+}
+
+/// **나누기** — `telegram::split_text` 와 같은 꼴(문단 → 줄 → 글자 경계 · 최대 `parts` 조각 · 넘치면 마지막 조각 끝에 `more`)이되 조각의 길이를
+/// 글자마다의 `width` 로 잰다(Discord 는 걷은 뒤의 UTF-16 폭 · Slack 은 걷기 없는 UTF-16 폭).
+pub(crate) fn split_by(text: &str, max: usize, parts: usize, more: &str, width: impl Fn(char) -> usize) -> Vec<String> {
+    let total = |s: &str| s.chars().map(&width).sum::<usize>();
+    let mut rest = text.trim_end();
+    let mut out: Vec<String> = Vec::new();
+    while !rest.is_empty() && out.len() < parts {
+        let last = out.len() + 1 == parts;
+        if total(rest) <= max {
+            out.push(rest.to_string());
+            rest = "";
+            break;
+        }
+        let budget = if last { max.saturating_sub(total(more) + 1) } else { max };
+        let hard = cut_by(rest, budget, &width).max(rest.chars().next().map_or(0, char::len_utf8));
+        let head = &rest[..hard];
+        let at = head
+            .rfind("\n\n")
+            .filter(|&i| i > hard / 3)
+            .or_else(|| head.rfind('\n').filter(|&i| i > hard / 3))
+            .unwrap_or(hard);
+        out.push(rest[..at].trim_end().to_string());
+        rest = rest[at..].trim_start_matches(['\n', '\r']);
+    }
+    if !rest.is_empty() {
+        if let Some(last) = out.last_mut() {
+            last.push('\n');
+            last.push_str(more);
+        }
+    }
+    out
+}
+
+/// 갓 붙은 연결이 곧 죽기를 거듭할 때의 물러남 — 처음 `first` 부터 두 배씩 `max` 까지, 오래 산 연결 뒤에는 처음으로(Discord 의 IDENTIFY 앞 ·
+/// Slack 의 `apps.connections.open` 앞).
+#[derive(Default)]
+pub(crate) struct Flap {
+    wait: Option<std::time::Duration>,
+}
+
+impl Flap {
+    /// 지난 연결이 짧게 살았나(`short`) → 이번에 기다릴 만큼(없으면 곧바로).
+    pub(crate) fn delay(&mut self, short: bool, first: std::time::Duration, max: std::time::Duration) -> Option<std::time::Duration> {
+        if !short {
+            self.wait = None;
+            return None;
+        }
+        let w = self.wait.unwrap_or(first);
+        self.wait = Some((w * 2).min(max));
+        Some(w)
     }
 }

@@ -10,14 +10,14 @@
 //!
 //! | 표 | 원격에서 | 무엇 |
 //! | --- | --- | --- |
-//! | [`HOME_ONLY`] | 거절 "메인 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) · 메신저 봇 토큰 · 짝짓기(`messenger_bot_set_token` · `_pair` · `_unpair` — Telegram · Discord 모두 · 채널은 몸의 인자라 명령 이름으로 갈린다) · Discord 봇 → 웹훅 바꾸기(`messenger_replace_bot_with_webhook` — 봇 토큰을 지운다) |
+//! | [`HOME_ONLY`] | 거절 "메인 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) · 메신저 봇 토큰 · 짝짓기(`messenger_bot_set_token` · `_pair` · `_unpair` — Telegram · Discord · Slack 모두 · 채널은 몸의 인자라 명령 이름으로 갈린다) · Discord · Slack 봇 → 웹훅 바꾸기(`messenger_replace_bot_with_webhook` — 봇 토큰을 지운다) |
 //! | [`REAUTH`] | 그 순간 마스터 암호 재확인(마스터가 없으면 그대로 통과) | 작업안 승인 · 대상 고치기 · AI 권한 올리기 |
 //! | [`UNSUPPORTED`] | 거절 "원격에서 지원하지 않음" | 메인 PC 의 OS 창·편집기·UAC 를 여는 것 · 창 모양 |
 //! | [`ALLOW`] | 그대로 | 나머지 전부(설정·호스트·스니펫·볼트 값 넣기·파일·소스 컨트롤·DB·앱 종료 · 사이드 채팅(2026-11-01) …) |
 //!
 //! - **`save_settings` 는 [`ALLOW`] 이되 칸 단위 문**이 있다([`settings_home_only`]): `[automation]`(자동 승인 정책 — 알림 두 칸만
 //!   빼고 전부)이 바뀌거나, `[remote]` 를 **켜거나**(끔 → 켬) 이름·포트를 바꾸면 거절한다. 끄기(켬 → 끔)는 원격에서도 된다
-//!   (밖에서 급히 끊을 수 있게 — 기기 폐기 `remote_device_revoke` 도 원격 허용). `[messenger] telegram_chat` · `discord_chat`(메신저에서 AI
+//!   (밖에서 급히 끊을 수 있게 — 기기 폐기 `remote_device_revoke` 도 원격 허용). `[messenger] telegram_chat` · `discord_chat` · `slack_chat`(메신저에서 AI
 //!   타일에 말하기)도 **켜기**만 거절한다(끄기는 된다 — 2026-11-19).
 //! - **재확인**(`REAUTH`)은 폴리필이 그 명령을 보내기 전에 `POST /remote/reauth {cmd, password?}` 로 1회용 표(60초 · 그 세션 · 그 명령 ·
 //!   한 번)를 받아 프레임에 싣는다(`gate::reauth` · `auth::AuthState::issue_reauth`). 암호는 HTTP 몸으로만 가고 ws 프레임에도 로그에도
@@ -106,7 +106,7 @@ pub(crate) const HOME_ONLY: &[&str] = &[
     "messenger_bot_set_token",
     "messenger_bot_pair",
     "messenger_bot_unpair",
-    // Discord 봇 → 웹훅 바꾸기(2026-11-19) — 봇 토큰 · 짝을 지운다(토큰 해제와 같은 쪽). 웹훅만 넣는 `messenger_set_webhook` 은 ALLOW 그대로.
+    // Discord · Slack 봇 → 웹훅 바꾸기(2026-11-19) — 봇 토큰 · 짝을 지운다(토큰 해제와 같은 쪽). 웹훅만 넣는 `messenger_set_webhook` 은 ALLOW 그대로.
     "messenger_replace_bot_with_webhook",
 ];
 
@@ -460,7 +460,8 @@ pub(crate) fn reauth_message() -> String {
 /// - `[automation]` — 자동 승인 정책·상한·검토 만료·감사 보관까지 전부. 알림 두 칸(`notify_review_requests`·
 ///   `notify_operation_results` — 사람에게 알리기만 한다)만 원격에서 바꿀 수 있다.
 /// - `[remote]` — 켜기(끔 → 켬)와 이름·포트 바꾸기. 끄기는 된다.
-/// - `[messenger] telegram_chat` · `discord_chat`(메신저에서 AI 타일에 말하기 — 2026-11-19 사용자 결정 · Discord 는 3b) — 켜기만. 끄기는 된다
+/// - `[messenger] telegram_chat` · `discord_chat` · `slack_chat`(메신저에서 AI 타일에 말하기 — 2026-11-19 사용자 결정 · Discord 는 3b · Slack 은
+///   4단계) — 켜기만. 끄기는 된다
 ///   (원격 접속과 같은 까닭).
 pub(crate) fn settings_home_only(current: &AppSettings, next: &AppSettings, dev: bool) -> Option<String> {
     let mut policy = next.automation.clone();
@@ -492,6 +493,7 @@ pub(crate) fn settings_home_only(current: &AppSettings, next: &AppSettings, dev:
     let turned_on = |next: Option<bool>, cur: Option<bool>| next == Some(true) && cur != Some(true);
     if turned_on(next.messenger.telegram_chat, current.messenger.telegram_chat)
         || turned_on(next.messenger.discord_chat, current.messenger.discord_chat)
+        || turned_on(next.messenger.slack_chat, current.messenger.slack_chat)
     {
         return Some(home_only_message(&tr!(
             ko: "메신저에서 AI 타일에 말하기 켜기",
@@ -715,13 +717,37 @@ mod tests {
         assert_eq!(settings_home_only(&cur, &send, false), None, "보내기 칸은 된다");
     }
 
+    /// 4단계 — `[messenger] slack_chat` 도 같은 문(켜기만 거절) · 다른 채널 칸과 따로 잰다.
+    #[test]
+    fn save_settings_guard_slack_chat() {
+        let cur = settings();
+        let mut on = cur.clone();
+        on.messenger.slack_chat = Some(true);
+        assert!(settings_home_only(&cur, &on, false).is_some(), "안 정함 → 켬");
+        let mut off = cur.clone();
+        off.messenger.slack_chat = Some(false);
+        assert!(settings_home_only(&off, &on, false).is_some(), "끔 → 켬");
+        assert_eq!(settings_home_only(&on, &off, false), None, "켬 → 끔");
+        assert_eq!(settings_home_only(&on, &cur, false), None, "켬 → 안 정함");
+        // Telegram · Discord 가 켜져 있어도 Slack 을 원격에서 켜지는 못한다
+        let mut others = cur.clone();
+        others.messenger.telegram_chat = Some(true);
+        others.messenger.discord_chat = Some(true);
+        let mut all = others.clone();
+        all.messenger.slack_chat = Some(true);
+        assert!(settings_home_only(&others, &all, false).is_some());
+        let mut send = cur.clone();
+        send.messenger.slack = Some(false);
+        assert_eq!(settings_home_only(&cur, &send, false), None, "보내기 칸은 된다");
+    }
+
     /// 3b — 봇 명령의 문은 명령 이름으로만 갈린다(채널은 몸의 인자) — Discord 의 토큰 · 짝짓기도 메인 PC 전용, 상태 · 시험은 원격 허용.
     #[test]
     fn bot_commands_are_gated_by_name_for_every_channel() {
         for c in ["messenger_bot_set_token", "messenger_bot_pair", "messenger_bot_unpair", "messenger_replace_bot_with_webhook"] {
             assert_eq!(class_of(c), Class::HomeOnly, "{c}");
             let label = command_label(c);
-            assert!(!label.contains("Telegram") && !label.contains("Discord"), "채널 중립 문구: {label}");
+            assert!(!label.contains("Telegram") && !label.contains("Discord") && !label.contains("Slack"), "채널 중립 문구: {label}");
         }
         for c in ["messenger_bot_status", "messenger_bot_test", "messenger_bot_label", "messenger_status", "messenger_set_webhook", "messenger_test"] {
             assert_eq!(class_of(c), Class::Allow, "{c}");

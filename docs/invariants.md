@@ -85,8 +85,8 @@
   그 역할의 권한과 사람 감독이 진다 → [docs/log/2026-10-16-orchestration-headless-design.md](log/2026-10-16-orchestration-headless-design.md) · AI 는 자기 실행을 **자가 승인 못 한다**(approve 는 Tauri 전용, MCP 아님 — 세션 서버로 가는 **승인 등급 프레임은
   `approve_operation` 하나만** 만들고(소스 훑기 시험), 서버가 만료·상한·정책·권한·빈도를 다시 판정한다 — 서버 안 자동 승인 진입점도 `approve_in(…, "auto")` 하나, 시험 `auto_approve_has_one_entry`) ·
   위임되지 않은 범위는 여전히 승인 대기. 쓰기(실행)는 단계가 아니라 **이미 선 기능**이다.
-- **메신저 다리**(2026-11-19 사용자 결정 → [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md)) — 채널은 Telegram · Discord 둘이고(Discord 는 DM 만 — Discord 서버(길드)의 글 · 누름은 버린다 →
-  [docs/log/2026-11-19-discord-bridge.md](log/2026-11-19-discord-bridge.md)) 채널마다 사람이 켠 것(`[messenger] telegram_chat` · `discord_chat` · 기본 끔 ·
+- **메신저 다리**(2026-11-19 사용자 결정 → [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md)) — 채널은 Telegram · Discord · Slack 셋이고(Discord · Slack 은 DM 만 — Discord 서버(길드)의 글 · 누름, Slack 채널의 글 · 누름은 버린다 →
+  [docs/log/2026-11-19-discord-bridge.md](log/2026-11-19-discord-bridge.md) · [docs/log/2026-11-19-slack-bridge.md](log/2026-11-19-slack-bridge.md)) 채널마다 사람이 켠 것(`[messenger] telegram_chat` · `discord_chat` · `slack_chat` · 기본 끔 ·
   **켜기는 메인 PC 에서만**)이며 **채널마다 메인 PC 에서 6자리 코드로 짝지은 계정 하나**의 1:1 대화방 글만 받는다. 그 글은 **사람 입력**이다. 대상은
   **턴이 끝나 입력을 기다리는 로컬 AI CLI 타일뿐** — 에이전트 상태 표에 항목이 없으면 거절하므로(`session-end` 가 항목을 지운다) 셸 타일 · CLI 가 끝난 타일 ·
   원격 타일 · 한 번도 턴이 끝나지 않은 타일에는 길이 없다. 세션 서버 안에서 PTY 에 쓰는 길은 세션 op `write`(창)와 다리의 넣기 함수 **둘뿐**이다(시험
@@ -95,7 +95,7 @@
   **작업안 승인 · AI 권한 · 위임 · 앨범 · 볼트로 가는 길은 없다**(시험 `bridge_has_no_approval_path` — 승인 대기는 알림만). 가림막이 걸려 있어도 받는다(자리를 비운
   동안 쓰는 기능 — 사용자 결정). 턴의 답 전문과 권한 물음의 도구 이름 · 입력 한 줄, 그리고 타일을 가리키는 글자 — 이름표(AI CLI 이름과 프로젝트 / 워크트리 — 프로젝트 밖이면 폴더 이름) ·
   이름표가 겹칠 때의 대화 제목 · 기다리는 타일이 없을 때의 타일별 상태 한 줄(실행 중 · 권한 대기 …) — 가 메신저 회사 서버를 지난다(켠 사람에게만 ·
-  짝지은 대화방으로만 · 다리 턴의 답은 그 글이 온 채널로만). 지난 글(서버가 꺼져 있던 동안 쌓인 것)은 넣지 않는다.
+  짝지은 대화방으로만 · 다리 턴의 답은 그 글이 온 채널로만 — Slack 은 답장 대신 스레드라, 스레드 안의 글로 시작한 턴의 답 · 권한 물음은 그 스레드로 간다). 지난 글(서버가 꺼져 있던 동안 쌓인 것)은 넣지 않는다.
 
 <a id="inv-5"></a>
 ## 5. 세션 로깅
@@ -105,11 +105,11 @@
 <a id="inv-6"></a>
 ## 6. 메신저 웹훅 URL · 봇 토큰
 
-- **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook` · `<설정 루트>/telegram-bot` · `<설정 루트>/discord-bot`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나 · 봇은 이름까지), 멘션은 늘 막는다(Discord `allowed_mentions` — 웹훅 · 봇 모두 · Slack `& < >` 걷기 · Telegram HTML 걷기). **Discord 는 한 번에 한 방식**이다 — 다른 방식을 등록하면 앞의 방식의 파일을 지운다(봇 토큰을 등록하면 웹훅 파일을, 봇을 웹훅으로 바꾸면 봇 토큰 · 짝지은 계정을 — 화면이 바꾸기를 확인받은 뒤 · **어느 쪽이든 메인 PC 에서만**). 그 길(`messenger_replace_bot_with_webhook` — 주소 검사 → 봇 해제 → 저장) 밖에서는 봇이 있는 동안 웹훅 등록을 거절한다(알림은 웹훅이 있으면 웹훅, 없으면 봇) →
+- **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook` · `<설정 루트>/telegram-bot` · `<설정 루트>/discord-bot` · `<설정 루트>/slack-bot`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나 · 봇은 이름까지), 멘션은 늘 막는다(Discord `allowed_mentions` — 웹훅 · 봇 모두 · Slack `& < >` 걷기 — 웹훅 · 봇의 알림 글, 봇이 옮기는 남의 글자는 서식 · 멘션 · 링크로 읽히지 않는 글 조각(`rich_text`)으로 · Telegram HTML 걷기). **Discord · Slack 은 채널마다 한 번에 한 방식**이다 — 다른 방식을 등록하면 앞의 방식의 파일을 지운다(봇 토큰을 등록하면 웹훅 파일을, 봇을 웹훅으로 바꾸면 봇 토큰 · 짝지은 계정을 — 화면이 바꾸기를 확인받은 뒤 · **어느 쪽이든 메인 PC 에서만**). 그 길(`messenger_replace_bot_with_webhook` — 주소 검사 → 봇 해제 → 저장) 밖에서는 봇이 있는 동안 웹훅 등록을 거절한다(알림은 웹훅이 있으면 웹훅, 없으면 봇) →
   [docs/log/2026-09-27-discord-notify.md](log/2026-09-27-discord-notify.md) ·
   [docs/log/2026-09-28-messenger-channels.md](log/2026-09-28-messenger-channels.md).
-- **봇 토큰을 읽는 것은 세션 서버뿐이다** — GUI 는 등록 때 서버 op 로 넘길 뿐이고(시험 `gui_never_reads_the_token_file`), Telegram · Discord 봇의 보내기 · 받기는 전부 세션 서버가 한다. **봇 토큰이 나가는 곳은 그 메신저의 API 뿐이다** — Telegram 은 `api.telegram.org`, Discord 는 REST `discord.com` 과 게이트웨이 `discord.gg` 도메인(Discord 가 알려 주는 재개 주소도 `wss` 이고 그 도메인일 때만 쓴다 — 시험 `responses_and_close_codes`). 짝지은 계정(`<설정 루트>/telegram-chat` · `<설정 루트>/discord-chat`)도 같은 자리 · 같은 제외(개발 폴더 씨앗 · 설정 옮기기)다. 토큰 등록 · 계정 허용 · 해제 · 봇을 웹훅으로 바꾸기는 채널 모두 **메인 PC 에서만**(`remote/deny.rs` HOME_ONLY) →
-  [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md) · [docs/log/2026-11-19-discord-bridge.md](log/2026-11-19-discord-bridge.md).
+- **봇 토큰을 읽는 것은 세션 서버뿐이다** — GUI 는 등록 때 서버 op 로 넘길 뿐이고(시험 `gui_never_reads_the_token_file`), Telegram · Discord · Slack 봇의 보내기 · 받기는 전부 세션 서버가 한다. **봇 토큰이 나가는 곳은 그 메신저의 API 뿐이다** — Telegram 은 `api.telegram.org`, Discord 는 REST `discord.com` 과 게이트웨이 `discord.gg` 도메인(Discord 가 알려 주는 재개 주소도 `wss` 이고 그 도메인일 때만 쓴다 — 시험 `responses_and_close_codes`), Slack 은 `slack.com` 도메인(토큰 둘 — 봇 토큰 · 앱 토큰 — 이 한 파일 `slack-bot` 에 있고 둘 다 Web API `slack.com/api` 에만 싣는다 · 받기(Socket Mode)는 Slack 이 알려 주는 주소가 `wss` 이고 그 도메인일 때만 붙으며 그 주소에는 토큰을 싣지 않는다 — 시험 `responses_urls_and_threads`). 짝지은 계정(`<설정 루트>/telegram-chat` · `<설정 루트>/discord-chat` · `<설정 루트>/slack-chat`)도 같은 자리 · 같은 제외(개발 폴더 씨앗 · 설정 옮기기)다. 토큰 등록 · 계정 허용 · 해제 · 봇을 웹훅으로 바꾸기는 채널 모두 **메인 PC 에서만**(`remote/deny.rs` HOME_ONLY) →
+  [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md) · [docs/log/2026-11-19-discord-bridge.md](log/2026-11-19-discord-bridge.md) · [docs/log/2026-11-19-slack-bridge.md](log/2026-11-19-slack-bridge.md).
 
 <a id="inv-7"></a>
 ## 7. 포트 포워드
@@ -237,7 +237,7 @@
   (둘 다 끌 수 없다). 볼트 값·MCP 토큰·웹훅 URL · 봇 토큰은 여전히 원격으로 나가지 않는다 →
   [docs/log/2026-10-15-remote-web-client-design.md](log/2026-10-15-remote-web-client-design.md).
 - **tailnet 밖에서 앱에 닿는 길은 메신저 다리 하나뿐이다**(2026-11-19) — 범위는 전문 4 의 것(입력을 기다리는 로컬 AI CLI 타일에 글 · 타일 권한 카드의 허용 · 거절)이
-  전부이고 앱 명령의 문(`remote/deny.rs`)을 지나지 않는다(Tauri 명령을 부르지 못한다). 원격 창은 다리를 켜지 못한다(`[messenger] telegram_chat` · `discord_chat` 켜기는
+  전부이고 앱 명령의 문(`remote/deny.rs`)을 지나지 않는다(Tauri 명령을 부르지 못한다). 원격 창은 다리를 켜지 못한다(`[messenger] telegram_chat` · `discord_chat` · `slack_chat` 켜기는
   `settings_home_only` 가 거절 · 끄기는 된다). 원격 창에 열린 다리 명령은 상태 읽기 · 시험 한 통 · 타일 이름표 알리기(`messenger_bot_label` — 서버가 표시
   글자를 적기만 한다)뿐이고(알림 보내기 `messenger_send` 는 예전 메신저 알림의 길 그대로), 토큰 · 계정 · 넣기 · 카드 결정으로 가는 것은 없다.
 

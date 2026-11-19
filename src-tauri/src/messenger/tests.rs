@@ -217,13 +217,15 @@ fn errors_never_contain_the_url() {
     }
 }
 
-/// 봇 → 웹훅 바꾸기(2026-11-19) — Discord 만 · 주소가 틀리면 봇 해제(서버 op)에 가기 전에 거절한다(아무것도 안 바뀜 · 문구에 URL 없음).
+/// 봇 → 웹훅 바꾸기(2026-11-19) — 웹훅이 있는 채널(Discord · Slack)만 · 주소가 틀리면 봇 해제(서버 op)에 가기 전에 거절한다(아무것도 안 바뀜 · 문구에 URL 없음).
 #[test]
 fn replace_bot_with_webhook_checks_before_touching_the_bot() {
     let run = |c: Channel, url: &str| tauri::async_runtime::block_on(messenger_replace_bot_with_webhook(c, url.into()));
+    // Telegram 은 웹훅이 없다 · Slack 칸에 Discord 주소는 검사에서 거절(봇 해제 전)
     for c in [S, Channel::Telegram] {
         assert!(run(c, GOOD).is_err(), "{c:?}");
     }
+    assert!(run(S, "  ").is_err());
     assert!(run(D, "  ").is_err());
     let secret = "https://evil.com/api/webhooks/1/SECRET-TOKEN";
     let err = run(D, secret).unwrap_err();
@@ -655,10 +657,10 @@ fn telegram_renders_escaped_html() {
     assert_eq!(serde_json::to_string(&T).unwrap(), "\"telegram\"");
     assert!(T.webhook().is_none());
     assert_eq!((T.bot_file(), T.secret_files()), (Some("telegram-bot"), vec!["telegram-bot"]));
-    // 3b — Discord 는 웹훅 · 봇 두 비밀 파일 · Slack 은 웹훅 하나
+    // 3b · 4단계 — Discord · Slack 은 웹훅 · 봇 두 비밀 파일
     assert_eq!(Channel::Discord.secret_files(), ["discord-webhook", "discord-bot"]);
-    assert_eq!(Channel::Slack.secret_files(), ["slack-webhook"]);
-    assert_eq!(Channel::Slack.bot_file(), None);
+    assert_eq!(Channel::Slack.secret_files(), ["slack-webhook", "slack-bot"]);
+    assert_eq!(Channel::Slack.bot_file(), Some("slack-bot"));
     let m = msg("aynx", "<a href=x>tile</a>", "턴 끝 & 다음", "2분").graded(Some(Grade::Done));
     let s = T.render(&m, &[ConvoLine::Excerpt(vec!["<b>굵게</b> & 끝".into()])]);
     assert!(s.starts_with("🟢 <b>"), "{s}");

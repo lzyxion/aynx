@@ -28,7 +28,7 @@
 //!   `permission_path_never_writes_pty`). 카드의 결정은 작업안 승인(`approve_operation` · 승인 등급 프레임)이 아니다 — 쓰기 등급 op 다.
 //! - **본문(명령 · 파일 내용 · URL · MCP 인자)은 카드로만** — 그 스트림을 보는 창의 통로(`server::tile_permission_proxy`)로 가고, 로그 ·
 //!   `Debug` · MCP · 영속 파일 · 감사에는 없다. 표는 메모리뿐이다. **더해지는 한 길**(메신저 다리 2단계 — 2026-11-19): 다리가 **돌보는 스트림**
-//!   (다리 턴 · 단추 달린 권한 알림을 보낸 턴 — 그 턴이 끝날 때까지)이고 사람이 그 채널의 `[messenger] telegram_chat` · `discord_chat` 을 켰으면, 권한 카드(질문 카드 빼고)의
+//!   (다리 턴 · 단추 달린 권한 알림을 보낸 턴 — 그 턴이 끝날 때까지)이고 사람이 그 채널의 `[messenger] telegram_chat` · `discord_chat` · `slack_chat` 을 켰으면, 권한 카드(질문 카드 빼고)의
 //!   **도구 이름과 입력 한 줄 요약**(최대 300자 — `server::messenger_bridge::logic::card_summary`)이 **짝지은 메신저 대화방**으로 간다(메신저 회사
 //!   서버를 지난다). 입력 전문은 가지 않는다. 다리의 [허용] · [거절]도 같은 표의 결정이고 훅 응답으로만 간다(`server::tile_permission::resolve_from_bridge`).
 //! - **원격 SSH 타일은 이 길이 없다**(1단계 = 로컬만) — 원격에는 토큰도 훅 낱말도 가지 않는다.

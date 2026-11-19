@@ -262,6 +262,7 @@ fn dc_cfg(api: &str, gw: &str, tg_base: &str, dir: &std::path::Path, env: Arc<Fa
     Config {
         telegram: tg::Conf { api: Api::at(tg_base), poll_timeout_secs: 1 },
         discord,
+        slack: sl::Conf::release(),
         dir: Some(dir.to_path_buf()),
         env,
         backoff: Duration::from_millis(50),

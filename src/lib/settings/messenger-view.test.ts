@@ -5,16 +5,20 @@ import {
   botHandle,
   botHead,
   channelConnected,
-  discordDefaultVia,
-  discordHead,
-  discordKind,
-  discordMode,
-  discordNeedsConfirm,
-  discordSwitchLocked,
-  discordView,
+  codeSpans,
+  dualDefaultVia,
+  dualHead,
+  dualKind,
+  dualMode,
+  dualNeedsConfirm,
+  dualSwitchLocked,
+  dualView,
   formatPairCode,
+  joinTokens,
   parseBotStatus,
   parseHookStatus,
+  SLACK_MANIFEST,
+  tokenFields,
   webhookHead,
   type BotStatus,
   type HookStatus,
@@ -33,7 +37,7 @@ const base: BotStatus = {
 
 const hook: HookStatus = { configured: true, via: "webhook" };
 
-describe("parseHookStatus · discordMode — 한 번에 한 방식", () => {
+describe("parseHookStatus · dualMode — 한 번에 한 방식", () => {
   it("via 는 둘 중 하나 · 등록이 없으면 없음 · 옛 답(via 없음)은 등록만", () => {
     expect(parseHookStatus({ configured: true, via: "bot" })).toEqual({ configured: true, via: "bot" });
     expect(parseHookStatus({ configured: true, via: "webhook" })).toEqual(hook);
@@ -44,13 +48,13 @@ describe("parseHookStatus · discordMode — 한 번에 한 방식", () => {
   });
 
   it("봇 토큰이 있으면 봇 · 웹훅만이면 웹훅 · 없거나 모르면 고르기", () => {
-    expect(discordMode(null, null)).toBe("none");
-    expect(discordMode({ configured: false, via: null }, { ...base, configured: false })).toBe("none");
-    expect(discordMode(hook, { ...base, configured: false })).toBe("webhook");
-    expect(discordMode({ configured: true, via: null }, null)).toBe("webhook");
-    expect(discordMode({ configured: true, via: "bot" }, null)).toBe("bot");
-    expect(discordMode(hook, base)).toBe("bot");
-    expect(discordMode(null, base)).toBe("bot");
+    expect(dualMode(null, null)).toBe("none");
+    expect(dualMode({ configured: false, via: null }, { ...base, configured: false })).toBe("none");
+    expect(dualMode(hook, { ...base, configured: false })).toBe("webhook");
+    expect(dualMode({ configured: true, via: null }, null)).toBe("webhook");
+    expect(dualMode({ configured: true, via: "bot" }, null)).toBe("bot");
+    expect(dualMode(hook, base)).toBe("bot");
+    expect(dualMode(null, base)).toBe("bot");
   });
 });
 
@@ -168,25 +172,25 @@ describe("머리줄 상태 칩", () => {
 });
 
 describe("Discord 머리 — 방식대로", () => {
-  const keys = (h: ReturnType<typeof discordHead>) => h.chips.map((c) => `${c.tone}:${c.key.split(".").pop()}`);
+  const keys = (h: ReturnType<typeof dualHead>) => h.chips.map((c) => `${c.tone}:${c.key.split(".").pop()}`);
 
   it("고르기 전 = 연결 안 됨 · 웹훅 = 보내는 중/꺼짐(말하기 칩 없음) · 봇 = Telegram 과 같다", () => {
-    expect(keys(discordHead("none", null, true, true))).toEqual(["off:none"]);
-    expect(keys(discordHead("webhook", null, true, true))).toEqual(["ok:sending"]);
-    expect(keys(discordHead("webhook", null, false, false))).toEqual(["idle:paused"]);
-    const waiting = discordHead("bot", base, true, false);
+    expect(keys(dualHead("none", null, true, true))).toEqual(["off:none"]);
+    expect(keys(dualHead("webhook", null, true, true))).toEqual(["ok:sending"]);
+    expect(keys(dualHead("webhook", null, false, false))).toEqual(["idle:paused"]);
+    const waiting = dualHead("bot", base, true, false);
     expect(keys(waiting)).toEqual(["idle:pairing"]);
     expect(waiting.aside).toBe("bot");
-    expect(keys(discordHead("bot", { ...base, paired: true }, true, true))).toEqual(["ok:sending", "ok:chat"]);
-    expect(keys(discordHead("bot", { ...base, paired: true, link: "error" }, true, false))).toEqual(["ok:sending", "bad:no_receive"]);
+    expect(keys(dualHead("bot", { ...base, paired: true }, true, true))).toEqual(["ok:sending", "ok:chat"]);
+    expect(keys(dualHead("bot", { ...base, paired: true, link: "error" }, true, false))).toEqual(["ok:sending", "bad:no_receive"]);
   });
 
   it("맨 앞 방식 칩 — 서 있는 방식(계정 연결 대기도 봇) · 없으면 칩 없음 · 다른 채널 머리에는 없다", () => {
-    expect(discordHead("none", null, true, true).kind).toBeNull();
-    expect(discordHead("webhook", null, true, false).kind).toBe("settings.messenger.discord.kind.webhook");
-    expect(discordHead("bot", base, true, false).kind).toBe("settings.messenger.discord.kind.bot");
-    expect(discordHead("bot", { ...base, paired: true }, true, true).kind).toBe("settings.messenger.discord.kind.bot");
-    expect(discordKind("none")).toBeNull();
+    expect(dualHead("none", null, true, true).kind).toBeNull();
+    expect(dualHead("webhook", null, true, false).kind).toBe("settings.messenger.kind.webhook");
+    expect(dualHead("bot", base, true, false).kind).toBe("settings.messenger.kind.bot");
+    expect(dualHead("bot", { ...base, paired: true }, true, true).kind).toBe("settings.messenger.kind.bot");
+    expect(dualKind("none")).toBeNull();
     expect(botHead(base, true, false).kind).toBeUndefined();
     expect(webhookHead(true, true).kind).toBeUndefined();
   });
@@ -194,36 +198,85 @@ describe("Discord 머리 — 방식대로", () => {
 
 describe("Discord 몸통 — 연결 방식 고르기 · 바꾸기 확인(목업 ①–⑥)", () => {
   it("고르기의 기본은 연결된 방식 · 아무것도 없으면 봇", () => {
-    expect(discordDefaultVia("none")).toBe("bot");
-    expect(discordDefaultVia("webhook")).toBe("webhook");
-    expect(discordDefaultVia("bot")).toBe("bot");
+    expect(dualDefaultVia("none")).toBe("bot");
+    expect(dualDefaultVia("webhook")).toBe("webhook");
+    expect(dualDefaultVia("bot")).toBe("bot");
   });
 
   it("연결 전 = 고른 방식의 칸 · 연결된 방식 = 그 몸통 · 다른 방식 = 바꾸기", () => {
-    expect(discordView("none", null)).toBe("bot");
-    expect(discordView("none", "webhook")).toBe("webhook");
-    expect(discordView("webhook", null)).toBe("webhook"); // ①
-    expect(discordView("webhook", "bot")).toBe("to-bot"); // ②③
-    expect(discordView("webhook", "webhook")).toBe("webhook");
-    expect(discordView("bot", null)).toBe("bot"); // ④ · 계정 연결 대기
-    expect(discordView("bot", "webhook")).toBe("to-webhook"); // ⑤⑥
-    expect(discordView("bot", "bot")).toBe("bot");
+    expect(dualView("none", null)).toBe("bot");
+    expect(dualView("none", "webhook")).toBe("webhook");
+    expect(dualView("webhook", null)).toBe("webhook"); // ①
+    expect(dualView("webhook", "bot")).toBe("to-bot"); // ②③
+    expect(dualView("webhook", "webhook")).toBe("webhook");
+    expect(dualView("bot", null)).toBe("bot"); // ④ · 계정 연결 대기
+    expect(dualView("bot", "webhook")).toBe("to-webhook"); // ⑤⑥
+    expect(dualView("bot", "bot")).toBe("bot");
   });
 
   it("확인은 바꾸기에만 · 연결 전 등록은 확인 없음", () => {
-    expect(discordNeedsConfirm("to-bot")).toBe(true);
-    expect(discordNeedsConfirm("to-webhook")).toBe(true);
-    expect(discordNeedsConfirm("bot")).toBe(false);
-    expect(discordNeedsConfirm("webhook")).toBe(false);
+    expect(dualNeedsConfirm("to-bot")).toBe(true);
+    expect(dualNeedsConfirm("to-webhook")).toBe(true);
+    expect(dualNeedsConfirm("bot")).toBe(false);
+    expect(dualNeedsConfirm("webhook")).toBe(false);
   });
 
   it("원격 창은 어느 방향이든 바꾸기가 잠긴다 · 메인 PC 는 열림 · 연결 전 칸은 몸통이 정한다", () => {
     for (const v of ["to-bot", "to-webhook"] as const) {
-      expect(discordSwitchLocked(v, true)).toBe(true);
-      expect(discordSwitchLocked(v, false)).toBe(false);
+      expect(dualSwitchLocked(v, true)).toBe(true);
+      expect(dualSwitchLocked(v, false)).toBe(false);
     }
-    expect(discordSwitchLocked("webhook", true)).toBe(false);
-    expect(discordSwitchLocked("bot", true)).toBe(false);
+    expect(dualSwitchLocked("webhook", true)).toBe(false);
+    expect(dualSwitchLocked("bot", true)).toBe(false);
+  });
+});
+
+describe("Slack — 두 방식 채널(Discord 와 같은 뼈대) · 토큰 둘", () => {
+  it("연결 판정은 Discord 와 같다 — 웹훅은 등록, 봇은 토큰 + 짝 · 채널마다 따로", () => {
+    expect(channelConnected("slack", { slack: { configured: true, via: "bot" } }, { slack: base })).toBe(false);
+    expect(channelConnected("slack", { slack: { configured: true, via: "bot" } }, { slack: { ...base, paired: true } })).toBe(true);
+    expect(channelConnected("slack", { slack: hook }, { slack: base })).toBe(false);
+    expect(channelConnected("slack", {}, { discord: { ...base, paired: true } })).toBe(false);
+    expect(channelConnected("discord", {}, { slack: { ...base, paired: true } })).toBe(false);
+    expect(dualMode({ configured: true, via: "bot" }, null)).toBe("bot");
+    expect(dualHead("bot", base, true, false).kind).toBe("settings.messenger.kind.bot");
+  });
+
+  it("봇 이름(멤버 ID 포함)은 그대로 — @ 를 붙이지 않는다", () => {
+    expect(botHandle("aynx", "slack")).toBe("aynx");
+    expect(botHandle("U024BE7LH", "slack")).toBe("U024BE7LH");
+  });
+
+  it("토큰 칸 — Slack 은 봇 · 앱 둘(Discord · Telegram 은 하나 · id 는 그대로)", () => {
+    expect(tokenFields("slack").map((f) => [f.id, f.placeholder])).toEqual([
+      ["messenger-slack-token", "xoxb-…"],
+      ["messenger-slack-app-token", "xapp-…"],
+    ]);
+    expect(tokenFields("discord").map((f) => f.id)).toEqual(["messenger-discord-token"]);
+    expect(tokenFields("telegram").map((f) => f.id)).toEqual(["messenger-telegram-token"]);
+  });
+
+  it("두 칸은 줄바꿈 하나로 잇는다 — 앞뒤 공백을 걷고 · 빈 칸이 있으면 보내지 않는다", () => {
+    expect(joinTokens([" xoxb-1 ", "xapp-2\n"])).toBe("xoxb-1\nxapp-2");
+    expect(joinTokens(["xoxb-1", " "])).toBeNull();
+    expect(joinTokens([])).toBeNull();
+    expect(joinTokens([" MTIz.x "])).toBe("MTIz.x");
+  });
+
+  it("매니페스트 — 권한 둘 · DM 받기 · Socket Mode · 메시지 탭", () => {
+    for (const s of ["chat:write", "im:history", "message.im", "socket_mode_enabled: true", "messages_tab_enabled: true"]) {
+      expect(SLACK_MANIFEST).toContain(s);
+    }
+  });
+
+  it("요령의 백틱은 코드 조각으로", () => {
+    expect(codeSpans("a `connections:write` b")).toEqual([
+      { text: "a ", code: false },
+      { text: "connections:write", code: true },
+      { text: " b", code: false },
+    ]);
+    expect(codeSpans("plain")).toEqual([{ text: "plain", code: false }]);
+    expect(codeSpans("odd ` tick")).toEqual([{ text: "odd ` tick", code: false }]);
   });
 });
 

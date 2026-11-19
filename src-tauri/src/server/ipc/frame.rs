@@ -182,7 +182,11 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 판 35(2026-11-19 메신저 다리 Discord — `server::messenger_bridge::dc`): 새 op 없음 — `messenger_bot_*` 몸의 `channel: "discord"` · 사건
 /// 몸에 `channel`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 34 서버는 몸의 `channel` 을 Telegram 으로 다룰 수 있어 새 GUI 는 Discord 채널의
 /// 봇 명령을 `[server-outdated]` 로 · 알림의 Discord 봇 몫은 보내지 않는다([`DISCORD_BOT_PROTOCOL`] — Telegram 몫은 판 34 그대로).
-pub(crate) const PROTOCOL_MAX: u32 = 35;
+///
+/// 판 36(2026-11-19 메신저 다리 Slack — `server::messenger_bridge::sl`): 새 op 없음 — `messenger_bot_*` 몸의 `channel: "slack"` · 사건 몸의
+/// `channel: "slack"`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 35 서버는 Slack 전송이 없어 `[unsupported]` 로 거절하므로 새 GUI 는 Slack
+/// 채널의 봇 명령을 `[server-outdated]` 로 · 알림의 Slack 봇 몫은 보내지 않는다([`SLACK_BOT_PROTOCOL`] — Discord 판 35 와 같은 방식).
+pub(crate) const PROTOCOL_MAX: u32 = 36;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -267,6 +271,9 @@ pub(crate) const MESSENGER_BOT_PROTOCOL: u32 = 34;
 
 /// 메신저 다리의 Discord 채널(`messenger_bot_*` 의 `channel: "discord"`)이 서는 판 — 낮으면 GUI 가 그 채널의 op 를 보내지 않는다.
 pub(crate) const DISCORD_BOT_PROTOCOL: u32 = 35;
+
+/// 메신저 다리의 Slack 채널(`messenger_bot_*` 의 `channel: "slack"`)이 서는 판 — 낮으면 GUI 가 그 채널의 op 를 보내지 않는다.
+pub(crate) const SLACK_BOT_PROTOCOL: u32 = 36;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;

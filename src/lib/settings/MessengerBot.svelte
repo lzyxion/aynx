@@ -7,20 +7,32 @@
   import Toggle from "$lib/Toggle.svelte";
   import TipName from "$lib/settings/TipName.svelte";
   import WarnChip from "$lib/settings/WarnChip.svelte";
-  import { botHandle, formatPairCode, parseBotStatus, type BotChannel, type BotStatus } from "$lib/settings/messenger-view";
+  import {
+    botHandle,
+    formatPairCode,
+    joinTokens,
+    parseBotStatus,
+    tokenFields,
+    type BotChannel,
+    type BotStatus,
+  } from "$lib/settings/messenger-view";
+  import MessengerTokenForm from "$lib/settings/MessengerTokenForm.svelte";
+  import MessengerSlackSteps from "$lib/settings/MessengerSlackSteps.svelte";
 
   /**
-   * **봇 채널 칸의 몸통**(Telegram · 봇으로 연결한 Discord) — 봇 연결 · 계정 연결(짝짓기) · 말하기(메신저 다리 1b —
-   * docs/log/2026-11-18-messenger-bridge.md · 사용자 확정 목업 "설정 › 알림 › 채널" · Discord 는 2026-11-19 A안).
+   * **봇 채널 칸의 몸통**(Telegram · 봇으로 연결한 Discord · Slack) — 봇 연결 · 계정 연결(짝짓기) · 말하기(메신저 다리 1b —
+   * docs/log/2026-11-18-messenger-bridge.md · 사용자 확정 목업 "설정 › 알림 › 채널" · Discord · Slack 은 2026-11-19 A안).
    *
    * | 상태 | 줄 |
    * | --- | --- |
-   * | 토큰 없음 | 봇 토큰 칸(비밀번호형) + [연결] + 요령 |
+   * | 토큰 없음 | 봇 토큰 칸(비밀번호형 · Slack 은 봇 · 앱 토큰 두 칸) + [연결] + 요령(Slack 은 번호 줄 + [매니페스트 복사]) |
    * | 토큰만 | 계정 연결(요령 · 짝짓기를 청한 계정이 있으면 이름 · 코드 · [허용] · [거절]) · 봇 연결 해제 |
    * | 짝지음 | 메신저에서 AI 타일에 말하기 · 연결된 계정 [다시 연결] · 봇 [테스트 보내기] · 봇 연결 해제 |
    *
-   * 두 채널의 줄은 같고, 요령 글 · 토큰 자리표시 · 연결 해제 설명만 채널마다 다르다(`TEXT`). 명령은 모두 `channel` 을 싣는다
+   * 세 채널의 줄은 같고, 요령 글 · 연결 해제 설명만 채널마다 다르다(`TEXT` — 토큰 칸은 `tokenFields`). 명령은 모두 `channel` 을 싣는다
    * (`messenger_bot_*` — 짝지은 계정은 채널마다 하나). 줄 id 는 `messenger-<채널>-…` · 말하기만 `messenger-channel-<채널>-chat`(설정 색인 anchor).
+   * Slack 의 두 토큰은 `"<봇>\n<앱>"` 한 글자열로 넘긴다(`joinTokens` — 서버가 접두사로 가르고, 어느 토큰이 틀렸는지도 서버가 말한다).
+   * Slack 은 이름 대신 멤버 ID 가 온다(서버가 준 글자를 그대로 그린다).
    *
    * - **봇 토큰은 화면에 다시 보여 주지 않는다** — 칸은 [연결] 을 누르자마자 비우고, 상태(`messenger_bot_status`)에는 토큰이 없다.
    *   토큰을 읽는 것은 세션 서버뿐이다(`server/messenger_bridge_proxy.rs`).
@@ -54,31 +66,34 @@
     onstatus: (next: BotStatus, paired: boolean) => void;
   } = $props();
 
-  /** 채널마다 다른 글 — 나머지 줄은 `settings.messenger.bot.*` 를 함께 쓴다 */
-  const TEXT: Record<BotChannel, { howto: Key; pairHowto: Key; chatNote: Key; unbotNote: Key; placeholder: string }> = {
+  /** 채널마다 다른 글 — 나머지 줄은 `settings.messenger.bot.*` 를 함께 쓴다. `howto` 가 `null` 이면 번호 줄(`MessengerSlackSteps`) */
+  const TEXT: Record<BotChannel, { howto: Key | null; pairHowto: Key; chatNote: Key; unbotNote: Key }> = {
     telegram: {
       howto: "settings.messenger.telegram.howto",
       pairHowto: "settings.messenger.telegram.pair.howto",
       chatNote: "settings.messenger.telegram.chat.note",
       unbotNote: "settings.messenger.telegram.unbot.note",
-      placeholder: "123456789:AA…",
     },
     discord: {
       howto: "settings.messenger.discord.bot.howto",
       pairHowto: "settings.messenger.discord.pair.howto",
       chatNote: "settings.messenger.discord.chat.note",
       unbotNote: "settings.messenger.discord.unbot.note",
-      placeholder: "MTIz….Gx….…",
+    },
+    slack: {
+      howto: null,
+      pairHowto: "settings.messenger.slack.pair.howto",
+      chatNote: "settings.messenger.slack.chat.note",
+      unbotNote: "settings.messenger.slack.unbot.note",
     },
   };
 
-  let draft = $state("");
   let busy = $state(false);
   /** 토큰 칸 밑 한 줄 — 등록 거절 문구 */
   let rejection = $state<string | null>(null);
 
   const text = $derived(TEXT[channel]);
-  const tokenId = $derived(`messenger-${channel}-token`);
+  const fields = $derived(tokenFields(channel).map((f) => ({ ...f, label: t(f.label) })));
   const chatId = $derived(`messenger-channel-${channel}-chat`);
   const homeOnly = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
   const bot = $derived(botHandle(status?.bot ?? null, channel));
@@ -102,11 +117,10 @@
     }
   }
 
-  /** [연결] — 칸은 넣자마자 비운다(거절되면 다시 붙여 넣는다 — 화면에 토큰을 남겨 두지 않는다) */
-  function connect() {
-    const token = draft.trim();
-    draft = "";
-    if (token === "") return;
+  /** [연결] — 칸은 넣자마자 비운다(`MessengerTokenForm` — 거절되면 다시 붙여 넣는다 · 화면에 토큰을 남겨 두지 않는다) */
+  function connect(values: string[]) {
+    const token = joinTokens(values);
+    if (token === null) return;
     void run("messenger_bot_set_token", { token }, { inline: true });
   }
 
@@ -138,36 +152,30 @@
   </div>
 {/snippet}
 
-{#if !status?.configured}
-  <form
-    class="srow wide-field"
-    onsubmit={(e) => {
-      e.preventDefault();
-      connect();
-    }}
-  >
-    <label class="name" for={tokenId}>{t("settings.messenger.bot.token.label")}</label>
-    <div class="size-row">
-      <input
-        id={tokenId}
-        class="value"
-        type="password"
-        spellcheck="false"
-        autocomplete="off"
-        placeholder={text.placeholder}
-        bind:value={draft}
-        disabled={busy || isRemote}
-        title={homeOnly}
-      />
-      <button type="submit" class="btn btn-primary btn-sm" disabled={busy || isRemote || draft.trim() === ""} title={homeOnly}
-        >{t("settings.messenger.webhook.save")}</button
-      >
-    </div>
+{#snippet howto()}
+  {@const alert = rejection ?? loadError}
+  {#if text.howto}
     <p class="footnote">
-      {#if rejection ?? loadError}<span class="rejection" role="alert">{rejection ?? loadError}</span><br />{/if}
+      {#if alert}<span class="rejection" role="alert">{alert}</span><br />{/if}
       {t(text.howto)}
     </p>
-  </form>
+  {:else}
+    {#if alert}<p class="footnote"><span class="rejection" role="alert">{alert}</span></p>{/if}
+    <MessengerSlackSteps />
+  {/if}
+{/snippet}
+
+{#if !status?.configured}
+  {#key channel}
+    <MessengerTokenForm
+      {fields}
+      name={t("settings.messenger.bot.connect.label")}
+      disabled={busy || isRemote}
+      title={homeOnly}
+      onsubmit={connect}
+      footnote={howto}
+    />
+  {/key}
 {:else if !status.paired}
   <div class="srow pair-row" data-messenger-pairing={status.pending ? "pending" : "idle"}>
     <span class="name">{t("settings.messenger.bot.pair.label")}</span>
@@ -254,13 +262,6 @@
     color: var(--fg-2);
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* 칸 옆 [연결] — 칸과 같은 높이 */
-  .wide-field .btn {
-    height: var(--field-height);
-    padding: 0 var(--space-3);
-    font-size: var(--t-sm);
   }
 
   .rejection {

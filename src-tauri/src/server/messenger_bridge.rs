@@ -1,6 +1,7 @@
 //! **메신저 다리 — 세션 서버 쪽**(2026-11-18 · 1a · 계획 docs/log/2026-11-18-messenger-bridge.md). 폰의 메신저에서 로컬 AI 타일(Claude Code ·
 //! Codex)에 글을 보내고, 그 턴이 끝나면 답을 같은 대화방으로 받는다. 이 파일은 **채널 중립 코어**다(3a · 2026-11-19) — 순수 판정은 [`logic`],
-//! 채널의 받기 · 보내기 · 글자 서식은 전송([`tg`] — Telegram, JSON · HTML 은 `crate::telegram` · [`dc`] — Discord 게이트웨이 · REST · 3b). 코어와 전송 사이는 이 파일의 "전송" 절
+//! 채널의 받기 · 보내기 · 글자 서식은 전송([`tg`] — Telegram, JSON · HTML 은 `crate::telegram` · [`dc`] — Discord 게이트웨이 · REST · 3b · [`sl`] — Slack
+//! Socket Mode · Web API · 4단계 · WebSocket 붙기 · 일꾼은 둘이 함께 쓰는 [`sock`]). 코어와 전송 사이는 이 파일의 "전송" 절
 //! `match` 한 곳씩뿐이다(trait 로 벌리지 않는다 — `messenger.rs` 와 같은 관례).
 //!
 //! ```text
@@ -11,17 +12,22 @@
 //!
 //! ## 채널
 //!
-//! - 키는 `crate::messenger::Channel`. 전송이 있는 채널은 [`CHANNELS`](Telegram · Discord(3b) — 이 차례로 돈다 · Slack 은 `None` · `[unsupported]`).
+//! - 키는 `crate::messenger::Channel`. 전송이 있는 채널은 [`CHANNELS`](Telegram · Discord(3b) · Slack(4단계) — 이 차례로 돈다 · 전송이 없는 채널의
+//!   op 는 `[unsupported]`).
 //!   **채널마다 계정 하나**와 자기 상태(토큰 · 짝 · 고리 · 보낸 id · 고르기 · 다리 턴 · 돌봄 · 카드)를 갖고, 설정 · 런타임 · HTTP 클라이언트 ·
 //!   이름표는 함께 쓴다. 다리 턴의 답은 그 글이 온 채널로만 · 카드 단추 통은 그 스트림을 돌보는 채널마다 · 누름은 먼저 온 것이 이긴다
-//!   (`resolve_from_bridge` 는 두 번째부터 "이미" · 다른 채널의 통은 `gone` 으로 바꿔 쓴다). Telegram 과 Discord 는 함께 켤 수 있다.
+//!   (`resolve_from_bridge` 는 두 번째부터 "이미" · 다른 채널의 통은 `gone` 으로 바꿔 쓴다). Telegram · Discord · Slack 은 함께 켤 수 있다.
 //! - Discord(3b): **DM 만** · 의도 `DIRECT_MESSAGES` 하나 · 짝 = (보낸 사람 id, DM 대화방 id) · 스노플레이크는 `i64`(넘치면 버린다) · 한 통 2000자 ·
 //!   최대 5통 · 마크다운은 걷는다(머리 줄만 굵게) · 멘션은 늘 막는다 · 누름은 받는 즉시 알리고(3초) 결과는 그 통을 바꿔 써서 보인다.
+//! - Slack(4단계): **DM 만** · Socket Mode(앱 수준 토큰 `xapp-…`) + Web API(봇 토큰 `xoxb-…` — 파일 몸은 두 줄) · 짝 = (사용자 id, DM 대화방 id) ·
+//!   id 는 36진수로 `i64` · 메시지 id 는 `ts` → `초 × 10⁶ + 마이크로초` · 한 통 몸 2900 단위(`plain_text` — 기호가 글자 그대로) · 최대 5통 ·
+//!   멘션은 늘 막는다 · 스레드 안의 글에는 그 스레드로 답한다(Slack DM 에는 답장이 없다 — `sl` 의 뿌리 표 · 짝 · 봇이 바뀌면 [`forget_transport`]) ·
+//!   누름의 받음 알림은 봉투 답 · 결과는 그 통을 바꿔 써서 보인다.
 //! - 코어는 채널 서식을 짓지 않는다 — 보내는 글은 중립 [`Text`](굵은 머리 줄 + 평문 · 또는 `messenger.rs` 가 그 채널로 이미 그린 알림 글).
 //!
 //! ## 불변식
 //!
-//! - **봇 토큰을 읽는 것은 세션 서버뿐이다** — 채널의 봇 토큰 파일(`Channel::bot_file` — `<설정 루트>/telegram-bot` · `discord-bot`)은 이 파일만 읽고
+//! - **봇 토큰을 읽는 것은 세션 서버뿐이다** — 채널의 봇 토큰 파일(`Channel::bot_file` — `<설정 루트>/telegram-bot` · `discord-bot` · `slack-bot`)은 이 파일만 읽고
 //!   쓴다(GUI 는 등록 때 op `messenger_bot_set_token` 몸으로 넘길 뿐 · 시험 `gui_never_reads_the_token_file`). 토큰 · 받은 글 · 대화 글자는 로그 ·
 //!   `Debug` · 오류 문구 · 서버 사건 · op 답에 없다 — 로그에는 고정 글자 · 수만, `reqwest` 오류는 `without_url()` 도 거치지 않고 아예 문구로
 //!   만들지 않는다(종류만 — 전송의 `err_kind`).
@@ -29,7 +35,8 @@
 //!   6자리 코드(`remote::auth::six_digits` — 원격 기기 페어링과 같은 난수 출처) · 대기 하나 · 10분 · 계정당 30초에 한 번 답. [허용]은 Tauri
 //!   명령 `messenger_bot_pair`(HOME_ONLY)뿐이다.
 //! - **지난 글은 실행하지 않는다**: 보낸 지 120초가 넘은 글은 넣지 않고 "보내지 않았습니다" 한 통.
-//! - **넣기 문지기**(`logic::gate` — 전부 참이어야): 다리가 켜짐(채널의 `[messenger]` 칸 — Telegram `telegram_chat` · Discord `discord_chat` 을 글마다 다시 읽는다 ·
+//! - **넣기 문지기**(`logic::gate` — 전부 참이어야): 다리가 켜짐(채널의 `[messenger]` 칸 — Telegram `telegram_chat` · Discord `discord_chat` · Slack
+//!   `slack_chat` 을 글마다 다시 읽는다 ·
 //!   [`chat_enabled`]) · 살아 있는 **로컬** 세션 · `agent_state` 항목이 있고(**없으면 무조건 거절** — CLI 가 끝난 셸에 글이 가면 셸 명령이 된다)
 //!   CLI 가 claude · codex · 턴이 한 번 이상 끝났고 지금 끝나 입력을 기다림(메인 멈춤 · 서브 에이전트 0) · 권한 카드 · 질문이 없음 · 서버 해석기의
 //!   괄호 붙여넣기 모드가 켜짐 · 입력 줄에 치다 만 글이 없음. 원격(SSH) 타일은 1단계에서 거절한다.
@@ -57,12 +64,15 @@
 //!   다리 턴의 답은 대화 파일이 다 쓰인 뒤의 글([`settled_answer`] — 신호가 파일 쓰기보다 빠르다 · 글을 가진 뒤 4초 · 글이 없으면 20초까지).
 //! - **방어 기계는 최소** — 받기 실패는 고정 5초 물러남(Telegram 409 = 다른 프로그램이 같은 봇을 받음 · 30초 + 상태 `conflict`) 하나뿐. Discord 는
 //!   IDENTIFY 예산(24시간 1000번 — 넘으면 토큰이 바뀐다) 때문에 RESUME 먼저 · 치명 닫힘 코드면 멈춤 · 갓 IDENTIFY 한 세션이 곧 죽으면 5초부터 두 배
-//!   (5분까지) · REST 429 는 한 번 쉬고 다시(`dc` 머리말). 재시도 큐 · 놓친 글 재생 · 속도 제한기는 없다.
+//!   (5분까지) · REST 429 는 한 번 쉬고 다시(`dc` 머리말). Slack 은 30초 Ping · 75초 조용하면 다시 붙기 · 갓 붙은 연결이 곧 죽으면 같은 물러남 ·
+//!   인증 · 권한 오류 · `link_disabled` 면 멈춤 · Web API 429 는 한 번 쉬고 다시(`sl` 머리말). 재시도 큐 · 놓친 글 재생 · 속도 제한기는 없다.
 //! - 신호를 받는 HTTP 스레드(`signal_http::handle`)는 붙들지 않는다 — [`on_signal`] 은 잠금 · 비교뿐이고 보내기는 런타임 태스크로 넘긴다
 //!   (서버가 뜰 때 [`start`] 가 쥔 런타임 손잡이 — `server::ai::mcp_route` 의 DB 손과 같은 관례).
 
 mod dc;
 pub(crate) mod logic;
+mod sl;
+mod sock;
 mod tg;
 #[cfg(test)]
 mod tests;
@@ -92,9 +102,11 @@ pub(crate) const MESSENGER_BOT: &str = "messenger-bot";
 pub(crate) const CHAT_FILE: &str = "telegram-chat";
 /// Discord 의 짝지은 계정 파일(3b) — [`CHAT_FILE`] 과 같은 규칙.
 pub(crate) const DISCORD_CHAT_FILE: &str = "discord-chat";
+/// Slack 의 짝지은 계정 파일(4단계) — [`CHAT_FILE`] 과 같은 규칙.
+pub(crate) const SLACK_CHAT_FILE: &str = "slack-chat";
 /// 짝 파일 전부 — 씨앗 · 설정 옮기기 제외 시험이 센다.
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const CHAT_FILES: &[&str] = &[CHAT_FILE, DISCORD_CHAT_FILE];
+pub(crate) const CHAT_FILES: &[&str] = &[CHAT_FILE, DISCORD_CHAT_FILE, SLACK_CHAT_FILE];
 
 /// HTTP 요청 시한(클라이언트 기본 · 롱폴 상한) · 받기 실패 물러남 · 409 물러남 · 붙여넣기와 Enter 사이.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -140,6 +152,8 @@ pub(crate) struct Config {
     pub telegram: tg::Conf,
     /// Discord 전송의 칸(REST · 게이트웨이 주소 · IDENTIFY 물러남 — 3b)
     pub discord: dc::Conf,
+    /// Slack 전송의 칸(Web API 주소 · Ping · 조용함 · 물러남 — 4단계)
+    pub slack: sl::Conf,
     /// 비밀 파일 폴더 — `None` 이면 `instance::config_root()`.
     pub dir: Option<PathBuf>,
     pub env: Arc<dyn Env>,
@@ -160,6 +174,7 @@ impl Config {
         Config {
             telegram: tg::Conf::release(),
             discord: dc::Conf::release(),
+            slack: sl::Conf::release(),
             dir: None,
             env: Arc::new(RealEnv),
             backoff: BACKOFF,
@@ -267,7 +282,7 @@ impl Env for RealEnv {
 // ---------------------------------------------------------------------------
 
 /// 전송이 있는 채널 — 시작([`start`])은 이것만 띄우고, op 는 그 밖의 채널을 `[unsupported]` 로 거절한다.
-const CHANNELS: &[Channel] = &[Channel::Telegram, Channel::Discord];
+const CHANNELS: &[Channel] = &[Channel::Telegram, Channel::Discord, Channel::Slack];
 
 fn has_transport(chan: Channel) -> bool {
     CHANNELS.contains(&chan)
@@ -278,6 +293,8 @@ fn has_transport(chan: Channel) -> bool {
 enum Token {
     Telegram(tg::BotToken),
     Discord(dc::BotToken),
+    /// 봇 토큰 + 앱 수준 토큰(4단계 — 파일 몸은 두 줄)
+    Slack(sl::BotToken),
 }
 
 impl Token {
@@ -286,28 +303,38 @@ impl Token {
         match self {
             Token::Telegram(t) => t.as_str(),
             Token::Discord(t) => t.as_str(),
+            Token::Slack(t) => t.as_str(),
         }
     }
 
     fn telegram(&self) -> Option<&tg::BotToken> {
         match self {
             Token::Telegram(t) => Some(t),
-            Token::Discord(_) => None,
+            Token::Discord(_) | Token::Slack(_) => None,
         }
     }
 
     fn discord(&self) -> Option<&dc::BotToken> {
         match self {
             Token::Discord(t) => Some(t),
-            Token::Telegram(_) => None,
+            Token::Telegram(_) | Token::Slack(_) => None,
+        }
+    }
+
+    fn slack(&self) -> Option<&sl::BotToken> {
+        match self {
+            Token::Slack(t) => Some(t),
+            Token::Telegram(_) | Token::Discord(_) => None,
         }
     }
 }
 
-/// 누름을 받았다고 채널에 알릴 손잡이(Telegram: 콜백 질의 id · Discord: 앱 id + 그 누름의 콜백 토큰). 받기만 하고 로그에 싣지 않는다.
+/// 누름을 받았다고 채널에 알릴 손잡이(Telegram: 콜백 질의 id · Discord: 앱 id + 그 누름의 콜백 토큰 · Slack: 누른 대화방 · 사람 id). 받기만 하고
+/// 로그에 싣지 않는다.
 pub(crate) enum Ack {
     Telegram(String),
     Discord(dc::Ack),
+    Slack(sl::Ack),
 }
 
 /// 받은 글 하나 — 채널 중립(전송이 지은 것). **`Debug` 없음**(본문).
@@ -360,7 +387,7 @@ fn chat_file(chan: Channel) -> Option<&'static str> {
     match chan {
         Channel::Telegram => Some(CHAT_FILE),
         Channel::Discord => Some(DISCORD_CHAT_FILE),
-        Channel::Slack => None,
+        Channel::Slack => Some(SLACK_CHAT_FILE),
     }
 }
 
@@ -369,7 +396,7 @@ fn parse_token(chan: Channel, raw: &str) -> Option<Token> {
     match chan {
         Channel::Telegram => tg::parse_token(raw).map(Token::Telegram),
         Channel::Discord => dc::parse_token(raw).map(Token::Discord),
-        Channel::Slack => None,
+        Channel::Slack => sl::parse_token(raw).map(Token::Slack),
     }
 }
 
@@ -378,7 +405,7 @@ fn chat_enabled(chan: Channel, p: &MessengerPrefs) -> bool {
     match chan {
         Channel::Telegram => p.telegram_chat == Some(true),
         Channel::Discord => p.discord_chat == Some(true),
-        Channel::Slack => false,
+        Channel::Slack => p.slack_chat == Some(true),
     }
 }
 
@@ -387,7 +414,7 @@ fn data_max(chan: Channel) -> usize {
     match chan {
         Channel::Telegram => tg::DATA_MAX,
         Channel::Discord => dc::DATA_MAX,
-        Channel::Slack => 0,
+        Channel::Slack => sl::DATA_MAX,
     }
 }
 
@@ -396,7 +423,7 @@ fn split_answer(chan: Channel, head: &str, body: &str, more: &str) -> Vec<String
     match chan {
         Channel::Telegram => tg::split_answer(head, body, more),
         Channel::Discord => dc::split_answer(head, body, more),
-        Channel::Slack => Vec::new(),
+        Channel::Slack => sl::split_answer(head, body, more),
     }
 }
 
@@ -405,7 +432,7 @@ fn spawn_loop(chan: Channel, rt: &tokio::runtime::Handle, gen: u64) -> Option<to
     match chan {
         Channel::Telegram => Some(rt.spawn(tg::poll_loop(gen))),
         Channel::Discord => Some(rt.spawn(dc::gateway_loop(gen))),
-        Channel::Slack => None,
+        Channel::Slack => Some(rt.spawn(sl::socket_loop(gen))),
     }
 }
 
@@ -414,7 +441,7 @@ async fn transport_send(chan: Channel, chat: i64, t: &Text, reply_to: Option<i64
     match chan {
         Channel::Telegram => tg::send(chat, t, reply_to, buttons).await,
         Channel::Discord => dc::send(chat, t, reply_to, buttons).await,
-        Channel::Slack => None,
+        Channel::Slack => sl::send(chat, t, reply_to, buttons).await,
     }
 }
 
@@ -423,16 +450,27 @@ async fn edit(chan: Channel, chat: i64, message_id: i64, t: &Text) {
     match chan {
         Channel::Telegram => tg::edit(chat, message_id, t).await,
         Channel::Discord => dc::edit(chat, message_id, t).await,
-        Channel::Slack => {}
+        Channel::Slack => sl::edit(chat, message_id, t).await,
     }
 }
 
 /// 누름을 마친다 — `toast` 는 누른 사람에게만 보이는 짧은 글(있으면) · `rewritten` 은 곧이어 그 통을 결과 글로 바꿔 쓰는가(Telegram 은 늘
-/// 띄우고, Discord 는 누름을 받을 때 이미 알렸으니 바꿔 쓰지 않을 때만 후속 글로 — `dc::finish_press`).
+/// 띄우고, Discord 는 누름을 받을 때 이미 알렸으니 바꿔 쓰지 않을 때만 후속 글로 — `dc::finish_press` · Slack 은 봉투 답이 받음 알림이라
+/// 바꿔 쓰지 않을 때만 누른 사람에게만 보이는 글로 — `sl::finish_press`).
 async fn finish_press(p: &ButtonPress, toast: Option<&str>, rewritten: bool) {
     match &p.ack {
         Ack::Telegram(id) => tg::finish_press(id, toast).await,
         Ack::Discord(a) => dc::finish_press(a, toast, rewritten).await,
+        Ack::Slack(a) => sl::finish_press(a, toast, rewritten).await,
+    }
+}
+
+/// 다리 턴의 글(답 · 권한 물음)을 달 자리 — 그 턴을 시작한 글. **Slack 만** 쓴다(스레드 = 답장 — 전송이 그 글이 스레드 안의 글일 때만 그
+/// 스레드로 보낸다 · 맨 위 글이면 맨 위로). Telegram · Discord 는 지금처럼 새 글로 보낸다.
+fn turn_anchor(chan: Channel, source: Option<i64>) -> Option<i64> {
+    match chan {
+        Channel::Slack => source,
+        Channel::Telegram | Channel::Discord => None,
     }
 }
 
@@ -441,6 +479,16 @@ async fn check_token(client: &reqwest::Client, cfg: &Config, token: &Token) -> R
     match token {
         Token::Telegram(t) => tg::check_token(client, cfg, t).await,
         Token::Discord(t) => dc::check_token(client, cfg, t).await,
+        Token::Slack(t) => sl::check_token(client, cfg, t).await,
+    }
+}
+
+/// 짝 · 봇이 바뀌었다 — 전송이 쥔 그 대화방의 표를 비운다(Slack 의 스레드 뿌리 표 — `sl::forget`). 코어의 [`Chan::forget_chat`] 과 같은 때
+/// 부른다(다리 잠금 밖에서).
+fn forget_transport(chan: Channel) {
+    match chan {
+        Channel::Slack => sl::forget(),
+        Channel::Telegram | Channel::Discord => {}
     }
 }
 
@@ -527,7 +575,7 @@ fn now_ms() -> u64 {
     crate::agent_signal::now_ms()
 }
 
-/// 사건 몸 = 바뀐 것 한 낱말 + 채널 한 낱말(`telegram` · `discord` — 3b · 중계해도 되는 고정 글자뿐).
+/// 사건 몸 = 바뀐 것 한 낱말 + 채널 한 낱말(`telegram` · `discord` — 3b · `slack` — 4단계 · 중계해도 되는 고정 글자뿐).
 fn emit(changed: &str, chan: Channel) {
     hub::emit(EVENT, json!({ "changed": changed, "channel": chan }));
 }
@@ -600,6 +648,7 @@ pub(crate) fn start(cfg: Config) {
         }
     }
     for &chan in CHANNELS {
+        forget_transport(chan);
         restart(chan);
     }
 }
@@ -849,7 +898,7 @@ async fn on_press(chan: Channel, cfg: &Arc<Config>, p: ButtonPress) {
 /// 문지기를 다시 보고(그 순간의 재료) 넣는다 — 결과를 답장(`edit` 이면 그 단추 통을 바꿔 쓴다). `shown` 은 고르기 단추에 보였던 글자(있으면 `→` 줄도 그 글자).
 #[allow(clippy::too_many_arguments)]
 async fn deliver(chan: Channel, cfg: &Arc<Config>, chat: i64, source: i64, stream: &str, text: &str, edit_id: Option<i64>, shown: Option<String>) {
-    let result = inject(chan, cfg, stream, text).await;
+    let result = inject(chan, cfg, stream, text, source).await;
     let line = match result {
         Ok(()) => {
             let label = match shown {
@@ -875,7 +924,7 @@ async fn deliver(chan: Channel, cfg: &Arc<Config>, chat: i64, source: i64, strea
 }
 
 /// **넣기 함수 하나** — 문지기 → 붙여넣기 → 잠깐 → (세션이 그대로면) Enter → 다리 턴 표시. 쓰는 바이트는 [`logic::paste_bytes`] 와 `\r` 뿐이다.
-async fn inject(chan: Channel, cfg: &Arc<Config>, stream: &str, text: &str) -> Result<(), Refusal> {
+async fn inject(chan: Channel, cfg: &Arc<Config>, stream: &str, text: &str, source: i64) -> Result<(), Refusal> {
     let env = cfg.env.clone();
     let s = stream.to_string();
     let checked = blocking(move || {
@@ -894,7 +943,7 @@ async fn inject(chan: Channel, cfg: &Arc<Config>, stream: &str, text: &str) -> R
     {
         let mut s = state();
         let c = s.chan(chan);
-        c.turns.begin(stream, now_ms());
+        c.turns.begin_from(stream, now_ms(), source);
         c.tending.tend(stream);
     }
     tokio::time::sleep(cfg.enter_delay).await;
@@ -948,10 +997,12 @@ pub(crate) fn on_signal(sig: &crate::agent_signal::AgentSignal, step: &crate::ag
 pub(crate) fn on_turn_event(stream: &str, ev: TurnEvent, cli: Option<&'static str>, convo: Option<String>) {
     let mut s = state();
     let now = now_ms();
-    // (채널, 물음 번호, 대화방)
-    let mut jobs: Vec<(Channel, Option<u64>, i64)> = Vec::new();
+    // (채널, 물음 번호, 대화방, 그 턴의 글을 달 자리)
+    let mut jobs: Vec<(Channel, Option<u64>, i64, Option<i64>)> = Vec::new();
     for &chan in CHANNELS {
         let Some(c) = s.chans.get_mut(&chan) else { continue };
+        // 끝내기 전에 — 끝난 턴은 시작한 글을 내주지 않는다
+        let anchor = turn_anchor(chan, c.turns.source(stream));
         // 턴이 끝났다 · 끊겼다 — 돌봄을 걷는다(다리 턴이든 단추 달린 알림이든)
         let ask_seq = match ev {
             TurnEvent::Done => {
@@ -979,18 +1030,18 @@ pub(crate) fn on_turn_event(stream: &str, ev: TurnEvent, cli: Option<&'static st
             }
         };
         if let Some(p) = &c.paired {
-            jobs.push((chan, ask_seq, p.chat_id));
+            jobs.push((chan, ask_seq, p.chat_id, anchor));
         }
     }
     let (Some(rt), Some(cfg)) = (s.rt.clone(), s.cfg.clone()) else { return };
     drop(s);
-    for (chan, ask_seq, chat) in jobs {
+    for (chan, ask_seq, chat, anchor) in jobs {
         let stream = stream.to_string();
         let cfg = cfg.clone();
         let convo = convo.clone();
         rt.spawn(async move {
             match (ev, ask_seq) {
-                (TurnEvent::Done, _) => send_answer(chan, &cfg, chat, &stream, cli, convo).await,
+                (TurnEvent::Done, _) => send_answer(chan, &cfg, chat, &stream, cli, convo, anchor).await,
                 (TurnEvent::Asked, Some(seq)) => {
                     tokio::time::sleep(cfg.ask_grace).await;
                     // 그 사이 카드가 서지 않았고 이 턴의 첫 물음 알림일 때만(1a 그대로 — 턴당 한 번)
@@ -1002,7 +1053,7 @@ pub(crate) fn on_turn_event(stream: &str, ev: TurnEvent, cli: Option<&'static st
                     if go {
                         let label = label_of(&cfg, &stream).await;
                         let t = tr!(ko: "🟡 확인 필요 · {label} — 앱에서 답하세요", en: "🟡 Needs action · {label} — answer in the app");
-                        send_plain_text(chan, chat, &t, None, Some(&stream)).await;
+                        send_plain_text(chan, chat, &t, anchor, Some(&stream)).await;
                     }
                 }
                 _ => {}
@@ -1126,8 +1177,9 @@ async fn after_card_sent(chan: Channel, chat: i64, id: &str, message_id: Option<
 async fn card_request(chan: Channel, cfg: &Arc<Config>, chat: i64, id: &str, stream: &str, question: bool, tool: &str, summary: &str) {
     let on = !question && chat_on(chan, cfg).await;
     let label = label_of(cfg, stream).await;
+    let anchor = turn_anchor(chan, state().chan(chan).turns.source(stream));
     if on {
-        let mid = send(chan, chat, &Text::plain(logic::card_text(&label, tool, summary)), None, &logic::card_buttons(id), Some(stream)).await;
+        let mid = send(chan, chat, &Text::plain(logic::card_text(&label, tool, summary)), anchor, &logic::card_buttons(id), Some(stream)).await;
         after_card_sent(chan, chat, id, mid, &label).await;
         return;
     }
@@ -1141,7 +1193,7 @@ async fn card_request(chan: Channel, cfg: &Arc<Config>, chat: i64, id: &str, str
     };
     if note {
         let t = tr!(ko: "🟡 확인 필요 · {label} — 앱에서 답하세요", en: "🟡 Needs action · {label} — answer in the app");
-        send_plain_text(chan, chat, &t, None, Some(stream)).await;
+        send_plain_text(chan, chat, &t, anchor, Some(stream)).await;
     }
 }
 
@@ -1230,7 +1282,7 @@ async fn settled_answer(cfg: &Arc<Config>, cli: &'static str, convo: Option<Stri
 }
 
 /// 다리 턴의 답 — 대화 파일의 마지막 답 **전문**(채널의 한 통 상한씩 · 최대 통 수 · 그 뒤 "앱에서 전체 보기" — [`split_answer`]).
-async fn send_answer(chan: Channel, cfg: &Arc<Config>, chat: i64, stream: &str, cli: Option<&'static str>, convo: Option<String>) {
+async fn send_answer(chan: Channel, cfg: &Arc<Config>, chat: i64, stream: &str, cli: Option<&'static str>, convo: Option<String>, anchor: Option<i64>) {
     let label = label_of(cfg, stream).await;
     let text = match cli {
         Some(cli) => settled_answer(cfg, cli, convo).await,
@@ -1239,13 +1291,13 @@ async fn send_answer(chan: Channel, cfg: &Arc<Config>, chat: i64, stream: &str, 
     let head = format!("🟢 {label}");
     let Some(text) = text.filter(|t| !t.trim().is_empty()) else {
         let t = tr!(ko: "턴이 끝났습니다 (답을 읽지 못했습니다)", en: "The turn ended (could not read the reply)");
-        send(chan, chat, &Text::headed(head, t), None, &[], Some(stream)).await;
+        send(chan, chat, &Text::headed(head, t), anchor, &[], Some(stream)).await;
         return;
     };
     let more = tr!(ko: "… (앱에서 전체 보기)", en: "… (see the full reply in the app)");
     for (i, part) in split_answer(chan, &head, &text, &more).into_iter().enumerate() {
         let t = if i == 0 { Text::headed(head.clone(), part) } else { Text::plain(part) };
-        send(chan, chat, &t, None, &[], Some(stream)).await;
+        send(chan, chat, &t, anchor, &[], Some(stream)).await;
     }
 }
 
@@ -1501,7 +1553,7 @@ fn cfg_now() -> Result<Arc<Config>, WireError> {
     state().cfg.clone().ok_or_else(|| bad("[bridge-off] messenger bridge is not running"))
 }
 
-/// 토큰 등록(전송이 확인 — Telegram `getMe`) · 해제(짝도 함께 지운다) → 그 채널의 고리 다시 시작.
+/// 토큰 등록(전송이 확인 — Telegram `getMe` · Discord `users/@me` · Slack `auth.test` + `apps.connections.open`) · 해제(짝도 함께 지운다) → 그 채널의 고리 다시 시작.
 async fn set_token(chan: Channel, raw: Option<String>) -> Result<Value, WireError> {
     let cfg = cfg_now()?;
     let raw = raw.filter(|r| !r.trim().is_empty());
@@ -1517,6 +1569,7 @@ async fn set_token(chan: Channel, raw: Option<String>) -> Result<Value, WireErro
             c.pairing.clear();
             c.forget_chat();
         }
+        forget_transport(chan);
         restart(chan);
         emit("token", chan);
         if !ok {
@@ -1549,6 +1602,9 @@ async fn set_token(chan: Channel, raw: Option<String>) -> Result<Value, WireErro
         c.bot = bot;
         c.pairing.clear();
     }
+    if !same {
+        forget_transport(chan);
+    }
     restart(chan);
     emit("token", chan);
     log::line("messenger bridge — bot token registered");
@@ -1573,10 +1629,17 @@ async fn pair(chan: Channel, code: &str, allow: bool) -> Result<Value, WireError
     state().chan(chan).paired = Some(p.clone());
     emit("paired", chan);
     log::line("messenger bridge — paired");
-    let t = tr!(
-        ko: "연결됐습니다 — 알림이 이 대화방으로 옵니다. 알림에 답장하면 그 타일로 갑니다(설정에서 켠 경우).",
-        en: "Connected — notifications will come to this chat. Reply to a notification to send it to that tile (when enabled in settings).",
-    );
+    // Slack DM 에는 답장이 없다 — 스레드가 그 자리다(`sl` 머리말)
+    let t = match chan {
+        Channel::Slack => tr!(
+            ko: "연결됐습니다 — 알림이 이 대화방으로 옵니다. 알림에 스레드로 글을 달면 그 타일로 갑니다(설정에서 켠 경우).",
+            en: "Connected — notifications will come to this chat. Reply in a thread on a notification to send it to that tile (when enabled in settings).",
+        ),
+        Channel::Telegram | Channel::Discord => tr!(
+            ko: "연결됐습니다 — 알림이 이 대화방으로 옵니다. 알림에 답장하면 그 타일로 갑니다(설정에서 켠 경우).",
+            en: "Connected — notifications will come to this chat. Reply to a notification to send it to that tile (when enabled in settings).",
+        ),
+    };
     send_plain_text(chan, p.chat_id, &t, None, None).await;
     Ok(status(chan))
 }
@@ -1593,6 +1656,7 @@ async fn unpair(chan: Channel) -> Result<(), WireError> {
         c.paired = None;
         c.forget_chat();
     }
+    forget_transport(chan);
     emit("paired", chan);
     log::line("messenger bridge — unpaired");
     Ok(())

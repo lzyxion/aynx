@@ -4,11 +4,11 @@
  * 채널 줄 머리의 상태 칩 · "연결됐는가" · 봇 상태(`messenger_bot_status`)의 모양 검사가 여기 있다. 룬도 DOM 도 Tauri 도 없어
  * vitest 로 그대로 돈다(`messenger-view.test.ts`). 화면은 `MessengerSettings.svelte` · `MessengerChannel.svelte`.
  *
- * - Slack 은 웹훅이 등록되면 연결된 것이다(`messenger_status`).
  * - Telegram 은 **봇 토큰이 있고(`configured`) 계정을 짝지었을 때(`paired`)** 연결된 것이다 — 토큰만 있으면 "계정 연결 대기".
- * - Discord 는 **한 번에 한 방식**이다(2026-11-19 사용자 A안) — 웹훅(알림만)이면 등록으로, 봇(알림 + 말하기)이면 Telegram 과 같은 규칙으로
- *   연결된 것이다. 어느 쪽인지는 `messenger_status` 의 `via` 와 봇 상태가 말한다([`discordMode`]). 몸통의 "연결 방식" 고르기 · 바꾸기 확인 ·
- *   머리줄 방식 칩은 [`discordView`] · [`discordKind`].
+ * - **두 방식 채널**(Discord · Slack — [`DualChannel`])은 **한 번에 한 방식**이다(2026-11-19 사용자 A안 · Slack 은 같은 뼈대) — 웹훅(알림만)이면
+ *   등록으로, 봇(알림 + 말하기)이면 Telegram 과 같은 규칙으로 연결된 것이다. 어느 쪽인지는 `messenger_status` 의 `via` 와 봇 상태가 말한다
+ *   ([`dualMode`]). 몸통의 "연결 방식" 고르기 · 바꾸기 확인 · 머리줄 방식 칩은 [`dualView`] · [`dualKind`].
+ * - Slack 봇은 토큰이 둘이다(봇 `xoxb-` · 앱 `xapp-`) — 한 글자열(`"<봇>\n<앱>"`)로 넘기고 서버가 접두사로 가른다([`joinTokens`]).
  * - 봇 상태에는 토큰이 없다(백엔드가 `configured` 하나만 준다). 짝지은 이름 · 짝짓기를 청한 이름은 **남의 글자**라 글자로만 그린다.
  */
 
@@ -19,9 +19,84 @@ import type { MessengerChannel } from "$lib/messenger-notify";
 export type BotLink = "ok" | "conflict" | "error" | "off";
 
 /** 봇이 있는 채널 — `messenger_bot_*` 명령의 `channel` */
-export type BotChannel = "telegram" | "discord";
+export type BotChannel = "telegram" | "discord" | "slack";
 
-export const BOT_CHANNELS: readonly BotChannel[] = ["telegram", "discord"];
+export const BOT_CHANNELS: readonly BotChannel[] = ["telegram", "discord", "slack"];
+
+/** 봇과 웹훅 가운데 한 방식으로 연결하는 채널 */
+export type DualChannel = "discord" | "slack";
+
+export const DUAL_CHANNELS: readonly DualChannel[] = ["discord", "slack"];
+
+/** 토큰 칸 하나 — `id` 는 DOM id(연결 전 몸통 · 바꾸기 칸이 같은 id) */
+export interface TokenField {
+  id: string;
+  label: Key;
+  placeholder: string;
+}
+
+/** 채널의 봇 토큰 칸 — Slack 은 둘(봇 · 앱), 다른 채널은 하나 */
+export function tokenFields(channel: BotChannel): TokenField[] {
+  const bot: TokenField = {
+    id: `messenger-${channel}-token`,
+    label: "settings.messenger.bot.token.label",
+    placeholder: channel === "telegram" ? "123456789:AA…" : channel === "discord" ? "MTIz….Gx….…" : "xoxb-…",
+  };
+  if (channel !== "slack") return [bot];
+  return [bot, { id: "messenger-slack-app-token", label: "settings.messenger.slack.app_token.label", placeholder: "xapp-…" }];
+}
+
+/**
+ * 칸들의 값 → `messenger_bot_set_token` 의 `token` — 칸마다 앞뒤 공백을 걷고 줄바꿈으로 잇는다(Slack `"<봇>\n<앱>"` · 칸 순서는 서버가
+ * 접두사로 가르므로 뜻이 없다). 빈 칸이 하나라도 있으면 `null`(보내지 않는다).
+ */
+export function joinTokens(values: readonly string[]): string | null {
+  const parts = values.map((v) => v.trim());
+  return parts.length > 0 && parts.every((p) => p !== "") ? parts.join("\n") : null;
+}
+
+/**
+ * **Slack 앱 매니페스트**(2026-11-19 확정 목업 "Slack 채널 줄") — 설정의 [매니페스트 복사] 가 복사한다. 권한은 글 보내기(`chat:write`)와
+ * 봇과의 DM 읽기(`im:history`) 둘 · 받기는 Socket Mode(공개 주소 없음) · 권한 단추는 interactivity.
+ */
+export const SLACK_MANIFEST = `display_information:
+  name: Aynx
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Aynx
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:history
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.im
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false`;
+
+/** 요령 글의 `` `글자` `` 를 코드 조각으로 — `[글, 코드, 글, …]` 차례(홀수 자리가 코드). 짝이 없는 `` ` `` 는 글자 그대로 */
+export function codeSpans(text: string): { text: string; code: boolean }[] {
+  const out: { text: string; code: boolean }[] = [];
+  const re = /`([^`]+)`/g;
+  let at = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m.index > at) out.push({ text: text.slice(at, m.index), code: false });
+    out.push({ text: m[1], code: true });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), code: false });
+  return out;
+}
 
 /** `messenger_bot_status` 의 답 */
 export interface BotStatus {
@@ -59,7 +134,7 @@ export function parseBotStatus(v: unknown): BotStatus | null {
   };
 }
 
-/** `messenger_status` 의 답 — `via` 는 Discord 만 뜻이 있다(웹훅 · 봇 · 없음). 옛 백엔드는 `via` 를 주지 않는다 */
+/** `messenger_status` 의 답 — `via` 는 두 방식 채널만 뜻이 있다(웹훅 · 봇 · 없음). 옛 백엔드는 `via` 를 주지 않는다 */
 export interface HookStatus {
   configured: boolean;
   via: "webhook" | "bot" | null;
@@ -73,23 +148,23 @@ export function parseHookStatus(v: unknown): HookStatus {
   return { configured, via: configured ? via : null };
 }
 
-/** Discord 칸이 지금 보이는 방식 — 봇 토큰이 있으면 봇, 웹훅만 있으면 웹훅, 둘 다 없으면 고르기 */
-export type DiscordMode = "none" | "webhook" | "bot";
+/** 두 방식 채널이 지금 서 있는 방식 — 봇 토큰이 있으면 봇, 웹훅만 있으면 웹훅, 둘 다 없으면 고르기 */
+export type DualMode = "none" | "webhook" | "bot";
 
 /**
- * Discord 의 방식 — 봇 상태의 `configured` 나 `via: "bot"` 이면 봇(봇 상태를 못 읽었어도 웹훅 칸을 내밀지 않는다 — 백엔드가
+ * 두 방식 채널의 방식 — 봇 상태의 `configured` 나 `via: "bot"` 이면 봇(봇 상태를 못 읽었어도 웹훅 칸을 내밀지 않는다 — 백엔드가
  * 그 상태의 웹훅 등록을 거절한다), 그 밖에 등록돼 있으면 웹훅(`via` 가 없는 옛 답도), 아니면 없음.
  */
-export function discordMode(hook: HookStatus | null, bot: BotStatus | null): DiscordMode {
+export function dualMode(hook: HookStatus | null, bot: BotStatus | null): DualMode {
   if (bot?.configured || hook?.via === "bot") return "bot";
   return hook?.configured ? "webhook" : "none";
 }
 
-/** Discord 의 두 방식 — "연결 방식" 줄의 고르기 */
-export type DiscordVia = "bot" | "webhook";
+/** 두 방식 — "연결 방식" 줄의 고르기 */
+export type DualVia = "bot" | "webhook";
 
 /**
- * Discord 몸통에 서는 것(2026-11-19 목업 "Discord 채널 줄" ①–⑥) — "연결 방식" 줄은 늘 맨 위이고, 그 밑이:
+ * 두 방식 채널 몸통에 서는 것(2026-11-19 목업 "Discord 채널 줄" ①–⑥ · "Slack 채널 줄" ①–④) — "연결 방식" 줄은 늘 맨 위이고, 그 밑이:
  *
  * | 방식 · 고른 것 | 몸통 |
  * | --- | --- |
@@ -98,23 +173,23 @@ export type DiscordVia = "bot" | "webhook";
  * | 웹훅 · 봇 | `to-bot` — 봇 토큰 칸 + 바꾸기 확인(②③) |
  * | 봇 · 웹훅 | `to-webhook` — 웹훅 주소 칸 + 바꾸기 확인(⑤⑥) |
  */
-export type DiscordView = "bot" | "webhook" | "to-bot" | "to-webhook";
+export type DualView = "bot" | "webhook" | "to-bot" | "to-webhook";
 
 /** 고르기의 기본 — 연결된 방식을 따른다(아무것도 없으면 봇) */
-export function discordDefaultVia(mode: DiscordMode): DiscordVia {
+export function dualDefaultVia(mode: DualMode): DualVia {
   return mode === "webhook" ? "webhook" : "bot";
 }
 
-/** 방식 · 고른 것 → 몸통([`DiscordView`]). `picked` 가 `null` 이면 기본([`discordDefaultVia`]) */
-export function discordView(mode: DiscordMode, picked: DiscordVia | null): DiscordView {
-  const via = picked ?? discordDefaultVia(mode);
+/** 방식 · 고른 것 → 몸통([`DualView`]). `picked` 가 `null` 이면 기본([`dualDefaultVia`]) */
+export function dualView(mode: DualMode, picked: DualVia | null): DualView {
+  const via = picked ?? dualDefaultVia(mode);
   if (mode === "webhook" && via === "bot") return "to-bot";
   if (mode === "bot" && via === "webhook") return "to-webhook";
   return via;
 }
 
 /** 바꾸기 몸통인가 — [연결] 이 곧바로 등록하지 않고 확인을 먼저 세운다 */
-export function discordNeedsConfirm(view: DiscordView): boolean {
+export function dualNeedsConfirm(view: DualView): boolean {
   return view === "to-bot" || view === "to-webhook";
 }
 
@@ -122,14 +197,14 @@ export function discordNeedsConfirm(view: DiscordView): boolean {
  * 바꾸기 칸 · [연결] · [바꾸기] 가 잠기는가 — 원격 창에서 어느 방향이든(봇 토큰을 넣거나 지운다 · `remote/deny.rs` HOME_ONLY). 연결 전 칸은
  * 몸통이 스스로 가린다(봇 토큰 칸만 잠김 — 웹훅 등록은 원격 허용).
  */
-export function discordSwitchLocked(view: DiscordView, remote: boolean): boolean {
-  return remote && discordNeedsConfirm(view);
+export function dualSwitchLocked(view: DualView, remote: boolean): boolean {
+  return remote && dualNeedsConfirm(view);
 }
 
 /** 머리줄 첫 칩(종류 — 상태 아님) — 지금 서 있는 방식. 봇은 계정 연결 대기도 봇이다. 아무것도 없으면 `null` */
-export function discordKind(mode: DiscordMode): Key | null {
-  if (mode === "bot") return "settings.messenger.discord.kind.bot";
-  if (mode === "webhook") return "settings.messenger.discord.kind.webhook";
+export function dualKind(mode: DualMode): Key | null {
+  if (mode === "bot") return "settings.messenger.kind.bot";
+  if (mode === "webhook") return "settings.messenger.kind.webhook";
   return null;
 }
 
@@ -138,10 +213,10 @@ export function botConnected(s: BotStatus | null): boolean {
   return !!s && s.configured && s.paired;
 }
 
-/** 봇 이름 — Telegram 은 `@이름`(사용자 이름 꼴), Discord 는 그대로(`@` 는 이름의 일부가 아니다). 없으면 빈 글자 */
+/** 봇 이름 — Telegram 은 `@이름`(사용자 이름 꼴), Discord · Slack 은 그대로(`@` 는 이름의 일부가 아니다). 없으면 빈 글자 */
 export function botHandle(bot: string | null, channel: BotChannel = "telegram"): string {
   if (!bot) return "";
-  if (channel === "discord") return bot;
+  if (channel !== "telegram") return bot;
   return bot.startsWith("@") ? bot : `@${bot}`;
 }
 
@@ -158,7 +233,7 @@ export interface ChannelChip {
 
 /** 머리줄 딸린 줄 — 칩들 + (있으면) 칩 뒤의 곁글 */
 export interface ChannelHead {
-  /** 맨 앞의 종류 칩(Discord 의 봇 · 웹훅 — 점 없는 회색 칩 · 상태가 아니다). 다른 채널은 없다 */
+  /** 맨 앞의 종류 칩(두 방식 채널의 봇 · 웹훅 — 점 없는 회색 칩 · 상태가 아니다). Telegram 은 없다 */
   kind?: Key | null;
   chips: ChannelChip[];
   /** 곁글 — `bot` = 봇 이름(계정 연결 대기) · `conflict` = 다른 프로그램이 이 봇을 쓴다 */
@@ -174,13 +249,13 @@ function sendChip(send: boolean): ChannelChip {
 
 const NONE: ChannelChip = { tone: "off", key: "settings.messenger.status.none" };
 
-/** 웹훅 채널(Discord · Slack)의 머리 — 등록 안 됨(모름 포함) · 보내는 중 · 보내기 꺼짐 */
+/** 웹훅으로 연결한 채널의 머리 — 등록 안 됨(모름 포함) · 보내는 중 · 보내기 꺼짐 */
 export function webhookHead(configured: boolean | null, send: boolean): ChannelHead {
   return { chips: [configured === true ? sendChip(send) : NONE], aside: null };
 }
 
 /**
- * 봇 채널(Telegram · 봇으로 연결한 Discord)의 머리 — 목업의 여섯 상태:
+ * 봇 채널(Telegram · 봇으로 연결한 Discord · Slack)의 머리 — 목업의 여섯 상태:
  *
  * | 상태 | 칩 |
  * | --- | --- |
@@ -207,24 +282,21 @@ export function botHead(s: BotStatus | null, send: boolean, chat: boolean): Chan
   return { chips, aside };
 }
 
-/** Discord 의 머리 — 봇이면 봇 채널과 같고, 아니면 웹훅 채널과 같다(고르기 전 = 연결 안 됨). 맨 앞에 방식 칩([`discordKind`]) */
-export function discordHead(mode: DiscordMode, bot: BotStatus | null, send: boolean, chat: boolean): ChannelHead {
+/** 두 방식 채널의 머리 — 봇이면 봇 채널과 같고, 아니면 웹훅 채널과 같다(고르기 전 = 연결 안 됨). 맨 앞에 방식 칩([`dualKind`]) */
+export function dualHead(mode: DualMode, bot: BotStatus | null, send: boolean, chat: boolean): ChannelHead {
   const head = mode === "bot" ? botHead(bot, send, chat) : webhookHead(mode === "webhook", send);
-  return { ...head, kind: discordKind(mode) };
+  return { ...head, kind: dualKind(mode) };
 }
 
-/** 채널이 "연결됨" 인가 — Slack 은 등록, Telegram 은 토큰 + 짝, Discord 는 그 방식대로(목록의 스위치 · 규칙 묶음이 본다) */
+/** 채널이 "연결됨" 인가 — Telegram 은 토큰 + 짝, 두 방식 채널은 그 방식대로(목록의 스위치 · 규칙 묶음이 본다) */
 export function channelConnected(
   channel: MessengerChannel,
   hooks: Partial<Record<MessengerChannel, HookStatus | null>>,
   bots: Partial<Record<BotChannel, BotStatus | null>>,
 ): boolean {
   if (channel === "telegram") return botConnected(bots.telegram ?? null);
-  if (channel === "discord") {
-    const mode = discordMode(hooks.discord ?? null, bots.discord ?? null);
-    return mode === "bot" ? botConnected(bots.discord ?? null) : mode === "webhook";
-  }
-  return hooks[channel]?.configured === true;
+  const mode = dualMode(hooks[channel] ?? null, bots[channel] ?? null);
+  return mode === "bot" ? botConnected(bots[channel] ?? null) : mode === "webhook";
 }
 
 /**

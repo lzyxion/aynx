@@ -46,7 +46,7 @@ import { noticeText, type OrchNotice } from "$lib/orchestration/model";
  */
 
 /**
- * 켜진 채널 가운데 등록된 것이 있는가 — 던지지 않는다(못 읽으면 없음). Discord 는 웹훅이든 봇이든 `configured` 다(`via` 는 보지 않는다).
+ * 켜진 채널 가운데 등록된 것이 있는가 — 던지지 않는다(못 읽으면 없음). Discord · Slack 은 웹훅이든 봇이든 `configured` 다(`via` 는 보지 않는다).
  */
 export async function messengerConnected(): Promise<boolean> {
   const results = await Promise.all(
@@ -70,9 +70,9 @@ interface ConversationRef {
 }
 
 /**
- * 알림이 나온 타일 — 봇 몫(Telegram · Discord 봇 — 세션 서버)이 쓴다(메신저 다리 — docs/log/2026-11-18-messenger-bridge.md): `stream` 은 그 타일 세션의
+ * 알림이 나온 타일 — 봇 몫(Telegram · Discord · Slack 봇 — 세션 서버)이 쓴다(메신저 다리 — docs/log/2026-11-18-messenger-bridge.md): `stream` 은 그 타일 세션의
  * 스트림 id(`sessionStreamOf` — 서버의 `agent_state` 표 · 세션 op 와 같은 열쇠)로 알림에 답장하면 그 타일로 가고, `kind`(`"stop"` ·
- * `"permission"`)는 다리가 시작한 턴의 같은 알림을 서버가 한 번만 보내게 한다. 웹훅(Slack · 웹훅으로 연결한 Discord)은 둘을 보지 않는다.
+ * `"permission"`)는 다리가 시작한 턴의 같은 알림을 서버가 한 번만 보내게 한다. 웹훅(웹훅으로 연결한 Discord · Slack)은 둘을 보지 않는다.
  */
 export interface MessengerOrigin {
   stream: string | null;
@@ -160,13 +160,14 @@ export function messengerAgent(input: MessengerAgentInput): void {
 }
 
 /**
- * **이름표를 세션 서버에 미리 알린다**(메신저 다리 실기 후속 2026-11-19) — 알림이 나간 적 없는 타일도 메신저(Telegram · Discord 봇)의 고르기 단추 · `→` 줄이 알림과
+ * **이름표를 세션 서버에 미리 알린다**(메신저 다리 실기 후속 2026-11-19) — 알림이 나간 적 없는 타일도 메신저(Telegram · Discord · Slack 봇)의 고르기 단추 · `→` 줄이 알림과
  * 같은 이름([`messengerAgent`] 의 `label`)을 쓰게. 알림 보내기 판정(자리 비움 · 짧은 턴 · 30초 묶기)과 **무관**하고, 말하기
- * (`[messenger] telegram_chat` · `discord_chat`)가 하나라도 켜져 있을 때만 부른다 — 이름표 표는 채널 공용이다. 신호(턴 끝 · 권한)마다 부른다 — 창이 마지막 값을 기억해 건너뛰면, 서버가 다시 떠 표가 비었을 때(스트림 id 는
+ * (`[messenger] telegram_chat` · `discord_chat` · `slack_chat`)가 하나라도 켜져 있을 때만 부른다 — 이름표 표는 채널 공용이다. 신호(턴 끝 · 권한)마다 부른다 — 창이 마지막 값을 기억해 건너뛰면, 서버가 다시 떠 표가 비었을 때(스트림 id 는
  * 그대로다) 다시 알릴 길이 없다. 서버는 적기만 한다 · 실패는 조용히(다음 신호에서 다시).
  */
 export function messengerBotLabel(stream: string, label: string): void {
-  if (!(settings.messenger.telegramChat || settings.messenger.discordChat) || !stream || !label.trim()) return;
+  const m = settings.messenger;
+  if (!(m.telegramChat || m.discordChat || m.slackChat) || !stream || !label.trim()) return;
   invoke("messenger_bot_label", { stream, label }).catch(() => {});
 }
 

@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 /// 3b — 루프백 가짜 Discord 통합(이 모듈의 도우미를 같이 쓴다).
 mod dc_tests;
+/// 4단계 — 루프백 가짜 Slack 통합(이 모듈 · `dc_tests` 의 도우미를 같이 쓴다).
+mod sl_tests;
 
 // ---------------------------------------------------------------------------
 // 순수
@@ -201,6 +203,7 @@ fn answer_waits_for_the_file() {
         let cfg = Arc::new(Config {
             telegram: tg::Conf { api: Api::at("http://127.0.0.1:9"), poll_timeout_secs: 1 },
             discord: dc::Conf::release(),
+            slack: sl::Conf::release(),
             dir: None,
             env: env.clone(),
             backoff: Duration::from_millis(50),
@@ -448,7 +451,7 @@ fn pty_writes_have_two_sites() {
     let inject = &inject[..inject.find("\n}\n").unwrap()];
     assert_eq!(inject.matches(".write_pty(").count(), 2, "둘 다 inject 안");
     // 전송(3a · 3b)은 넣기 길을 갖지 않는다 — 바깥(`Env`)도 넣기 함수도 부르지 않는다.
-    for (name, src) in [("tg.rs", include_str!("tg.rs")), ("dc.rs", include_str!("dc.rs"))] {
+    for (name, src) in [("tg.rs", include_str!("tg.rs")), ("dc.rs", include_str!("dc.rs")), ("sl.rs", include_str!("sl.rs")), ("sock.rs", include_str!("sock.rs"))] {
         for bad in ["write_pty", "inject(", "deliver(", ".env", "Env", "pty::", "ssh::write"] {
             assert!(!src.lines().any(|l| l.split("//").next().unwrap_or("").contains(bad)), "{name}: {bad}");
         }
@@ -462,8 +465,15 @@ fn bridge_has_no_approval_path() {
         "Grade::Approve", "request_approve", "approve_operation", "ops_approve", "approve_in", "tile_permission_decide", "decide(",
         "delegation::", "orchestration::", "vault_ops", "hub::vault", "producer::",
     ];
-    let server_side =
-        [include_str!("../messenger_bridge.rs"), include_str!("logic.rs"), include_str!("tg.rs"), include_str!("dc.rs"), include_str!("../../telegram.rs")];
+    let server_side = [
+        include_str!("../messenger_bridge.rs"),
+        include_str!("logic.rs"),
+        include_str!("tg.rs"),
+        include_str!("dc.rs"),
+        include_str!("sl.rs"),
+        include_str!("sock.rs"),
+        include_str!("../../telegram.rs"),
+    ];
     for (i, src) in server_side.iter().chain([include_str!("../messenger_bridge_proxy.rs")].iter()).enumerate() {
         let src = src.replace("\r\n", "\n");
         let src = src.split("#[cfg(test)]\nmod tests {").next().unwrap();
@@ -526,11 +536,11 @@ fn gui_never_reads_the_token_file() {
     for (path, body) in sources() {
         let code: String = body.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
         let allowed = path.starts_with("server/messenger_bridge");
-        let chat_names = ["CHAT_FILE", "DISCORD_CHAT_FILE", "CHAT_FILES"];
+        let chat_names = ["CHAT_FILE", "DISCORD_CHAT_FILE", "SLACK_CHAT_FILE", "CHAT_FILES"];
         if chat_names.iter().any(|w| has_word(&code, w)) || code.contains("load_token(") {
             assert!(allowed || path == "instance.rs", "{path} 가 봇 짝 파일 · 토큰 읽기를 만진다");
         }
-        // 다리는 채널 값으로 봇 토큰 파일 이름을 묻는다(`chan.bot_file()` — 3b: Telegram · Discord). 묻는 곳은 이름의 주인 · 다리뿐이다
+        // 다리는 채널 값으로 봇 토큰 파일 이름을 묻는다(`chan.bot_file()` — 3b: Telegram · Discord · 4단계: Slack). 묻는 곳은 이름의 주인 · 다리뿐이다
         // (`messenger.rs` 는 상태 · 알림의 갈래를 고를 때 "봇이 있는 채널인가" 만 본다 — 파일을 열지 않는다).
         if code.contains(".bot_file()") {
             assert!(allowed || path == "messenger.rs", "{path} 가 봇 토큰 파일 이름을 묻는다");
@@ -539,12 +549,12 @@ fn gui_never_reads_the_token_file() {
         if code.contains(".secret_files()") {
             assert!(path == "messenger.rs" || path == "instance.rs", "{path} 가 비밀 파일 이름을 묻는다");
         }
-        for name in ["\"telegram-bot\"", "\"discord-bot\""] {
+        for name in ["\"telegram-bot\"", "\"discord-bot\"", "\"slack-bot\""] {
             if code.contains(name) {
                 assert!(path == "messenger.rs", "{path} — {name} 은 `Channel::bot_file` 한 곳에만");
             }
         }
-        if code.contains("\"discord-chat\"") || code.contains("\"telegram-chat\"") {
+        if code.contains("\"discord-chat\"") || code.contains("\"telegram-chat\"") || code.contains("\"slack-chat\"") {
             assert!(path == "server/messenger_bridge.rs", "{path} — 짝 파일 이름은 다리에만");
         }
     }
@@ -650,6 +660,8 @@ struct FakeEnv {
     chat_on: std::sync::atomic::AtomicBool,
     /// `[messenger] discord_chat`(3b)
     discord_on: std::sync::atomic::AtomicBool,
+    /// `[messenger] slack_chat`(4단계)
+    slack_on: std::sync::atomic::AtomicBool,
     tiles: Mutex<HashMap<String, (TileView, u32)>>,
     writes: Mutex<Vec<(u32, Vec<u8>)>>,
     /// 답 읽기의 각본 — 앞에서 하나씩(마지막 하나는 계속) · 비면 고정 답
@@ -662,6 +674,7 @@ impl Env for FakeEnv {
         MessengerPrefs {
             telegram_chat: Some(self.chat_on.load(Ordering::SeqCst)),
             discord_chat: Some(self.discord_on.load(Ordering::SeqCst)),
+            slack_chat: Some(self.slack_on.load(Ordering::SeqCst)),
             ..Default::default()
         }
     }
@@ -720,6 +733,7 @@ fn live_bridge_with_fake_telegram() {
     let cfg = Config {
         telegram: tg::Conf { api: Api::at(&base), poll_timeout_secs: 1 },
         discord: dc::Conf::release(),
+        slack: sl::Conf::release(),
         dir: Some(dir.clone()),
         env: env.clone(),
         backoff: Duration::from_millis(50),
@@ -734,11 +748,10 @@ fn live_bridge_with_fake_telegram() {
     let op = |name: &str, body: Value| rt.block_on(handle(name, body));
     assert_eq!(op("messenger_bot_status", Value::Null).unwrap()["configured"], false);
     assert_eq!(op("messenger_bot_status", Value::Null).unwrap()["link"], "off");
-    // 3a — 몸의 `channel`: 없으면 Telegram · 전송이 없는 채널은 거절(파일을 만지지 않는다)
+    // 3a — 몸의 `channel`: 없으면 Telegram · 모르는 채널은 거절(4단계부터 세 채널 모두 전송이 있다 — `CHANNELS`)
     assert_eq!(op("messenger_bot_status", json!({ "channel": "telegram" })).unwrap(), op("messenger_bot_status", Value::Null).unwrap());
-    for o in ["messenger_bot_status", "messenger_bot_set_token", "messenger_bot_unpair", "messenger_bot_test", "messenger_bot_notify"] {
-        assert!(op(o, json!({ "channel": "slack", "token": null, "text": "x" })).unwrap_err().message.starts_with("[unsupported]"), "{o}");
-    }
+    assert!(Channel::ALL.iter().all(|c| has_transport(*c)));
+    assert_eq!(op("messenger_bot_status", json!({ "channel": "slack" })).unwrap()["configured"], false, "Slack 칸은 따로");
     assert!(op("messenger_bot_status", json!({ "channel": "nope" })).is_err());
 
     // 토큰 — 틀린 모양 · Telegram 거절 · 등록(`getMe`) · 파일 · 상태에 토큰 없음.
@@ -898,10 +911,12 @@ fn live_bridge_with_fake_telegram() {
     assert_eq!((st["configured"].as_bool(), st["link"].as_str()), (Some(false), Some("off")));
     assert!(!dir.join("telegram-bot").exists());
     // 받은 글 본문 · 토큰은 로그 갈래에 없다 — 로그는 고정 글자뿐(소스가 `log::line(` 에 변수를 싣는 곳은 오류 종류뿐).
-    for src in [include_str!("../messenger_bridge.rs"), include_str!("tg.rs"), include_str!("dc.rs")] {
+    for src in [include_str!("../messenger_bridge.rs"), include_str!("tg.rs"), include_str!("dc.rs"), include_str!("sl.rs"), include_str!("sock.rs")] {
         for l in src.lines().filter(|l| l.contains("log::line(format!")) {
-            // 실을 수 있는 변수는 오류 종류와 게이트웨이 닫힘 코드 숫자(`u16`)뿐
-            assert!(l.contains("err_kind") || l.contains("(code {code})"), "{l}");
+            // 실을 수 있는 변수는 오류 종류 · 게이트웨이 닫힘 코드 숫자(`u16`) · Slack 의 오류 코드 낱말(`sl::parse_response` 가 소문자 · 숫자 · `_`
+            // 40자로 거른 것) · Slack 이 알려 준 연결 수(숫자)뿐
+            let ok = l.contains("err_kind") || l.contains("(code {code})") || l.contains("refused for good ({code})") || l.contains("(connections {n})");
+            assert!(ok, "{l}");
         }
     }
     server.unblock();
@@ -1022,6 +1037,7 @@ fn live_card_buttons_with_fake_telegram() {
     let cfg = Config {
         telegram: tg::Conf { api: Api::at(&base), poll_timeout_secs: 1 },
         discord: dc::Conf::release(),
+        slack: sl::Conf::release(),
         dir: Some(dir.clone()),
         env: env.clone(),
         backoff: Duration::from_millis(50),

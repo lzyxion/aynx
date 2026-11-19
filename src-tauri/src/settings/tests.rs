@@ -222,6 +222,7 @@ fn sample() -> AppSettings {
             telegram: Some(false),
             telegram_chat: Some(true),
             discord_chat: Some(true),
+            slack_chat: Some(true),
         },
         remote: RemotePrefs {
             enabled: Some(true),
