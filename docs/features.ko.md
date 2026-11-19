@@ -78,7 +78,7 @@
 - DB 연결별 AI 권한(Off·Schema·Read·Ask·YOLO). AI는 별도로 연 읽기 전용 연결로만 데이터를 읽으며, 쓰기 작업은
   사용자가 승인할 초안으로만 제안합니다.
 - 앱·OS 알림과 선택적으로 사용하는 Discord·Slack 웹훅, Telegram·Discord·Slack 봇 알림('승인 대기' 포함).
-- Telegram·Discord·Slack 봇(Discord·Slack 은 DM)으로는 답도 보낼 수 있습니다. 알림에 답장하면(Slack 은 그 글의 스레드에 달면) 그 AI 타일로 글이 들어가고, 답 전체를 대화방에서 받으며, 에이전트의 권한 물음에 허용·거절로 답합니다. 기본적으로 꺼져 있습니다.
+- Telegram·Discord·Slack 봇(Discord·Slack 은 DM)으로는 답도 보낼 수 있습니다. 알림에 답장하면(Slack 은 그 글의 스레드에 달면) 그 AI 타일로 글이 들어가고, 답 전체를 대화방에서 받으며, 에이전트의 권한 물음에 허용·거절로 답합니다. 기본적으로 꺼져 있습니다. 등록 방법은 [메신저 안내](user/messenger.md)(영어)에 있습니다.
 
 ![승인 카드 — AI 요약, 앱이 문장마다 분석한 결과, 행 한도](images/features/approval.png)
 

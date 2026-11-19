@@ -80,7 +80,7 @@ English · [한국어](features.ko.md)
 - Database connections get their own AI permission (Off, Schema, Read, Ask, YOLO). The AI reads through
   a separate read-only connection; writes are only drafts that you approve.
 - Notifications in the app, in the OS, and optionally to Discord or Slack webhooks or a Telegram, Discord or Slack bot (including "awaiting approval").
-- With a Telegram, Discord or Slack bot (Discord and Slack: direct messages) you can also talk back: reply to a notification (on Slack, post in its thread) to send a message to that AI tile, get the full answer in the chat, and allow or deny the agent's permission prompts. Off by default.
+- With a Telegram, Discord or Slack bot (Discord and Slack: direct messages) you can also talk back: reply to a notification (on Slack, post in its thread) to send a message to that AI tile, get the full answer in the chat, and allow or deny the agent's permission prompts. Off by default. Setup: [messenger guide](user/messenger.md).
 
 ![An approval card: the AI's summary, the app's own analysis of each statement, and the row limit](images/features/approval.png)
 

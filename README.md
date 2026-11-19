@@ -83,7 +83,7 @@ npm run tauri build   # installers in src-tauri/target/release/bundle/{nsis,msi}
 
 [All features](docs/features.md) · [Security notes](docs/security.md)
 
-User guides: [Getting started](docs/user/getting-started.md) · [Settings](docs/user/settings.md) · [Hosts](docs/user/hosts.md) · [Projects](docs/user/projects.md) · [Files and documents](docs/user/files.md) · [Query tile](docs/user/query-tile.md) · [Sessions and task plans](docs/user/dashboard.md) · [Orchestration](docs/user/orchestration.md) · [Remote access](docs/user/remote-web.md) · [Shortcuts](docs/user/shortcuts.md)
+User guides: [Getting started](docs/user/getting-started.md) · [Settings](docs/user/settings.md) · [Hosts](docs/user/hosts.md) · [Projects](docs/user/projects.md) · [Files and documents](docs/user/files.md) · [Query tile](docs/user/query-tile.md) · [Sessions and task plans](docs/user/dashboard.md) · [Orchestration](docs/user/orchestration.md) · [Remote access](docs/user/remote-web.md) · [Messenger](docs/user/messenger.md) · [Shortcuts](docs/user/shortcuts.md)
 
 For contributors: [Contributing](CONTRIBUTING.md)
 

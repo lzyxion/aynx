@@ -146,4 +146,5 @@ AI 타일은 에이전트 자체의 터미널 화면이 Aynx 안에서 도는 �
 - [쿼리 타일](query-tile.md) — 데이터베이스
 - [오케스트레이션](orchestration.md) — 큰 일을 여러 에이전트에 나눠 맡기기
 - [원격 접속](remote-web.md) — Tailscale로 폰에서 Aynx 열기
+- [메신저](messenger.md) — Discord·Slack·Telegram으로 알림 받고 AI 타일에 말하기
 - [전체 기능](../features.ko.md) · [보안](../security.ko.md)

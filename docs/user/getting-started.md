@@ -144,4 +144,5 @@ Every item on the settings screen is explained in the [Settings guide](settings.
 - [Query tile](query-tile.md) for databases
 - [Orchestration](orchestration.md): split a larger job across several agents
 - [Remote access](remote-web.md): open Aynx from your phone over Tailscale
+- [Messenger](messenger.md): get notifications and talk to AI tiles from Discord, Slack or Telegram
 - [All features](../features.md) · [Security notes](../security.md)

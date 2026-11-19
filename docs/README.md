@@ -21,6 +21,7 @@ Aynx — Hyprland 감성의 AI 코딩 에이전트 작업 공간
 - [dashboard.md](user/dashboard.md) — 세션 목록 판 · 작업안 · 사용량, 검토 카드 · 알림
 - [orchestration.md](user/orchestration.md) — 오케스트레이션 — 앨범 · 트랙 · 아티스트 · 프로듀서, 수락 · 검증 · main 병합
 - [remote-web.md](user/remote-web.md) — 원격 접속(원격 웹 클라이언트) — `tailscale serve`, 기기 페어링, 폰 화면, 원격 승인
+- [messenger.md](user/messenger.md) — 메신저 채널(Discord · Slack · Telegram) — 봇 · 웹훅 등록, 계정 연결, 알아 둘 것
 - [shortcuts.md](user/shortcuts.md) — 단축키 도움말에 싣지 않은 사정 · 예외
 
 ## 기여자용
