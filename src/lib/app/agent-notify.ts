@@ -1,13 +1,13 @@
 import { agentNotifyMessage, shouldNotifyAgentStop, type AgentNotifyKind } from "$lib/agent-notify";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { aiDisplayName } from "$lib/pane-icons";
-import { type PaneSpec } from "$lib/session";
+import { sessionStreamOf, type PaneSpec } from "$lib/session";
 import { settings } from "$lib/settings.svelte.js";
 import { focusedPane } from "$lib/app/tabs.svelte.js";
 import { APP, notifyOs, windowFocused } from "$lib/app/os-notify";
 import { pushAgentBanner } from "$lib/app/agent-banners.svelte.js";
-import { messengerAgent } from "$lib/app/messenger";
-import { messengerLabel, scopeOf, tileLabel } from "$lib/app/messenger-label";
+import { messengerAgent, messengerBotLabel } from "$lib/app/messenger";
+import { bridgeLabel, messengerLabel, scopeOf, tileLabel } from "$lib/app/messenger-label";
 import { type AgentLink } from "$lib/agent-sessions";
 import { type TurnCount } from "$lib/app/agent-turn";
 import { agentAlertGroup } from "$lib/dock-alert-groups";
@@ -61,10 +61,14 @@ export function notifyAgent(
 ): void {
   const agent = logo ? aiDisplayName(logo) : null;
   const name = tileLabel(pane);
+  const label = messengerLabel(pane);
+  // 메신저 다리(Telegram)의 이름표 — 보내기 판정과 무관하게 로컬 AI 타일의 신호마다. 알림의 이름과 다르다(`<CLI> · <범위>` — `bridgeLabel`)
+  if (pane.kind === "local") messengerBotLabel(sessionStreamOf(pane), bridgeLabel(pane, agent));
   // 메신저(Discord) — 아래 표면 판정과 **독립**이다(제 켬/끔 · 자리 비움 표). docs/log/2026-09-27-discord-notify.md
   messengerAgent({
     paneId: pane.id,
-    label: messengerLabel(pane),
+    stream: sessionStreamOf(pane),
+    label,
     kind,
     agent,
     turnMs,

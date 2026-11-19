@@ -219,6 +219,8 @@ fn sample() -> AppSettings {
             operation_results: Some(false),
             operation_pending: Some(false),
             include_summary: Some(false),
+            telegram: Some(false),
+            telegram_chat: Some(true),
         },
         remote: RemotePrefs {
             enabled: Some(true),

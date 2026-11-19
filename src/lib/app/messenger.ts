@@ -67,6 +67,16 @@ interface ConversationRef {
   event: "stop" | "permission";
 }
 
+/**
+ * 알림이 나온 타일 — Telegram 몫(세션 서버)이 쓴다(메신저 다리 — docs/log/2026-11-18-messenger-bridge.md): `stream` 은 그 타일 세션의
+ * 스트림 id(`sessionStreamOf` — 서버의 `agent_state` 표 · 세션 op 와 같은 열쇠)로 알림에 답장하면 그 타일로 가고, `kind`(`"stop"` ·
+ * `"permission"`)는 다리가 시작한 턴의 같은 알림을 서버가 한 번만 보내게 한다. 웹훅 채널은 둘을 보지 않는다.
+ */
+export interface MessengerOrigin {
+  stream: string | null;
+  kind?: "stop" | "permission";
+}
+
 /** 켜진 채널로 보낸다 — 던지지 않는다. 켜진 채널이 없으면 부르지 않는다. 실패는 콘솔 한 줄 */
 function post(
   label: string,
@@ -74,11 +84,14 @@ function post(
   second = "",
   conversation: ConversationRef | null = null,
   grade: MessengerGrade | null = null,
+  origin: MessengerOrigin | null = null,
 ): void {
   const channels = messengerChannels(settings.messenger);
   if (channels.length === 0) return;
   const message: MessengerMessage = { app: APP_TITLE, label, event, second, grade };
-  invoke("messenger_send", { message, conversation, channels }).catch((e: unknown) => {
+  const stream = origin?.stream ?? null;
+  const kind = origin?.kind ?? null;
+  invoke("messenger_send", { message, conversation, channels, stream, kind }).catch((e: unknown) => {
     console.warn("[messenger] 보내지 못했습니다:", e);
   });
 }
@@ -91,9 +104,10 @@ function send(
   extra?: Pick<MessengerFacts, "durationMs">,
   grade: MessengerGrade | null = null,
   second: () => string = () => "",
+  origin: MessengerOrigin | null = null,
 ): void {
   if (!shouldSendMessenger(kind, settings.messenger, facts(extra))) return;
-  post(tileName, event(), second(), null, grade);
+  post(tileName, event(), second(), null, grade, origin);
 }
 
 /** 같은 타일 · 같은 사건이 30초 안에 다시 오면 한 통으로(`$lib/messenger-notify` 의 `createCoalesceGate`) — 창 하나에 한 벌 */
@@ -103,6 +117,8 @@ const coalesce = createCoalesceGate();
 export interface MessengerAgentInput {
   /** 그 타일 — 한 통으로 묶는 열쇠 */
   paneId: string;
+  /** 그 타일 세션의 스트림 id — Telegram 몫이 쓴다([`MessengerOrigin`]) */
+  stream: string;
   /** 첫 줄의 이름 — 프로젝트 / 워크트리(모르면 탭·타일 이름) */
   label: string;
   kind: "stop" | "permission";
@@ -137,14 +153,26 @@ export function messengerAgent(input: MessengerAgentInput): void {
   void (async () => {
     const files = measure ? await measure().catch(() => null) : null;
     const second = agentStatsLine({ turnMs: input.turnMs, tools: input.tools, files }, t);
-    post(input.label, event, second, conversation, kind === "permission" ? "action" : "done");
+    post(input.label, event, second, conversation, kind === "permission" ? "action" : "done", { stream: input.stream, kind });
   })();
 }
 
-/** 끝난 명령 — 명령 줄은 `[messenger] include_command` 일 때만 실린다 */
+/**
+ * **이름표를 세션 서버에 미리 알린다**(메신저 다리 실기 후속 2026-11-19) — 알림이 나간 적 없는 타일도 Telegram 고르기 단추 · `→` 줄이 알림과
+ * 같은 이름([`messengerAgent`] 의 `label`)을 쓰게. 알림 보내기 판정(자리 비움 · 짧은 턴 · 30초 묶기)과 **무관**하고, `[messenger] telegram_chat`
+ * 이 켜져 있을 때만 부른다. 신호(턴 끝 · 권한)마다 부른다 — 창이 마지막 값을 기억해 건너뛰면, 서버가 다시 떠 표가 비었을 때(스트림 id 는
+ * 그대로다) 다시 알릴 길이 없다. 서버는 적기만 한다 · 실패는 조용히(다음 신호에서 다시).
+ */
+export function messengerBotLabel(stream: string, label: string): void {
+  if (!settings.messenger.telegramChat || !stream || !label.trim()) return;
+  invoke("messenger_bot_label", { stream, label }).catch(() => {});
+}
+
+/** 끝난 명령 — 명령 줄은 `[messenger] include_command` 일 때만 실린다. `stream` 은 그 타일(모르면 `null`) */
 export function messengerCommandFinish(
   label: string,
   block: { commandLine: string; durationMs: number; exit: number | null },
+  stream: string | null = null,
 ): void {
   send(
     "command-finish",
@@ -152,14 +180,16 @@ export function messengerCommandFinish(
     () => commandFinishEvent({ ...block, includeCommand: settings.messenger.includeCommand }, t),
     { durationMs: block.durationMs },
     commandGrade(block.exit),
+    undefined,
+    { stream },
   );
 }
 
-/** 프로그램 알림(OSC 9·777) — `text` 는 이미 다듬어진 본문(`programNotifyText`) */
-export function messengerProgramNotice(tileName: string, text: string, fromAgent: boolean): void {
+/** 프로그램 알림(OSC 9·777) — `text` 는 이미 다듬어진 본문(`programNotifyText`). `stream` 은 그 타일(모르면 `null`) */
+export function messengerProgramNotice(tileName: string, text: string, fromAgent: boolean, stream: string | null = null): void {
   // AI 타일의 프로그램 알림은 턴 끝 · 권한 물음과 같은 뜻이라 보내지 않는다(2026-11-16 — 같은 순간 두 통). 일반 셸은 그대로.
   if (fromAgent) return;
-  send("osc", tileName, () => oscEvent(text, t));
+  send("osc", tileName, () => oscEvent(text, t), undefined, null, undefined, { stream });
 }
 
 /**

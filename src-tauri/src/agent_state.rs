@@ -525,6 +525,11 @@ pub(crate) fn attach(payload: &mut Value, step: &Step) {
     }
 }
 
+/// 그 스트림의 항목 하나(없으면 `None` — CLI 가 끝났거나 신호가 없다). 메신저 다리의 문지기가 본다(`server::messenger_bridge`).
+pub(crate) fn get(stream: &str) -> Option<AgentState> {
+    table().map.get(stream).cloned()
+}
+
 /// 지금 표 전체 — 창이 부팅·이관 재부착에서 한 번 받아 채운다(그 뒤는 `agent-signal` 이벤트를 seq 로 이어 받는다).
 /// 서버 op `agent_states_snapshot`(읽기)이 이것을 돌려준다 — 창 쪽 Tauri 명령은 `crate::server::proxy`.
 pub(crate) fn snapshot() -> Vec<(String, AgentState)> {

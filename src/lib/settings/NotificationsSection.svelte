@@ -32,8 +32,18 @@
    * (`mark_after_secs`)은 표시라 터미널에 있다.
    *
    * 묶음은 둘이다 — **창 안 · OS 알림**(사건 종류 순: 에이전트 → 긴 명령 → 프로그램 → 검토 요청 → 실행 결과)과
-   * **Discord**(`MessengerSettings`).
+   * **메신저**(`MessengerSettings` — Discord · Slack · Telegram).
+   *
+   * `active` 는 이 섹션이 보이는가 — 메신저 묶음이 Telegram 봇 상태를 그동안만 읽고 듣는다. 설정 색인이 채널 칸을 가리키면
+   * [`expandForAnchor`] 가 그 칸을 펼친다(`SettingsModal.revealPendingAnchor`).
    */
+  let { active = false }: { active?: boolean } = $props();
+
+  let messenger = $state<ReturnType<typeof MessengerSettings> | undefined>();
+
+  export function expandForAnchor(anchor: string): void {
+    messenger?.expandForAnchor(anchor);
+  }
 </script>
 
 <!--
@@ -202,4 +212,4 @@
   </div>
 </div>
 
-<MessengerSettings />
+<MessengerSettings bind:this={messenger} {active} />

@@ -124,11 +124,19 @@ export function setMessengerIncludeConversation(on: boolean) {
 }
 
 /**
- * 채널마다 보내기 — 켬이 기본이라 **끌 때만** 값을 남긴다. 칸 이름 = 채널 이름(`[messenger] discord` · `slack`)
+ * 채널마다 보내기 — 켬이 기본이라 **끌 때만** 값을 남긴다. 칸 이름 = 채널 이름(`[messenger] discord` · `slack` · `telegram`)
  * (docs/log/2026-09-28-messenger-channels.md).
  */
 export function setMessengerChannel(channel: MessengerChannel, on: boolean) {
   settings.current.messenger[channel] = on ? undefined : false;
+}
+
+/**
+ * **메신저에서 AI 타일에 말하기**(`[messenger] telegram_chat` — 메신저 다리) — 끔이 기본이라 **켤 때만** 값을 남긴다. 원격 창은 켜지 못한다
+ * (화면은 손잡이를 잠그고, 저장은 `remote/deny.rs` 의 `settings_home_only` 가 거절한다).
+ */
+export function setMessengerTelegramChat(on: boolean) {
+  settings.current.messenger.telegram_chat = on ? true : undefined;
 }
 
 /** 자리 비움 무입력(분) — `0` 은 "가림막만" 이라 지우지 않는다 */

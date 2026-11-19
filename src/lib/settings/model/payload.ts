@@ -69,12 +69,16 @@ function messengerToPayload(m: MessengerPrefs): MessengerPrefs {
   if (m.operation_pending === false) out.operation_pending = false;
   if (m.include_summary === false) out.include_summary = false;
   if (m.include_command === true) out.include_command = true;
-  if (m.include_conversation === true) out.include_conversation = true;
+  // 켬이 기본이 된 뒤(2026-11-16)로는 끈 값만 남긴다 — 손잡이(`setMessengerIncludeConversation`)가 끌 때만 `false` 를 적는다
+  if (m.include_conversation === false) out.include_conversation = false;
   if (typeof m.away_after_min === "number" && m.away_after_min !== DEFAULT_MESSENGER_AWAY_AFTER_MIN) {
     out.away_after_min = m.away_after_min;
   }
   if (m.discord === false) out.discord = false;
   if (m.slack === false) out.slack = false;
+  if (m.telegram === false) out.telegram = false;
+  // 말하기는 끔이 기본이라 켤 때만 싣는다
+  if (m.telegram_chat === true) out.telegram_chat = true;
   return out;
 }
 

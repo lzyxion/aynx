@@ -294,6 +294,8 @@ export function sameSettings(a: AppSettings, b: AppSettings): boolean {
     a.messenger.away_after_min === b.messenger.away_after_min &&
     a.messenger.discord === b.messenger.discord &&
     a.messenger.slack === b.messenger.slack &&
+    a.messenger.telegram === b.messenger.telegram &&
+    a.messenger.telegram_chat === b.messenger.telegram_chat &&
     a.remote.enabled === b.remote.enabled &&
     a.remote.port === b.remote.port &&
     a.remote.host === b.remote.host
@@ -573,6 +575,8 @@ function normalizeMessenger(raw: unknown): MessengerPrefs {
     away_after_min: nonNegInt(m.away_after_min, MESSENGER_AWAY_MAX_MIN),
     discord: bool(m.discord),
     slack: bool(m.slack),
+    telegram: bool(m.telegram),
+    telegram_chat: bool(m.telegram_chat),
   };
 }
 

@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 33, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 34, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -238,7 +238,15 @@ fn grades_are_checked_per_op() {
     assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
     // 판 30(데이터 탭의 읽기 전용 조회 — 새 op 없음 · `db_query` 의 `readOnly`) — MIN 은 그대로.
     assert_eq!(frame::DB_READ_QUERY_PROTOCOL, 30);
-    assert_eq!(frame::PROTOCOL_MAX, 33);
+    assert_eq!(frame::PROTOCOL_MAX, 34);
+    // 판 34(메신저 다리 — `messenger_bot_*`) — 상태 = 읽기 · 나머지 = 쓰기 · 승인 등급은 거부, MIN 은 그대로.
+    assert_eq!(frame::MESSENGER_BOT_PROTOCOL, 34);
+    assert!(frame::check_grade("messenger_bot_status", Grade::Read).is_ok());
+    for op in ["messenger_bot_set_token", "messenger_bot_pair", "messenger_bot_unpair", "messenger_bot_test", "messenger_bot_notify", "messenger_bot_label"] {
+        assert!(frame::check_grade(op, Grade::Write).is_ok(), "{op}");
+        assert_eq!(frame::check_grade(op, Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED, "{op}");
+        assert!(super::messenger_bridge::is_op(op), "{op}");
+    }
     // 판 31(사이드 채팅 완료 확인 공유 — side_chat_seen · side-chat-seen) — MIN 은 그대로.
     assert_eq!(frame::SIDE_CHAT_SEEN_PROTOCOL, 31);
     // 판 32(사이드 채팅 파일 첨부 — 새 op 없음 · `side_chat_send` 의 `files`) — MIN 은 그대로.
@@ -585,6 +593,7 @@ pub(in crate::server) mod live {
             mcp_json: Some(scratch_dir("mcp").join("mcp.json")),
             db_conns: None,
             orchestration_dir: Some(scratch_dir("orchestration")),
+            messenger_bridge: false,
         }
     }
 
@@ -2354,7 +2363,7 @@ pub(in crate::server) mod live {
         cfg.db_conns = Some(list.clone());
         let server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
-        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 33);
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 34);
         let db = super::super::db_ops::DB;
         let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
         let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });

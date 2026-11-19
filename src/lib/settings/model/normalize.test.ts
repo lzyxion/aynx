@@ -667,6 +667,33 @@ describe("③-4 — 트레이 · 메신저 작업안 결과", () => {
     expect(toPayload(s).messenger?.operation_results).toBe(false);
     expect(normalizeSettings({ messenger: { operation_results: false } }).messenger.operation_results).toBe(false);
   });
+
+  it("messenger.telegram 은 끌 때만 · telegram_chat 은 켤 때만 남고, 저장 왕복에서 사라지지 않는다(메신저 다리)", () => {
+    const s = emptySettings();
+    expect(toPayload(s).messenger).not.toHaveProperty("telegram");
+    expect(toPayload(s).messenger).not.toHaveProperty("telegram_chat");
+    s.messenger.telegram = false;
+    s.messenger.telegram_chat = true;
+    expect(toPayload(s).messenger).toMatchObject({ telegram: false, telegram_chat: true });
+    const back = normalizeSettings(toPayload(s));
+    expect(back.messenger).toMatchObject({ telegram: false, telegram_chat: true });
+    expect(sameSettings(back, s)).toBe(true);
+    expect(sameSettings(back, emptySettings())).toBe(false);
+    // 기본값(보내기 켬 · 말하기 끔)은 싣지 않는다
+    s.messenger.telegram = true;
+    s.messenger.telegram_chat = false;
+    expect(toPayload(s).messenger).toEqual({});
+    expect(normalizeSettings({ messenger: { telegram_chat: "yes" } }).messenger.telegram_chat).toBeUndefined();
+  });
+
+  it("messenger.include_conversation 은 끈 값이 저장에 남는다(기본 켬 — 2026-11-16)", () => {
+    const s = emptySettings();
+    s.messenger.include_conversation = false;
+    expect(toPayload(s).messenger?.include_conversation).toBe(false);
+    expect(normalizeSettings(toPayload(s)).messenger.include_conversation).toBe(false);
+    s.messenger.include_conversation = true;
+    expect(toPayload(s).messenger).not.toHaveProperty("include_conversation");
+  });
 });
 
 describe("외부 MCP 서버의 사이드 채팅 칸 (2026-10-25)", () => {

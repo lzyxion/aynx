@@ -69,6 +69,7 @@ mod mcp;
 mod mcp_launch;
 mod merge_detect;
 mod messenger;
+mod telegram;
 mod operations;
 mod orchestration;
 mod output;
@@ -823,6 +824,13 @@ pub fn run() {
             messenger::messenger_set_webhook,
             messenger::messenger_test,
             messenger::messenger_send,
+            // 메신저 다리 — Telegram 봇(2026-11-18 · 판 34). 토큰을 돌려주는 명령은 없다 · 토큰 파일을 읽는 것은 세션 서버뿐.
+            server::messenger_bridge_proxy::messenger_bot_status,
+            server::messenger_bridge_proxy::messenger_bot_set_token,
+            server::messenger_bridge_proxy::messenger_bot_pair,
+            server::messenger_bridge_proxy::messenger_bot_unpair,
+            server::messenger_bridge_proxy::messenger_bot_test,
+            server::messenger_bridge_proxy::messenger_bot_label,
             // 원격 웹 클라이언트 관문(R1a) — 상태(메모리만 · 원격 허용) · 페어링 답·대기(메인 PC 전용) · 기기 목록·폐기(원격 허용) ·
             // 이름 찾기(메인 PC 전용) · 기록 · 이름 바꾸기 · 모두 끊기(원격 허용 — R1a-5) — 분류는 `remote/deny.rs`.
             remote::remote_status,

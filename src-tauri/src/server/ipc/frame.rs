@@ -173,7 +173,12 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 답과 스냅숏의 `link` → `links` 배열 · `side_chat_send` 의 `linkName` → `linkNames`(스트림 → 칩 이름) · 보내기 답의 `link` 가
 /// `{labels, unlinked}`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 32 서버에 붙은 GUI 는 프록시(`server::side_chat_proxy`)가 옛 모양으로
 /// 옮겨 보내고 답을 새 모양으로 옮겨 프런트에 준다(연결 0~1개) · 둘 이상이면 `[server-outdated]`([`SIDE_CHAT_LINKS_PROTOCOL`]).
-pub(crate) const PROTOCOL_MAX: u32 = 33;
+///
+/// 판 34(2026-11-18 메신저 다리 — `server::messenger_bridge`): 새 op `messenger_bot_status`(읽기) · `messenger_bot_set_token` · `_pair` · `_unpair` ·
+/// `_test` · `_notify`(쓰기) · 이벤트 `messenger-bot-event{changed}`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 새 GUI 가 판 33 서버에 붙으면 봇 명령은
+/// `[server-outdated]` · 알림의 Telegram 몫은 보내지 않는다([`MESSENGER_BOT_PROTOCOL`]). 같은 판(아직 공개 전 — 판 올리지 않음)에 op
+/// `messenger_bot_label`(쓰기 — 이름표 미리 알리기 · 실기 후속 2026-11-19)을 더했다.
+pub(crate) const PROTOCOL_MAX: u32 = 34;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -252,6 +257,9 @@ pub(crate) const SIDE_CHAT_FILES_PROTOCOL: u32 = 32;
 /// 사이드 채팅 여러 타일 연결(`side_chat_link` 의 `streams` · `links` · `linkNames`)이 서는 판 — 낮으면 GUI 프록시가 옛 모양(`stream` · `link` ·
 /// `linkName`)으로 옮기고 둘 이상 연결은 보내지 않는다.
 pub(crate) const SIDE_CHAT_LINKS_PROTOCOL: u32 = 33;
+
+/// 메신저 다리 op(`messenger_bot_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
+pub(crate) const MESSENGER_BOT_PROTOCOL: u32 = 34;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;
@@ -511,6 +519,13 @@ pub(crate) fn required_grade(op: &str) -> Option<Grade> {
         // CLI 훅의 응답으로만 가고 PTY 에 쓰지 않는다).
         "tile_permission_snapshot" => Some(Grade::Read),
         "tile_permission_decide" | "tile_permission_face" => Some(Grade::Write),
+        // 메신저 다리(판 34 — `server::messenger_bridge`). 상태 = 읽기, 토큰 · 짝 · 시험 · 알림 = 쓰기(**승인 등급 프레임이 아니다** — 다리에는
+        // 작업안 승인 · 권한 카드로 가는 길이 없다).
+        "messenger_bot_status" => Some(Grade::Read),
+        "messenger_bot_set_token" | "messenger_bot_pair" | "messenger_bot_unpair" | "messenger_bot_test" | "messenger_bot_notify"
+        | "messenger_bot_label" => {
+            Some(Grade::Write)
+        }
         _ => None,
     }
 }

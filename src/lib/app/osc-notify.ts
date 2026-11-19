@@ -5,6 +5,8 @@ import { APP, notifyOs, windowFocused } from "$lib/app/os-notify";
 import { recordNotification } from "$lib/app/notifications.svelte.js";
 import { messengerProgramNotice } from "$lib/app/messenger";
 import { tileNotifyGroup } from "$lib/app/finish-notify";
+import { findPaneAnywhere } from "$lib/app/tabs.svelte.js";
+import { sessionStreamOf } from "$lib/session";
 
 /**
  * **타일 안 프로그램이 보낸 알림(OSC 9 · OSC 777)을 띄운다**
@@ -59,7 +61,8 @@ export function notifyFromProgram(
   });
   // 메신저(Discord) — 아래 표면 판정과 **독립**이다. 속도 제한(타일당 2초)과 `osc_notify` 는 부르는 쪽이
   // 이미 걸렀다 — 그래서 프로그램 알림을 끄면 메신저로도 가지 않는다(docs/log/2026-09-27-discord-notify.md).
-  messengerProgramNotice(tileName, text, fromAgent);
+  const pane = findPaneAnywhere(paneId);
+  messengerProgramNotice(tileName, text, fromAgent, pane ? sessionStreamOf(pane) : null);
 
   const asToast = () => toast.info(labelled, { ms: 8000 });
   if (windowFocused() && tileVisible) {

@@ -15,6 +15,12 @@
 //!   [`FACES`] 에 적는다. 카드를 세우고 · 붙들고 · 시계가 보는 "보는 창" 은 **그 타일을 대화 면으로 보는 사람 창**([`convo_watchers`])이다 — 없으면 `ask`
 //!   가 곧바로 빈 출력(TUI 가 묻는다 · 카드 없음), 카드가 선 동안 모두 터미널 면으로 넘기면 곧바로 풀고(`release_stream`), 창이 사라진 것은 예전
 //!   유예(5초 — F5) 뒤에 푼다. 결정 · 스냅숏의 문(`not-viewing`)은 예전대로 그 세션을 보는 모든 창이다.
+//! - **메신저 다리 = 보는 쪽 하나**(2단계 — 2026-11-19 · 계획 docs/log/2026-11-18-messenger-bridge.md "2단계 계획"): 다리가 돌보는 스트림
+//!   (`server::messenger_bridge::tends`)이면 [`watchers`] · [`convo_watchers`] 에 표지 [`BRIDGE_WINDOW`] 가 덧붙는다 — 그래서 그동안은 보는 사람 창이
+//!   없어도(트레이) Claude 카드가 서고, Codex 도 대화 면으로 보는 창이 없어도 TUI 대신 카드가 서며, 시계의 "보는 창 없음" 유예 · 결정의 문도 표지를
+//!   보는 쪽으로 친다. 돌보지 않는 스트림은 예전과 같다. 표지는 사건 몸의 `windows` 에 싣지 않고, 창의 op 는 그 이름을 받지 않는다. 다리의 결정은
+//!   [`resolve_from_bridge`] 하나(Allow · Deny). 사건은 [`emit`] 끝에서 다리에 넘긴다(표 잠금 밖 · 다리는 판정만 하고 보내기는 런타임 태스크).
+//! - 잠금 순서: 카드 표 잠금 안에서 다리를 부르지 않는다(`forward_signal` 도 표를 놓은 뒤 `on_signal`). 다리 잠금은 세션 코어 · 카드 표와 겹쳐 쥐지 않는다.
 
 use std::sync::{Condvar, LazyLock, Mutex, MutexGuard, Once};
 use std::time::{Duration, Instant};
@@ -57,6 +63,10 @@ pub(crate) fn forward_signal(sig: &crate::agent_signal::AgentSignal, at: u64, em
     let mut payload = sig.payload(at as i64);
     crate::agent_state::attach(&mut payload, &step);
     emit(payload);
+    // 메신저 다리는 카드 표 잠금 **밖에서** 부른다(잠금 순서 — 다리는 카드 표 잠금 안에서 불리지 않는다 · 2단계).
+    drop(t);
+    // 메신저 다리 — 다리가 넣은 턴의 끝 · 권한 물음(잠금 · 비교뿐 — 보내기는 런타임 태스크로 · 이 HTTP 스레드를 붙들지 않는다).
+    super::messenger_bridge::on_signal(sig, &step);
 }
 
 /// 신호 방송은 재진입 없는 채널 쓰기뿐 — 카드 표 잠금 안에서 순서를 지킨다(`hub::emit`)
@@ -64,8 +74,28 @@ fn emit_signal(payload: Value) {
     hub::emit(crate::agent_signal::EVENT, payload);
 }
 
-fn watchers(stream: &str) -> Option<Vec<String>> {
+/// **메신저 다리의 표지**(2단계 — 2026-11-19) — 다리가 돌보는 스트림(`server::messenger_bridge::tends`)이면 "보는 창" 에 이 라벨이 덧붙는다.
+/// 빈칸 · `#` 이 있어 Tauri 창 라벨(영숫자 · `-` · `/` · `:` · `_`)이 될 수 없다. 사건 몸의 `windows` 에는 싣지 않고([`emit`]), 창의 op
+/// (`tile_permission_decide` · `tile_permission_face`)는 이 이름을 받지 않는다 — 이 라벨로 결정하는 길은 [`resolve_from_bridge`] 하나다.
+pub(crate) const BRIDGE_WINDOW: &str = "#messenger bridge";
+
+/// 세션 코어의 "보는 창"(주 임대 + 시청자) 그대로 — 다리 표지 없음.
+fn real_watchers(stream: &str) -> Option<Vec<String>> {
     crate::session_core::core().watchers(stream)
+}
+
+/// 다리가 그 스트림을 돌보면 표지를 덧붙인다(세션이 없으면 `None` 그대로). 세션 코어 잠금을 놓은 뒤 다리 잠금을 잠깐 잡는다(겹쳐 쥐지 않는다).
+fn with_bridge(stream: &str, w: Option<Vec<String>>) -> Option<Vec<String>> {
+    let mut w = w?;
+    if super::messenger_bridge::tends(stream) {
+        w.push(BRIDGE_WINDOW.to_string());
+    }
+    Some(w)
+}
+
+/// 카드를 세우고 · 붙들고 · 결정의 문(`not-viewing`)이 보는 "보는 창" — 세션을 보는 창 + (돌보면) 다리 표지.
+fn watchers(stream: &str) -> Option<Vec<String>> {
+    with_bridge(stream, real_watchers(stream))
 }
 
 /// 스트림 → (창 → 대화 면인가) — 창이 알린 그 타일의 지금 면(op `tile_permission_face`). 알리지 않은 창은 터미널 면으로 친다.
@@ -76,19 +106,56 @@ fn faces() -> MutexGuard<'static, std::collections::HashMap<String, std::collect
 }
 
 /// 그 타일을 **대화 면으로 보는** 사람 창들 — 그 세션을 보는 창(주 임대 + 시청자) 가운데 대화 면이라고 알린 것. 세션이 없으면 `None`.
+/// 다리가 돌보는 스트림이면 다리 표지도(다리는 대화 면처럼 카드로 답한다 — 그래서 Codex 도 TUI 대신 카드가 선다 · 2단계).
 fn convo_watchers(stream: &str) -> Option<Vec<String>> {
-    let w = watchers(stream)?;
-    let f = faces();
-    let on = f.get(stream);
-    Some(w.into_iter().filter(|win| on.and_then(|m| m.get(win)).copied().unwrap_or(false)).collect())
+    let w = real_watchers(stream)?;
+    let people: Vec<String> = {
+        let f = faces();
+        let on = f.get(stream);
+        w.into_iter().filter(|win| on.and_then(|m| m.get(win)).copied().unwrap_or(false)).collect()
+    };
+    with_bridge(stream, Some(people))
 }
 
-/// 사건들을 내보낸다 — 표 잠금 밖에서(세션 코어를 읽는다).
+/// 사건들을 내보낸다 — 표 잠금 밖에서(세션 코어를 읽는다). 몸의 `windows` 는 사람 창뿐(다리 표지는 GUI 로 새지 않는다). 끝에 메신저 다리에
+/// 넘긴다(판정 · 표 갱신뿐 — 보내기는 다리의 런타임 태스크 · 이 스레드를 붙들지 않는다).
 fn emit(evs: Vec<Ev>) {
-    for ev in evs {
-        let windows = watchers(&ev.stream).unwrap_or_default();
+    if evs.is_empty() {
+        return;
+    }
+    for ev in &evs {
+        let windows: Vec<String> = real_watchers(&ev.stream).unwrap_or_default().into_iter().filter(|w| w != BRIDGE_WINDOW).collect();
         hub::emit(EVENT, json!({ "windows": windows, "stream": ev.stream, "sessionEpoch": ev.session_epoch, "ev": ev.body }));
     }
+    super::messenger_bridge::on_card_events(&evs);
+}
+
+/// 그 스트림 · 지금 회차에 선 **권한 카드**(질문 카드 빼고 — 생긴 순서). 메신저 다리가 다리 턴이 아닌 권한 알림에 단추를 달 때(2단계).
+/// 세션 코어 · 카드 표 잠금을 차례로 잡는다(겹쳐 쥐지 않는다).
+pub(crate) fn standing_cards(stream: &str) -> Vec<Value> {
+    let Some(epoch) = crate::session_core::core().live_epoch(stream) else { return Vec::new() };
+    let cards = table().snapshot(stream, epoch);
+    cards.into_iter().filter(|c| c.get("kind").and_then(Value::as_str) != Some("question")).collect()
+}
+
+/// **메신저 다리의 결정**(2단계 — 부르는 곳은 다리의 단추 누름 하나) — op `tile_permission_decide` 의 몸을 본뜬다: 창 = [`BRIDGE_WINDOW`] ·
+/// `Allow | Deny` 둘뿐(세션 허용 · 풀기 · 답 · 사유 없음) · 처음 하나만 · Codex 질문 신호 · 깨움 · 사건. 결정은 그 CLI 의 **훅 응답으로만** 간다(PTY 에
+/// 쓰지 않는다). 다리가 지금 그 스트림을 돌보지 않으면 표지가 "보는 창" 에 없어 `Err("not-viewing")`. 다리 잠금을 쥐지 않은 채 불러야 한다.
+pub(crate) fn resolve_from_bridge(stream: &str, epoch: u64, request_id: &str, allow: bool) -> Result<bool, &'static str> {
+    let w = watchers(stream).unwrap_or_default();
+    let decision = if allow { Decision::Allow } else { Decision::Deny };
+    let mut t = table();
+    let question = t.codex_question(stream, epoch, request_id);
+    let (applied, evs) = t.decide(stream, epoch, request_id, BRIDGE_WINDOW, decision, None, &w)?;
+    if applied && question && !t.codex_question_waiting(stream) {
+        emit_signal(crate::agent_state::question_signal(stream, false));
+    }
+    drop(t);
+    if applied {
+        STATE.cv.notify_all();
+    }
+    emit(evs);
+    Ok(applied)
 }
 
 /// 토큰을 거두고(자기 것만) 그 스트림의 카드 · 표지 · 세션 허용 기억을 버린다 — 세션 회수 · 열기 실패.
@@ -169,6 +236,11 @@ fn outcome_body(o: &Outcome) -> Value {
         Outcome::Decided(v) => json!({ "state": "decided", "output": v }),
         Outcome::Release => json!({ "state": "release" }),
     }
+}
+
+/// 그 타일이 지금 사람의 답을 기다리나 — 권한 카드 · Codex 질문 · TUI 물음(메신저 다리의 문지기 — 서 있으면 넣지 않는다).
+pub(crate) fn asking(stream: &str) -> bool {
+    table().asking(stream)
 }
 
 /// 그 스트림의 턴 끊음 · CLI 끝(`interrupt` · `session-end`) — Codex 질문 카드 · TUI 표지를 걷는다(기다리는 훅은 빈 출력으로).
@@ -359,6 +431,10 @@ pub(crate) fn handle(op: &str, body: Value) -> Result<Value, WireError> {
     match op {
         "tile_permission_decide" => {
             let b: DecideBody = serde_json::from_value(body).map_err(|_| bad("bad decide body"))?;
+            // 다리 표지로 결정하는 길은 `resolve_from_bridge` 하나 — 창의 op 는 그 이름을 받지 않는다
+            if b.window == BRIDGE_WINDOW {
+                return Err(bad("not-viewing"));
+            }
             let w = watchers(&b.stream).unwrap_or_default();
             let mut t = table();
             let question = t.codex_question(&b.stream, b.session_epoch, &b.request_id);
@@ -383,7 +459,7 @@ pub(crate) fn handle(op: &str, body: Value) -> Result<Value, WireError> {
         }
         "tile_permission_face" => {
             let b: FaceBody = serde_json::from_value(body).map_err(|_| bad("bad face body"))?;
-            if !crate::tile_env::stream_ok(&b.stream) || b.window.is_empty() || b.window.len() > 128 {
+            if !crate::tile_env::stream_ok(&b.stream) || b.window.is_empty() || b.window.len() > 128 || b.window == BRIDGE_WINDOW {
                 return Err(bad("bad face body"));
             }
             faces().entry(b.stream.clone()).or_default().insert(b.window, b.convo);

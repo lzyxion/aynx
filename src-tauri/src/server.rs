@@ -44,6 +44,8 @@
 //! | `db_ops` | **DB 평면 op**(판 8 — 쿼리 타일: `db_open`·`db_query`·`db_cancel`·`db_schema`·`db_objects`·`db_table_detail`·`db_definition`·`db_set_write`·`db_close`) — 몸은 `crate::db` | 서버 |
 //! | `db_proxy` | 쿼리 타일 Tauri 명령(같은 이름) — 판 8 미만 서버면 보내지 않고 "재시작 필요" | GUI |
 //! | `log` | `data_root()/server.log`(1 MiB × 2) | 서버 |
+//! | `messenger_bridge` | **메신저 다리**(판 34) — Telegram 롱폴 · 짝짓기 · 로컬 AI 타일 넣기 · 답 보내기 · op `messenger_bot_*` · 봇 토큰을 읽는 유일한 자리 | 서버 |
+//! | `messenger_bridge_proxy` | 메신저 다리 Tauri 명령(`messenger_bot_*`) · 알림의 Telegram 몫을 서버로 | GUI |
 //! | `resources` | **로컬 자원 모니터**(판 18) — op `resource_snapshot`(읽기 · 관찰 임대) · 표본 스레드(보일 때만) + Tauri 명령 같은 이름 | 둘 다 |
 //!
 //! ## 불변식
@@ -70,6 +72,8 @@ pub(crate) mod hub;
 pub(crate) mod ipc;
 pub(crate) mod launch;
 pub(crate) mod log;
+pub(crate) mod messenger_bridge;
+pub(crate) mod messenger_bridge_proxy;
 pub(crate) mod orchestration_proxy;
 pub(crate) mod os;
 pub(crate) mod producer;
@@ -149,6 +153,7 @@ pub(crate) fn session_server_main() -> i32 {
         mcp_json: crate::mcp::config_path(),
         db_conns: None,
         orchestration_dir: crate::orchestration::store_dir(),
+        messenger_bridge: true,
     };
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

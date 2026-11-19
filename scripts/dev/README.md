@@ -1184,10 +1184,35 @@ PAGE_PORT=1437 node scripts/dev/agent-banner-harness.mjs <outdir> 9247
 프로젝트 밖 폴더. 진짜 전송과 대화 파일 읽기는 `cargo test`(`messenger::tests` · `agent_transcript::tests`).
 
 ```bash
-npx vite --port 1557 --strictPort
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9367   --user-data-dir=%TEMP%/edge-aynx-messenger --window-size=1200,800 http://localhost:1557/
-PAGE_PORT=1557 node scripts/dev/messenger-harness.mjs 9367
+node scripts/dev/run-harness.mjs messenger-harness.mjs <outdir>   # 러너가 CDP 포트만 넘긴다(ARG_STYLE) — outdir 은 쓰지 않는다
 ```
+
+- 턴 끝 알림은 **1분 넘는 턴만** · 같은 타일 같은 사건은 30초에 한 통이다(`AGENT_STOP_MIN_MS` · `MESSENGER_COALESCE_MS` — 2026-11-16).
+  판은 `stop` 앞에서 페이지 시계(`Date.now`)를 61초 앞당긴다(`window.__skew`). 이름표의 가름은 `" / "`(`messenger-label.ts`).
+
+## messenger-settings-harness.mjs — 설정 › 알림 › 채널(메신저 다리 1b) · 상태 칩 색
+
+```bash
+node scripts/dev/run-harness.mjs messenger-settings-harness.mjs <outdir> --size 1200x900
+```
+
+docs/log/2026-11-18-messenger-bridge.md "구현 기록 — 1b" 의 화면을 스텁 위에서 몰아 **찍고**(채널 묶음만 자른 `NN-<상태>.png` + 설정 창 전체
+`NN-<상태>-full.png`) 단언한다. 스텁: 웹훅 `messenger_status`(채널별 `window.__hooks`) · `messenger_set_webhook` · `messenger_test`, 봇
+`messenger_bot_status`(`window.__bot`) · `_set_token`(`\d+:` 로 시작하지 않으면 `[bad-token]` 거절) · `_pair` · `_unpair` · `_test`, `load_settings` · `save_settings`.
+서버 사건 `messenger-bot-event` 는 리스너 표로 쏜다(`window.__emit`).
+
+- 상태: 01 접힘(Discord 연결 · Slack · Telegram 연결 안 됨) · 02 Telegram 연결 전(토큰 칸 · 02b 거절) · 03 토큰만 · 04 **접힌 채 `pending` 사건 → 저절로
+  펼침**(코드 상자) · 05 연결됨(말하기 켬 + 경고 칩 · 펼친 칸이 홀로) · 06a Discord 연결됨 · 06b Slack 연결 전 · 07 받는 고리 `conflict`(접힌 줄) ·
+  `NNn-narrow-760-*` 좁은 창 · 08 **원격 창**(둘째 주입 스크립트로 `window.__AYNX_REMOTE__ = true` 를 얹고 다시 읽는다) · 09 밝은 테마
+  (`document.documentElement.dataset.theme`) · 10 칩 색 — AI 에이전트(설치됨 ok · 찾을 수 없음 off · 훅 업데이트 필요 warn) · 원격 접속(수신 실패
+  bad · Funnel 확인 못 함 idle · 기기 ok · 잠금 해제 실패 bad) · 일반 › 세션 서버(연결됨 ok · pid 등 info), 어두운 · 밝은 한 장씩.
+- 단언: 한 번에 한 칸 · 머리줄 보내기 스위치는 펼침을 바꾸지 않음 · 연결 전 채널엔 스위치 없음 · [+ 연결] · ⋯ 메뉴 없음 · [연결] 뒤 토큰 칸 비움 ·
+  `pending` → 펼침 + 코드 · [허용] = `messenger_bot_pair{code, allow:true}` · 말하기 → 설정 모델 `telegramChat` · [저장] payload `telegram_chat: true` ·
+  색인 `messenger-channel-telegram` · `-chat` → 그 칸 펼침 · 원격 창의 HOME_ONLY 손잡이 `disabled` + "메인 PC" 툴팁 · 좁은 창 넘침 없음 · 콘솔 오류 0
+  (스텁이 모르는 명령의 거절 `stub:` 은 세지 않고 목록만 찍는다).
+- 스크롤은 설정 본문의 스크롤 칸만 직접 민다 — `scrollIntoView` 는 `overflow: hidden` 인 설정 창까지 밀어 창 아래가 빈 채로 찍혔다.
+- 보지 않는 것: 진짜 세션 서버 · Telegram(롱폴 · 짝짓기 코드 생성 · 봇 답장) · 원격 관문의 실제 거절(`remote/deny.rs` 는 cargo 시험).
+  **비밀은 찍지 않는다** — 토큰 · 웹훅 주소는 `typeof` · 길이만 기록한다.
 
 ## new-shell-cwd-harness.mjs — 새로 여는 셸·AI 타일이 뜰 폴더
 

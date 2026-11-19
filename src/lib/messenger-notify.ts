@@ -119,6 +119,18 @@ export function createCoalesceGate(windowMs = MESSENGER_COALESCE_MS): (key: stri
   };
 }
 
+/**
+ * **메신저 다리(Telegram)의 타일 이름표**(2026-11-19 사용자 결정) — `<CLI 표시 이름> · <범위>`. 범위는 등록 범위(`<프로젝트> · <워크트리>` →
+ * `프로젝트 / 워크트리`)가 있으면 그것, 없으면 폴더의 끝 이름. 탭 제목 · 타일 이름은 쓰지 않는다(탭을 설명하지 타일을 가리키지 않는다).
+ * 모르는 칸은 뺀다 — 둘 다 모르면 빈 글자. 알림의 첫 줄 이름(`messengerLabel`)과는 다르다. 서버 대체 이름(`logic::fallback_label`)과 같은 꼴.
+ */
+export function bridgeLabelText(agent: string | null, scope: string | null, folder: string | null): string {
+  const range = scope?.trim()
+    ? scope.split(" · ").join(" / ")
+    : (folder ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop()?.trim() || null;
+  return [agent?.trim() || null, range].filter((x): x is string => !!x).join(" · ");
+}
+
 /** 전송 조건(자리 비움 시 · 항상) — `settings.toml` 의 `[messenger] when` 값(키는 바꾸지 않는다) */
 export type MessengerWhen = "away" | "always";
 
@@ -163,6 +175,13 @@ export interface MessengerRules {
   discord: boolean;
   /** Slack 채널로 보내는가 (웹훅이 등록돼 있을 때) — 안 정하면 켬 */
   slack: boolean;
+  /** Telegram 채널로 보내는가 (봇이 등록되고 계정을 짝지었을 때 — 세션 서버가 보낸다) — 안 정하면 켬 */
+  telegram: boolean;
+  /**
+   * **메신저에서 AI 타일에 말하기**(메신저 다리 — docs/log/2026-11-18-messenger-bridge.md) — 안 정하면 **끔**. 보내기 규칙이 아니다:
+   * 세션 서버가 글마다 설정 파일의 칸을 다시 읽는다. 원격 창은 켜지 못한다(`remote/deny.rs` 의 `settings_home_only`).
+   */
+  telegramChat: boolean;
 }
 
 /** `settings.toml` 의 `[messenger]` 한 칸씩 — 안 정한 칸은 `undefined` (Rust `MessengerPrefs` 와 1:1) */
@@ -180,6 +199,8 @@ export interface MessengerPrefsRaw {
   away_after_min?: number | null;
   discord?: boolean | null;
   slack?: boolean | null;
+  telegram?: boolean | null;
+  telegram_chat?: boolean | null;
 }
 
 /** 안 정한 칸에 기본값을 채운다 — 설정 화면과 규칙이 같은 값을 보게 */
@@ -200,14 +221,16 @@ export function resolveMessengerRules(raw: MessengerPrefsRaw | undefined): Messe
     awayAfterMin: r.away_after_min ?? DEFAULT_MESSENGER_AWAY_AFTER_MIN,
     discord: r.discord ?? true,
     slack: r.slack ?? true,
+    telegram: r.telegram ?? true,
+    telegramChat: r.telegram_chat ?? false,
   };
 }
 
 /** 보낼 수 있는 채널 — Rust `messenger::Channel` 의 소문자 이름. 칸 이름(`[messenger] <채널>`)과 같다 */
-export type MessengerChannel = "discord" | "slack";
+export type MessengerChannel = "discord" | "slack" | "telegram";
 
-/** 채널 전부 — 화면·목록의 순서 */
-export const MESSENGER_CHANNELS: readonly MessengerChannel[] = ["discord", "slack"];
+/** 채널 전부 — 화면·목록의 순서. Telegram 은 웹훅이 아니라 봇이다(보내기는 세션 서버 — `messenger_send` 가 그 몫만 넘긴다) */
+export const MESSENGER_CHANNELS: readonly MessengerChannel[] = ["discord", "slack", "telegram"];
 
 /**
  * 켜진 채널 목록 — `messenger_send` 의 `channels`. 비면 부르지 않는다. 등록 여부는 Rust 가 본다(등록 안 된

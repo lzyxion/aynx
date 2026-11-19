@@ -403,6 +403,9 @@ async fn send_notice_messenger(n: NoticeWire) {
     if prefs.slack != Some(false) {
         channels.push(crate::messenger::Channel::Slack);
     }
+    if prefs.telegram != Some(false) {
+        channels.push(crate::messenger::Channel::Telegram);
+    }
     if channels.is_empty() {
         return;
     }

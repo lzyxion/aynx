@@ -60,6 +60,8 @@ fn request_timeout(op: &str) -> Duration {
         "forward_add" | "ssh_info" | "headless_close" => Duration::from_secs(30),
         // 사이드 채팅(판 19) — 열기 · 닫기는 CLI 가 바뀐 옛 프로세스를 잡째 끝낸다. 보내기는 `side_chat_proxy::send_timeout` 을 따로 준다.
         "side_chat_open" | "side_chat_close" | "side_chat_attach" => Duration::from_secs(30),
+        // 메신저 다리(판 34) — 토큰 확인(`getMe`) · 짝짓기 답 · 시험 · 알림은 Telegram 요청 하나(10초) + 여유.
+        "messenger_bot_set_token" | "messenger_bot_pair" | "messenger_bot_test" | "messenger_bot_notify" => Duration::from_secs(30),
         // exec 은 몸의 시한(`timeoutMs`)을 서버가 지킨다 — 여기서는 넉넉한 바깥 상한.
         "ssh_exec" => Duration::from_secs(660),
         // DB 평면(판 8) — 열기는 파일 읽기·엔진 열기(7·8단계부터 터널·TLS), 스키마·쓰기 전환은 서버의 고정 시한(30초) + 여유.
@@ -224,6 +226,8 @@ const RELAYED: &[&str] = &[
     // 3차 5단계 — AI 가 연 · 이어받은 Run 의 보드를 배치할 때(`{runId, stream}` — 그 타일을 가진 창이 장부로 가져간다 · Q3).
     // F8 — 서버가 이 연결로 가는 이벤트를 밀려 버렸다(`{dropped}` — 몸은 수뿐). 보이는 보드 · 조정자 칩 표가 한 번 다시 읽는다.
     super::serve::EVENTS_LAGGED,
+    // 메신저 다리(판 34) — 무엇이 바뀌었는지 낱말 하나(`{changed}` — 토큰 · 코드 · 이름 없음). 설정 화면이 상태를 다시 읽는다.
+    super::messenger_bridge::EVENT,
 ];
 
 /// **재연결을 멈춘다**(트레이 [모든 세션 종료] — 서버를 끝내고 GUI 도 곧 끝난다). 멈추지 않으면 연결이 끊긴 순간 새 서버를 띄운다.

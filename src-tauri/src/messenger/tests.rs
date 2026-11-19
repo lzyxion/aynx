@@ -2,6 +2,8 @@ use super::*;
 
 const GOOD: &str = "https://discord.com/api/webhooks/123456789/abcDEF-token_xyz";
 const D: Channel = Channel::Discord;
+const WD: Webhook = Webhook::Discord;
+const WS: Webhook = Webhook::Slack;
 
 fn msg(app: &str, label: &str, event: &str, second: &str) -> Message {
     Message {
@@ -32,9 +34,9 @@ const SLACK_GOOD: &str = "https://hooks.slack.com/services/T0001/B0002/SlackSecr
 
 #[test]
 fn slack_accepts_only_hooks_services() {
-    assert!(S.validate(SLACK_GOOD).is_ok());
+    assert!(WS.validate(SLACK_GOOD).is_ok());
     assert_eq!(
-        S.validate(&format!("  {SLACK_GOOD}\n")).unwrap().as_str(),
+        WS.validate(&format!("  {SLACK_GOOD}\n")).unwrap().as_str(),
         SLACK_GOOD
     );
     for bad in [
@@ -52,10 +54,10 @@ fn slack_accepts_only_hooks_services() {
         "https://hooks.slack.com/workflows/T/A/x",     // 워크플로 웹훅은 몸통 모양이 다르다
         GOOD,                                          // Discord 주소는 Slack 칸에 못 넣는다
     ] {
-        assert!(S.validate(bad).is_err(), "{bad}");
+        assert!(WS.validate(bad).is_err(), "{bad}");
     }
     // 반대도 — Slack 주소는 Discord 칸에 못 넣는다.
-    assert!(D.validate(SLACK_GOOD).is_err());
+    assert!(WD.validate(SLACK_GOOD).is_err());
 }
 
 #[test]
@@ -65,15 +67,15 @@ fn slack_errors_never_contain_the_url() {
         "http://hooks.slack.com/services/T/B/SECRET-TOKEN",
         "https://hooks.slack.com:1/services/T/B/SECRET-TOKEN",
     ] {
-        let err = S.validate(secret).unwrap_err();
+        let err = WS.validate(secret).unwrap_err();
         assert!(!err.contains("SECRET-TOKEN"), "{err}");
     }
-    assert!(!format!("{:?}", S.validate(SLACK_GOOD).unwrap()).contains("SlackSecretTok"));
+    assert!(!format!("{:?}", WS.validate(SLACK_GOOD).unwrap()).contains("SlackSecretTok"));
 }
 
 #[test]
 fn slack_payload_shape() {
-    let v = S.payload("<!everyone> 빌드 끝남", "aynx (dev)", false);
+    let v = WS.payload("<!everyone> 빌드 끝남", "aynx (dev)", false);
     assert_eq!(
         v["text"], "<!everyone> 빌드 끝남",
         "몸통은 그려 둔 글자 그대로 — 걷기는 render 가 한다"
@@ -87,7 +89,7 @@ fn slack_payload_shape() {
         "username 등 다른 키는 싣지 않는다 ({keys:?})"
     );
     let long = "가".repeat(5000);
-    let text = S.payload(&long, "aynx", false)["text"].as_str().unwrap().to_owned();
+    let text = WS.payload(&long, "aynx", false)["text"].as_str().unwrap().to_owned();
     assert_eq!(text.chars().count(), SLACK_TEXT_MAX_CHARS);
     assert!(text.ends_with('…'));
 }
@@ -175,13 +177,13 @@ fn slack_conversation_lines_keep_our_quote_marker() {
 
 #[test]
 fn accepts_discord_webhook_hosts() {
-    assert!(D.validate(GOOD).is_ok());
+    assert!(WD.validate(GOOD).is_ok());
     for host in DISCORD_HOSTS {
         let url = format!("https://{host}/api/webhooks/1/tok");
-        assert!(D.validate(&url).is_ok(), "{host}");
+        assert!(WD.validate(&url).is_ok(), "{host}");
     }
     // 앞뒤 공백은 뗀다(붙여 넣기에 흔하다).
-    assert_eq!(D.validate(&format!("  {GOOD}\n")).unwrap().as_str(), GOOD);
+    assert_eq!(WD.validate(&format!("  {GOOD}\n")).unwrap().as_str(), GOOD);
 }
 
 #[test]
@@ -200,14 +202,14 @@ fn rejects_everything_else() {
         "https://user:pw@discord.com/api/webhooks/1/tok", // 사용자 정보
         "https://discord.com/channels/1/2",
     ] {
-        assert!(D.validate(bad).is_err(), "{bad}");
+        assert!(WD.validate(bad).is_err(), "{bad}");
     }
 }
 
 #[test]
 fn errors_never_contain_the_url() {
     let secret = "https://evil.com/api/webhooks/1/SECRET-TOKEN";
-    let err = D.validate(secret).unwrap_err();
+    let err = WD.validate(secret).unwrap_err();
     assert!(!err.contains("SECRET-TOKEN"), "{err}");
     // 채널 이름만 싣는 문구들
     for c in Channel::ALL {
@@ -217,7 +219,7 @@ fn errors_never_contain_the_url() {
 
 #[test]
 fn debug_is_redacted() {
-    let url = D.validate(GOOD).unwrap();
+    let url = WD.validate(GOOD).unwrap();
     let shown = format!("{url:?}");
     assert!(!shown.contains("token"), "{shown}");
     assert!(!shown.contains("discord"), "{shown}");
@@ -243,14 +245,14 @@ fn truncates_on_char_boundary() {
 
 #[test]
 fn payload_shape_blocks_mentions() {
-    let v = D.payload("@everyone 빌드 끝남", "aynx (dev)", false);
+    let v = WD.payload("@everyone 빌드 끝남", "aynx (dev)", false);
     assert_eq!(v["content"], "@everyone 빌드 끝남");
     assert_eq!(v["username"], "aynx (dev)");
     assert_eq!(v["allowed_mentions"], serde_json::json!({ "parse": [] }));
     assert_eq!(v.as_object().unwrap().len(), 3, "다른 키는 싣지 않는다");
     let long = "x".repeat(5000);
     assert_eq!(
-        D.payload(&long, "aynx", false)["content"]
+        WD.payload(&long, "aynx", false)["content"]
             .as_str()
             .unwrap()
             .chars()
@@ -266,16 +268,16 @@ fn file_round_trip_and_removal() {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let dir = std::env::temp_dir().join(format!("aynx-messenger-{}-{nanos}", std::process::id()));
-    let path = dir.join(D.webhook_file());
+    let path = dir.join(WD.webhook_file());
 
-    assert!(load_at(D, &path).is_none(), "파일이 없으면 등록 안 됨");
-    let url = D.validate(GOOD).unwrap();
+    assert!(load_at(WD, &path).is_none(), "파일이 없으면 등록 안 됨");
+    let url = WD.validate(GOOD).unwrap();
     save_at(&path, Some(&url)).expect("쓰기(부모 폴더도 만든다)");
-    assert_eq!(load_at(D, &path), Some(url));
+    assert_eq!(load_at(WD, &path), Some(url));
 
     // 손으로 고쳐 망가진 파일은 등록 안 됨으로 읽는다.
     std::fs::write(&path, "https://evil.com/api/webhooks/1/x").unwrap();
-    assert!(load_at(D, &path).is_none());
+    assert!(load_at(WD, &path).is_none());
 
     save_at(&path, None).expect("지우기");
     assert!(!path.exists());
@@ -584,17 +586,18 @@ fn conversation_lines_read_title_and_excerpt_only_when_on() {
 #[test]
 fn webhook_file_lives_in_the_config_root() {
     // 개발 폴더 씨앗에 들지 않는 것은 `instance.rs` 의 `seed_list_never_carries_secrets_or_tokens` 가 잰다.
-    for c in Channel::ALL {
+    for c in Webhook::ALL {
         let path = webhook_path(*c).expect("설정 루트");
         assert_eq!(path.file_name().unwrap(), c.webhook_file());
+        assert_eq!(c.channel().secret_file(), c.webhook_file());
         assert_eq!(path.parent(), crate::instance::config_root().as_deref());
     }
     assert_eq!(
-        D.webhook_file(),
+        WD.webhook_file(),
         "discord-webhook",
         "파일 이름은 1단계 전과 같다(기존 등록이 산다)"
     );
-    assert_eq!(S.webhook_file(), "slack-webhook");
+    assert_eq!(WS.webhook_file(), "slack-webhook");
 }
 
 /// 승인 대기(승인 요약) — Rust 가 지은 덧줄도 **한 줄씩 똑같이 걷는다**(AI 가 쓴 설명이 섞여 있다). 어긋남은 Discord 붉은 embed.
@@ -613,14 +616,34 @@ fn pending_lines_are_escaped_and_alert_is_an_embed() {
     assert_eq!(s.lines().count(), 2, "빈 덧줄은 싣지 않는다: {s}");
     let d = D.render(&m, &[]);
     assert!(d.contains(r"\*\*굵게\*\*") && d.contains(r"\[링크\]\(https://evil\)"), "{d}");
-    let v = D.payload(&d, "aynx", true);
+    let v = WD.payload(&d, "aynx", true);
     assert!(v.get("content").is_none(), "{v}");
     assert_eq!(v["embeds"][0]["color"], DISCORD_ALERT_COLOR);
     assert_eq!(v["allowed_mentions"]["parse"], serde_json::json!([]));
-    let calm = D.payload(&d, "aynx", false);
+    let calm = WD.payload(&d, "aynx", false);
     assert!(calm.get("embeds").is_none() && calm["content"].is_string());
     // 프런트가 보낸 몸통에는 덧줄 · 경고 칸이 없다(역직렬화하지 않는다).
     let from_front: Message =
         serde_json::from_value(serde_json::json!({ "app": "a", "label": "b", "event": "c", "lines": ["x"], "alert": true })).unwrap();
     assert!(from_front.lines.is_empty() && !from_front.alert);
+}
+
+/// Telegram(2026-11-18) — HTML 서식: 굵게 `<b>` · 남의 글자의 `& < >` 를 걷는다(태그를 만들 수 없다) · 대화 줄도 줄마다. 웹훅 칸은 없다.
+#[test]
+fn telegram_renders_escaped_html() {
+    const T: Channel = Channel::Telegram;
+    assert_eq!(serde_json::to_string(&T).unwrap(), "\"telegram\"");
+    assert!(T.webhook().is_none());
+    assert_eq!(T.secret_file(), "telegram-bot");
+    let m = msg("aynx", "<a href=x>tile</a>", "턴 끝 & 다음", "2분").graded(Some(Grade::Done));
+    let s = T.render(&m, &[ConvoLine::Excerpt(vec!["<b>굵게</b> & 끝".into()])]);
+    assert!(s.starts_with("🟢 <b>"), "{s}");
+    assert!(s.contains("&lt;a href=x&gt;tile&lt;/a&gt;") && s.contains("턴 끝 &amp; 다음"), "{s}");
+    assert!(s.contains("&gt; &lt;b&gt;굵게&lt;/b&gt; &amp; 끝"), "{s}");
+    assert!(!s.contains("\n> "), "우리 인용 표식도 걷는다: {s}");
+    assert_eq!(s.matches("<b>").count(), 1, "우리 태그 하나만: {s}");
+    assert!(T.test_text().starts_with("<b>"));
+    assert!(not_registered(T).contains("Telegram") && !not_registered(T).contains("http"));
+    let long = T.clip_rendered(format!("<b>x</b> {}", "가".repeat(5000)));
+    assert!(crate::telegram::units(&long) <= crate::telegram::TEXT_MAX);
 }

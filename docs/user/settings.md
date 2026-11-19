@@ -945,6 +945,34 @@ Shows notifications that programs such as builds and tests send with terminal se
 - There is nothing to press on it (no links or actions).
 - When off, sequences are silently discarded. It works the same way in tiles without shell integration.
 
+<a id="messenger"></a>
+### Messenger channels (Discord · Slack · Telegram)
+
+Sends notifications to your phone through a messenger while you are away from the PC. Press a channel row to expand it. The switch at the end of a connected row turns sending to that channel on or off.
+
+- **Discord · Slack**: paste a webhook URL and press **Connect**. The expanded row has **Send test** and **Disconnect**.
+- **Telegram**: uses a bot instead of a webhook.
+  1. In Telegram, send `/newbot` to `@BotFather` and copy the token it gives you.
+  2. Paste the token into the Telegram row and press **Connect**. The token is not shown again.
+  3. Send any message to your bot from your phone. The bot replies with a 6-digit code, and the same code appears in the Telegram row. If they match, press **Allow**. Only that one account is accepted from then on.
+- The bot token and the linked account can be set, changed or removed only at the main PC, not from a remote window.
+- One bot can be used by one program at a time. If another program (another Aynx, or another tool using the same bot) is receiving its messages, the row shows **Not receiving**.
+
+<a id="messenger-chat"></a>
+#### Talk to AI tiles from the messenger
+
+**Off by default**, and can be turned on only at the main PC. When on, the linked Telegram account can send messages to local Claude Code and Codex tiles and get the answers back.
+
+- **Reply to a message from the bot** (a notification, an answer, or a `→ tile` line) to send your message to the tile it came from. A message that is not a reply goes to the only tile waiting for input; if several are waiting, the bot asks you to pick one. Tiles are named by agent and project / worktree (for example `Claude Code · aynx / main`), or by the folder name outside a project; when two tiles have the same name, the conversation title is added.
+- When the turn ends, the **full answer** arrives in the chat (split into several messages if long).
+- A message is delivered only when the agent in that tile has finished a turn and is waiting for input. The bot tells you why otherwise: still running, waiting on a permission prompt, the agent has exited, text is already typed in the input line, or the tile is remote (not supported yet). When no tile is waiting, it lists each AI tile with its reason. The first message to a newly started agent must be sent at the PC.
+- **Permission prompts**: when the agent asks for permission during a turn you started from Telegram — or a permission notification reaches Telegram while you are away — the message has **Allow** and **Deny** buttons. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
+- Messages sent while the PC or the app was off are not delivered later.
+- It keeps working while the privacy veil is up.
+- Task plan approvals are never answered from the messenger — they arrive as notifications only.
+
+The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through Telegram's servers.
+
 ---
 
 ## Security

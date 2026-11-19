@@ -409,9 +409,8 @@ impl Core {
         }
     }
 
-    /// 끝나지 않은 스트림의 자원 `(종류, 손잡이, 세션 회차)` — 임대와 무관하다(시험 전용 — 3a 에서 이것을 쓰던 오케스트레이션 붙여넣기
-    /// 길(`deliver.rs`)은 걷혔다: 작업자는 헤드리스 턴이다).
-    #[cfg(test)]
+    /// 끝나지 않은 스트림의 자원 `(종류, 손잡이, 세션 회차)` — 임대와 무관하다. 부르는 곳은 메신저 다리의 문지기 · 넣기 하나다
+    /// (`server::messenger_bridge` — 로컬 타일인지 · 넣는 사이 세션이 바뀌지 않았는지 본다). 3a 의 오케스트레이션 붙여넣기 길은 걷혔다.
     pub(crate) fn live_resource(&self, stream: &str) -> Option<(Kind, u32, u64)> {
         self.streams
             .get(stream)

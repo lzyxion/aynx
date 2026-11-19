@@ -6,6 +6,7 @@ import { buildScopes, scopeLabelForPath } from "$lib/agent-sessions";
 import { projects } from "$lib/app/project-list.svelte.js";
 import { worktreesOf } from "$lib/app/worktrees.svelte.js";
 import { localFolderOf } from "$lib/app/agent-turn";
+import { bridgeLabelText } from "$lib/messenger-notify";
 
 /**
  * **메신저 · 알림의 이름표** — 폰에서 **어느 일**인지 읽혀야 한다(docs/log/2026-09-27-discord-notify.md "둘째 줄 — 맥락").
@@ -42,4 +43,13 @@ export function messengerLabel(pane: PaneSpec): string {
   const scope = scopeOf(pane);
   if (scope) return scope.split(" · ").join(" / ");
   return tabOfPane(pane.id)?.pinnedTitle?.trim() || tileLabel(pane);
+}
+
+/**
+ * **메신저 다리(Telegram)의 이름표**(2026-11-19 사용자 결정) — `<CLI 표시 이름> · <프로젝트 / 워크트리 | 폴더 끝 이름>`(예 `Claude Code · aynx / feat-y` ·
+ * `Codex · wlsdu`). 탭 제목 · 타일 이름은 쓰지 않는다 — 한 탭에 타일이 늘면 탭 제목이 바뀌어 이름표가 타일을 가리키지 못한다. `agent` 는
+ * `aiDisplayName(logo)`(모르면 `null` — 범위만). 알림 첫 줄의 [`messengerLabel`] 과는 다르다(그것은 11-16 그대로).
+ */
+export function bridgeLabel(pane: PaneSpec, agent: string | null): string {
+  return bridgeLabelText(agent, scopeOf(pane), localFolderOf(pane));
 }

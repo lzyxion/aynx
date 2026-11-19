@@ -225,6 +225,8 @@ pub fn apply_to_context<R: tauri::Runtime>(context: &mut tauri::Context<R>) {
 /// - `vault.bin` — 비밀. 개발 빌드가 릴리스 볼트를 들고 있을 이유가 없다(보안 제약: 볼트 밖에 두지 않는다).
 /// - `discord-webhook` · `slack-webhook` — 채널별 웹훅 파일 — 비밀(메신저 알림의 웹훅 URL — [`crate::messenger::Channel`]).
 ///   개발 쪽에서 쓰려면 다시 등록한다.
+/// - `telegram-bot` · `telegram-chat` — Telegram 봇 토큰(비밀) · 짝지은 계정(2026-11-18 메신저 다리 — `server::messenger_bridge`). 개발 쪽은
+///   봇을 따로 등록하고 다시 짝짓는다(같은 봇을 둘이 받으면 409).
 /// - `mcp.json`·`delegation.toml` — `~/.aynx` 에 살고 애초에 설정 루트가 아니다. 토큰은 개발 쪽이 새로
 ///   뽑고, 위임(사람 없이 붙어도 되는 범위)은 **명시적으로** 다시 준다.
 /// - `hooks/`·`integration*`·`usage/` — 앱이 스스로 다시 만든다(스크립트·셸 통합·사용량 캐시).
@@ -447,9 +449,10 @@ mod tests {
         }
         // 메신저 채널마다의 웹훅 파일 — 채널이 늘어도 여기서 함께 잰다.
         for channel in crate::messenger::Channel::ALL {
-            let file = channel.webhook_file();
+            let file = channel.secret_file();
             assert!(!is_seed_file(file), "{file}");
         }
+        assert!(!is_seed_file(crate::server::messenger_bridge::CHAT_FILE));
         assert!(SEED_FILES
             .iter()
             .all(|f| !f.contains("vault") && !f.contains("mcp") && !f.contains("token")));

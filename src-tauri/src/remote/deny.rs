@@ -10,14 +10,15 @@
 //!
 //! | 표 | 원격에서 | 무엇 |
 //! | --- | --- | --- |
-//! | [`HOME_ONLY`] | 거절 "메인 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) |
+//! | [`HOME_ONLY`] | 거절 "메인 PC 에서만 할 수 있습니다" | 볼트 마스터 바꾸기·풀기 · 볼트 전체 삭제 · 원격 기기 페어링 답·대기 · `tailscale serve` 걸기·끄기 · 모든 세션 종료 · 앱 업데이트(`update_*`) · Telegram 봇 토큰 · 짝짓기(`messenger_bot_set_token` · `_pair` · `_unpair`) |
 //! | [`REAUTH`] | 그 순간 마스터 암호 재확인(마스터가 없으면 그대로 통과) | 작업안 승인 · 대상 고치기 · AI 권한 올리기 |
 //! | [`UNSUPPORTED`] | 거절 "원격에서 지원하지 않음" | 메인 PC 의 OS 창·편집기·UAC 를 여는 것 · 창 모양 |
 //! | [`ALLOW`] | 그대로 | 나머지 전부(설정·호스트·스니펫·볼트 값 넣기·파일·소스 컨트롤·DB·앱 종료 · 사이드 채팅(2026-11-01) …) |
 //!
 //! - **`save_settings` 는 [`ALLOW`] 이되 칸 단위 문**이 있다([`settings_home_only`]): `[automation]`(자동 승인 정책 — 알림 두 칸만
 //!   빼고 전부)이 바뀌거나, `[remote]` 를 **켜거나**(끔 → 켬) 이름·포트를 바꾸면 거절한다. 끄기(켬 → 끔)는 원격에서도 된다
-//!   (밖에서 급히 끊을 수 있게 — 기기 폐기 `remote_device_revoke` 도 원격 허용).
+//!   (밖에서 급히 끊을 수 있게 — 기기 폐기 `remote_device_revoke` 도 원격 허용). `[messenger] telegram_chat`(메신저에서 AI 타일에
+//!   말하기)도 **켜기**만 거절한다(끄기는 된다 — 2026-11-19).
 //! - **재확인**(`REAUTH`)은 폴리필이 그 명령을 보내기 전에 `POST /remote/reauth {cmd, password?}` 로 1회용 표(60초 · 그 세션 · 그 명령 ·
 //!   한 번)를 받아 프레임에 싣는다(`gate::reauth` · `auth::AuthState::issue_reauth`). 암호는 HTTP 몸으로만 가고 ws 프레임에도 로그에도
 //!   없다. 마스터가 없으면 관문이 암호 없이 표를 준다(사용자 결정 — 마스터는 선택). 이것은 **잠금 풀린 기기를 남이 든 경우**를 위한
@@ -101,6 +102,10 @@ pub(crate) const HOME_ONLY: &[&str] = &[
     "settings_export",
     "settings_import_preview",
     "settings_import_apply",
+    // 메신저 다리(2026-11-18) — 봇 토큰 등록 · 해제, 짝짓기 허용 · 거절(6자리 코드를 견주는 것이 메인 PC 사람이다), 짝 지우기.
+    "messenger_bot_set_token",
+    "messenger_bot_pair",
+    "messenger_bot_unpair",
 ];
 
 /// 그 순간 마스터 암호를 다시 확인(설계 3절 단계 3) — 마스터가 없으면 그대로 통과.
@@ -283,6 +288,10 @@ pub(crate) const ALLOW: &[&str] = &[
     "db_close", "db_tx", "db_script", "db_conn_list", "db_conn_save", "db_folders_load", "db_folders_save", "db_history_list",
     // 메신저
     "messenger_status", "messenger_set_webhook", "messenger_test", "messenger_send",
+    // 메신저 다리(2026-11-18) — 상태(토큰 없음) · 짝지은 대화방에 시험 한 통.
+    "messenger_bot_status", "messenger_bot_test",
+    // 이름표 미리 알리기(2026-11-19) — `messenger_send` 와 같은 쪽: 표시 글자를 서버 메모리에 적기만 한다(보내기 · 넣기 · 권한 없음).
+    "messenger_bot_label",
     // 원격 관문 — 상태 · 기기 목록 · 기기 폐기(자기 기기 포함 — 밖에서 급히 끊는다) · 기록 · 이름 바꾸기(표시만) ·
     // 모두 끊기(좁히기 — 원격 끄기와 같은 결)
     "remote_status", "remote_devices_list", "remote_device_revoke", "remote_log", "remote_device_rename",
@@ -349,6 +358,9 @@ pub(crate) fn command_label(cmd: &str) -> String {
         }
         "settings_export_summary" | "settings_export" => tr!(ko: "설정 내보내기", en: "exporting settings"),
         "settings_import_preview" | "settings_import_apply" => tr!(ko: "설정 가져오기", en: "importing settings"),
+        "messenger_bot_set_token" => tr!(ko: "Telegram 봇 토큰 등록 · 해제", en: "registering or removing the Telegram bot token"),
+        "messenger_bot_pair" => tr!(ko: "Telegram 연결 요청 허용 · 거절", en: "allowing or denying a Telegram pairing"),
+        "messenger_bot_unpair" => tr!(ko: "Telegram 연결 끊기", en: "unpairing Telegram"),
         "side_chats_load" => tr!(ko: "사이드 채팅 목록 읽기", en: "reading the side chats"),
         "side_chats_save" => tr!(ko: "사이드 채팅 목록 저장", en: "saving the side chats"),
         "side_chat_dir" => tr!(ko: "사이드 채팅 폴더 만들기", en: "creating a side chat folder"),
@@ -445,6 +457,7 @@ pub(crate) fn reauth_message() -> String {
 /// - `[automation]` — 자동 승인 정책·상한·검토 만료·감사 보관까지 전부. 알림 두 칸(`notify_review_requests`·
 ///   `notify_operation_results` — 사람에게 알리기만 한다)만 원격에서 바꿀 수 있다.
 /// - `[remote]` — 켜기(끔 → 켬)와 이름·포트 바꾸기. 끄기는 된다.
+/// - `[messenger] telegram_chat`(메신저에서 AI 타일에 말하기 — 2026-11-19 사용자 결정) — 켜기만. 끄기는 된다(원격 접속과 같은 까닭).
 pub(crate) fn settings_home_only(current: &AppSettings, next: &AppSettings, dev: bool) -> Option<String> {
     let mut policy = next.automation.clone();
     policy.notify_review_requests = current.automation.notify_review_requests;
@@ -469,6 +482,13 @@ pub(crate) fn settings_home_only(current: &AppSettings, next: &AppSettings, dev:
         return Some(home_only_message(&tr!(
             ko: "원격 접속의 이름·포트 바꾸기",
             en: "changing the remote access host or port"
+        )));
+    }
+    // 안 정함 = 끔(`server::messenger_bridge` 가 글마다 다시 읽는 칸).
+    if next.messenger.telegram_chat == Some(true) && current.messenger.telegram_chat != Some(true) {
+        return Some(home_only_message(&tr!(
+            ko: "메신저에서 AI 타일에 말하기 켜기",
+            en: "turning on messaging AI tiles from the messenger"
         )));
     }
     None
@@ -643,6 +663,25 @@ mod tests {
         s.remote.enabled = Some(true);
         s.remote.host = Some("mypc.tailnet-abcd.ts.net".into());
         s
+    }
+
+    /// 메신저 다리(`[messenger] telegram_chat`) — 원격은 켜지 못하고 끄기 · 그대로 두기는 된다.
+    #[test]
+    fn save_settings_guard_telegram_chat() {
+        let cur = settings();
+        let mut on = cur.clone();
+        on.messenger.telegram_chat = Some(true);
+        assert!(settings_home_only(&cur, &on, false).is_some(), "안 정함 → 켬");
+        let mut off = cur.clone();
+        off.messenger.telegram_chat = Some(false);
+        assert!(settings_home_only(&off, &on, false).is_some(), "끔 → 켬");
+        assert_eq!(settings_home_only(&on, &off, false), None, "켬 → 끔");
+        assert_eq!(settings_home_only(&on, &cur, false), None, "켬 → 안 정함");
+        assert_eq!(settings_home_only(&on, &on, false), None, "켬 그대로");
+        // 보내기 칸(`telegram`)은 다른 채널 칸처럼 원격에서도 된다.
+        let mut send = cur.clone();
+        send.messenger.telegram = Some(false);
+        assert_eq!(settings_home_only(&cur, &send, false), None);
     }
 
     #[test]

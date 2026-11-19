@@ -545,6 +545,12 @@ pub(crate) fn make_excerpt(lines: &[String], caps: &Caps) -> (Vec<String>, Vec<S
     (h, t, truncated, if truncated { "partial" } else { "complete" })
 }
 
+/// [`Interp::input_view`] 의 결과 — 본문 글자이므로 `Debug` 없음 · 로그에 쓰지 않는다.
+pub(crate) struct InputView {
+    pub bracketed: bool,
+    pub rows: Vec<Vec<(String, bool)>>,
+}
+
 /// 세션 하나의 서버 해석기.
 pub(crate) struct Interp {
     parser: vt100::Parser<Hooks>,
@@ -648,6 +654,31 @@ impl Interp {
             last,
             tail,
         }
+    }
+
+    /// 메신저 다리의 넣기 문지기가 보는 화면(2026-11-18 — `server::messenger_bridge`): 괄호 붙여넣기 모드(`vt100::Screen::bracketed_paste`) ·
+    /// 지금 화면 줄마다 (글자, 흐린가) 덩어리(`vt100::Cell::dim` — SGR 2). 빈 칸은 공백 하나 · 넓은 글자의 뒤 칸은 건너뛴다.
+    pub(crate) fn input_view(&self) -> InputView {
+        let screen = self.parser.screen();
+        let (rows, cols) = screen.size();
+        let mut out = Vec::with_capacity(usize::from(rows.get()));
+        for r in 0..rows.get() {
+            let mut runs: Vec<(String, bool)> = Vec::new();
+            for c in 0..cols.get() {
+                let Some(cell) = screen.cell(r, c) else { continue };
+                if cell.is_wide_continuation() {
+                    continue;
+                }
+                let text = if cell.has_contents() { cell.contents() } else { " " };
+                let dim = cell.dim();
+                match runs.last_mut() {
+                    Some((t, d)) if *d == dim => t.push_str(text),
+                    _ => runs.push((text.to_string(), dim)),
+                }
+            }
+            out.push(runs);
+        }
+        InputView { bracketed: screen.bracketed_paste(), rows: out }
     }
 
     /// 스크롤백이 쥔 줄 수(시험 · 비용 추정).

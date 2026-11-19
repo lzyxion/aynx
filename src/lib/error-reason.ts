@@ -231,7 +231,17 @@ export type ErrorReason =
    * 2026-11-01 원격 사이드 채팅: 사이드 채팅 목록(`chats.json`)이 이 창이 읽은 뒤 다른 창(주 창 · 원격 창)에서 바뀌어 **쓰지 않았다** —
    * `app/side-chats` 가 다시 읽고 이 창의 바뀜을 다시 얹어 저장한다(사람에게 보이지 않는다).
    */
-  | "stale-list";
+  | "stale-list"
+  /**
+   * 2026-11-18 메신저 다리(Telegram 봇 — `server/messenger_bridge_proxy.rs`): 봇 토큰이 아님 · Telegram 에 닿지 못함 · 짝짓기 요청 없음 ·
+   * 짝지은 대화방 없음 · 보내지 못함 · 봇 파일을 저장하지 못함. 설정 화면은 떼어 낸 문구만 보인다.
+   */
+  | "bad-token"
+  | "unreachable"
+  | "no-pending"
+  | "not-paired"
+  | "send-failed"
+  | "save-failed";
 
 /** 표 하나 — [`stripReason`] 의 정규식이 이 목록에서 만들어진다 */
 export const REASONS: readonly ErrorReason[] = [
@@ -355,6 +365,12 @@ export const REASONS: readonly ErrorReason[] = [
   "image-not-file",
   "image-type",
   "stale-list",
+  "bad-token",
+  "unreachable",
+  "no-pending",
+  "not-paired",
+  "send-failed",
+  "save-failed",
 ];
 
 /** `[exists]` 처럼 문자열에 박히는 표식 */

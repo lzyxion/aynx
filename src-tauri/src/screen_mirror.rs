@@ -189,6 +189,14 @@ pub(crate) fn server_pen(stream: &str) -> bool {
     tap.is_some_and(|t| t.server_pen() && (t.allow)(&t.stream))
 }
 
+/// 그 스트림의 서버 해석기 화면(괄호 붙여넣기 모드 · 흐린 글자 덩어리) — 메신저 다리의 넣기 문지기만 본다(`server::messenger_bridge`).
+/// 해석기가 없으면 `None`(그러면 다리는 넣지 않는다). 거울 쓰기 문지기(AI 읽기 허용)와 무관하다 — 판정에만 쓰고 어디로도 내보내지 않는다.
+pub(crate) fn input_view(stream: &str) -> Option<vt::InputView> {
+    let tap = taps().get(stream).and_then(Weak::upgrade)?;
+    let view = tap.lock().input_view();
+    Some(view)
+}
+
 /// 서버가 펜을 쥔 더러운 거울을 지금 화면으로 쓴다 — MCP 도구 · 관제판이 거울을 읽기 **직전**(컨텍스트 잠금 밖에서).
 pub(crate) fn flush_dirty() {
     let live: Vec<Arc<Tap>> = {

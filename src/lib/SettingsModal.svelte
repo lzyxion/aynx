@@ -82,6 +82,7 @@
   let credentialsSection = $state<ReturnType<typeof CredentialsSection> | undefined>();
   let themeSection = $state<ReturnType<typeof AppThemeSection> | undefined>();
   let remoteSection = $state<ReturnType<typeof RemoteSection> | undefined>();
+  let notificationsSection = $state<ReturnType<typeof NotificationsSection> | undefined>();
   let pendingAnchor: string | null = null;
 
   /** MCP 상태 조회 뒤에도 접힌 서버 상세의 팔레트 목적지를 다시 찾는다. */
@@ -98,6 +99,8 @@
     if (activeTab === "theme") themeSection?.expandForAnchor(anchor);
     // 원격 접속 — 접힌 카드 안의 칸이면 그 카드를 먼저 펼친다
     if (activeTab === "remote") remoteSection?.expandForAnchor(anchor);
+    // 알림 — 메신저 채널 칸(Telegram 의 말하기 줄 포함)이면 그 칸을 먼저 펼친다
+    if (activeTab === "notifications") notificationsSection?.expandForAnchor(anchor);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (pendingAnchor === anchor && revealAnchor(anchor)) pendingAnchor = null;
     }));
@@ -384,7 +387,7 @@
         <AutomationSection active={open && activeTab === "automation"} />
       </section>
       <section hidden={activeTab !== "notifications"}>
-        <NotificationsSection />
+        <NotificationsSection bind:this={notificationsSection} active={open && activeTab === "notifications"} />
       </section>
 
       <section hidden={activeTab !== "credentials"}>

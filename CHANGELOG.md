@@ -14,6 +14,14 @@ Write the next version's section before tagging it — the release workflow stop
 
 ### What's new
 
+- **Telegram notifications, and talking back**: connect a Telegram bot in **Settings › Notifications** (paste the bot token, then confirm the 6-digit code the bot sends you) to get notifications in Telegram.
+  - Turn on **Talk to AI tiles from the messenger** (off by default, main PC only) to reply from your phone: reply to a notification and your message goes to that Claude Code or Codex tile, and the full answer comes back when the turn ends.
+  - Permission prompts arrive with **Allow** and **Deny** buttons. Task plan approvals stay notifications only.
+  - Works for local AI tiles that are waiting for input. Remote tiles are not supported yet.
+- **Messenger channels in Settings are rows you expand**, like the AI agents list: connect, send a test and disconnect inside the row. The **+ Connect** button and the ⋯ menu are gone.
+- **Status chips in Settings are colored**: on, failed and partial states now color the whole chip instead of only the dot.
+- Fixed: turning off **Include conversation text** for messenger notifications was not saved.
+
 - **Claude Code and Codex tiles can let the AI read them too**, per tile and off by default — the same **Allow AI to read** as a shell tile.
 - **Local tiles show AI reading more simply**: **Allow AI to read** is now a check row in the tile ⋯ menu (and the terminal right-click menu) instead of the **AI access…** popover. While it is on, an eye chip shows in the tile header; press it to turn reading off. When it is off, there is no chip. Remote and query tiles are unchanged.
 - **The side chat can link several tiles at once** — up to 8. Check them in **+** › **Link a tile** (the menu stays open while you pick), and each linked tile gets its own chip above the message box; its × unlinks just that tile. The list shows each tile's icon — the same logo as its tab and header (shell, Claude/Codex or avatar, host) — with the tile code dimmed after the name.

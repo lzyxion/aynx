@@ -574,7 +574,7 @@ const SUMMARY_KEYS: &[&str] = &[
 ];
 
 /// 도구 입력 → 한 줄 요약("git status" · "src/x.ts"). 패치 글(`*** Update File: …`)이면 고친 파일들.
-fn tool_summary(input: &Value) -> String {
+pub(crate) fn tool_summary(input: &Value) -> String {
     match input {
         Value::Object(m) => {
             for k in SUMMARY_KEYS {

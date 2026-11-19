@@ -108,6 +108,8 @@ pub(crate) fn handle(op: &str, b: Value, _ctx: &ConnCtx) -> Result<Value, WireEr
                 super::hub::emit(crate::agent_signal::EVENT, p);
             }
             super::tile_permission::interrupted(&a.stream);
+            // 메신저 다리 2단계 — 사람이 끊은 턴은 다리가 더 돌보지 않는다(다리 턴의 답 처리는 1a 그대로 — 다음 `stop`)
+            super::messenger_bridge::untend(&a.stream);
             Ok(serde_json::json!({ "interrupted": interrupted }))
         }
         "agent_state_seen" => {

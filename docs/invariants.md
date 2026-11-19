@@ -85,6 +85,16 @@
   그 역할의 권한과 사람 감독이 진다 → [docs/log/2026-10-16-orchestration-headless-design.md](log/2026-10-16-orchestration-headless-design.md) · AI 는 자기 실행을 **자가 승인 못 한다**(approve 는 Tauri 전용, MCP 아님 — 세션 서버로 가는 **승인 등급 프레임은
   `approve_operation` 하나만** 만들고(소스 훑기 시험), 서버가 만료·상한·정책·권한·빈도를 다시 판정한다 — 서버 안 자동 승인 진입점도 `approve_in(…, "auto")` 하나, 시험 `auto_approve_has_one_entry`) ·
   위임되지 않은 범위는 여전히 승인 대기. 쓰기(실행)는 단계가 아니라 **이미 선 기능**이다.
+- **메신저 다리**(2026-11-19 사용자 결정 → [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md)) — 사람이 켠 것(`[messenger] telegram_chat` · 기본 끔 ·
+  **켜기는 메인 PC 에서만**)이고 **메인 PC 에서 6자리 코드로 짝지은 계정 하나**의 1:1 대화방 글만 받는다. 그 글은 **사람 입력**이다. 대상은
+  **턴이 끝나 입력을 기다리는 로컬 AI CLI 타일뿐** — 에이전트 상태 표에 항목이 없으면 거절하므로(`session-end` 가 항목을 지운다) 셸 타일 · CLI 가 끝난 타일 ·
+  원격 타일 · 한 번도 턴이 끝나지 않은 타일에는 길이 없다. 세션 서버 안에서 PTY 에 쓰는 길은 세션 op `write`(창)와 다리의 넣기 함수 **둘뿐**이다(시험
+  `pty_writes_have_two_sites`) · **AI 문자열→PTY 길은 여전히 없다**. 다리는 **타일 권한 카드**에 [허용] · [거절] 로 답할 수 있다 — 다리가 돌보는 스트림
+  (다리가 시작한 턴 · 단추 달린 권한 알림을 보낸 턴)의 카드만, 결정은 그 CLI 의 훅 응답으로만(PTY 아님 · 원격 웹의 카드 결정과 같은 등급 · 질문 카드 · 세션 허용은 없음).
+  **작업안 승인 · AI 권한 · 위임 · 앨범 · 볼트로 가는 길은 없다**(시험 `bridge_has_no_approval_path` — 승인 대기는 알림만). 가림막이 걸려 있어도 받는다(자리를 비운
+  동안 쓰는 기능 — 사용자 결정). 턴의 답 전문과 권한 물음의 도구 이름 · 입력 한 줄, 그리고 타일을 가리키는 글자 — 이름표(AI CLI 이름과 프로젝트 / 워크트리 — 프로젝트 밖이면 폴더 이름) ·
+  이름표가 겹칠 때의 대화 제목 · 기다리는 타일이 없을 때의 타일별 상태 한 줄(실행 중 · 권한 대기 …) — 가 메신저 회사 서버를 지난다(켠 사람에게만 ·
+  짝지은 대화방으로만). 지난 글(서버가 꺼져 있던 동안 쌓인 것)은 넣지 않는다.
 
 <a id="inv-5"></a>
 ## 5. 세션 로깅
@@ -92,11 +102,13 @@
 - 세션 로깅은 기본 꺼짐, **세션별 옵트인**.
 
 <a id="inv-6"></a>
-## 6. 메신저 웹훅 URL
+## 6. 메신저 웹훅 URL · 봇 토큰
 
-- **메신저 웹훅 URL 은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나), 멘션은 늘 막는다(Discord `allowed_mentions` · Slack `& < >` 걷기) →
+- **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook` · `<설정 루트>/telegram-bot`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나 · 봇은 이름 `@…` 까지), 멘션은 늘 막는다(Discord `allowed_mentions` · Slack `& < >` 걷기 · Telegram HTML 걷기) →
   [docs/log/2026-09-27-discord-notify.md](log/2026-09-27-discord-notify.md) ·
   [docs/log/2026-09-28-messenger-channels.md](log/2026-09-28-messenger-channels.md).
+- **봇 토큰을 읽는 것은 세션 서버뿐이다** — GUI 는 등록 때 서버 op 로 넘길 뿐이고(시험 `gui_never_reads_the_token_file`), Telegram 보내기 · 받기는 전부 세션 서버가 한다. 짝지은 계정(`<설정 루트>/telegram-chat`)도 같은 자리 · 같은 제외(개발 폴더 씨앗 · 설정 옮기기)다. 토큰 등록 · 계정 허용 · 해제는 **메인 PC 에서만**(`remote/deny.rs` HOME_ONLY) →
+  [docs/log/2026-11-18-messenger-bridge.md](log/2026-11-18-messenger-bridge.md).
 
 <a id="inv-7"></a>
 ## 7. 포트 포워드
@@ -221,8 +233,12 @@
   ws·로그에 없음) / 프로듀서 채팅 명령(`producer_chat_*`)은 ALLOW(사람의 말 · 결정 · 끊기 — `decide` 는 허용 목록 두 카드에만 뜻 · 앨범 시작 `producer_album_start` · 앨범 권한 넓힘 `orchestration_album_widen` 은 REAUTH ·
   앨범 영구 삭제 `orchestration_delete_archived` · 앨범 병합 `orchestration_merge` 는 REAUTH(병합 미리 보기는 ALLOW) · 넓힘 없는 변경 `orchestration_album_set` · 기본값 읽기 · 아티스트 명령 · 이름 변경 · `producer_fork_probe` 는 ALLOW — 서버가 다시 판정) / 사이드 채팅 명령(`side_chat_*` · `side_chats_*`)도 ALLOW(권한 카드 `side_chat_decide` 포함 · 재확인 없음 → [docs/log/2026-11-01-remote-side-chat.md](log/2026-11-01-remote-side-chat.md)). 플러그인은 `capabilities/remote.json` ACL 이 막고, 그 ACL 이 연 **이벤트 emit 은 이름으로 다시 거른다**(`deny::REMOTE_EMIT`
   넷만 — 기본 거절 · 메인 PC 리스너가 받는 순간 일을 하는 이벤트를 원격이 못 낸다). 메인 PC 에는 원격이 열 때 OS 알림 + 상태바 "원격 접속 중"
-  (둘 다 끌 수 없다). 볼트 값·MCP 토큰·웹훅 URL 은 여전히 원격으로 나가지 않는다 →
+  (둘 다 끌 수 없다). 볼트 값·MCP 토큰·웹훅 URL · 봇 토큰은 여전히 원격으로 나가지 않는다 →
   [docs/log/2026-10-15-remote-web-client-design.md](log/2026-10-15-remote-web-client-design.md).
+- **tailnet 밖에서 앱에 닿는 길은 메신저 다리 하나뿐이다**(2026-11-19) — 범위는 전문 4 의 것(입력을 기다리는 로컬 AI CLI 타일에 글 · 타일 권한 카드의 허용 · 거절)이
+  전부이고 앱 명령의 문(`remote/deny.rs`)을 지나지 않는다(Tauri 명령을 부르지 못한다). 원격 창은 다리를 켜지 못한다(`[messenger] telegram_chat` 켜기는
+  `settings_home_only` 가 거절 · 끄기는 된다). 원격 창에 열린 다리 명령은 상태 읽기 · 시험 한 통 · 타일 이름표 알리기(`messenger_bot_label` — 서버가 표시
+  글자를 적기만 한다)뿐이고(알림 보내기 `messenger_send` 는 예전 메신저 알림의 길 그대로), 토큰 · 계정 · 넣기 · 카드 결정으로 가는 것은 없다.
 
 <a id="inv-14"></a>
 ## 14. OS 자격증명 저장(닫힘)

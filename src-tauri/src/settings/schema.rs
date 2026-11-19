@@ -253,7 +253,7 @@ impl PlansPrefs {
 /// Rust 는 보관만 한다(`[ai] notify_turn_end` 와 같은 분담). 칸마다 `None` = 안 정함 = 프런트 기본값이고,
 /// 기본과 다른 값만 파일에 적힌다. 사건 규칙은 채널이 **함께** 쓰고, 채널마다의 보내기 칸(`discord` · `slack`)이 따로
 /// 있다(docs/log/2026-09-28-messenger-channels.md). **웹훅 URL 은 이 구조체에 없다** — [`crate::messenger`] 의
-/// 채널별 자기 파일.
+/// 채널별 자기 파일. 예외 하나 — `telegram_chat`(메신저 다리)은 세션 서버가 글마다 직접 읽는다(2026-11-18).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct MessengerPrefs {
     /// 언제 — `away`(기본: 가림막이 걸렸거나 입력이 한참 없을 때만) | `always`. 문자열을 **보관만** 한다.
@@ -303,6 +303,14 @@ pub struct MessengerPrefs {
     /// 승인 대기 알림에 **AI 가 쓴 설명**(`summary`)을 싣는가 (안 정하면 켬). 끄면 앱 분석 한 줄과 대상 · 만료만.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_summary: Option<bool>,
+    /// Telegram 봇으로 보내는가 (안 정하면 켬 — 봇이 등록되고 짝지은 대화방이 있어야 실제로 간다 · 2026-11-18 메신저 다리). **봇 토큰은 이
+    /// 구조체에 없다** — `<설정 루트>/telegram-bot`(읽는 것은 세션 서버뿐 — `server::messenger_bridge`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telegram: Option<bool>,
+    /// **메신저에서 타일에 말하기**(메신저 다리 — 짝지은 Telegram 계정의 글을 입력을 기다리는 로컬 AI 타일에 넣는다) (안 정하면 **끔**).
+    /// 다리가 글마다 이 칸을 다시 읽는다 — 끄면 곧바로 넣지 않는다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telegram_chat: Option<bool>,
 }
 
 impl MessengerPrefs {

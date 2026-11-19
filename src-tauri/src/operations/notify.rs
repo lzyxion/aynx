@@ -175,6 +175,10 @@ fn channels(prefs: &crate::settings::MessengerPrefs) -> Vec<crate::messenger::Ch
     if prefs.slack != Some(false) {
         out.push(crate::messenger::Channel::Slack);
     }
+    // Telegram 몫은 세션 서버의 다리가 보낸다(봇 · 짝이 없으면 조용히 건너뛴다 — `server::messenger_bridge::notify`).
+    if prefs.telegram != Some(false) {
+        out.push(crate::messenger::Channel::Telegram);
+    }
     out
 }
 
@@ -544,6 +548,8 @@ mod tests {
         p.discord = Some(false);
         assert!(messenger_wants(&p), "한 채널이라도 켜져 있으면 보낸다");
         p.slack = Some(false);
+        assert!(messenger_wants(&p), "Telegram 도 채널이다(안 정하면 켬)");
+        p.telegram = Some(false);
         assert!(!messenger_wants(&p), "켜진 채널이 없으면 보내지 않는다");
         assert!(!pending_wants(&p), "승인 대기도 같다");
         p.discord = None;

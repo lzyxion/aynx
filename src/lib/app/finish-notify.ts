@@ -10,6 +10,7 @@ import { tileAlertGroup, type AlertGroup } from "$lib/dock-alert-groups";
 import { APP, notifyOs, windowFocused } from "$lib/app/os-notify";
 import { recordNotification } from "$lib/app/notifications.svelte.js";
 import { messengerCommandFinish } from "$lib/app/messenger";
+import { sessionStreamOf } from "$lib/session";
 
 /**
  * **긴 명령이 끝났다** — 그 사실을 어디에 띄울지 정하고 실제로 띄운다
@@ -95,7 +96,12 @@ export function notifyFinishedBlock(
 
   // 메신저(Discord) — 아래 포커스·가시성 표와 **독립**이고 하한도 제 칸(`[messenger] command_min_secs`)이다
   // (docs/log/2026-09-27-discord-notify.md).
-  messengerCommandFinish(messengerName || tileName, { commandLine: block.commandLine, durationMs, exit: block.exit });
+  const pane = findPaneAnywhere(paneId);
+  messengerCommandFinish(
+    messengerName || tileName,
+    { commandLine: block.commandLine, durationMs, exit: block.exit },
+    pane ? sessionStreamOf(pane) : null,
+  );
 
   const where = shouldNotifyFinish({
     durationMs,

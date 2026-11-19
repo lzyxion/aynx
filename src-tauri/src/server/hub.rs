@@ -65,6 +65,11 @@ pub(crate) fn emit(name: &str, body: Value) {
     }
 }
 
+/// 이 프로세스가 세션 서버인가(이벤트 방송이 꽂혔다 — `serve::run`). 메신저의 Telegram 몫이 다리 함수를 곧장 부를지 서버 op 로 넘길지 가른다.
+pub(crate) fn in_server() -> bool {
+    read().events.is_some()
+}
+
 /// 신호 평면 포트(못 띄웠거나 서버 밖이면 `None`).
 pub(crate) fn signal_port() -> Option<u16> {
     read().signal_port

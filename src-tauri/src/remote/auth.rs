@@ -107,7 +107,7 @@ fn short_id() -> Option<String> {
 }
 
 /// 6자리 코드 — 거절 표집으로 치우침 없이.
-fn six_digits() -> Option<String> {
+pub(crate) fn six_digits() -> Option<String> {
     loop {
         let mut buf = [0u8; 4];
         getrandom::fill(&mut buf).ok()?;

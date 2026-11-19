@@ -3,15 +3,18 @@
 // `agent-banner-harness.mjs` 의 스텁 사본. `messenger_send` 를 스텁으로 받아 **프런트가 넘기는 것**을 본다 —
 // 진짜 전송(Discord)과 대화 파일 읽기(Rust)는 여기 없다(그쪽은 `cargo test` 의 `messenger::tests`).
 // AI 타일 하나를 등록 프로젝트의 워크트리 폴더에 두고 `agent-signal` 을 흉내 낸다:
-// ① start · tool-done ×3 · stop → `message` = 평문 구조 `{app, label:"Aynx · feat-message",
+// 턴 끝은 1분 넘는 턴만 · 30초 묶음이라(2026-11-16) 판이 `stop` 앞에서 페이지 시계(`Date.now`)를 61초 앞당긴다.
+// ① start · tool-done ×3 · stop → `message` = 평문 구조 `{app, label:"Aynx / feat-message",
 //   event:"Claude Code 작업이 끝났습니다", second:"<시간> · 도구 3회 · 파일 2개 변경"}`(마크다운 없음 — 서식은 Rust,
-//   docs/log/2026-09-28-messenger-channels.md) · `channels:["discord","slack"]`(stub 의 [messenger] 에 slack 칸이 없어 기본 켬 — 5a09c08) · 대화 가리킴 `{agent, id, event:"stop"}` ·
+//   docs/log/2026-09-28-messenger-channels.md) · `channels:["discord","slack","telegram"]`(stub 의 [messenger] 에 slack · telegram 칸이 없어 기본 켬 — 5a09c08 · 2026-11-19) · 타일 `stream` · `kind` · 대화 가리킴 `{agent, id, event:"stop"}` ·
 //   도장은 시작·끝 두 번 · 대화 제목·발췌는 **없다**(그것은 Rust 가 붙인다) ·
 // ② 권한 물음 → 둘째 줄에 도구 수 · 가리킴 event "permission" · 도장은 찍지 않는다 ·
 // ③ 대화 싣기 끔 → 가리킴 `null` · ④ 메신저 끔 → 보내지 않고 턴 시작 도장도 없다 ·
 // ⑤ start 를 못 본 stop → 도구·파일 없음 · ⑥ 프로젝트 밖 폴더 → 탭 이름으로 떨어진다 · 마지막에 콘솔 예외 0.
 //
-// usage:
+// usage (권장):
+//   node scripts/dev/run-harness.mjs messenger-harness.mjs <outdir>
+// 예비(손으로 — Edge 를 반드시 직접 끈다):
 //   npx vite --port 1557 --strictPort
 //   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new \
 //     --remote-debugging-port=9367 --user-data-dir=%TEMP%/edge-aynx-messenger \
@@ -19,6 +22,7 @@
 //   PAGE_PORT=1557 node scripts/dev/messenger-harness.mjs 9367
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { fakeAgentSignal } from "./agent-signal-fake.mjs";
+import { waitBoot } from "./boot-wait.mjs";
 const [port = process.env.CDP_PORT ?? "9367"] = process.argv.slice(2);
 const pagePort = process.env.PAGE_PORT ?? "1557";
 const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
@@ -58,6 +62,15 @@ const check = (ok, label) => {
   if (!ok) failed++;
   console.log(`${ok ? "PASS" : "FAIL"} ${label}`);
 };
+/** 부팅이 끝나고 쓸 모듈들이 자원 목록에 오를 때까지 */
+const reloadSettled = async () => {
+  await waitBoot(ev);
+  for (let i = 0; i < 50; i++) {
+    if ((await ev(`performance.getEntriesByType('resource').some(r => r.name.includes('app/tabs.svelte.ts'))`)) === true) break;
+    await sleep(100);
+  }
+  await sleep(500);
+};
 const importApp = (file) =>
   `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 
@@ -70,6 +83,9 @@ await send("Runtime.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: `
   performance.setResourceTimingBufferSize(10000);
+  // 시계 앞당기기 — 턴 끝 알림은 1분 넘는 턴만 · 같은 타일 같은 사건은 30초에 한 통이다(AGENT_STOP_MIN_MS · MESSENGER_COALESCE_MS — 2026-11-16).
+  // 판이 \`stop\` 앞에서 \`__skew\` 를 61초 늘린다(턴 길이와 묶음 간격을 함께 넘긴다).
+  { const realNow = Date.now.bind(Date); window.__skew = 0; Date.now = () => realNow() + window.__skew; }
   const cbs = new Map(); let n = 0; window.__calls = []; let nextSession = 100;
   window.__listeners = {};
   window.__focus = true; document.hasFocus = () => window.__focus;
@@ -99,6 +115,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
     list_ai_clis: [], operation_results: {}, list_console_sessions: [], delegation_list_targets: [],
     audit_status: { state: 'off', written: 0, failed: 0 }, mcp_activity: null, list_forwards: [],
     messenger_send: null, messenger_status: { configured: true },
+    term_theme_list: [], restore_done_sessions: { closed: 0, unclaimed: 0 },
     'plugin:notification|is_permission_granted': true,
   };
   window.__TAURI_INTERNALS__ = {
@@ -124,7 +141,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
 collecting = true;
 await send("Page.reload", { ignoreCache: true });
-await sleep(4000);
+// 고정 sleep 은 찬 vite 에서 모자랐다("module not loaded yet: app/tabs.svelte.ts" — 2026-11-19) — 부팅이 끝날 때까지 본다
+await reloadSettled();
 
 const tabsMod = importApp("app/tabs.svelte.ts");
 const panesMod = importApp("app/panes.svelte.ts");
@@ -149,6 +167,7 @@ const resetCalls = () => ev(`window.__calls.length = 0`);
 /** 보냄이 설 때까지 본다(상한 3초) — 보내기 앞의 비동기 일(이름표 · 도장)이 느린 판에 고정 대기가 모자랐다 */
 const waitSent = async (n = 1) => { for (let i = 0; i < 30; i++) { if ((await calls("messenger_send")).length >= n) break; await sleep(100); } await sleep(150); };
 const emit = async (event, extra = {}) => {
+  if (event === "stop") await ev(`window.__skew += 61000`);
   await ev(fakeAgentSignal({ stream: tile.stream, ...extra, event }));
   await sleep(120);
 };
@@ -158,8 +177,7 @@ await resetCalls();
 await emit("start", { session: CONVO });
 check((await calls("git_change_snapshot")).length === 1, "턴 시작 → 도장 한 번");
 for (let i = 0; i < 3; i++) await emit("tool-done");
-await sleep(1100); // 둘째 줄의 시간이 1초를 넘게
-await emit("stop", { session: CONVO });
+await emit("stop", { session: CONVO }); // 시계를 61초 앞당긴 뒤(emit)
 await waitSent();
 {
   const sent = await calls("messenger_send");
@@ -167,11 +185,13 @@ await waitSent();
   check(sent.length === 1, `턴 끝 → 한 번 보냄 (${sent.length})`);
   const m = sent[0]?.message ?? {};
   console.log("message:", JSON.stringify(m), "channels:", JSON.stringify(sent[0]?.channels));
-  check(/^Aynx/.test(m.app ?? "") && m.label === "Aynx · feat-message", `이름표 = 프로젝트 · 워크트리 (${m.app} / ${m.label})`);
+  // 이름표의 가름은 " / " 다(`messenger-label.ts` — 2026-11-16)
+  check(/^Aynx/.test(m.app ?? "") && m.label === "Aynx / feat-message",`이름표 = 프로젝트 · 워크트리 (${m.app} / ${m.label})`);
   check(m.event === "Claude Code 작업이 끝났습니다", `사건 = 평문 (${m.event})`);
-  check(/^\d+\.\d초 · 도구 3회 · 파일 2개 변경$/.test(m.second ?? ""), `둘째 줄 = 시간 · 도구 3회 · 파일 2개 변경 (${m.second})`);
+  check(/^1분 \d+초 · 도구 3회 · 파일 2개 변경$/.test(m.second ?? ""),`둘째 줄 = 시간 · 도구 3회 · 파일 2개 변경 (${m.second})`);
   check(!/\*\*/.test(JSON.stringify(m)), "서식 없음 — 마크다운은 Rust 가 입힌다");
-  check(JSON.stringify(sent[0]?.channels) === JSON.stringify(["discord", "slack"]), `켜진 채널 (${JSON.stringify(sent[0]?.channels)})`);
+  check(JSON.stringify(sent[0]?.channels) === JSON.stringify(["discord", "slack", "telegram"]), `켜진 채널 (${JSON.stringify(sent[0]?.channels)})`);
+  check(typeof sent[0]?.stream === "string" && sent[0].stream !== "" && sent[0]?.kind === "stop", `타일 스트림 · 종류 (${sent[0]?.stream} / ${sent[0]?.kind})`);
   check(
     JSON.stringify(sent[0]?.conversation) === JSON.stringify({ agent: "claude", id: CONVO, event: "stop" }),
     `대화 가리킴 (${JSON.stringify(sent[0]?.conversation)})`,
@@ -192,6 +212,7 @@ await waitSent();
   check(sent.length === 1 && /권한/.test(line1 ?? ""), `권한 물음 → 보냄 (${line1})`);
   check(/도구 1회$/.test(line2 ?? "") && !/파일/.test(line2 ?? ""), `둘째 줄 = 도구 수만, 파일은 세지 않는다 (${line2})`);
   check(sent[0]?.conversation?.event === "permission", "가리킴 event = permission");
+  check(sent[0]?.kind === "permission", `종류 = permission (${sent[0]?.kind})`);
   check((await calls("git_change_snapshot")).length === 1, "권한 물음은 도장을 찍지 않는다(시작 도장 하나뿐)");
 }
 await emit("stop", { session: CONVO });
@@ -209,14 +230,14 @@ await waitSent();
 }
 
 // ── ④ 메신저 끔 → 보내지 않고 도장도 없다 ───────────────────────────────────
-await ev(`(async () => { const s = await ${setMod}; s.setMessengerChannel('discord', false); s.setMessengerChannel('slack', false); })()`);
+await ev(`(async () => { const s = await ${setMod}; s.setMessengerChannel('discord', false); s.setMessengerChannel('slack', false); s.setMessengerChannel('telegram', false); })()`);
 await resetCalls();
 await emit("start", { session: CONVO });
 await emit("stop", { session: CONVO });
 await sleep(400);
 check((await calls("messenger_send")).length === 0, "메신저 끔 → 보내지 않는다");
 check((await calls("git_change_snapshot")).length === 0, "메신저 끔 → 턴마다 git 을 돌리지 않는다");
-await ev(`(async () => { const s = await ${setMod}; s.setMessengerChannel('discord', true); s.setMessengerChannel('slack', true); })()`);
+await ev(`(async () => { const s = await ${setMod}; s.setMessengerChannel('discord', true); s.setMessengerChannel('slack', true); s.setMessengerChannel('telegram', true); })()`);
 
 // ── ⑤ start 를 못 본 stop → 도구·파일 없음 ──────────────────────────────────
 await resetCalls();

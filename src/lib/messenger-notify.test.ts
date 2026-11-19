@@ -6,6 +6,7 @@ import {
   AGENT_STOP_MIN_MS,
   commandFinishEvent,
   commandGrade,
+  bridgeLabelText,
   createCoalesceGate,
   isAway,
   noticeGrade,
@@ -50,15 +51,29 @@ describe("resolveMessengerRules — 안 정한 칸의 기본값", () => {
       awayAfterMin: 5,
       discord: true,
       slack: true,
+      telegram: true,
+      telegramChat: false,
     });
   });
 
-  it("채널 칸 — 안 정하면 둘 다 켬 · 하나만 · 둘 다 끄면 목록이 빈다", () => {
-    expect(messengerChannels(resolveMessengerRules({}))).toEqual(["discord", "slack"]);
-    expect(messengerChannels(resolveMessengerRules({ discord: null, slack: null }))).toEqual(["discord", "slack"]);
-    expect(messengerChannels(resolveMessengerRules({ discord: false }))).toEqual(["slack"]);
-    expect(messengerChannels(resolveMessengerRules({ slack: false }))).toEqual(["discord"]);
-    expect(messengerChannels(resolveMessengerRules({ discord: false, slack: false }))).toEqual([]);
+  it("채널 칸 — 안 정하면 셋 다 켬 · 일부만 · 모두 끄면 목록이 빈다", () => {
+    expect(messengerChannels(resolveMessengerRules({}))).toEqual(["discord", "slack", "telegram"]);
+    expect(messengerChannels(resolveMessengerRules({ discord: null, slack: null, telegram: null }))).toEqual([
+      "discord",
+      "slack",
+      "telegram",
+    ]);
+    expect(messengerChannels(resolveMessengerRules({ discord: false }))).toEqual(["slack", "telegram"]);
+    expect(messengerChannels(resolveMessengerRules({ slack: false, telegram: false }))).toEqual(["discord"]);
+    expect(messengerChannels(resolveMessengerRules({ discord: false, slack: false }))).toEqual(["telegram"]);
+    expect(messengerChannels(resolveMessengerRules({ discord: false, slack: false, telegram: false }))).toEqual([]);
+  });
+
+  it("말하기(telegram_chat)는 안 정하면 끔이고 보내기 채널 목록과 상관없다", () => {
+    expect(resolveMessengerRules({}).telegramChat).toBe(false);
+    expect(resolveMessengerRules({ telegram_chat: null }).telegramChat).toBe(false);
+    expect(resolveMessengerRules({ telegram_chat: true }).telegramChat).toBe(true);
+    expect(messengerChannels(resolveMessengerRules({ telegram: false, telegram_chat: true }))).not.toContain("telegram");
   });
 
   it("모르는 when 은 기본(away)으로 떨어지고, 0 은 살아남는다", () => {
@@ -88,7 +103,7 @@ describe("isAway — 가림막이거나 입력이 한참 없었다", () => {
 
 describe("shouldSendMessenger — 표 하나", () => {
   it("켜진 채널이 없으면 아무것도 안 보낸다", () => {
-    const off = { ...on, discord: false, slack: false };
+    const off = { ...on, discord: false, slack: false, telegram: false };
     for (const kind of ["agent-stop", "agent-permission", "osc", "operation-result"] as const) {
       expect(shouldSendMessenger(kind, off, veiled)).toBe(false);
     }
@@ -218,7 +233,7 @@ describe("등급 · 거르기 · 묶기 (2026-11-16)", () => {
     expect(shouldSendMessenger("orchestration", on, here)).toBe(false);
     expect(shouldSendMessenger("orchestration", on, veiled)).toBe(true);
     expect(shouldSendMessenger("orchestration", { ...on, when: "always" }, here)).toBe(true);
-    expect(shouldSendMessenger("orchestration", { ...on, discord: false, slack: false }, veiled)).toBe(false);
+    expect(shouldSendMessenger("orchestration", { ...on, discord: false, slack: false, telegram: false }, veiled)).toBe(false);
   });
 
   it("앨범 등급 표 — Rust messenger_grade 와 같다", () => {
@@ -238,6 +253,20 @@ describe("등급 · 거르기 · 묶기 (2026-11-16)", () => {
     expect(operationGrade("good")).toBe("done");
     expect(operationGrade("bad")).toBe("failed");
     expect(operationGrade("plain")).toBeNull();
+  });
+
+  it("메신저 다리 이름표 — <CLI> · <프로젝트 / 워크트리 | 폴더 끝 이름> (탭 제목 없음)", () => {
+    // 프로젝트 안
+    expect(bridgeLabelText("Claude Code", "aynx · feat-y", "C:\\work\\aynx-wt\\feat-y")).toBe("Claude Code · aynx / feat-y");
+    // 프로젝트 밖 — 폴더 끝 이름(끝의 구분자 · 두 모양 모두)
+    expect(bridgeLabelText("Codex", null, "C:\\Users\\wlsdu\\")).toBe("Codex · wlsdu");
+    expect(bridgeLabelText("Codex", "", "/home/me/proj")).toBe("Codex · proj");
+    // 폴더 모름 — CLI 이름만
+    expect(bridgeLabelText("Claude Code", null, null)).toBe("Claude Code");
+    // CLI 모름 — 범위만 · 둘 다 모르면 빈 글자
+    expect(bridgeLabelText(null, "aynx · main", null)).toBe("aynx / main");
+    expect(bridgeLabelText(null, null, "C:\\x\\y")).toBe("y");
+    expect(bridgeLabelText(null, null, null)).toBe("");
   });
 
   it("같은 타일 · 같은 사건은 30초 안에 한 통", () => {

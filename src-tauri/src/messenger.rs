@@ -7,10 +7,15 @@
 //!
 //! ## 채널 — `enum Channel`
 //!
-//! [`Channel::Discord`] · [`Channel::Slack`] 둘이다(각자 등록 · 각자 보내기 칸, 사건 규칙은 함께). 채널마다 갈리는 것(비밀 파일 이름 · 주소 검사 · 본문 상한 · 몸통 모양 ·
-//! 서식 · 오류 문구의 이름)은 전부 [`Channel`] 의 `match` 한 곳씩에 있다. trait 로 벌리지 않는다 — 채널은 손에
+//! [`Channel::Discord`] · [`Channel::Slack`] · [`Channel::Telegram`] 셋이다(각자 등록 · 각자 보내기 칸, 사건 규칙은 함께). 채널마다 갈리는 것
+//! (비밀 파일 이름 · 서식 · 오류 문구의 이름)은 [`Channel`] 의 `match` 한 곳씩에, **웹훅에만 있는 것**(주소 검사 · 본문 상한 · 몸통 모양 · 웹훅 파일)은
+//! [`Webhook`](Discord · Slack)의 `match` 한 곳씩에 있다 — [`Channel::webhook`] 이 가른다. trait 로 벌리지 않는다 — 채널은 손에
 //! 꼽고, 한 파일 안의 `match` 가 "새 채널이 채워야 할 칸" 을 컴파일러가 세어 준다. 공통으로 남는 것:
 //! [`WebhookUrl`](비밀 감싸개) · 파일 load/save · [`client`] · [`post`] · 대화 줄 읽기 · `without_url` 오류 처리.
+//!
+//! **Telegram(2026-11-18 메신저 다리)** 은 웹훅이 아니라 봇이다 — 서식(HTML `parse_mode` · 굵게 `<b>` · `& < >` 걷기 · 상한 4096)만 여기서 그리고,
+//! 보내기 · 받기 · 봇 토큰(`<설정 루트>/telegram-bot`)은 **세션 서버**의 `server::messenger_bridge` 가 쥔다. 이 파일은 토큰 파일을 읽지 않는다 —
+//! 그린 한 통을 세션 서버 안이면 다리 함수로, GUI 면 서버 op `messenger_bot_notify` 로 넘긴다([`send_telegram`]).
 //!
 //! ## 서식은 여기 한 층에서만
 //!
@@ -83,6 +88,17 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 pub enum Channel {
     Discord,
     Slack,
+    /// Telegram 봇(2026-11-18 메신저 다리 — 보내기 · 받기 모두 **세션 서버**가 한다: `server::messenger_bridge`). 웹훅이 아니라 [`Webhook`] 이 없다.
+    Telegram,
+}
+
+/// **웹훅 채널** — 비밀 한 칸이 웹훅 URL 이고 HTTPS POST 한 번으로 보내는 채널(Discord · Slack). 웹훅에만 있는 칸(주소 검사 · 몸통 모양 ·
+/// 본문 상한 · 파일 이름)은 여기 `match` 한 곳씩에 있다 — [`Channel`] 의 `match` 와 같이 새 웹훅 채널이 채울 칸을 컴파일러가 센다.
+/// Telegram 은 웹훅이 아니라 봇이므로 이 enum 에 없다([`Channel::webhook`] 이 `None`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Webhook {
+    Discord,
+    Slack,
 }
 
 /// Discord 메시지 `content` 의 최대 글자 수.
@@ -110,40 +126,40 @@ const SLACK_HOST: &str = "hooks.slack.com";
 /// Slack 웹훅 경로의 머리.
 const SLACK_PATH_PREFIX: &str = "/services/";
 
-impl Channel {
-    /// 모든 채널 — 씨앗 시험(`instance.rs`)이 비밀 파일 이름을 이것으로 센다.
+impl Webhook {
+    /// 모든 웹훅 채널.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) const ALL: &'static [Channel] = &[Channel::Discord, Channel::Slack];
+    pub(crate) const ALL: &'static [Webhook] = &[Webhook::Discord, Webhook::Slack];
 
-    /// 사람이 읽는 이름(오류 문구에 쓴다).
-    fn name(self) -> &'static str {
+    /// 그 채널.
+    pub(crate) fn channel(self) -> Channel {
         match self {
-            Channel::Discord => "Discord",
-            Channel::Slack => "Slack",
+            Webhook::Discord => Channel::Discord,
+            Webhook::Slack => Channel::Slack,
         }
     }
 
     /// 웹훅 URL 을 담는 파일 이름(설정 루트 바로 아래).
     pub(crate) fn webhook_file(self) -> &'static str {
         match self {
-            Channel::Discord => "discord-webhook",
-            Channel::Slack => "slack-webhook",
+            Webhook::Discord => "discord-webhook",
+            Webhook::Slack => "slack-webhook",
         }
     }
 
     /// 본문(`content` · `text`)의 최대 글자 수.
     fn content_max_chars(self) -> usize {
         match self {
-            Channel::Discord => DISCORD_CONTENT_MAX_CHARS,
-            Channel::Slack => SLACK_TEXT_MAX_CHARS,
+            Webhook::Discord => DISCORD_CONTENT_MAX_CHARS,
+            Webhook::Slack => SLACK_TEXT_MAX_CHARS,
         }
     }
 
     /// 사용자가 붙여 넣은 글자 → 웹훅 URL. 틀리면 **까닭을 말하는** 문구 — 그 문구에 URL 은 없다.
     fn validate(self, raw: &str) -> Result<WebhookUrl, String> {
         match self {
-            Channel::Discord => validate_discord(raw),
-            Channel::Slack => validate_slack(raw),
+            Webhook::Discord => validate_discord(raw),
+            Webhook::Slack => validate_slack(raw),
         }
     }
 
@@ -152,24 +168,57 @@ impl Channel {
     fn payload(self, text: &str, username: &str, alert: bool) -> serde_json::Value {
         let content = truncate_chars(text, self.content_max_chars());
         match self {
-            Channel::Discord if alert => serde_json::json!({
+            Webhook::Discord if alert => serde_json::json!({
                 "embeds": [{ "description": content, "color": DISCORD_ALERT_COLOR }],
                 "username": username,
                 "allowed_mentions": { "parse": [] },
             }),
             // `username`(창 제목과 같은 앱 이름) · 멘션 전부 막기.
-            Channel::Discord => serde_json::json!({
+            Webhook::Discord => serde_json::json!({
                 "content": content,
                 "username": username,
                 "allowed_mentions": { "parse": [] },
             }),
             // `username` 은 싣지 않는다(앱의 Incoming Webhook 은 무시한다). 링크 미리 보기는 끈다 — 원격 글자의
             // 주소를 Slack 서버가 대신 열러 가지 않게. 멘션은 몸통 칸이 아니라 걷기([`Channel::escape`])가 막는다.
-            Channel::Slack => serde_json::json!({
+            Webhook::Slack => serde_json::json!({
                 "text": content,
                 "unfurl_links": false,
                 "unfurl_media": false,
             }),
+        }
+    }
+}
+
+impl Channel {
+    /// 모든 채널 — 씨앗 시험(`instance.rs`)이 비밀 파일 이름을 이것으로 센다.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) const ALL: &'static [Channel] = &[Channel::Discord, Channel::Slack, Channel::Telegram];
+
+    /// 사람이 읽는 이름(오류 문구에 쓴다).
+    fn name(self) -> &'static str {
+        match self {
+            Channel::Discord => "Discord",
+            Channel::Slack => "Slack",
+            Channel::Telegram => "Telegram",
+        }
+    }
+
+    /// 웹훅 채널이면 그 갈래 — Telegram(봇)은 `None`.
+    pub(crate) fn webhook(self) -> Option<Webhook> {
+        match self {
+            Channel::Discord => Some(Webhook::Discord),
+            Channel::Slack => Some(Webhook::Slack),
+            Channel::Telegram => None,
+        }
+    }
+
+    /// 이 채널의 **비밀 파일** 이름(설정 루트 바로 아래) — 웹훅 URL · 봇 토큰. 씨앗 · 설정 옮기기 제외 시험이 센다. Telegram 의 파일을
+    /// **읽는 것은 세션 서버뿐**이다(`server::messenger_bridge` — 이 파일은 이름만 안다).
+    pub(crate) fn secret_file(self) -> &'static str {
+        match self.webhook() {
+            Some(w) => w.webhook_file(),
+            None => "telegram-bot",
         }
     }
 
@@ -193,12 +242,31 @@ impl Channel {
                 .replace('&', "&amp;")
                 .replace('<', "&lt;")
                 .replace('>', "&gt;"),
+            // Telegram HTML `parse_mode` — 태그 밖의 `& < >` 셋(Bot API 문서). 우리가 다는 태그(`<b>`)만 남는다 — 남의 글자로 링크 ·
+            // 멘션 태그를 만들 수 없다. 링크 미리 보기는 몸통이 끈다(`telegram::send_message_body`).
+            Channel::Telegram => crate::telegram::escape_html(&flat),
         }
     }
 
     /// 대화 줄 하나를 그린다(발췌는 여러 줄 — 줄마다 `> `). 앞의 `「」` · `> ` 는 우리 글자라 걷지 않는다 — 대화 글자는
     /// **줄마다** 걷는다([`Channel::escape`] 는 한 줄로 펴므로 줄을 나눈 뒤에 부른다).
     fn render_convo_line(self, line: &ConvoLine) -> String {
+        let out = self.render_convo_line_raw(line);
+        match self {
+            Channel::Discord | Channel::Slack => out,
+            // HTML 에서는 태그 밖의 `>` 도 걷는다(Bot API) — 우리 인용 표식 `> ` 를 `&gt; ` 로(남의 글자는 이미 걷었다).
+            Channel::Telegram => out
+                .split('\n')
+                .map(|l| match l.strip_prefix("> ") {
+                    Some(rest) => format!("&gt; {rest}"),
+                    None => l.to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+
+    fn render_convo_line_raw(self, line: &ConvoLine) -> String {
         match line {
             ConvoLine::Title(t) => format!("「{}」", self.escape(t)),
             ConvoLine::Excerpt(lines) => lines
@@ -227,6 +295,7 @@ impl Channel {
         let bold = |s: String| match self {
             Channel::Discord => format!("**{s}**"),
             Channel::Slack => format!("*{s}*"),
+            Channel::Telegram => format!("<b>{s}</b>"),
         };
         match msg.grade {
             Some(g) => format!("{} {} — {event}", g.mark(), bold(format!("{} · {label}", g.word()))),
@@ -257,7 +326,7 @@ impl Channel {
     }
 
     /// 설정 화면 "테스트 보내기" 의 고정 문구.
-    fn test_text(self) -> String {
+    pub(crate) fn test_text(self) -> String {
         let app = crate::instance::WINDOW_TITLE;
         match self {
             Channel::Discord => tr!(
@@ -268,6 +337,21 @@ impl Channel {
                 ko: "*{app}* — 알림 시험입니다. 이 줄이 보이면 연결됐습니다.",
                 en: "*{app}* — Test notification. If you can see this, it works.",
             ),
+            Channel::Telegram => {
+                let app = crate::telegram::escape_html(app);
+                tr!(
+                    ko: "<b>{app}</b> — 알림 시험입니다. 이 줄이 보이면 연결됐습니다.",
+                    en: "<b>{app}</b> — Test notification. If you can see this, it works.",
+                )
+            }
+        }
+    }
+
+    /// 그린 한 통의 상한 — 웹훅은 몸통이 자르고(`Webhook::payload`), Telegram 은 HTML 을 깨지 않게 자른다([`crate::telegram::clip_html`]).
+    pub(crate) fn clip_rendered(self, text: String) -> String {
+        match self {
+            Channel::Discord | Channel::Slack => text,
+            Channel::Telegram => crate::telegram::clip_html(&text, crate::telegram::TEXT_MAX),
         }
     }
 }
@@ -364,12 +448,12 @@ fn validate_slack(raw: &str) -> Result<WebhookUrl, String> {
 }
 
 /// `<설정 루트>/<채널 파일>` (개발 빌드는 `aynx-dev` 아래 — [`crate::instance::config_root`]).
-fn webhook_path(channel: Channel) -> Option<PathBuf> {
+fn webhook_path(channel: Webhook) -> Option<PathBuf> {
     Some(crate::instance::config_root()?.join(channel.webhook_file()))
 }
 
 /// 파일에서 읽는다 — 없거나 · 못 읽거나 · 손으로 고쳐 검사를 못 지나면 `None`(= 등록 안 됨).
-fn load_at(channel: Channel, path: &Path) -> Option<WebhookUrl> {
+fn load_at(channel: Webhook, path: &Path) -> Option<WebhookUrl> {
     let text = std::fs::read_to_string(path).ok()?;
     channel.validate(&text).ok()
 }
@@ -390,12 +474,12 @@ fn save_at(path: &Path, url: Option<&WebhookUrl>) -> std::io::Result<()> {
     }
 }
 
-fn load(channel: Channel) -> Option<WebhookUrl> {
+fn load(channel: Webhook) -> Option<WebhookUrl> {
     load_at(channel, &webhook_path(channel)?)
 }
 
 /// 블로킹 없이 읽는다. 실행기 오류도 문구로(URL 없음).
-async fn load_async(channel: Channel) -> Result<Option<WebhookUrl>, String> {
+async fn load_async(channel: Webhook) -> Result<Option<WebhookUrl>, String> {
     tauri::async_runtime::spawn_blocking(move || load(channel)).await.map_err(|e| {
         tr!(ko: "웹훅 주소를 읽지 못했습니다: {e}", en: "Could not read the webhook URL: {e}")
     })
@@ -534,7 +618,7 @@ impl Message {
 /// 대화 글자 없이 켜진 채널로 보낸다 — [`messenger_send`] 와 같은 길(등록 안 된 채널은 조용히 건너뛴다). GUI 트레이·세션 서버가
 /// 창 없이 작업안 결과를 보낼 때 쓴다(③-4). 실패는 채널마다 모은 문구 하나(URL 없음).
 pub(crate) async fn send_plain(message: Message, channels: Vec<Channel>) -> Result<(), String> {
-    messenger_send(message, None, channels, None).await
+    messenger_send(message, None, channels, None, None, None).await
 }
 
 // ---------------------------------------------------------------------------
@@ -790,8 +874,8 @@ fn client() -> Result<&'static reqwest::Client, String> {
 }
 
 /// 그려 둔 본문 하나를 그 채널의 웹훅으로 보낸다. 오류 문구에는 URL 이 없다.
-async fn post(channel: Channel, url: &WebhookUrl, text: &str, alert: bool) -> Result<(), String> {
-    let name = channel.name();
+async fn post(channel: Webhook, url: &WebhookUrl, text: &str, alert: bool) -> Result<(), String> {
+    let name = channel.channel().name();
     let body = channel
         .payload(text, crate::instance::WINDOW_TITLE, alert)
         .to_string();
@@ -819,7 +903,21 @@ async fn post(channel: Channel, url: &WebhookUrl, text: &str, alert: bool) -> Re
 /// 등록 안 된 채널의 문구.
 fn not_registered(channel: Channel) -> String {
     let name = channel.name();
-    tr!(ko: "등록된 {name} 웹훅이 없습니다", en: "No {name} webhook is registered")
+    match channel.webhook() {
+        Some(_) => tr!(ko: "등록된 {name} 웹훅이 없습니다", en: "No {name} webhook is registered"),
+        None => tr!(ko: "연결된 {name} 봇이 없습니다", en: "No {name} bot is connected"),
+    }
+}
+
+/// Telegram 몫 한 통 — **세션 서버가 보낸다**(봇 토큰을 읽는 것은 서버뿐 — `server::messenger_bridge` 머리말). 세션 서버 안에서 부르면
+/// (작업안 결과 · 승인 대기 · 앨범 사건 — `send_plain`) 다리 함수를 곧장, GUI 프로세스면 서버 op `messenger_bot_notify` 로(`messenger_bridge_proxy`).
+/// 봇이 없거나 짝이 없으면 조용히 건너뛴다(웹훅의 "등록 안 됨" 과 같다).
+async fn send_telegram(notice: crate::server::messenger_bridge::Notice) -> Result<(), String> {
+    if crate::server::hub::in_server() {
+        crate::server::messenger_bridge::notify(notice).await
+    } else {
+        crate::server::messenger_bridge_proxy::notify(notice).await
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -832,19 +930,29 @@ pub struct MessengerStatus {
     pub configured: bool,
 }
 
-/// 그 채널의 웹훅이 등록돼 있는가.
+/// 그 채널의 웹훅이 등록돼 있는가. Telegram 은 세션 서버의 봇 상태(`configured`)를 묻는다(토큰은 오가지 않는다).
 #[tauri::command]
 pub async fn messenger_status(channel: Channel) -> MessengerStatus {
-    let configured = load_async(channel).await.ok().flatten().is_some();
+    let configured = match channel.webhook() {
+        Some(w) => load_async(w).await.ok().flatten().is_some(),
+        None => crate::server::messenger_bridge_proxy::configured().await,
+    };
     MessengerStatus { configured }
 }
 
-/// 그 채널의 웹훅을 등록한다(`Some`) · 지운다(`None` 또는 빈 글자). 틀린 주소는 까닭과 함께 거절한다.
+/// 그 채널의 웹훅을 등록한다(`Some`) · 지운다(`None` 또는 빈 글자). 틀린 주소는 까닭과 함께 거절한다. Telegram 봇 토큰은 이 명령이 아니라
+/// `messenger_bot_set_token` 으로 등록한다(세션 서버가 받는다).
 #[tauri::command]
 pub async fn messenger_set_webhook(
     channel: Channel,
     url: Option<String>,
 ) -> Result<MessengerStatus, String> {
+    let Some(channel) = channel.webhook() else {
+        return Err(tr!(
+            ko: "Telegram 은 웹훅이 아니라 봇 토큰으로 연결합니다",
+            en: "Telegram connects with a bot token, not a webhook",
+        ));
+    };
     let parsed = match url.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(raw) => Some(channel.validate(raw)?),
@@ -865,13 +973,16 @@ pub async fn messenger_set_webhook(
     .map_err(|e| tr!(ko: "웹훅 저장을 실행하지 못했습니다: {e}", en: "Could not run the webhook save: {e}"))?
 }
 
-/// 고정된 시험 문구 한 줄을 그 채널로 보낸다 — 설정 화면의 "테스트 보내기".
+/// 고정된 시험 문구 한 줄을 그 채널로 보낸다 — 설정 화면의 "테스트 보내기". Telegram 은 `messenger_bot_test` 와 같은 길.
 #[tauri::command]
 pub async fn messenger_test(channel: Channel) -> Result<(), String> {
-    let Some(url) = load_async(channel).await? else {
+    let Some(w) = channel.webhook() else {
+        return crate::server::messenger_bridge_proxy::messenger_bot_test().await;
+    };
+    let Some(url) = load_async(w).await? else {
         return Err(not_registered(channel));
     };
-    post(channel, &url, &channel.test_text(), false).await
+    post(w, &url, &channel.test_text(), false).await
 }
 
 /// 알림 한 통을 `channels` 가운데 **등록된 채널 각각**에 보낸다. 무엇을 언제 보낼지는 프런트가 정한다
@@ -884,12 +995,18 @@ pub async fn messenger_test(channel: Channel) -> Result<(), String> {
 /// `operation` 이 오면(승인 대기 — 승인 요약) 프런트가 넘긴 `message` 는 앱 이름만 쓰고, 한 통은 여기서 짓는다: 서버 목록에서 그 작업안이
 /// **아직 사람을 기다리는지** 다시 보고(자동 승인 · 거절 · 만료로 떠났으면 보내지 않는다) 설정 파일의 칸을 다시 본 뒤
 /// `operations::notify::pending_message` 가 짓는다. 프런트는 작업안 id 하나만 넘긴다(글자를 짓지 않는다).
+///
+/// `stream` · `kind`(2026-11-18 메신저 다리 — 선택): 그 알림을 낸 타일의 스트림과 종류(`stop` · `permission` …). Telegram 몫에만 쓰인다 —
+/// 서버가 "보낸 메시지 id → 스트림" 을 적어 답장을 그 타일로 보내고(이름표도 기억), 다리가 시작한 턴의 같은 알림은 한 번 더 보내지 않는다.
+/// 없으면 그 둘만 빠진다(알림은 그대로 간다).
 #[tauri::command]
 pub async fn messenger_send(
     message: Message,
     conversation: Option<ConversationRef>,
     channels: Vec<Channel>,
     operation: Option<String>,
+    stream: Option<String>,
+    kind: Option<String>,
 ) -> Result<(), String> {
     let message = match operation {
         Some(id) => match crate::operations::notify::pending_from_gui(&id, &message.app).await {
@@ -901,19 +1018,24 @@ pub async fn messenger_send(
     if message.event.trim().is_empty() {
         return Ok(());
     }
-    let mut targets: Vec<(Channel, WebhookUrl)> = Vec::new();
+    let mut targets: Vec<(Webhook, WebhookUrl)> = Vec::new();
+    let mut telegram = false;
     let mut errors: Vec<String> = Vec::new();
     for channel in channels {
-        if targets.iter().any(|(c, _)| *c == channel) {
+        let Some(w) = channel.webhook() else {
+            telegram = true;
+            continue;
+        };
+        if targets.iter().any(|(c, _)| *c == w) {
             continue;
         }
-        match load_async(channel).await {
-            Ok(Some(url)) => targets.push((channel, url)),
+        match load_async(w).await {
+            Ok(Some(url)) => targets.push((w, url)),
             Ok(None) => {} // 등록 안 됨 — 조용히 건너뛴다
             Err(e) => errors.push(e),
         }
     }
-    if !targets.is_empty() {
+    if !targets.is_empty() || telegram {
         let convo = match conversation {
             Some(c) => tauri::async_runtime::spawn_blocking(move || conversation_lines(&c))
                 .await
@@ -921,8 +1043,16 @@ pub async fn messenger_send(
             None => Vec::new(),
         };
         for (channel, url) in &targets {
-            let text = channel.render(&message, &convo);
+            let text = channel.channel().render(&message, &convo);
             if let Err(e) = post(*channel, url, &text, message.alert).await {
+                errors.push(e);
+            }
+        }
+        if telegram {
+            let text = Channel::Telegram.clip_rendered(Channel::Telegram.render(&message, &convo));
+            let label = (!message.label.trim().is_empty()).then(|| message.label.clone());
+            let notice = crate::server::messenger_bridge::Notice { text, stream, kind, label };
+            if let Err(e) = send_telegram(notice).await {
                 errors.push(e);
             }
         }
@@ -933,6 +1063,7 @@ pub async fn messenger_send(
         Err(errors.join(" · "))
     }
 }
+
 
 #[cfg(test)]
 mod tests;

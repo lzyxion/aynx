@@ -36,7 +36,7 @@
 //! 시도한다(시작할 때 Funnel 을 다시 본다).
 
 mod activity;
-mod auth;
+pub(crate) mod auth;
 mod bridge;
 pub(crate) mod deny;
 mod frames;

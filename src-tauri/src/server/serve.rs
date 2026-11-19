@@ -63,6 +63,8 @@ pub(crate) struct Config {
     pub db_conns: Option<PathBuf>,
     /// 오케스트레이션 영속 폴더(2026-10-14) — 제품은 `orchestration::store_dir()`, 시험은 임시 폴더(`None` = 안 씀).
     pub orchestration_dir: Option<PathBuf>,
+    /// 메신저 다리(2026-11-18)를 띄울까 — 제품 true(설정 루트의 봇 토큰이 있으면 Telegram 롱폴), 시험 서버 false(실제 네트워크에 닿지 않게).
+    pub messenger_bridge: bool,
 }
 
 /// `run` 이 끝난 까닭.
@@ -280,6 +282,10 @@ pub(crate) async fn run(cfg: Config) -> Exit {
     let plane = Arc::new(VaultPlane::new(cfg.vault_dir.clone()));
     // SSH 평면(③-3b2)의 공용 손잡이 — 이벤트 방송 · 신호 포트(원격 `-R` 의 이어 줄 곳) · 금고(SSH 인증이 직접 읽는다).
     super::hub::install(events.clone(), signal.as_ref().map(|p| p.port), plane.vault.clone(), plane.broker.clone());
+    // 메신저 다리(판 34) — 런타임 손잡이를 쥐고, 봇 토큰이 있으면 롱폴 고리를 띄운다(`messenger_bridge` 머리말).
+    if cfg.messenger_bridge {
+        super::messenger_bridge::start(super::messenger_bridge::Config::release());
+    }
     // SSH 세션 id 의 바탕 — 로컬과 같은 규칙(서버가 다시 떠도 GUI 가 쥔 옛 id·SFTP 캐시와 겹치지 않게).
     crate::ssh::seed_ids(((now_ms() / 1000) % 2000 + 1) as u32 * 1_000_000);
     let shared = Arc::new(Shared {
@@ -620,6 +626,20 @@ async fn serve_conn(stream: BoxStream, peer: Peer, shared: Arc<Shared>) {
                 Frame::err(id, WireError::new(code::PROTOCOL_MISMATCH, "tile permission ops need protocol 22"))
             }
             Routed::Session(body) if super::tile_permission::is_op(&op) => to_frame(id, super::tile_permission::handle(&op, body)),
+            // 메신저 다리(판 34) — 판 33 이하로 붙은 GUI 는 이 op 를 모른다. Telegram 요청을 기다리므로 태스크로(몸 · 응답은 로그에 남기지 않는다 — 토큰 · 본문).
+            Routed::Session(_)
+                if super::messenger_bridge::is_op(&op) && negotiated.is_some_and(|p| p < frame::MESSENGER_BOT_PROTOCOL) =>
+            {
+                Frame::err(id, WireError::new(code::PROTOCOL_MISMATCH, "messenger bot ops need protocol 34"))
+            }
+            Routed::Session(body) if super::messenger_bridge::is_op(&op) => {
+                let tx = out_tx.clone();
+                tokio::spawn(async move {
+                    let r = super::messenger_bridge::handle(&op, body).await;
+                    let _ = tx.send(to_frame(id, r));
+                });
+                continue;
+            }
             Routed::Session(body) if super::signals::is_signal_op(&op) => {
                 to_frame(id, super::signals::handle(&op, body, &ctx))
             }
