@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { isRemote } from "$lib/ipc";
   import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
   import {
     loadHosts,
@@ -1148,14 +1149,17 @@
       aria-label={t("app.hosts.add")}
       onclick={() => onaddhost(targetFolder)}><UiIcon name="plus" size={14} /></button
     >
-    <button
-      type="button"
-      class="btn btn-ghost icon-btn"
-      data-host-config
-      title={t("app.hosts.config.title")}
-      aria-label={t("app.hosts.config.aria")}
-      onclick={onopenconfig}><UiIcon name="settings" size={14} /></button
-    >
+    <!-- 설정 파일 열기 — 메인 PC 의 기본 편집기를 띄우는 일이라(`open_ssh_config` 는 `remote/deny.rs` 가 거절) 원격 창에는 없다 -->
+    {#if !isRemote}
+      <button
+        type="button"
+        class="btn btn-ghost icon-btn"
+        data-host-config
+        title={t("app.hosts.config.title")}
+        aria-label={t("app.hosts.config.aria")}
+        onclick={onopenconfig}><UiIcon name="settings" size={14} /></button
+      >
+    {/if}
   </div>
 
   <!--

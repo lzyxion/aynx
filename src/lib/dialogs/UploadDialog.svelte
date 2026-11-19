@@ -41,7 +41,12 @@
       <div class="glass-scroll">
       <h2 id="up-title">{t(uploadWords.title)}</h2>
       <p class="lead">
-        {#if uploadTarget()?.kind === "local"}
+        <!-- 원격 창이면 로컬 타일이라도 파일이 이 기기에서 ws 로 올라간다 — "복사" 가 아니다.
+             `uploadVerb` 가 이미 원격 창을 "uploading" 으로 갈라 두었으니 그 값으로 가른다 -->
+        {#if uploadTarget()?.kind === "local" && uploadWords.ing === "uploading"}
+          <strong>{up.pane}</strong
+          >{t("app.upload.lead.device.1")}
+        {:else if uploadTarget()?.kind === "local"}
           <strong>{up.pane}</strong
           >{t("app.upload.lead.local.1")}<strong>{t("app.upload.lead.local.term")}</strong
           >{t("app.upload.lead.local.2")}
@@ -175,6 +180,9 @@
     font-size: var(--t-sm);
     line-height: 1.55;
     color: var(--fg-2);
+    /* 대상 폴더 경로(`<strong>{up.pane}</strong>`)는 공백 없는 긴 토큰일 수 있다 — 꺾이지 않으면 모달 밖으로 나가고
+       스크롤 칸에 가로 막대가 선다(2026-11-19 실기) */
+    overflow-wrap: anywhere;
   }
 
   .attempt {
@@ -305,6 +313,8 @@
     line-height: 1.5;
     color: var(--warn);
     word-break: keep-all;
+    /* 사유에 긴 파일 이름이 들어가도 목록에 가로 막대가 서지 않게 — 다른 끊을 자리가 없을 때만 꺾는다 */
+    overflow-wrap: anywhere;
     user-select: text;
   }
 </style>

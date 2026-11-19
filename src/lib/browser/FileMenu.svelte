@@ -5,6 +5,9 @@
   import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
   import type { InlineEdit } from "$lib/browser/inline-edit.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
+  import { deviceDownloadRow, type DeviceDownloadRow } from "$lib/browser/device-download";
+  import type { Key } from "$lib/i18n/keys";
 
   /**
    * **파일 타일의 우클릭 메뉴** — 항목 메뉴 · 다중 선택 메뉴 · 빈 배경 메뉴, 그리고 그 안에서
@@ -28,6 +31,7 @@
     isLocal,
     selCount,
     selPaths,
+    selHasFolder,
     /** 전송이 도는 중인가 — [다운로드]·[내보내기]를 흐리게 하고 이유를 괄호로 적는다 */
     busy,
     hasClip,
@@ -42,6 +46,7 @@
     onpaste,
     ondownload,
     onexport,
+    ontodevice,
     onopenentry,
     onpreview,
     oneditentry,
@@ -73,6 +78,8 @@
     isLocal: boolean;
     selCount: number;
     selPaths: readonly string[];
+    /** 고른 것 중 폴더(폴더를 가리키는 링크 포함)가 있는가 — 다중 메뉴의 [이 기기로 다운로드] 줄이 서는지 가른다 */
+    selHasFolder: boolean;
     busy: boolean;
     hasClip: boolean;
     removeTargets: readonly string[];
@@ -84,6 +91,8 @@
     onpaste: () => void;
     ondownload: (paths: readonly string[]) => void;
     onexport: (paths: readonly string[]) => void;
+    /** 원격 창의 [이 기기로 다운로드] — 파일 하나 또는 여럿(차례로 · `browser/device-download.ts`) */
+    ontodevice: (paths: readonly string[]) => void;
     onopenentry: (entry: SftpEntry) => void;
     /** "미리 보기" — 문서 보기 타일로 연다(docs/log/2026-09-27-doc-tile.md). 없으면 그 줄이 서지 않는다 */
     onpreview?: (entry: SftpEntry) => void;
@@ -112,6 +121,12 @@
       ? baseNameOf(removeTargets[0])
       : t("files.menu.remove.targets", { count: removeTargets.length }),
   );
+
+  /** [이 기기로 다운로드] 줄의 글자 — 서는 상태(`deviceDownloadRow`)마다 하나("none" 은 줄이 없다) */
+  const toDeviceLabel: Record<Exclude<DeviceDownloadRow, "none">, Key> = {
+    go: "files.menu.todevice",
+    busy: "files.menu.todevice.busy",
+  };
 
   /** 항목 하나를 대상으로 하는 통로 — 대상은 **인자로** 온다 */
   const onEntry = (fn: (entry: SftpEntry) => void) => runOnMenu(() => menu.entry, onclose, fn);
@@ -245,6 +260,26 @@
         {t("files.menu.paste")}
       </button>
     {/if}
+    <!--
+      원격 창 — 두 줄([다운로드] · [내보내기])은 메인 PC 대화상자라 서지 못하고, 그 자리에 [이 기기로 다운로드] 한 줄
+      (고른 파일을 차례로). 폴더가 하나라도 섞이면(`deviceDownloadRow` → "none") 보내기 무리가 통째로 없다 — 구분선도
+      세우지 않는다. 구분선 규칙은 메인 PC 창의 보내기 무리와 같다. 통로는 [다운로드]와 같은 `runOnMenu`.
+    -->
+    {#if isRemote}
+      {@const deviceRow = deviceDownloadRow({ hasFolder: selHasFolder, busy })}
+      {#if (backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)) && deviceRow !== "none"}
+        <div class="ctx-sep menu-sep" role="separator"></div>
+        <button
+          type="button"
+          class="ctx-item menu-row"
+          role="menuitem"
+          disabled={deviceRow !== "go"}
+          onclick={() => runOnMenu(() => [...selPaths], onclose, ontodevice)}
+        >
+          {t(toDeviceLabel[deviceRow])}
+        </button>
+      {/if}
+    {:else}
     {#if backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)}
       <div class="ctx-sep menu-sep" role="separator"></div>
     {/if}
@@ -275,6 +310,7 @@
         {busy ? t("files.menu.export.busy") : t("files.menu.export")}
       </button>
     {/if}
+    {/if}
     {#if !atRoot}
       <div class="ctx-sep menu-sep" role="separator"></div>
       <button type="button" class="ctx-item menu-row danger" role="menuitem" onclick={onstartremove}>
@@ -289,6 +325,9 @@
     {@const entry = menu.entry}
     {@const canCreate = tree && isDirLike(entry) && !atRoot}
     {@const canSend = backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)}
+    <!-- 원격 창의 [이 기기로 다운로드] 줄 — 폴더(링크 포함)는 "none" 이라 줄도 그 앞 구분선도 서지 않는다 -->
+    {@const deviceRow = deviceDownloadRow({ hasFolder: isDirLike(entry), busy })}
+    {@const sendGroup = isRemote ? canSend && deviceRow !== "none" : canSend}
     <div class="ctx-title menu-title" title={entry.path}>{entry.name}</div>
     {#if canCreate}
       <!--
@@ -337,13 +376,31 @@
         {t("files.menu.reveal")}
       </button>
     {/if}
-    {#if canSend}
+    {#if sendGroup}
       <div class="ctx-sep menu-sep" role="separator"></div>
     {/if}
     <!--
       **폴더도 받는다** — 예전에는 파일에만 붙던 줄이다. 받을 자리는 폴더 선택 대화상자가
       정하고, 그 뒤는 붙여넣기·드롭과 같은 몸통이다.
     -->
+    {#if isRemote}
+      <!--
+        원격 창 — [다운로드] · [내보내기] 둘 다 메인 PC 의 폴더 고르기 대화상자라 서지 못한다. 그 자리에 이 기기(브라우저)로
+        받는 한 줄. 폴더(폴더 링크 포함)에는 서지 않는다 — 통로는 다른 줄과 같은 `onEntry`.
+      -->
+      {#if sendGroup && deviceRow !== "none"}
+        {@const row = deviceRow}
+        <button
+          type="button"
+          class="ctx-item menu-row"
+          role="menuitem"
+          disabled={row !== "go"}
+          onclick={() => onEntry((e) => ontodevice([e.path]))}
+        >
+          {t(toDeviceLabel[row])}
+        </button>
+      {/if}
+    {:else}
     {#if backend.canDownload}
       <button
         type="button"
@@ -366,6 +423,7 @@
       >
         {busy ? t("files.menu.export.busy") : t("files.menu.export")}
       </button>
+    {/if}
     {/if}
     {#if !atRoot}
       <div class="ctx-sep menu-sep" role="separator"></div>
@@ -401,11 +459,12 @@
     <!--
       **빈 곳 메뉴** — 대상은 지금 폴더. 무리 순서(VS Code 탐색기 빈 곳과 같은 뜻): 만들기 → 이 폴더 열기(탐색기 · 터미널) →
       붙여넣기 → 들여오기(업로드 · 가져오기) → 새로 고침. 무리가 하나라도 앞에 섰을 때만 구분선을 둔다.
+      원격 창에는 [폴더 가져오기…]가 없으므로(메인 PC 대화상자) 그 하나만으로 들여오기 무리를 세우지 않는다 — 구분선이 홀로 남지 않게.
     -->
     {@const gCreate = !atRoot}
     {@const gPlace = (backend.canReveal && !atRoot) || !!sourcePaneId}
     {@const gPaste = hasClip && !atRoot}
-    {@const gBring = !atRoot && (backend.canUpload || isLocal)}
+    {@const gBring = !atRoot && (backend.canUpload || (isLocal && !isRemote))}
     <div class="ctx-title menu-title" title={cwd}>{cwd === "" ? t("files.browser.mypc") : cwd}</div>
     {#if gCreate}
       <button type="button" class="ctx-item menu-row" role="menuitem" data-menu-newfile onclick={onstartnewfile}>
@@ -442,16 +501,18 @@
     {#if gBring}
       {#if gCreate || gPlace || gPaste}<div class="ctx-sep menu-sep" role="separator"></div>{/if}
       {#if backend.canUpload}
+        <!-- 원격 창에서는 로컬 타일(메인 PC 디스크)로도 그 기기에서 올리는 것이라 "업로드" -->
         <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, onpickupload)}>
-          {isLocal ? t("files.menu.import") : t("files.menu.upload")}
+          {isLocal && !isRemote ? t("files.menu.import") : t("files.menu.upload")}
         </button>
       {/if}
       <!--
         **폴더 가져오기** — 로컬 타일에만. 파일은 탐색기에서 끌어다 놓으면 되지만 폴더는
         웹 DnD 로 오지 않아(`File` 이 아니다) 대화상자로 경로를 받는 길이 하나 필요하다.
         항목 메뉴의 [탐색기로 내보내기…] 와 정확히 짝이다.
+        원격 창에서는 숨긴다 — 메인 PC 의 폴더 고르기 대화상자(`plugin:dialog|open`)를 폴리필이 거절해 오류만 난다.
       -->
-      {#if isLocal}
+      {#if isLocal && !isRemote}
         <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, onimportfolders)}>
           {t("files.menu.importfolders")}
         </button>
@@ -495,6 +556,8 @@
     font-size: var(--t-xs);
     line-height: 1.4;
     color: var(--err);
+    /* 오류에 긴 이름 · 경로가 실려도 메뉴 폭(최대 240px) 밖으로 나가지 않게 — 끊을 자리가 없을 때만 꺾는다 */
+    overflow-wrap: anywhere;
   }
 
   .ctx-confirm {

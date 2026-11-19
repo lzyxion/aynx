@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { rawBodyLimit, REMOTE_RAW_MAX_BYTES } from "$lib/ipc";
 
 /**
  * 프런트의 Tauri core·event 길은 `src/lib/ipc.ts` 하나 — 원격 웹(R1)이 전송을 바꿔 끼우려면
@@ -41,5 +42,31 @@ describe("IPC 어댑터 하나", () => {
     const text = readFileSync(ADAPTER, "utf8");
     expect(text).toMatch(/from "@tauri-apps\/api\/core"/);
     expect(text).toMatch(/from "@tauri-apps\/api\/event"/);
+  });
+});
+
+describe("원격 창의 원시 본문 상한", () => {
+  it("메인 PC 창은 상한 그대로, 원격 창은 ws 상한 안쪽으로 줄인다", () => {
+    const limit = 100 * 1024 * 1024;
+    expect(rawBodyLimit(limit, false)).toBe(limit);
+    expect(rawBodyLimit(limit, true)).toBe(REMOTE_RAW_MAX_BYTES);
+    // 이미 더 작은 상한(사이드 채팅 10MB 등)은 건드리지 않는다
+    expect(rawBodyLimit(10 * 1024 * 1024, true)).toBe(10 * 1024 * 1024);
+  });
+
+  it("`ws.rs` 의 `MAX_MESSAGE` 보다 작다 — 머리 몫(종류·id·머리 JSON)이 들어갈 자리가 남는다", () => {
+    const rs = readFileSync(new URL("../../src-tauri/src/remote/ws.rs", import.meta.url), "utf8");
+    const m = rs.match(/const MAX_MESSAGE: usize = ([\d\s*]+);/);
+    expect(m).not.toBeNull();
+    const max = m![1]
+      .split("*")
+      .map((n) => Number(n.trim()))
+      .reduce((a, b) => a * b, 1);
+    expect(max).toBe(16 * 1024 * 1024);
+    expect(REMOTE_RAW_MAX_BYTES).toBeLessThan(max - 4096);
+  });
+
+  it("정수 MiB(15) — 안내 문구가 정수 MB 로만 적는다(`fs-ops` · `agent-attachments`)", () => {
+    expect(REMOTE_RAW_MAX_BYTES).toBe(15 * 1024 * 1024);
   });
 });

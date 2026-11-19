@@ -122,6 +122,8 @@
     font-size: var(--t-sm);
     line-height: 1.55;
     color: var(--fg-2);
+    /* 타일 이름(`<strong>{ed.pane}</strong>`)은 공백 없는 긴 경로일 수 있다 — 꺾이지 않으면 스크롤 칸에 가로 막대가 선다(2026-11-19) */
+    overflow-wrap: anywhere;
   }
 
   /*
@@ -190,6 +192,8 @@
     color: var(--fg-1);
     background: var(--err-soft);
     border-radius: var(--radius-sm);
+    /* 실패 사유에 긴 경로가 실려도 가로 막대가 서지 않게 */
+    overflow-wrap: anywhere;
     user-select: text;
   }
 </style>

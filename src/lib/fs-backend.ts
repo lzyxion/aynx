@@ -1,4 +1,4 @@
-import { Channel, invoke } from "./ipc";
+import { Channel, invoke, isRemote } from "./ipc";
 import { localWatch, type FsWatch } from "./fs-watch";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { editRemoteFile } from "$lib/sftp";
@@ -96,9 +96,9 @@ export interface FsBackend {
   readonly canDownload: boolean;
   /** 파일을 로컬 편집기로 열어 되올릴 수 있는가 (원격만) */
   readonly canEdit: boolean;
-  /** 기본 앱으로 열 수 있는가 (로컬만) */
+  /** 기본 앱으로 열 수 있는가 (로컬만 · 원격 창에서는 거짓 — [`localShellCaps`]) */
   readonly canOpenExternal: boolean;
-  /** 탐색기에서 보여 줄 수 있는가 (로컬만) */
+  /** 탐색기에서 보여 줄 수 있는가 (로컬만 · 원격 창에서는 거짓 — [`localShellCaps`]) */
   readonly canReveal: boolean;
   /**
    * 파일 내용을 **글자로 읽어** 문서 보기 타일에 줄 수 있는가 ([`readText`]) — 지금은 둘 다
@@ -260,6 +260,7 @@ export interface FsBackend {
    * **이미지 타일**의 큰 그림 한 장(2026-11-14) — [`readPreview`] 와 같은 원시 바이트이되 상한이 `image/read-plan.ts` 의 `IMAGE_MAX_BYTES`
    * (Rust `text_file::IMAGE_MAX_BYTES`)이고, 조각마다 진행률(`TransferProgress` — 파일 1 · 누적 바이트)을 `onProgress` 로 흘린다.
    * 취소는 같은 `op` 로 [`cancel`] — 백엔드가 다음 조각에서 멈추고 `[cancelled]` 로 실패한다. 두 백엔드 모두 있다(능력 플래그 없음).
+   * 원격 창의 [이 기기로 다운로드]도 이 길을 쓴다(그림만 읽는 길이 아니다 — 파일 하나의 바이트 · `browser/device-download.ts`).
    */
   readImage(path: string, op: number, onProgress: OnProgress | null): Promise<ArrayBuffer>;
   /** 파일 하나를 글자로 — 앞 2 MiB 까지 (`canView`). 폴더면 실패한다 */
@@ -712,6 +713,17 @@ function otherSession(from: FsBackend): number {
   return id;
 }
 
+/**
+ * **원격 백엔드의 [외부 편집기로 편집] 능력**(`canEdit`) — 원격 창(원격 웹 클라이언트)에서는 거짓이다.
+ * 메인 PC 에 내려받아 메인 PC 의 기본 편집기를 띄우는 일이라(`edit_remote_file` — `src-tauri/src/remote/deny.rs` 가 거절한다)
+ * 원격 창에서는 오류만 났다 — 능력에서 끄면 파일 메뉴 · 문서 타일 · 이미지 타일의 줄과 단추가 함께 사라지고, 더블클릭은
+ * 미리 보기 타일로 넘어간다(`file-actions.ts` 의 `openEntry`). 메서드(`edit`)는 그대로 둔다.
+ * `remoteWindow` 는 시험을 위해 인자로 받는다([`localShellCaps`] 와 같은 모양).
+ */
+export function remoteEditCap(remoteWindow: boolean = isRemote): boolean {
+  return !remoteWindow;
+}
+
 function makeRemote(session: number | null): FsBackend {
   const sid = () => (session === null ? noSession() : session);
   return {
@@ -720,7 +732,8 @@ function makeRemote(session: number | null): FsBackend {
     sep: "/",
     canUpload: true,
     canDownload: true,
-    canEdit: true,
+    // 메인 PC 창에서만 참 — 원격 창에서는 메인 PC 의 편집기를 띄울 수 없다(`remoteEditCap`)
+    canEdit: remoteEditCap(),
     canOpenExternal: false,
     canReveal: false,
     canView: true,
@@ -799,6 +812,17 @@ function makeRemote(session: number | null): FsBackend {
  */
 export const LOCAL_KEY = "local";
 
+/**
+ * **로컬 백엔드의 "메인 PC 의 셸" 능력 둘**(`canOpenExternal` · `canReveal`) — 원격 창(원격 웹 클라이언트)에서는 거짓이다.
+ * 둘 다 메인 PC 의 기본 앱 · 탐색기를 띄우는 일이라 원격 창의 폴리필이 "지원하지 않음" 으로 거절한다
+ * (`src-tauri/src/remote/polyfill.js` 의 `opener|open_path` · `opener|reveal_item_in_dir`) — 능력에서 끄면 그 줄 · 단추가
+ * 자리마다의 검사 없이 사라진다. 메서드(`openExternal` · `reveal`)는 그대로 둔다(플래그가 거짓이면 화면이 부르지 않는다).
+ * `remoteWindow` 는 시험을 위해 인자로 받는다(`ipc.ts` 의 `rawBodyLimit` 와 같은 모양).
+ */
+export function localShellCaps(remoteWindow: boolean = isRemote): { canOpenExternal: boolean; canReveal: boolean } {
+  return { canOpenExternal: !remoteWindow, canReveal: !remoteWindow };
+}
+
 const LOCAL: FsBackend = {
   key: LOCAL_KEY,
   online: true,
@@ -808,8 +832,8 @@ const LOCAL: FsBackend = {
   canUpload: true,
   canDownload: false,
   canEdit: false,
-  canOpenExternal: true,
-  canReveal: true,
+  // 메인 PC 창에서만 참 — 원격 창에서는 메인 PC 의 기본 앱 · 탐색기를 띄울 수 없다(`localShellCaps`)
+  ...localShellCaps(),
   canView: true,
   canWrite: true,
   roots: () => localRoots(),

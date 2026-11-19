@@ -295,6 +295,12 @@ export interface PaneMenuCtx {
    */
   logging: boolean;
   /**
+   * **원격 창(원격 웹 클라이언트)에서 연 메뉴인가** — 참이면 출력 ▸ 의 [스크롤백 저장…] · [세션 로그], 서버 ▸ 의 [원격 파일 편집…],
+   * [새 창으로 분리]를 그리지 않는다(메인 PC 의 저장 대화상자 · 기본 앱 · 편집기 · 창이라 폴리필 · 명령의 문이 거절한다). 이 모듈은 `ipc` 를 모르므로 부르는 쪽(`tile-menu-controller`)이 `isRemote` 를 넘긴다.
+   * 없으면 메인 PC 창(예전 그대로)이다.
+   */
+  remoteWindow?: boolean;
+  /**
    * "이 폴더의 지난 대화" 줄 오른쪽에 적을 **지금의 단축키**(사용자가 바꿨으면 바꾼 글자 · 풀었으면 빈 글자) —
    * 이 모듈은 설정을 모르므로 부르는 쪽이 `displayCombo(effectiveCombo(...))` 로 넘긴다. 없으면 적지 않는다.
    */
@@ -495,10 +501,11 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
     // 그래서 한 기능이 헤더에서는 폴더, 메뉴에서는 네모로 보였다.
     //
     // 순서는 **여는 무게순**이다: 터널(포워딩) → 목록(원격 파일) → 파일 하나(원격 편집).
+    // 원격 창([`PaneMenuCtx.remoteWindow`])에는 원격 편집 줄이 없다 — 메인 PC 의 편집기를 띄우는 일이라 거절만 된다.
     const server: PaneMenuItem[] = [
       { action: "forward", label: tr("pane.menu.forward"), icon: "forward" },
       { action: "sftp", label: tr("pane.menu.sftp"), icon: "folder" },
-      { action: "edit-remote", label: tr("pane.menu.edit_remote"), icon: "edit" },
+      ...(ctx.remoteWindow ? [] : [{ action: "edit-remote" as const, label: tr("pane.menu.edit_remote"), icon: "edit" }]),
     ];
     // **tmux 타일에만** 한 줄 더 (docs/log/2026-09-16-tmux-toggle.md). 흐리게 세우지 않고
     // 아예 없는 이유는 위의 세 줄과 다르다: 저것들은 모든 SSH 타일에 뜻이 있고 지금 못 쓰는
@@ -545,28 +552,34 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
               ? tr("pane.menu.copy_output.title.ready")
               : tr("pane.menu.copy_output.title.empty"),
         },
-        // tmux 타일에서도 **스크롤백 저장은 살아 있다** — 위 줄과 갈리는 자리가 여기다.
-        // 복사는 OSC 133 블록이 있어야 하지만 버퍼는 간이 모드에도 있다(화면이 곧 그것이다).
-        {
-          action: "save-scrollback",
-          label: tr("pane.menu.save_scrollback"),
-          icon: "file-down",
-          disabled: !ctx.hasScrollback,
-          title: ctx.hasScrollback
-            ? tr("pane.menu.save_scrollback.title.ready")
-            : tr("pane.menu.save_scrollback.title.empty"),
-        },
-        {
-          action: "session-log",
-          label: tr("pane.menu.session_log"),
-          icon: "file-text",
-          // 로깅이 꺼진 타일에서는 열 파일이 없다. 숨기지 않는 이유는 동시 입력과 같다 —
-          // 기능이 있다는 사실과 어디서 켜는지가 이 줄에서 읽혀야 한다.
-          disabled: !ctx.logging,
-          title: ctx.logging
-            ? tr("pane.menu.session_log.title.on")
-            : tr("pane.menu.session_log.title.off"),
-        },
+        // 원격 창([`PaneMenuCtx.remoteWindow`])에는 아래 두 줄이 없다 — 저장은 메인 PC 의 저장 대화상자, 로그는 메인 PC 의 기본 앱이라
+        // 원격 창의 폴리필이 거절한다(흐리게가 아니라 아예 없다: 이 창에서는 기다려도 안 된다).
+        ...(ctx.remoteWindow
+          ? []
+          : [
+              // tmux 타일에서도 **스크롤백 저장은 살아 있다** — 위 줄과 갈리는 자리가 여기다.
+              // 복사는 OSC 133 블록이 있어야 하지만 버퍼는 간이 모드에도 있다(화면이 곧 그것이다).
+              {
+                action: "save-scrollback" as const,
+                label: tr("pane.menu.save_scrollback"),
+                icon: "file-down",
+                disabled: !ctx.hasScrollback,
+                title: ctx.hasScrollback
+                  ? tr("pane.menu.save_scrollback.title.ready")
+                  : tr("pane.menu.save_scrollback.title.empty"),
+              },
+              {
+                action: "session-log" as const,
+                label: tr("pane.menu.session_log"),
+                icon: "file-text",
+                // 로깅이 꺼진 타일에서는 열 파일이 없다. 숨기지 않는 이유는 동시 입력과 같다 —
+                // 기능이 있다는 사실과 어디서 켜는지가 이 줄에서 읽혀야 한다.
+                disabled: !ctx.logging,
+                title: ctx.logging
+                  ? tr("pane.menu.session_log.title.on")
+                  : tr("pane.menu.session_log.title.off"),
+              },
+            ]),
       ]),
     );
     // 권한 묶음은 여기서 시작한다 — 위 묶음은 "내용을 밖으로", 아래 둘은 "이 세션을
@@ -652,7 +665,14 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
   // 사실을 알리는 자리이기도 하다. 혼자 떼면 뜻이 깨지는 타일에서는 항목 자체를 그리지 않는다.
   // 원격 문서 타일도 여기서 빠진다(`ctx.borrowed`) — `startPaneTear` 가 거절하는 것과 같은 규칙이다.
   // 폰(`solo`)에는 분리도 없다 — 창이 하나뿐이고 원격 브라우저에서 새 창은 메인 PC 의 창이다.
-  const detachable = kind !== "sftp" && kind !== "start" && ctx.borrowed !== true && ctx.solo !== true && ctx.orchTab !== true;
+  // 원격 창(`remoteWindow`) 전체도 같다 — 새 창은 메인 PC 의 창이라 `open_tear_window` 를 `remote/deny.rs` 가 거절한다.
+  const detachable =
+    kind !== "sftp" &&
+    kind !== "start" &&
+    ctx.borrowed !== true &&
+    ctx.solo !== true &&
+    ctx.orchTab !== true &&
+    ctx.remoteWindow !== true;
   if (detachable) {
     // 그림이 "링크 열기"(`external`)와 갈리는 이유: 터미널 우클릭 메뉴에서는 **둘이 한
     // 목록에 함께 선다**. 나가는 곳이 브라우저냐 이 앱의 새 창이냐가 다르므로 그림도 다르다.

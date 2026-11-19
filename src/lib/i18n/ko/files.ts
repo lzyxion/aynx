@@ -147,6 +147,9 @@ export const files = {
   "menu.download.busy": "다운로드 (전송 중)",
   "menu.export": "탐색기로 내보내기…",
   "menu.export.busy": "탐색기로 내보내기… (전송 중)",
+  // 원격 창에서만 — 메인 PC 창의 [다운로드] · [탐색기로 내보내기…] 자리에 선다
+  "menu.todevice": "이 기기로 다운로드",
+  "menu.todevice.busy": "이 기기로 다운로드 (전송 중)",
   "menu.enter": "들어가기",
   "menu.open": "열기",
   // 원격 파일을 받아 로컬 편집기로 열고 저장하면 올린다 — 앱 안 편집(문서 타일의 [편집])과 가르려고 "외부" 를 적는다
@@ -219,6 +222,10 @@ export const files = {
   // 크기 한도는 **프런트가 먼저** 거른다 (백엔드와 같은 값) — 헛된 전송을 막는 자리다
   "transfer.toobig.local": "파일이 너무 큽니다 ({size}) — 끌어다 놓기는 {max} 까지입니다",
   "transfer.toobig.upload": "파일이 너무 큽니다 ({size}) — 업로드는 {max} 까지만 지원합니다",
+  "transfer.toobig.device": "파일이 너무 큽니다 ({size}) — 원격 창에서는 {max} 까지 받을 수 있습니다",
+  "transfer.toobig.device.many": "{count}개는 너무 커서 받지 않았습니다 — 원격 창에서는 {max} 까지 받을 수 있습니다",
+  // 원격 창의 올리기(메인 PC 파일 타일 · SFTP 타일) — 원시 본문이 ws 프레임 하나라 상한이 줄어든다(`sftp.ts` 의 `rawUploadTooBig`)
+  "transfer.toobig.device.upload": "파일이 너무 큽니다 ({size}) — 원격 창에서는 {max} 까지 올릴 수 있습니다",
   "transfer.edit.sshonly": "SSH 세션에서만 원격 파일을 편집할 수 있습니다.",
   "transfer.edit.path": "원격 경로를 입력하세요 (예: ~/nginx.conf)",
   "transfer.edit.opened": "{name} 을(를) 로컬 편집기로 열었습니다 — 저장하면 자동 업로드됩니다.",

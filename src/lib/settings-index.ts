@@ -276,6 +276,21 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   row("remote", "settings.remote.check.subhead", "remote-checklist"),
 ];
 
+/**
+ * **원격 창에서 그리지 않는 줄의 anchor** — 화면에서 그 줄이 `{#if !isRemote}` 로 빠지므로 색인에서도 뺀다(팔레트가 없는 줄로
+ * 데려가지 않게). 설정 옮기기 둘은 메인 PC 의 파일 대화상자를 연다(`GeneralSection` · `settings-transfer.svelte.ts`).
+ */
+const MAIN_PC_ONLY_ANCHORS: ReadonlySet<string> = new Set(["settings-export", "settings-import"]);
+
+/**
+ * 이 창의 팔레트가 훑는 색인 — 원격 창이면 [`MAIN_PC_ONLY_ANCHORS`] 의 줄을 뺀다. 이 모듈은 `ipc` 를 모르는 순수 층이라
+ * 부르는 쪽(`CommandPalette`)이 `isRemote` 를 넘긴다.
+ */
+export function settingsIndexFor(remoteWindow: boolean): readonly SettingsIndexEntry[] {
+  if (!remoteWindow) return SETTINGS_INDEX;
+  return SETTINGS_INDEX.filter((e) => e.anchor === undefined || !MAIN_PC_ONLY_ANCHORS.has(e.anchor));
+}
+
 /** 섹션 id → 그 이름의 문구 키 */
 export function sectionLabelKey(id: SettingsSectionId): Key {
   const s = SETTINGS_SECTIONS.find((x) => x.id === id);

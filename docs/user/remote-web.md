@@ -134,6 +134,23 @@ comes back to the remote side as is. So:
 - A query tile opened with [Open separately here] belongs to the remote window, so closing it does nothing on the main PC.
 - Pressing too quickly in a row (over 10 times a second) is briefly refused.
 
+## Moving files between this device and the main PC
+
+- **To this device**: right-click a file in a file tile (or several selected files) › **Download to this device**. The files go to the browser's own downloads, one after
+  another, up to 48 MB each (a larger file is skipped before reading and the rest still download; the tile says how many were skipped). It uses the same transfer bar
+  and [Cancel] as other transfers — [Cancel] stops the rest too. The browser may ask once whether this site may download multiple files. Folders cannot be downloaded
+  this way — when a folder is selected (alone or among others), the menu doesn't show the row. The main PC's [Download] and [Export to File Explorer…] are not in a remote window's menu (they open a folder picker on the main PC).
+- **To the main PC**: drag files onto a file tile or use [Upload…] — both local tiles (the main PC's disk) and SFTP tiles say "upload" in a remote window. Each file can be up to
+  15 MB from a remote window (a larger file is refused before sending). [Import folders…] is not in a remote window.
+- **Query tiles** use this device too: **Save as .sql…** (a script tab's right-click menu · `Ctrl+S`) and the results' **Export ▾** › **Save as CSV…** · **Save as JSON…** download the file
+  to this device under the suggested name, and **Open SQL file…** (the tile ⋯ menu · `Ctrl+O` · the empty-screen button) opens this device's file picker — the same as dropping a file onto the tile.
+- **Wallpaper**: **Settings › Theme** › **Choose image…** opens this device's file picker and uploads the picture (up to 15 MB) to the main PC, where it becomes the wallpaper — the same setting the main PC window uses.
+- Rows and buttons that would open a program, dialog or window on the main PC are not shown in a remote window — for example **Open with the default app**, **Show in File Explorer**,
+  **Show in folder** and **Edit in external editor** (file, document and image tiles), **Save scrollback…** · **Open session log** · **Edit remote file…** · **Detach to a new window** (a tile's menu),
+  **Open in browser** (a port forward — it would open this device's own `127.0.0.1`), the **Browse…** buttons next to path fields (type the path instead), **Open folder** buttons,
+  the host dock's config-file gear, **Export settings…** · **Import settings…** (command palette) and the **Updates** rows (Settings › General). Dragging a tab or tile out of a remote window
+  does not detach it (moving it inside the window still works). Double-clicking a file the app can't show itself opens it in a preview tile.
+
 ## Approving remotely
 
 A remote window also shows the **task plan review card** (at the bottom of the screen), the count badge on the status bar's notification bell, the approval line in the dock's Alerts section, and task plan run result notifications — you can see and approve or reject
@@ -150,7 +167,8 @@ task plans raised by the AI without being at the main PC.
 - Even after approval, the session server always makes the final judgment — it rechecks expiry, run limits, delegation scope and permissions, exactly as for a press on the main PC.
 - Actions sent remotely after reconfirmation stay in the main PC's remote access record (the status bar's remote chip · Settings › Remote access) as, for example, "Confirmed and sent — Approve a task plan", with
   the device name (the values of what was approved are not kept). A task plan's audit record does not have the device name yet.
-- Changing the auto-approval policy and changing the vault master password still work **only on the main PC**.
+- Changing the auto-approval policy and changing the vault master password still work **only on the main PC**. **Settings › Auto-approval** (and its bundle and allow-list
+  screens) is read-only in a remote window — the values are shown, but every control is locked.
 
 Other confirmations in a remote window (such as closing a tile or tab that ends a session) also appear as **app modals**, not the browser's default dialog. In warning confirmations, [Cancel] has the
 initial focus, so one Enter does not close a session.
@@ -227,7 +245,8 @@ Phones and tablets open the same address too, and **they can do the same as a PC
 - A remote terminal tile only attaches to sessions the main PC opened — an SSH tile the main PC has not connected yet shows "This tile's session is not open on the main PC yet",
   and follows soon after the main PC connects. [Reconnect] on an ended session is also done on the main PC.
 - The main PC's auxiliary windows (detached windows) do not show remotely — only the main window's workspaces.
-- A file picker dialog, opening the main PC's Explorer, dragging out to Explorer, detaching a tile to a new window and opening in the main PC's editor do not work remotely.
+- The main PC's file and folder pickers, opening the main PC's Explorer, dragging out to Explorer, detaching a tile to a new window and opening in the main PC's editor do not work remotely —
+  the rows that need them are hidden, or (query tiles) use this device's own picker and downloads instead.
 - A phone has no **split line dragging or drag and drop** (it is a screen that views one tile at a time). To change the layout, use + in the top strip (this tab or a new tab) and close with × on the picker screen or in the tile ⋯ menu (splitting is done on the main PC or a PC remote).
 - There is no finger selection of part of the text inside a terminal — long-press for **Select all · Copy**, or use block copy.
 - There is no pinch zoom that enlarges only the terminal text (the browser's own zoom works).

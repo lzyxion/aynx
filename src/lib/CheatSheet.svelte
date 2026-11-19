@@ -207,7 +207,8 @@
         ...keep([
           many(["jump-prev", "jump-next"], "commands.cheatsheet.terminal.jump"),
           reg("copy-output", "commands.cheatsheet.terminal.copyOutput"),
-          reg("edit-remote"),
+          // 원격 파일 편집 — 메인 PC 의 편집기를 띄우는 일이라 원격 창에는 없다(타일 메뉴 · 팔레트와 같은 판단)
+          ...(isRemote ? [] : [reg("edit-remote")]),
           reg("ask-ai-block"),
           reg("find"),
           reg("find-all"),

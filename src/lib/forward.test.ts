@@ -67,6 +67,14 @@ describe("forwardBrowserUrl (docs/log/2026-09-27-forward-open-browser.md)", () =
       forwardBrowserUrl(forward({ kind: "dynamic", remote_host: "", remote_port: 0, local_port: 1080 })),
     ).toBeNull();
   });
+
+  it("원격 창에서는 로컬(-L)도 열 주소가 없다 — 그 기기 자신의 127.0.0.1 이 열린다", () => {
+    const local = forward({ local_port: 18080, remote_port: 8080 });
+    expect(forwardBrowserUrl(local, true)).toBeNull();
+    // 메인 PC 창(명시 false · 기본값)은 그대로
+    expect(forwardBrowserUrl(local, false)).toBe("http://127.0.0.1:18080/");
+    expect(forwardBrowserUrl(local)).toBe("http://127.0.0.1:18080/");
+  });
 });
 
 describe("forwardLabel", () => {

@@ -32,6 +32,7 @@
   import Toggle from "$lib/Toggle.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
 
   /**
    * **허용 패턴 편집** — 설정 › 자동 승인의 하위 화면 (docs/log/2026-10-05-auto-approve-args.md "허용 패턴 편집").
@@ -52,6 +53,11 @@
 
   const uid = $props.id();
   const auto = $derived(settings.current.automation);
+  /**
+   * 원격 창 — 볼 수만 있다. 목록의 줄을 골라 폼으로 내용을 보는 것과 시험 칸은 그대로, 더하기 · 지우기 · 칸 · 스위치는 잠긴다
+   * (요약 `AutomationSection` 의 `lockTip` 과 같은 말 — 정책은 메인 PC 전용이다).
+   */
+  const lockTip = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
 
   type Sel =
     | { kind: "rule"; index: number }
@@ -279,6 +285,8 @@
       spellcheck="false"
       aria-invalid={err ? "true" : undefined}
       aria-describedby={err ? `${uid}-${key}-err` : undefined}
+      disabled={isRemote}
+      title={lockTip}
       oninput={(e) => setField(key, e.currentTarget.value)}
     />
     {#if err}<p class="field-err" id="{uid}-{key}-err">{errText(err)}</p>{/if}
@@ -300,6 +308,8 @@
         type="button"
         class="btn btn-sm btn-secondary add-rule"
         aria-label={t("settings.automation.allow.add.rule.aria")}
+        disabled={isRemote}
+        title={lockTip}
         bind:this={addRuleBtn}
         onclick={newRule}
       >
@@ -310,6 +320,8 @@
         type="button"
         class="btn btn-sm btn-secondary add-pattern"
         aria-label={t("settings.automation.allow.add.pattern.aria")}
+        disabled={isRemote}
+        title={lockTip}
         onclick={newPattern}
       >
         <UiIcon name="plus" size={12} />
@@ -319,7 +331,8 @@
   </div>
 
   {#if listEmpty && sel === null}
-    <p class="list-empty">{t("settings.automation.allow.list.empty")}</p>
+    <!-- 원격 창에서는 더하는 단추가 잠겨 있어 "추가하세요"를 빼고 말한다 -->
+    <p class="list-empty">{t(isRemote ? "settings.automation.allow.list.empty.locked" : "settings.automation.allow.list.empty")}</p>
   {:else}
     <ul class="allow-rows" aria-label={t("settings.automation.allow.list")}>
       {#each auto.allow as r, i (i)}
@@ -389,6 +402,8 @@
             type="button"
             class="btn btn-sm btn-ghost del"
             aria-label={t("settings.automation.allow.delete.aria", { name: selName })}
+            disabled={isRemote}
+            title={lockTip}
             onclick={() => void removeSelected()}>{t("settings.automation.allow.delete")}</button
           >
         {/if}
@@ -405,7 +420,13 @@
             tip={t("settings.automation.allow.f.sub_first.tip")}
           />
           <span class="ff-toggle">
-            <Toggle id="{uid}-sub_first" checked={form.sub_first} disabled={subFirstDisabled} onchange={setSubFirst} />
+            <Toggle
+              id="{uid}-sub_first"
+              checked={form.sub_first}
+              disabled={subFirstDisabled || isRemote}
+              title={lockTip}
+              onchange={setSubFirst}
+            />
           </span>
         </div>
         {@render field("first_arg", "first_arg")}
@@ -440,6 +461,8 @@
             autocomplete="off"
             spellcheck="false"
             aria-invalid={patternErr !== null ? "true" : undefined}
+            disabled={isRemote}
+            title={lockTip}
             oninput={(e) => onPatternInput(e.currentTarget.value)}
           />
           {#if patternErr !== null && (sel.kind === "pattern" || patternText !== "")}

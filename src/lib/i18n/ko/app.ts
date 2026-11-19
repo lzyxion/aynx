@@ -1349,6 +1349,7 @@ export const app = {
   "upload.lead.local.1": " 안으로 ",
   "upload.lead.local.term": "복사",
   "upload.lead.local.2": "합니다.",
+  "upload.lead.device.1": " 안으로 올립니다.",
   "upload.lead.remote.1": " 에 SFTP 로 올립니다.",
   "upload.lead.tail.1": "같은 이름은 ",
   "upload.lead.tail.term": "덮어쓰지 않습니다",

@@ -208,6 +208,8 @@
     font-family: var(--font-ui);
     line-height: 1.5;
     word-break: keep-all;
+    /* keep-all 이 위 break-all 을 덮으므로 공백 없는 긴 키 경로가 꺾이지 않아 가로 막대가 섰다 — 끊을 자리가 없을 때만 꺾는다(2026-11-19) */
+    overflow-wrap: anywhere;
   }
 
   /* 모달의 "틀렸습니다"·"저장된 값이 더 이상 맞지 않습니다" 한 줄 */

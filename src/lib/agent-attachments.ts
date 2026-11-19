@@ -2,7 +2,7 @@
 // 사본은 대화에서 다시 읽을 수 있도록 남긴다. 원본 이름은 유지하고 매번 별도 폴더를 쓴다.
 // 남기는 기간은 30일(Claude Code 가 지난 대화를 지우는 기본 기간) — 로컬은 앱 시작 때 Rust 가,
 // 원격은 그 서버에 첨부를 올린 뒤 여기서 한 번(세션마다) 걷는다.
-import { invoke } from "./ipc";
+import { invoke, rawBodyLimit } from "./ipc";
 import { localBackend, remoteBackend, type FsBackend } from "$lib/fs-backend";
 import { nextOp } from "$lib/fs-ops";
 import { uploadFile, UPLOAD_MAX_BYTES } from "$lib/sftp";
@@ -79,15 +79,22 @@ async function pruneIn(
   return removed;
 }
 
+/** 첨부 상한 문구의 `{max}` — 두 상한 다 정수 MiB 라("100 MB" · 원격 창 "15 MB") 정수로 적는다 */
+function attachMax(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
 export async function stageAgentFiles(
   kind: SessionKind,
   session: number,
   files: readonly File[],
   tr: Tr,
 ): Promise<string[]> {
+  // 두 갈래 다 `File` 바이트를 원시 본문으로 보낸다(`uploadFile` · `stage_agent_attachment`) — 원격 창에서는 ws 상한 안쪽으로.
+  const max = rawBodyLimit(UPLOAD_MAX_BYTES);
   // 파일을 읽기 전에 전부 검사한다 — 큰 파일을 메모리에 먼저 싣지 않는다.
   for (const file of files) {
-    if (file.size > UPLOAD_MAX_BYTES) throw new Error(tr("pane.drop.attach.toobig", { name: file.name }));
+    if (file.size > max) throw new Error(tr("pane.drop.attach.toobig", { name: file.name, max: attachMax(max) }));
   }
   const paths: string[] = [];
   const backend = kind === "ssh" ? remoteBackend(session) : null;
@@ -132,7 +139,10 @@ export async function stageFsPaths(
     if (entry.kind === "dir" || (entry.kind === "symlink" && entry.linkIsDir)) {
       throw new Error(tr("pane.drop.fs.folder", { name: entry.name }));
     }
-    if (entry.size > UPLOAD_MAX_BYTES) throw new Error(tr("pane.drop.attach.toobig", { name: entry.name }));
+    // 경로만 넘기는 길(본문이 ws 를 지나지 않는다)이라 원격 창이어도 100MB 그대로다.
+    if (entry.size > UPLOAD_MAX_BYTES) {
+      throw new Error(tr("pane.drop.attach.toobig", { name: entry.name, max: attachMax(UPLOAD_MAX_BYTES) }));
+    }
   }
   if (direction === "upload") {
     if (!remote.uploadPaths) throw new Error(tr("pane.drop.attach.notready"));
@@ -158,7 +168,10 @@ export async function stageLocalPaths(paths: readonly string[], tr: Tr): Promise
     if (entry.kind === "dir" || (entry.kind === "symlink" && entry.linkIsDir)) {
       throw new Error(tr("pane.drop.fs.folder", { name: entry.name }));
     }
-    if (entry.size > UPLOAD_MAX_BYTES) throw new Error(tr("pane.drop.attach.toobig", { name: entry.name }));
+    // 경로 복사(메인 PC 안)라 원격 창이어도 100MB 그대로다.
+    if (entry.size > UPLOAD_MAX_BYTES) {
+      throw new Error(tr("pane.drop.attach.toobig", { name: entry.name, max: attachMax(UPLOAD_MAX_BYTES) }));
+    }
   }
   const dir = await invoke<string>("create_agent_attachment_dir");
   return local.copy(paths, dir, "rename", nextOp(), null);

@@ -42,6 +42,7 @@ import {
   type UploadVerb,
 } from "$lib/sftp";
 import { stripReason } from "$lib/error-reason";
+import { isRemote } from "$lib/ipc";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { findPane, hasSession, paneName, type SessionKind } from "$lib/session";
 
@@ -259,9 +260,12 @@ export function uploadItems(): UploadItem[] {
   return items;
 }
 
-/** 목적지에 따라 갈리는 글자들 — 로직은 한 벌이고 말만 다르다 */
+/**
+ * 목적지에 따라 갈리는 글자들 — 로직은 한 벌이고 말만 다르다.
+ * 원격 창에서는 로컬 타일로 보내는 것도 그 기기에서 메인 PC 로 올리는 것이라 SFTP 쪽 말이다.
+ */
 export function verb(): UploadVerb {
-  return uploadVerb(target);
+  return uploadVerb(target, isRemote);
 }
 
 /** 진행 표시 — 올라간 파일 수 */
@@ -585,6 +589,9 @@ export function remoteEditVisible(): boolean {
  * (docs/log/2026-09-05-tile-header.md) 그 헤더의 ⋯ 메뉴가 항목을 들면서 근거가 사라졌다.
  */
 export function openRemoteEdit(tabId: string, paneId: string): void {
+  // 원격 창에는 이 모달이 없다 — 메인 PC 의 편집기를 띄우는 일이라(`edit_remote_file` 은 `remote/deny.rs` 가 거절) 메뉴 · 팔레트 줄을
+  // 그리지 않고, 남은 입구인 단축키(`Ctrl+Shift+E`)도 여기서 그냥 돌아간다(`settings-transfer.svelte.ts` 와 같은 모양).
+  if (isRemote) return;
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   const pane = tab ? findPane(tab.root, paneId) : null;
   if (!pane) return;

@@ -59,6 +59,12 @@
   const userRules = $derived(settings.current.automation.allow);
   const autoApprove = $derived(settings.current.automation.auto_approve);
   const enabledBundles = $derived(settings.current.automation.bundles);
+  /**
+   * 원격 창에서는 **볼 수만 있다** — 정책은 메인 PC 전용이라(관문이 `save_settings` 의 `[automation]` 변경을 거절한다 —
+   * `remote/deny.rs`) 손잡이마다 `disabled={isRemote}` 와 이 말풍선을 단다(보안 › 마스터 · 원격 접속 › 주소 칸과 같은 모양).
+   * [편집 ›] 둘은 하위 화면을 **보러** 가는 길이라 그대로 눌린다 — 그 안의 손잡이도 같은 규칙으로 잠긴다.
+   */
+  const lockTip = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
   /** 켜진 묶음 수 — 모르는 id(새 버전의 묶음)는 세지 않는다 */
   const onCount = $derived(BUNDLES.filter((b) => enabledBundles.includes(b.id)).length);
   /** 지금 묶음이 펼치는 규칙 줄 수(끈 명령 제외) — 판정이 실제로 보는 몫 */
@@ -125,7 +131,8 @@
   </InfoNote>
 </p>
 {#if isRemote}
-  <!-- 원격 창(R1a-4) — 정책은 메인 PC 전용이다(관문이 save_settings 의 [automation] 변경을 거절한다 — remote/deny.rs) -->
+  <!-- 원격 창(R1a-4) — 정책은 메인 PC 전용이다(관문이 save_settings 의 [automation] 변경을 거절한다 — remote/deny.rs).
+       손잡이는 모두 잠기고 값만 보인다(`lockTip`) — 하위 화면 둘도 같다 -->
   <p class="footnote warn-line" role="note">
     <UiIcon name="warning" size={13} />
     <span>{t("settings.remote.automationHomeOnly")}</span>
@@ -151,12 +158,12 @@
       tip={t("settings.automation.approve.summary")}
     />
     <div class="size-row">
-      <Toggle id="auto-approve" checked={autoApprove} onchange={setAutoApprove} />
+      <Toggle id="auto-approve" checked={autoApprove} disabled={isRemote} title={lockTip} onchange={setAutoApprove} />
     </div>
   </div>
   <!--
     파이프(|) 허용(10-22 옵트인 · 기본 끔) — 단계마다 허용 범위일 때만. 다른 명령을 실행하는 단계(xargs · 셸 · sudo · tee …)는
-    늘 사람 승인이고, 리디렉트 · 치환 · 서브셸이 섞여도 그렇다. 정책 칸이라 원격 웹에서는 저장이 거절된다.
+    늘 사람 승인이고, 리디렉트 · 치환 · 서브셸이 섞여도 그렇다. 정책 칸이라 원격 창에서는 잠긴다(`lockTip`).
   -->
   <div class="srow" class:dim={!autoApprove}>
     <TipName
@@ -166,7 +173,13 @@
       tip={t("settings.automation.pipes.note")}
     />
     <div class="size-row">
-      <Toggle id="auto-allow-pipes" checked={settings.current.automation.allow_pipes} onchange={setAllowPipes} />
+      <Toggle
+        id="auto-allow-pipes"
+        checked={settings.current.automation.allow_pipes}
+        disabled={isRemote}
+        title={lockTip}
+        onchange={setAllowPipes}
+      />
     </div>
   </div>
 </div>
@@ -253,6 +266,8 @@
         min={AUTO_MAX_TARGETS_MIN}
         max={AUTO_MAX_TARGETS_MAX}
         value={settings.current.automation.max_targets}
+        disabled={isRemote}
+        title={lockTip}
         oninput={(e) => setAutoMaxTargets(e.currentTarget.valueAsNumber)}
       />
       <span class="hint"
@@ -279,6 +294,8 @@
         min={AUTO_MAX_CONCURRENCY_MIN}
         max={AUTO_MAX_CONCURRENCY_MAX}
         value={settings.current.automation.max_concurrency}
+        disabled={isRemote}
+        title={lockTip}
         oninput={(e) => setAutoMaxConcurrency(e.currentTarget.valueAsNumber)}
       />
       <span class="hint">{AUTO_MAX_CONCURRENCY_MIN}–{AUTO_MAX_CONCURRENCY_MAX}</span>
@@ -304,6 +321,8 @@
         min={APPROVAL_TTL_MINUTES_MIN}
         max={APPROVAL_TTL_MINUTES_MAX}
         value={settings.current.automation.approval_ttl_minutes}
+        disabled={isRemote}
+        title={lockTip}
         oninput={(e) => setApprovalTtlMinutes(e.currentTarget.valueAsNumber)}
       />
       <span class="hint">{t("settings.automation.ttl.hint", { max: APPROVAL_TTL_MINUTES_MAX })}</span>
@@ -334,6 +353,8 @@
         min={AUDIT_RETENTION_DAYS_MIN}
         max={AUDIT_RETENTION_DAYS_MAX}
         value={settings.current.automation.audit_retention_days}
+        disabled={isRemote}
+        title={lockTip}
         oninput={(e) => setAuditRetentionDays(e.currentTarget.valueAsNumber)}
       />
       <span class="hint">{t("settings.automation.retention.hint", { max: AUDIT_RETENTION_DAYS_MAX })}</span>
@@ -354,6 +375,8 @@
       <Toggle
         id="audit-output-excerpt"
         checked={settings.current.automation.audit_output_excerpt}
+        disabled={isRemote}
+        title={lockTip}
         onchange={setAuditOutputExcerpt}
       />
     </div>

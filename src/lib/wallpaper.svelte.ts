@@ -1,4 +1,5 @@
-import { convertFileSrc, invoke } from "./ipc";
+import { convertFileSrc, invoke, isRemote } from "./ipc";
+import { WALLPAPER_EXTENSIONS, pickDeviceWallpaper, uploadWallpaper } from "./wallpaper-file";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -159,18 +160,32 @@ export async function collectWallpapers(): Promise<void> {
  *
  * `reveal` — 누른 자리에서 원으로 퍼지는 전환(`theme-reveal.ts`)을 설정 화면이 넘긴다. 사본이 생긴 뒤 새 그림을 디코딩하고
  * 그 안에서 배경을 갈아 끼운다(아래 `applyCopy`).
+ *
+ * **원격 창**(2026-11-19 · `remoteWindow`)은 메인 PC 의 대화상자 대신 **이 기기의 고르기 창**(`wallpaper-file.ts`)에서 그림 하나를
+ * 받아 그 바이트를 `wallpaper_set_bytes` 로 올린다 — 끝은 같은 `applyCopy`. 고르기 창은 첫 `await` 앞에서 연다(몸짓 사슬 — 단추의
+ * `onclick` 에서 여기까지 동기). 고르는 동안은 `busy` 를 켜지 않는다(메인 창의 대화상자와 같다 — 취소해도 단추가 잠기지 않는다).
+ * 원격 창 상한을 넘는 그림은 올리지 않고 그 문구를 `wallpaper.error` 에 남긴다.
  */
-export async function pickWallpaper(reveal: Reveal = plainApply): Promise<void> {
+export async function pickWallpaper(reveal: Reveal = plainApply, remoteWindow: boolean = isRemote): Promise<void> {
   if (wallpaper.busy) return;
+  if (remoteWindow) {
+    const picked = await pickDeviceWallpaper(t);
+    if (picked === null) return;
+    if ("error" in picked) {
+      wallpaper.error = picked.error;
+      return;
+    }
+    const file = picked.file;
+    await applyCopy(() => uploadWallpaper(file), reveal);
+    return;
+  }
   let picked: string | string[] | null;
   try {
     picked = await openFileDialog({
       title: t("app.wallpaper.pick.title"),
       multiple: false,
       directory: false,
-      filters: [
-        { name: t("app.wallpaper.pick.filter"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] },
-      ],
+      filters: [{ name: t("app.wallpaper.pick.filter"), extensions: [...WALLPAPER_EXTENSIONS] }],
     });
   } catch (e) {
     wallpaper.error = t("app.wallpaper.pick.failed", { error: describeError(e) });

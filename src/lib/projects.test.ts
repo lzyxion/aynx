@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PROJECT_AGENT,
+  canRevealProjectFolder,
   hasSetupScript,
   migrateProjectCommand,
   paneForSetup,
@@ -211,6 +212,13 @@ describe("표시·검색·정렬", () => {
     expect(s).toContain("dev-01");
     expect(isRemote(remote())).toBe(true);
     expect(isRemote(local())).toBe(false);
+  });
+
+  it("폴더를 탐색기로 여는 것은 로컬 프로젝트 · 메인 PC 창일 때만 (원격 창은 메인 PC 탐색기를 못 띄운다)", () => {
+    expect(canRevealProjectFolder(local(), false)).toBe(true);
+    expect(canRevealProjectFolder(local(), true)).toBe(false);
+    expect(canRevealProjectFolder(remote(), false)).toBe(false);
+    expect(canRevealProjectFolder(remote(), true)).toBe(false);
   });
 
   it("이름순 · 최근순(원격은 그 호스트의 마지막 성공, 로컬·이력 없음은 뒤에서 이름순)", () => {

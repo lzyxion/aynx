@@ -2,12 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   humanSize,
   isAlreadyExists,
+  limitLabel,
+  rawUploadTooBig,
   uploadDirValue,
   uploadVerb,
   DEFAULT_REMOTE_DIR,
+  UPLOAD_MAX_BYTES,
   type UploadTarget,
 } from "$lib/sftp";
 import { translate } from "$lib/i18n/dict";
+import type { Key } from "$lib/i18n/keys";
+import { REMOTE_RAW_MAX_BYTES } from "$lib/ipc";
+import { LOCAL_WRITE_MAX_BYTES } from "$lib/fs-ops";
+import { DEVICE_DOWNLOAD_MAX_BYTES } from "$lib/browser/device-download";
 
 /**
  * 파일 전송 모달의 순수 규칙 (docs/log/2026-09-02-sftp.md ·
@@ -35,6 +42,17 @@ describe("uploadVerb — 목적지가 말을 정한다", () => {
     expect(v.ing).toBe("copying");
     expect(v.go).toBe("files.transfer.verb.local.go");
     expect(v.done).toBe("files.transfer.upload.summary.local");
+  });
+
+  it("원격 창에서는 내 디스크(= 메인 PC)로 보내는 것도 그 기기에서 '올린다'", () => {
+    const v = uploadVerb(local, true);
+    expect(v.title).toBe("files.transfer.verb.remote.title");
+    expect(v.ing).toBe("uploading");
+    expect(v.go).toBe("files.transfer.verb.remote.go");
+    expect(v.done).toBe("files.transfer.upload.summary.remote");
+    // 메인 PC 창(기본값 · 명시 false)은 그대로 '복사한다'
+    expect(uploadVerb(local, false).ing).toBe("copying");
+    expect(uploadVerb(remote, true).ing).toBe("uploading");
   });
 
   it("목적지가 아직 없으면 원격 쪽 말로 떨어진다 (모달이 뜨기 전의 잠깐)", () => {
@@ -96,5 +114,56 @@ describe("humanSize", () => {
   it("경계는 큰 단위 쪽이다", () => {
     expect(humanSize(1024)).toBe("1.0KB");
     expect(humanSize(1024 * 1024)).toBe("1.0MB");
+  });
+});
+
+const MiB = 1024 * 1024;
+
+describe("limitLabel — 상한 안내의 `{max}`", () => {
+  it("정수 MiB 상한은 소수 없이 적는다", () => {
+    expect(limitLabel(15 * MiB)).toBe("15MB");
+    expect(limitLabel(48 * MiB)).toBe("48MB");
+    expect(limitLabel(100 * MiB)).toBe("100MB");
+    expect(limitLabel(REMOTE_RAW_MAX_BYTES)).toBe("15MB");
+    expect(limitLabel(UPLOAD_MAX_BYTES)).toBe("100MB");
+    expect(limitLabel(LOCAL_WRITE_MAX_BYTES)).toBe("100MB");
+    expect(limitLabel(DEVICE_DOWNLOAD_MAX_BYTES)).toBe("48MB");
+  });
+
+  it("정수 MiB 가 아니면 반올림하지 않고 `humanSize` 그대로 — 거짓 상한을 보이지 않는다", () => {
+    expect(limitLabel(15.5 * MiB)).toBe("15.5MB");
+    expect(limitLabel(15 * MiB + 1)).toBe(humanSize(15 * MiB + 1));
+    expect(limitLabel(512 * 1024)).toBe("512.0KB");
+  });
+});
+
+describe("rawUploadTooBig — 원시 본문 올리기의 상한 문구", () => {
+  const tr = (key: Key, params?: Record<string, string | number>) => translate("ko", key, params);
+  const big = 15.4 * MiB;
+
+  it("상한 안쪽이면 `null`", () => {
+    expect(rawUploadTooBig(10 * MiB, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", tr, false)).toBeNull();
+    expect(rawUploadTooBig(15 * MiB, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", tr, true)).toBeNull();
+  });
+
+  it("메인 창은 부르는 쪽 문구 그대로 — 상한은 소수 없이, 크기는 `humanSize`", () => {
+    const over = 101 * MiB;
+    expect(rawUploadTooBig(over, LOCAL_WRITE_MAX_BYTES, "files.transfer.toobig.local", tr, false)).toBe(
+      "파일이 너무 큽니다 (101.0MB) — 끌어다 놓기는 100MB 까지입니다",
+    );
+    expect(rawUploadTooBig(over, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", tr, false)).toBe(
+      "파일이 너무 큽니다 (101.0MB) — 업로드는 100MB 까지만 지원합니다",
+    );
+    // 메인 창의 상한은 줄지 않는다 — 15.4MB 는 통과
+    expect(rawUploadTooBig(big, LOCAL_WRITE_MAX_BYTES, "files.transfer.toobig.local", tr, false)).toBeNull();
+  });
+
+  it("원격 창은 두 올리기 모두 원격 창 문구 — 15.4MB 가 '15MB 까지' 와 구분된다", () => {
+    const want = "파일이 너무 큽니다 (15.4MB) — 원격 창에서는 15MB 까지 올릴 수 있습니다";
+    expect(rawUploadTooBig(big, LOCAL_WRITE_MAX_BYTES, "files.transfer.toobig.local", tr, true)).toBe(want);
+    expect(rawUploadTooBig(big, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", tr, true)).toBe(want);
+    expect(
+      rawUploadTooBig(big, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", (k, p) => translate("en", k, p), true),
+    ).toBe("That file is too large (15.4MB) — the remote client can upload up to 15MB");
   });
 });

@@ -349,6 +349,14 @@
   color: var(--fg-2);
 }
 
+/*
+  옆에 단추가 없을 때(원격 창 — [폴더 열기] 는 메인 PC 의 탐색기라 그리지 않는다)는 그 자리만큼 더 보여 준다.
+  줄이 좁으면 여전히 말줄임이다(상한은 남긴다 — 긴 경로가 이름 칸을 밀지 않게).
+*/
+.settings-view .size-row .path:only-child {
+  max-width: 34em;
+}
+
 /* ── 입력 칸 · 드롭다운 — MD3 filled field(2026-10-18): `--field-height` · `--field-radius` · surfaceContainerHighest(`--field-bg`) ·
    테두리 없음(1px 자리는 투명으로 남겨 높이를 지킨다). 호버는 상태 층, 포커스는 중성 링 ────────── */
 .settings-view .value,

@@ -184,7 +184,7 @@ export function paneAi(pane: PaneSpec): string | null {
 /**
  * 타일에 **보여 줄** 이름. 규칙은 이 모듈 머리말 참고.
  *
- * 순수 `paneName` 과 나뉘는 이유: `paneName` 은 트리·저장·이름변경 초기값처럼 **안정된**
+ * 순수 `paneName` 과 나뉘는 이유: `paneName` 은 트리·저장처럼 **안정된**
  * 이름이 필요한 곳에 그대로 쓰고, 이 함수는 화면에 뜨는 이름만 런타임 신호로 덮는다.
  */
 export function displayName(pane: PaneSpec): string {
@@ -198,8 +198,8 @@ export function displayName(pane: PaneSpec): string {
  * 탭 바에 **보여 줄** 제목 — `tabDisplayTitle` 과 같은 순서(`composeTabTitle` 한 곳 — 사용자 이름 → 고정 제목 →
  * 타일 둘 이상이면 합성 → 하나면 일부러 적은 제목 · 그 타일 이름 · "새 탭")를 타되 패널 이름을 `displayName` 으로 뽑는다.
  *
- * `tabDisplayTitle`(순수)은 팔레트·검색·이름변경 초기값에 그대로 남는다 — 그쪽을 반응형으로
- * 만들지 않으려고 표시용만 여기로 뺐다.
+ * `tabDisplayTitle`(순수)은 팔레트·검색에 그대로 남는다 — 그쪽을 반응형으로 만들지 않으려고
+ * 표시용만 여기로 뺐다. 탭 이름 변경의 초깃값은 탭 바와 같은 글자여야 해서 이 함수를 쓴다(`Tabs.svelte`).
  */
 export function displayTabTitle(tab: TabSpec): string {
   return composeTabTitle(tab, displayName, t);

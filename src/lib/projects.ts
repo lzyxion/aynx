@@ -210,6 +210,15 @@ export function isRemote<T extends Pick<Project, "host">>(p: T): p is T & { host
   return p.host !== null && p.host.trim() !== "";
 }
 
+/**
+ * 이 프로젝트의 폴더(워크트리)를 **탐색기에서 열 수 있는가** — 로컬 프로젝트이고 메인 PC 창일 때만. 원격 프로젝트는 그 폴더가
+ * 이 PC 에 없고, 원격 창(원격 웹 클라이언트)은 메인 PC 의 탐색기를 띄우지 못한다(폴리필이 `opener|reveal_item_in_dir` 를 거절).
+ * `remoteWindow` 는 부르는 쪽이 넘긴다(이 파일은 `ipc` 를 들이지 않는 순수 모듈 — `app/projects` 의 `canRevealWorktree`).
+ */
+export function canRevealProjectFolder(p: Pick<Project, "host">, remoteWindow: boolean): boolean {
+  return !isRemote(p) && !remoteWindow;
+}
+
 /** 목록·팔레트·즐겨찾기가 부르는 이름 */
 export function projectLabel(p: Project): string {
   return p.name;

@@ -11,6 +11,7 @@ This guide explains each item of the **host form**, which opens from [Add host�
   - **Stored credentials** at the bottom of the Connection tab is not a file. It only shows what is in the vault (`vault.bin`).
 - **DB connections** that go through this host are created in the **DB** section of the dock, not in the host form (pick this host in the Via field — [query-tile.md](query-tile.md)). If you rename the host, the Via value of those connections follows the new name. If you delete the host, those connections are deleted with it.
 - No file changes until you click [Save]. If saving fails, one line below the form tells you why. If the field to fix is on another tab, the form takes you to that tab.
+- In a **remote window**, buttons that would open a dialog or program on the main PC — such as [Browse…] and a forward's [Open in browser] — are not shown ([remote-web.md](remote-web.md)).
 - **Emptying** a `sessions.toml` field does not mean "no value". It **deletes that key**, and the value falls back to the file's `[defaults]` or preset value. If a value is inherited, it appears as dimmed text in the field (placeholder) or as "Inherited: on/off". `[defaults]` and `[presets.*]` cannot be edited in the form. Edit the file directly. (Merge priority: `[hosts.<alias>]` > `[presets.<name>]` > `[defaults]`)
 
 ---

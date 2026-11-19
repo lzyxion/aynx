@@ -273,14 +273,16 @@ export function fsPasteLabel(route: FsDropRoute | null, agent: boolean): DropLab
  * SFTP·로컬 타일은 **보고 있는 폴더**가 목적지다 — 그것이 브라우저를 여는 이유의 절반이다
  * (SSH 터미널에 놓으면 홈으로 가고, 파일 타일에 놓으면 지금 그 자리로 간다).
  * 마지막 줄은 거절이다: 시작 타일과 로컬 셸에는 올릴 원격이 없다.
+ *
+ * `remoteWindow` — 원격 창에서 로컬 타일(= 메인 PC 디스크)에 놓으면 그 기기의 파일이 **올라가는** 것이라 SFTP 와 같은 말이다.
  */
-export function dropLabel(outcome: DropLabelKind, kind: PaneKind, tr: Tr): string {
+export function dropLabel(outcome: DropLabelKind, kind: PaneKind, tr: Tr, remoteWindow = false): string {
   if (outcome === "attach") return tr("pane.drop.attach");
   if (outcome === "attach.otherserver") return tr("pane.drop.attach.otherserver");
   if (outcome === "paste") return tr("pane.drop.paste");
   if (outcome === "paste.elsewhere") return tr("pane.drop.paste.elsewhere");
   if (kind === "ssh") return tr("pane.drop.upload.ssh");
-  if (kind === "sftp") return tr("pane.drop.upload.sftp");
+  if (kind === "sftp" || (kind === "localfs" && remoteWindow)) return tr("pane.drop.upload.sftp");
   if (kind === "localfs") return tr("pane.drop.upload.localfs");
   return tr("pane.drop.upload.none");
 }

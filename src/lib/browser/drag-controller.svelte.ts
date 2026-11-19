@@ -188,11 +188,14 @@ export class DragController {
    * **OS 파일을 줄 위에서 받는다** — 트리 보기 전용 (`files` 가 참일 때만 [`dirDragOver`] 가 여기로
    * 넘긴다). 받는 쪽이 줄이라 타일 전체 하이라이트(`PaneHost` 의 "여기로 업로드") 대신 **그 폴더 줄**이
    * 밝아진다 — 줄에 `data-inner-drop-files` 가 붙어 있어 `PaneHost` 가 이 자리를 양보한다.
+   *
+   * 그래서 **전파를 끊지 않는다** — `PaneHost` 의 `onDragOver` 가 이 줄을 보고 타일 전체 덮개를 거둬야
+   * 한다. 끊으면 덮개가 남고, 줄이 드롭을 가져가면(`applyDrop` 은 끊는다) OS 드래그에는 `dragend` 도
+   * 없어 다음 드래그까지 떠 있다(2026-11-19).
    */
   #filesDragOver(ev: DragEvent, dir: string): void {
     if (!this.#host.receiveFiles || !this.#host.canReceive(dir) || this.#host.busy()) return;
     ev.preventDefault();
-    ev.stopPropagation();
     if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
     if (this.#dropDir !== dir) this.#dropDir = dir;
   }

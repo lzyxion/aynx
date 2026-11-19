@@ -3,7 +3,7 @@ import { currentWindowLabel } from "$lib/context";
 import { requestWindow } from "$lib/workspaces/window-events";
 import { bootAuxWorkspace, currentWorkspace, currentWorkspaceId, ensureWorkspaceKeys, pauseWorkspaceSave, resumeWorkspaceSave, switchWorkspace, workspacePlacement } from "$lib/app/workspaces.svelte.js";
 import { initializeWorkspaceWindow } from "$lib/app/tabs.svelte.js";
-import { invoke } from "../ipc";
+import { invoke, isRemote } from "../ipc";
 import { tick } from "svelte";
 import { toast } from "$lib/toast.svelte.js";
 import { isShared, setShared } from "$lib/ai.svelte.js";
@@ -234,7 +234,9 @@ export function noticeTearRefused(): void {
 export function startTear(tabId: string): number | null {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   refusedForUnsaved = false;
-  if (!tab) return null;
+  // 원격 창 — 창 넘기기는 메인 PC 에 새 창을 띄우는 일이라(`open_tear_window` 는 `remote/deny.rs` 가 거절) 예약을 만들지 않는다.
+  // 창 밖에 놓아도 조용히 끝나고(`refusedForUnsaved` 거짓 — 안내 없음) 창 안 이동은 그대로 된다.
+  if (!tab || isRemote) return null;
   const drafts = carryDrafts(listPanes(tab.root).map((p) => p.id));
   if (!drafts) {
     refusedForUnsaved = true;
@@ -278,11 +280,13 @@ export function startTear(tabId: string): number | null {
  *   없어 혼자 떠나도 된다.
  * - **시작 타일** — 옮겨 봐야 같은 안내 화면이다. 애초에 헤더가 붙지 않지만, 판정은
  *   손잡이가 아니라 뜻에 걸어 둔다.
+ * - **원격 창의 모든 타일** — 새 창은 메인 PC 의 창이다(타일 ⋯ 의 "새 창으로 분리" 도 원격 창에는 없다 — `PaneMenuCtx.remoteWindow`).
  */
 export function startPaneTear(paneId: string): number | null {
   const tab = tabOfPane(paneId);
   refusedForUnsaved = false;
-  if (!tab) return null;
+  // 원격 창 — [`startTear`] 와 같다(메인 PC 에 새 창을 띄울 수 없다 · 창 안 이동은 그대로)
+  if (!tab || isRemote) return null;
   const pane = findPane(tab.root, paneId);
   if (!pane || borrowsSession(pane) || pane.kind === "start") return null;
   const drafts = carryDrafts([pane.id]);

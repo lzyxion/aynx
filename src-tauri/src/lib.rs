@@ -529,6 +529,8 @@ pub fn run() {
             i18n::set_language,
             // 월페이퍼 — 고른 이미지를 앱 폴더로 복사해 소유한다 (docs/log/2026-09-04-wallpaper.md)
             wallpaper::wallpaper_set,
+            // 원격 창이 그 기기에서 고른 그림을 바이트로 올린다(같은 검사 · 같은 사본 규칙)
+            wallpaper::wallpaper_set_bytes,
             wallpaper::wallpaper_clear,
             wallpaper::wallpaper_resolve,
             wallpaper::wallpaper_gc,

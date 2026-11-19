@@ -150,6 +150,7 @@ Save the current look as one set, then swap it all at once by choosing a card. F
 The background image of the whole window. It sits behind the title bar, in the gaps between tiles, and behind the start screen.
 
 - The image you pick is **copied** to the app folder. The background stays even if you move or delete the original.
+- In a [remote window](remote-web.md), **Choose image…** opens the file picker of the device you're on and uploads the picture to the main PC (up to 15 MB). The wallpaper is shared with the main PC.
 - **Random wallpaper** downloads one 16:9 image of 1920×1080 or larger from konachan.net and applies it right away (it downloads only when you press it, up to 30MB). After the download, the picture's original post appears as its "Source" (this disappears when you restart the app).
 - To show more of the image, lower **Opacity** below (app chrome, glass panels, tiles other than the terminal) and **Terminal opacity** (the area text sits in).
   The two sliders set "how densely things cover the image".

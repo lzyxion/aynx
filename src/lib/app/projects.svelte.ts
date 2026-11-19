@@ -1,7 +1,8 @@
 import { projectOpenPlan } from "$lib/project-locations";
 import { currentWorkspaceId } from "$lib/app/workspaces.svelte.js";
 import { projectLocations, revealProjectLocation, worktreeTabsOf } from "$lib/app/project-locations.svelte.js";
-import { invoke } from "../ipc";
+// `isRemote` 는 이 파일에서 **원격 프로젝트** 판정(`$lib/projects`)이다 — 원격 창 표식은 이름을 갈라 들인다
+import { invoke, isRemote as isRemoteWindow } from "../ipc";
 import { dropProjectLocal, projects as projectList, putProjectLocal } from "$lib/app/project-list.svelte.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
@@ -27,6 +28,7 @@ import { installRemoteHooksOn } from "$lib/app/remote-hooks";
 import { toast } from "$lib/toast.svelte.js";
 import { recordProjectFolderOpen } from "$lib/app/recent-worktrees.svelte.js";
 import {
+  canRevealProjectFolder,
   draftOf,
   emptyDraft,
   hasSetupScript,
@@ -781,17 +783,19 @@ export async function openProjectInNewWorktree(p: Project, name: string): Promis
         ? "app.projects.worktree.created"
         : "app.projects.worktree.checkedOut";
     const message = t(key, { branch: added.branch, remote: added.tracked ?? "", path: where });
-    toast.success(
+    const text =
       instructionFiles > 0
         ? t("app.projects.worktree.instructionsApplied", { message, count: instructionFiles })
-        : message,
-      {
+        : message;
+    // [폴더 열기]는 이 창에서 탐색기를 띄울 수 있을 때만 — 원격 창에서는 토스트만(`canRevealWorktree`)
+    if (!canRevealWorktree(p)) toast.success(text);
+    else
+      toast.success(text, {
         action: {
           label: t("app.projects.worktree.reveal"),
           run: () => void revealItemInDir(where).catch(() => {}),
         },
-      },
-    );
+      });
   } catch (e) {
     showNotice(stripReason(e instanceof Error ? e.message : String(e)));
   }
@@ -857,9 +861,17 @@ export async function openProjectWorktreeHere(p: Project, w: WorktreeInfo): Prom
   recordProjectFolderOpen(p, w.path, w.branch);
 }
 
-/** 워크트리 폴더를 탐색기에서 고른 채 연다 (로컬만 — 새 워크트리 알림의 [폴더 열기] 와 같은 길) */
+/**
+ * 이 프로젝트의 워크트리 폴더를 **이 창에서** 탐색기로 열 수 있는가 — 로컬 프로젝트 + 메인 PC 창. 독 메뉴의 [폴더 열기] 줄과
+ * 새 워크트리 토스트의 단추가 이 하나를 본다(판정은 순수 `canRevealProjectFolder`).
+ */
+export function canRevealWorktree(p: Project): boolean {
+  return canRevealProjectFolder(p, isRemoteWindow);
+}
+
+/** 워크트리 폴더를 탐색기에서 고른 채 연다 (로컬 · 메인 PC 창만 — 새 워크트리 알림의 [폴더 열기] 와 같은 길) */
 export async function revealWorktree(p: Project, w: WorktreeInfo): Promise<void> {
-  if (isRemote(p)) return;
+  if (!canRevealWorktree(p)) return;
   try {
     await revealItemInDir(w.path);
   } catch (e) {

@@ -873,8 +873,11 @@
                   <span class="chip faint">{t(tempRoleKey(p.role))}</span>
                   <span class="meta mono" title={p.path}>{shortPath(p.path)}</span>
                   <span class="chip warn">{t(tempWhyKey(p.why))}</span>
-                  <button type="button" class="btn btn-sm btn-ghost" data-temp-open onclick={() => void revealItemInDir(p.path).catch(() => {})}
-                    >{t("orch.temp.open")}</button>
+                  <!-- [열기] 는 메인 PC 의 탐색기라 원격 창에는 없다(경로 글자 · [지우기]는 남는다) -->
+                  {#if !isRemote}
+                    <button type="button" class="btn btn-sm btn-ghost" data-temp-open onclick={() => void revealItemInDir(p.path).catch(() => {})}
+                      >{t("orch.temp.open")}</button>
+                  {/if}
                   <button type="button" class="btn btn-sm btn-secondary" data-temp-discard title={t("orch.temp.discard.title")} disabled={busy}
                     onclick={() => discard(p.path)}>{t("orch.temp.discard")}</button>
                 </li>

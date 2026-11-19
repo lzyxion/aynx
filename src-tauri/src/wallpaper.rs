@@ -2,6 +2,7 @@
 //!
 //! ```text
 //!  wallpaper_set(source)    원본을 <config_dir>/aynx/wp-<해시>.<ext> 로 복사 → 절대 경로
+//!  wallpaper_set_bytes(raw) 올린 바이트(헤더 x-file-name = 확장자용)를 같은 검사 · 같은 이름으로 → 절대 경로 (원격 창)
 //!  wallpaper_clear()        설정의 file 을 비운다 (파일은 GC 가 판단한다)
 //!  wallpaper_resolve(file)  이름 하나 → 앱 폴더 안 사본의 절대 경로 (없으면 null)
 //!  wallpaper_gc(keep)       아무도 가리키지 않는 사본을 지운다
@@ -113,6 +114,26 @@ fn checked_ext(source: &Path) -> Result<String, String> {
 /// 사람이 읽을 크기 문구 — 오류에 "얼마나 큰지" 를 같이 적어 준다.
 fn human_mb(bytes: u64) -> String {
     format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// 원본 크기 검사 — **고른 파일([`set`])과 올린 바이트([`upload_in`])가 함께 쓴다**(검사가 두 벌로
+/// 갈라지지 않게). 빈 것은 그림이 아니고, [`MAX_BYTES`] 를 넘으면 메모리 때문에 자른다.
+fn checked_size(len: u64) -> Result<(), String> {
+    if len == 0 {
+        return Err(tr!(
+            ko: "이미지가 비어 있습니다 (0바이트)",
+            en: "The image is empty (0 bytes)"
+        ));
+    }
+    if len > MAX_BYTES {
+        return Err(tr!(
+            ko: "이미지가 너무 큽니다: {size} (최대 {max})",
+            en: "The image is too large: {size} (maximum {max})",
+            size = human_mb(len),
+            max = human_mb(MAX_BYTES)
+        ));
+    }
+    Ok(())
 }
 
 /// 내용 해시로 사본 이름을 만든다 — `wp-<hex 앞 12자>.<ext>`.
@@ -342,14 +363,7 @@ fn set(source: &str) -> Result<String, String> {
             what = source.display()
         ));
     }
-    if meta.len() > MAX_BYTES {
-        return Err(tr!(
-            ko: "이미지가 너무 큽니다: {size} (최대 {max})",
-            en: "The image is too large: {size} (maximum {max})",
-            size = human_mb(meta.len()),
-            max = human_mb(MAX_BYTES)
-        ));
-    }
+    checked_size(meta.len())?;
 
     let dir = ensure_dir()?;
     // 이미 걸린 사본을 그대로 다시 고른 경우도 여기서 끝난다 — 해시가 같으니 복사하지 않는다.
@@ -384,6 +398,25 @@ fn adopt(dir: &Path, name: String) -> Result<String, String> {
 fn set_bytes(bytes: &[u8], ext: &str) -> Result<String, String> {
     let dir = ensure_dir()?;
     let name = write_hashed(bytes, ext, &dir)?;
+    adopt(&dir, name)
+}
+
+/// **올린 바이트**(원격 창이 그 기기에서 고른 그림)를 `dir` 안의 해시 이름으로 쓴다 — [`set`] 과 같은
+/// 검사([`checked_ext`] · [`checked_size`])를 지나고 [`write_hashed`] 로 같은 이름 규칙을 탄다. 돌려주는 값은 사본 이름.
+///
+/// `file_name` 은 **확장자를 얻는 데만** 쓴다 — 사본 이름은 내용의 해시라 `..` · 구분자 · 절대 경로가 들어와도
+/// 저장 자리는 언제나 `dir` 안의 한 파일이다. 내용이 실제 그림인지는 [`set`] 처럼 보지 않는다(확장자 수준 —
+/// 웹뷰가 디코드하지 못하면 배경이 비어 보일 뿐이다).
+fn upload_in(dir: &Path, file_name: &str, bytes: &[u8]) -> Result<String, String> {
+    let ext = checked_ext(Path::new(file_name))?;
+    checked_size(bytes.len() as u64)?;
+    write_hashed(bytes, &ext, dir)
+}
+
+/// 올린 바이트를 사본으로 쓰고 건다 ([`wallpaper_set_bytes`]). 블로킹.
+fn set_upload(file_name: &str, bytes: &[u8]) -> Result<String, String> {
+    let dir = ensure_dir()?;
+    let name = upload_in(&dir, file_name, bytes)?;
     adopt(&dir, name)
 }
 
@@ -438,6 +471,33 @@ where
 #[tauri::command]
 pub async fn wallpaper_set(source: String) -> Result<String, String> {
     blocking(move || set(&source)).await
+}
+
+/// **바이트로 받은 그림**을 앱 폴더로 써서 배경으로 건다 — [`wallpaper_set`] 의 바이트 판. 원격 창(원격 웹 클라이언트)은
+/// 메인 PC 의 파일 고르기 대화상자를 못 쓰므로, 그 기기에서 고른 그림의 내용을 실어 보낸다. 검사 · 사본 이름 · 저장 자리 ·
+/// 돌려주는 값(사본의 절대 경로)은 [`wallpaper_set`] 과 같다([`upload_in`] → [`adopt`]).
+///
+/// 모양은 [`crate::local_browser::local_write_file`] 과 같다 — 내용은 **raw 바디**, 원본 파일 이름은 헤더
+/// `x-file-name`(`encodeURIComponent` — 한글). 이름은 확장자를 고르는 데만 쓴다.
+///
+/// 크기 상한은 [`wallpaper_set`] 과 같은 [`MAX_BYTES`](50MB)다. 원격 창의 원시 본문은 ws 프레임 하나로 오므로 실제로는
+/// `remote::ws` 의 받기 상한(16MiB)이 먼저 자른다 — 이 상한은 메인 PC 창에서 부를 때의 몫이다.
+#[tauri::command]
+pub async fn wallpaper_set_bytes(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let name = request
+        .headers()
+        .get("x-file-name")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| tr!(ko: "파일 이름이 없습니다", en: "The file name is missing"))?;
+    let name = crate::sftp::percent_decode(name)?;
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err(tr!(ko: "본문이 바이너리가 아닙니다", en: "The body is not binary"));
+    };
+    // 크기는 복사 전에 한 번 본다(50MB 를 넘는 것을 한 벌 더 만들지 않게) — 같은 검사를 `upload_in` 이 다시 본다.
+    checked_size(data.len() as u64)?;
+    // 바디는 요청에 매여 있는데(`'_`) 쓰기는 블로킹 풀로 넘기므로 한 벌 복사한다(`local_write_file` 과 같다).
+    let bytes = data.clone();
+    blocking(move || set_upload(&name, &bytes)).await
 }
 
 /// [`wallpaper_random`] 이 돌려주는 값 — 사본의 절대 경로와 그 그림의 원본 게시물 주소.

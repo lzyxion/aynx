@@ -1236,6 +1236,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "upload.lead.local.1": " receives a ",
   "upload.lead.local.term": "copy",
   "upload.lead.local.2": ".",
+  "upload.lead.device.1": " receives the files from this device.",
   "upload.lead.remote.1": " receives the files over SFTP.",
   "upload.lead.tail.1": "Existing names are ",
   "upload.lead.tail.term": "not overwritten",

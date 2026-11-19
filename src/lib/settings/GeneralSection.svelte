@@ -337,8 +337,11 @@
 <h4 class="subhead">{t("settings.general.server.heading")}</h4>
 <SessionServerRow />
 
-<!-- 앱 업데이트(2026-11-12) — 일반의 끝 소제목(새 섹션 없음): 자동 확인 · 판 · 건너뛴 판 · 출처 각주. 몸은 `UpdatesRows` -->
-<UpdatesRows />
+<!-- 앱 업데이트(2026-11-12) — 일반의 끝 소제목(새 섹션 없음): 자동 확인 · 판 · 건너뛴 판 · 출처 각주. 몸은 `UpdatesRows`(머리 글자 포함).
+     원격 창에서는 묶음째 그리지 않는다 — 업데이트는 메인 PC 의 앱을 바꾸는 일이고 카드도 주 창에만 선다 -->
+{#if !isRemote}
+  <UpdatesRows />
+{/if}
 
 <!--
   설정 옮기기(2026-11-17 — docs/log/2026-11-17-settings-transfer.md) — 일반의 맨 끝 묶음. 설정값이 아니라 **지금 하는 동작**이라

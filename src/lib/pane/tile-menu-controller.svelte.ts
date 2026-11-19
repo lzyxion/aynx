@@ -11,6 +11,7 @@
 // **헤더 우클릭도 같은 메뉴**를 연다. 32px 짜리 띠에서 12px 짜리 점 세 개를 겨누는 것보다
 // 띠 아무 데나 우클릭하는 편이 쉽고, 두 몸짓이 다른 메뉴를 내면 그때부터 둘 다 외워야 한다.
 import { runOnMenu } from "$lib/browser/menu-runner";
+import { isRemote } from "$lib/ipc";
 import { canContinueInOrch, forkIntoOrchestration } from "$lib/app/orchestration.svelte.js";
 import { isOrchTab } from "$lib/orchestration/orch-tab";
 import { openBranchGraphOfPane } from "$lib/app/branch-graph.svelte.js";
@@ -169,6 +170,8 @@ export function createTileMenu(h: TileMenuHost) {
       // 이 줄들이 그려지지도 않는다 (`hasSession` 묶음 안이다).
       hasScrollback: termActionsOf(menuBox.pane.id)?.hasScrollback() ?? false,
       logging: (termActionsOf(menuBox.pane.id)?.logPath() ?? null) !== null,
+      // 원격 창 — 스크롤백 저장 · 세션 로그 · 원격 파일 편집 · 새 창으로 분리 줄을 그리지 않는다(`PaneMenuCtx.remoteWindow`)
+      remoteWindow: isRemote,
       // "이 폴더의 지난 대화" 줄의 단축키 글자 — 사용자가 바꾼 조합 그대로
       folderConvoHint: displayCombo(effectiveCombo("folder-conversations", h.keybindings)),
       // "사이드 채팅에서 이어 가기"(사이드 채팅 v2 6단계) — 주 창의 로컬 AI 타일 · 그 대화 연결을 알 때만(`tileForkSource` — 누른 뒤에도 같은 판정)

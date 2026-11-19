@@ -42,6 +42,8 @@
   import UiIcon from "$lib/UiIcon.svelte";
   import { aiIconName } from "$lib/pane-icons";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
+  // 이 파일의 `remote` 는 프로젝트 위치(SSH)다 — 원격 창 판정은 이름을 갈라 들인다(`app/projects.svelte.ts` 와 같다)
+  import { isRemote as isRemoteWindow } from "$lib/ipc";
   import { hostCache } from "$lib/app/hosts.svelte.js";
   import { knownShellList } from "$lib/app/panes.svelte.js";
   import {
@@ -80,6 +82,11 @@
   const form = $derived(projectForm());
   const draft = $derived(form.draft);
   const remote = $derived(draft.location === "remote");
+  /**
+   * 경로 칸 옆 [찾아보기…] 를 세우는가 — **로컬 위치 그리고 메인 PC 창**일 때만. 원격(SSH) 경로는 이 PC 의 대화상자로 고를 수
+   * 없고, 원격 창(원격 웹 클라이언트)에서는 그 대화상자가 메인 PC 에 뜬다(폴리필이 거절한다). 칸에는 늘 직접 적을 수 있다.
+   */
+  const canBrowse = $derived(!remote && !isRemoteWindow);
   /** git 신원 안내의 두 줄 (자리표시는 지금 언어) */
   const identityLines = $derived(gitIdentityLines());
   /** 추가 상자의 "새로 만들기" 인가 (편집은 늘 기존 폴더) */
@@ -392,7 +399,7 @@
                           : t("app.projects.form.parent.placeholder.local")}
                         oninput={(e) => setProjectParent(e.currentTarget.value)}
                       />
-                      {#if !remote}
+                      {#if canBrowse}
                         <button type="button" class="ghost small btn btn-secondary" onclick={() => void browseProjectParent()}
                           >{t("app.projects.form.browse")}</button
                         >
@@ -429,8 +436,8 @@
                         oninput={(e) => setProjectField("path", e.currentTarget.value)}
                         onblur={() => void checkRepoNow()}
                       />
-                      {#if !remote}
-                        <!-- 원격 경로는 이 PC 의 대화상자로 고를 수 없다 — 로컬에서만 선다 -->
+                      {#if canBrowse}
+                        <!-- 원격 경로는 이 PC 의 대화상자로 고를 수 없다 — 로컬에서만 선다(원격 창에서도 없다 — `canBrowse`) -->
                         <button type="button" class="ghost small btn btn-secondary" onclick={() => void browseProjectFolder()}
                           >{t("app.projects.form.browse")}</button
                         >
@@ -541,7 +548,7 @@
                       placeholder={worktreeDefault}
                       oninput={(e) => setProjectField("worktreeDir", e.currentTarget.value)}
                     />
-                    {#if !remote}
+                    {#if canBrowse}
                       <button type="button" class="ghost small btn btn-secondary" onclick={() => void browseWorktreeFolder()}
                         >{t("app.projects.form.browse")}</button
                       >

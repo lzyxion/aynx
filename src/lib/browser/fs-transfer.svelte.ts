@@ -14,6 +14,16 @@ import {
 import { routeBetween, routeDoneLabel, routeLabel, type FsRoute } from "$lib/fs-route";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { Key } from "$lib/i18n/keys";
+import { isDirLike, type SftpEntry } from "$lib/sftp-browser";
+import { humanSize, limitLabel } from "$lib/sftp";
+import {
+  DEVICE_DOWNLOAD_GAP_MS,
+  DEVICE_DOWNLOAD_MAX_BYTES,
+  deviceDownloadSkip,
+  deviceDownloadTooBig,
+  deviceTooBigReport,
+  saveBlobToDevice,
+} from "$lib/browser/device-download";
 
 /**
  * **묶음 전송 엔진** — 붙여넣기 · 타일 간 드롭 · 다운로드 · 내보내기 · 가져오기가 전부
@@ -238,6 +248,140 @@ export class Transfers {
       { src: backend, paths: [...paths], destDir: dir, mode: "copy", route: "same", outbound: true },
       (p, d) => this.#localConflictsAt(p, d),
     );
+  }
+
+  /**
+   * **원격 창의 [이 기기로 다운로드]**(2026-11-19 · `device-download.ts`) — 고른 파일들을 원격 창을 띄운 브라우저로,
+   * **목록 순서대로 하나씩**(파일 하나 = 길이 1).
+   *
+   * 위 두 길은 메인 PC 의 폴더 고르기 대화상자를 거쳐 원격 창에서는 설 수 없다. 바이트는 `readImage`(파일 하나 · 조각 · 진행 ·
+   * `op` 취소)로 받아 브라우저 내려받기로 넘긴다. 동시에 읽지 않는다 — 응답이 ws 메시지 하나씩이라 겹치면 관문의 보내기 줄
+   * 상한에 걸린다. 규칙은 다른 전송과 같다 — 같은 전송 줄(`filesDone/filesTotal`) · 같은 [취소](남은 것 전부) · 같은 취소
+   * 안내 · 같은 완료 안내. 충돌을 물을 폴더가 없으므로 `#start`/`#runPlan` 을 지나지 않는다.
+   *
+   * 상한을 넘는 파일은 건너뛰고 끝에 한 번 알린다. 읽기 실패(취소 아님)는 거기서 멈추고 그 오류를 세운다 — 이미 받은 것은
+   * 받은 대로다.
+   */
+  async downloadToDevice(paths: readonly string[]): Promise<void> {
+    const backend = this.#host.backend();
+    if (this.#host.offline() || this.busy || paths.length === 0) return;
+    this.#host.setError(null);
+    const list = [...paths];
+    const labelKey: Key = "files.transfer.route.download";
+    // 묶음 전체에 전송 줄 하나 — 처음부터 세워 두어 파일 사이(`stat` · 틈)에도 `busy` 가 참이다(다른 전송이 끼지 않게)
+    this.#job = {
+      op: nextOp(),
+      labelKey,
+      filesDone: 0,
+      filesTotal: list.length,
+      bytesDone: 0,
+      bytesTotal: 0,
+      current: "",
+      canceling: false,
+    };
+    const tooBig: number[] = [];
+    let received = 0;
+    let canceled = false;
+    let failure: { error: unknown } | null = null;
+
+    try {
+      for (const path of list) {
+        if (this.#job?.canceling) {
+          canceled = true;
+          break;
+        }
+        // 메뉴가 본 목록은 낡았을 수 있다 — 종류 · 크기를 다시 본다
+        let entry: SftpEntry;
+        try {
+          entry = await backend.stat(path);
+        } catch (e) {
+          failure = { error: e };
+          break;
+        }
+        // `stat` 은 lstat 이라 링크의 크기는 링크 자신의 것이다 — 링크면 Rust 가 따라가 첫 진행 메시지에 실어 주는
+        // 진짜 크기(`bytesTotal`)로 아래에서 다시 본다.
+        const link = entry.kind === "symlink";
+        // 폴더는 메뉴가 줄을 세우지 않는다 — 여기 닿는 것은 메뉴를 연 뒤 폴더로 바뀐 경쟁뿐이라 조용히 건너뛴다
+        const skip = deviceDownloadSkip({ dir: isDirLike(entry), link, size: entry.size });
+        if (skip === "dir") continue;
+        if (skip === "toobig") {
+          tooBig.push(entry.size);
+          continue;
+        }
+        const before: TransferJob | null = this.#job;
+        if (!before || before.canceling) {
+          canceled = true;
+          break;
+        }
+        // 파일마다 번호가 새로 붙는다 — [취소]는 줄에 실린 지금 파일의 `op` 를 끊고, 고리는 `canceling` 으로 끊긴다
+        const op = nextOp();
+        this.#job = { ...before, op, filesDone: received, bytesDone: 0, bytesTotal: link ? 0 : entry.size, current: path };
+        let lateBig: number | null = null;
+        const onProgress = (p: TransferProgress) => {
+          const j = this.#job;
+          if (!j || j.op !== p.op) return;
+          // 파일 수는 묶음의 것을 지킨다(`readImage` 의 진행은 파일 하나 기준이다)
+          this.#job = { ...j, bytesDone: p.bytesDone, bytesTotal: p.bytesTotal };
+          if (lateBig === null && deviceDownloadTooBig(p.bytesTotal)) {
+            lateBig = p.bytesTotal;
+            void backend.cancel(op).catch(() => {});
+          }
+        };
+
+        let bytes: ArrayBuffer;
+        try {
+          bytes = await backend.readImage(path, op, onProgress);
+        } catch (e) {
+          // 늦게 안 상한 초과는 우리가 건 취소다 — 건너뛰고 다음으로(사람의 [취소]면 고리 머리에서 멈춘다)
+          if (lateBig !== null) {
+            tooBig.push(lateBig);
+            continue;
+          }
+          const message = e instanceof Error ? e.message : String(e);
+          if (isTransferCanceled(message)) canceled = true;
+          else failure = { error: e };
+          break;
+        }
+        if (lateBig !== null) {
+          tooBig.push(lateBig);
+          continue;
+        }
+        // 둘째부터는 틈을 둔다 — 붙어 나간 내려받기를 브라우저가 떨어뜨리지 않게(`DEVICE_DOWNLOAD_GAP_MS`)
+        if (received > 0) await new Promise((r) => setTimeout(r, DEVICE_DOWNLOAD_GAP_MS));
+        // 브라우저가 열지 않고 받게 — 그림 · PDF 도 새 탭으로 열리지 않는다
+        saveBlobToDevice(new Blob([bytes], { type: "application/octet-stream" }), baseNameOf(path));
+        received += 1;
+        const after: TransferJob | null = this.#job;
+        if (after) this.#job = { ...after, filesDone: received };
+      }
+    } finally {
+      this.#job = null;
+    }
+
+    // 취소는 오류가 아니다 — `#runPlan` 과 같은 안내(이미 받은 것은 받은 대로)
+    if (canceled) {
+      this.#host.notice(t("files.transfer.canceled"));
+      return;
+    }
+    if (failure !== null) {
+      this.#host.setError(this.#host.failureOf(failure.error));
+      return;
+    }
+    const report = deviceTooBigReport(tooBig);
+    if (report !== null) {
+      this.#host.setError(
+        report.kind === "one"
+          ? deviceTooBigText(report.size)
+          : t("files.transfer.toobig.device.many", {
+              count: report.count,
+              max: limitLabel(DEVICE_DOWNLOAD_MAX_BYTES),
+            }),
+      );
+    }
+    if (received === 0) return;
+    const text = t("files.transfer.done.download", { count: received });
+    toast.success(text);
+    recordNotification({ kind: "transfer", text, level: "success" });
   }
 
   /**
@@ -484,6 +628,11 @@ export class Transfers {
     // (docs/log/2026-09-25-notification-center.md).
     recordNotification({ kind: "transfer", text, level: "success" });
   }
+}
+
+/** [이 기기로 다운로드] 상한 거절 문구 */
+function deviceTooBigText(size: number): string {
+  return t("files.transfer.toobig.device", { size: humanSize(size), max: limitLabel(DEVICE_DOWNLOAD_MAX_BYTES) });
 }
 
 /** 목적지 폴더를 한 번 읽고 **이름으로** 맞춰 본다 — 백엔드가 다를 때의 유일한 방법 */

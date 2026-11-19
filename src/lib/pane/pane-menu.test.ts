@@ -640,6 +640,24 @@ describe("menuItemsFor — '출력' 묶음 (복사 · 스크롤백 저장 · 세
     }
   });
 
+  it("원격 창에서는 스크롤백 저장 · 세션 로그 줄이 없다 (메인 PC 의 저장 대화상자 · 기본 앱)", () => {
+    const remote: PaneMenuCtx = { ...off, remoteWindow: true, logging: true };
+    for (const kind of ["ssh", "local"] as const) {
+      expect(flyoutOf(kind, "output", remote), kind).toEqual(["copy-output"]);
+      // 메인 PC 창(명시 false · 값 없음)은 그대로 셋
+      expect(flyoutOf(kind, "output", { ...off, remoteWindow: false }), kind).toEqual([
+        "copy-output",
+        "save-scrollback",
+        "session-log",
+      ]);
+    }
+    // 터미널 우클릭 메뉴도 같은 정의 — 같이 빠진다
+    const group = terminalMenuItems("ssh", { ...bare, remoteWindow: true }, ko).filter(isGroup)[0];
+    expect(group.children.map((c) => c.action)).toEqual(["copy-output"]);
+    // 남은 한 줄이 흐리면 부모도 흐리다(전부 흐린 묶음 규칙 그대로)
+    expect(groupOf("ssh", "output", remote)?.disabled).toBe(true);
+  });
+
   it("터미널 우클릭 메뉴에서는 묶음 **하나가 통째로** 위로 온다", () => {
     const list = termActions("ssh");
     expect(list.indexOf("output")).toBe(list.indexOf("clear-screen") + 1);
@@ -855,6 +873,37 @@ describe("폰 배치(`solo` · 10-20) — 분할 둘 · 새 창으로 분리가 
     const bareRows = menuItemsFor("localfs", { ...off, solo: true, phone: { flip: null } }, ko);
     expect(bareRows.map(rowId)).toEqual(["close"]);
     expect(bareRows[0].separator).not.toBe(true);
+  });
+});
+
+describe("원격 창(`remoteWindow`) — 메인 PC 의 편집기 · 창을 띄우는 줄이 빠진다", () => {
+  const KINDS: PaneKind[] = ["local", "ssh", "query", "localfs", "branches", "doc", "sftp"];
+
+  it("[새 창으로 분리]가 모든 종류에서 없고, 닫기 앞 선은 닫기가 인다", () => {
+    for (const kind of KINDS) {
+      const rows = menuItemsFor(kind, { ...off, remoteWindow: true }, ko);
+      expect(rows.map(rowId), kind).not.toContain("detach");
+      const close = rows.find((r) => rowId(r) === "close") as PaneMenuItem;
+      expect(close.separator, kind).toBe(true);
+    }
+    // 터미널 우클릭 메뉴도 같은 정의
+    expect(termActions("ssh", { ...bare, remoteWindow: true })).not.toContain("detach");
+  });
+
+  it("서버 ▸ 에 [원격 파일 편집…]이 없다 (포워딩 · 원격 파일 · tmux 는 그대로)", () => {
+    expect(flyoutOf("ssh", "server", { ...off, remoteWindow: true })).toEqual(["forward", "sftp"]);
+    expect(flyoutOf("ssh", "server", { ...off, remoteWindow: true, screenOnly: true })).toEqual([
+      "forward",
+      "sftp",
+      "tmux-sessions",
+    ]);
+  });
+
+  it("메인 PC 창(명시 false · 값 없음)은 예전 그대로다", () => {
+    for (const ctx of [off, { ...off, remoteWindow: false }]) {
+      expect(actionsOf("local", ctx)).toContain("detach");
+      expect(flyoutOf("ssh", "server", ctx)).toEqual(["forward", "sftp", "edit-remote"]);
+    }
   });
 });
 

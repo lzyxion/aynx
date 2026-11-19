@@ -282,6 +282,15 @@ describe("dropLabel", () => {
     expect(dropLabel("upload", "localfs", ko)).toBe("이 폴더로 복사");
   });
 
+  it("원격 창에서 로컬 타일(메인 PC 디스크)에 놓으면 그 기기에서 올리는 것이라 SFTP 와 같은 말이다", () => {
+    expect(dropLabel("upload", "localfs", ko, true)).toBe("이 폴더로 업로드");
+    expect(dropLabel("upload", "localfs", ko, false)).toBe("이 폴더로 복사");
+    // 다른 타일 종류는 원격 창이어도 그대로
+    expect(dropLabel("upload", "ssh", ko, true)).toBe("이 서버로 업로드");
+    expect(dropLabel("upload", "local", ko, true)).toBe("SSH 타일에만 업로드할 수 있습니다");
+    expect(dropLabel("paste", "localfs", ko, true)).toBe("터미널에 경로 붙여넣기");
+  });
+
   it("올릴 원격이 없는 타일에는 거절 문구가 뜬다", () => {
     expect(dropLabel("upload", "local", ko)).toBe("SSH 타일에만 업로드할 수 있습니다");
     expect(dropLabel("upload", "start", ko)).toBe("SSH 타일에만 업로드할 수 있습니다");

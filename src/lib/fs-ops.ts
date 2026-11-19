@@ -1,5 +1,6 @@
 import { Channel, invoke } from "./ipc";
 import { errorOf } from "$lib/sftp-browser";
+import { rawUploadTooBig } from "$lib/sftp";
 import type { Key } from "$lib/i18n/keys";
 import type { Tr } from "$lib/session";
 import { hasReason } from "$lib/error-reason";
@@ -153,14 +154,9 @@ export async function localWriteFile(
   onConflict: OnConflict,
   tr: Tr,
 ): Promise<string | null> {
-  if (file.size > LOCAL_WRITE_MAX_BYTES) {
-    throw new Error(
-      tr("files.transfer.toobig.local", {
-        size: `${Math.round(file.size / (1024 * 1024))}MB`,
-        max: `${Math.round(LOCAL_WRITE_MAX_BYTES / (1024 * 1024))}MB`,
-      }),
-    );
-  }
+  // 원격 창에서는 본문이 ws 프레임 하나로 가므로 그 상한 안쪽에서 먼저 거절한다 (`ipc.ts` 의 `rawBodyLimit`).
+  const tooBig = rawUploadTooBig(file.size, LOCAL_WRITE_MAX_BYTES, "files.transfer.toobig.local", tr);
+  if (tooBig !== null) throw new Error(tooBig);
   const headers: Record<string, string> = {
     "x-dir": encodeURIComponent(destDir),
     "x-file-name": encodeURIComponent(file.name),

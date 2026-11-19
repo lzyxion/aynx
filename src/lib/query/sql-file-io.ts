@@ -5,9 +5,14 @@
  *   열기 대화상자(로컬 `readText` = `local_read_text`). 파일마다 새 스크립트 탭 하나(`open` 이 `false` = 탭 상한 → 남은 파일은 알림 한 줄).
  *   실행하지 않는다.
  * - 저장: 늘 "다른 이름으로" — 저장 대화상자 → CSV 저장과 같은 `writeTextFile`. 탭은 그 경로를 기억하지 않는다.
+ * - **원격 창**(2026-11-19): 메인 PC 의 열기 · 저장 대화상자는 폴리필이 거절하므로 같은 입구가 **이 기기(브라우저)** 로 간다 —
+ *   열기 = 브라우저 파일 고르기 창 → 끌어 놓기와 같은 `fromFile` · 저장 = `saveBlobToDevice`(브라우저 내려받기). 메뉴 · 단축키는 그대로다.
  */
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { saveBlobToDevice } from "$lib/browser/device-download";
+import { pickDeviceFiles } from "$lib/browser/device-pick";
 import { backendFromKey, localBackend, LOCAL_KEY, type TextFile } from "$lib/fs-backend";
+import { isRemote } from "$lib/ipc";
 import { decodeFsDrag, fsDragActive, fsDragEmpty, FS_DRAG_TYPE } from "$lib/fs-drag";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { Key } from "$lib/i18n/keys";
@@ -61,8 +66,8 @@ export async function openSqlSources(sources: readonly SqlSource[], open: OpenSc
   }
 }
 
-/** OS 파일(`File`) → 열 파일 */
-function fromFile(f: File): SqlSource {
+/** OS 파일(`File`) → 열 파일 — 끌어 놓기와 원격 창의 파일 고르기가 함께 쓴다 */
+export function fromFile(f: File): SqlSource {
   return {
     name: f.name,
     size: f.size,
@@ -103,8 +108,15 @@ export function dropSources(dt: DataTransfer | null): SqlSource[] {
   return Array.from(dt.files ?? []).map(fromFile);
 }
 
-/** 열기 대화상자 → 열 파일들(취소 = 빈 목록) */
-export async function pickSqlSources(): Promise<SqlSource[]> {
+/** 브라우저 파일 고르기 창의 `accept` — 받는 확장자(`SQL_FILE_EXTENSIONS`) 그대로 */
+export const SQL_FILE_ACCEPT = SQL_FILE_EXTENSIONS.map((ext) => "." + ext).join(",");
+
+/**
+ * 열기 대화상자 → 열 파일들(취소 = 빈 목록). 원격 창이면 메인 PC 의 대화상자 대신 이 기기의 고르기 창 → 끌어 놓기와 같은 `fromFile`
+ * (크기 · 종류 · 이진 판정은 `openSqlSources` 의 같은 규칙). 원격 갈래는 첫 `await` 앞에서 고르기 창을 연다 — 몸짓 사슬.
+ */
+export async function pickSqlSources(remoteWindow: boolean = isRemote): Promise<SqlSource[]> {
+  if (remoteWindow) return (await pickDeviceFiles(SQL_FILE_ACCEPT, true)).map(fromFile);
   let picked: string | string[] | null = null;
   try {
     picked = await openDialog({ multiple: true, directory: false, filters: [{ name: "SQL", extensions: [...SQL_FILE_EXTENSIONS] }] });
@@ -125,11 +137,38 @@ export interface SaveTextKind {
   failed: Key;
 }
 
+/** 원격 창 내려받기의 MIME — 확장자(`SaveTextKind.filter.ext`)로 고른다 */
+export function deviceSaveMime(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case "csv":
+      return "text/csv;charset=utf-8";
+    case "json":
+      return "application/json;charset=utf-8";
+    case "sql":
+      return "application/sql;charset=utf-8";
+    default:
+      return "text/plain;charset=utf-8";
+  }
+}
+
 /**
  * 글 하나를 "다른 이름으로" 저장 — 저장 대화상자 → `writeTextFile` → 알림(취소면 조용히). `.sql` 저장과 결과 내보내기(CSV · JSON —
  * `ResultGrid`)가 함께 쓴다. 경로는 기억하지 않는다.
+ *
+ * 원격 창이면 대화상자 없이 **이 기기의 내려받기**(`saveBlobToDevice` — 이름 = `defaultName`)로 간다. 바이트는 메인 PC 창과 같다 —
+ * `writeTextFile`(Rust `write_text_file`)은 글을 UTF-8 그대로(`contents.as_bytes()`) 쓰고, `Blob([text])` 도 UTF-8 로 줄바꿈을 바꾸지
+ * 않고 담는다(CSV 의 BOM 은 `exportCsv` 가 글 맨 앞에 넣은 U+FEFF 라 양쪽 다 EF BB BF). 첫 `await` 앞에서 내려받기를 낸다 — 몸짓 사슬.
  */
-export async function saveTextAs(defaultName: string, text: string, kind: SaveTextKind): Promise<void> {
+export async function saveTextAs(defaultName: string, text: string, kind: SaveTextKind, remoteWindow: boolean = isRemote): Promise<void> {
+  if (remoteWindow) {
+    try {
+      saveBlobToDevice(new Blob([text], { type: deviceSaveMime(kind.filter.ext) }), defaultName);
+      toast.success(t("pane.query.file.savedDevice", { name: defaultName }));
+    } catch (e) {
+      toast.error(t(kind.failed, { reason: e instanceof Error ? e.message : String(e) }));
+    }
+    return;
+  }
   let path: string | null = null;
   try {
     path = await saveDialog({ defaultPath: defaultName, filters: [{ name: kind.filter.name, extensions: [kind.filter.ext] }] });
@@ -146,6 +185,6 @@ export async function saveTextAs(defaultName: string, text: string, kind: SaveTe
 }
 
 /** 스크립트 탭의 글을 `.sql` 로 — 늘 다른 이름으로(경로는 기억하지 않는다) */
-export function saveSqlText(defaultName: string, text: string): Promise<void> {
-  return saveTextAs(defaultName, text, { filter: { name: "SQL", ext: "sql" }, saved: "pane.query.file.saved", failed: "pane.query.file.saveFailed" });
+export function saveSqlText(defaultName: string, text: string, remoteWindow: boolean = isRemote): Promise<void> {
+  return saveTextAs(defaultName, text, { filter: { name: "SQL", ext: "sql" }, saved: "pane.query.file.saved", failed: "pane.query.file.saveFailed" }, remoteWindow);
 }

@@ -276,7 +276,8 @@
     {/if}
   {/if}
   <!-- 외부 열기 자리 하나 — 로컬은 기본 앱으로 열기, 원격은 외부 편집기로 편집(받아서 열고 저장하면 올린다).
-       `fs-backend` 에서 둘(`canOpenExternal` · `canEdit`)은 동시에 서지 않는다 -->
+       `fs-backend` 에서 둘(`canOpenExternal` · `canEdit`)은 동시에 서지 않는다(원격 창에서는 둘 다 서지 않는다 —
+       `localShellCaps` · `remoteEditCap`) -->
   {#if backend.canOpenExternal}
     <button
       type="button"

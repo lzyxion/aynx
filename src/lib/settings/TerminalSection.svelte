@@ -44,6 +44,7 @@
   import { iconRef } from "$lib/host-icons";
   import Dropdown from "$lib/Dropdown.svelte";
   import { logsDir, openLogsFolder } from "$lib/session-logs";
+  import { isRemote } from "$lib/ipc";
   import { toast } from "$lib/toast.svelte.js";
   import { optionEntries, t } from "$lib/i18n/i18n.svelte.js";
   import Toggle from "$lib/Toggle.svelte";
@@ -622,11 +623,14 @@
       <code class="path" title={logsFolder ?? undefined}
         >{logsFolder ?? t("settings.terminal.logs_folder.pending")}</code
       >
-      <button type="button" class="btn btn-sm btn-secondary" disabled={logsFolder === null} onclick={() => void openFolder()}>
-        <UiIcon name="folder-open" size={13} />{t(
-          "settings.terminal.logs_folder.open",
-        )}
-      </button>
+      <!-- [폴더 열기] 는 메인 PC 의 탐색기라 원격 창에는 없다(경로 글자는 남는다) -->
+      {#if !isRemote}
+        <button type="button" class="btn btn-sm btn-secondary" disabled={logsFolder === null} onclick={() => void openFolder()}>
+          <UiIcon name="folder-open" size={13} />{t(
+            "settings.terminal.logs_folder.open",
+          )}
+        </button>
+      {/if}
     </div>
   </div>
 </div>

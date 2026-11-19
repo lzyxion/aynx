@@ -14,6 +14,7 @@
   import { detectedAiClis, refreshKnownAiClis } from "$lib/app/panes.svelte.js";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
+  import { isRemote } from "$lib/ipc";
   import { askHookInstall } from "$lib/app/confirm-dialog.svelte.js";
   import UiIcon from "$lib/UiIcon.svelte";
   import InfoNote from "$lib/settings/InfoNote.svelte";
@@ -312,9 +313,12 @@
         value={settings.aiStartDir ?? ""}
         oninput={(e) => setAiStartDir(e.currentTarget.value)}
       />
-      <button type="button" class="btn btn-sm btn-secondary" disabled={pickingDir} onclick={() => void pickStartDir()}>
-        <UiIcon name="folder-open" size={13} />{t("settings.ai.start_dir.browse")}
-      </button>
+      <!-- [찾아보기…] 는 메인 PC 의 폴더 고르기 대화상자라 원격 창에는 없다 — 칸에 경로를 직접 적는다 -->
+      {#if !isRemote}
+        <button type="button" class="btn btn-sm btn-secondary" disabled={pickingDir} onclick={() => void pickStartDir()}>
+          <UiIcon name="folder-open" size={13} />{t("settings.ai.start_dir.browse")}
+        </button>
+      {/if}
     </div>
   </div>
 </div>

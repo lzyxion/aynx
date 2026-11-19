@@ -1059,7 +1059,7 @@
       {#if dc.dropTarget?.paneId === item.pane.id && preview === null}
         <DropOverlay preview={dc.dropTarget.preview} zone={dc.dropTarget.zone} />
       {:else if dc.fileTarget?.paneId === item.pane.id}
-        <DropOverlay preview="all" label={dropLabel(dc.fileTarget.label, item.pane.kind, tr)} />
+        <DropOverlay preview="all" label={dropLabel(dc.fileTarget.label, item.pane.kind, tr, isRemote)} />
       {/if}
     </div>
   {/each}

@@ -8,6 +8,7 @@ import {
   SETTINGS_SECTIONS,
   settingPath,
   settingSearchText,
+  settingsIndexFor,
   type SettingsSectionId,
 } from "$lib/settings-index";
 import type { Key } from "$lib/i18n/keys";
@@ -194,5 +195,16 @@ describe("설정 색인", () => {
   it("색인이 쓸 만한 크기다 (섹션 아홉 + 손잡이 마흔 이상)", () => {
     expect(SETTINGS_INDEX.filter((e) => !e.anchor)).toHaveLength(SETTINGS_SECTIONS.length);
     expect(SETTINGS_INDEX.filter((e) => e.anchor).length).toBeGreaterThanOrEqual(40);
+  });
+
+  it("원격 창의 색인에는 설정 옮기기 두 줄이 없다 (메인 PC 창은 전부 그대로)", () => {
+    const anchors = (remote: boolean) => settingsIndexFor(remote).map((e) => e.anchor);
+    expect(settingsIndexFor(false)).toBe(SETTINGS_INDEX);
+    expect(anchors(false)).toEqual(expect.arrayContaining(["settings-export", "settings-import"]));
+    expect(anchors(true)).not.toContain("settings-export");
+    expect(anchors(true)).not.toContain("settings-import");
+    // 빠지는 것은 그 둘뿐 — 섹션 줄 · 다른 일반 줄은 남는다
+    expect(settingsIndexFor(true)).toHaveLength(SETTINGS_INDEX.length - 2);
+    expect(anchors(true)).toContain("app-language");
   });
 });

@@ -4,8 +4,10 @@ import {
   backendFromKey,
   baseNameOf,
   localBackend,
+  localShellCaps,
   nameError,
   remoteBackend,
+  remoteEditCap,
   winCrumbsOf,
   winJoinPath,
   winNormalize,
@@ -331,6 +333,13 @@ describe("localBackend", () => {
     expect(local.canWrite).toBe(true);
   });
 
+  it("원격 창에서는 기본 앱 · 탐색기 두 능력이 꺼진다 (메인 PC 창은 켜진 채)", () => {
+    // 시험은 메인 PC 창(`isRemote` 거짓)으로 돈다 — 위 시험의 `localBackend()` 가 그 갈래다
+    expect(localShellCaps()).toEqual({ canOpenExternal: true, canReveal: true });
+    expect(localShellCaps(false)).toEqual({ canOpenExternal: true, canReveal: true });
+    expect(localShellCaps(true)).toEqual({ canOpenExternal: false, canReveal: false });
+  });
+
   it("경로 함수 셋이 윈도우 판이다", () => {
     const local = localBackend();
     expect(local.parentOf("C:\\a\\b")).toBe("C:\\a");
@@ -396,6 +405,13 @@ describe("remoteBackend", () => {
     expect(remote.canReveal).toBe(false);
     expect(remote.canView).toBe(true);
     expect(remote.canWrite).toBe(true);
+  });
+
+  it("원격 창에서는 외부 편집기로 편집 능력이 꺼진다 (메인 PC 창은 켜진 채)", () => {
+    // 시험은 메인 PC 창(`isRemote` 거짓)으로 돈다 — 위 시험의 `remoteBackend(7).canEdit` 가 그 갈래다
+    expect(remoteEditCap()).toBe(true);
+    expect(remoteEditCap(false)).toBe(true);
+    expect(remoteEditCap(true)).toBe(false);
   });
 
   it("경로 함수 셋이 POSIX 판이다", () => {

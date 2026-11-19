@@ -4,6 +4,7 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { hasSetupScript, isRemote, worktreePreview, type Project, type WorktreeInfo } from "$lib/projects";
   import {
+    canRevealWorktree,
     confirmRemoveProject,
     confirmRemoveWorktree,
     openProject,
@@ -463,7 +464,6 @@
       프로젝트 줄과 같은 뜻(열기 · 지금 탭에 타일), 로컬이면 폴더 열기와 제거(주 폴더는 git 이 지우지
       않으므로 서지 않는다). 원격은 이 PC 의 탐색기가 열 수 없고 원격 제거는 아직 없다.
     -->
-    {@const remote = isRemote(project)}
     {@const noScript = !hasSetupScript(project)}
     {@const listing = worktreesOf(project.id)}
     {@const mainName = (listing?.state === "ok" ? listing.list[0]?.branch : null) ?? "main"}
@@ -539,7 +539,9 @@
     >
       {t("app.projects.worktree.runSetup")}
     </button>
-    {#if !remote}
+    <!-- 폴더 열기 — 로컬 프로젝트 · 메인 PC 창만(원격 창은 메인 PC 탐색기를 띄우지 못한다 — `canRevealWorktree`).
+         앞의 [설정 스크립트 실행]이 늘 서 있어 이 줄이 빠져도 구분선이 겹치지 않는다 -->
+    {#if canRevealWorktree(project)}
       <button
         type="button"
         class="ctx-item menu-row"

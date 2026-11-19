@@ -73,6 +73,10 @@ export class FileActions {
     }
     if (this.#h.backend.canEdit) void this.editEntry(entry);
     else if (this.#h.backend.canOpenExternal) void this.openExternally(entry);
+    // 바깥으로 열 길이 없다(원격 창의 로컬 타일 — `localShellCaps` · 원격 창의 SFTP 타일 — `remoteEditCap`) — 아무 반응 없이
+    // 끝내지 않고 미리 보기 타일로 연다.
+    // 우클릭 [미리 보기]와 같은 문이고, 글자가 아니면 타일이 그렇다고 말한다(바깥 열기 단추도 같은 능력이라 서지 않는다).
+    else if (onopendoc && this.#h.backend.canView) onopendoc(entry.path);
   };
 
   editEntry = async (entry: SftpEntry) => {

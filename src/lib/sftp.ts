@@ -1,4 +1,4 @@
-import { invoke, listen, type UnlistenFn } from "./ipc";
+import { invoke, isRemote, listen, rawBodyLimit, type UnlistenFn } from "./ipc";
 import { hasReason } from "$lib/error-reason";
 import { translateNow } from "$lib/i18n/dict";
 import type { Key } from "$lib/i18n/keys";
@@ -71,6 +71,35 @@ export function humanSize(bytes: number): string {
 }
 
 /**
+ * **상한 안내 문구의 `{max}`** — 상한은 정수 MiB 상수라("15MB" · "48MB" · "100MB") 소수를 떼어 적는다. 파일 크기 `{size}` 는
+ * [`humanSize`] 그대로(소수 한 자리). 정수 MiB 가 아닌 상한이 오면 떼지 않고 `humanSize` 로 둔다 — 반올림한 거짓 상한을 보이지 않게.
+ */
+export function limitLabel(bytes: number): string {
+  const mib = 1024 * 1024;
+  return bytes >= mib && bytes % mib === 0 ? `${bytes / mib}MB` : humanSize(bytes);
+}
+
+/**
+ * **원시 본문 올리기의 상한 검사** — 넘으면 거절 문구, 아니면 `null`. 원격 창이면 상한이 ws 프레임 안쪽으로 줄고([`rawBodyLimit`])
+ * 문구도 원격 창 것(`files.transfer.toobig.device.upload`)이다 — 메인 창은 부르는 쪽이 준 `mainKey` 그대로.
+ * `remoteWindow` 는 시험을 위해 인자로 받는다(`rawBodyLimit` 와 같은 모양).
+ */
+export function rawUploadTooBig(
+  size: number,
+  limit: number,
+  mainKey: Key,
+  tr: Tr,
+  remoteWindow: boolean = isRemote,
+): string | null {
+  const max = rawBodyLimit(limit, remoteWindow);
+  if (size <= max) return null;
+  return tr(remoteWindow ? "files.transfer.toobig.device.upload" : mainKey, {
+    size: humanSize(size),
+    max: limitLabel(max),
+  });
+}
+
+/**
  * 파일 전송 모달의 **목적지** — 원격 세션이거나, 내 디스크다
  * (docs/log/2026-09-04-native-drag-out.md "반대 방향").
  *
@@ -107,9 +136,13 @@ export interface UploadVerb {
  *
  * 이 파일은 vitest 가 그대로 돌리는 순수 모듈이라 사전을 들이지 않는다 — **키만** 고르고
  * 글자는 부르는 쪽(`+page.svelte` · `app/transfer.svelte.ts`)이 `t()` 로 만든다.
+ *
+ * `remoteWindow` — 원격 창(원격 웹 클라이언트)에서는 "로컬" 타일이 메인 PC 디스크라, 그 기기의
+ * 파일이 ws 로 **올라간다** — 그래서 SFTP 쪽 말을 쓴다. 기본값 없이 부르는 쪽이 넘긴다
+ * (순수 함수로 두려고).
  */
-export function uploadVerb(target: UploadTarget | null): UploadVerb {
-  return target?.kind === "local"
+export function uploadVerb(target: UploadTarget | null, remoteWindow = false): UploadVerb {
+  return target?.kind === "local" && !remoteWindow
     ? {
         title: "files.transfer.verb.local.title",
         ing: "copying",
@@ -172,14 +205,9 @@ export async function uploadFile(
   overwrite: boolean,
   tr: Tr,
 ): Promise<UploadInfo> {
-  if (file.size > UPLOAD_MAX_BYTES) {
-    throw new Error(
-      tr("files.transfer.toobig.upload", {
-        size: humanSize(file.size),
-        max: humanSize(UPLOAD_MAX_BYTES),
-      }),
-    );
-  }
+  // 원격 창에서는 본문이 ws 프레임 하나로 가므로 그 상한 안쪽에서 먼저 거절한다 (`ipc.ts` 의 `rawBodyLimit`).
+  const tooBig = rawUploadTooBig(file.size, UPLOAD_MAX_BYTES, "files.transfer.toobig.upload", tr);
+  if (tooBig !== null) throw new Error(tooBig);
   const headers: Record<string, string> = {
     "x-session-id": String(sessionId),
     "x-remote-dir": encodeURIComponent(remoteDir),

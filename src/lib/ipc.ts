@@ -21,6 +21,19 @@ export const isRemote: boolean =
   typeof window !== "undefined" && (window as unknown as { __AYNX_REMOTE__?: boolean }).__AYNX_REMOTE__ === true;
 
 /**
+ * **원격 창의 원시 본문 상한** — 원격 창의 invoke 는 ws 프레임 하나로 가고(`src-tauri/src/remote/polyfill.js` 의 원시 본문 틀
+ * `[종류][id][머리 길이][머리 JSON][본문]`), 관문은 `src-tauri/src/remote/ws.rs` 의 `MAX_MESSAGE`(16MiB, 메시지·프레임 둘 다)를 넘으면
+ * 연결을 끊는다. 그 값과 짝이다 — 1MiB 를 비워 머리 몫을 넉넉히 두고, 안내 문구가 "15 MB" 처럼 정수로 나오게 했다
+ * (시험 `ipc.test.ts` 가 `MAX_MESSAGE` 보다 작은지 지킨다).
+ */
+export const REMOTE_RAW_MAX_BYTES = 15 * 1024 * 1024;
+
+/** 원시 본문으로 보내는 올리기의 실제 상한 — 원격 창이면 ws 상한 안쪽으로 줄인다, 메인 PC 창이면 그대로 */
+export function rawBodyLimit(limit: number, remoteWindow: boolean = isRemote): number {
+  return remoteWindow ? Math.min(limit, REMOTE_RAW_MAX_BYTES) : limit;
+}
+
+/**
  * **원격 창에서 마스터 암호를 다시 확인한다**(R1a-4 — 설계 3절 단계 3). 메인 PC 창이면 묻지 않고 `true`. 원격이면 폴리필의 칸이
  * 뜨고(마스터가 없으면 칸 없이 통과) 통과하면 `true`, 취소·실패면 `false`. 관문이 막는 명령(승인 · 호스트·DB AI 권한 …)은
  * 폴리필이 알아서 묻는다 — 이 함수는 **명령 하나로 막을 수 없는 화면 토글**(로컬 타일 "AI 읽기 허용" 켜기)이 부른다.

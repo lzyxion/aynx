@@ -201,7 +201,9 @@ pub(crate) const ALLOW: &[&str] = &[
     "set_group_meta", "rename_group", "list_agent_public_keys", "agent_has_key", "install_public_key",
     "install_public_key_line", "generate_ssh_key", "list_ssh_key_files",
     // 설정(`save_settings` 는 칸 단위 문 — [`settings_home_only`]) · 언어 · 월페이퍼 · 워크스페이스 · 테마
-    "load_settings", "save_settings", "set_language", "wallpaper_set", "wallpaper_clear", "wallpaper_resolve",
+    // `wallpaper_set_bytes`(2026-11-19)는 `wallpaper_set` 의 바이트 판 — 원격 기기에서 고른 그림을 올려 같은 검사 · 같은 사본 이름
+    // (`<설정 루트>/wp-<해시>.<확장자>` — 덮어쓸 수 있는 것은 같은 내용의 같은 이름뿐) · 같은 GC 를 탄다. `local_write_file` 보다 좁다.
+    "load_settings", "save_settings", "set_language", "wallpaper_set", "wallpaper_set_bytes", "wallpaper_clear", "wallpaper_resolve",
     "wallpaper_gc", "wallpaper_random", "workspaces_load", "workspaces_claim_writer", "workspaces_apply",
     "workspaces_migrate", "workspaces_start_fresh", "workspaces_migration_status", "load_theme_profiles",
     "theme_profiles_edit",
@@ -646,6 +648,8 @@ mod tests {
         for (image, preview) in [("local_read_image", "local_read_preview"), ("sftp_read_image", "sftp_read_preview")] {
             assert_eq!(class_of(image), class_of(preview), "{image}");
         }
+        // 배경 그림 올리기 — 고른 경로를 사본으로 거는 `wallpaper_set` 과 같은 등급(같은 검사 · 같은 저장 길).
+        assert_eq!(class_of("wallpaper_set_bytes"), class_of("wallpaper_set"));
         assert_eq!(class_of("open_ssh_config"), Class::Unsupported);
         assert_eq!(class_of("no_such_command"), Class::Unknown);
         assert_eq!(class_of("plugin:dialog|open"), Class::Unknown);

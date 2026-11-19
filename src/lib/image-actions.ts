@@ -4,6 +4,7 @@ import { baseNameOf, localBackend, winParentOf } from "$lib/fs-backend";
 import { localWriteFile } from "$lib/fs-ops";
 import { writeClipboard, writeClipboardImage } from "$lib/clipboard";
 import { stripReason } from "$lib/error-reason";
+import { saveBlobToDevice } from "$lib/browser/device-download";
 import { toast } from "$lib/toast.svelte.js";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { fileImageName, freeFileName, imageSaveFilters, svgFileName, type ImageMenuAction } from "$lib/image-menu";
@@ -62,11 +63,18 @@ async function copyText(text: string, done: string): Promise<void> {
   else toast.error(t("files.doc.md.image.menu.copyFailed"));
 }
 
+/** 저장 끝 토스트 — [폴더에서 보기]는 로컬 백엔드가 탐색기를 띄울 수 있을 때만(원격 창에서는 `canReveal` 이 거짓) */
 function savedToast(path: string): void {
-  toast.success(t("files.doc.md.image.menu.saved", { path }), {
+  const be = localBackend();
+  const text = t("files.doc.md.image.menu.saved", { path });
+  if (!be.canReveal) {
+    toast.success(text);
+    return;
+  }
+  toast.success(text, {
     action: {
       label: t("files.doc.md.image.menu.reveal"),
-      run: () => void localBackend().reveal?.(path).catch(() => {}),
+      run: () => void be.reveal?.(path).catch(() => {}),
     },
   });
 }
@@ -77,12 +85,7 @@ async function downloadImage(target: ImageTarget): Promise<void> {
     const blob = await bytesOf(target);
     if (isRemote) {
       // 원격 창 — 이 브라우저의 내려받기로(메인 PC 의 폴더가 아니다)
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      saveBlobToDevice(blob, name);
       return;
     }
     const be = localBackend();

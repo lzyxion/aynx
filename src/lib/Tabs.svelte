@@ -18,7 +18,6 @@
   import {
     draggingTab,
     listPanes,
-    tabDisplayTitle,
     type TabSpec,
   } from "$lib/session";
   import { displayName, displayTabTitle } from "$lib/app/titles.svelte.js";
@@ -268,13 +267,18 @@
   let renaming = $state<string | null>(null);
   let renameValue = $state("");
   let renameInput = $state<HTMLInputElement | null>(null);
+  /** 시작할 때의 초깃값 — 고치지 않고 나왔는지 가린다(`commitRename`) */
+  let renameInitial = "";
 
   function startRename(tab: TabSpec) {
     ctxTab = null;
     renaming = tab.id;
     // 이름이 없으면 **지금 보이는 제목**을 초깃값으로 준다 — 빈 칸에서 시작하면 "원래
     // 뭐였지" 를 다시 찾아야 하고, 대개는 그 제목을 조금 고치는 것으로 끝난다.
-    renameValue = tab.name?.trim() || tabDisplayTitle(tab, t);
+    // 탭 바에 찍힌 글자 그대로(`displayTabTitle`)여야 한다 — 순수 `tabDisplayTitle` 은 런타임 신호
+    // (OSC 제목 · 해석된 셸)를 몰라 `Local · Local` 같은 다른 글자가 들어왔다(2026-11-19).
+    renameValue = tab.name?.trim() || displayTabTitle(tab);
+    renameInitial = renameValue;
   }
 
   /**
@@ -288,7 +292,11 @@
     const id = renaming;
     if (id === null) return;
     renaming = null;
-    onrename?.(id, renameValue.trim());
+    // 고치지 않았으면 아무것도 하지 않는다 — blur 로도 확정하므로 더블클릭만 하고 나와도
+    // 자동 제목이 사용자 이름으로 박혔다(2026-11-19). 빈 값(이름 지우기)은 초깃값과 달라 그대로 간다.
+    const next = renameValue.trim();
+    if (next === renameInitial.trim()) return;
+    onrename?.(id, next);
   }
 
   /** 취소 — 값을 버리고 원래 제목으로 돌아간다 */

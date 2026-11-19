@@ -1,4 +1,4 @@
-import { invoke } from "./ipc";
+import { invoke, isRemote } from "./ipc";
 import type { Tr } from "$lib/session";
 
 // 문구는 **인자로** 들어온다 (`i18n/ko/pane.ts` 머리말) — 이 파일은 vitest 가 그대로
@@ -307,9 +307,12 @@ export function forwardLabel(f: ForwardInfo, tr: Tr): string {
  *   IPv6 `::1` 로 먼저 풀려 리스너를 못 찾는 경우가 있어 숫자로 적는다.
  * - 스킴은 **목적지 포트로 어림한다**: 443 · 8443 이면 `https`, 그 밖은 `http`. 틀리면
  *   브라우저가 그 자리에서 말해 주고 사람이 주소창에서 고친다 — 설정 칸을 따로 두지 않는다.
+ * - **원격 창(원격 웹 클라이언트)에서는 늘 `null`** — 포워드는 메인 PC 의 루프백에 서는데, 원격 창에서 열면 그 기기
+ *   자신의 `127.0.0.1` 이 열려 연결에 실패한다. 줄의 [브라우저에서 열기] 단추가 이 값으로 서므로 함께 사라진다.
+ *   `remoteWindow` 는 시험을 위해 인자로 받는다(`fs-backend` 의 `localShellCaps` 와 같은 모양).
  */
-export function forwardBrowserUrl(f: ForwardInfo): string | null {
-  if (forwardKindOf(f) !== "local") return null;
+export function forwardBrowserUrl(f: ForwardInfo, remoteWindow: boolean = isRemote): string | null {
+  if (remoteWindow || forwardKindOf(f) !== "local") return null;
   const scheme = f.remote_port === 443 || f.remote_port === 8443 ? "https" : "http";
   return `${scheme}://127.0.0.1:${f.local_port}/`;
 }

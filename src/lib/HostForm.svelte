@@ -51,6 +51,7 @@
   import { MAX_SCROLLBACK, MIN_SCROLLBACK } from "$lib/session";
   import { tabOfField, type HostFormTab } from "$lib/host-form-tabs";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
   import {
     addForwardRow,
     browseIdentity,
@@ -476,9 +477,12 @@
                     autocomplete="off"
                     spellcheck="false"
                   />
-                  <button type="button" class="browse btn btn-secondary" onclick={() => void browseIdentity()}>
-                    <UiIcon name="folder-open" size={13} />{t("app.hostform.browse")}
-                  </button>
+                  <!-- [찾아보기…] 는 메인 PC 의 파일 고르기 대화상자라 원격 창에는 없다 — 칸에 경로를 직접 적는다 -->
+                  {#if !isRemote}
+                    <button type="button" class="browse btn btn-secondary" onclick={() => void browseIdentity()}>
+                      <UiIcon name="folder-open" size={13} />{t("app.hostform.browse")}
+                    </button>
+                  {/if}
                   <!--
                     "찾아보기…" 바로 옆이다 — 이 칸이 비어 있는 사람에게 필요한 것은 둘 중
                     하나니까(있는 키를 **찾거나**, 없는 키를 **만들거나**).
@@ -826,15 +830,18 @@
                     {#if sessionLogsFolder() !== null}
                       <span class="log-where">
                         <code title={sessionLogsFolder()}>{sessionLogsFolder()}</code>
-                        <button
-                          type="button"
-                          class="browse btn btn-secondary"
-                          onclick={() => void openSessionLogsFolder()}
-                        >
-                          <UiIcon name="folder-open" size={13} />{t(
-                            "app.hostform.log.open_folder",
-                          )}
-                        </button>
+                        <!-- [폴더 열기] 는 메인 PC 의 탐색기라 원격 창에는 없다(경로 글자는 남는다) -->
+                        {#if !isRemote}
+                          <button
+                            type="button"
+                            class="browse btn btn-secondary"
+                            onclick={() => void openSessionLogsFolder()}
+                          >
+                            <UiIcon name="folder-open" size={13} />{t(
+                              "app.hostform.log.open_folder",
+                            )}
+                          </button>
+                        {/if}
                       </span>
                     {/if}
                   </span>

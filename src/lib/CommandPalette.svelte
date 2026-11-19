@@ -66,7 +66,7 @@
   import type { ThemeProfile } from "$lib/theme-profiles";
   import Keys from "$lib/Keys.svelte";
   import {
-    SETTINGS_INDEX,
+    settingsIndexFor,
     settingPath,
     settingSearchText,
     type SettingsIndexEntry,
@@ -604,7 +604,9 @@
       // 채팅 독은 주 창에만 있다(2026-10-23 — 보조 창 · 원격 창에는 독이 마운트되지 않는다)
       && (a.id !== "open-chat-dock" || chatDockAvailable())
       // 끝내기는 원격 창에 없다(독의 끝내기 단추와 같은 판단 — 세 명령이 메인 PC 전용이다)
-      && (a.id !== "quit-app" || !remoteWindow)),
+      && (a.id !== "quit-app" || !remoteWindow)
+      // 원격 파일 편집은 원격 창에 없다(타일 ⋯ › 서버 ▸ 와 같은 판단 — 메인 PC 의 편집기를 띄운다)
+      && (a.id !== "edit-remote" || !remoteWindow)),
   );
 
   /**
@@ -875,6 +877,8 @@
       }
       for (const a of PALETTE_ONLY) {
         if (a.id.endsWith("-workspace") && !workspaceMainWindow()) continue;
+        // 설정 옮기기는 원격 창에 없다 — 메인 PC 의 파일 대화상자를 연다(`settings-transfer.svelte.ts` 도 원격 창이면 그냥 돌아간다)
+        if (remoteWindow && (a.id === "export-settings" || a.id === "import-settings")) continue;
         const label = t(a.key);
         if (!fuzzyMatch(q, actionSearchText(a.id, label))) continue;
         out.push({ kind: "action", key: `a:${a.id}`, id: a.id, label, combo: "" });
@@ -888,7 +892,8 @@
     if (wants("setting") && q !== "") {
       const tr = (k: Key) => t(k);
       const root = t("commands.palette.setting.root");
-      for (const entry of SETTINGS_INDEX) {
+      // 원격 창이면 메인 PC 에서만 서는 줄(설정 옮기기)은 빠진 색인이다(`settingsIndexFor`)
+      for (const entry of settingsIndexFor(remoteWindow)) {
         if (!fuzzyMatch(q, `${root} ${settingSearchText(entry, tr)}`)) continue;
         out.push({
           kind: "setting",

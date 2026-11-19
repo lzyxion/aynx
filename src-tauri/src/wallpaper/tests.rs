@@ -87,6 +87,14 @@ fn exists_in_accepts_only_bare_names() {
 }
 
 #[test]
+fn size_check_refuses_empty_and_too_large() {
+    assert!(checked_size(1).is_ok());
+    assert!(checked_size(MAX_BYTES).is_ok());
+    assert!(!checked_size(0).expect_err("빈 것").is_empty());
+    assert!(!checked_size(MAX_BYTES + 1).expect_err("상한 초과").is_empty());
+}
+
+#[test]
 fn human_size_is_readable() {
     assert_eq!(human_mb(50 * 1024 * 1024), "50.0MB");
     assert_eq!(human_mb(1024 * 1024 / 2), "0.5MB");
@@ -288,4 +296,78 @@ fn write_hashed_names_by_content_and_dedups() {
         .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
         .count();
     assert_eq!(leftovers, 0);
+}
+
+// ── 올린 바이트 (원격 창 — wallpaper_set_bytes) ───────────────────────
+
+/// 폴더 안 이름들(정렬).
+fn names_in(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn upload_accepts_allowed_extensions_and_names_by_content() {
+    let tmp = TempDir::new("올리기");
+    let a = upload_in(&tmp.0, "밤 바다.JPG", b"night-sea").expect("jpg");
+    assert!(is_managed_name(&a), "{a}");
+    assert!(a.ends_with(".jpg"), "확장자는 소문자: {a}");
+    assert_eq!(std::fs::read(tmp.0.join(&a)).unwrap(), b"night-sea");
+    // 고른 파일과 같은 이름 규칙 — 같은 내용이면 이름이 무엇이든 같은 사본 하나.
+    assert_eq!(upload_in(&tmp.0, "복사본.jpg", b"night-sea").unwrap(), a);
+    for ok in ["a.png", "a.jpeg", "a.webp", "a.gif", "a.bmp"] {
+        assert!(upload_in(&tmp.0, ok, ok.as_bytes()).is_ok(), "{ok}");
+    }
+}
+
+#[test]
+fn upload_refuses_other_extensions_and_writes_nothing() {
+    let tmp = TempDir::new("올리기-거절");
+    for bad in ["a.svg", "a.exe", "a.txt", "a.jpg.exe", "확장자없음", ""] {
+        assert!(upload_in(&tmp.0, bad, b"x").is_err(), "{bad:?}");
+    }
+    assert!(names_in(&tmp.0).is_empty());
+}
+
+/// 이름은 확장자를 얻는 데만 쓴다 — `..` · 구분자 · 절대 경로가 있어도 사본은 그 폴더 안의 해시 이름 하나.
+#[test]
+fn upload_name_never_becomes_a_path() {
+    let root = TempDir::new("올리기-경로");
+    let dir = root.0.join("app");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (i, evil) in [
+        "../evil.png",
+        r"..\..\evil.png",
+        "sub/evil.png",
+        r"C:\Windows\evil.png",
+        "/etc/evil.png",
+        "../app/settings.toml.png",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let body = format!("img-{i}");
+        let name = upload_in(&dir, evil, body.as_bytes()).expect(evil);
+        assert!(is_managed_name(&name), "{evil} → {name}");
+        assert_eq!(std::fs::read(dir.join(&name)).unwrap(), body.as_bytes());
+    }
+    // 폴더 밖(부모)에는 아무것도 생기지 않았고, 폴더 안에는 해시 이름의 사본만 있다.
+    assert_eq!(names_in(&root.0), vec!["app".to_string()]);
+    let inside = names_in(&dir);
+    assert_eq!(inside.len(), 6);
+    assert!(inside.iter().all(|n| is_managed_name(n)), "{inside:?}");
+}
+
+#[test]
+fn upload_refuses_empty_and_oversized_bodies() {
+    let tmp = TempDir::new("올리기-크기");
+    assert!(upload_in(&tmp.0, "a.png", b"").is_err());
+    let big = vec![0u8; MAX_BYTES as usize + 1];
+    assert!(upload_in(&tmp.0, "a.png", &big).is_err());
+    assert!(names_in(&tmp.0).is_empty());
 }

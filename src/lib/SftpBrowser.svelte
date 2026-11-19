@@ -7,7 +7,7 @@
   import { windowActive } from "$lib/app/window-active.svelte.js";
   import type { FsWatch } from "$lib/fs-watch";
   import type { OnConflict } from "$lib/fs-ops";
-  import { isHidden, type SftpEntry } from "$lib/sftp-browser";
+  import { isDirLike, isHidden, type SftpEntry } from "$lib/sftp-browser";
   import {
     entryOrder,
     fileTreeRows,
@@ -57,6 +57,7 @@
   import { registerTileFind } from "$lib/app/tile-find";
   import { settings } from "$lib/settings.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
 
   /**
    * **파일 브라우저** — 타일 하나를 채우는 파일 목록. 원격(SFTP)과 **로컬 디스크**가
@@ -493,9 +494,10 @@
    *
    * 셸에 넘길 수 있는 것은 **로컬에 실제로 있는 경로**뿐이라 원격 타일에는 손잡이가 없다
    * (그쪽 길은 우클릭 [다운로드]다). 합성 루트("내 PC")의 드라이브 뿌리도 끌 자리가 아니다 —
-   * 그 줄은 목록 상자가 `isRootItem` 으로 따로 뺀다.
+   * 그 줄은 목록 상자가 `isRootItem` 으로 따로 뺀다. 원격 창에도 없다 — 끌어 나갈 곳이 메인 PC 의 탐색기라
+   * (끌어내기 자체도 `drag-controller` 의 `#startNative` 가 원격 창이면 시작하지 않는다) 잡아 봐야 아무 일도 없다.
    */
-  const canExport = $derived(isLocal && !offline);
+  const canExport = $derived(isLocal && !offline && !isRemote);
 
   // ---------------------------------------------------------------------------
   // 다중 선택 — 규칙도 배선도 세션 타일과 **같은 파일**이 들고 있다
@@ -525,6 +527,14 @@
 
   /** 골라진 것들 — **보이는 순서**로 편 절대 경로 (조작·드래그·클립보드가 모두 이 값을 쓴다) */
   const selPaths = $derived(order.filter((p) => sel.has(p)));
+
+  /** 고른 것 중 폴더(폴더 링크 포함)가 있는가 — 원격 창 다중 메뉴의 [이 기기로 다운로드] 줄이 이것으로 갈린다(폴더는 받지 않는다) */
+  const selHasFolder = $derived(
+    selPaths.some((p) => {
+      const row = rowById.get(p);
+      return row?.kind === "entry" && isDirLike(row.entry);
+    }),
+  );
 
   // 목록이 바뀌면(새로고침·폴더 이동·숨김 토글·접기) 사라진 줄을 선택에서 떨어낸다.
   $effect(() => sel.prune(navOrder));
@@ -570,7 +580,8 @@
    * (`PaneSpec.filePlaces` · `filePreview`)이고 숨김 파일만 이 화면의 것이다. 머리줄이 서 있으면 이 줄들은 **타일 ⋯ 맨 위**에 얹힌다.
    */
   const tools = $derived.by((): ToolbarTool[] => {
-    const dropLabel = isLocal ? t("files.browser.import") : t("files.browser.upload");
+    // 원격 창에서는 로컬 타일(메인 PC 디스크)로도 그 기기에서 올리는 것이라 "업로드" (`sftp.ts` 의 `uploadVerb` 와 같은 갈래)
+    const dropLabel = isLocal && !isRemote ? t("files.browser.import") : t("files.browser.upload");
     const list: ToolbarTool[] = [
       {
         id: "newfolder",
@@ -1329,6 +1340,7 @@
     {isLocal}
     selCount={sel.count}
     {selPaths}
+    {selHasFolder}
     busy={transfers.job !== null}
     hasClip={fsClip() !== null}
     removeTargets={mc.removeTargets}
@@ -1340,6 +1352,7 @@
     onpaste={() => actions.pasteInto(mc.menuDir)}
     ondownload={(paths) => void transfers.startDownload(paths)}
     onexport={(paths) => void transfers.exportToFolder(paths)}
+    ontodevice={(paths) => void transfers.downloadToDevice(paths)}
     onopenentry={actions.openEntry}
     onpreview={onopendoc ? (e) => onopendoc(e.path) : undefined}
     oneditentry={(e) => void actions.editEntry(e)}

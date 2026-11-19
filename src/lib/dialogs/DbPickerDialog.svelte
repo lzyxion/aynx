@@ -11,6 +11,7 @@
   import HostIcon from "$lib/HostIcon.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
   import { trapTab } from "$lib/focus-trap";
   import { DB_DEFAULT_PORT, DB_ENGINE_ICON, DB_ENGINES, DB_TLS_MODES, sameAlias, tlsCaRequired, tlsNeedsCa, tlsUnverified, type DbConn, type DbEngine } from "$lib/db-conn";
   import { connTargetText, directTlsWarning } from "$lib/query/conn-form";
@@ -300,7 +301,10 @@
               <div class="stack">
                 <div class="with-btn">
                   <input id="dbp-path" bind:value={dbPicker.form.path} autocomplete="off" spellcheck="false" placeholder="C:\data\app.db" />
-                  <button type="button" class="btn btn-sm btn-secondary" onclick={() => void browse()}>{t("app.query.form.path.browse")}</button>
+                  <!-- [찾아보기…] 두 곳은 메인 PC 의 파일 고르기 대화상자라 원격 창에는 없다 — 칸에 경로를 직접 적는다 -->
+                  {#if !isRemote}
+                    <button type="button" class="btn btn-sm btn-secondary" onclick={() => void browse()}>{t("app.query.form.path.browse")}</button>
+                  {/if}
                 </div>
                 <span class="note">{t("app.query.form.path.help")}</span>
               </div>
@@ -373,7 +377,9 @@
                 <div class="stack">
                   <div class="with-btn">
                     <input id="dbp-ca" bind:value={dbPicker.form.tlsCa} autocomplete="off" spellcheck="false" placeholder={t(tlsCaRequired(dbPicker.form.tlsMode) ? "app.query.form.field.required" : "app.query.form.field.optional")} />
-                    <button type="button" class="btn btn-sm btn-secondary" onclick={() => void browseCa()}>{t("app.query.form.path.browse")}</button>
+                    {#if !isRemote}
+                      <button type="button" class="btn btn-sm btn-secondary" onclick={() => void browseCa()}>{t("app.query.form.path.browse")}</button>
+                    {/if}
                   </div>
                   {#if tlsCaRequired(dbPicker.form.tlsMode)}
                     <span class="note">{t("app.query.form.ca.help_ca")}</span>

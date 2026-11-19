@@ -95,6 +95,8 @@ Where the toolbar's upload (remote), import (local) and new folder buttons on th
 
 Files dragged from Explorer into a file tile or brought in through the upload or import dialog can be **up to 100MB each**.
 For anything larger, if it is a local folder, copy it directly in Explorer.
+In a [remote window](remote-web.md), uploads are up to 15MB each, and **Download to this device** (right-click a file or several selected files) takes files of up to
+48MB each into that browser's downloads, one after another. Folders are not downloaded this way — if a folder is selected, the row isn't shown.
 
 ---
 

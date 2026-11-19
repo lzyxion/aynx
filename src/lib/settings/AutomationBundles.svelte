@@ -14,6 +14,7 @@
   import Toggle from "$lib/Toggle.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
+  import { isRemote } from "$lib/ipc";
 
   /**
    * **묶음 편집** — 설정 › 자동 승인의 하위 화면 (docs/log/2026-10-05-auto-approve-args.md "세분화").
@@ -32,6 +33,8 @@
 
   const auto = $derived(settings.current.automation);
   const uid = $props.id();
+  /** 원격 창 — 볼 수만 있다(펼침 · 시험 칸은 그대로, 스위치는 잠긴다 — 요약 `AutomationSection` 의 `lockTip` 과 같은 말) */
+  const lockTip = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
 
   // ── 묶음 이름·설명 (id → 사전, 없으면 표의 한국어) ──
   function bundleName(b: AutomationBundle): string {
@@ -104,6 +107,8 @@
             <Toggle
               checked={on}
               label={t("settings.automation.bundles.toggle.aria", { name: bundleName(b) })}
+              disabled={isRemote}
+              title={lockTip}
               onchange={(v) => setBundleEnabled(id, v)}
             />
           </div>
@@ -117,6 +122,8 @@
                     <Toggle
                       checked={cmdOn}
                       label={t("settings.automation.bundles.command.aria", { name: bundleName(b), cmd: c.key })}
+                      disabled={isRemote}
+                      title={lockTip}
                       onchange={(v) => setBundleCommandEnabled(id, c.key, v)}
                     />
                   </span>
