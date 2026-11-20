@@ -12,6 +12,7 @@
     type HostEntry,
   } from "$lib/hosts";
   import HostIcon from "$lib/HostIcon.svelte";
+  import AiGlyph from "$lib/AiGlyph.svelte";
   import ProjectIcon from "$lib/ProjectIcon.svelte";
   import { folderIcon, iconRef } from "$lib/host-icons";
   import {
@@ -1291,7 +1292,7 @@
             {:else if item.kind === "conversation"}
               <!-- 앞자리는 그 에이전트의 로고 — 대시보드의 지난 대화 줄과 같은 그림 -->
               {#if item.entry}
-                <span class="lead"><HostIcon icon={iconRef(item.entry.agent)} size={14} /></span>
+                <span class="lead"><AiGlyph name={item.entry.agent} size={14} /></span>
                 <span class="label" class:fallback={item.entry.fallback}>{item.entry.title}</span>
                 {#if item.entry.state === "elsewhere"}
                   <span

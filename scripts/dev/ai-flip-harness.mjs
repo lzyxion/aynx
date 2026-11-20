@@ -387,12 +387,12 @@ check("⑦ button flips label", [(await flipState(ai.id)).btn.to, (await flipSta
 const shape = JSON.parse(await ev(`(() => { const i = ${INPUT}; const send = document.querySelector('[data-pane="${ai.id}"] [data-flip-convo] [data-flip-send]');
   const col = document.querySelector('[data-pane="${ai.id}"] [data-flip-convo] [data-viewer-items]').getBoundingClientRect();
   const u = [...document.querySelectorAll('[data-pane="${ai.id}"] [data-flip-convo] [data-item="user"]')].pop().getBoundingClientRect();
-  // 알약 = 칸을 감싼 '.wrap'(1px 테두리 · 반지름 22) — 2026-10-25 테두리를 칸에서 감싸개로 옮겼다(칸 42 + 테두리 2 = 44, FlipComposer 머리말)
-  const pill = i.closest('.wrap');
-  return JSON.stringify({ ph: i.placeholder, h: Math.round(pill.getBoundingClientRect().height), pill: parseFloat(getComputedStyle(pill).borderTopLeftRadius) >= 22,
-    send: !!send, padR: !!send && parseFloat(getComputedStyle(i).paddingRight) >= send.getBoundingClientRect().width,
+  // 두 줄 상자(2026-11-20 — AI 타일은 [+] 를 주니 FlipComposer 의 두 줄 모양) = '.wrap.two'(1px 테두리 · 반지름 20) — 글 줄 33 + 아래 줄 41 + 테두리 2 = 76
+  const box = i.closest('.wrap');
+  return JSON.stringify({ ph: i.placeholder, h: Math.round(box.getBoundingClientRect().height), round: box.classList.contains('two') && parseFloat(getComputedStyle(box).borderTopLeftRadius) === 20,
+    send: !!send, below: !!send && send.getBoundingClientRect().top >= i.getBoundingClientRect().bottom - 1,
     rightAligned: Math.abs(u.right - col.right) < 2 && u.left - col.left > col.width * 0.15 }); })()`));
-check("⑭ composer pill: placeholder · 44px · round field · send button · text clears the button", shape, { ph: "메시지 보내기", h: 44, pill: true, send: true, padR: true, rightAligned: true });
+check("⑭ composer two-row box: placeholder · 76px · radius 20 · send button on the row below the text", shape, { ph: "메시지 보내기", h: 76, round: true, send: true, below: true, rightAligned: true });
 
 // ⑮ 작업 중 표시 — 실행 중 신호면 점 셋 · 끝의 결과 없는 도구에 스피너 · 머리줄엔 아무 로딩도 없다
 const typingN = async () => ev(`document.querySelectorAll('[data-pane="${ai.id}"] [data-flip-convo] [data-item="typing"]').length`);

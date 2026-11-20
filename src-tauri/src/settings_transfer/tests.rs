@@ -352,7 +352,7 @@ fn ai_permission_as_is_by_default_and_off_on_request() {
     assert!(d.identity_matches("web-01", "deploy", "10.0.0.5", 22), "스냅샷 그대로");
     assert!(d.database("pg-1").is_some());
     let s = std::fs::read_to_string(r.config.join("settings.toml")).unwrap();
-    assert!(s.contains("auto_approve = true") && s.contains("side_chat_no_ask = true"), "{s}");
+    assert!(s.contains("auto_approve = true") && !s.contains("side_chat_no_ask"), "옛 묻지 않기 칸은 들이지 않는다: {s}");
 
     let dst2 = tmp("ai-off");
     let r2 = roots(&dst2);

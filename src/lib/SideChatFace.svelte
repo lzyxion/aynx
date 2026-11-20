@@ -7,11 +7,16 @@
    * - **기록 + 꼬리**: 지난 턴은 기록 파일(`agent_conversation_transcript` — 대화 id 로 · 시트 · 타일 대화 면과 같은 `TranscriptBody`),
    *   지금 턴은 사건에서 접은 꼬리(`live`). 따라가기 폴링은 쓰지 않는다 — 턴이 끝나면(`ended` 가 늘면) 최신 쪽을 한 번 받고, 받은 뒤에
    *   그 턴의 꼬리를 걷는다(`clearEndedSideChat`). 턴이 도는 동안 받은 쪽은 `hold` 로 겹치는 자리에서 자른다.
-   * - **권한 카드**: 꼬리 안의 카드 — 제목 · 도구 · 상세(명령 · 경로 · 파일 바꾸기의 diff) + **[허용 한 번] [거절]**(`side_chat_decide` —
-   *   사람만 · "늘 허용" 없음). 끝난 요청은 그 결과(내가 허용 · 거절 / CLI 가 거둠 / 프로세스가 끝나 닫힘)를 보인다. Codex 는 읽기 전용
-   *   명령을 묻지 않고 돌리고 샌드박스 밖(권한 상승)만 묻는다는 한 줄을 붙인다(설계 spike3 규칙 4).
-   * - **입력 칸**: `FlipComposer` 의 알약 모양(Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 칸 안 오른쪽 아래 = 둥근 보내기).
-   *   칸 한 줄 안에 `[+]  입력 … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다): 왼쪽 `[+]` =
+   * - **권한 카드**: 꼬리 안의 카드 — 제목 · 도구 · 상세(명령 · 경로 · 파일 바꾸기의 diff) + **[허용 한 번] [이 채팅에서 허용] [거절]**
+   *   (`side_chat_decide` — 사람만 · [이 채팅에서 허용] = 허용 + 그 종류를 이 채팅의 허용 목록에 · 종류는 서버가 그 요청에서 읽는다 · 2026-11-20).
+   *   끝난 요청은 그 결과(내가 허용 · 거절 / CLI 가 거둠 / 프로세스가 끝나 닫힘)를 보인다. Codex 는 읽기 전용 명령을 묻지 않고 돌리고 샌드박스
+   *   밖(권한 상승)만 묻는다는 한 줄을 붙인다(설계 spike3 규칙 4).
+   * - **권한 모드**(2026-11-20 — 권한 모드 목업): 입력 칸 아래 줄 모델 키워드 바로 왼쪽의 칩
+   *   (`chat/ChatPermChip` — `Manual` · `Auto` · 메뉴 `chat/ChatPermMenu`). 서버가 모드 · 허용 목록으로 대신 허용한 요청은 카드 대신
+   *   **끝난 한 줄**(`perm-auto` — 그림 · 제목 · "Auto 로 허용했습니다" / "이 채팅에서 허용한 종류라 허용했습니다" · 상세 · 단추 없음)로 남는다.
+   * - **입력 칸**: `FlipComposer` 의 두 줄 상자(Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 접힌 줄까지 6줄로 자람).
+   *   위 줄 = 글(상자 폭 전부), 아래 줄 = `[+] … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다 →
+   *   2026-11-20 — 두 줄 상자 목업 · 사용자 결정: 한 줄 알약을 두 줄 상자로 · 폰도 키워드를 다 보임): 왼쪽 `[+]` =
    *   파일 업로드 · 타일 연결(여러 개 체크 · 모두 끊기 — 최대 8) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
    *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽에 타일마다 칩 하나(`chat/ChatLinkChip` · × = 그 타일만 끊기). 상태 · 바꾸기는
    *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 메인 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
@@ -71,7 +76,7 @@
     stageComposerAttachments,
     takeComposerPictures,
   } from "$lib/pane/composer-attachments.svelte.js";
-  import { entryItem, historyHold, pendingPermissions, type LiveEntry } from "$lib/side-chat-live";
+  import { entryItem, historyHold, pendingPermissions, policyResolved, type LiveEntry } from "$lib/side-chat-live";
   import type { LiveRow } from "$lib/transcript";
   import type { ComposerGate } from "$lib/pane/ai-flip.svelte.js";
   import {
@@ -99,6 +104,9 @@
   import ToolbarMenu from "$lib/browser/ToolbarMenu.svelte";
   import ChatModelPopover from "$lib/chat/ChatModelPopover.svelte";
   import ChatModelKeyword from "$lib/chat/ChatModelKeyword.svelte";
+  import ChatPermChip from "$lib/chat/ChatPermChip.svelte";
+  import ChatPermMenu from "$lib/chat/ChatPermMenu.svelte";
+  import { PERM_AUTO_ICON, policyResultKey } from "$lib/chat/perm-mode";
   import ChatLinkChip from "$lib/chat/ChatLinkChip.svelte";
   import { SideChatControls } from "$lib/chat/side-chat-controls.svelte";
   import { linkSendNames, type LinkChip } from "$lib/side-chat-link";
@@ -401,11 +409,11 @@
   /** 답을 보내는 중인 요청 — 두 번 누르지 않게 */
   let deciding = $state<Record<string, true>>({});
 
-  async function decide(requestId: string, decision: Decision): Promise<void> {
+  async function decide(requestId: string, decision: Decision, remember = false): Promise<void> {
     if (deciding[requestId]) return;
     deciding[requestId] = true;
     try {
-      await decideSideChat(chatId, requestId, decision);
+      await decideSideChat(chatId, requestId, decision, remember);
     } finally {
       delete deciding[requestId];
     }
@@ -417,6 +425,8 @@
     if (!r) return "";
     if (r.by === "human") return r.decision === "allow" ? t("app.chatDock.perm.allowed") : t("app.chatDock.perm.denied");
     if (r.by === "cli") return t("app.chatDock.perm.byCli");
+    const policy = policyResultKey(r.by);
+    if (policy) return t(policy);
     return t("app.chatDock.perm.closed");
   }
 
@@ -484,7 +494,14 @@
 
 {#snippet card(key: string)}
   {@const e = byKey.get(key)}
-  {#if e && e.kind === "permission"}
+  {#if e && e.kind === "permission" && e.resolved && policyResolved(e.resolved.by)}
+    <!-- 서버가 모드 · 허용 목록으로 대신 허용했다 — 카드 대신 끝난 한 줄(상세 · 단추 없음) -->
+    <div class="perm-auto" data-side-chat-perm={e.requestId} data-side-chat-perm-auto={e.resolved.by} title={e.toolName || undefined}>
+      <span class="perm-auto-icon" aria-hidden="true"><UiIcon name={e.resolved.by === "auto" ? PERM_AUTO_ICON : "shield-check"} size={13} /></span>
+      <span class="perm-auto-title">{e.title || e.toolName || t("app.chatDock.perm.title")}</span>
+      <span class="perm-auto-result" data-side-chat-perm-result={e.resolved.by}>{resolvedText(e)}</span>
+    </div>
+  {:else if e && e.kind === "permission"}
     <div class="perm" class:done={e.resolved !== null} data-side-chat-perm={e.requestId} role="group" aria-label={t("app.chatDock.perm.aria")}>
       <div class="perm-head">
         <UiIcon name="shield-check" size={16} />
@@ -501,6 +518,14 @@
             data-side-chat-allow
             disabled={!!deciding[e.requestId]}
             onclick={() => void decide(e.requestId, "allow")}>{t("app.chatDock.perm.allow")}</button
+          >
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-side-chat-allow-chat
+            title={t("app.chatDock.perm.allowChat.title")}
+            disabled={!!deciding[e.requestId]}
+            onclick={() => void decide(e.requestId, "allow", true)}>{t("app.chatDock.perm.allowChat")}</button
           >
           <button
             type="button"
@@ -558,6 +583,7 @@
 {/snippet}
 
 {#snippet keyword()}
+  <ChatPermChip {ctl} touch={phone} />
   <ChatModelKeyword {ctl} {cliName} touch={phone} />
 {/snippet}
 
@@ -615,6 +641,7 @@
     onattach={attachFiles}
     ondropdata={onDropData}
     enterNewline={phone}
+    touch={phone}
     bind:inputEl
   />
   <input bind:this={pickEl} class="pick-input" type="file" multiple tabindex="-1" aria-hidden="true" data-side-chat-pick onchange={onPicked} />
@@ -635,10 +662,13 @@
   {#if ctl.modelOpen && ctl.modelBtn}
     <ChatModelPopover {ctl} trigger={ctl.modelBtn} touch={phone} />
   {/if}
+  {#if ctl.permOpen && ctl.permBtn}
+    <ChatPermMenu {ctl} trigger={ctl.permBtn} touch={phone} />
+  {/if}
 </div>
 
 <style>
-  /* `[+]` — 알약 칸 안 왼쪽 아래(보내기 원과 같은 32 원 · 낮은 면). 열려 있으면 고른 면 + 45° 돌아 × 모양(목업 D3) */
+  /* `[+]` — 입력 칸 아래 줄 왼쪽 끝(보내기 원과 같은 32 원 · 낮은 면). 열려 있으면 고른 면 + 45° 돌아 × 모양(목업 D3) */
   .plus {
     position: relative;
     width: 32px;
@@ -817,9 +847,48 @@
     gap: var(--space-2);
   }
 
+  /* 단추 셋 — 좁은 독(320px)에서는 줄을 바꾼다([이 채팅에서 허용] 이 길다) */
+  .perm-actions {
+    flex-wrap: wrap;
+  }
+
   .perm-actions .btn {
-    flex: 1;
+    flex: 1 1 auto;
     justify-content: center;
+    white-space: nowrap;
+  }
+
+  /* 서버가 대신 허용한 요청 — 끝난 한 줄(대화 줄 안의 흐린 글 · 카드 테두리 없음) */
+  .perm-auto {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: var(--t-xs);
+    color: var(--fg-3);
+  }
+
+  .perm-auto-icon {
+    flex: none;
+    display: inline-flex;
+    color: var(--fg-2);
+  }
+
+  .perm-auto-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg-2);
+  }
+
+  .perm-auto-result {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .perm-auto-result::before {
+    content: "· ";
   }
 
   .perm-tip,

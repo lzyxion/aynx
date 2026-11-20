@@ -13,10 +13,13 @@ import { Channel, invoke } from "./ipc";
 import type { TranscriptLink } from "$lib/context";
 
 export type SideChatCli = "claude" | "codex";
-/** `mcpTool` = 외부 MCP 서버의 도구(묻지 않기를 끈 서버 — 2026-10-25) */
+/** `mcpTool` = 외부 MCP 서버의 도구(늘 묻는다 — 묻지 않기는 채팅의 권한 모드 · 허용 목록 · 2026-11-20) */
 export type PermKind = "tool" | "command" | "fileChange" | "mcpTool";
 export type Decision = "allow" | "deny";
-export type ResolvedBy = "human" | "cli" | "closed";
+/** `auto` · `remembered` = 사람이 그 채팅에 정한 모드(Auto) · 허용 목록([이 채팅에서 허용])으로 서버가 대신 허용했다(2026-11-20) */
+export type ResolvedBy = "human" | "cli" | "closed" | "auto" | "remembered";
+/** 사이드 채팅의 권한 모드(2026-11-20 — Rust `side_chat::perm`) */
+export type PermMode = "manual" | "auto";
 export type Outcome = "ok" | "interrupted" | "error";
 /** 서버가 낸 프로세스 끝의 까닭(`server::side_chat` `kill` · 어댑터의 악수 실패 = `protocol`). */
 export type ExitReason = "closed" | "protocol" | "start-timeout" | "exit" | "crash";
@@ -47,6 +50,10 @@ export type SideChatEv =
   | { t: "toolFinished"; item: string; ok: boolean; output: string | null }
   | { t: "permission"; requestId: string; kind: PermKind; title: string; detail: string; toolName: string }
   | { t: "permissionResolved"; requestId: string; decision: Decision | null; by: ResolvedBy }
+  /** 서버가 카드 없이 대신 허용한 요청(끝난 한 줄 · 알림 없음 — 곧이어 `permissionResolved`) */
+  | { t: "permissionAuto"; requestId: string; kind: PermKind; title: string; toolName: string; by: ResolvedBy }
+  /** 그 채팅의 권한 모드 · 허용 목록이 바뀌었다(모드 칩) — `allow` = 종류 열쇠(`outsideRead` · `fileChange` · `command` · `mcp:<서버>`) */
+  | { t: "permPolicy"; mode: PermMode; allow: string[] }
   | { t: "turnEnded"; turn: string | null; outcome: Outcome; message: string | null }
   | { t: "modelChanged"; model: string }
   /** 추론 강도가 바뀌었다(`null` = CLI 기본) */
@@ -103,6 +110,9 @@ export interface SideChatSnapshot {
   forkFrom?: string | null;
   /** 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름 — 프로세스가 없으면 열 때 계산한 실을 예정 이름(2026-11-13 · 이름만) · 옛 서버는 칸 없음 */
   mcpServers?: string[];
+  /** 그 채팅의 권한 모드 · 허용 목록(판 37 — 옛 서버는 칸 없음 = Manual · 빈 목록) */
+  permMode?: PermMode;
+  permAllow?: string[];
   /** 지금 턴의 사건(지난 턴은 기록 파일 — `agent_conversation_transcript`). */
   liveTurn: SideChatEv[];
   /** 기다리는 권한 요청. */
@@ -188,15 +198,35 @@ export function sideChatSetEffort(chat: string, epoch: number, effort: string | 
   return invoke("side_chat_set_effort", { chat, epoch, effort });
 }
 
-/** 사람의 권한 결정([허용 한 번] · [거절]). 기다리는 요청이 아니면 `[unknown-request]`. */
+/**
+ * 사람의 권한 결정([허용 한 번] · [이 채팅에서 허용] · [거절]). `remember` = 허용 + 그 요청의 종류를 그 채팅의 허용 목록에(종류는 서버가
+ * 기다리는 요청에서 읽는다 — 여기서 보내지 않는다). 기다리는 요청이 아니면 `[unknown-request]` · 판 36 이하 서버에 `remember` 면 `[server-outdated]`.
+ */
 export function sideChatDecide(
   chat: string,
   epoch: number,
   requestId: string,
   decision: Decision,
   message?: string | null,
+  remember = false,
 ): Promise<boolean> {
-  return invoke("side_chat_decide", { chat, epoch, requestId, decision, message: message ?? null });
+  return invoke("side_chat_decide", { chat, epoch, requestId, decision, message: message ?? null, remember });
+}
+
+/** 그 채팅의 권한 모드 · 허용 목록(서버 답 — `side_chat_set_perm_mode` · `side_chat_forget_allow`) */
+export interface SideChatPermView {
+  mode: PermMode;
+  allow: string[];
+}
+
+/** **권한 모드 바꾸기**(모드 칩 — 판 37). Auto 면 서버가 기다리는 카드도 허용으로 답한다. 옛 서버면 `[server-outdated]` */
+export function sideChatSetPermMode(chat: string, mode: PermMode): Promise<SideChatPermView> {
+  return invoke("side_chat_set_perm_mode", { chat, mode });
+}
+
+/** **허용 목록에서 한 종류 빼기**(모드 칩 메뉴 항목의 × — 그 종류는 다시 묻는다 · 판 37) */
+export function sideChatForgetAllow(chat: string, kind: string): Promise<SideChatPermView> {
+  return invoke("side_chat_forget_allow", { chat, kind });
 }
 
 /** 닫는다(프로세스를 잡째 끝낸다) — 서버 표에 있었나. */
@@ -228,9 +258,11 @@ export function sideChatList(): Promise<SideChatRow[]> {
 // 사건 통로
 // ---------------------------------------------------------------------------
 
-const EV_TAGS: ReadonlySet<string> = new Set([
+/** 받는 사건 꼬리표 — Rust `side_chat/event.rs` 의 `Ev` 갈래와 같은 목록(`side-chat-api.test.ts` 가 대조한다). */
+export const EV_TAGS: ReadonlySet<string> = new Set([
   "ready", "turnStarted", "userAccepted", "textDelta", "text", "toolStarted", "toolOutput", "toolFinished",
-  "permission", "permissionResolved", "turnEnded", "modelChanged", "effortChanged", "notice", "exited",
+  "permission", "permissionResolved", "turnEnded", "modelChanged", "effortChanged", "notice", "mcpServers", "exited",
+  "permissionAuto", "permPolicy",
 ]);
 
 /** 봉투 모양인가 — 통로로 온 값을 믿기 전에 본다(모르는 꼬리표는 버린다 — 새 사건은 Rust 와 함께 이 표에 넣는다). */

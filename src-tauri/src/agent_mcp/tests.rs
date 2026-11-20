@@ -150,7 +150,7 @@ fn stdio(name: &str) -> McpServer {
         args: vec!["a b".to_owned()],
         url: None,
         side_chat: false,
-        side_chat_no_ask: false,
+        legacy_no_ask: None,
     }
 }
 
@@ -167,7 +167,7 @@ fn http(name: &str) -> McpServer {
         args: vec![],
         url: Some("https://example.com/mcp".to_owned()),
         side_chat: false,
-        side_chat_no_ask: false,
+        legacy_no_ask: None,
     }
 }
 
@@ -715,15 +715,23 @@ fn side_chat_fields_default_off_and_round_trip() {
         "name": "play", "enabled": true, "transport": "stdio", "command": "npx", "args": ["x"]
     }))
     .unwrap();
-    assert!(!old.side_chat && !old.side_chat_no_ask);
+    assert!(!old.side_chat);
     let text = serde_json::to_value(&old).unwrap();
     assert!(text.get("side_chat").is_none() && text.get("side_chat_no_ask").is_none(), "끔은 적지 않는다");
     let mut on = old.clone();
     on.side_chat = true;
-    on.side_chat_no_ask = true;
     let back: McpServer = serde_json::from_value(serde_json::to_value(&on).unwrap()).unwrap();
     assert_eq!(back, on);
-    assert!(format!("{on:?}").contains("side_chat_no_ask: true"));
+    // (2026-11-20) 걷은 칸 `side_chat_no_ask` — 옛 설정에 남아 있어도 그 항목을 버리지 않고(읽기만) 다시 쓰면 빠진다
+    let legacy: McpServer = serde_json::from_value(json!({
+        "name": "play", "enabled": true, "transport": "stdio", "command": "npx", "args": ["x"], "side_chat": true, "side_chat_no_ask": true
+    }))
+    .unwrap();
+    assert!(legacy.side_chat);
+    assert!(serde_json::to_value(&legacy).unwrap().get("side_chat_no_ask").is_none(), "다음 저장에서 빠진다");
+    assert!(!format!("{legacy:?}").contains("no_ask"));
+    let toml_legacy = "name = \"p\"\nenabled = true\ntransport = \"stdio\"\ncommand = \"npx\"\nside_chat_no_ask = true\n";
+    assert!(toml::from_str::<McpServer>(toml_legacy).is_ok(), "옛 settings.toml 칸");
 }
 
 /// 사이드 채팅에 실을 서버 — 켬 + `side_chat` 만 · 대상 칩은 보지 않는다 · 범위는 AI 타일과 같은 판정(프로젝트 항목이 같은 이름의 전역을

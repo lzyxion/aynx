@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import HostIcon from "$lib/HostIcon.svelte";
+  import AiGlyph from "$lib/AiGlyph.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import Keys from "$lib/Keys.svelte";
   import ScopeChips from "$lib/ScopeChips.svelte";
@@ -9,7 +9,6 @@
   import ConvoTitleEdit from "$lib/ConvoTitleEdit.svelte";
   import { convoMetaChips, type ConvoMetaChip } from "$lib/convo-meta";
   import { t } from "$lib/i18n/i18n.svelte.js";
-  import { iconRef } from "$lib/host-icons";
   import { aiDisplayName } from "$lib/pane-icons";
   import { relativeTime } from "$lib/history-search";
   import { placeDefaultPalette, type CanvasRect } from "$lib/launcher";
@@ -447,7 +446,7 @@
             onclick={(ev) => onRowClick(ev, s, i)}
             ondblclick={(ev) => onRowDblClick(ev, s)}
           >
-            <span class="logo" title={aiDisplayName(s.agent) ?? s.agent}><HostIcon icon={iconRef(s.agent)} size={16} /></span>
+            <span class="logo" title={aiDisplayName(s.agent) ?? s.agent}><AiGlyph name={s.agent} size={16} /></span>
             <span class="main">
               <span class="tline"
                 >{#if renaming === keyOf(s)}<ConvoTitleEdit

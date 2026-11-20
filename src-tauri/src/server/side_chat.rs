@@ -15,14 +15,16 @@
 //! | `side_chat_interrupt` | 쓰기 | `{chat, epoch}` → bool(끊기를 보냈나 — 도는 턴이 없으면 false) |
 //! | `side_chat_set_model` | 쓰기 | `{chat, epoch, model}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기에 쓴다) |
 //! | `side_chat_set_effort` | 쓰기 | `{chat, epoch, effort: 낱말 \| null}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기의 `--effort` · 첫 `turn/start`) · `null` = CLI 기본 · 악수가 알린 목록 밖이면 `[bad-effort]` |
-//! | `side_chat_decide` | 쓰기 | `{chat, epoch, requestId, decision: allow\|deny, message?}` → true · 기다리는 요청이 아니면 `[unknown-request]` |
+//! | `side_chat_decide` | 쓰기 | `{chat, epoch, requestId, decision: allow\|deny, message?, remember?}` → true · 기다리는 요청이 아니면 `[unknown-request]` · `remember`(판 37 — [이 채팅에서 허용]) = 허용 + 그 요청의 종류를 허용 목록에(종류는 서버가 pending 에서 읽는다 · 거절과 함께면 `[bad-decision]`) |
+//! | `side_chat_set_perm_mode` | 쓰기 | `{chat, mode: manual\|auto}` → `{mode, allow}`(판 37 — 저장 · "마지막 모드" · 사건 `permPolicy` · Auto 면 기다리는 카드도 허용) |
+//! | `side_chat_forget_allow` | 쓰기 | `{chat, kind}` → `{mode, allow}`(판 37 — 허용 목록에서 그 종류를 뺀다 · 빼기만) |
 //! | `side_chat_close` | 쓰기 | `{chat}` → bool(표에 있었나) · 프로세스는 잡째 끝낸다 |
 //! | `side_chat_attach` | 읽기 | `{chat, window}` → 스냅숏 · 그 창을 보는 창에 **덧붙인다**(F5 · 웹뷰 크래시 뒤 새 페이지 · 다른 창) · 없으면 `[session-gone]` |
 //! | `side_chat_list` | 읽기 | `{}` → `[{chat, cli, model, effort, epoch, status, conversationId, viewers, detached}]`(`viewers` = 보는 창 **수** — 남의 창 라벨은 돌려주지 않는다) |
 //! | `side_chat_link` | 쓰기 | `{chat, epoch?, streams: [스트림]}` → `{links: [연결 보기], changed}`(판 33) · 묶음을 통째로 놓는다(준 순서 · 같은 스트림은 처음 것만 · 빈 배열 = 모두 끊기) · 하나라도 서버 거울의 창 타일이 아니면 `[bad-link]` · `chat_token::LINKS_MAX` 를 넘으면 `[too-many-links]`(둘 다 아무것도 바꾸지 않는다) · 바뀌면 다음 보내기에 연결 머리글(5단계 — 아래 "연결") |
 //! | `side_chat_seen` | 쓰기 | `{chat, epoch, seq}` → `{sent}` · 어느 창에서 사람이 그 채팅의 턴 끝(사건 `turnEnded` 의 `epoch` · `seq`)을 봤다 — 표는 그대로 · 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 `side-chat-seen{chat, epoch, seq}` 방송(판 31 — 아래 "완료 확인 공유") |
 //!
-//! 스냅숏 = `{links, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, liveTurn: [Ev], pending: [Ev]}`
+//! 스냅숏 = `{links, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, mcpServers, permMode, permAllow, liveTurn: [Ev], pending: [Ev]}`
 //! (`links` = 연결 순서의 `[{stream, code, label, kind, readable, closed}]`(판 33 — 없으면 빈 배열) · `cwd` = CLI 가 도는 폴더(`null` = 채팅 자기 폴더) — 화면의 이름표일
 //! 뿐 다시 받지 않는다) — 그 뒤 사건은
 //! `side-chat-event{windows, chat, epoch, seq, ev}`(`windows` = 지금 보는 창 라벨들 · `seq` 는 채팅마다 1씩 — 빈틈이면 다시 attach). 옛 `epoch` 는
@@ -76,8 +78,22 @@
 //! 악수 · CLI 가 물은 것에 대한 고정 답(`on_line`
 //! 의 `Step.stdin`) · 사람 글(`encode_user` — op `side_chat_send` 에서만 · 연결이 바뀐 뒤 첫 글은 앞에 앱 고정 연결 머리글 · 사람이 붙인 그림은
 //! 그 글의 일부 — 서버가 첨부 자리 안의 그림 파일인지 본 것만) · 끊기 · 모델 바꾸기 · 강도 바꾸기(`encode_set_effort` — op
-//! `side_chat_set_effort` 에서만 · 사람이 칩에서 고른 낱말) · 사람의 결정(`encode_decision` — op
-//! `side_chat_decide` 에서만). MCP · 오케스트레이션 · AI 문자열에서 여기로 오는 길은 없다(시험 `side_chat_stdin_only_human`).
+//! `side_chat_set_effort` 에서만 · 사람이 칩에서 고른 낱말) · 권한 결정(`encode_decision` — 사람의 그 자리 결정은 op
+//! `side_chat_decide` 에서만, 그 밖은 사람이 그 채팅에 정한 모드 · 허용 목록에 따라 서버가 대신 내는 **허용**뿐 — `policy_answer` · 아래
+//! "권한 모드"). MCP · 오케스트레이션 · AI 문자열에서 여기로 오는 길은 없다(시험 `side_chat_stdin_only_human`).
+//!
+//! ## 권한 모드(2026-11-20 — `side_chat::perm` · 권한 모드 목업)
+//!
+//! - 채팅마다 **모드**(`Manual` 기본 · `Auto`)와 **허용 목록**(Manual 의 [이 채팅에서 허용] 이 올린 종류 — 채팅 폴더 밖 읽기 · 파일 바꾸기 ·
+//!   샌드박스 밖 명령 · MCP 서버 하나). 저장은 `<sidechat>/.perm/<id>.json`(채팅 폴더 = CLI cwd 밖) · 표에 새로 세울 때 읽는다 · 새 채팅은
+//!   사람이 마지막에 고른 모드.
+//! - 어댑터가 `permission` 을 내면 `Host::on_event` 가 모드 · 목록을 보고(`perm::answer_by`) **허용**으로 대신 답한다 — 카드 대신 그 번호의
+//!   몸은 `permissionAuto`(끝난 한 줄) · 뒤이어 `permissionResolved{by: auto | remembered}`. Auto 로 바꾼 순간 · [이 채팅에서 허용] 뒤에는 이미
+//!   기다리는 카드도 같은 판정으로 답한다(`answer_waiting`).
+//! - 바꾸는 길은 사람의 op 셋(`side_chat_set_perm_mode` · `side_chat_forget_allow` · `side_chat_decide{remember}`)뿐 — 몸에 종류를 넓히는 칸이
+//!   없다(`remember` 의 종류는 서버의 pending 에서). CLI 쪽 제한(Claude `--tools` 다섯 · Codex `read-only` + `on-request`)은 그대로다.
+//!   대화형 도구 · 그 밖 서버 요청은 어댑터가 카드 없이 거절하므로 Auto 여도 거절이다.
+//! - 바뀌면 보는 창에 사건 `permPolicy{mode, allow}`(지금 턴 꼬리에는 들지 않는다 — 스냅숏의 `permMode` · `permAllow` 가 맞춘다).
 //!
 //! ## 연결 · 채팅 MCP 토큰(5단계 — v1 결정 10 · 설계 8절 1 (a))
 //!
@@ -101,8 +117,9 @@
 //!   잠겼으면 비밀 값이 있는 서버만 빼고 `mcp-locked` 로 알린다(채팅은 뜬다).
 //! - **이름은 첫 보내기 전에도**(2026-11-13): 프로세스는 첫 보내기에 뜨지만 `open` 이 띄우지 않고 실을 예정 이름(`planned_mcp` — 같은
 //!   빼기 규칙 · 이름만)을 스냅숏 `mcpServers` 에 싣는다 — 입력 칸 `[+]` › MCP 가 새 채팅에서도 선다. 띄우면 실린 목록이 갈음한다.
-//! - **묻지 않기**(`side_chat_no_ask` — 설정에서만): Claude `--allowedTools mcp__<서버>` · Codex `default_tools_approval_mode='approve'`. 끈 서버는
-//!   부를 때마다 권한 카드(`permission{kind: mcpTool}` — Claude `can_use_tool` · Codex MCP 승인 elicitation · `prompt`).
+//! - 외부 서버의 도구는 **CLI 에 미리 허용하지 않는다** — 부를 때마다 권한 요청(`permission{kind: mcpTool}` — Claude `can_use_tool` · Codex
+//!   MCP 승인 elicitation · `prompt`)이 오고, 묻지 않기는 위 "권한 모드"(Auto · 허용 목록의 `mcp:<서버>`)가 정한다(2026-11-20 — 설정의
+//!   `side_chat_no_ask` 를 걷었다).
 //!
 //! ## 사건 · 중계
 //!
@@ -143,7 +160,8 @@ use super::ipc::WireError;
 use super::{hub, log};
 use crate::errors::{with_reason, SESSION_GONE};
 use crate::orchestration::turn;
-use crate::side_chat::event::{model_ok, uuid_ok, word_ok, Mode};
+use crate::side_chat::event::{model_ok, uuid_ok, word_ok, Mode, ResolvedBy};
+use crate::side_chat::perm::{self, ChatPerm, PermMode};
 use crate::side_chat::{claude, codex, store, Adapter, Cli, Decision, Ev};
 
 /// 사건 이벤트 이름(서버 → GUI). 몸 `{windows, chat, epoch, seq, ev}`.
@@ -188,6 +206,8 @@ pub(crate) fn is_side_chat_op(op: &str) -> bool {
             | "side_chat_list"
             | "side_chat_link"
             | "side_chat_seen"
+            | "side_chat_set_perm_mode"
+            | "side_chat_forget_allow"
     )
 }
 
@@ -235,6 +255,9 @@ struct State {
     /// 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름(`Ev::McpServers` — 스냅숏의 `mcpServers`). 프로세스가 없을 때 연 채팅은 실을 예정
     /// 이름([`planned_mcp`] — `op_open`).
     mcp: Vec<String>,
+    /// 그 채팅의 **권한 모드 · 허용 목록**(2026-11-20 — `side_chat::perm` · 머리말 "권한 모드"). 표에 새로 세울 때 저장에서 읽고, 사람의 op 가
+    /// 바꿀 때마다 저장한다. 서버가 권한 요청에 대신 답할지는 이것만 본다(`Host::on_event`).
+    perm: ChatPerm,
 }
 
 struct Chat {
@@ -332,6 +355,23 @@ impl chat_proc::Host for Chat {
             }
             Ev::McpServers { names } => st.mcp = names.clone(),
             Ev::Exited { .. } => self.cv.notify_all(),
+            // **권한 모드 · 허용 목록**(2026-11-20 — 머리말 "권한 모드") — 사람이 그 채팅에 Auto 를 골랐거나 이 종류를 [이 채팅에서 허용] 했으면
+            // 카드를 띄우지 않고 서버가 허용으로 답한다. 이 번호의 몸은 `permissionAuto`(끝난 한 줄 — 알림 없음), 곧이어 `permissionResolved{by}`.
+            Ev::Permission { request_id, kind, title, tool_name, .. } => {
+                let key = perm::key_of(*kind, tool_name, &st.mcp);
+                if let Some(by) = perm::answer_by(&st.perm, key.as_deref()) {
+                    let shown = Ev::PermissionAuto {
+                        request_id: request_id.clone(),
+                        kind: *kind,
+                        title: title.clone(),
+                        tool_name: tool_name.clone(),
+                        by,
+                    };
+                    hub::emit(EVENT, event_body(&windows_of(st), &self.id, proc, seq, &shown));
+                    policy_answer(self, st, request_id, by);
+                    return;
+                }
+            }
             _ => {}
         }
         hub::emit(EVENT, event_body(&windows_of(st), &self.id, proc, seq, ev));
@@ -582,8 +622,8 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
                 Some(m) => crate::chat_token::READ_TOOLS.iter().map(|t| format!("mcp__{}__{t}", m.name)).collect(),
                 None => Vec::new(),
             };
-            // 묻지 않기를 켠 외부 서버만 통째로 미리 허용 — 나머지 외부 도구는 `can_use_tool` → 권한 카드
-            allowed.extend(claude::no_ask_rules(&ext));
+            // 외부 서버의 도구는 미리 허용하지 않는다 — 늘 `can_use_tool` 로 오고 묻지 않기는 이 서버가 채팅의 모드 · 허용 목록으로 답한다
+            // (2026-11-20 — 설정의 '묻지 않기' 를 걷었다 · 머리말 "권한 모드").
             // 파일 첨부(판 32) — 사본은 늘 채팅 자기 폴더의 `attachments/`(`chat_files`). 갈라 온 채팅은 cwd 가 다른 폴더라 그 폴더 **하나의 읽기**만
             // 더한다(`--add-dir` + `Read(//…/**)` — 쓰기 · 실행 도구는 `--tools` 에 없다). 자기 폴더가 cwd 인 채팅은 `Read(./**)` 에 이미 든다.
             let attach_dir = if st.cwd.is_some() { attach_read(id) } else { None };
@@ -777,6 +817,25 @@ struct DecideBody {
     decision: String,
     #[serde(default)]
     message: Option<String>,
+    /// [이 채팅에서 허용](판 37) — 허용 + **그 요청의 종류**를 허용 목록에 올린다. 종류는 서버가 기다리는 요청에서 읽는다(몸에 종류 칸이 없다).
+    #[serde(default)]
+    remember: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PermModeBody {
+    chat: String,
+    /// `manual` · `auto`.
+    mode: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ForgetBody {
+    chat: String,
+    /// 허용 목록에서 뺄 종류 열쇠(`side_chat::perm` — 빼기만 한다 · 넓히는 길이 아니다).
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -814,6 +873,8 @@ pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> 
         "side_chat_list" => Ok(list()),
         "side_chat_link" => op_link(body(b)?),
         "side_chat_seen" => Ok(op_seen(body(b)?)),
+        "side_chat_set_perm_mode" => op_set_perm_mode(body(b)?),
+        "side_chat_forget_allow" => op_forget_allow(body(b)?),
         _ => Err(WireError::new(super::ipc::frame::code::UNKNOWN_OP, format!("unknown op: {op}"))),
     }
 }
@@ -834,6 +895,8 @@ fn snapshot(chat: &Chat, st: &State, links: Value) -> Value {
         "cwd": st.cwd.as_ref().map(|p| p.to_string_lossy().replace('\\', "/")),
         "forkFrom": st.fork_from,
         "mcpServers": st.mcp,
+        "permMode": st.perm.mode,
+        "permAllow": st.perm.allow,
         "liveTurn": st.core.live_turn(),
         "pending": st.core.pending(),
     })
@@ -914,6 +977,8 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     // 첫 보내기 전에도 보일 외부 MCP 이름(띄울 폴더 = 갈라 온 대화의 폴더, 아니면 채팅 폴더 — [`prepare`] 와 같은 자리) — 잠금 앞에서
     let plan_cwd = cwd.clone().or_else(|| sidechat_root().and_then(|r| store::chat_dir(&r, &b.chat)));
     let planned = plan_cwd.map(|p| planned_mcp(cli, &p.to_string_lossy().replace('\\', "/"))).unwrap_or_default();
+    // 권한 모드 · 허용 목록(2026-11-20) — 저장에서(없으면 새 채팅: 마지막 모드). 표에 새로 세울 때만 쓴다(다시 붙기는 표의 것이 최신) — 잠금 앞에서
+    let perm0 = sidechat_root().map(|r| perm::load_or_init(&r, &b.chat)).unwrap_or_default();
     let (chat, alive, old) = {
         let mut t = lock(&TABLE);
         let alive = t.conns.contains(&conn);
@@ -942,6 +1007,7 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
                         // 이미 걸린 연결(같은 채팅 — CLI 를 바꿈)은 새 프로세스의 첫 글에 다시 알린다.
                         link_note: !crate::chat_token::links_of(&b.chat).is_empty(),
                         mcp: Vec::new(),
+                        perm: perm0,
                     }),
                     cv: Condvar::new(),
                 });
@@ -1319,19 +1385,28 @@ fn op_set_effort(b: EffortBody) -> Result<Value, WireError> {
     Ok(json!(true))
 }
 
-/// **사람의 권한 결정** — 이 함수가 `encode_decision` 을 부르는 유일한 곳이다(MCP · 오케스트레이션에 이 길이 없다 — 시험).
+/// **사람의 권한 결정** — 사람의 결정이 `encode_decision` 에 닿는 유일한 곳이다(MCP · 오케스트레이션에 이 길이 없다 — 시험). 그 밖에
+/// `encode_decision` 을 부르는 곳은 사람이 정한 모드 · 허용 목록으로 서버가 **허용**만 내는 [`policy_answer`] 하나다.
+///
+/// `remember`([이 채팅에서 허용] — 판 37)면 허용과 함께 **그 기다리는 요청의 종류**(서버가 pending 에서 읽는다 — `perm::key_of`)를 그 채팅의
+/// 허용 목록에 올리고 저장한 뒤, 같은 종류로 기다리는 다른 카드도 대신 허용한다. 거절과 함께는 받지 않는다(`[bad-decision]`).
 fn op_decide(b: DecideBody) -> Result<Value, WireError> {
     let decision = match b.decision.as_str() {
         "allow" => Decision::Allow,
         "deny" => Decision::Deny,
         _ => return Err(fail("bad-decision", "unknown decision")),
     };
+    if b.remember && decision != Decision::Allow {
+        return Err(fail("bad-decision", "only an allow can be remembered"));
+    }
     let chat = find(&b.chat)?;
     let mut st = lock(&chat.st);
     check_epoch(&st, b.epoch)?;
     if !st.core.is_pending(&b.request_id) {
         return Err(fail("unknown-request", "no such permission request is waiting"));
     }
+    // 기억할 종류 — 그 기다리는 요청에서(화면이 보낸 글자는 없다)
+    let key = if b.remember { pending_key(&st, &b.request_id) } else { None };
     let Some(a) = st.core.adapter() else {
         return Err(fail("unknown-request", "no such permission request is waiting"));
     };
@@ -1339,7 +1414,116 @@ fn op_decide(b: DecideBody) -> Result<Value, WireError> {
         .encode_decision(&b.request_id, decision, b.message.as_deref())
         .map_err(|w| fail(w, "the decision was not sent"))?;
     chat_proc::apply(&*chat, &mut st, step);
+    if let Some(k) = key {
+        let mut next = st.perm.clone();
+        if perm::remember(&mut next, &k) {
+            // 저장이 실패해도 이 채팅 표에는 남긴다(사람이 방금 고른 뜻 — 다시 열면 그때의 저장 판)
+            if let Some(root) = sidechat_root() {
+                if perm::save(&root, &chat.id, &next).is_err() {
+                    log::line(format!("side chat {} — could not save the permission list", chat.id));
+                }
+            }
+            st.perm = next;
+            note_policy(&chat, &mut st);
+            answer_waiting(&chat, &mut st);
+        }
+    }
     Ok(json!(true))
+}
+
+/// 기다리는 그 요청의 종류 열쇠(`perm::key_of` — 서버의 pending 에서).
+fn pending_key(st: &State, request_id: &str) -> Option<String> {
+    st.core.pending().into_iter().find_map(|ev| match ev {
+        Ev::Permission { request_id: id, kind, tool_name, .. } if id == request_id => perm::key_of(*kind, tool_name, &st.mcp),
+        _ => None,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 권한 모드 · 허용 목록(2026-11-20 — 머리말 "권한 모드")
+// ---------------------------------------------------------------------------
+
+/// **서버가 대신 낸 허용** — 사람이 그 채팅에 정한 모드 · 허용 목록(`perm::answer_by`)이 그렇다고 할 때만 부른다(`Host::on_event` ·
+/// [`answer_waiting`]). 늘 **허용**이고 글이 없다 · 답한 쪽은 `by`(`Auto` · `Remembered`)로 남는다. 기다리는 요청이 아니면 아무것도 하지 않는다.
+fn policy_answer(chat: &Chat, st: &mut State, request_id: &str, by: ResolvedBy) {
+    let Some(a) = st.core.adapter() else { return };
+    let Ok(mut step) = a.encode_decision(request_id, Decision::Allow, None) else { return };
+    for ev in &mut step.evs {
+        if let Ev::PermissionResolved { by: b, .. } = ev {
+            *b = by;
+        }
+    }
+    chat_proc::apply(chat, st, step);
+}
+
+/// 지금 기다리는 카드 가운데 모드 · 허용 목록이 허용하는 것을 서버가 대신 허용한다(Auto 로 바꾼 순간 · [이 채팅에서 허용] 뒤).
+fn answer_waiting(chat: &Chat, st: &mut State) {
+    let waiting: Vec<(String, ResolvedBy)> = st
+        .core
+        .pending()
+        .into_iter()
+        .filter_map(|ev| match ev {
+            Ev::Permission { request_id, kind, tool_name, .. } => {
+                let key = perm::key_of(*kind, tool_name, &st.mcp);
+                perm::answer_by(&st.perm, key.as_deref()).map(|by| (request_id.clone(), by))
+            }
+            _ => None,
+        })
+        .collect();
+    for (id, by) in waiting {
+        policy_answer(chat, st, &id, by);
+    }
+}
+
+/// 보는 창들에 지금 모드 · 허용 목록을 알린다(사건 `permPolicy` — 칩이 맞춘다 · 지금 턴 꼬리에는 들지 않는다).
+fn note_policy(chat: &Chat, st: &mut State) {
+    let ev = Ev::PermPolicy { mode: st.perm.mode, allow: st.perm.allow.clone() };
+    chat_proc::push(chat, st, ev);
+}
+
+/// 답의 몸 — `{mode, allow}`.
+fn perm_view(p: &ChatPerm) -> Value {
+    json!({ "mode": p.mode, "allow": p.allow })
+}
+
+/// **모드 바꾸기**(사람이 칩 메뉴에서 — Tauri 명령 `side_chat_set_perm_mode` · 주 창 · 원격 창). 도는 턴 중에도 · 프로세스를 다시 띄우지 않고
+/// 다음 요청부터 듣는다. 저장하고(채팅 · "마지막 모드") 보는 창에 알린 뒤, Auto 면 **이미 기다리는 카드**도 허용으로 답한다. → `{mode, allow}`.
+fn op_set_perm_mode(b: PermModeBody) -> Result<Value, WireError> {
+    let mode = match b.mode.as_str() {
+        "manual" => PermMode::Manual,
+        "auto" => PermMode::Auto,
+        _ => return Err(fail("bad-mode", "unknown permission mode")),
+    };
+    let chat = find(&b.chat)?;
+    let root = sidechat_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
+    let mut st = lock(&chat.st);
+    let mut next = st.perm.clone();
+    next.mode = mode;
+    perm::save(&root, &chat.id, &next).map_err(|_| fail("perm-save", "the permission mode was not saved"))?;
+    // 새 채팅이 이어받는 "마지막 모드" — 실패해도 이 채팅은 바뀐다
+    let _ = perm::save_last(&root, mode);
+    st.perm = next;
+    note_policy(&chat, &mut st);
+    answer_waiting(&chat, &mut st);
+    Ok(perm_view(&st.perm))
+}
+
+/// **허용 목록에서 빼기**(칩 메뉴 항목의 × — 그 종류는 다시 묻는다). 빼기만 한다 — 넓히는 길은 [이 채팅에서 허용](`op_decide` 의 `remember`)
+/// 하나다. → `{mode, allow}`.
+fn op_forget_allow(b: ForgetBody) -> Result<Value, WireError> {
+    if !perm::key_ok(&b.kind) {
+        return Err(fail("bad-kind", "unknown permission kind"));
+    }
+    let chat = find(&b.chat)?;
+    let root = sidechat_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
+    let mut st = lock(&chat.st);
+    let mut next = st.perm.clone();
+    if perm::forget(&mut next, &b.kind) {
+        perm::save(&root, &chat.id, &next).map_err(|_| fail("perm-save", "the permission list was not saved"))?;
+        st.perm = next;
+        note_policy(&chat, &mut st);
+    }
+    Ok(perm_view(&st.perm))
 }
 
 // ---------------------------------------------------------------------------

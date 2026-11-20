@@ -429,7 +429,6 @@ export const files = {
   "doc.md.image.menu.linkCopied": "그림 경로를 복사했습니다",
   "doc.md.image.menu.svgCopied": "SVG 코드를 복사했습니다",
   "doc.md.image.menu.copyFailed": "클립보드에 복사하지 못했습니다",
-  "doc.md.link.open": "{href} (Ctrl+클릭)",
   "doc.md.link.openPlain": "열기: {href}",
   "doc.md.link.source": "{text} — 열기: {href}",
   "doc.md.alert.note": "참고",

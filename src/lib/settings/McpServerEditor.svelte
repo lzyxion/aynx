@@ -79,9 +79,8 @@
   let enabled = $state(initial?.enabled ?? true);
   let agents = $state<string[]>([...(initial?.agents ?? DEFAULT_AGENTS)]);
   let agentsChanged = $state(false);
-  /** 대상 › 사이드 채팅 · 사이드 채팅에서 묻지 않기(2026-10-25 — 묻지 않기는 사이드 채팅을 켰을 때만 보이고 저장된다) */
+  /** 대상 › 사이드 채팅(2026-10-25 — 묻지 않기는 사이드 채팅의 권한 모드가 정한다 · 2026-11-20 '묻지 않기' 칸을 걷었다) */
   let sideChat = $state(initial?.side_chat ?? false);
-  let sideChatNoAsk = $state(initial?.side_chat_no_ask ?? false);
   let busy = $state(false);
   let error = $state<string | null>(null);
   let argsContainer = $state<HTMLDivElement>();
@@ -132,7 +131,7 @@
   async function submit() {
     if (cannotSubmit) return;
     const next = buildServer(
-      { name, enabled, agents, projectId, transport, command, args, url, secrets, sideChat, sideChatNoAsk },
+      { name, enabled, agents, projectId, transport, command, args, url, secrets, sideChat },
       initial,
       agentsChanged,
     );
@@ -284,13 +283,6 @@
           {#snippet icon()}<UiIcon name="side-panel" size={14} />{/snippet}
         </AgentChip>
       </div>
-
-      {#if sideChat}
-        <TipName id="ai-mcp-no-ask-f" for="ai-mcp-no-ask" label={t("settings.ai.external.no_ask")} tip={t("settings.ai.external.no_ask_tip")} />
-        <div class="field">
-          <Toggle id="ai-mcp-no-ask" bind:checked={sideChatNoAsk} disabled={busy} />
-        </div>
-      {/if}
 
       <TipName id="ai-mcp-enabled-f" for="ai-mcp-enabled" label={t("settings.ai.external.enabled_label")} tip={t("settings.ai.external.enabled_note")} />
       <div class="field">

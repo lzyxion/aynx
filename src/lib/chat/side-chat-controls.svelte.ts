@@ -12,6 +12,10 @@
 // 메뉴 통로: `[+]` 는 `ToolbarMenu`(갈래 셋 — 뿌리 · 연결 · MCP, 갈래를 바꾸면 메뉴를 다시 세운다)이고 고르기는 `runOnMenu`(스냅샷 → 닫기 →
 // 실행). 연결 갈래의 타일 체크 줄은 **닫지 않는다**(여러 개를 이어서 고르게 — 닫기 자리가 빈 같은 통로). 모델 메뉴(`ChatModelPopover`)는 **고른 뒤에도 열려 있다**(모델과 Effort 를 한 번에) — 그래도 고르기는 같은 통로를 지난다(닫기 자리가
 // 비어 있을 뿐 · 스냅샷이 먼저다). 바깥 누르기 · Esc 로 닫는다.
+//
+// **권한 모드 칩**(2026-11-20 — 권한 모드 목업 · 모델 키워드 바로 왼쪽): `Manual` · `Auto` 라디오 둘 + 허용 목록
+// (이 채팅에서 허용한 종류 — 항목의 × = 다시 묻기). 메뉴(`ChatPermMenu`)의 고르기도 같은 통로(스냅샷 → 닫기 → 실행)이고, × 는 닫지 않는다(이어서
+// 지우게). 바꾸는 길은 세션 서버 op(`side_chat_set_perm_mode` · `side_chat_forget_allow`)뿐 — 메인 PC 독 · 원격 웹 독 · 폰이 같다.
 // ---------------------------------------------------------------------------
 import { runAfterClose, runOnMenu } from "$lib/browser/menu-runner";
 import type { ToolbarMenuRow } from "$lib/browser/toolbar-tools";
@@ -27,10 +31,12 @@ import {
 } from "$lib/app/side-chats.svelte.js";
 import {
   addSideChatLink,
+  forgetSideChatAllow,
   removeSideChatLink,
   setSideChatLinks,
   setSideChatEffort,
   setSideChatModel,
+  setSideChatPermMode,
   sideChatLiveOf,
   switchSideChatCli,
 } from "$lib/app/side-chat-live.svelte.js";
@@ -41,6 +47,7 @@ import { EFFORTS, MODEL_SUGGESTIONS, type RoleCli } from "$lib/orchestration/con
 import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
 import { targetOf } from "$lib/chat/chat-presentation";
 import type { AiCli } from "$lib/session";
+import type { PermMode } from "$lib/side-chat-api";
 import { t } from "$lib/i18n/i18n.svelte.js";
 
 /** `[+]` 메뉴의 갈래 — 뿌리 · 타일 연결(체크 줄 · 모두 끊기) · MCP(실린 서버 이름 · 설정) */
@@ -95,6 +102,9 @@ export class SideChatControls {
   customText = $state("");
   /** Codex 의 모델 목록 — 모델 메뉴를 열 때 · Codex 로 바꿀 때 새로 읽는다(파일 둘 · 프로세스 없음) */
   codexModels = $state<CodexModels | null>(null);
+  /** 권한 모드 메뉴(`ChatPermMenu`) */
+  permOpen = $state(false);
+  permBtn = $state<HTMLElement | null>(null);
 
   readonly chat = $derived.by(() => this.#o.chat());
   readonly offered = $derived.by(() => this.#o.offered() ?? []);
@@ -104,6 +114,11 @@ export class SideChatControls {
   readonly untested = $derived(this.#live?.state.untested ?? null);
 
   readonly customOk = $derived(sideChatModelOk(this.customText.trim()));
+
+  /** 그 채팅의 권한 모드(서버의 사실 — 스냅숏 · `permPolicy` 사건) · 아직 모르면 Manual */
+  readonly permMode = $derived<PermMode>(this.#live?.state.perm.mode ?? "manual");
+  /** 그 채팅에서 허용한 종류 열쇠(Manual 에서만 뜻이 있다 — Auto 로 갔다 와도 남는다) */
+  readonly permAllow = $derived<readonly string[]>(this.#live?.state.perm.allow ?? []);
 
   // ── 모델 ───────────────────────────────────────────────────────────────────
 
@@ -219,6 +234,7 @@ export class SideChatControls {
   togglePlus(el: HTMLElement): void {
     this.plusBtn = el;
     this.modelOpen = false;
+    this.permOpen = false;
     this.plusView = "root";
     this.plusOpen = !this.plusOpen;
   }
@@ -300,6 +316,7 @@ export class SideChatControls {
   toggleModel(el: HTMLElement): void {
     this.modelBtn = el;
     this.plusOpen = false;
+    this.permOpen = false;
     this.customOpen = false;
     this.modelOpen = !this.modelOpen;
     if (this.modelOpen && this.chat?.cli === "codex") this.#loadCodex();
@@ -365,8 +382,42 @@ export class SideChatControls {
     );
   }
 
+  // ── 권한 모드 메뉴 ─────────────────────────────────────────────────────────
+
+  togglePerm(el: HTMLElement): void {
+    this.permBtn = el;
+    this.plusOpen = false;
+    this.modelOpen = false;
+    this.customOpen = false;
+    this.permOpen = !this.permOpen;
+  }
+
+  closePerm(back: boolean): void {
+    this.permOpen = false;
+    if (back) this.permBtn?.focus({ preventScroll: true });
+  }
+
+  /** 모드 고르기 — 스냅샷(그 채팅 · 다른 모드일 때만) → 닫기 → 서버 op(저장 · 보는 창 알림 · Auto 면 기다리는 카드도 허용) */
+  pickPermMode(mode: PermMode): void {
+    runOnMenu(
+      () => (this.chat && mode !== this.permMode ? this.chat.id : null),
+      () => this.closePerm(true),
+      (chat) => void setSideChatPermMode(chat, mode),
+    );
+  }
+
+  /** 허용 목록 항목의 × — 그 종류는 다시 묻는다(메뉴는 닫지 않는다 — 이어서 지우게) */
+  forgetAllow(kind: string): void {
+    runOnMenu(
+      () => (this.chat && this.permAllow.includes(kind) ? this.chat.id : null),
+      () => {},
+      (chat) => void forgetSideChatAllow(chat, kind),
+    );
+  }
+
   /** 모두 닫는다(독이 닫힐 때 · 채팅이 바뀔 때) */
   closeAll(): void {
+    this.permOpen = false;
     this.plusOpen = false;
     this.plusView = "root";
     this.modelOpen = false;

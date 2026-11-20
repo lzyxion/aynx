@@ -75,20 +75,20 @@ describe("buildServer", () => {
     expect(s).toEqual({ name: "pg", enabled: true, agents: ["claude"], project_id: "P1", transport: "http", url: "https://x/mcp", headers: [] });
   });
 
-  it("사이드 채팅 — 켤 때만 적고, 묻지 않기는 사이드 채팅이 켜졌을 때만 남는다", () => {
+  it("사이드 채팅 — 켤 때만 적는다 · 묻지 않기 칸은 없다(2026-11-20 걷음 — 채팅의 권한 모드가 정한다)", () => {
     expect(buildServer(form(), null, false)).not.toHaveProperty("side_chat");
     expect(buildServer(form({ sideChat: true }), null, false)).toMatchObject({ side_chat: true });
     expect(buildServer(form({ sideChat: true }), null, false)).not.toHaveProperty("side_chat_no_ask");
-    expect(buildServer(form({ sideChat: true, sideChatNoAsk: true }), null, false)).toMatchObject({ side_chat: true, side_chat_no_ask: true });
-    expect(buildServer(form({ sideChat: false, sideChatNoAsk: true }), null, false)).not.toHaveProperty("side_chat_no_ask");
-    expect(sideChatFields(undefined, true)).toEqual({});
+    expect(sideChatFields(undefined)).toEqual({});
+    expect(sideChatFields(true)).toEqual({ side_chat: true });
   });
 
-  it("목록의 사이드 채팅 칩 — 켜고 끄기, 끄면 묻지 않기도 걷는다", () => {
+  it("목록의 사이드 채팅 칩 — 켜고 끄기, 옛 묻지 않기 칸이 남아 있었으면 함께 걷는다", () => {
     const on = toggleSideChat(stdio());
     expect(on).toEqual({ ...stdio(), side_chat: true });
-    const noAsk = { ...on, side_chat_no_ask: true };
-    expect(toggleSideChat(noAsk)).toEqual(stdio());
+    const legacy = { ...on, side_chat_no_ask: true } as typeof on;
+    expect(toggleSideChat(legacy)).toEqual(stdio());
+    expect(toggleSideChat({ ...stdio(), side_chat_no_ask: true } as ReturnType<typeof stdio>)).toEqual({ ...stdio(), side_chat: true });
   });
 
   it("대상 칩을 안 건드린 옛 항목은 agents 생략을 보존한다", () => {

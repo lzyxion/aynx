@@ -17,7 +17,8 @@
    *   (기록 보기 시트 · 타일 대화 면 · 명령 블록은 원문 그대로). 같은 `diagrams` 에서 ```svg 는 그림(`SvgView` — `<img>` 하나 ·
    *   512 KB 상한 · 못 그리면 원문, 2026-10-24). `codeActions` 를 받았으면(문서 타일 · 사이드 채팅 · AI 타일 대화 면) 그림이 아닌 코드 블록은 머리 띠(언어가 있을 때만 —
    *   없으면 떠 있는 단추) + [복사] · [터미널에 넣기](`DocCodeBlock` — 블록 하나 = 뿌리 요소 하나 그대로)다.
-   * - 링크는 글자 + (글자와 다르면) 흐린 주소. 배지 링크(`[![alt](img)](url)`)는 대체 글자만 — 주소는 툴팁(`linkUrlTail`). `onlink` 를 받았고 주소가 `http`/`https` 일 때만 **Ctrl(⌘)+클릭**
+   * - 링크는 글자만 — 주소는 툴팁이다(Ctrl+클릭 모드는 주소만 · 뒤에 붙이던 흐린 주소 꼬리와 툴팁의 `(Ctrl+클릭)` 은 2026-11-20 사용자 결정으로
+   *   걷었다). 배지 링크(`[![alt](img)](url)`)는 대체 글자. `onlink` 를 받았고 주소가 `http`/`https` 일 때만 **Ctrl(⌘)+클릭**
    *   으로 연다(터미널 OSC 8 과 같은 규칙 — 그 판정은 `isWebUrl` 하나). `onlink` 가 없으면 그냥 글자다.
    *   대화 면(`TranscriptBody` — 사이드 채팅 · 타일 대화 면 · 기록 보기, 2026-10-25 사용자 결정)은 `linkClick="plain"` 으로 **그냥 클릭**에
    *   열고, `linkStyle="chip"` 으로 **키워드 링크 + 그 자리 출처 칩**으로 그린다(판정은 `md-source-chips.ts`): 링크 글자는
@@ -28,7 +29,7 @@
    *   연달음은 칩 하나 · 툴팁은 이름표 글자 + 주소. 굵게 · 기울임 · 취소선 안쪽은 괄호 묶음만 칩이 된다.
    *   `:` 뒤(`라벨: [A](u) · [B](u)`) · 링크뿐인 블록 · 표 칸(키워드 링크만)은 바꾸지 않는다.
    *   글자가 곧 주소나 사이트 이름이면 그 자리에 칩 하나. 칩 대상은 `onlink` 가 있고
-   *   `http`/`https` 인 여느 링크만이다 — 배지 링크 · 그림 링크(`linkImages`) · 그 밖의 주소는 예전 그대로(꼬리는 걷힌다).
+   *   `http`/`https` 인 여느 링크만이다 — 배지 링크 · 그림 링크(`linkImages`) · 그 밖의 주소는 예전 그대로.
    *   글을 끌어 고르다 링크 위에서 놓은 클릭은 열지 않는다(`selecting`).
    * - **문서 링크**(`#절` · 스킴 없는 경로 — `classifyDocHref`)는 `ondoclink` 를 받았을 때만 산다(문서 보기 타일).
    *   같은 Ctrl+클릭이고 같은 모양이다. 주소는 적힌 그대로 올린다 — 푸는 일은 받는 쪽 몫.
@@ -71,7 +72,7 @@
   import { isMermaidLang } from "$lib/mermaid-text";
   import { isSvgLang } from "$lib/svg-text";
   import UiIcon from "$lib/UiIcon.svelte";
-  import { isWebUrl, linkHost, linkUrlTail, type MdAlertType, type MdBlock, type MdInline, type MdListItem } from "$lib/markdown";
+  import { isWebUrl, linkHost, type MdAlertType, type MdBlock, type MdInline, type MdListItem } from "$lib/markdown";
   import { classifyDocHref, headingSlugs, hrefPathLink, inlineText } from "$lib/doc-links";
   import { codePathLink, splitProsePaths, type PathMatch } from "$lib/path-links";
   import type { DocImageState } from "$lib/doc-images.svelte";
@@ -271,7 +272,7 @@
         ? (paths?.title(hrefPath(href)!) ?? href)
         : linkClick === "plain"
         ? t("files.doc.md.link.openPlain", { href })
-        : t("files.doc.md.link.open", { href });
+        : href; // Ctrl+클릭 모드는 주소만 — 단축키 꼬리는 걷었다(2026-11-20 사용자 결정)
 
   /** 출처 칩으로 그릴 링크인가 — 배지 · 그림 링크 · 열 수 없는 주소는 예전 모양 */
   const chipLink = (s: { href: string; image?: true }) =>
@@ -354,7 +355,7 @@
         data-href={live(s.href) ? s.href : undefined}
         title={linkTitle(s.href)}
         >{s.image ? s.text || t("files.doc.md.image", { alt: "" }) : s.text}</span
-      >{#if linkStyle === "inline" && linkUrlTail(s) !== null}<span class="url">({s.href})</span>{/if}{#if linkImages && images && !s.image && isImageLinkHref(s.href)}{@const lim = images.state(s.href)}{#if lim.status === "ok"}<img
+      >{#if linkImages && images && !s.image && isImageLinkHref(s.href)}{@const lim = images.state(s.href)}{#if lim.status === "ok"}<img
             class="md-img link-img"
             data-img-src={s.href}
             src={lim.url}
@@ -782,12 +783,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .url {
-    margin-left: 0.3em;
-    font-size: 0.88em;
-    color: var(--fg-3);
   }
 
   .img {

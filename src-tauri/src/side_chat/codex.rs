@@ -14,7 +14,8 @@
 //!   `_meta.codex_approval_kind: "mcp_tool_call"` — 0.164.0 실측 · 2026-10-25)도 `permission`(답 `{action: accept|decline}`). 그 밖의 서버
 //!   요청(`item/tool/requestUserInput` · 폼 · URL elicitation · 모르는 것)은 곧바로 거절 · 취소로 답한다(영영 기다리지 않게 — 설계 4절).
 //! - 외부 MCP(2026-10-25): 사람이 사이드 채팅에 고른 서버만 `-c mcp_servers.<이름>.*` 로 켜고(사용자 `config.toml` 과 같은 이름은 싣지 않는다 —
-//!   표가 합쳐져 그쪽 env · 명령이 섞인다), 묻지 않기 = `default_tools_approval_mode='approve'` · 아니면 `'prompt'`.
+//!   표가 합쳐져 그쪽 env · 명령이 섞인다), 도구 승인은 늘 `default_tools_approval_mode='prompt'`(묻지 않기는 세션 서버가 채팅의 모드 · 허용
+//!   목록으로 답한다 — `side_chat::perm` · 2026-11-20).
 //! - 추론 강도 = `turn/start.effort`("이 턴과 그 뒤 턴" — 스키마 설명) · 모델마다 받는 강도는 `model/list` 의
 //!   `data[].supportedReasoningEfforts[].reasoningEffort`(스키마상 아무 글자 — "모델이 알린 값"). 대화 중 바꾸기는 요청이 따로 없어 다음
 //!   `turn/start` 에 싣는다. **CLI 기본으로 되돌리기**: 한 번 실은 강도는 다음 턴에도 남으므로(`null` 은 "그대로"), 스레드가 처음 알린
@@ -137,18 +138,18 @@ pub(crate) fn argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
             a.extend(["-c".into(), format!("mcp_servers.{s}.tools.{t}.approval_mode='approve'")]);
         }
     }
-    // 외부 서버(2026-10-25) — 실행 모양(AI 타일과 같은 `-c` 조각) + 켬 + 도구 승인: 묻지 않기 = `approve`(파괴 표시 도구도 묻지 않음),
-    // 아니면 `prompt`(읽기 표시 도구도 묻는다 — 기본 `auto` 는 읽기 표시를 묻지 않는다 · 0.164.0 실측). 사용자 `config.toml` 과 같은 이름 ·
-    // 우리 이름 · 키 조각이 아닌 이름 · 인자에 못 싣는 값은 뺀다.
+    // 외부 서버(2026-10-25) — 실행 모양(AI 타일과 같은 `-c` 조각) + 켬 + 도구 승인은 늘 `prompt`(읽기 표시 도구도 묻는다 — 기본 `auto` 는
+    // 읽기 표시를 묻지 않는다 · 0.164.0 실측). 묻지 않기는 CLI 에 맡기지 않고 세션 서버가 그 채팅의 모드 · 허용 목록으로 답한다(2026-11-20 —
+    // 설정의 '묻지 않기' = `approve` 갈래를 걷었다 · `side_chat::perm`). 사용자 `config.toml` 과 같은 이름 · 우리 이름 · 키 조각이 아닌 이름 ·
+    // 인자에 못 싣는 값은 뺀다.
     for x in o.external {
         let n = x.name.as_str();
         if !mcp_name_ok(n) || o.mcp_names.iter().any(|u| u == n) || Some(n) == ours || !crate::agent_mcp::launch_ok(x) {
             continue;
         }
-        let mode = if x.side_chat_no_ask { "approve" } else { "prompt" };
         for v in crate::agent_mcp::codex_overrides(x)
             .into_iter()
-            .chain([format!("mcp_servers.{n}.enabled=true"), format!("mcp_servers.{n}.default_tools_approval_mode='{mode}'")])
+            .chain([format!("mcp_servers.{n}.enabled=true"), format!("mcp_servers.{n}.default_tools_approval_mode='prompt'")])
         {
             a.extend(["-c".into(), v]);
         }

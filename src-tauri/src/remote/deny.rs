@@ -245,7 +245,8 @@ pub(crate) const ALLOW: &[&str] = &[
     // 채팅 사이드 독(2026-11-01 사용자 결정 — 원격 웹 창에도 독을 연다 · docs/log/2026-11-01-remote-side-chat.md): 목록 · 채팅 폴더 ·
     // 채팅 프로세스 명령 · 사건 통로 · 연결 칩 전부. 사람의 말 · 권한 결정(`side_chat_decide` 포함 — 재확인 없음) · 끊기 · 닫기 · 읽기는
     // 원격이 이미 할 수 있는 "셸에 치기" 등급이다. 사건 본문은 그 채팅을 보는 창의 통로에만 간다(`server::side_chat_proxy` — 보조 창은 여전히
-    // 거절). 외부 MCP 고르기 · 묻지 않기(`side_chat` · `side_chat_no_ask`)는 설정 저장의 칸이라 예전 그대로다.
+    // 거절). 외부 MCP 고르기(`side_chat`)는 설정 저장의 칸이라 예전 그대로다. 채팅의 권한 모드 · 허용 목록(2026-11-20 — 사용자 확정: 원격 창에서도
+    // 모드를 바꾸고 [이 채팅에서 허용] 을 누를 수 있다 · `side_chat_decide` 와 같은 등급)도 연다.
     // 사이드 채팅 지침 읽기 · 쓰기(설정 › 지침 — 사람이 쓴 글 · 권한을 넓히지 않는다 · 지침 명령 `instruction_save` 와 같은 등급).
     "side_chats_load", "side_chats_save", "side_chat_dir", "side_chat_remove",
     "side_chat_instructions_load", "side_chat_instructions_save",
@@ -253,6 +254,8 @@ pub(crate) const ALLOW: &[&str] = &[
     "side_chat_close", "side_chat_attach", "side_chat_list", "side_chat_subscribe", "side_chat_link",
     // 사이드 채팅 완료 확인 공유(2026-11-13 — 표시 전용 · 몸은 id · 번호뿐) — AI 타일의 `agent_state_seen` 과 같은 등급.
     "side_chat_seen",
+    // 사이드 채팅 권한 모드 · 허용 목록 빼기(2026-11-20 — 위 주석 · 사람의 권한 결정과 같은 등급)
+    "side_chat_set_perm_mode", "side_chat_forget_allow",
     // 타일 권한 카드(2026-11-01 — `server::tile_permission_proxy`): 사람의 결정 · 스냅숏 · 통로. 사이드 채팅 · 프로듀서 권한 카드와 같은 등급(원격은
     // 이미 그 타일의 TUI 에 칠 수 있다 · 재확인 없음). 서버가 그 창이 그 세션을 보는지 다시 본다 · 본문은 그 창의 통로에만.
     // 명령 카드의 앱 분석(순수 계산 — 작업안 카드와 같은 분석 · 아무것도 바꾸지 않는다)
@@ -382,6 +385,8 @@ pub(crate) fn command_label(cmd: &str) -> String {
         "side_chat_subscribe" => tr!(ko: "사이드 채팅 사건 받기", en: "receiving side chat events"),
         "side_chat_link" => tr!(ko: "사이드 채팅에 타일 연결", en: "linking a tile to a side chat"),
         "side_chat_seen" => tr!(ko: "사이드 채팅 완료 확인 알리기", en: "sharing that a side chat reply was seen"),
+        "side_chat_set_perm_mode" => tr!(ko: "사이드 채팅 권한 모드 바꾸기", en: "changing a side chat's permission mode"),
+        "side_chat_forget_allow" => tr!(ko: "사이드 채팅 허용 목록에서 빼기", en: "removing an item from a side chat's allow list"),
         "set_app_icon" => tr!(ko: "앱 아이콘 바꾸기", en: "changing the app icon"),
         "app_icon_add" => tr!(ko: "아바타 넣기", en: "adding an avatar"),
         "app_icon_remove" => tr!(ko: "아바타 지우기", en: "removing an avatar"),
@@ -602,7 +607,7 @@ mod tests {
             "side_chat_instructions_load", "side_chat_instructions_save",
             "side_chat_open", "side_chat_send", "side_chat_interrupt", "side_chat_set_model", "side_chat_set_effort",
             "side_chat_decide", "side_chat_close", "side_chat_attach", "side_chat_list", "side_chat_subscribe", "side_chat_link",
-            "side_chat_seen",
+            "side_chat_seen", "side_chat_set_perm_mode", "side_chat_forget_allow",
         ] {
             assert_eq!(class_of(c), Class::Allow, "{c}");
         }

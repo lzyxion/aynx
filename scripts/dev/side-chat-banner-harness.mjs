@@ -6,7 +6,8 @@
 // OS 알림 스텁(`window.Notification` → `__os`)을 더했다.
 //
 // 보는 것:
-// ① 끝남 · 권한 · 실패 배너 모양 — 로고(`AiGlyph`) · 제목 "Claude Code · <채팅 제목>" · 채팅 칩 · 상태 점(끝남 `--ok` · 권한 `--accent` ·
+// ① 끝남 · 권한 · 실패 배너 모양 — 로고(`AiGlyph`) · 제목 = 채팅 제목만(에이전트 이름은 로고 · aria-label
+//    "Claude Code · <채팅 제목>" — 11-15 d2918504) · 채팅 칩 · 상태 점(끝남 `--ok` · 권한 `--accent` ·
 //    실패 `--err`) · 둘째 줄 · 단추 문구 · 권한은 강조 테두리 · **토스트 없음** · 배지(수 3 · 강조색)
 // ② 사건 길(진짜 `side-chat-live` 의 사건 적용) — 권한 사건 → 배너 · 다른 창이 답함(`permissionResolved`) → 저절로 해결 · 오류 턴 끝 → 실패 배너 ·
 //    새 턴(`turnStarted`) → 저절로 해결
@@ -227,7 +228,7 @@ const bannerShape = (id) =>
   evj(`(() => { const s = document.querySelector('${BANNER(id)}'); if (!s) return 'null'; const card = s.querySelector('.card');
     const dot = s.querySelector('.status'); const chip = s.querySelector('[data-banner-chat-chip]');
     return JSON.stringify({ kind: s.dataset.kind, collapsed: s.dataset.collapsed, logo: !!s.querySelector('.logo svg, .logo img'),
-      title: s.querySelector('.title')?.textContent.trim() ?? null, chip: chip?.textContent.trim() ?? null, chipIcon: !!chip?.querySelector('svg'),
+      title: s.querySelector('.title')?.textContent.trim() ?? null, aria: card?.getAttribute('aria-label') ?? null, chip: chip?.textContent.trim() ?? null, chipIcon: !!chip?.querySelector('svg'),
       line2: s.querySelector('.line2')?.textContent.trim() ?? null, act: s.querySelector('[data-banner-open]')?.textContent.trim() ?? null,
       permissionBorder: card?.classList.contains('permission') ?? null, dot: dot ? getComputedStyle(dot).backgroundColor : null }); })()`);
 /** 칩 글자가 보이는지 · 칩 이름(title · aria-label) · 제목이 말줄임 없이 다 보이는지 · `<prefix>…` 이 제목 칸에 들어가는지.
@@ -277,18 +278,18 @@ await notify("chat-c", "failed");
 check("① 배너 셋이 선다", await waitFor(`document.querySelectorAll('[data-agent-banners] [data-side-chat]').length === 3`, 4000), true);
 await sleep(500);
 check("① 끝남 모양", await bannerShape("chat-b"), {
-  kind: "stop", collapsed: "false", logo: true, title: "Claude Code · beta", chip: "채팅", chipIcon: true,
+  kind: "stop", collapsed: "false", logo: true, title: "beta", aria: "Claude Code · beta", chip: "채팅", chipIcon: true,
   line2: "답변이 끝났습니다", act: "보기", permissionBorder: false, dot: OK,
 });
 check("① 권한 모양(강조 테두리 · [확인하러 가기])", await bannerShape("chat-a"), {
-  kind: "permission", collapsed: "false", logo: true, title: "Claude Code · alpha", chip: "채팅", chipIcon: true,
+  kind: "permission", collapsed: "false", logo: true, title: "alpha", aria: "Claude Code · alpha", chip: "채팅", chipIcon: true,
   line2: "권한을 묻고 있습니다", act: "확인하러 가기", permissionBorder: true, dot: ACCENT,
 });
 check("① 실패 모양(끝남과 같고 점만 오류색)", await bannerShape("chat-c"), {
-  kind: "failed", collapsed: "false", logo: true, title: "Claude Code · gamma", chip: "채팅", chipIcon: true,
+  kind: "failed", collapsed: "false", logo: true, title: "gamma", aria: "Claude Code · gamma", chip: "채팅", chipIcon: true,
   line2: "답변이 실패했습니다", act: "보기", permissionBorder: false, dot: ERR,
 });
-check("① 데스크톱 칩 = 아이콘 + 글자 · 제목 다 보임", await chipFit("chat-b", "Claude Code · b"), {
+check("① 데스크톱 칩 = 아이콘 + 글자 · 제목 다 보임", await chipFit("chat-b", "b"), {
   chipText: true, chipTitle: "채팅", chipLabel: "채팅", titleWhole: true, prefixFits: true,
 });
 check("① 상태 점 색이 셋 다 다르다", new Set([OK, ACCENT, ERR]).size, 3);
@@ -406,12 +407,12 @@ check("⑩ (준비) 지금 채팅 = chat-a · 덮개 없음", [await currentChat
 await notify("chat-b", "permission");
 check("⑩ 폰 배너", await waitFor(`!!document.querySelector('${BANNER("chat-b")} [data-banner-open]')`, 4000), true);
 check("⑩ 폰 배너 모양", await bannerShape("chat-b"), {
-  kind: "permission", collapsed: "false", logo: true, title: "Claude Code · beta", chip: "채팅", chipIcon: true,
+  kind: "permission", collapsed: "false", logo: true, title: "beta", aria: "Claude Code · beta", chip: "채팅", chipIcon: true,
   line2: "권한을 묻고 있습니다", act: "확인하러 가기", permissionBorder: true, dot: await cssVar("--accent"),
 });
 await sleep(400);
-// 폰 기둥은 [확인하러 가기]·닫기까지 한 줄이라 제목 전체는 장담하지 않는다 — 칩이 글자를 접어 `· <채팅 제목>` 의 머리는 보여야 한다
-const phoneFit = await chipFit("chat-b", "Claude Code · b");
+// 폰 기둥은 [확인하러 가기]·닫기까지 한 줄이라 제목 전체는 장담하지 않는다 — 칩이 글자를 접어 채팅 제목의 머리는 보여야 한다
+const phoneFit = await chipFit("chat-b", "b");
 check("⑩ 폰 칩 = 아이콘만(이름은 title · aria-label) · 제목에 채팅 이름 머리가 보임", { ...phoneFit, titleWhole: undefined }, {
   chipText: false, chipTitle: "채팅", chipLabel: "채팅", prefixFits: true,
 });

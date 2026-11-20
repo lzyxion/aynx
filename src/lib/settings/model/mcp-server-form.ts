@@ -81,16 +81,19 @@ export function cannotSubmitServer(f: {
   );
 }
 
-/** 사이드 채팅 칸 — 켤 때만 적는다(옛 판과 같은 글자). 묻지 않기는 사이드 채팅이 켜졌을 때만 남긴다(끄면 같이 걷는다). */
-export function sideChatFields(sideChat: boolean | undefined, noAsk: boolean | undefined): Pick<AiMcpServer, "side_chat" | "side_chat_no_ask"> {
-  if (!sideChat) return {};
-  return noAsk ? { side_chat: true, side_chat_no_ask: true } : { side_chat: true };
+/**
+ * 사이드 채팅 칸 — 켤 때만 적는다(옛 판과 같은 글자). 옛 '사이드 채팅에서 묻지 않기'(`side_chat_no_ask`)는 2026-11-20 에 걷었다 — 묻지 않기는
+ * 사이드 채팅의 권한 모드 · 허용 목록이 정한다(세션 서버 `side_chat::perm`).
+ */
+export function sideChatFields(sideChat: boolean | undefined): Pick<AiMcpServer, "side_chat"> {
+  return sideChat ? { side_chat: true } : {};
 }
 
-/** 목록 줄의 사이드 채팅 칩 누르기 — 켜고 끄기(끄면 묻지 않기도 걷는다). 다른 칸은 그대로. */
+/** 목록 줄의 사이드 채팅 칩 누르기 — 켜고 끄기(옛 묻지 않기 칸이 남아 있었으면 함께 걷는다). 다른 칸은 그대로. */
 export function toggleSideChat(server: AiMcpServer): AiMcpServer {
-  const { side_chat: _on, side_chat_no_ask: _noAsk, ...rest } = server;
-  return { ...rest, ...sideChatFields(!server.side_chat, server.side_chat_no_ask) };
+  const { side_chat: _on, ...rest } = server;
+  delete (rest as Record<string, unknown>).side_chat_no_ask;
+  return { ...rest, ...sideChatFields(!server.side_chat) };
 }
 
 /** 칩 하나 켜고 끄기 */
@@ -113,16 +116,15 @@ export function buildServer(
     args: string[];
     url: string;
     secrets: SecretDraft[];
-    /** 대상 › 사이드 채팅 칩 · 사이드 채팅에서 묻지 않기(생략 = 끔) */
+    /** 대상 › 사이드 채팅 칩(생략 = 끔) */
     sideChat?: boolean;
-    sideChatNoAsk?: boolean;
   },
   initial: AiMcpServer | null,
   agentsChanged: boolean,
 ): AiMcpServer {
   const selectedAgents = agentsChanged || initial === null ? [...f.agents] : initial.agents;
   const scope = f.projectId ? { project_id: f.projectId } : {};
-  const side = sideChatFields(f.sideChat, f.sideChatNoAsk);
+  const side = sideChatFields(f.sideChat);
   return f.transport === "stdio"
     ? { name: f.name.trim(), enabled: f.enabled, agents: selectedAgents, ...scope, transport: f.transport, command: f.command.trim(), args: [...f.args], env: secretRefs(f.secrets), ...side }
     : { name: f.name.trim(), enabled: f.enabled, agents: selectedAgents, ...scope, transport: f.transport, url: f.url.trim(), headers: secretRefs(f.secrets), ...side };

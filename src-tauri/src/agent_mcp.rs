@@ -58,9 +58,10 @@ pub struct McpServer {
     /// 사이드 채팅에도 싣는다(기본 끔 · 옛 설정은 칸 없음 = 끔 — 2026-10-25). 범위 · 켬은 AI 타일과 같은 판정([`side_chat_selected`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub side_chat: bool,
-    /// 사이드 채팅에서 이 서버의 도구를 묻지 않고 부른다(기본 끔 = 부를 때마다 승인 카드). 설정 화면(Tauri)에서만 바뀐다.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub side_chat_no_ask: bool,
+    /// **옛 칸** `side_chat_no_ask`(사이드 채팅에서 묻지 않기 — 2026-11-20 걷음: 묻지 않기는 사이드 채팅의 모드 · 허용 목록이 정한다). 옛
+    /// `settings.toml` 에 남아 있어도 이 항목을 버리지 않게(`deny_unknown_fields`) **읽기만** 받고 아무 데도 쓰지 않으며, 다음 저장에서 빠진다.
+    #[serde(default, rename = "side_chat_no_ask", skip_serializing)]
+    pub(crate) legacy_no_ask: Option<bool>,
 }
 
 // 실행 URL·도우미 인자의 티켓은 Debug에도 남기지 않는다.
@@ -78,7 +79,6 @@ impl std::fmt::Debug for McpServer {
             .field("args", &"***")
             .field("url", &self.url.as_ref().map(|_| "***"))
             .field("side_chat", &self.side_chat)
-            .field("side_chat_no_ask", &self.side_chat_no_ask)
             .finish()
     }
 }

@@ -22,9 +22,8 @@
    * 사라지면 "dev-01 연결이 끊겨 더 읽을 수 없습니다" 한 줄 — 새 접속은 열지 않는다. 재개 · 새 대화로 계속은 그 별칭의 새 SSH 타일.
    */
   import { tick } from "svelte";
-  import HostIcon from "$lib/HostIcon.svelte";
+  import AiGlyph from "$lib/AiGlyph.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
-  import { iconRef } from "$lib/host-icons";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { relativeTime } from "$lib/history-search";
   import { stripReason } from "$lib/error-reason";
@@ -229,7 +228,7 @@
   >
     <header class="head">
       <div class="top">
-        <span class="logo" aria-hidden="true"><HostIcon icon={iconRef(conv.agent)} size={18} /></span>
+        <span class="logo" aria-hidden="true"><AiGlyph name={conv.agent} size={18} /></span>
         <h2 class="title" class:fallback={conv.titleSource === "fallback"} title={conv.title} data-viewer-title>
           {conv.title}
         </h2>

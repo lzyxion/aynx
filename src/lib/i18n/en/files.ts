@@ -383,7 +383,6 @@ export const files: Record<keyof typeof koFiles, string> = {
   "doc.md.image.menu.linkCopied": "Copied the image path",
   "doc.md.image.menu.svgCopied": "Copied the SVG code",
   "doc.md.image.menu.copyFailed": "Couldn't copy to the clipboard",
-  "doc.md.link.open": "{href} (Ctrl+click)",
   "doc.md.link.openPlain": "Open {href}",
   "doc.md.link.source": "{text} — open {href}",
   "doc.md.alert.note": "Note",

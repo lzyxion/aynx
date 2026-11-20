@@ -5,8 +5,9 @@
 //! 줄의 상태는 셋 — `new`(이 PC 에 없음) · `changed`(있는데 값이 다름) · `same`. 선택은 범주마다:
 //! - 고름/안 고름(`categories`) — 안 고른 범주는 쓰지 않는다.
 //! - 다른 값(`conflict`) — `overwrite`(덮기 · 기본) · `skip`(건너뛰기) · `both`(둘 다 — 이름 있는 목록만, 새 id 로 하나 더).
-//! - AI 권한(`aiMode`) — `asIs`(파일 값 그대로 · 기본) · `off`(위임 블록을 들이지 않음 · `[automation] auto_approve = false` ·
-//!   사이드 채팅의 묻지 않고 부르기 끔). 위임 블록의 신원 스냅샷은 그대로 옮긴다(맞지 않으면 기존 규칙대로 끔으로 읽힌다).
+//! - AI 권한(`aiMode`) — `asIs`(파일 값 그대로 · 기본) · `off`(위임 블록을 들이지 않음 · `[automation] auto_approve = false`).
+//!   위임 블록의 신원 스냅샷은 그대로 옮긴다(맞지 않으면 기존 규칙대로 끔으로 읽힌다). 옛 묶음의 외부 MCP 칸 `side_chat_no_ask`(2026-11-20
+//!   걷은 사이드 채팅 '묻지 않기')는 어느 쪽이든 들이지 않는다.
 //! - 프로젝트 폴더 고르기(`remap` — 프로젝트 id → 이 PC 의 폴더).
 //!
 //! `~/.ssh/config` 는 **새 별칭의 블록만 덧붙인다**(같은 이름이 있으면 그 블록은 그대로 — `hosts` 의 다른 값은 `sessions.toml` 의
@@ -480,10 +481,9 @@ fn plan_settings(ctx: &mut Ctx<'_>, bundle: &Bundle) -> Result<(), String> {
                 }
                 let mut inc_doc = DocumentMut::new();
                 inc_doc.insert(AI_MCP_KEY, Item::ArrayOfTables(servers.clone()));
-                let fix = move |t: &mut Table| {
-                    if ai_off {
-                        t.remove("side_chat_no_ask");
-                    }
+                // 옛 묶음의 `side_chat_no_ask`(사이드 채팅에서 묻지 않기 — 2026-11-20 걷은 칸 · 묻지 않기는 채팅의 모드가 정한다)는 늘 뺀다.
+                let fix = |t: &mut Table| {
+                    t.remove("side_chat_no_ask");
                 };
                 if merge_aot(ctx, "mcp", TWO, &mut ai_doc, &inc_doc, AI_MCP_KEY, "name", "mcp", false, None, &fix)? {
                     let ai = cur

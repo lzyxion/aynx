@@ -697,8 +697,9 @@ export function normalizeMcpServers(raw: unknown): AiMcpServer[] | undefined {
     if (server.headers !== undefined && (!Array.isArray(server.headers) || !server.headers.every((e) => e && typeof e.name === "string" && typeof e.secret_ref === "string"))) continue;
     const scoped = { ...(server.project_id ? { project_id: server.project_id } : {}), ...(server.env?.length ? { env: server.env.map((entry) => ({ name: entry.name, secret_ref: entry.secret_ref })) } : {}) };
     const headers = server.headers?.length ? { headers: server.headers.map((entry) => ({ name: entry.name, secret_ref: entry.secret_ref })) } : {};
-    // 사이드 채팅 칸 — 참(boolean true)일 때만 적고, 묻지 않기는 사이드 채팅이 켜졌을 때만 남긴다(`mcp-server-form.ts` 의 `sideChatFields` 와 같은 규칙).
-    const side = server.side_chat === true ? (server.side_chat_no_ask === true ? { side_chat: true, side_chat_no_ask: true } : { side_chat: true }) : {};
+    // 사이드 채팅 칸 — 참(boolean true)일 때만 적는다(`mcp-server-form.ts` 의 `sideChatFields` 와 같은 규칙). 옛 `side_chat_no_ask`(2026-11-20 걷음)는
+    // 칸을 골라 담으므로 저절로 빠진다(읽기는 깨지지 않는다).
+    const side = server.side_chat === true ? { side_chat: true } : {};
     if (server.transport === "stdio") {
       if (typeof server.command !== "string") continue;
       if (server.args !== undefined && (!Array.isArray(server.args) || !server.args.every((v) => typeof v === "string"))) continue;
@@ -720,7 +721,7 @@ function sameMcpServers(a: AiMcpServer[] | null | undefined, b: AiMcpServer[] | 
       server.project_id === other.project_id && (server.env ?? []).length === (other.env ?? []).length && (server.env ?? []).every((entry, index) => entry.name === other.env?.[index]?.name && entry.secret_ref === other.env?.[index]?.secret_ref) &&
       (server.headers ?? []).length === (other.headers ?? []).length && (server.headers ?? []).every((entry, index) => entry.name === other.headers?.[index]?.name && entry.secret_ref === other.headers?.[index]?.secret_ref) &&
       server.command === other.command && server.url === other.url && sameStringList(server.args ?? [], other.args ?? []) &&
-      !!server.side_chat === !!other.side_chat && (!!server.side_chat && !!server.side_chat_no_ask) === (!!other.side_chat && !!other.side_chat_no_ask) &&
+      !!server.side_chat === !!other.side_chat &&
       sameStringList(server.agents ?? ["claude", "codex"], other.agents ?? ["claude", "codex"]);
   });
 }

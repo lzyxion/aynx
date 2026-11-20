@@ -354,10 +354,11 @@ export interface AiMcpServer {
   command?: string;
   args?: string[];
   url?: string;
-  /** 사이드 채팅에도 싣는다(생략 = 끔 · 2026-10-25). 범위 · `enabled` 는 AI 타일과 같은 판정이고 대상 칩(`agents`)과는 따로다. */
+  /**
+   * 사이드 채팅에도 싣는다(생략 = 끔 · 2026-10-25). 범위 · `enabled` 는 AI 타일과 같은 판정이고 대상 칩(`agents`)과는 따로다. 실은 서버의 도구는
+   * 늘 승인 요청이 오고, 묻지 않기는 사이드 채팅의 권한 모드(Manual · Auto) · 허용 목록이 정한다(2026-11-20 — 옛 `side_chat_no_ask` 를 걷었다).
+   */
   side_chat?: boolean;
-  /** 사이드 채팅에서 이 서버의 도구를 묻지 않고 부른다(생략 = 끔 = 부를 때마다 승인 카드). `side_chat` 이 켜졌을 때만 뜻이 있다. */
-  side_chat_no_ask?: boolean;
 }
 
 /**

@@ -1102,17 +1102,17 @@ fn user_images_ride_the_same_line() {
 const CLAUDE_MCP_PERM: &str = include_str!("fixtures/claude-2.1.310-mcp-permission.jsonl");
 const CODEX_MCP_APPROVAL: &str = include_str!("fixtures/codex-0.164.0-mcp-approval.jsonl");
 
-fn ext(name: &str, no_ask: bool) -> crate::agent_mcp::McpServer {
+fn ext(name: &str) -> crate::agent_mcp::McpServer {
     serde_json::from_value(json!({ "name": name, "enabled": true, "transport": "stdio", "command": "node",
-        "args": ["C:/mcp/srv.mjs", name], "side_chat": true, "side_chat_no_ask": no_ask }))
+        "args": ["C:/mcp/srv.mjs", name], "side_chat": true }))
     .unwrap()
 }
 
-/// Claude — `--mcp-config` 본문에 고른 서버를 더하고(Aynx 칸은 덮지 않는다), 묻지 않기 서버만 통째 규칙 `mcp__<서버>` 로 미리 허용.
-/// `--strict-mcp-config` 는 그대로(사용자 CLI 설정의 서버는 안 실린다).
+/// Claude — `--mcp-config` 본문에 고른 서버를 더하고(Aynx 칸은 덮지 않는다), 외부 서버의 도구는 **미리 허용하지 않는다**(2026-11-20 —
+/// 설정의 '묻지 않기' 를 걷었다 · 묻지 않기는 세션 서버가 채팅의 모드 · 허용 목록으로 답한다). `--strict-mcp-config` 는 그대로.
 #[test]
-fn claude_external_mcp_config_and_no_ask_rules() {
-    let servers = [ext("noask", true), ext("ask", false)];
+fn claude_external_mcp_config_never_pre_allows() {
+    let servers = [ext("one"), ext("ask")];
     let base = claude::mcp_config("aynx-sessions-dev", "http://127.0.0.1:5555/mcp", "tok-xyz");
     let body: Value = serde_json::from_str(&claude::mcp_config_with(&base, &servers)).unwrap();
     let map = body["mcpServers"].as_object().unwrap();
@@ -1120,22 +1120,21 @@ fn claude_external_mcp_config_and_no_ask_rules() {
     assert_eq!(map["aynx-sessions-dev"]["headers"]["Authorization"], "Bearer tok-xyz");
     assert_eq!(map["ask"], json!({ "type": "stdio", "command": "node", "args": ["C:/mcp/srv.mjs", "ask"] }));
     // 같은 이름은 덮지 않는다(Aynx 이름은 외부 목록에서 거절되지만 한 번 더)
-    let mut clash = ext("aynx-sessions-dev", true);
+    let mut clash = ext("aynx-sessions-dev");
     clash.command = Some("evil".into());
     let body: Value = serde_json::from_str(&claude::mcp_config_with(&base, &[clash])).unwrap();
     assert_eq!(body["mcpServers"]["aynx-sessions-dev"]["type"], "http");
     let empty: Value = serde_json::from_str(&claude::mcp_config_with(claude::MCP_CONFIG_EMPTY, &servers)).unwrap();
     assert_eq!(empty["mcpServers"].as_object().unwrap().len(), 2);
 
-    let rules = claude::no_ask_rules(&servers);
-    assert_eq!(rules, ["mcp__noask"]);
-    let mut o = copts(Mode::Fresh, S1);
-    o.mcp_allowed = &rules;
-    let a = claude::argv(&o).unwrap();
+    let a = claude::argv(&copts(Mode::Fresh, S1)).unwrap();
     assert!(a.contains(&"--strict-mcp-config".to_string()));
     let at = a.iter().position(|x| x == "--allowedTools").unwrap();
-    assert_eq!(&a[at + 1..at + 5], ["Read(./**)", "WebSearch", "WebFetch", "mcp__noask"]);
-    assert!(!a.iter().any(|x| x.starts_with("mcp__ask")), "묻는 서버는 미리 허용하지 않는다");
+    assert_eq!(&a[at + 1..at + 4], ["Read(./**)", "WebSearch", "WebFetch"]);
+    assert!(!a.iter().any(|x| x.starts_with("mcp__one") || x.starts_with("mcp__ask")), "외부 서버는 미리 허용하지 않는다");
+    let src = include_str!("claude.rs");
+    assert!(!src.contains("fn no_ask_rules") && !src.contains("side_chat_no_ask"), "묻지 않기 규칙을 걷었다");
+    assert!(!include_str!("../server/side_chat.rs").contains("no_ask_rules"));
 }
 
 /// Claude 실측 `can_use_tool{mcp_server}` → `permission{kind: mcpTool, title: "<서버> · <도구>"}` · 허용은 원래 입력 그대로. 도구 카드 이름은
@@ -1157,14 +1156,14 @@ fn claude_mcp_permission_from_the_recorded_line() {
     assert_eq!(split_mcp_tool("Read", None), None);
 }
 
-/// Codex — 고른 서버를 AI 타일과 같은 `-c` 조각 + 켬 + 승인 모드(묻지 않기 `approve` · 아니면 `prompt`)로. 사용자 `config.toml` 의 서버는
+/// Codex — 고른 서버를 AI 타일과 같은 `-c` 조각 + 켬 + 승인 모드 늘 `prompt`(2026-11-20 — `approve` 갈래를 걷었다)로. 사용자 `config.toml` 의 서버는
 /// 그대로 하나씩 끄고, **같은 이름의 외부 서버는 싣지 않는다**(표가 합쳐져 사용자 칸이 섞인다) · 우리 이름 · 못 싣는 값도.
 #[test]
 fn codex_external_mcp_args() {
     let names = vec!["node_repl".to_string(), "shared".to_string()];
-    let mut bad = ext("quote", false);
+    let mut bad = ext("quote");
     bad.args = vec!["it's".into()];
-    let servers = [ext("noask", true), ext("ask", false), ext("shared", true), ext("aynx-sessions-dev", true), bad];
+    let servers = [ext("noask"), ext("ask"), ext("shared"), ext("aynx-sessions-dev"), bad];
     let tools = ["list_sessions"];
     let mut o = xopts(Mode::Fresh, &names);
     o.mcp = Some(codex::Mcp { name: "aynx-sessions-dev", url: "http://127.0.0.1:5555/mcp", token_env: "AYNX_DEV_MCP_TOKEN", tools: &tools });
@@ -1184,7 +1183,7 @@ fn codex_external_mcp_args() {
             "-c",
             "mcp_servers.noask.enabled=true",
             "-c",
-            "mcp_servers.noask.default_tools_approval_mode='approve'",
+            "mcp_servers.noask.default_tools_approval_mode='prompt'",
             "-c",
             "mcp_servers.ask.command='node'",
             "-c",
@@ -1195,6 +1194,7 @@ fn codex_external_mcp_args() {
             "mcp_servers.ask.default_tools_approval_mode='prompt'",
         ]
     );
+    assert!(!a.iter().any(|x| x.contains("approval_mode='approve'") && !x.starts_with("mcp_servers.aynx-sessions-dev.")), "외부 서버는 늘 묻는다");
 }
 
 /// Codex 실측 MCP 승인(`mcpServer/elicitation/request{_meta.codex_approval_kind: mcp_tool_call}`) → `permission{kind: mcpTool}`(도구 이름은 앞선
@@ -1274,4 +1274,116 @@ Attached file: C:\Users\me\notes\main.ts"
     ] {
         assert!(parse_file_refs(&t).is_none(), "{t}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 권한 모드 · 허용 목록(2026-11-20 — `side_chat::perm` · 서버의 `policy_answer` 와 같은 길)
+// ---------------------------------------------------------------------------
+
+/// 서버가 대신 답하는 몸을 어댑터 수준에서 — 사건 `Permission` 하나 → 종류 열쇠(서버가 요청에서 읽는다) → 모드 판정 → `encode_decision(Allow)`.
+/// (a) Codex 의 파일 바꾸기 · 샌드박스 밖 명령 · MCP 승인 · Claude 의 `can_use_tool`(폴더 밖 읽기 · MCP)에 Auto 는 허용 답 하나 · Manual 은 목록의 종류만.
+/// (e) 대화형 도구 · 그 밖 서버 요청(사람 입력 · 폼 elicitation · 모르는 것)은 `Permission` 을 내지 않고 어댑터가 곧바로 거절 · 취소하므로 Auto 여도
+/// 서버가 대신 답할 자리가 없다.
+#[test]
+fn policy_answers_only_the_four_card_kinds() {
+    use super::perm::{answer_by, key_of, remember, ChatPerm, PermMode, COMMAND, FILE_CHANGE, OUTSIDE_READ};
+    let auto = ChatPerm { mode: PermMode::Auto, allow: Vec::new() };
+    let manual = ChatPerm::default();
+    let mut remembered = ChatPerm::default();
+    remember(&mut remembered, FILE_CHANGE);
+    let servers = vec!["ask".to_string()];
+    let perm_of = |evs: &[Ev]| -> Option<(String, Option<String>)> {
+        evs.iter().find_map(|e| match e {
+            Ev::Permission { request_id, kind, tool_name, .. } => Some((request_id.clone(), key_of(*kind, tool_name, &servers))),
+            _ => None,
+        })
+    };
+
+    // Codex — 파일 바꾸기 · 명령 · MCP 승인
+    for (line, want_key, answer) in [
+        (r#"{"method":"item/fileChange/requestApproval","id":11,"params":{"itemId":"f","reason":"r"}}"#, FILE_CHANGE, json!({"decision": "accept"})),
+        (r#"{"method":"item/commandExecution/requestApproval","id":12,"params":{"itemId":"c","command":"rm x","reason":"r"}}"#, COMMAND, json!({"decision": "accept"})),
+        (
+            r#"{"method":"mcpServer/elicitation/request","id":13,"params":{"threadId":"t","serverName":"ask","mode":"form","message":"Allow?","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"mcp_tool_call"}}}"#,
+            "mcp:ask",
+            json!({"action": "accept", "content": null}),
+        ),
+    ] {
+        let mut a = codex_ready();
+        let s = a.on_line(line);
+        assert!(s.stdin.is_empty(), "어댑터는 묻는다(답은 서버 · 사람 몫)");
+        let (id, key) = perm_of(&s.evs).expect("카드가 될 요청");
+        assert_eq!(key.as_deref(), Some(want_key));
+        assert_eq!(answer_by(&auto, key.as_deref()), Some(ResolvedBy::Auto));
+        assert_eq!(answer_by(&manual, key.as_deref()), None, "Manual 은 카드");
+        assert_eq!(answer_by(&remembered, key.as_deref()).is_some(), want_key == FILE_CHANGE, "목록의 종류만");
+        let d = a.encode_decision(&id, Decision::Allow, None).unwrap();
+        assert_eq!(j(&d.stdin[0])["result"], answer);
+    }
+
+    // Claude — 폴더 밖 읽기 · MCP
+    let mut a = Claude::new(&copts(Mode::Fresh, S1));
+    let read = json!({"type": "control_request", "request_id": "p-9", "request": {"subtype": "can_use_tool", "tool_name": "Read",
+        "display_name": "Read", "input": {"file_path": "C:/elsewhere/x"}, "description": "", "tool_use_id": "toolu_x"}});
+    let (_, key) = perm_of(&a.on_line(&read.to_string()).evs).unwrap();
+    assert_eq!(key.as_deref(), Some(OUTSIDE_READ));
+    let mcp = json!({"type": "control_request", "request_id": "p-10", "request": {"subtype": "can_use_tool", "tool_name": "mcp__ask__peek",
+        "display_name": "peek", "input": {}, "mcp_server": {"name": "ask"}, "tool_use_id": "toolu_y"}});
+    let (_, key) = perm_of(&a.on_line(&mcp.to_string()).evs).unwrap();
+    assert_eq!(key.as_deref(), Some("mcp:ask"));
+
+    // (e) Auto 여도 — 대화형 도구 · 그 밖 서버 요청은 `Permission` 이 없다(어댑터가 곧바로 거절 · 취소)
+    let mut a = Claude::new(&copts(Mode::Fresh, S1));
+    for tool in claude::INTERACTIVE {
+        let line = json!({"type": "control_request", "request_id": format!("q-{tool}"), "request": {
+            "subtype": "can_use_tool", "tool_name": tool, "display_name": tool, "input": {}, "tool_use_id": "toolu_q"}});
+        let s = a.on_line(&line.to_string());
+        assert!(perm_of(&s.evs).is_none() && j(&s.stdin[0])["response"]["response"]["behavior"] == "deny", "{tool}");
+    }
+    let unknown_ctl = a.on_line(r#"{"type":"control_request","request_id":"z","request":{"subtype":"hook_callback"}}"#);
+    assert!(perm_of(&unknown_ctl.evs).is_none() && j(&unknown_ctl.stdin[0])["response"]["subtype"] == "error");
+    let mut x = codex_ready();
+    for line in [
+        r#"{"method":"item/tool/requestUserInput","id":7,"params":{"threadId":"t","turnId":"u","itemId":"i","questions":[]}}"#,
+        r#"{"method":"mcpServer/elicitation/request","id":8,"params":{"threadId":"t","serverName":"x","mode":"form","message":"Your name?","requestedSchema":{"type":"object","properties":{"n":{"type":"string"}}}}}"#,
+        r#"{"method":"future/ask","id":9,"params":{}}"#,
+    ] {
+        let s = x.on_line(line);
+        assert!(perm_of(&s.evs).is_none() && !s.stdin.is_empty(), "{line}");
+        let r = j(&s.stdin[0]);
+        assert!(r.get("error").is_some() || r["result"]["action"] == "cancel", "{line}");
+    }
+
+    // CLI 쪽 제한은 그대로 — Codex `read-only` + `on-request` · Claude `--tools` 다섯 · 금지 인자 없음
+    let src = include_str!("codex.rs");
+    assert!(src.contains("\"approvalPolicy\": self.approval, \"sandbox\": \"read-only\"") && src.contains("approval: \"on-request\","));
+    assert_eq!(claude::TOOLS, "Read,Grep,Glob,WebSearch,WebFetch");
+    let ca = claude::argv(&copts(Mode::Fresh, S1)).unwrap();
+    let xa = codex::argv(&xopts(Mode::Fresh, &[])).unwrap();
+    for bad in ["--dangerously-skip-permissions", "--permission-mode", "danger-full-access", "workspace-write", "bypassPermissions"] {
+        assert!(!ca.iter().chain(xa.iter()).any(|x| x.contains(bad)), "{bad}");
+    }
+    let server = include_str!("../server/side_chat.rs");
+    for bad in ["danger-full-access", "workspace-write", "\"never\"", "--dangerously-skip-permissions", "--permission-mode"] {
+        assert!(!server.contains(bad), "사이드 채팅 서버에 {bad}");
+    }
+}
+
+/// (g) 프로듀서 채팅은 영향받지 않는다 — 모드 · 허용 목록 판정은 사이드 채팅 표(`server::side_chat`)에만 있고 공용 코어 · 프로듀서는 모른다.
+/// 코어가 아는 것은 `permPolicy` 를 꼬리에 넣지 않는다는 것 하나뿐이다.
+#[test]
+fn producer_and_core_know_nothing_of_the_side_chat_policy() {
+    for (name, src) in [
+        ("server/producer/mod.rs", include_str!("../server/producer/mod.rs")),
+        ("server/chat_proc/mod.rs", include_str!("../server/chat_proc/mod.rs")),
+        ("server/chat_proc/io.rs", include_str!("../server/chat_proc/io.rs")),
+        ("side_chat/guard.rs", include_str!("guard.rs")),
+    ] {
+        for bad in ["perm::", "PermissionAuto", "answer_by", "ResolvedBy::Auto", "ResolvedBy::Remembered"] {
+            assert!(!src.contains(bad), "{name} 에 {bad}");
+        }
+    }
+    assert!(include_str!("../server/chat_proc/mod.rs").contains("Ev::McpServers { .. } | Ev::PermPolicy { .. } => return,"));
+    // 프로듀서의 Codex 는 `approvalPolicy: never` 그대로
+    assert!(include_str!("codex.rs").contains("self.approval = \"never\";"));
 }

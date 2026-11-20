@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWebUrl, linkHost, linkUrlTail, parseInline, parseMarkdown, refKey, splitRow, type MdBlock, type MdInline } from "$lib/markdown";
+import { isWebUrl, linkHost, parseInline, parseMarkdown, refKey, splitRow, type MdBlock, type MdInline } from "$lib/markdown";
 
 const txt = (text: string): MdInline => ({ kind: "text", text });
 /** 토막들의 보이는 글자를 이어 붙인다 — "잃는 것이 없다" 를 볼 때 */
@@ -353,20 +353,6 @@ describe("parseMarkdown — 잃는 것이 없다", () => {
     const md = "<details>\n<summary>x</summary>\n</details>";
     const b = parseMarkdown(md);
     expect(b.map((x) => (x.kind === "p" ? flat(x.inlines) : ""))).toEqual(["<details>\n<summary>x</summary>\n</details>"]);
-  });
-});
-
-describe("linkUrlTail — 링크 뒤 흐린 주소 꼬리", () => {
-  it("글자와 주소가 다르면 주소, 같으면 없음", () => {
-    expect(linkUrlTail({ text: "문서", href: "https://x" })).toBe("https://x");
-    expect(linkUrlTail({ text: "https://x", href: "https://x" })).toBeNull();
-  });
-
-  it("배지 링크(`[![alt](img)](url)`)는 꼬리가 없다 — 주소는 툴팁 몫", () => {
-    const [badge] = parseInline("[![build](https://ci/badge.svg)](https://ci/run)");
-    expect(badge).toEqual({ kind: "link", text: "build", href: "https://ci/run", image: true });
-    if (badge.kind !== "link") throw new Error("link 여야 한다");
-    expect(linkUrlTail(badge)).toBeNull();
   });
 });
 

@@ -218,23 +218,31 @@ const kwInfo = async (id) =>
     return JSON.stringify({ name: k.querySelector('[data-chat-model-name]')?.textContent.trim() ?? null, bars: k.querySelector('[data-chat-effort-bars]')?.dataset.chatEffortBars ?? null,
       n: k.querySelectorAll('.kw-bar').length, chev: !!k.querySelector('.kw-chev'), logo: !!k.querySelector('.kw-logo svg, .kw-logo img, .kw-logo span'),
       locked: k.hasAttribute('data-locked'), title: k.getAttribute('title') ?? k.dataset.tip ?? null }); })()`));
-/** 키워드 폭(2026-11-15 사용자 결정 2안) — 입력 칸(`container: composer` 안쪽 폭) · 키워드 · 글 칸 폭 · 조각마다 보이나 · 접근성 이름 = title */
+/** 키워드 폭 — 상자 · 키워드 · 글 칸 폭 · 조각마다 보이나 · 이름 줄임표 · 접근성 이름 = title */
 const kwFit = async (root) =>
   JSON.parse(await ev(`(() => {
     const r = document.querySelector('${root}'); const wrap = r?.querySelector('[data-flip-composer] .wrap'); const kw = r?.querySelector('[data-chat-model-chip]');
     const ta = r?.querySelector('textarea[data-flip-input]'); if (!wrap || !kw || !ta) return 'null';
-    const ws = getComputedStyle(wrap), ts = getComputedStyle(ta);
-    const vis = (s) => { const e = kw.querySelector(s); return e ? getComputedStyle(e).display !== 'none' : null; };
+    const ts = getComputedStyle(ta);
+    const vis = (s) => { const e = kw.querySelector(s); return e ? getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0 : null; };
+    const nm = kw.querySelector('.kw-name');
     return JSON.stringify({
-      box: Math.round(wrap.clientWidth - parseFloat(ws.paddingLeft) - parseFloat(ws.paddingRight)), cq: ws.containerName,
-      kw: Math.round(kw.getBoundingClientRect().width), text: Math.round(ta.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)),
+      box: Math.round(wrap.clientWidth), kw: Math.round(kw.getBoundingClientRect().width), text: Math.round(ta.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)),
       logo: vis('.kw-logo'), name: vis('.kw-name'), gauge: vis('.kw-gauge'), chev: vis('.kw-chev'), label: kw.getAttribute('aria-label'), title: kw.getAttribute('title'), touch: kw.classList.contains('touch'),
+      clipped: nm ? nm.scrollWidth > nm.clientWidth : null,
     });
   })()`));
-/** 폰(touch)이거나 입력 칸 ≤ 300 이면 로고 · ⌄ 만, 아니면 다 — 접근성 이름에는 늘 CLI · 모델 · Effort */
-const kwShape = (f) => (!f ? null : { cq: f.cq, small: f.box <= 300, touch: f.touch, logo: f.logo, name: f.name, gauge: f.gauge, chev: f.chev,
+/** 폭 · 폰과 상관없이 다 보인다(2026-11-20 — 두 줄 상자 · 옛 300px · 폰 감추기는 걷음) — 접근성 이름에는 늘 CLI · 모델 · Effort */
+const kwShape = (f) => (!f ? null : { touch: f.touch, logo: f.logo, name: f.name, gauge: f.gauge, chev: f.chev,
   label: ["Claude Code", "Opus 5.5", "Effort"].every((w) => f.label?.includes(w)) && f.label === f.title });
-const kwWant = (small, touch = false) => ({ cq: "composer", small, touch, logo: true, name: !small && !touch, gauge: !small && !touch, chev: true, label: true });
+const kwWant = (touch = false) => ({ touch, logo: true, name: true, gauge: true, chev: true, label: true });
+/** 두 줄 상자(2026-11-20) — 글 줄 = 상자 폭 · 아래 줄 [+] … 키워드 · 보내기(같은 세로 중심 · 글 줄 아래 · 겹침 없음) */
+const twoRowLay = async (root) =>
+  JSON.parse(await ev(`(() => { const c = document.querySelector('${root} [data-flip-composer]'); const r = (s) => c.querySelector(s).getBoundingClientRect();
+    const wrap = r('.wrap'), ta = r('[data-flip-input]'), plus = r('[data-flip-plus]'), kw = r('[data-chat-model-chip]'), snd = r('[data-flip-send], [data-flip-interrupt]'); const cy = (x) => (x.top + x.bottom) / 2;
+    return JSON.stringify({ two: c.querySelector('.wrap').classList.contains('two'), fullText: ta.width >= wrap.width - 3, below: plus.top >= ta.bottom - 1 && snd.top >= ta.bottom - 1,
+      sameRow: Math.abs(cy(plus) - cy(snd)) <= 1.5 && Math.abs(cy(kw) - cy(snd)) <= 1.5, order: plus.right <= kw.left && kw.right <= snd.left && plus.left >= wrap.left && snd.right <= wrap.right,
+      plusLeft: plus.left - wrap.left < 12, h: Math.round(wrap.height) }); })()`));
 const menuInfo = async () =>
   JSON.parse(await ev(`(() => { const m = document.querySelector('[data-flip-model-menu]'); if (!m) return 'null';
     return JSON.stringify({ cli: m.dataset.flipModelMenu, inBody: m.parentElement === document.body, models: [...m.querySelectorAll('[data-flip-model]')].map((b) => b.dataset.flipModel),
@@ -250,7 +258,7 @@ await setView(ai.id, "convo");
 // ① 첫 답 전 — [+] · 로고만
 const k1 = await kwInfo(ai.id);
 check("① 대화 모름 — 키워드 = 로고만(이름 · 막대 없음) · ⌄ 있음", [k1.name, k1.n, k1.chev, k1.logo, k1.locked], [null, 0, true, true, false]);
-check("① [+] 가 알약 안 · 타일은 좁은 독 여백 아님", await ev(`(() => { const c = document.querySelector('${P(ai.id)} [data-flip-composer]'); return JSON.stringify([!!c.querySelector('.wrap [data-flip-plus]'), c.classList.contains('compact')]); })()`), JSON.stringify([true, false]));
+check("① [+] 가 상자 안 · 타일은 좁은 독 여백 아님",await ev(`(() => { const c = document.querySelector('${P(ai.id)} [data-flip-composer]'); return JSON.stringify([!!c.querySelector('.wrap [data-flip-plus]'), c.classList.contains('compact')]); })()`), JSON.stringify([true, false]));
 await shot("composer-unknown.png");
 
 // ② 연결 + 기록의 마지막 답 — Opus 5.5 · Medium
@@ -261,15 +269,23 @@ await sleep(2200);
 const k2 = await kwInfo(ai.id);
 check("② 기록의 값 — Opus 5.5 · 막대 2/5", [k2.name, k2.bars, k2.n], ["Opus 5.5", "2", 5]);
 check("② title 에 CLI · 모델 · 단계 이름", k2.title, "Claude Code · Opus 5.5 · Effort · Medium");
-const lay = JSON.parse(await ev(`(() => { const c = document.querySelector('${P(ai.id)} [data-flip-composer]'); const r = (s) => c.querySelector(s).getBoundingClientRect();
-  const wrap = r('.wrap'), plus = r('[data-flip-plus]'), kw = r('[data-chat-model-chip]'), snd = r('[data-flip-send]'); const f = c.querySelector('[data-flip-input]'); const cs = getComputedStyle(f);
-  return JSON.stringify({ plusLeft: plus.left - wrap.left < 12, kwBeforeSend: kw.right <= snd.left + 1, inPill: kw.top >= wrap.top && kw.bottom <= wrap.bottom,
-    padL: parseFloat(cs.paddingLeft) >= plus.width, padR: parseFloat(cs.paddingRight) >= kw.width + snd.width }); })()`));
-check("② 알약 안 자리 — [+] 왼쪽 · 키워드는 보내기 왼쪽 · 글이 둘 밑으로 안 감", lay, { plusLeft: true, kwBeforeSend: true, inPill: true, padL: true, padR: true });
+const lay = await twoRowLay(P(ai.id));
+console.log("info ② 두 줄 상자:", JSON.stringify(lay));
+check("② 두 줄 상자 — 글 줄 = 상자 폭 · 아래 줄 [+] 왼쪽 … 키워드 · 보내기 · 같은 줄 · 빈 칸 76px", { ...lay, h: Math.abs(lay.h - 76) <= 1 }, { two: true, fullText: true, below: true, sameRow: true, order: true, plusLeft: true, h: true });
 const fitK = await kwFit(P(ai.id));
 console.log("info ② 키워드 폭:", JSON.stringify(fitK));
-check("② 넓은 AI 타일 — 입력 칸 > 300 · 터치 아님 · 로고 · 이름 · 막대 · ⌄ · 접근성 이름 = title", kwShape(fitK), kwWant(false));
+check("② 넓은 AI 타일 — 터치 아님 · 로고 · 이름 · 막대 · ⌄ · 접근성 이름 = title", kwShape(fitK), kwWant());
 await shot("composer-known.png");
+// ②b 좁은 AI 타일 — 창을 줄여 타일 폭 ~300 · 아래 줄이 넘치지 않음(이름은 필요하면 줄임표)
+await send("Emulation.setDeviceMetricsOverride", { width: 300, height: 860, deviceScaleFactor: 1, mobile: false });
+await sleep(900);
+const layN = await twoRowLay(P(ai.id));
+const fitN = await kwFit(P(ai.id));
+console.log("info ②b 좁은 타일:", JSON.stringify([layN, fitN]));
+check("②b 좁은 AI 타일(창 300) — 두 줄 상자 · 아래 줄 겹침 없음 · 로고 · 막대 · ⌄ 보임", [layN.two, layN.sameRow, layN.order, fitN.logo, fitN.gauge, fitN.chev], [true, true, true, true, true, true]);
+await shot("composer-narrow.png");
+await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+await sleep(900);
 
 // ③ [+] — 진짜 마우스 → 파일 고르기 창(메뉴 없음) → 고른 파일이 첨부 길로
 const sample = path.resolve(outdir, "notes-sample.txt");

@@ -97,10 +97,16 @@ GUI `write` op 는 입력 출처(`keyboard`·`paste`·`protocol` — 프런트 `
 하나 — **`SPAWN_LOCK` 아래**, 헤드리스 턴의 환경은 PTY 와 같은 공용 정화(`pty::scrub_env_names`)(시험 `server_spawns_only_turns_and_verify` ·
 `headless_spawn_holds_spawn_lock` · `headless_env_uses_tile_scrub` · `verify_command_only_from_album_start`).
 ③ **사이드 채팅 프로세스는 GUI 요청(사람 창(메인 PC 주 창 · 원격 웹 창 — 보조 창 제외) Tauri 명령 → 서버 op `side_chat_open` · `side_chat_send`)으로만 선다.** 셸 없는 CLI 하나 · 고정 인자 ·
-같은 `spawn_in_job` · 공용 정화. stdin 에 닿는 것은 **사람이 보낸 글(+앱 고정 연결 머리글 · 사람이 첨부한 그림 · 파일 — 서버가 앱 첨부 폴더 안의 실제 파일인지 · 하나 10 MB · 합쳐 8개로 다시 확인 · 그림 밖 파일은 서버가 **늘 그 채팅 자기 폴더**(`sidechat/<id>/attachments/` — 갈라 온 채팅도 사용자 저장소에는 쓰지 않는다 · 채팅을 지우면 함께 지워진다)에 사본을 두고 글 끝에 그 경로 줄(`Attached file: …` — 서버가 지은 고정 꼬리)을 붙인다 — 판 32. 갈라 온 Claude 채팅은 cwd 가 다른 폴더라 띄울 때 **그 첨부 폴더 하나의 읽기만** 더한다(`--add-dir` + `Read(//…/**)` — 쓰기 · 실행 · 다른 폴더 허용 없음))과 사람의 권한 결정**뿐 — MCP · 오케스트레이션 · AI 문자열에서
+같은 `spawn_in_job` · 공용 정화. stdin 에 닿는 것은 **사람이 보낸 글(+앱 고정 연결 머리글 · 사람이 첨부한 그림 · 파일 — 서버가 앱 첨부 폴더 안의 실제 파일인지 · 하나 10 MB · 합쳐 8개로 다시 확인 · 그림 밖 파일은 서버가 **늘 그 채팅 자기 폴더**(`sidechat/<id>/attachments/` — 갈라 온 채팅도 사용자 저장소에는 쓰지 않는다 · 채팅을 지우면 함께 지워진다)에 사본을 두고 글 끝에 그 경로 줄(`Attached file: …` — 서버가 지은 고정 꼬리)을 붙인다 — 판 32. 갈라 온 Claude 채팅은 cwd 가 다른 폴더라 띄울 때 **그 첨부 폴더 하나의 읽기만** 더한다(`--add-dir` + `Read(//…/**)` — 쓰기 · 실행 · 다른 폴더 허용 없음))과 권한 결정 — 사람의 그 자리 결정, 또는 사람이 그 채팅에 정한 모드 · 허용 목록에 따라 서버가 대신 낸 허용**뿐 — MCP · 오케스트레이션 · AI 문자열에서
 stdin 으로 가는 길은 없다(`server/side_chat.rs` — 첫 보내기 때만 띄움 · 프로세스 몸은 공용 코어 `server/chat_proc/` · `Stdin::Pipe` 는 이것만 · 시험 `side_chat_stdin_only_human` · `side_chat_env_uses_tile_scrub`). 그 MCP 는 프로세스 세대마다의 **채팅 토큰**(`chat_token.rs` — 세션 읽기 도구 일곱만 ·
-사람이 연결 칩으로 고른 세션들만(최대 8 — 연결을 바꾸는 길은 사람의 Tauri 명령 `side_chat_link` 하나) · 읽기 권한은 기존 그대로(연결된 타일마다 따로) · 판정은 호출마다 서버 · 값은 그 프로세스의 임시 `--mcp-config` · 환경에만 — 시험 `chat_token_never_reaches_frontend`). 외부 MCP 는 **사람이 설정에서 사이드 채팅에 고른 서버만**(세션 서버가 저장된 설정을 직접 읽는다 — op 에 목록 칸 없음 · 사용자 CLI 설정의 서버는 여전히 안 실림 · 비밀 값은 AI 타일과 같은 브로커 — 시험 `side_chat_ops_take_no_server_list`), '묻지 않기' 는 서버마다 설정(Tauri)에서만 —
-알고 받은 한계: 연결 칩을 붙인 채팅에서 AI 가 읽은 터미널 내용이 그 서버로 나갈 수 있다.
+사람이 연결 칩으로 고른 세션들만(최대 8 — 연결을 바꾸는 길은 사람의 Tauri 명령 `side_chat_link` 하나) · 읽기 권한은 기존 그대로(연결된 타일마다 따로) · 판정은 호출마다 서버 · 값은 그 프로세스의 임시 `--mcp-config` · 환경에만 — 시험 `chat_token_never_reaches_frontend`). 외부 MCP 는 **사람이 설정에서 사이드 채팅에 고른 서버만**(세션 서버가 저장된 설정을 직접 읽는다 — op 에 목록 칸 없음 · 사용자 CLI 설정의 서버는 여전히 안 실림 · 비밀 값은 AI 타일과 같은 브로커 — 시험 `side_chat_ops_take_no_server_list`) — 외부 도구는 CLI 에 미리 허용하지 않아 늘 승인 요청이 오고 묻지 않기는 아래 권한 모드(Auto · 허용 목록의
+`mcp:<서버>`)로만 — 알고 받은 한계: 연결 칩을 붙인 채팅에서 AI 가 읽은 터미널 내용이 그 서버로 나갈 수 있다. **권한 모드**(2026-11-20 — `side_chat/perm.rs`):
+채팅마다 `Manual`(기본 — 카드로 묻는다) · `Auto`(그 채팅의 권한 요청에 서버가 허용으로 답한다)와 허용 목록(Manual 의 [이 채팅에서 허용] — 종류 넷: 채팅 폴더 밖
+읽기 · 파일 바꾸기 · 샌드박스 밖 명령 · MCP 서버 하나 — **종류는 서버가 그 기다리는 요청에서 읽는다**). 저장은 채팅마다 `sidechat/.perm/<id>.json`(채팅 폴더 =
+CLI cwd 밖) · 새 채팅은 사람이 마지막에 고른 모드. 바꾸는 길은 **사람의 Tauri 명령 셋**(`side_chat_set_perm_mode` · `side_chat_forget_allow` ·
+`side_chat_decide{remember}` — 원격 창도 같은 문 · MCP · 채팅 토큰 · AI 글에는 없다 — 시험 `side_chat_stdin_only_human`). 대신 답하는 것은 지금 카드가 되는
+네 종류뿐이고(대화형 도구 · 그 밖 서버 요청은 Auto 여도 어댑터가 거절) CLI 쪽 제한은 그대로다(Claude `--tools` 다섯 · Codex `read-only` + `on-request` ·
+금지 인자 없음 — Auto 는 샌드박스 · 도구를 넓히지 않는다). 대신 답한 요청은 카드 대신 끝난 한 줄(`permissionAuto` → `permissionResolved{by: auto | remembered}`)로 남는다.
 ④ **프로듀서 채팅 프로세스**(오케스트레이션 탭의 프로듀서 채팅 잎 — 사이드 채팅과 같은 프로세스 코어 `server/chat_proc/` 위의 별도 레지스트리
 `server/producer/`)도 **GUI 요청(Tauri → 서버 op `producer_album_start` · 귀속 채팅의 `producer_chat_send` — `producer_chat_open` 은 resume · adopt 만, 띄우지 않는다)으로만 선다.** 셸 없는 CLI 하나 · 고정 인자 ·
 같은 `spawn_in_job` · 공용 정화 · cwd = **그 앨범의 저장소**(Claude — 서버가 Run 에서 읽음 · op 몸의 경로를 믿지 않는다) · Codex 는 **서버 빈 폴더**(신뢰된

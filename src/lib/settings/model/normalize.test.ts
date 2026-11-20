@@ -730,8 +730,10 @@ describe("외부 MCP 서버의 사이드 채팅 칸 (2026-10-25)", () => {
   const stdio = { name: "fs", enabled: true, transport: "stdio", command: "npx", args: ["-y", "fs"] };
   const http = { name: "web", enabled: true, transport: "http", url: "https://example.com/mcp" };
 
-  it("normalizeMcpServers 는 side_chat · side_chat_no_ask 를 남긴다(stdio · http)", () => {
-    expect(normalizeMcpServers([{ ...stdio, side_chat: true, side_chat_no_ask: true }])?.[0]).toMatchObject({ side_chat: true, side_chat_no_ask: true });
+  it("normalizeMcpServers 는 side_chat 을 남기고 옛 side_chat_no_ask(2026-11-20 걷음)는 읽기만 하고 버린다(stdio · http)", () => {
+    const [legacy] = normalizeMcpServers([{ ...stdio, side_chat: true, side_chat_no_ask: true }]) ?? [];
+    expect(legacy).toMatchObject({ side_chat: true });
+    expect(legacy).not.toHaveProperty("side_chat_no_ask");
     expect(normalizeMcpServers([{ ...http, side_chat: true }])?.[0]).toMatchObject({ side_chat: true });
     expect(normalizeMcpServers([{ ...http, side_chat: true }])?.[0]).not.toHaveProperty("side_chat_no_ask");
   });
@@ -747,9 +749,10 @@ describe("외부 MCP 서버의 사이드 채팅 칸 (2026-10-25)", () => {
     expect(normalizeMcpServers([{ ...stdio, side_chat_no_ask: true }])?.[0]).not.toHaveProperty("side_chat_no_ask");
   });
 
-  it("설정 왕복(normalize → payload → normalize)에서 살아남는다", () => {
+  it("설정 왕복(normalize → payload → normalize)에서 살아남는다 · 옛 묻지 않기 칸은 저장에 싣지 않는다", () => {
     const s = normalizeSettings({ ai: { mcp_servers: [{ ...stdio, side_chat: true, side_chat_no_ask: true }] } });
-    expect(toPayload(s).ai?.mcp_servers?.[0]).toMatchObject({ side_chat: true, side_chat_no_ask: true });
+    expect(toPayload(s).ai?.mcp_servers?.[0]).toMatchObject({ side_chat: true });
+    expect(toPayload(s).ai?.mcp_servers?.[0]).not.toHaveProperty("side_chat_no_ask");
     expect(sameSettings(normalizeSettings(toPayload(s)), s)).toBe(true);
   });
 
@@ -760,9 +763,6 @@ describe("외부 MCP 서버의 사이드 채팅 칸 (2026-10-25)", () => {
     expect(sameSettings(a, b)).toBe(true);
     b.ai.mcp_servers![0] = { ...b.ai.mcp_servers![0], side_chat: true };
     expect(sameSettings(a, b)).toBe(false);
-    const c = cloneSettings(b);
-    c.ai.mcp_servers![0] = { ...c.ai.mcp_servers![0], side_chat_no_ask: true };
-    expect(sameSettings(b, c)).toBe(false);
   });
 });
 

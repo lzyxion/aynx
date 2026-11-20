@@ -42,7 +42,7 @@ use crate::orchestration::turn;
 use crate::side_chat::event::Dropped;
 use crate::side_chat::{Adapter, Ev};
 
-pub(crate) use io::{apply, flush};
+pub(crate) use io::{apply, flush, push};
 pub(crate) use spawn::{start, Launch, Spot};
 
 /// `textDelta` 모으는 틈(ms).
@@ -227,7 +227,8 @@ impl Core {
             Ev::PermissionResolved { request_id, .. } => {
                 self.pending.remove(request_id);
             }
-            Ev::McpServers { .. } => return,
+            // 화면 칩의 사실(외부 MCP 이름 · 사이드 채팅의 권한 모드)이라 지금 턴 꼬리에 넣지 않는다 — 스냅숏의 칸이 맞춘다.
+            Ev::McpServers { .. } | Ev::PermPolicy { .. } => return,
             Ev::Exited { .. } => {
                 self.status = Status::Stopped;
                 self.live_turn.clear();

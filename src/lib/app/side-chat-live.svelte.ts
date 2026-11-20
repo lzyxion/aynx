@@ -5,6 +5,7 @@ import {
   sideChatAttach,
   sideChatClose,
   sideChatDecide,
+  sideChatForgetAllow,
   sideChatInterrupt,
   sideChatLink,
   sideChatList,
@@ -12,7 +13,10 @@ import {
   sideChatSend,
   sideChatSetEffort,
   sideChatSetModel,
+  sideChatSetPermMode,
   type Decision,
+  type PermMode,
+  type SideChatPermView,
   type SideChatCli,
   type SideChatEvent,
   type SideChatLinkView,
@@ -185,6 +189,7 @@ export function sideChatErrorText(e: unknown): string {
   if (hasReason(msg, "conversation-not-found")) return t("app.chatDock.err.forkNotFound");
   if (hasReason(msg, "conversation-folder-missing")) return t("app.chatDock.err.forkFolder");
   if (hasReason(msg, "cli-not-found")) return t("app.chatDock.err.cliNotFound");
+  if (hasReason(msg, "server-outdated")) return stripReason(msg);
   // 첨부(서버 판정 — `server::side_chat` 의 `images_in` · `files_in`)
   if (hasReason(msg, "too-many-attachments") || hasReason(msg, "too-many-images")) return t("app.chatDock.err.tooMany");
   if (hasReason(msg, "file-too-big") || hasReason(msg, "image-too-big")) return t("app.chatDock.err.tooBig");
@@ -456,15 +461,47 @@ export async function interruptSideChat(id: string): Promise<void> {
   }
 }
 
-/** 사람의 권한 결정([허용 한 번] · [거절]) — 이미 끝난 요청(`unknown-request`)이면 다시 맞춘다 */
-export async function decideSideChat(id: string, requestId: string, decision: Decision): Promise<void> {
+/**
+ * 사람의 권한 결정([허용 한 번] · [이 채팅에서 허용] · [거절]) — 이미 끝난 요청(`unknown-request`)이면 다시 맞춘다. `remember` = 허용 + 그 요청의
+ * 종류를 이 채팅의 허용 목록에(종류는 서버가 기다리는 요청에서 읽는다 — 2026-11-20)
+ */
+export async function decideSideChat(id: string, requestId: string, decision: Decision, remember = false): Promise<void> {
   try {
-    await withEpoch(id, (epoch) => sideChatDecide(id, epoch, requestId, decision));
+    await withEpoch(id, (epoch) => sideChatDecide(id, epoch, requestId, decision, null, remember && decision === "allow"));
   } catch (e) {
     if (hasReason(String(e), "unknown-request")) {
       void resync(id);
       return;
     }
+    const l = lives[id];
+    if (l) l.error = sideChatErrorText(e);
+  }
+}
+
+/** 서버 답(모드 · 허용 목록)을 이 창의 사본에 — 사건 `permPolicy` 도 같은 값을 다시 적는다 */
+function adoptPerm(id: string, v: SideChatPermView): void {
+  const l = lives[id];
+  if (l) l.state = { ...l.state, perm: { mode: v.mode === "auto" ? "auto" : "manual", allow: Array.isArray(v.allow) ? v.allow : [] } };
+}
+
+/**
+ * **권한 모드 바꾸기**(입력 칸 아래 모드 칩 — 2026-11-20). 서버가 저장하고(채팅 · "마지막 모드" — 새 채팅이 이어받는다) 보는 창에 알리며,
+ * Auto 면 기다리는 카드도 허용으로 답한다. 도는 턴 중에도 · 다시 띄우지 않고 다음 요청부터.
+ */
+export async function setSideChatPermMode(id: string, mode: PermMode): Promise<void> {
+  try {
+    adoptPerm(id, await sideChatSetPermMode(id, mode));
+  } catch (e) {
+    const l = lives[id];
+    if (l) l.error = sideChatErrorText(e);
+  }
+}
+
+/** **허용 목록에서 한 종류 빼기**(모드 칩 메뉴 항목의 × — 그 종류는 다시 묻는다) */
+export async function forgetSideChatAllow(id: string, kind: string): Promise<void> {
+  try {
+    adoptPerm(id, await sideChatForgetAllow(id, kind));
+  } catch (e) {
     const l = lives[id];
     if (l) l.error = sideChatErrorText(e);
   }

@@ -189,10 +189,9 @@
                   onclick={() => toggle(index, target.id, !pressed)} />
               {/each}
               <span class="mcp-divider" aria-hidden="true"></span>
-              <!-- 사이드 채팅 칩(2026-10-25) — 그 자리에서 켜고 끈다 · '묻지 않기' 가 켜졌으면 오른쪽 위 초록 점 -->
+              <!-- 사이드 채팅 칩(2026-10-25) — 그 자리에서 켜고 끈다(묻지 않기는 채팅의 권한 모드 — 2026-11-20 설정 칸을 걷었다) -->
               <AgentChip agent={{ id: "side-chat", display: t("settings.ai.external.side_chat") }} pressed={!!server.side_chat}
-                dot={!!server.side_chat && !!server.side_chat_no_ask}
-                title={t(!server.side_chat ? "settings.ai.external.side_chat_row_off" : server.side_chat_no_ask ? "settings.ai.external.side_chat_row_no_ask" : "settings.ai.external.side_chat_row_ask", { name: server.name })}
+                title={t(!server.side_chat ? "settings.ai.external.side_chat_row_off" : "settings.ai.external.side_chat_row_ask", { name: server.name })}
                 onclick={() => toggleSide(index)}>
                 {#snippet icon()}<UiIcon name="side-panel" size={14} />{/snippet}
               </AgentChip>

@@ -13,7 +13,7 @@
 // ⑥ 잡히지 않은 예외 · 콘솔 오류 0(`stub:` 거절 제외)
 // ⑧ 마지막 선택은 CLI 마다 — 모델 메뉴(입력 칸의 모델 키워드 — 2026-11-13 D안)에서 opus · high → Codex(강도 low) → Claude 로 돌아오면 opus · high 로
 //    다시 연다(side_chat_open 에 강도까지) · 저장의 last = {cli, byCli} · [새 채팅]도 Claude · opus · high
-// ⑨ 모델 메뉴의 모델 줄(2026-11-13) — "CLI 기본" 맨 앞 → 고정 순서(별칭 → 버전 → 등급 · 고른 것도 제자리 · ✓ 로만) · 모르는 것 뒤 · 줄 글자 첫 글자 대문자(GPT 머리글자)
+// ⑨ 모델 메뉴의 모델 줄(2026-11-13) — "CLI 기본" 맨 앞 → 고정 순서(별칭 → 버전 → 등급 · 고른 것도 제자리 · ✓ 로만) · 모르는 것 뒤 · 줄 글자는 `modelLabel`(낱말마다 첫 글자 대문자 · GPT 머리글자 — 11-15 d2918504)
 // ⑦ 채팅 목록 줄의 단추 둘(이름 바꾸기 · 지우기 — 2026-11-01): 데스크톱은 호버에만 보이고, 폰 덮개는 늘 보인다. 연필 → 이름 칸 → Enter 로
 //    바뀐다(폰은 조합 중 Enter 를 거른다) · 휴지통 → 지우기 확인 상자(취소하면 아무것도 지우지 않는다) · 줄 선택(채팅 열기)으로 번지지 않는다
 //
@@ -339,13 +339,13 @@ check("⑨ Claude — 고정 순서 fable > opus > sonnet > haiku · 고른 opus
 ]);
 await pickMenu('[data-chat-cli="codex"]');
 check("⑨ Codex — CLI 기본 ✓ · 버전 먼저(6.1 > 6 > 5.6) · 같은 버전 안 astra > sol > luna · 모르는 gpt-reserve 는 뒤 · GPT 머리글자", await modelRows(7, "chip-models-codex.png"), [
-  ["", "Default", true], ["gpt-6.1-astra", "GPT-6.1-astra", false], ["gpt-6.1-sol", "GPT-6.1-sol", false], ["gpt-6.1-luna", "GPT-6.1-luna", false],
-  ["gpt-6-sol", "GPT-6-sol", false], ["gpt-5.6-sol", "GPT-5.6-sol", false], ["gpt-reserve", "GPT-reserve", false],
+  ["", "Default", true], ["gpt-6.1-astra", "GPT-6.1-Astra", false], ["gpt-6.1-sol", "GPT-6.1-Sol", false], ["gpt-6.1-luna", "GPT-6.1-Luna", false],
+  ["gpt-6-sol", "GPT-6-Sol", false], ["gpt-5.6-sol", "GPT-5.6-Sol", false], ["gpt-reserve", "GPT-Reserve", false],
 ]);
 await pickMenu('[data-chat-model="gpt-reserve"]');
 check("⑨ 모르는 이름을 골라도 제자리(맨 뒤)에 ✓ · Default 는 풀림(값은 소문자 그대로 넘긴다)",
   [(await modelRows(7)).filter((r, i) => i === 0 || i === 6), JSON.parse(await ev(`JSON.stringify((window.__calls.filter(([c]) => c === 'side_chat_set_model' || c === 'side_chat_open').at(-1) ?? [null, {}])[1].model ?? null)`))],
-  [[["", "Default", false], ["gpt-reserve", "GPT-reserve", true]], "gpt-reserve"]);
+  [[["", "Default", false], ["gpt-reserve", "GPT-Reserve", true]], "gpt-reserve"]);
 await pickMenu('[data-chat-cli="claude"]');
 
 await ev(`(async () => (await ${chatDockMod}).closeChatDock(false))()`);

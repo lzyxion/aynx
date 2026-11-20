@@ -139,8 +139,24 @@ fn side_chat_stdin_only_human() {
     assert_eq!(SRC.matches("event::link_header(").count(), 0, "조각은 link_headers 만 짓는다");
     assert_eq!(SRC.matches("event::link_headers(").count(), 1, "머리글을 짓는 곳은 link_header_now 하나");
     assert!(body_of(SRC, "fn link_header_now(").contains("crate::side_chat::event::link_headers(&pairs)"));
-    assert_eq!(SRC.matches(".encode_decision(").count(), 1);
+    // 결정은 둘 — 사람의 그 자리 결정(op `side_chat_decide`)과, 사람이 그 채팅에 정한 모드 · 허용 목록에 따라 서버가 대신 내는 **허용**
+    // (`policy_answer` — 2026-11-20 · 늘 `Decision::Allow` · 글 없음). 대신 답할지는 `perm::answer_by` 하나가 정한다.
+    assert_eq!(SRC.matches(".encode_decision(").count(), 2);
     assert!(body_of(SRC, "fn op_decide(").contains(".encode_decision(&b.request_id, decision, b.message.as_deref())"));
+    let policy = body_of(SRC, "fn policy_answer(");
+    assert!(policy.contains(".encode_decision(request_id, Decision::Allow, None)"));
+    assert!(!policy.contains("Decision::Deny"));
+    assert_eq!(SRC.matches("policy_answer(").count(), 3, "정의 + 부르는 곳 둘(on_event · answer_waiting)");
+    assert_eq!(SRC.matches("perm::answer_by(").count(), 2, "판정은 on_event · answer_waiting 의 answer_by 하나");
+    // 모드 · 허용 목록을 바꾸는 곳은 사람의 op 셋뿐(설정 · `remember`) — 넓히는 것은 [이 채팅에서 허용] 하나(종류는 서버의 pending 에서)
+    assert_eq!(SRC.matches("st.perm = next;").count(), 3);
+    for f in ["fn op_decide(", "fn op_set_perm_mode(", "fn op_forget_allow("] {
+        assert!(body_of(SRC, f).contains("st.perm = next;"), "{f}");
+    }
+    assert_eq!(SRC.matches("perm::remember(").count(), 1);
+    assert!(body_of(SRC, "fn op_decide(").contains("let key = if b.remember { pending_key(&st, &b.request_id) } else { None };"));
+    assert!(SRC.contains("\"side_chat_set_perm_mode\" => op_set_perm_mode(body(b)?)"));
+    assert!(SRC.contains("\"side_chat_forget_allow\" => op_forget_allow(body(b)?)"));
     assert!(SRC.contains("\"side_chat_decide\" => op_decide(body(b)?)"));
     assert_eq!(SRC.matches("crate::chat_token::set_links(").count(), 1);
     assert!(body_of(SRC, "fn op_link(").contains("crate::chat_token::set_links(&b.chat, streams)"));
@@ -154,7 +170,8 @@ fn side_chat_stdin_only_human() {
     // (단계 1 — 공용 코어) 지은 걸음이 stdin 에 닿는 길은 코어의 `apply` 하나이고, 이 표가 그것을 부르는 곳은 사람의 op 다섯(글 · 끊기 · 모델 ·
     // 강도 · 결정)뿐이다. 코어 안에서 stdin 에 줄을 넣는 곳은 `apply`(걸음의 줄)와 띄울 때의 악수 둘뿐이고, 코어는 어댑터의 `encode_*` 를
     // 부르지 않는다(아래 훑기 — 코어 폴더는 빼지 않는다).
-    assert_eq!(SRC.matches("chat_proc::apply(").count(), 5);
+    assert_eq!(SRC.matches("chat_proc::apply(").count(), 6, "사람의 op 다섯 + 서버가 대신 낸 허용 하나");
+    assert!(body_of(SRC, "fn policy_answer(").contains("chat_proc::apply(chat, st, step)"));
     for f in ["fn op_send(", "fn op_interrupt(", "fn op_set_model(", "fn op_set_effort(", "fn op_decide("] {
         assert_eq!(body_of(SRC, f).matches("chat_proc::apply(&*chat, &mut st, step)").count(), 1, "{f}");
     }
@@ -365,6 +382,8 @@ fn side_chat_ops_have_grades() {
         "side_chat_close",
         "side_chat_link",
         "side_chat_seen",
+        "side_chat_set_perm_mode",
+        "side_chat_forget_allow",
     ] {
         assert_eq!(frame::required_grade(op), Some(Grade::Write), "{op}");
         assert!(super::side_chat::is_side_chat_op(op));
@@ -806,6 +825,133 @@ mod live {
         assert_eq!(b.ok(Grade::Write, "shutdown", json!({})).await["stopping"], true);
         let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
         assert_eq!(side_chat::live_count(), 0, "서버 끝에 채팅이 남았다");
+        side_chat::set_fake_for_test(None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **권한 모드 · 허용 목록**(2026-11-20 — 판 37 · `side_chat::perm`) — 가짜 Claude 의 권한 요청(글 2 의 `can_use_tool` — 채팅 폴더 밖 읽기 종류)으로:
+    /// (a) Auto 면 카드 없이 서버가 허용으로 답하고 사건이 `permissionAuto` → `permissionResolved{by: auto}` 로 남는다(번호 빈틈 없음 · 기다림 없음) ·
+    /// (b) Manual 이면 카드 · [이 채팅에서 허용](`remember`)은 사람의 허용 + 그 종류를 목록에 · (c) 목록은 채팅에 저장돼 닫고 다시 열어도 살아 있고
+    /// 그 종류는 `by: remembered` 로 대신 답한다 · 빼면 다시 묻는다 · (d) 새 채팅은 마지막에 고른 모드 · Auto 로 바꾼 순간 기다리던 카드도 허용 ·
+    /// 거절과 함께 기억하기 · 모르는 종류 · 모르는 모드는 거절. 진짜 CLI 없음.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn side_chat_perm_modes_with_fake_cli() {
+        let _g = SESSION_STATE.lock().await;
+        let root = scratch("perm");
+        fake(&root);
+        let pipe = test_pipe();
+        let own = os::own_image().unwrap();
+        let server = tokio::spawn(serve::run(config(&pipe, None, vec![own], Duration::from_secs(600))));
+        let mut a = Client::connect(&pipe).await;
+        let open = |chat: &str| json!({ "chat": chat, "cli": "claude", "model": "haiku", "mode": { "kind": "fresh" }, "window": "main" });
+        let perm_file = |chat: &str| -> Value {
+            serde_json::from_str(&std::fs::read_to_string(root.join(".perm").join(format!("{chat}.json"))).unwrap()).unwrap()
+        };
+
+        // 첫 글(글만 턴) + 둘째 글(권한 요청) — 띄우고 둘째 글의 사건을 돌려준다(첫 사건 번호부터 빈틈 없이)
+        async fn two_turns(a: &mut Client, chat: &str, epoch: u64, seq: &mut u64) -> u64 {
+            let r = a.ok(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": epoch, "text": "hello" })).await;
+            let e = r["epoch"].as_u64().unwrap();
+            let evs = a.until(chat, |e| t(e) == "turnEnded").await;
+            check_run(&evs, seq, e, &["main"]);
+            a.ok(Grade::Write, "side_chat_send", json!({ "chat": chat, "epoch": e, "text": "fetch it" })).await;
+            e
+        }
+
+        // ── (a) Auto — 카드 없이 서버가 허용(사람 없음) ──
+        let chat = "sp0001";
+        let snap = a.ok(Grade::Write, "side_chat_open", open(chat)).await;
+        assert_eq!((snap["permMode"].as_str(), snap["permAllow"].clone()), (Some("manual"), json!([])), "처음은 Manual");
+        assert_eq!(err_code(a.call(Grade::Read, "side_chat_set_perm_mode", json!({ "chat": chat, "mode": "auto" })).await), code::GRADE_MISMATCH);
+        assert!(a.err(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": chat, "mode": "yolo" })).await.contains("[bad-mode]"));
+        let v = a.ok(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": chat, "mode": "auto" })).await;
+        assert_eq!(v, json!({ "mode": "auto", "allow": [] }));
+        let mut seq = 0u64;
+        let pol = a.until(chat, |e| t(e) == "permPolicy").await;
+        check_run(&pol, &mut seq, 0, &["main"]);
+        assert_eq!(pol.last().unwrap()["ev"], json!({ "t": "permPolicy", "mode": "auto", "allow": [] }));
+        assert_eq!(perm_file(chat)["mode"], "auto");
+        let e1 = two_turns(&mut a, chat, 0, &mut seq).await;
+        let evs = a.until(chat, |e| t(e) == "turnEnded").await;
+        check_run(&evs, &mut seq, e1, &["main"]);
+        let k = kinds(&evs);
+        assert!(!k.contains(&"permission".to_string()), "카드가 서지 않는다: {k:?}");
+        let auto = evs.iter().find(|e| t(&e["ev"]) == "permissionAuto").expect("대신 답한 줄");
+        assert_eq!((auto["ev"]["by"].as_str(), auto["ev"]["kind"].as_str(), auto["ev"]["toolName"].as_str()), (Some("auto"), Some("tool"), Some("WebFetch")));
+        let res = evs.iter().find(|e| t(&e["ev"]) == "permissionResolved").expect("결과 줄");
+        assert_eq!((res["ev"]["by"].as_str(), res["ev"]["decision"].as_str()), (Some("auto"), Some("allow")));
+        assert_eq!(res["ev"]["requestId"], auto["ev"]["requestId"]);
+        assert_eq!(evs.last().unwrap()["ev"]["outcome"], "ok", "가짜 CLI 는 허용을 받아야 턴을 잇는다");
+        let snap = a.ok(Grade::Read, "side_chat_attach", json!({ "chat": chat, "window": "main" })).await;
+        assert!(snap["pending"].as_array().unwrap().is_empty());
+        assert_eq!(snap["permMode"], "auto");
+
+        // ── (b) Manual — 카드 · [이 채팅에서 허용] ──
+        a.ok(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": chat, "mode": "manual" })).await;
+        assert_eq!(a.ok(Grade::Write, "side_chat_close", json!({ "chat": chat })).await, true);
+        a.until(chat, |e| t(e) == "exited").await;
+        let snap = a.ok(Grade::Write, "side_chat_open", open(chat)).await;
+        assert_eq!(snap["permMode"], "manual", "다시 열어도 그 채팅의 모드(저장)");
+        let mut seq = snap["seq"].as_u64().unwrap();
+        a.evs.clear();
+        let e2 = two_turns(&mut a, chat, 0, &mut seq).await;
+        let evs = a.until(chat, |e| t(e) == "permission").await;
+        check_run(&evs, &mut seq, e2, &["main"]);
+        let req = evs.last().unwrap()["ev"]["requestId"].as_str().unwrap().to_string();
+        let deny_remember = json!({ "chat": chat, "epoch": e2, "requestId": req, "decision": "deny", "remember": true });
+        assert!(a.err(Grade::Write, "side_chat_decide", deny_remember).await.contains("[bad-decision]"), "거절은 기억하지 않는다");
+        a.ok(Grade::Write, "side_chat_decide", json!({ "chat": chat, "epoch": e2, "requestId": req, "decision": "allow", "remember": true })).await;
+        let evs = a.until(chat, |e| t(e) == "turnEnded").await;
+        check_run(&evs, &mut seq, e2, &["main"]);
+        let res = evs.iter().find(|e| t(&e["ev"]) == "permissionResolved").unwrap();
+        assert_eq!((res["ev"]["by"].as_str(), res["ev"]["decision"].as_str()), (Some("human"), Some("allow")), "그 카드는 사람이 답했다");
+        let pol = evs.iter().find(|e| t(&e["ev"]) == "permPolicy").expect("목록이 바뀌었다");
+        assert_eq!(pol["ev"], json!({ "t": "permPolicy", "mode": "manual", "allow": ["outsideRead"] }), "종류는 서버가 그 요청에서 읽었다");
+        assert_eq!(perm_file(chat), json!({ "mode": "manual", "allow": ["outsideRead"] }));
+
+        // ── (c) 목록은 채팅에 — 닫고 다시 열어도 · 그 종류는 서버가 대신(`remembered`) ──
+        a.ok(Grade::Write, "side_chat_close", json!({ "chat": chat })).await;
+        a.until(chat, |e| t(e) == "exited").await;
+        let snap = a.ok(Grade::Write, "side_chat_open", open(chat)).await;
+        assert_eq!((snap["permMode"].as_str(), snap["permAllow"].clone()), (Some("manual"), json!(["outsideRead"])));
+        let mut seq = snap["seq"].as_u64().unwrap();
+        a.evs.clear();
+        let e3 = two_turns(&mut a, chat, 0, &mut seq).await;
+        let evs = a.until(chat, |e| t(e) == "turnEnded").await;
+        check_run(&evs, &mut seq, e3, &["main"]);
+        assert!(!kinds(&evs).contains(&"permission".to_string()));
+        let auto = evs.iter().find(|e| t(&e["ev"]) == "permissionAuto").unwrap();
+        assert_eq!(auto["ev"]["by"], "remembered");
+        assert_eq!(evs.iter().find(|e| t(&e["ev"]) == "permissionResolved").unwrap()["ev"]["by"], "remembered");
+        // 빼기 — 모르는 종류는 거절 · 빼면 저장에서도
+        assert!(a.err(Grade::Write, "side_chat_forget_allow", json!({ "chat": chat, "kind": "Read(**)" })).await.contains("[bad-kind]"));
+        let v = a.ok(Grade::Write, "side_chat_forget_allow", json!({ "chat": chat, "kind": "outsideRead" })).await;
+        assert_eq!(v, json!({ "mode": "manual", "allow": [] }));
+        assert_eq!(perm_file(chat)["allow"], json!([]));
+
+        // ── (d) Auto 로 바꾼 순간 기다리던 카드도 허용 · 새 채팅은 마지막 모드 ──
+        let c2 = "sp0002";
+        let snap = a.ok(Grade::Write, "side_chat_open", open(c2)).await;
+        assert_eq!(snap["permMode"], "manual", "마지막 모드 = Manual(위에서 Manual 로 되돌렸다)");
+        let mut seq = 0u64;
+        let e4 = two_turns(&mut a, c2, 0, &mut seq).await;
+        let evs = a.until(c2, |e| t(e) == "permission").await;
+        check_run(&evs, &mut seq, e4, &["main"]);
+        a.ok(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": c2, "mode": "auto" })).await;
+        let evs = a.until(c2, |e| t(e) == "turnEnded").await;
+        check_run(&evs, &mut seq, e4, &["main"]);
+        let k = kinds(&evs);
+        assert_eq!(&k[..2], ["permPolicy", "permissionResolved"], "{k:?}");
+        assert_eq!((evs[1]["ev"]["by"].as_str(), evs[1]["ev"]["decision"].as_str()), (Some("auto"), Some("allow")));
+        assert_eq!(evs.last().unwrap()["ev"]["outcome"], "ok");
+        let c3 = "sp0003";
+        assert_eq!(a.ok(Grade::Write, "side_chat_open", open(c3)).await["permMode"], "auto", "새 채팅은 마지막에 고른 모드");
+        assert_eq!(perm_file(c3)["mode"], "auto", "새 채팅의 모드는 곧바로 그 채팅에 적힌다");
+        a.ok(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": c3, "mode": "manual" })).await;
+        assert_eq!(a.ok(Grade::Write, "side_chat_open", open(chat)).await["permMode"], "manual", "옛 채팅은 제 모드");
+
+        assert_eq!(a.ok(Grade::Write, "shutdown", json!({})).await["stopping"], true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
         side_chat::set_fake_for_test(None);
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -12,6 +12,12 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+### What's new
+
+- **Side chat permission modes**: a chip next to the model switches each chat between **Manual** (asks with a card) and **Auto** (the app answers file changes, commands and MCP tool calls for you). Permission cards gain **Allow in this chat**, which stops asking about that kind in that chat; the chip menu lists what you allowed, and × asks again. New chats start in the mode you picked last.
+- **Settings › MCP no longer has "Don't ask in side chat"**: side chat MCP tools now follow the chat's permission mode, so a server you had set not to ask will ask once in Manual.
+- **The chat box gives your message the full width**: in the side chat and the AI tile chat view, **+**, the model and **Send** sit on a row below the text, the model name now shows on phones too, and the box grows with wrapped lines (up to 6) before it scrolls.
+
 ## [0.1.5] - 2026-11-20
 
 ### What's new

@@ -61,7 +61,7 @@ English · [한국어](features.ko.md)
 **AI agents**
 - Claude Code and Codex tiles with hook-driven status glyphs, local and remote, and a chat view next to the terminal view.
 - Permission and question cards in the chat view of local AI tiles.
-- Side chat dock with session chips, image attachments and source chips, on the desktop and in remote windows.
+- Side chat dock with session chips, image attachments, source chips and a per-chat permission mode (Manual · Auto), on the desktop and in remote windows.
 - Attach files from a file tile to an AI tile; per-agent extra arguments; per-project setup scripts that run before the agent starts.
 - Claude Code or Codex typed in a local PowerShell or Git Bash tile gets the same integration as an AI tile (shell integration on).
 - Manage agent instructions in one place and write them into each agent's instruction file as a managed block.

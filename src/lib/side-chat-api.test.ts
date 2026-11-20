@@ -12,7 +12,9 @@ const mocks = vi.hoisted(() => {
 });
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, Channel: mocks.FakeChannel, convertFileSrc: (s: string) => s }));
 
+import { readFileSync } from "node:fs";
 import {
+  EV_TAGS,
   dispatchSideChatEvent,
   isSideChatEvent,
   onSideChatEvent,
@@ -47,6 +49,18 @@ describe("isSideChatEvent", () => {
     ]) {
       expect(isSideChatEvent(bad)).toBe(false);
     }
+  });
+});
+
+describe("EV_TAGS", () => {
+  it("Rust `Ev` 갈래(side_chat/event.rs)와 같은 꼬리표 목록이다 — 빠진 꼬리표는 버려져 seq 빈틈이 된다", () => {
+    const rs = readFileSync(new URL("../../src-tauri/src/side_chat/event.rs", import.meta.url), "utf8");
+    const body = rs.slice(rs.indexOf("pub(crate) enum Ev {"));
+    const block = body.slice(0, body.indexOf("\n}\n"));
+    const tags = [...block.matchAll(/^ {4}([A-Z]\w*) \{/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
+    expect(tags.length).toBeGreaterThanOrEqual(18);
+    expect([...EV_TAGS].sort()).toEqual([...tags].sort());
+    expect(isSideChatEvent(env("c1", 1, { t: "mcpServers", names: ["github"] }))).toBe(true);
   });
 });
 
@@ -109,6 +123,7 @@ describe("명령 감싸개", () => {
       requestId: "r1",
       decision: "allow",
       message: null,
+      remember: false,
     });
   });
 });

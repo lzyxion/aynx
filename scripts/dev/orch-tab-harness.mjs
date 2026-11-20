@@ -754,7 +754,7 @@ if (ONLY === "" || ONLY === "producer") {
   await ev(E({ t: "toolFinished", item: "u3x", ok: true, output: "ok" }));
   await ev(E({ t: "toolStarted", item: "u4", name: "mcp__aynx-sessions-dev__spawn_worker", summary: "", input: { role: "a-1c374dcd", taskId: "task-1" } }));
   await until(`document.querySelectorAll('${F} [data-tool-pill]').length >= 4`);
-  check("⑪ 응답 중 — 머리 상태 · 캐릭터 고리 · 모델", await ev(`[document.querySelector('${F} [data-producer-state]')?.dataset.producerState, !!document.querySelector('${F} .head .avatar-wrap.live'), document.querySelector('${F} [data-producer-model]')?.textContent.trim()]`), ["responding", true, "opus · high · 이 앨범 전용"]);
+  check("⑪ 응답 중 — 머리 상태 · 캐릭터 고리 · 모델", await ev(`[document.querySelector('${F} [data-producer-state]')?.dataset.producerState, !!document.querySelector('${F} .head .avatar-wrap.live'), document.querySelector('${F} [data-producer-model]')?.textContent.trim()]`), ["responding", true, "Opus · High · 이 앨범 전용"]);
   check("⑪ 에이전트 머리(캐릭터 + 이름 · 응답 중)", await ev(`[document.querySelectorAll('${F} [data-item="agent-head"]').length, !!document.querySelector('${F} [data-producer-head="live"]')]`), [1, true]);
   check("⑪ 도구 알약 — 접두 뗌 · ×n · code mode exec = 안의 도구 · role = 역할 이름", await ev(`[...document.querySelectorAll('${F} [data-tool-pill]')].map(x => x.textContent.replace(/[✓!]/g, '').trim())`), ["get_run", "create_task ×2", "get_run", "spawn_worker role=구현"]);
   check("⑪ 알약 툴팁 = 화면 문구 · 도는 알약", await ev(`[document.querySelector('${F} [data-tool-pill="get_run"]')?.title, !!document.querySelector('${F} [data-tool-pill="spawn_worker role=구현"].run')]`), ["앨범 상태 읽기", true]);
@@ -818,7 +818,7 @@ if (ONLY === "" || ONLY === "producer") {
   // 정책 거절(카드 없이) — 알림 줄
   await ev(E({ t: "notice", code: "denied-by-policy", detail: "fileChange" }));
   await until(`!!document.querySelector('${F} [data-producer-denied-line]')`);
-  check("⑪ 정책 거절 — 머리 아래 한 줄 · 꼬리 알림", await ev(`[document.querySelector('${F} [data-producer-denied-line]')?.textContent.includes('작업자에게 맡기세요'), !!document.querySelector('${F} [data-producer-denied="fileChange"]')]`), [true, true]);
+  check("⑪ 정책 거절 — 머리 아래 한 줄 · 꼬리 알림", await ev(`[document.querySelector('${F} [data-producer-denied-line]')?.textContent.includes('아티스트에게 맡기세요'), !!document.querySelector('${F} [data-producer-denied="fileChange"]')]`), [true, true]);
   await shot("producer-denied.png");
   // 턴 끝 → 쉼 · 작업자 기다리는 중(앨범 running — 목록 요약)
   await ev(`window.__pcState.busy = false`);
@@ -992,7 +992,7 @@ if (ONLY === "" || ONLY === "producer" || ONLY === "wake") {
       await ev(`document.querySelector('${F} [data-producer-model]')?.textContent.replace(/\\s+/g, ' ').trim()`),
       await ev(`(async () => { const m = await ${tabsMod}; const t = m.activeTab(); const walk = (n) => n.type === 'leaf' ? [n.pane] : [...walk(n.a), ...walk(n.b)]; const p = walk(t.root).find((x) => x.kind === 'producer'); return [p.producer.model, p.producer.effort].join('/'); })()`),
     ],
-    [[[true, "sonnet"]], [[true, "low"]], "sonnet · low · 이 앨범 전용", "sonnet/low"],
+    [[[true, "sonnet"]], [[true, "low"]], "Sonnet · Low · 이 앨범 전용", "sonnet/low"],
   );
   await ev(`(async () => (await ${importApp("app/orch-pulse.svelte.ts")}).setRunSummaries([].map(window.__sumFull)))()`);
 }
@@ -1243,6 +1243,10 @@ if (ONLY === "" || ONLY === "db") {
   }
   await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(300);
+  // DB 폼은 왼쪽 탭(접속 · AI 권한 — 11-10 64638591)이라 AI 칸의 ⓘ 는 [AI 권한] 탭에서만 보인다(숨은 탭의 ⓘ 는 팝오버가 곧장 닫는다)
+  await ev(`document.querySelector('[data-db-picker="form"] [data-nav-tab="ai"]').click()`);
+  await until(`!document.querySelector('[data-db-form-tab="ai"]').hidden`);
+  await sleep(200);
   check(
     "⑰ DB 폼 — 위험 고지 늘 보임(행이 모델 제공자로) · ⓘ 셋(머리 · 행 · CA) · 계정 권고는 팝오버로",
     await ev(`(() => { const f = document.querySelector('[data-db-picker="form"]'); return [f.querySelector('[data-db-ai-rows]')?.textContent.includes('모델 제공자'), f.querySelectorAll('.info-toggle').length >= 3, f.innerText.includes('최종 방어선')]; })()`),

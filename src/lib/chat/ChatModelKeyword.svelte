@@ -22,9 +22,10 @@
    * 메뉴(`ChatModelPopover` — CLI 스위치 · 모델 · Effort). 모델 이름은 목록 줄과 같은 글자(`keywordModelLabel`), 강도는 글자 대신 막대(단계
    * 이름은 `title` · `aria-label`) — 강도를 받지 않는 모델이면 막대가 없다. 확인하지 않은 CLI 버전이면 경고 그림.
    *
-   * 폰(`touch`)은 폭과 상관없이, 메인 PC · 원격 데스크톱은 좁은 알약(`FlipComposer` 의 `container: composer` 가 300px 이하 — 좁힌 독)에서
-   * 이름 · 막대를 감춰 `로고 ⌄` 만 남긴다(2026-11-15 사용자 결정 2안 — 글 칸을 넓힌다). 경고 그림은 남고, 감춘 이름 · 강도는 `title` ·
-   * `aria-label` 에 그대로 있다.
+   * 폰(`touch`)도 메인 PC · 원격 데스크톱도 늘 `로고 · 이름 · 막대 · ⌄` 를 다 보인다 — 입력 칸이 두 줄 상자가 되어(2026-11-20 — 두 줄 상자 목업 ·
+   * 사용자 결정) 아래 줄에 자리가 남는다(11-15 의 "폰 · 좁은 알약(300px 이하)에서 이름 ·
+   * 막대 감추기" 는 걷었다). 아주 좁은 칸에서는 이름만 줄임표로 줄어든다(단추 · 이름이 `min-width: 0` — 로고 · 막대 · ⌄ 는 줄지 않음).
+   * 줄어든 이름 · 강도는 `title` · `aria-label` 에 그대로 있다.
    *
    * 몸은 두 갈래가 같다: 사이드 채팅은 `ctl`(`SideChatControls`)을 주고, **AI 타일 대화 면**(2026-11-13 — 목업 E2 · E4 · `pane/AiFlip`)은
    * 다 지은 `view`(`KeywordView` — 기록의 마지막 답에서 읽은 값)를 준다. `view` 에만 있는 것: 이름 없음(첫 답 전 — 로고만) · **잠김**
@@ -100,10 +101,11 @@
 {/if}
 
 <style>
-  /* 알약 칸 안 — 보내기 원과 같은 높이 대(30) · 글자 단추(테두리 없음) · 메뉴가 열려 있으면 고른 면 */
+  /* 입력 칸 아래 줄 — 보내기 원과 같은 높이 대(30) · 글자 단추(테두리 없음) · 메뉴가 열려 있으면 고른 면. 자리가 모자라면 줄어든다(이름 줄임표) */
   .kw {
     position: relative;
     height: 30px;
+    min-width: 0;
     max-width: 100%;
     display: inline-flex;
     align-items: center;
@@ -195,19 +197,5 @@
 
   .kw-bar.filled {
     background: var(--control-on-bg);
-  }
-
-  /* 폰(터치) — 폭과 상관없이 이름 · 막대를 감춰 로고 ⌄ 만(글 칸을 넓힌다). 경고 그림 · 잠김은 그대로 */
-  .kw.touch .kw-name,
-  .kw.touch .kw-gauge {
-    display: none;
-  }
-
-  /* 좁은 알약(입력 칸 300 이하 — 메인 PC · 원격 데스크톱의 좁힌 독) — 같은 로고 ⌄ 만 */
-  @container composer (max-width: 300px) {
-    .kw-name,
-    .kw-gauge {
-      display: none;
-    }
   }
 </style>

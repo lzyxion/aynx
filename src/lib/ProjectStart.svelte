@@ -939,7 +939,7 @@
               onclick={() => (sel = i)}
               ondblclick={() => resume(s)}
             >
-              <span class="logo" title={aiDisplayName(s.agent) ?? s.agent}><HostIcon icon={iconRef(s.agent)} size={16} /></span>
+              <span class="logo" title={aiDisplayName(s.agent) ?? s.agent}><AiGlyph name={s.agent} size={16} /></span>
               <span class="main">
                 <span class="tline"
                   >{#if renaming === key}<ConvoTitleEdit

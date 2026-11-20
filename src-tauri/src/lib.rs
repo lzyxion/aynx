@@ -750,6 +750,8 @@ pub fn run() {
             server::side_chat_proxy::side_chat_set_model,
             server::side_chat_proxy::side_chat_set_effort,
             server::side_chat_proxy::side_chat_decide,
+            server::side_chat_proxy::side_chat_set_perm_mode,
+            server::side_chat_proxy::side_chat_forget_allow,
             server::side_chat_proxy::side_chat_close,
             server::side_chat_proxy::side_chat_attach,
             server::side_chat_proxy::side_chat_list,

@@ -186,7 +186,12 @@ pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 판 36(2026-11-19 메신저 다리 Slack — `server::messenger_bridge::sl`): 새 op 없음 — `messenger_bot_*` 몸의 `channel: "slack"` · 사건 몸의
 /// `channel: "slack"`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 35 서버는 Slack 전송이 없어 `[unsupported]` 로 거절하므로 새 GUI 는 Slack
 /// 채널의 봇 명령을 `[server-outdated]` 로 · 알림의 Slack 봇 몫은 보내지 않는다([`SLACK_BOT_PROTOCOL`] — Discord 판 35 와 같은 방식).
-pub(crate) const PROTOCOL_MAX: u32 = 36;
+///
+/// 판 37(2026-11-20 사이드 채팅 권한 모드 — `side_chat::perm`): 새 op `side_chat_set_perm_mode` · `side_chat_forget_allow`(쓰기) · `side_chat_decide`
+/// 몸의 `remember`([이 채팅에서 허용]) · 스냅숏의 `permMode` · `permAllow` · 사건 `permissionAuto` · `permPolicy` · `permissionResolved.by` 의
+/// `auto` · `remembered`. 같은 규칙으로 **`MIN` 을 올리지 않는다** — 판 36 서버는 `remember` 를 버리므로(허용 한 번으로 끝난다) 새 GUI 는 그 서버에
+/// 모드 op · `remember` 를 보내지 않는다(`[server-outdated]` — [`SIDE_CHAT_PERM_PROTOCOL`]).
+pub(crate) const PROTOCOL_MAX: u32 = 37;
 
 /// DB 평면 op 가 서는 판 — 협상된 판이 이보다 낮으면 DB op 를 보내지도 받지도 않는다.
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -274,6 +279,10 @@ pub(crate) const DISCORD_BOT_PROTOCOL: u32 = 35;
 
 /// 메신저 다리의 Slack 채널(`messenger_bot_*` 의 `channel: "slack"`)이 서는 판 — 낮으면 GUI 가 그 채널의 op 를 보내지 않는다.
 pub(crate) const SLACK_BOT_PROTOCOL: u32 = 36;
+
+/// 사이드 채팅 권한 모드(`side_chat_set_perm_mode` · `side_chat_forget_allow` · `side_chat_decide` 의 `remember`)가 서는 판 — 낮으면 GUI 가 그 op ·
+/// 칸을 보내지 않는다.
+pub(crate) const SIDE_CHAT_PERM_PROTOCOL: u32 = 37;
 
 /// 프로듀서 채팅 op(`producer_chat_*`)가 서는 판 — 낮으면 그 op 만 보내지도 받지도 않는다.
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;
@@ -522,6 +531,8 @@ pub(crate) fn required_grade(op: &str) -> Option<Grade> {
         | "side_chat_decide" | "side_chat_close" | "side_chat_link" => Some(Grade::Write),
         // 완료 확인 공유(판 31)도 쓰기 — `agent_state_seen` 과 같이 표는 바꾸지 않고 방송만 한다.
         "side_chat_seen" => Some(Grade::Write),
+        // 권한 모드 · 허용 목록(판 37 — `side_chat::perm`)도 쓰기 — 사람의 결정과 같은 결(승인 등급 프레임이 아니다).
+        "side_chat_set_perm_mode" | "side_chat_forget_allow" => Some(Grade::Write),
         // 프로듀서 채팅(판 20 — `server::producer`). 스냅숏 · 상태 · 목록 = 읽기, 나머지 = 쓰기(사람의 결정도 승인 등급 프레임이 아니다).
         "producer_chat_attach" | "producer_chat_status" | "producer_chat_list" | "producer_fork_probe" | "orchestration_album_defaults" => Some(Grade::Read),
         "orchestration_album_widen" | "orchestration_album_set" | "orchestration_rename_album" => Some(Grade::Write),

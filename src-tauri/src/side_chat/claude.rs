@@ -58,10 +58,9 @@ pub(crate) fn mcp_config_with(base: &str, external: &[crate::agent_mcp::McpServe
     v.to_string()
 }
 
-/// 묻지 않는 외부 서버의 `--allowedTools` 규칙 — 서버 통째(`mcp__<서버>` — 2.1.310 실측: 그 서버의 도구가 `can_use_tool` 없이 돈다).
-pub(crate) fn no_ask_rules(external: &[crate::agent_mcp::McpServer]) -> Vec<String> {
-    external.iter().filter(|s| s.side_chat_no_ask).map(|s| format!("mcp__{}", s.name)).collect()
-}
+// 외부 서버의 도구는 CLI 에 미리 허용하지 않는다(2026-11-20 — 설정의 '묻지 않기' `no_ask_rules` 를 걷었다): 늘 `can_use_tool` 로 오고,
+// 묻지 않기는 세션 서버가 그 채팅의 모드 · 허용 목록으로 정한다(`side_chat::perm`).
+
 /// 내장 도구 — 읽기 셋 + 웹 둘(`--tools`). 쓰기 · 명령 · Task · 대화형 도구는 아예 없다.
 pub(crate) const TOOLS: &str = "Read,Grep,Glob,WebSearch,WebFetch";
 /// 묻지 않고 쓰는 것 — cwd 안 읽기 · 웹 검색 · 페이지 읽기(설계 8절 2 · 10-25). cwd 밖 읽기만 카드로.

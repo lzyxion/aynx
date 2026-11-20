@@ -112,6 +112,8 @@ Hover the right edge of the window or press `Ctrl+Shift+[` to open the side chat
 
 Ask a quick question without leaving your work. The chips under the message box choose the agent, the effort level and the **linked sessions**: link one or more terminals (up to 8) and the AI can read those sessions for context.
 
+The **Manual** · **Auto** chip next to the model sets how the chat asks for permission. **Manual** asks with a card (**Allow once**, **Allow in this chat** or **Deny**); **Auto** lets the app answer file changes, commands and MCP tool calls for you. New chats start in the mode you picked last.
+
 ## 8. Session sheet
 
 Press `Ctrl+Shift+M` to see every tab and tile at a glance.

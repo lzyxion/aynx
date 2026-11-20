@@ -9,16 +9,26 @@
    * 에이전트가 **권한을 묻는 중**이면(`permission`) 칸 대신 "터미널에서 답하기 →" 한 줄 — 답은 터미널의 CLI 화면에서 한다.
    * 글은 이 컴포넌트의 상태에만 있다(저장 · 로그 없음).
    *
-   * 모양은 **알약** 하나(채팅 독 2026-10-23 → 타일의 대화 면도 2026-10-24): 칸은 끝이 둥근 알약(한 줄 44px · 반지름 22px — 여러 줄로
-   * 자라면 같은 반지름의 둥근 상자), 칸 안 오른쪽 아래에 둥근 보내기 단추(Enter 와 같은 `submit` → `onsend` 길 · 마지막 글 줄과 같은 높이).
-   * 칸 아래 줄은 없다(2026-11-13 — 사이드 채팅의 옛 칩 줄은 칸 안으로 들어왔다 · 목업 D안). 타일의 대화 면도 `leading`([+] 파일 붙이기) ·
-   * `inField`(모델 키워드)를 준다(2026-11-13 — 목업 E2) — 그때는 `compact={false}` 로 760 단 여백을 그대로 둔다.
+   * 모양은 **`leading` 유무로 두 갈래**다(2026-11-20 — 두 줄 상자 목업 · 사용자 결정 — 기본 380px 독에서
+   * 글 쓸 자리가 독 폭의 1/3 남짓이던 한 줄 알약을 사이드 채팅 · AI 타일 대화 면에서 걷었다):
+   * - **두 줄 상자**(`leading` 을 준 칸 — 사이드 채팅 `SideChatFace` · AI 타일 대화 면 `AiFlip`): 반지름 20px 둥근 상자(한 줄이든 여러 줄이든
+   *   같음) 안에 위에서부터 `above`(연결 칩 줄) · 첨부 칩 줄 · **글 줄(상자 폭 전부)** · **아래 줄**(흐름 안의 flex 줄 —
+   *   `[+]`(`leading`) … (빈 자리) … `inField`(모델 키워드) · 보내기 원). 빈 칸이면 약 76px. 자리가 모자라면 `inField` 가 줄어든다(모델
+   *   이름이 줄임표 — `min-width: 0` 사슬) · `[+]` · 보내기는 줄지 않는다. 폰(`touch`)은 아래 줄 여백만 6px 로 키운다(넓힌 누르는 자리가 글
+   *   줄을 덮지 않게). 상자 안 **빈 자리**(글 줄 위 여백 · 아래 줄 단추 사이)를 누르면 글 칸에 포커스(2026-11-20 실기 — 위 여백이 칸 밖이라
+   *   눌러도 안 들어갔다 · 단추 · 칩 등 상호작용 요소 안은 빼고 · `mousedown` 에서 막아 커서 · 선택은 그대로).
+   * - **한 줄 알약**(`leading` 이 없는 칸 — 프로듀서 채팅 · 2026-10-23 그대로): 한 줄 44px · 반지름 22px(여러 줄로 자라면 같은 반지름의
+   *   둥근 상자), 칸 안 오른쪽 아래에 둥근 보내기 원(마지막 글 줄과 같은 높이). `inField`(프로듀서 채팅의 [끊고 전달] — 10-30 실기)는 칸 안
+   *   보내기 원 왼쪽에 서고 글은 그 폭만큼 오른쪽을 비운다(재어서).
+   * 보내기 원은 두 모양 모두 Enter 와 같은 `submit` → `onsend` 길. 칸 아래(상자 밖) 줄은 없다(2026-11-13 — 목업 D안). `above` 는 상자 안 글 줄 위
+   * (첨부 칩 줄 앞)에 한 줄. `inField` · `leading` · `above` 중 하나라도 있으면 좁은 독 여백(`compact` — 부른 쪽이 정하면 그 값 · AI 타일
+   * 대화 면은 `compact={false}` 로 760 단 여백)을 쓴다. 옛 크기 질의 상자(`container: composer` — 좁은 알약에서 모델 이름 · 막대 감추기)는
+   * 두 줄이 되며 걷었다.
    *
-   * `inField` 를 주면(프로듀서 채팅의 [끊고 전달] — 10-30 실기 · 사이드 채팅의 모델 키워드) 알약 칸 **안** 보내기 원 왼쪽에 부른 쪽의 단추가 서고,
-   * 글은 그 폭만큼 오른쪽을 비운다(재어서). `leading` 을 주면(사이드 채팅의 `[+]`) 알약 칸 안 **왼쪽 아래**에 서고 글은 그 폭만큼 왼쪽을 비운다.
-   * `above` 를 주면(사이드 채팅의 연결 칩) 알약 안 글 줄 위(첨부 칩 줄 앞)에 한 줄. 셋 중 하나라도 있으면 좁은 독 여백(`compact` — 부른 쪽이
-   * 정하면 그 값)을 쓰고,
-   * `leading` 이 있으면 알약이 크기 질의의 상자(`container: composer`)가 된다 — 부른 쪽의 단추가 좁은 폭에서 글자를 감출 수 있게.
+   * **자라기**(두 모양 공통 · 2026-11-20): 칸은 **접힌 줄까지** 내용 높이만큼 자라고(`fit` — 높이를 `auto` 로 풀어 `scrollHeight` 를 재고
+   * `MAX_ROWS` 줄에서 자른다) 넘으면 글 칸 안에서만 스크롤한다(그 전에는 스크롤바 없음). 글이 바뀔 때(치기 · `prefill` · 보낸 뒤 비우기)와
+   * 칸 폭이 바뀔 때(독 폭 끌기 · 타일 크기 — `bind:clientWidth`) 다시 잰다. 재는 동안 상자 높이를 잠가 둘레(기록 스크롤)가 흔들리지 않게 하고
+   * 칸의 스크롤 위치는 되돌린다. 높이 style 만 바꾸니 IME 조합 중에도 글은 건드리지 않는다.
    *
    * `gate` 를 주면(채팅 독 — 2026-10-23) **보내기만 막는다**(Enter · 단추 — 칸에 치기는 된다): 칸 위에 한 줄(CLI 시작 중) 또는 카드(시작 묻기 ·
    * CLI 나감 — 문구 · 단추 · 안내 한 줄). 막는 까닭은 부르는 쪽이 정한다.
@@ -33,7 +43,7 @@
    * `prefill` 을 주면(사이드 채팅 5단계 — [AI에게 묻기] → 사이드 채팅) 번호가 바뀔 때마다 그 글을 칸에 **채우기만** 한다(보내지 않는다 —
    * 칸이 비었으면 그 글, 아니면 빈 줄 하나 뒤에 덧붙임) · 커서를 끝으로 · `onprefilled(n)` 로 알린다.
    *
-   * **첨부 칩**(2026-10-24): `attachments` 를 주면 알약 안 글 줄 위에 칩 줄(작은 미리보기 — 그림이면 `blob:` · 아니면 파일 아이콘 + 이름
+   * **첨부 칩**(2026-10-24): `attachments` 를 주면 칸 안 글 줄 위에 칩 줄(작은 미리보기 — 그림이면 `blob:` · 아니면 파일 아이콘 + 이름
    * + ×(`onremove`)). 칩이 있으면 글이 비어도 보낸다 · 준비 중인 칩(경로 없음)이 있으면 막는다 · 비우기는 부르는 쪽(보낸 뒤). 칸의
    * **파일 붙여넣기**(클립보드에 글 없이 그림 · 파일만 — `clipboardFiles`)는 `onattach` 로(글 붙여넣기는 그대로). `ondropdata` 를 주면
    * (사이드 채팅 — 타일 캔버스 밖이다) 이 상자가 OS 파일 · 파일 타일 짐의 끌어 놓기를 받아 그대로 넘긴다. 타일의 대화 면은 주지 않는다
@@ -69,6 +79,7 @@
     enterNewline = false,
     terminalKeys = false,
     compact,
+    touch = false,
     inputEl = $bindable(null),
   }: {
     /** 에이전트가 권한을 묻는 중 */
@@ -77,11 +88,11 @@
     onsend: (text: string) => boolean;
     /** 터미널 면으로 */
     onterminal: () => void;
-    /** 알약 칸 안 보내기 왼쪽의 단추(프로듀서 채팅의 [끊고 전달] · 사이드 채팅의 모델 키워드) — 없으면 자리도 없다 */
+    /** 칸 안 보내기 왼쪽의 단추(프로듀서 채팅의 [끊고 전달] · 사이드 채팅 · AI 타일의 모델 키워드) — 없으면 자리도 없다 */
     inField?: Snippet;
-    /** 알약 칸 안 왼쪽 아래의 단추(사이드 채팅의 `[+]`) — 없으면 자리도 없다 */
+    /** 아래 줄 왼쪽 끝의 단추(사이드 채팅 · AI 타일의 `[+]`) — 주면 두 줄 상자, 없으면 한 줄 알약 */
     leading?: Snippet;
-    /** 알약 안 글 줄 위 한 줄(사이드 채팅의 연결 칩) */
+    /** 칸 안 글 줄 위 한 줄(사이드 채팅의 연결 칩) */
     above?: Snippet;
     /** 보내기를 막는 사정(채팅 독) — 있으면 Enter · 보내기 단추가 아무것도 보내지 않는다 */
     gate?: ComposerGate | null;
@@ -117,17 +128,48 @@
     terminalKeys?: boolean;
     /** 좁은 독 여백 — 없으면 칸 안 단추가 있을 때(독). AI 타일 대화 면은 단추가 있어도 거짓(760 단 여백) */
     compact?: boolean;
+    /** 폰(터치) — 두 줄 상자의 아래 줄 여백을 키운다(부른 쪽 단추의 넓힌 누르는 자리가 글 줄을 덮지 않게) */
+    touch?: boolean;
     inputEl?: HTMLTextAreaElement | null;
   } = $props();
 
   let text = $state("");
-  /** 알약 안 단추 자리의 폭(`inField` — 글이 그 밑으로 가지 않게) */
+  /** 두 줄 상자(`leading` 을 준 칸) — 아니면 한 줄 알약 */
+  const twoRow = $derived(!!leading);
+  /** 한 줄 알약 안 단추 자리의 폭(`inField` — 글이 그 밑으로 가지 않게) */
   let inFieldW = $state(0);
-  /** 알약 안 왼쪽 단추 자리의 폭(`leading`) */
-  let leadingW = $state(0);
   /** 칸 높이 상한(줄) — 넘으면 칸 안에서 스크롤 */
   const MAX_ROWS = 6;
-  const rows = $derived(Math.min(MAX_ROWS, Math.max(1, text.split("\n").length)));
+  /** 글 칸의 폭 — 바뀌면(독 폭 · 타일 크기) 접힌 줄 수가 달라져 다시 잰다 */
+  let fieldW = $state(0);
+
+  /**
+   * 칸 높이를 내용에 맞춘다(접힌 줄 포함 · 최대 `MAX_ROWS` 줄 — 넘으면 칸 안 스크롤). 높이 style 만 바꾼다(글 · 커서는 그대로).
+   * 재는 동안 상자 높이를 잠가 둘레의 스크롤(기록)이 잠깐 줄었다 는 높이에 끌려가지 않게 하고, 칸 자신의 스크롤 위치는 되돌린다.
+   */
+  function fit(el: HTMLTextAreaElement): void {
+    if (el.clientWidth === 0) return; // 숨은 칸(권한 카드가 선 동안 등) — 보일 때 폭이 바뀌어 다시 잰다
+    const box = el.parentElement;
+    const cs = getComputedStyle(el);
+    const max = parseFloat(cs.lineHeight) * MAX_ROWS + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const top = el.scrollTop;
+    if (box) box.style.height = `${box.offsetHeight}px`;
+    // 스크롤바 없는 폭으로 잰다 — 스크롤바가 생겨 좁아진 폭으로 재면 상한 언저리에서 생겼다 사라졌다 할 수 있다
+    el.style.overflowY = "hidden";
+    el.style.height = "auto";
+    const h = el.scrollHeight;
+    el.style.height = `${Math.min(h, max)}px`;
+    el.style.overflowY = h > max ? "auto" : "hidden";
+    if (box) box.style.height = "";
+    el.scrollTop = top;
+  }
+
+  $effect(() => {
+    void text;
+    void fieldW;
+    const el = inputEl;
+    if (el) fit(el);
+  });
 
   let prefilled = 0;
   $effect(() => {
@@ -192,6 +234,25 @@
     inputEl?.focus({ preventScroll: true });
   }
 
+  /** 상호작용 요소(와 그 안) — 두 줄 상자의 빈 자리 누르기에서 뺀다 */
+  const INTERACTIVE = 'button, a, input, textarea, select, label, [role="button"], [tabindex], [contenteditable]';
+
+  /**
+   * 두 줄 상자의 빈 자리(글 줄 위 여백 · 아래 줄 단추 사이 등)를 누르면 글 칸으로. `mousedown` 에서 기본 동작을 막아 다른 곳의 포커스를
+   * 빼앗기거나 글 고르기가 시작되지 않게 한다 — 이미 칸에 있었으면 커서 · 선택이 그대로 남는다.
+   */
+  function onWrapMousedown(ev: MouseEvent): void {
+    if (!twoRow || ev.button !== 0) return;
+    const target = ev.target;
+    const wrap = ev.currentTarget as HTMLElement;
+    if (!(target instanceof Element)) return;
+    // 판정은 상자 안으로만 — 상자 밖 조상(채팅 독 뿌리 · 타일 뿌리의 `tabindex="-1"`)에 걸리면 빈 자리를 놓친다(2026-11-20 실기). 상자 자신도 빈 자리
+    const hit = target.closest(INTERACTIVE);
+    if (hit && hit !== wrap && wrap.contains(hit)) return;
+    ev.preventDefault();
+    inputEl?.focus({ preventScroll: true });
+  }
+
   function onKeydown(ev: KeyboardEvent): void {
     if (enterNewline) {
       // IME 조합 중의 Enter 는 칸의 것(`composerEnter` 가 거른다 — 수식 키를 떼고 묻는다)
@@ -240,7 +301,9 @@
         {#if gate.tip}<div class="gate-tip">{gate.tip}</div>{/if}
       </div>
     {/if}
-    <div class="wrap" class:blocked={gate?.quiet === true} class:cq={!!leading}>
+    <!-- 빈 자리 누르기 = 글 칸 포커스(두 줄 상자 · 마우스 편의뿐 — 키보드는 Tab 으로 칸에 간다) -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="wrap" class:two={twoRow} class:blocked={gate?.quiet === true} onmousedown={onWrapMousedown}>
       {#if above}
         <div class="above" data-flip-above>{@render above()}</div>
       {/if}
@@ -281,7 +344,8 @@
         class="field"
         bind:this={inputEl}
         bind:value={text}
-        {rows}
+        bind:clientWidth={fieldW}
+        rows="1"
         placeholder={gate?.quiet ? gate.text : (placeholder ?? t("pane.flip.composer.placeholder"))}
         readonly={gate?.quiet === true}
         aria-label={t("pane.flip.composer.aria")}
@@ -292,45 +356,56 @@
         data-terminal-keys={terminalKeys ? "" : undefined}
         onkeydown={onKeydown}
         onpaste={onPaste}
-        style:padding-right={inField && inFieldW > 0 ? `${46 + inFieldW + 4}px` : undefined}
-        style:padding-left={leading && leadingW > 0 ? `${5 + leadingW + 6}px` : undefined}
+        style:padding-right={!twoRow && inField && inFieldW > 0 ? `${46 + inFieldW + 4}px` : undefined}
       ></textarea>
       {#if leading}
-        <div class="leading" bind:clientWidth={leadingW} data-flip-leading>{@render leading()}</div>
-      {/if}
-      {#if inField}
-        <div class="in-field" bind:clientWidth={inFieldW} data-flip-in-field>{@render inField()}</div>
-      {/if}
-      <!-- 알약 칸 안 오른쪽 아래 — 보내기(Enter 와 같은 길) · 턴이 돌면 같은 원의 [중단](AI 타일은 칸이 빌 때 [중지] = Esc 하나) -->
-      {#if stopInPlace && oninterrupt}
-        <button
-          type="button"
-          class="send stop"
-          data-flip-interrupt
-          title={t(busy ? "pane.flip.composer.interrupt" : "pane.flip.composer.stop")}
-          aria-label={t(busy ? "pane.flip.composer.interrupt" : "pane.flip.composer.stop")}
-          onclick={() => {
-            oninterrupt();
-            inputEl?.focus({ preventScroll: true });
-          }}><span class="stop-mark" aria-hidden="true"></span></button
-        >
+        <!-- 두 줄 상자의 아래 줄 — [+] … 모델 키워드 · 보내기 -->
+        <div class="row" class:touch>
+          <div class="leading" data-flip-leading>{@render leading()}</div>
+          {#if inField}
+            <div class="in-field" data-flip-in-field>{@render inField()}</div>
+          {/if}
+          {@render sendButton()}
+        </div>
       {:else}
-        <button
-          type="button"
-          class="send"
-          data-flip-send
-          disabled={!canSend || !!gate}
-          title={t("pane.flip.composer.send")}
-          aria-label={t("pane.flip.composer.send")}
-          onclick={() => {
-            submit();
-            inputEl?.focus({ preventScroll: true });
-          }}><UiIcon name="up" size={16} /></button
-        >
+        {#if inField}
+          <div class="in-field" bind:clientWidth={inFieldW} data-flip-in-field>{@render inField()}</div>
+        {/if}
+        {@render sendButton()}
       {/if}
     </div>
   {/if}
 </div>
+
+{#snippet sendButton()}
+  <!-- 보내기(Enter 와 같은 길) · 턴이 돌면 같은 원의 [중단](AI 타일은 칸이 빌 때 [중지] = Esc 하나) — 알약은 칸 안 오른쪽 아래, 두 줄 상자는 아래 줄 끝 -->
+  {#if stopInPlace && oninterrupt}
+    <button
+      type="button"
+      class="send stop"
+      data-flip-interrupt
+      title={t(busy ? "pane.flip.composer.interrupt" : "pane.flip.composer.stop")}
+      aria-label={t(busy ? "pane.flip.composer.interrupt" : "pane.flip.composer.stop")}
+      onclick={() => {
+        oninterrupt();
+        inputEl?.focus({ preventScroll: true });
+      }}><span class="stop-mark" aria-hidden="true"></span></button
+    >
+  {:else}
+    <button
+      type="button"
+      class="send"
+      data-flip-send
+      disabled={!canSend || !!gate}
+      title={t("pane.flip.composer.send")}
+      aria-label={t("pane.flip.composer.send")}
+      onclick={() => {
+        submit();
+        inputEl?.focus({ preventScroll: true });
+      }}><UiIcon name="up" size={16} /></button
+    >
+  {/if}
+{/snippet}
 
 <style>
   /* 아래 줄 — 기록과 같은 가운데 한 단(760) */
@@ -343,13 +418,18 @@
     padding: var(--space-2) var(--space-5) var(--space-4);
   }
 
-  /* 알약 — 글 칸 · 칩 줄을 함께 두른다(테두리 · 면은 여기 · 글 칸은 투명) */
+  /* 알약 · 두 줄 상자 — 글 칸 · 칩 줄(· 아래 줄)을 함께 두른다(테두리 · 면은 여기 · 글 칸은 투명) */
   .wrap {
     position: relative;
     box-sizing: border-box;
     background: var(--surface-field);
     border: 1px solid var(--line-strong);
     border-radius: 22px;
+  }
+
+  /* 두 줄 상자 — 한 줄이든 여러 줄이든 같은 반지름 */
+  .wrap.two {
+    border-radius: 20px;
   }
 
   /* 칸 자체가 막혔다(`gate.quiet`) — 점선 */
@@ -438,8 +518,8 @@
   }
 
   /*
-   * 알약 — 한 줄(44px)에서 시작해 Shift+Enter 줄 수만큼 자라고(최대 `MAX_ROWS`) 그 뒤는 칸 안 스크롤. 한 줄이면 반지름 22px 로 양끝이
-   * 반원, 여러 줄로 자라면 같은 반지름의 둥근 상자(MD3 · End-4 의 큰 둥근 모양).
+   * 알약 — 한 줄(44px)에서 시작해 내용 줄 수(접힌 줄 포함)만큼 자라고(최대 `MAX_ROWS` — `fit`) 그 뒤는 칸 안 스크롤. 한 줄이면 반지름
+   * 22px 로 양끝이 반원, 여러 줄로 자라면 같은 반지름의 둥근 상자(MD3 · End-4 의 큰 둥근 모양).
    * 오른쪽 여백 = 보내기 원(32) + 둘레(6) + 숨 쉴 틈(8) — 글이 단추 밑으로 가지 않는다.
    */
   .field {
@@ -457,6 +537,55 @@
     border-radius: 22px;
     resize: none;
     outline: none;
+    overflow-y: hidden;
+  }
+
+  /*
+   * 두 줄 상자의 글 줄 — 상자 폭 전부(단추는 아래 줄). 빈 칸 = 위 여백 11 + 20 + 2 = 33 · 아래 줄 41 · 테두리 2 → 76px.
+   * 위 11px 는 칸의 패딩이 아니라 바깥 여백(margin) — 패딩이면 스크롤 영역 안이라 6줄을 넘겨 스크롤한 글이 상자 위 테두리 바로 밑까지 보였다.
+   */
+  .wrap.two .field {
+    min-height: 22px;
+    margin-top: 11px;
+    padding: 0 14px 2px;
+    border-radius: 0;
+  }
+
+  /* 두 줄 상자의 아래 줄 — 흐름 안의 flex 줄: [+] … (빈 자리) … 모델 키워드 · 보내기. 자리가 모자라면 키워드만 줄어든다(이름 줄임표) */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 4px 5px 5px;
+  }
+
+  /* 폰 — 넓힌 누르는 자리(`::after` 6~7px)가 글 줄을 덮지 않게 */
+  .row.touch {
+    padding: 6px;
+  }
+
+  .row .leading {
+    flex: none;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    margin-right: auto;
+  }
+
+  .row .in-field {
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+
+  .row .send {
+    position: static;
+    flex: none;
   }
 
   /* 칸 안 단추가 있는 모양(채팅 독 · 프로듀서 채팅) — 좁은 독이라 양옆 여백을 줄인다 */
@@ -509,7 +638,7 @@
   }
 
   /* 알약 안 보내기 원 왼쪽의 단추 자리 — 원(32px)과 같은 높이 · 같은 바닥(여러 줄이면 마지막 글 줄 높이) */
-  .in-field {
+  .wrap:not(.two) .in-field {
     position: absolute;
     right: 43px;
     bottom: 5px;
@@ -521,21 +650,6 @@
 
   .in-field:empty {
     display: none;
-  }
-
-  /* 알약 안 왼쪽 아래 — 보내기 원과 같은 둘레 · 같은 바닥(여러 줄이면 마지막 글 줄 높이) */
-  .leading {
-    position: absolute;
-    left: 5px;
-    bottom: 5px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-  }
-
-  /* 크기 질의의 상자 — 칸 안 단추(부른 쪽)가 좁은 알약에서 글자를 감춘다(`@container composer`) */
-  .wrap.cq {
-    container: composer / inline-size;
   }
 
   /* 글 줄 위 한 줄(연결 칩) — 첨부 칩 줄과 같은 들임. 첨부 줄이 뒤따르면 그 줄의 위 여백이 사이를 띄운다 */

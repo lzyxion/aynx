@@ -53,11 +53,12 @@ pub(crate) enum PermKind {
     /// Codex 파일 바꾸기.
     FileChange,
     /// 외부 MCP 서버의 도구 하나(2026-10-25 — Claude `can_use_tool{mcp_server}` · Codex `mcpServer/elicitation/request{codex_approval_kind:
-    /// mcp_tool_call}`). '묻지 않기' 를 끈 서버만 온다.
+    /// mcp_tool_call}`). 실은 외부 서버의 도구는 늘 묻는다(2026-11-20 — 설정의 '묻지 않기' 를 걷었다 · 묻지 않기는 사이드 채팅의
+    /// 모드 · 허용 목록으로 서버가 정한다 — `side_chat::perm`).
     McpTool,
 }
 
-/// 사람의 결정 — v2 첫 판은 [허용 한 번] [거절] 둘뿐("늘 허용" 류 없음 — 설계 4절).
+/// 사람의 결정 — [허용 한 번] [거절](+ 사이드 채팅의 [이 채팅에서 허용] 은 허용 + 그 종류 기억 — `side_chat::perm` · 2026-11-20).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum Decision {
@@ -74,6 +75,10 @@ pub(crate) enum ResolvedBy {
     Cli,
     /// 프로세스가 끝나 기다리던 요청이 닫혔다.
     Closed,
+    /// 사이드 채팅의 모드가 Auto 라 세션 서버가 허용으로 답했다(2026-11-20 — `side_chat::perm` · 사람이 그 채팅에 정한 모드).
+    Auto,
+    /// 사람이 그 채팅에서 허용한 종류([이 채팅에서 허용] — 허용 목록)라 세션 서버가 허용으로 답했다(2026-11-20).
+    Remembered,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -148,11 +153,27 @@ pub(crate) enum Ev {
         detail: String,
         tool_name: String,
     },
-    /// 기다리던 요청이 끝났다. `decision` 은 사람이 정했을 때만.
+    /// 기다리던 요청이 끝났다. `decision` 은 사람이 정했을 때(+ 서버가 사람의 모드 · 허용 목록으로 대신 답했을 때 — `Auto` · `Remembered`)만.
     PermissionResolved {
         request_id: String,
         decision: Option<Decision>,
         by: ResolvedBy,
+    },
+    /// **서버가 카드 없이 대신 허용한 요청**(사이드 채팅만 — 2026-11-20 · `server::side_chat` 의 `Host::on_event`). 어댑터는 내지 않는다 —
+    /// 코어 장부에는 `Permission` 으로 적히고, 화면으로 나가는 그 번호의 몸만 이 꼴이다(카드 · 알림 없이 끝난 한 줄). 곧이어
+    /// `PermissionResolved{by}` 가 따른다. `by` = `Auto` · `Remembered`.
+    PermissionAuto {
+        request_id: String,
+        kind: PermKind,
+        title: String,
+        tool_name: String,
+        by: ResolvedBy,
+    },
+    /// 그 채팅의 **권한 모드 · 허용 목록**이 바뀌었다(사이드 채팅만 — 사람의 op `side_chat_set_perm_mode` · `side_chat_forget_allow` ·
+    /// [이 채팅에서 허용]). 보는 창들이 칩을 맞춘다. `allow` = 종류 열쇠(`side_chat::perm` — `outsideRead` · `fileChange` · `command` · `mcp:<서버>`).
+    PermPolicy {
+        mode: super::perm::PermMode,
+        allow: Vec<String>,
     },
     TurnEnded {
         turn: Option<String>,

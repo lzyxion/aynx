@@ -8,7 +8,9 @@
 //! | [`side_chat_interrupt`] | 같은 이름 | 쓰기 | `chat, epoch` → bool |
 //! | [`side_chat_set_model`] | 같은 이름 | 쓰기 | `chat, epoch, model` → bool |
 //! | [`side_chat_set_effort`] | 같은 이름 | 쓰기 | `chat, epoch, effort?`(없음 = CLI 기본) → bool |
-//! | [`side_chat_decide`] | 같은 이름 | 쓰기 | `chat, epoch, requestId, decision, message?` → true(사람의 권한 결정 — **승인 등급 아님**) |
+//! | [`side_chat_decide`] | 같은 이름 | 쓰기 | `chat, epoch, requestId, decision, message?, remember?` → true(사람의 권한 결정 — **승인 등급 아님** · `remember` = [이 채팅에서 허용] · 판 37) |
+//! | [`side_chat_set_perm_mode`] | 같은 이름 | 쓰기 | `chat, mode`(`manual` · `auto`) → `{mode, allow}`(판 37 — 채팅의 권한 모드) |
+//! | [`side_chat_forget_allow`] | 같은 이름 | 쓰기 | `chat, kind` → `{mode, allow}`(판 37 — 허용 목록에서 한 종류 빼기) |
 //! | [`side_chat_close`] | 같은 이름 | 쓰기 | `chat` → bool |
 //! | [`side_chat_attach`] | 같은 이름 | 읽기 | `chat` → 스냅숏(이 창을 보는 창에 덧붙인다 — F5 · 웹뷰 크래시 뒤 · 다른 창) |
 //! | [`side_chat_list`] | 같은 이름 | 읽기 | → 서버 표의 채팅들(`viewers` = 보는 창 수 — 창 라벨 없음) |
@@ -45,7 +47,9 @@ use tauri::Manager;
 
 use super::ai_proxy::wire_message;
 use super::client;
-use super::ipc::frame::{SIDE_CHAT_FILES_PROTOCOL, SIDE_CHAT_LINKS_PROTOCOL, SIDE_CHAT_SEEN_PROTOCOL, SIDE_CHAT_VIEWERS_PROTOCOL};
+use super::ipc::frame::{
+    SIDE_CHAT_FILES_PROTOCOL, SIDE_CHAT_LINKS_PROTOCOL, SIDE_CHAT_PERM_PROTOCOL, SIDE_CHAT_SEEN_PROTOCOL, SIDE_CHAT_VIEWERS_PROTOCOL,
+};
 use super::ipc::Grade;
 use crate::errors::{with_reason, SERVER_OUTDATED};
 use crate::i18n::tr;
@@ -242,8 +246,10 @@ pub async fn side_chat_set_effort(webview: tauri::Webview, chat: String, epoch: 
     call(Grade::Write, "side_chat_set_effort", json!({ "chat": chat, "epoch": epoch, "effort": effort })).await
 }
 
-/// **사람의 권한 결정**([허용 한 번] · [거절] — `decision` = `allow` · `deny`). 쓰기 등급이다 — 승인 등급 프레임은 `ops_approve` 하나뿐
-/// (`client::request` 가 승인 등급을 거부한다). MCP 에는 이 길이 없다(시험 `side_chat_stdin_only_human`).
+/// **사람의 권한 결정**([허용 한 번] · [이 채팅에서 허용] · [거절] — `decision` = `allow` · `deny`, `remember` = 허용 + 그 종류를 그 채팅의
+/// 허용 목록에 — 종류는 서버가 기다리는 요청에서 읽는다). 쓰기 등급이다 — 승인 등급 프레임은 `ops_approve` 하나뿐(`client::request` 가 승인
+/// 등급을 거부한다). MCP 에는 이 길이 없다(시험 `side_chat_stdin_only_human`). 판 36 이하 서버는 `remember` 를 버리므로 보내지 않는다.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn side_chat_decide(
     webview: tauri::Webview,
@@ -252,14 +258,50 @@ pub async fn side_chat_decide(
     request_id: String,
     decision: String,
     message: Option<String>,
+    remember: Option<bool>,
 ) -> Result<Value, String> {
     caller(&webview)?;
+    let remember = remember.unwrap_or(false);
+    if remember {
+        check_perm_protocol()?;
+    }
     call(
         Grade::Write,
         "side_chat_decide",
-        json!({ "chat": chat, "epoch": epoch, "requestId": request_id, "decision": decision, "message": message }),
+        json!({ "chat": chat, "epoch": epoch, "requestId": request_id, "decision": decision, "message": message, "remember": remember }),
     )
     .await
+}
+
+/// 판 37 미만 서버면 권한 모드 op · `remember` 를 보내지 않는다(옛 서버는 모르는 op · 칸 — 사람이 고른 것이 소리 없이 빠지지 않게).
+fn check_perm_protocol() -> Result<(), String> {
+    if client::negotiated_protocol().is_some_and(|p| p < SIDE_CHAT_PERM_PROTOCOL) {
+        return Err(with_reason(
+            SERVER_OUTDATED,
+            tr!(
+                ko: "세션 서버가 이전 판이라 사이드 채팅 권한 모드를 바꿀 수 없습니다 — 설정 › 세션 서버에서 [다시 시작] 하세요(열린 셸 세션이 닫힙니다)",
+                en: "The session server is an older version and cannot change a side chat's permission mode — restart it in Settings › Session server (open shell sessions will close)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// **채팅의 권한 모드**(`manual` · `auto` — 판 37 · `side_chat::perm`). 사람이 입력 칸 아래의 모드 칩에서 고른다(주 창 · 원격 창). 서버가 저장하고
+/// 보는 창에 알리며, Auto 면 기다리는 카드도 허용으로 답한다. MCP 에는 이 길이 없다.
+#[tauri::command]
+pub async fn side_chat_set_perm_mode(webview: tauri::Webview, chat: String, mode: String) -> Result<Value, String> {
+    caller(&webview)?;
+    check_perm_protocol()?;
+    call(Grade::Write, "side_chat_set_perm_mode", json!({ "chat": chat, "mode": mode })).await
+}
+
+/// **허용 목록에서 한 종류 빼기**(모드 칩 메뉴 항목의 × — 그 종류는 다시 묻는다 · 판 37). 빼기만 한다.
+#[tauri::command]
+pub async fn side_chat_forget_allow(webview: tauri::Webview, chat: String, kind: String) -> Result<Value, String> {
+    caller(&webview)?;
+    check_perm_protocol()?;
+    call(Grade::Write, "side_chat_forget_allow", json!({ "chat": chat, "kind": kind })).await
 }
 
 /// 닫는다(표에서 빼고 프로세스를 잡째 끝낸다) — 표에 있었나.
@@ -471,6 +513,8 @@ mod tests {
             ("side_chat_list", "Grade::Read"),
             ("side_chat_link", "Grade::Write"),
             ("side_chat_seen", "Grade::Write"),
+            ("side_chat_set_perm_mode", "Grade::Write"),
+            ("side_chat_forget_allow", "Grade::Write"),
         ] {
             assert!(src.contains(&format!("pub async fn {op}(webview: tauri::Webview")) || src.contains(&format!("pub async fn {op}(\n    webview: tauri::Webview")), "{op}");
             assert!(src.contains(&format!("{grade},\n        \"{op}\"")) || src.contains(&format!("{grade}, \"{op}\"")), "{op} 등급");

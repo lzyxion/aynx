@@ -137,6 +137,20 @@ node scripts/dev/run-harness.mjs side-chat-path-links-harness.mjs <outdir> --siz
 #     scpl-phone-notify-row.png · scpl-phone-notify-open.png
 ```
 
+## side-chat-perm-mode-harness.mjs — 사이드 채팅 권한 모드(Manual · Auto)
+
+(2026-11-20 — 판 37 · `chat/ChatPermChip` · `chat/ChatPermMenu`) 스텁은 `side-chat-composer-harness.mjs` 그대로 + 사건 통로 쏘기 · 새 명령
+`side_chat_set_perm_mode` · `side_chat_forget_allow` · 스냅숏 `permMode` · `permAllow` · 옛 설정 칸 `side_chat_no_ask: true` 가 남은 외부 서버. 모드 칩 모양 · 자리
+(모델 키워드 바로 왼쪽 · 24px · Manual 중성 면 · Auto 강조색) · 카드 단추 셋([이 채팅에서 허용] = `decide{remember: true}` — 종류 글자 없음) · 칩 메뉴(라디오
+둘 · "이 채팅에서 허용한 것" · × = `forget_allow`) · 서버가 대신 답한 끝난 한 줄 · 독 320 · 설정 › MCP 에 '묻지 않기' 가 없음 · 원격 데스크톱 · 폰(44px)을 본다.
+
+```bash
+node scripts/dev/run-harness.mjs side-chat-perm-mode-harness.mjs <outdir> --size 1280x860
+#   → perm-chip-manual.png · perm-card.png · perm-menu-allowed.png · perm-chip-auto.png · perm-auto-line.png · perm-320.png ·
+#     settings-mcp-list.png · settings-mcp-editor.png · remote-perm-menu.png · remote-perm-card.png · phone-perm-chip.png ·
+#     phone-perm-menu.png · phone-perm-card.png
+```
+
 ## side-chat-banner-harness.mjs — 사이드 채팅 알림 = AI 타일 알림 배너
 
 사이드 채팅 알림(끝남 · 권한 · 실패)이 오른쪽 위 토스트 대신 **AI 타일 알림 배너**로 서는지(2026-11-13 사용자 결정 · 목업 A안 — `app/side-chat-notify` →
@@ -1389,7 +1403,7 @@ PAGE_PORT=1430 node scripts/dev/profile-switcher-harness.mjs <outdir> 9231
 
 `pane/AiFlip.svelte` · `pane/FlipModelMenu.svelte` · `pane/flip-model.ts`(2026-11-13 — 목업 E2 · E3 · E4). `ai-flip-harness` 의 스텁에 쪽의 `last`
 (마지막 답의 모델 · 강도 — 대화 id 마다 `window.__txLast`)와 `stage_agent_attachment` 를 더했다. [+] 는 진짜 마우스 + `Page.setInterceptFileChooserDialog`
-(`fileChooserOpened` → `DOM.setFileInputFiles`)로 고른다. 첫 답 전 로고만 · `Opus 5.5` · 막대 · 알약 안 자리 · [+] → 파일 고르기 창 → 칩 → 괄호 붙여넣기 ·
+(`fileChooserOpened` → `DOM.setFileInputFiles`)로 고른다. 첫 답 전 로고만 · `Opus 5.5` · 막대 · 두 줄 상자의 아래 줄 자리(2026-11-20 — 넓은 타일 · 창 300 의 좁은 타일) · [+] → 파일 고르기 창 → 칩 → 괄호 붙여넣기 ·
 메뉴(body · 모델 넷 · ✓ · Effort 다섯 · 고리 없음) → 입력 문으로 나간 글이 정확히 `/model sonnet\r` · `/effort high\r` · 낙관적 표시 없음 · 메뉴 안 Esc ·
 다음 답 뒤 반영 · 일하는 중 잠김 · 권한 대기 · (2026-11-14) Claude Default 줄 `/model default\r` · Default 고리 `/effort auto\r` · TUI 입력 줄에 치다 만 글이면
 안 보냄(흐린 안내 글이면 보냄) · Codex `GPT-6-astra` · 모델 목록(`codex_models` 스텁) → `/model gpt-6-luna --reasoning=high\r` · 칸 → `/model --reasoning=xhigh\r` 를 판정한다. 원격 판은 원격 창 흉내

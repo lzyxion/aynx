@@ -137,17 +137,6 @@ const isSpace = (c: string | undefined) => c === undefined || /\s/.test(c);
 const isPunct = (c: string | undefined) => c !== undefined && /[\p{P}\p{S}]/u.test(c);
 
 /**
- * 링크 글자 뒤에 흐리게 붙일 **주소 꼬리** — 없으면 `null`.
- *
- * 글자가 곧 주소면 두 번 적지 않는다. **배지 링크**(`[![alt](img)](url)` — `image` 가 참)도 꼬리를 달지 않는다:
- * README 첫머리의 배지 줄은 주소가 길고 여럿이라, 꼬리를 달면 글보다 주소가 더 많은 줄이 된다. 주소는 툴팁에 있다.
- */
-export function linkUrlTail(s: { text: string; href: string; image?: true }): string | null {
-  if (s.image || s.text === s.href) return null;
-  return s.href;
-}
-
-/**
  * 출처 칩에 적을 **사이트 이름** — 주소의 호스트(포트 포함)에서 앞의 `www.` 만 뗀다(대화 면의 링크 칩 — `MarkdownBlocks` 의 `linkStyle="chip"`).
  *
  * 호스트는 **적힌 글자 그대로** 잘라 낸다 — `URL` 은 국제화 도메인을 퓨니코드(`xn--…`)로 바꿔 버려, 글에 `한국.kr` 이라 적혀

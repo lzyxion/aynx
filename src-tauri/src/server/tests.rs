@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 36, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 37, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -238,7 +238,9 @@ fn grades_are_checked_per_op() {
     assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
     // 판 30(데이터 탭의 읽기 전용 조회 — 새 op 없음 · `db_query` 의 `readOnly`) — MIN 은 그대로.
     assert_eq!(frame::DB_READ_QUERY_PROTOCOL, 30);
-    assert_eq!(frame::PROTOCOL_MAX, 36);
+    assert_eq!(frame::PROTOCOL_MAX, 37);
+    // 판 37(사이드 채팅 권한 모드 — 새 op 둘 · `side_chat_decide` 의 `remember`) — MIN 은 그대로.
+    assert_eq!(frame::SIDE_CHAT_PERM_PROTOCOL, 37);
     // 판 36(메신저 다리 Slack — 새 op 없음 · 몸의 `channel`) — MIN 은 그대로.
     assert_eq!(frame::SLACK_BOT_PROTOCOL, 36);
     // 판 35(메신저 다리 Discord — 새 op 없음 · 몸의 `channel`) — MIN 은 그대로.
@@ -2367,7 +2369,7 @@ pub(in crate::server) mod live {
         cfg.db_conns = Some(list.clone());
         let server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
-        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 36);
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 37);
         let db = super::super::db_ops::DB;
         let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
         let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });

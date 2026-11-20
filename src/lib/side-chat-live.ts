@@ -13,6 +13,7 @@ import type {
   Decision,
   ExitReason,
   PermKind,
+  PermMode,
   ResolvedBy,
   SideChatEv,
   SideChatSnapshot,
@@ -81,6 +82,13 @@ export interface LiveState {
   conversationId: string | null;
   /** 지금 프로세스에 실린 외부 MCP 서버 이름(`mcpServers` 사건 · 스냅숏 — 입력 칸 `[+]` › MCP). 띄우기 전에는 서버가 연 때 계산한 예정 이름 */
   mcp: string[];
+  /** 그 채팅의 권한 모드 · 허용 목록(2026-11-20 — 스냅숏 · `permPolicy` 사건 · 모드 칩) */
+  perm: { mode: PermMode; allow: string[] };
+}
+
+/** 서버가 대신 답한 요청인가(`auto` · `remembered` — 카드 대신 끝난 한 줄) */
+export function policyResolved(by: ResolvedBy | null | undefined): boolean {
+  return by === "auto" || by === "remembered";
 }
 
 /** 알림 항목인가 — 걷기에서 남고 다음 턴이 걷는다 */
@@ -89,7 +97,20 @@ function isNote(e: LiveEntry): boolean {
 }
 
 export function emptyLive(status: SideChatStatus = "stopped", model = "", conversationId: string | null = null): LiveState {
-  return { status, entries: [], next: 1, ended: 0, endedAt: 0, ready: null, untested: null, model, effort: null, conversationId, mcp: [] };
+  return {
+    status,
+    entries: [],
+    next: 1,
+    ended: 0,
+    endedAt: 0,
+    ready: null,
+    untested: null,
+    model,
+    effort: null,
+    conversationId,
+    mcp: [],
+    perm: { mode: "manual", allow: [] },
+  };
 }
 
 function push(s: LiveState, e: DistributiveOmit<LiveEntry, "n">): LiveState {
@@ -231,6 +252,21 @@ export function foldLive(s: LiveState, ev: SideChatEv): LiveState {
         resolved: null,
       });
     }
+    case "permissionAuto": {
+      // 서버가 카드 없이 대신 허용했다 — 끝난 카드 하나(대기 · 알림 없음). 곧이어 오는 `permissionResolved` 는 같은 결과를 다시 적을 뿐이다
+      if (s.entries.some((e) => e.kind === "permission" && e.requestId === ev.requestId)) return s;
+      return push(s, {
+        kind: "permission",
+        requestId: ev.requestId,
+        permKind: ev.kind,
+        title: ev.title,
+        detail: "",
+        toolName: ev.toolName,
+        resolved: { decision: "allow", by: ev.by },
+      });
+    }
+    case "permPolicy":
+      return { ...s, perm: { mode: ev.mode === "auto" ? "auto" : "manual", allow: Array.isArray(ev.allow) ? ev.allow.filter((k) => typeof k === "string") : [] } };
     case "permissionResolved": {
       const i = lastIndex(s.entries, (e) => e.kind === "permission" && e.requestId === ev.requestId);
       const e = i >= 0 ? s.entries[i] : null;
@@ -292,6 +328,7 @@ export function seedLive(snap: SideChatSnapshot, prev: LiveState | null = null):
     ...emptyLive(snap.status === "running" ? "running" : "stopped", snap.model, snap.conversationId),
     effort: snap.effort ?? null,
     mcp: snap.mcpServers ?? prev?.mcp ?? [],
+    perm: { mode: snap.permMode === "auto" ? "auto" : "manual", allow: Array.isArray(snap.permAllow) ? snap.permAllow : [] },
   };
   if (prev) {
     s = { ...s, next: prev.next, ended: prev.ended, endedAt: prev.endedAt, ready: prev.ready, untested: prev.untested };

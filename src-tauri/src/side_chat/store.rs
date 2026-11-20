@@ -13,7 +13,10 @@
 //! - **사이드 채팅 지침** `<데이터 루트>/sidechat/CLAUDE.md`(2026-11-01 — 설정 › 지침의 "사이드 채팅" 칸) — 읽기 · 쓰기 명령 둘
 //!   ([`side_chat_instructions_load`] · [`side_chat_instructions_save`]). 싣는 것은 세션 서버가 파일을 직접 읽어서다(`server::side_chat`).
 //!
-//! **지우기는 그 채팅 폴더 하나만**이고, 폴더나 그 안 어디에든 링크(심볼릭 · 정션)가 있으면 지우지 않는다 — `git worktree
+//! - **권한 모드 · 허용 목록** `<데이터 루트>/sidechat/.perm/<id>.json`(2026-11-20 — 쓰고 읽는 것은 세션 서버 · `side_chat::perm`). 채팅
+//!   폴더(CLI 의 cwd) 밖이다. 지우기가 함께 지운다.
+//!
+//! **지우기는 그 채팅 폴더 하나만**(+ 위 권한 파일 하나)이고, 폴더나 그 안 어디에든 링크(심볼릭 · 정션)가 있으면 지우지 않는다 — `git worktree
 //! remove` 가 정션을 따라가 노트 저장소를 지운 사고(CLAUDE.md)를 되풀이하지 않는다. 파일 안 값은 없다(대화는 CLI 가 제 폴더에 둔다).
 
 use std::path::{Path, PathBuf};
@@ -126,6 +129,8 @@ pub async fn side_chat_remove(id: String) -> Result<(), String> {
 /// [`side_chat_remove`] 의 몸 — 부모(`root`)를 받아 시험할 수 있게 둔다.
 fn remove_chat_dir(root: &Path, id: &str) -> Result<(), String> {
     let dir = chat_dir(root, id).ok_or_else(|| tr!(ko: "사이드 채팅 id 가 올바르지 않습니다", en: "Invalid side chat id"))?;
+    // 그 채팅의 권한 모드 · 허용 목록(`<root>/.perm/<id>.json` — 채팅 폴더 밖 · `side_chat::perm`)도 함께
+    super::perm::remove(root, id);
     let meta = match std::fs::symlink_metadata(&dir) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),

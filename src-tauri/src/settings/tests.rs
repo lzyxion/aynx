@@ -124,7 +124,7 @@ fn sample() -> AppSettings {
                 args: vec!["@playwright/mcp@latest".to_string()],
                 url: None,
                 side_chat: true,
-                side_chat_no_ask: false,
+                legacy_no_ask: None,
             }],
             args: BTreeMap::from([
                 (
