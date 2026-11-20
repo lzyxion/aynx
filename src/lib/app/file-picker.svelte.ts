@@ -1,4 +1,3 @@
-import { invoke } from "../ipc";
 import { forgetFocusOrigin, rememberFocusOrigin, returnFocus } from "$lib/app/focus-return.svelte.js";
 import { openDoc, resolveLocalCwd, resolveSshCwd, sftpDirOf } from "$lib/app/panes.svelte.js";
 import { sessionOf } from "$lib/app/sessions.svelte.js";
@@ -6,8 +5,7 @@ import { activeTab, paneOf } from "$lib/app/tabs.svelte.js";
 import { localBackend, remoteBackend, type FsBackend } from "$lib/fs-backend";
 import {
   filePickerRoot,
-  listRemoteShallow,
-  textEntries,
+  scanTextFiles,
   type FilePickerRoot,
   type PickerFile,
 } from "$lib/file-picker";
@@ -93,19 +91,11 @@ async function scan(my: number): Promise<void> {
     const base = root.root ?? (await backend.home());
     if (my !== seq) return;
     where = { root: base, remote: root.where === "remote", alias: root.where === "remote" ? root.source.alias : "" };
-    if (root.where === "local") {
-      const idx = await invoke<{ root: string; files: PickerFile[]; truncated: boolean }>("list_text_files", {
-        root: base,
-        limit: 20000,
-      });
-      if (my !== seq) return;
-      where = { root: idx.root, remote: false, alias: "" };
-      load = { state: "ready", files: textEntries(idx.files), truncated: idx.truncated };
-    } else {
-      const got = await listRemoteShallow((p) => backend.list(p), base);
-      if (my !== seq) return;
-      load = { state: "ready", files: textEntries(got.files), truncated: got.truncated };
-    }
+    // 로컬 = 재귀 `list_text_files` · 원격 = 두 층 SFTP — 갈래는 순수 층 하나(`scanTextFiles` — 문서 타일 파일 칸과 공용)
+    const got = await scanTextFiles(backend, base);
+    if (my !== seq) return;
+    if (root.where === "local") where = { root: got.root, remote: false, alias: "" };
+    load = { state: "ready", files: got.files, truncated: got.truncated };
   } catch (e) {
     if (my !== seq) return;
     load = { state: "error", message: stripReason(e instanceof Error ? e.message : String(e)) };

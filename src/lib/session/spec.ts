@@ -526,6 +526,11 @@ export interface PaneSpec {
    */
   docOutline?: true;
   /**
+   * **kind === `"doc"` 전용** — 본문 왼쪽의 **파일 곁 패널**을 켰는가(2026-11-19). **켤 때만** 적힌다(기본 꺼짐 — 키가 없다).
+   * `docOutline` 과 같은 무리(복제·이관이 물려주고 배치 파일에 저장 — `SavedLeaf.docFiles`), 미리 보기를 고정하지 않는다.
+   */
+  docFiles?: true;
+  /**
    * **kind === `"doc"` 전용** — 마크다운 편집 중 고른 보기([`DocEditView`]). **나란히(기본)가 아닐 때만** 적힌다.
    * `docOutline` 과 같은 무리(복제·이관이 물려주고 배치 파일에 저장 — `SavedLeaf.docEditView`), 미리 보기를 고정하지 않는다.
    */

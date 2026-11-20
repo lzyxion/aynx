@@ -46,6 +46,11 @@ describe("sanitizePane", () => {
     expect(sanitizePane(ssh)).toEqual(ssh);
   });
 
+  it("keeps the document tile's side panels (files · outline)", () => {
+    const doc: PaneSpec = { id: "pane-10", kind: "doc", path: "C:/a.md", docOutline: true, docFiles: true, docPreview: true };
+    expect(sanitizePane(doc)).toEqual(doc);
+  });
+
   it("keeps only the address of a query tile", () => {
     const q: PaneSpec = { id: "pane-8", kind: "query", tileKey: "k8", query: { connId: "c1", sql: "select 1", name: "app.db" } };
     expect(sanitizePane(q)).toEqual(q);

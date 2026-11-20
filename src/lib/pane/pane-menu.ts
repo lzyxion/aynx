@@ -341,6 +341,11 @@ export interface PaneMenuCtx {
    */
   tools?: readonly PaneMenuItem[];
   /**
+   * **문서 타일이 맡긴 "이 파일" 줄**(2026-11-19 사용자 — 외부 열기 · `pane-tools` 의 `fileMenu`) — [경로 복사] 바로 위에 서고 둘이 한 묶음이다.
+   * 액션은 `tool:<열쇠>` 다. 머리줄 ⋯ · 머리줄 우클릭에만 넘긴다(머리줄이 없으면 `undefined` — 몸 위 도구줄이 단추를 쥔다).
+   */
+  fileTools?: readonly PaneMenuItem[];
+  /**
    * **문서 타일의 경로**(10-20) — 있으면 "경로 복사" 줄이 서고 말풍선이 `별칭:경로`(원격) · `경로`(로컬)를 보여 준다(예전 도구줄의
    * 경로 글자와 같은 값 — 복사되는 것은 별칭 없는 `path`). 문서 타일에서만 넘긴다 — 없거나 `path` 가 비면 줄이 없다.
    */
@@ -647,16 +652,22 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
     });
   }
 
-  // 문서 타일의 "경로 복사"(10-20) — 머리줄에서 경로 글자를 걷은 대신 여기서 확인(말풍선)하고 가져간다. 대상이 타일이 아니라 그 문서라
-  // 분할(타일 배치) 묶음과 선으로 가른다. 이미지 타일(2026-11-14)도 같은 파일 한 장 타일이라 같은 줄이 선다.
-  if ((kind === "doc" || kind === "image") && ctx.docPath != null && ctx.docPath.path !== "") {
-    items.push({
-      action: "copy-path",
-      label: tr("files.menu.copypath"),
-      icon: "copy",
-      title: docPathShown(ctx.docPath),
-      separator: true,
-    });
+  // 파일 한 장 타일의 "이 파일" 묶음 — 타일이 맡긴 줄(`ctx.fileTools` — 문서 타일의 외부 열기, 2026-11-19 사용자) 다음 "경로 복사"(10-20 —
+  // 머리줄에서 경로 글자를 걷은 대신 여기서 확인(말풍선)하고 가져간다). 대상이 타일이 아니라 그 문서라 분할(타일 배치) 묶음과 선으로 가른다 —
+  // 선은 묶음의 첫 줄에만. 이미지 타일(2026-11-14)도 같은 파일 한 장 타일이라 같은 경로 복사 줄이 선다.
+  if (kind === "doc" || kind === "image") {
+    const file: PaneMenuItem[] = (ctx.fileTools ?? []).map((x) => ({ ...x, separator: undefined }));
+    if (ctx.docPath != null && ctx.docPath.path !== "") {
+      file.push({
+        action: "copy-path",
+        label: tr("files.menu.copypath"),
+        icon: "copy",
+        title: docPathShown(ctx.docPath),
+      });
+    }
+    const head = file[0];
+    if (head !== undefined) file[0] = { ...head, separator: true };
+    items.push(...file);
   }
   // 문서 타일의 [새 문서…](2026-11-11) — 경로 복사 아래 선 하나(대상이 이 문서가 아니라 그 폴더의 새 파일이다)
   if (kind === "doc" && ctx.docNew != null) items.push(newDocItem(ctx.docNew, tr));

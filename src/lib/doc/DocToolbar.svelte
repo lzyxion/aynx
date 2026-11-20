@@ -1,10 +1,11 @@
 <script lang="ts">
   /**
-   * **문서 타일의 도구줄**(`.bar` — 목차 단추 자리 · 편집 중 보기 고르기 · 스크롤 맞추기 · 글자 크기 · 고정 · 저장 표시 · [저장] · [되돌리기]/[편집 종료] ·
-   * 원문/보기 · [편집] · 외부 열기 · 새로고침) — `DocView.svelte` 에서 뗀 표시 조각. 읽기 · 편집 · 저장 · 충돌 · 고정 · 외부 열기와 그 상태는 부모가 쥐고
+   * **문서 타일의 도구줄**(`.bar` — 파일 단추 자리(몸 위 줄만) · 편집 중 보기 고르기 · 스크롤 맞추기 · 글자 크기 · 고정 · 저장 표시 · [저장] · [되돌리기]/[편집 종료] ·
+   * 원문/보기 · [편집] · 외부 열기(몸 위 줄만 — 머리줄 안에서는 타일 ⋯ 의 [경로 복사] 위 줄) · 새로고침 · 목차 단추) — `DocView.svelte` 에서 뗀 표시 조각. 읽기 · 편집 · 저장 · 충돌 · 고정 · 외부 열기와 그 상태는 부모가 쥐고
    * 여기는 받은 값대로 그리기만 하며 동작은 콜백이다. 머리줄 등록(`setPaneTools` 의 `docBar` 스니펫)은 부모에 있고 이것은 그 스니펫의 내용이다.
-   * 목차 단추는 부모의 스니펫(`outlineToggle` · `outlineDropButton` — 드롭다운 단추 손잡이가 부모에 있다)을 받아 그린다. 스크롤 맞추기 켬 · 툴팁
-   * 시각은 `bind:syncScroll` · `bind:infoNow`.
+   * 곁 패널 단추는 부모의 스니펫(`filesToggle` · `filesDropButton` · `outlineToggle` · `outlineDropButton` — 토글 · 드롭다운 단추 손잡이가 부모에 있다)을
+   * 받아 그린다. 자리는 고정이다(2026-11-19): 파일은 머리줄이면 이름 뒤(부모의 `docTail`) · 몸 위 줄이면 이 줄 맨 앞, 목차는 늘 이 줄 맨 끝(새로고침 뒤).
+   * 좁은 타일(`narrow`)이면 같은 자리의 드롭다운 단추가 선다. 스크롤 맞추기 켬 · 툴팁 시각은 `bind:syncScroll` · `bind:infoNow`.
    */
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -17,7 +18,9 @@
 
   let {
     head,
-    headSpan,
+    filesSlot,
+    filesToggle,
+    filesDropButton,
     outlineSlot,
     narrow,
     hasOutline,
@@ -61,12 +64,16 @@
     load,
   }: {
     head: boolean;
-    headSpan: number | null;
+    /** 파일 단추 자리가 서는가 — 경로가 있으면 늘(어떤 문서든) */
+    filesSlot: boolean;
+    filesToggle: Snippet<[boolean]>;
+    filesDropButton: Snippet<[boolean]>;
     outlineSlot: boolean;
+    /** 좁은 타일 — 곁 패널 대신 드롭다운 단추(`docPanelLayout` 의 `narrow`) */
     narrow: boolean;
     hasOutline: boolean;
-    outlineToggle: Snippet<[boolean]>;
-    outlineDropButton: Snippet<[boolean]>;
+    outlineToggle: Snippet;
+    outlineDropButton: Snippet;
     mdEdit: boolean;
     wideEdit: boolean;
     editView: DocEditView;
@@ -106,11 +113,11 @@
   } = $props();
 </script>
 
-<div class="bar" class:inhead={head} class:flush={head && headSpan !== null}>
-  {#if outlineSlot && !head}
-    <!-- 몸 위 줄 — 좁은 타일은 곁 패널 자리가 없어 지금 절 이름 단추(누르면 같은 목록이 드롭다운), 넓은 타일은 곁 패널 토글.
+<div class="bar" class:inhead={head}>
+  {#if filesSlot && !head}
+    <!-- 몸 위 줄의 앞자리 = 파일 — 넓은 타일은 왼쪽 곁 패널 토글, 좁은 타일은 같은 자리의 드롭다운 단추.
          머리줄 안이면 둘 다 이름 뒤 `docTail` 이 같은 자리에 그린다 -->
-    {#if narrow && hasOutline}{@render outlineDropButton(false)}{:else}{@render outlineToggle(false)}{/if}
+    {#if narrow}{@render filesDropButton(false)}{:else}{@render filesToggle(false)}{/if}
   {/if}
   {#if mdEdit}
     {#if wideEdit}
@@ -199,24 +206,28 @@
     >
   {/if}
   {#if preview}
-    <!-- 미리 보기 ↔ 붙박이. 타일링이라 되돌리는 길도 둔다 — 고정을 풀면 다음에 여는 문서가 이 칸을 갈아 끼운다 -->
+    <!-- 미리 보기 ↔ 붙박이. 타일링이라 되돌리는 길도 둔다 — 고정을 풀면 다음에 여는 문서가 이 칸을 갈아 끼운다.
+         미리 보기는 강조 없는 핀이다(임시임은 머리줄 이름의 기울임이 말한다) -->
     <button
       type="button"
-      class="btn ico keep"
+      class="btn ico"
       data-head-act
+      aria-pressed="false"
       title={t("files.doc.keep")}
       aria-label={t("files.doc.keep")}
       onclick={keep}><UiIcon name="pin" size={13} /></button
     >
   {:else if !editing && onunkeep}
-    <!-- 편집 중에는 서지 않는다 — 편집하는 동안은 고정이어야 다음 파일이 이 칸을 갈아 끼우지 않는다 -->
+    <!-- 고정됨 — 켜진 토글처럼 강조 면(`.on`)이고 그림은 같은 핀이다(하단 독 핀과 같은 관례). 누르면 고정을 푼다.
+         편집 중에는 서지 않는다 — 편집하는 동안은 고정이어야 다음 파일이 이 칸을 갈아 끼우지 않는다 -->
     <button
       type="button"
-      class="btn ico keep"
+      class="btn ico on"
       data-head-act
+      aria-pressed="true"
       title={t("files.doc.unkeep")}
       aria-label={t("files.doc.unkeep")}
-      onclick={unkeep}><UiIcon name="pin-off" size={13} /></button
+      onclick={unkeep}><UiIcon name="pin" size={13} /></button
     >
   {/if}
   {#if editing}
@@ -277,8 +288,10 @@
   {/if}
   <!-- 외부 열기 자리 하나 — 로컬은 기본 앱으로 열기, 원격은 외부 편집기로 편집(받아서 열고 저장하면 올린다).
        `fs-backend` 에서 둘(`canOpenExternal` · `canEdit`)은 동시에 서지 않는다(원격 창에서는 둘 다 서지 않는다 —
-       `localShellCaps` · `remoteEditCap`) -->
-  {#if backend.canOpenExternal}
+       `localShellCaps` · `remoteEditCap`).
+       머리줄 안(`head`)에서는 그리지 않는다 — 타일 ⋯ 의 [경로 복사] 위 줄이 쥔다(`DocView` 의 `setPaneTools` `fileMenu` · 2026-11-19 사용자).
+       머리줄이 없어 몸 위에 그릴 때(설정 `tile_header` 끔 · 폰)는 ⋯ 에 도구 줄이 얹히지 않으므로 예전 단추를 그대로 둔다 -->
+  {#if !head && backend.canOpenExternal}
     <button
       type="button"
       class="btn ico"
@@ -287,7 +300,7 @@
       aria-label={t("files.menu.openexternal")}
       onclick={() => void openExternally()}><UiIcon name="external" size={13} /></button
     >
-  {:else if backend.canEdit}
+  {:else if !head && backend.canEdit}
     <button
       type="button"
       class="btn ico"
@@ -310,6 +323,11 @@
     disabled={offline || loading}
     onclick={() => void load()}><UiIcon name="refresh" size={13} /></button
   >
+  {#if outlineSlot}
+    <!-- 목차 — 늘 이 줄 맨 끝(새로고침 뒤 · 머리줄 안이든 몸 위 줄이든). 넓은 타일은 오른쪽 곁 패널 토글(제목이 없으면 흐린 채 툴팁이 까닭을
+         말한다), 좁은 타일은 같은 자리의 드롭다운 단추 -->
+    {#if narrow && hasOutline}{@render outlineDropButton()}{:else}{@render outlineToggle()}{/if}
+  {/if}
 </div>
 
 <style>
@@ -333,11 +351,6 @@
     --head-act-gap: 4px;
     /* 폭 담기를 걷는다 — 머리줄이 이 줄의 내용 폭을 재야 좁을 때 이름이 먼저 준다(`PaneTools.keepBar` — 담긴 상자는 내용 폭이 0 으로 잡힌다) */
     container-type: normal;
-  }
-
-  /* 목차 패널 경계에 맞춘 머리줄(`span`) — 도구가 본문 열의 x 에서 바로 선다(그 x 는 머리줄이 맞춘다 — `pane/head-span`) */
-  .bar.inhead.flush {
-    padding-left: 0;
   }
 
   /* 빈 칸 — 남는 폭을 먹어 뒤의 상태 · 단추를 오른쪽 끝으로(예전 경로 글자의 자리) */
@@ -377,13 +390,6 @@
   .btn:disabled {
     opacity: 0.4;
     cursor: default;
-  }
-
-  /* 미리 보기의 [고정] — 점선 테두리가 "아직 임시다" 를 말한다(이름의 기울임과 같은 뜻). 다른 조작처럼 포커스 밖에서는 접힌다 —
-     그때 임시임은 이름의 기울임이 말한다 */
-  .btn.keep {
-    border-style: dashed;
-    border-color: var(--border);
   }
 
   /* 아이콘만 선 단추 — 정사각 한 크기(목차 드롭다운처럼 글자가 내용인 단추만 이 밖이다) */

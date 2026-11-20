@@ -861,6 +861,11 @@ export const app = {
   "unsaved.tearChanged": "옮기는 사이 문서가 바뀌어 옮기지 않았습니다.",
   "unsaved.tearKept": "옮기는 사이 문서가 바뀌어 원래 창에도 남겼습니다.",
   "unsaved.tear": "저장하지 않은 문서를 옮길 수 없습니다 — 저장한 뒤 옮기세요.",
+  // 문서 타일의 파일 곁 패널에서 다른 파일로 바꿀 때(2026-11-19 — `confirmUnsavedClose` 의 `verb: "switch"`)
+  "unsaved.switch.save": "저장하고 열기",
+  "unsaved.switch.discard": "버리고 열기",
+  "unsaved.switch.saveFailed": "저장하지 못해 바꾸지 않았습니다 — {name}",
+  "unsaved.switch.noDialog": "확인 창을 열지 못해 바꾸지 않았습니다 (저장하지 않은 변경이 있습니다).",
   "tabs.unsaved": "저장하지 않은 변경이 있습니다",
 
 

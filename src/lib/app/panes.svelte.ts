@@ -8,6 +8,8 @@ import {
   borrowsSession,
   isFileLeafKind,
   planDocOpen,
+  planDocSwitch,
+  carryDocTileView,
   findNewDocPane,
   planFileOpen,
   findPane,
@@ -43,13 +45,19 @@ import { resolveDocLink } from "$lib/doc-links";
 import { DOC_SPLIT_DEFAULT, clampDocSplit } from "$lib/doc-edit-preview";
 import { DOC_ZOOM_DEFAULT, clampDocZoom } from "$lib/doc-zoom";
 import { isTextLike } from "$lib/doc-lang";
+import type { DocFilesSeed } from "$lib/doc-files";
+import { noteDocSwap } from "$lib/doc-swap";
 import { imageMime } from "$lib/browser/preview";
 import { setDocAnchor, setDocLine } from "$lib/app/doc-anchors.svelte.js";
-import { isDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { isDocDirty, setDocDirty } from "$lib/app/doc-dirty.svelte.js";
+import { dropDocDraft } from "$lib/app/doc-drafts.svelte.js";
+import { confirmUnsavedClose } from "$lib/app/unsaved-docs";
+import { focusPaneBody } from "$lib/pane/focus";
 import { isRemote } from "$lib/app/window.svelte.js";
 import {
   activeTab,
   adoptPane,
+  docNameOf,
   focusPane,
   openInNewTab,
   openPaneBeside,
@@ -608,7 +616,7 @@ export interface DocSource {
  * - 새 문서는 **미리 보기**(`docPreview`)로 선다. 자리는 [`planDocOpen`] 이 정한다:
  *   같은 파일을 보는 문서 타일이 있으면 그리로 포커스(더블클릭 두 번에 같은 글이 두 칸을 차지하면 안 된다) ·
  *   없고 이 탭에 미리 보기 문서가 있으면 **그 칸을 갈아 끼운다**([`replaceTile`] — 보기(`docMode`)는 새 파일이라
- *   기본으로) · 둘 다 없으면 `nearPaneId` **옆**([`openPaneBeside`]). 파일을 서너 개 훑을 때마다 여는 자리가 반씩 쪼개져 손톱만 해지던 것을 막는다
+ *   기본으로 · 문서 → 문서라 타일 등장 애니메이션 없이 본문만 떠오른다 · 파일 칸은 새 문서의 폴더에서 시작한다) · 둘 다 없으면 `nearPaneId` **옆**([`openPaneBeside`]). 파일을 서너 개 훑을 때마다 여는 자리가 반씩 쪼개져 손톱만 해지던 것을 막는다
  *   (docs/log/2026-09-27-doc-tile.md "미리 보기 타일 재사용").
  *
  * 탭이나 `nearPaneId` 가 사라졌으면 아무 일도 하지 않는다(고르는 사이 닫힌 경우). 돌려주는 값은 그 문서가 선
@@ -621,13 +629,9 @@ export function openDoc(o: FileOpenRequest): string | null {
   if (plan.kind === "focus") return focusOpened(tab, plan.paneId);
   const pane = newDocPane(o.path, o.source);
   pane.docPreview = true;
-  // 갈아 끼우는 칸의 목차 패널은 남긴다 — 보기(`docMode`)는 파일의 것이지만, 목차는 "이 칸에서 훑어보는 방식" 이다
-  // 편집 중 보기 · 나란히 비율 · 글자 크기도 같은 까닭으로 남긴다
-  const old = plan.kind === "replace" ? findPane(tab.root, plan.paneId) : null;
-  if (old?.docOutline === true) pane.docOutline = true;
-  if (old?.docEditView) pane.docEditView = old.docEditView;
-  if (old?.docSplit !== undefined) pane.docSplit = old.docSplit;
-  if (old?.docZoom !== undefined) pane.docZoom = old.docZoom;
+  // 갈아 끼우는 칸의 곁 패널(목차 · 파일)은 남긴다 — 보기(`docMode`)는 파일의 것이지만, 곁 패널은 "이 칸에서 훑어보는 방식" 이다
+  // 편집 중 보기 · 나란히 비율 · 글자 크기도 같은 까닭으로 남긴다(`carryDocTileView` — 미리 보기 표식은 위에서 단 그대로)
+  carryDocTileView(plan.kind === "replace" ? findPane(tab.root, plan.paneId) : null, pane);
   // 다른 타일이 최대화 중이면 먼저 푼다 — 갈아 끼운 칸이 숨은 채로 남지 않게(못 갈아 끼우면 옆에 여는 길도 어차피 푼다)
   if (plan.kind === "replace") unzoomFor(tab, plan.paneId);
   if (plan.kind === "replace" && replaceTile(tab.id, plan.paneId, pane)) {
@@ -911,6 +915,77 @@ export async function openDocLink(tabId: string, paneId: string, link: string, a
   if (opened !== null && anchor) setDocAnchor(opened, anchor);
 }
 
+/** 두 [`DocSource`] 가 같은 곳인가(`undefined` = 로컬끼리) — [`switchDocHere`] 가 물음 뒤 타일이 그대로인지 볼 때 */
+function sameDocSource(a: DocSource | undefined, b: DocSource | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.paneId === b.paneId && a.alias === b.alias;
+}
+
+/**
+ * **문서 타일의 파일 곁 패널에서 고른 파일을 이 타일에서 연다**(2026-11-19 · 고정이든 미리 보기든).
+ *
+ * `path` 만 바꾸지 않고 **새 명세로 칸을 갈아 끼운다**([`replaceTile`]) — 같은 id 로 남으면 편집 · 띠 · 초안 · 캐시가 옛 파일 것으로 남는다.
+ * 1. 탭 · 타일을 찾고 어디의 파일인지([`docSourceOf`]) 본다. 원본을 잃었거나(`null`) 원격이 끊겼으면 안내 한 줄 뒤 그만둔다.
+ * 2. [`planDocSwitch`] — `same`(지금 문서를 다시 고름) 이면 본문 포커스만 · `focus`(같은 파일을 다른 타일이 봄 — 사용자 결정) 면 그 타일로
+ *    ([`focusOpened`]) · `replace` 면 3.
+ * 3. 저장 안 한 변경(걸린 초안 포함 — 초안을 걸면 `isDocDirty` 가 참이다)이면 묻는다(`confirmUnsavedClose` 의 `"switch"`). 취소 · 저장 실패면 그대로.
+ *    물음 뒤에는 탭 · 타일 · 경로 · 원본을 다시 찾아 다르면 그만두고, 계획도 다시 세운다(그사이 같은 파일이 다른 타일에 섰을 수 있다).
+ *    [버리기]면 표시와 초안을 거둔다(`closePaneNow` 의 두 줄과 같다) — **`replaceTile` 이 저장 안 한 문서를 한 번 더 거절하므로 그 앞에서**.
+ * 4. 새 명세 = [`newDocPane`] + [`carryDocTileView`](곁 패널 · 편집 보기 · 비율 · 글자 크기 · 미리 보기 표식 옛 값 그대로 · 보기는 파일의 것).
+ *    다른 타일이 최대화 중이면 먼저 풀고([`unzoomFor`]) 갈아 끼운다. 이 타일이 최대화돼 있으면 새 타일이 최대화를 이어받는다
+ *    ([`replaceTile`] 의 `keepZoom` — 파일을 고를 때마다 최대화가 풀리면 안 된다). 새 타일의 본문 포커스는 `replaceTile` 의 포커스 이동(`routeTileFocus`)이 준다.
+ * 5. 갈아 끼우기 바로 앞에서 옛 파일 칸의 상태 사본(`files` — 고른 그 순간의 것)을 새 id 로 싣는다(`doc-swap.ts` 의 `noteDocSwap`) — 새 DocView 가
+ *    폴더 · 목록 · 찾기 글 · 찾기 자료 · 고른 줄 · 스크롤 그대로 선다. 문서 → 문서라 `replaceTile` 은 타일 등장 애니메이션을 켜지 않는다(본문만 떠오른다).
+ *
+ * 원격 창(원격 웹 · 폰)에서는 `replaceTile` 이 배치를 바꾸지 않고 요청으로 보낸다(`remoteLayout` — 늘 `true`). 메인 PC 는 그 명세를 새 id 로
+ * 세우고(`app/mirror-requests` 의 `fresh`) 메인 PC 쪽 문서가 저장 안 한 상태면 `unsaved` 로 거절한다(원격 창이 안내 한 줄). 물음 · 거두기는
+ * 원격 창 자신의 표시(`isDocDirty`)를 본다. 요청에는 `keepZoom` 이 실리지 않아 원격 창에서는 최대화가 풀린다.
+ */
+export async function switchDocHere(tabId: string, paneId: string, path: string, files?: DocFilesSeed): Promise<void> {
+  const find = (): { tab: TabSpec; pane: PaneSpec } | null => {
+    const tab = residentWindowTabs().find((t) => t.id === tabId);
+    const pane = tab ? findPane(tab.root, paneId) : null;
+    return tab && pane && pane.kind === "doc" ? { tab, pane } : null;
+  };
+  const first = find();
+  if (!first || path === "") return;
+  const oldPath = first.pane.path ?? "";
+  const src = docSourceOf(first.pane);
+  if (src === null || (src !== undefined && !remoteBackend(sessionOf(src.paneId)).online)) {
+    showNotice(t("app.doc.open.offline"));
+    return;
+  }
+  const source = src;
+  let at = first;
+  let plan = planDocSwitch(at.tab.root, paneId, path, source);
+  if (plan.kind === "replace" && isDocDirty(paneId)) {
+    if (!(await confirmUnsavedClose([paneId], docNameOf, "switch"))) return;
+    const again = find();
+    if (!again || (again.pane.path ?? "") !== oldPath || !sameDocSource(docSourceOf(again.pane) ?? undefined, source)) return;
+    at = again;
+    plan = planDocSwitch(at.tab.root, paneId, path, source);
+    // 저장했으면 이미 깨끗하고, 버렸으면 여기서 거둔다 — 갈아 끼울 때만(`focus` · `same` 이면 글은 그 타일에 그대로 남는다)
+    if (plan.kind === "replace") {
+      setDocDirty(paneId, false);
+      dropDocDraft(paneId);
+    }
+  }
+  if (plan.kind === "same") {
+    focusPane(at.tab.id, paneId);
+    focusPaneBody(paneId);
+    return;
+  }
+  if (plan.kind === "focus") {
+    focusOpened(at.tab, plan.paneId);
+    return;
+  }
+  const pane = carryDocTileView(at.pane, newDocPane(path, source), { keepPreview: true });
+  unzoomFor(at.tab, paneId);
+  // 파일 칸 인계는 갈아 끼우기 바로 앞에서만 싣는다 — 취소 · `same` · `focus` 로 끝난 바꾸기는 위에서 돌아가 싣지 않는다
+  if (files) noteDocSwap(pane.id, files);
+  if (replaceTile(at.tab.id, paneId, pane, undefined, { keepZoom: true })) selectTab(at.tab.id);
+}
+
 /**
  * 미리 보기 문서를 **붙박이로** — 툴바의 [고정] (docs/log/2026-09-27-doc-tile.md "미리 보기 타일 재사용").
  * 표식 키를 지운다(붙박이가 기본이라 키가 없다). 다음에 여는 파일은 이 타일을 갈아 끼우지 않고 옆에 선다.
@@ -972,6 +1047,23 @@ export function noteDocOutline(paneId: string, open: boolean): void {
       if (pane.docOutline !== true) pane.docOutline = true;
     } else if (pane.docOutline !== undefined) {
       delete pane.docOutline;
+    }
+    return;
+  }
+}
+
+/**
+ * 문서 타일의 **파일 곁 패널을 켰다/껐다**(2026-11-19) — [`noteDocOutline`] 의 짝. 끄면 키를 지우고, 미리 보기를 고정하지 않는다.
+ */
+export function noteDocFiles(paneId: string, open: boolean): void {
+  for (const tab of residentWindowTabs()) {
+    const pane = findPane(tab.root, paneId);
+    if (!pane) continue;
+    if (pane.kind !== "doc") return;
+    if (open) {
+      if (pane.docFiles !== true) pane.docFiles = true;
+    } else if (pane.docFiles !== undefined) {
+      delete pane.docFiles;
     }
     return;
   }

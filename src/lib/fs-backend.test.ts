@@ -361,6 +361,7 @@ describe("localBackend", () => {
     expect(typeof local.uploadBytes).toBe("function");
     expect(typeof local.readText).toBe("function");
     expect(typeof local.writeText).toBe("function");
+    expect(typeof local.listTextFiles).toBe("function"); // 하위 폴더까지의 글 파일 — 로컬만
     expect(local.download).toBeUndefined();
     expect(local.edit).toBeUndefined();
   });
@@ -444,6 +445,7 @@ describe("remoteBackend", () => {
     expect(remote.openExternal).toBeUndefined();
     expect(remote.reveal).toBeUndefined();
     expect(remote.uploadBytes).toBeUndefined();
+    expect(remote.listTextFiles).toBeUndefined(); // 원격 찾기는 두 층 SFTP(`scanTextFiles`)
   });
 });
 

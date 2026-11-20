@@ -12,6 +12,9 @@
  * - **서식 ▸** 굵게 · 기울임 · 취소선 · 인라인 코드 — 고른 글을 감싼다
  * - **단락 ▸** 제목 1 · 2 · 3 ─ 글머리 목록 · 번호 목록 · 체크 목록 ─ 인용 — 걸친 줄 전부
  * - **삽입 ▸** 링크 · 코드 블록
+ *
+ * `docExternalItems` 는 본문 우클릭이 아니라 **타일 ⋯ 메뉴의 [경로 복사] 위에 얹는 줄**(`pane/pane-tools` 의 `fileMenu`)이다 — 외부 열기(로컬 = 기본 앱으로 열기 ·
+ * 원격 = 외부 편집기로 편집). 머리줄 도구줄에서 옮겨 왔다(2026-11-19 사용자). 둘이 한 묶음("이 문서")이라 선은 묶음 첫 줄에만 선다.
  */
 
 import { newDocItem, type PaneMenuItem, type PaneMenuRow } from "$lib/pane/pane-menu";
@@ -113,6 +116,36 @@ function formatGroups(tr: Tr): PaneMenuRow[] {
       children: [fmt(tr, "link", "link"), fmt(tr, "codeblock", "code-block")],
     },
   ];
+}
+
+/** 타일 ⋯ 외부 열기 줄([경로 복사] 위)의 열쇠 — `DocView` 의 `run` 이 같은 값으로 가른다 */
+export const DOC_TOOL_EXTERNAL = "external";
+export const DOC_TOOL_EDIT_EXTERNAL = "edit-external";
+
+/** 외부 열기 판정 — `fs-backend` 에서 `canOpenExternal` · `canEdit` 은 동시에 서지 않는다 */
+export interface DocExternalCtx {
+  canOpenExternal: boolean;
+  canEdit: boolean;
+  /** 원격이 끊겼나 — 외부 편집기로 편집 줄을 흐리게 한다 */
+  offline: boolean;
+}
+
+/** 타일 ⋯ 의 [경로 복사] 위에 서는 외부 열기 줄 —로컬은 기본 앱으로 열기, 원격은 외부 편집기로 편집(끊기면 흐림), 둘 다 없으면 빈 배열 */
+export function docExternalItems(ctx: DocExternalCtx, tr: Tr): PaneMenuItem[] {
+  if (ctx.canOpenExternal) {
+    return [{ action: `${TOOL_ACTION_PREFIX}${DOC_TOOL_EXTERNAL}`, label: tr("files.menu.openexternal"), icon: "external" }];
+  }
+  if (ctx.canEdit) {
+    return [
+      {
+        action: `${TOOL_ACTION_PREFIX}${DOC_TOOL_EDIT_EXTERNAL}`,
+        label: tr("files.menu.edit.external"),
+        icon: "external",
+        ...(ctx.offline ? { disabled: true, title: tr("files.doc.edit.block.offline") } : {}),
+      },
+    ];
+  }
+  return [];
 }
 
 export function docMenuItems(ctx: DocMenuCtx, tr: Tr): PaneMenuRow[] {

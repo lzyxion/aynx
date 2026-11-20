@@ -1,3 +1,4 @@
+import type { DocFilesSeed } from "$lib/doc-files";
 import type { HostEntry, HostsDrag } from "$lib/hosts";
 import type {
   ConfirmHostKey,
@@ -257,6 +258,13 @@ export interface PaneHostProps {
   ondocmode?: (paneId: string, mode: DocMode) => void;
   /** 문서 타일의 [목차] — 상위가 `PaneSpec.docOutline` 에 적는다 (끄면 키를 지운다 · 미리 보기는 그대로) */
   ondocoutline?: (paneId: string, open: boolean) => void;
+  /** 문서 타일의 [파일] — 상위가 `PaneSpec.docFiles` 에 적는다 (끄면 키를 지운다 · 미리 보기는 그대로) */
+  ondocfiles?: (paneId: string, open: boolean) => void;
+  /**
+   * 문서 타일의 파일 칸에서 파일을 골랐다 — **이 타일에서** 그 파일로 바꾼다(받는 쪽 `switchDocHere` — 같은 문서면 본문 포커스 ·
+   * 다른 타일이 보고 있으면 그리로 · 저장 안 한 변경이면 묻는다). `files` 는 파일 칸의 상태 사본 — 갈아 끼우면 새 타일이 이어받는다
+   */
+  ondocswitch?: (tabId: string, paneId: string, path: string, files?: DocFilesSeed) => void;
   /** 문서 타일의 편집 중 보기(원문만 · 나란히 · 미리 보기만) — 상위가 `PaneSpec.docEditView` 에 적는다 (나란히면 키를 지운다) */
   ondoceditview?: (paneId: string, view: DocEditView) => void;
   /** 문서 타일의 나란히 경계 비율 — 상위가 `PaneSpec.docSplit` 에 적는다 (반반이면 키를 지운다) */

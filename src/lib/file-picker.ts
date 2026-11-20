@@ -13,6 +13,9 @@ import { startDirFor } from "$lib/start-dir";
  * - [`listRemoteShallow`] — 원격은 **뿌리 한 층 + 하위 폴더 한 층**까지만(느린 링크 보호 — 재귀 훑기는 SFTP
  *   왕복이 폴더 수만큼이다).
  *
+ * - [`scanTextFiles`] — 로컬은 재귀 목록(`FsBackend.listTextFiles`), 원격은 [`listRemoteShallow`] — 문서 타일 파일 칸의
+ *   찾기도 같이 쓴다(2026-11-19). [`splitRel`] — 줄 그림의 (폴더, 이름) 나누기.
+ *
  * 화면(`FilePicker.svelte`)과 저장소(`app/file-picker.svelte.ts`)가 이것을 쓴다.
  */
 
@@ -165,4 +168,44 @@ export async function listRemoteShallow(
     }
   }
   return { files, truncated };
+}
+
+/** 로컬 훑기 상한 — Rust `list_text_files` 의 `limit` (팔레트가 처음부터 쓰던 값) */
+const LOCAL_SCAN_LIMIT = 20000;
+
+/** [`scanTextFiles`] 가 백엔드에서 쓰는 것만 — `FsBackend` 의 부분 구조 */
+export interface TextScanBackend {
+  list(path: string): Promise<SftpEntry[]>;
+  listTextFiles?(
+    root: string,
+    limit: number,
+  ): Promise<{ root: string; files: PickerFile[]; truncated: boolean }>;
+}
+
+/** 훑은 결과 — `root` 는 실제로 훑은 뿌리(로컬은 Rust 가 푼 값), `shallow` 는 두 층까지만 본 원격 갈래 */
+export interface TextScan {
+  root: string;
+  files: PickerFile[];
+  truncated: boolean;
+  shallow: boolean;
+}
+
+/**
+ * **하위 폴더까지의 글 파일** (2026-11-19 — 팔레트 "파일 열기…" 와 문서 타일 파일 칸의 찾기가 같이 쓴다). 로컬처럼
+ * `listTextFiles` 가 있으면 그것(재귀 · 상한 [`LOCAL_SCAN_LIMIT`]), 없으면 [`listRemoteShallow`](두 층). 끝에
+ * [`textEntries`]. 실패는 그대로 던진다(문구 다듬기는 부르는 쪽).
+ */
+export async function scanTextFiles(b: TextScanBackend, root: string): Promise<TextScan> {
+  if (b.listTextFiles) {
+    const idx = await b.listTextFiles(root, LOCAL_SCAN_LIMIT);
+    return { root: idx.root, files: textEntries(idx.files), truncated: idx.truncated, shallow: false };
+  }
+  const got = await listRemoteShallow((p) => b.list(p), root);
+  return { root, files: textEntries(got.files), truncated: got.truncated, shallow: true };
+}
+
+/** 상대 경로 → (폴더 부분, 이름) — 이름을 앞세워 그리는 목록(`FilePicker.svelte` · 문서 타일 파일 칸의 찾기 결과)이 쓴다 */
+export function splitRel(rel: string): { dir: string; name: string } {
+  const i = rel.lastIndexOf("/");
+  return i < 0 ? { dir: "", name: rel } : { dir: rel.slice(0, i), name: rel.slice(i + 1) };
 }

@@ -40,6 +40,8 @@ import {
   tabFixedTitle,
   tabsToClose,
   planDocOpen,
+  planDocSwitch,
+  carryDocTileView,
   replacePane,
   spiralInsert,
   tabTitleLabel,
@@ -904,18 +906,72 @@ describe("문서 타일 (docs/log/2026-09-27-doc-tile.md)", () => {
     expect(findNewDocPane([remote], before, "/a.md", { paneId: "p2", alias: "web-01" })).toBeNull();
   });
 
-  it("clonePane 은 보기(`docMode`) · 목차(`docOutline`) · 편집 보기(`docEditView` · `docSplit`) · 글자 크기(`docZoom`)와 빌림을 그대로 물려준다", () => {
+  it("clonePane 은 보기(`docMode`) · 목차(`docOutline`) · 파일(`docFiles`) · 편집 보기(`docEditView` · `docSplit`) · 글자 크기(`docZoom`)와 빌림을 그대로 물려준다", () => {
     const pane = {
       ...newDocPane("/a.md", { paneId: "p1", alias: "web-01" }),
       docMode: "source" as const,
       docOutline: true as const,
+      docFiles: true as const,
       docEditView: "preview" as const,
       docSplit: 0.3,
       docZoom: 150,
     };
     const copy = clonePane(pane);
     expect(copy.id).not.toBe(pane.id);
-    expect(copy).toMatchObject({ kind: "doc", path: "/a.md", sourcePaneId: "p1", alias: "web-01", docMode: "source", docOutline: true, docEditView: "preview", docSplit: 0.3, docZoom: 150 });
+    expect(copy).toMatchObject({ kind: "doc", path: "/a.md", sourcePaneId: "p1", alias: "web-01", docMode: "source", docOutline: true, docFiles: true, docEditView: "preview", docSplit: 0.3, docZoom: 150 });
+  });
+
+  it("carryDocTileView — 곁 패널 · 편집 보기 · 비율 · 글자 크기만 물려주고 보기(`docMode`)는 두고 간다 · 미리 보기는 `keepPreview` 일 때만 옛 값", () => {
+    const old = {
+      ...newDocPane("C:/a.md"),
+      docMode: "source" as const,
+      docOutline: true as const,
+      docFiles: true as const,
+      docEditView: "preview" as const,
+      docSplit: 0.3,
+      docZoom: 150,
+      docPreview: true as const,
+    };
+    const fresh = newDocPane("C:/b.md");
+    expect(carryDocTileView(old, fresh)).toBe(fresh);
+    expect(fresh).toEqual({ id: fresh.id, kind: "doc", path: "C:/b.md", docOutline: true, docFiles: true, docEditView: "preview", docSplit: 0.3, docZoom: 150 });
+    // `openDoc` — 미리 보기 표식은 새 명세의 것 그대로
+    const pv = { ...newDocPane("C:/b.md"), docPreview: true as const };
+    expect(carryDocTileView(newDocPane("C:/a.md"), pv)).toEqual({ id: pv.id, kind: "doc", path: "C:/b.md", docPreview: true });
+    // `switchDocHere` — 미리 보기 표식은 옛 값(고정이면 고정, 미리 보기면 미리 보기)
+    expect(carryDocTileView(old, newDocPane("C:/b.md"), { keepPreview: true }).docPreview).toBe(true);
+    expect(carryDocTileView(newDocPane("C:/a.md"), pv, { keepPreview: true })).not.toHaveProperty("docPreview");
+    // 옛 칸이 없으면 그대로
+    const lone = newDocPane("C:/c.md");
+    expect(carryDocTileView(null, lone)).toEqual({ id: lone.id, kind: "doc", path: "C:/c.md" });
+  });
+});
+
+describe("planDocSwitch — 파일 곁 패널에서 고른 파일(2026-11-19)", () => {
+  const web = { paneId: "p1", alias: "web-01" };
+
+  it("지금 문서를 다시 고르면 `same` · 같은 파일을 다른 타일이 보면 그리로 `focus` · 그 밖은 `replace`", () => {
+    const here = newDocPane("C:/a.md");
+    const other = newDocPane("C:/b.md");
+    const root = split("row", leafOf(here), leafOf(other));
+    expect(planDocSwitch(root, here.id, "C:/a.md")).toEqual({ kind: "same" });
+    expect(planDocSwitch(root, here.id, "C:/b.md")).toEqual({ kind: "focus", paneId: other.id });
+    expect(planDocSwitch(root, here.id, "C:/c.md")).toEqual({ kind: "replace" });
+  });
+
+  it("원격은 같은 터미널 · 같은 별칭일 때만 같은 파일이다", () => {
+    const here = newDocPane("/srv/a.md", web);
+    const other = newDocPane("/srv/b.md", web);
+    const elsewhere = newDocPane("/srv/c.md", { paneId: "p2", alias: "web-01" });
+    const local = newDocPane("/srv/d.md");
+    const root = split("row", leafOf(here), split("col", leafOf(other), split("row", leafOf(elsewhere), leafOf(local))));
+    expect(planDocSwitch(root, here.id, "/srv/a.md", web)).toEqual({ kind: "same" });
+    // 같은 경로라도 원본이 다르면 다른 파일
+    expect(planDocSwitch(root, here.id, "/srv/a.md", { paneId: "p2", alias: "web-01" })).toEqual({ kind: "replace" });
+    expect(planDocSwitch(root, here.id, "/srv/a.md")).toEqual({ kind: "replace" });
+    expect(planDocSwitch(root, here.id, "/srv/b.md", web)).toEqual({ kind: "focus", paneId: other.id });
+    expect(planDocSwitch(root, here.id, "/srv/c.md", web)).toEqual({ kind: "replace" });
+    expect(planDocSwitch(root, here.id, "/srv/d.md", web)).toEqual({ kind: "replace" });
   });
 
   it("clonePane 은 미리 보기 표식을 떨군다 (복사본은 붙박이) · adoptTab 은 그대로 옮긴다", () => {

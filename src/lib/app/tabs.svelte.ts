@@ -17,6 +17,7 @@ import { isMainWindow, isRemote } from "$lib/app/window.svelte.js";
 import type { LayoutRequest } from "$lib/mirror/request";
 import { settings } from "$lib/settings.svelte.js";
 import { CLOSE_SLIDE_DELAY_MS, noteTileClosing, withLayoutAnim } from "$lib/layout-anim.svelte.js";
+import { noteDocSwap } from "$lib/doc-swap";
 import { displayCombo, effectiveCombo } from "$lib/keybindings";
 import { isDocDirty, setDocDirty } from "$lib/app/doc-dirty.svelte.js";
 import { dropDocDraft } from "$lib/app/doc-drafts.svelte.js";
@@ -766,8 +767,19 @@ export function openPaneBeside(tabId: string, paneId: string, pane: PaneSpec, di
  * 넓힌 것이다: 시작 화면은 프로젝트 "열기"(지금 탭의 활성 타일 옆)로 분할 안에도 서기 때문이다.
  * `title` 을 주면 탭의 자동 제목도 고친다(launcher 탭에 재개가 들어갈 때 — 워크트리 탭의 관례).
  * 새 타일이 곧바로 포커스를 갖는다. 대상이 없으면 `false`.
+ * 갈아 끼우는 칸이 최대화돼 있으면 최대화를 푼다 — `keepZoom` 이면 대신 새 타일이 최대화를 이어받는다(문서 타일의 파일 칸에서 바꾸기
+ * `app/panes` 의 `switchDocHere` — 같은 칸에서 문서만 바뀌는 것이라 파일을 고를 때마다 최대화가 풀리면 안 된다 · 2026-11-19). 원격 창의
+ * 요청에는 이 선택이 실리지 않는다(메인 PC 는 늘 푼다).
+ * 옛 칸과 새 명세가 둘 다 문서면 배치 애니메이션 없이 바꾼다(문서만 바뀐다 — 타일 틀은 뚝, 본문만 떠오른다 · `doc-swap.ts` · 2026-11-20).
+ * 그 밖(시작 화면 · 재개 · 템플릿의 한 잎 …)은 새 타일의 등장 애니메이션을 받는다.
  */
-export function replaceTile(tabId: string, paneId: string, pane: PaneSpec, title?: string): boolean {
+export function replaceTile(
+  tabId: string,
+  paneId: string,
+  pane: PaneSpec,
+  title?: string,
+  opts?: { keepZoom?: boolean },
+): boolean {
   if (remoteLayout({ op: "replaceTile", tile: paneId, pane, ...(title ? { title } : {}) })) return true;
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   const old = tab ? findPane(tab.root, paneId) : null;
@@ -775,10 +787,18 @@ export function replaceTile(tabId: string, paneId: string, pane: PaneSpec, title
   // 저장 안 한 문서는 **갈아 끼우지 않는다** (docs/log/2026-09-27-doc-edit.md "F2" — `planDocOpen` 이 이미
   // 고르지 않지만 한 번 더). `false` 를 받은 부르는 쪽은 옆 · 새 탭으로 연다.
   if (unsavedVerdict("replace", [paneId], isDocDirty).kind !== "free") return false;
-  if ((tab.zoomedPaneId ?? null) === paneId) tab.zoomedPaneId = null;
-  withLayoutAnim(() => {
+  if ((tab.zoomedPaneId ?? null) === paneId) tab.zoomedPaneId = opts?.keepZoom ? pane.id : null;
+  if (old.kind === "doc" && pane.kind === "doc") {
+    // 문서 → 문서(파일 칸에서 고름 · 파일 타일의 미리 보기 바꾸기 · 원격 창의 같은 요청)는 같은 칸에서 문서만 바뀌는 것이다 — 배치
+    // 애니메이션을 켜지 않아 새 타일의 등장(`PaneHost` 의 `tileIn`)이 길이 0 으로 뚝 서고, 새 DocView 는 본문만 떠오른다(`doc-swap.ts` 표시 ·
+    // `switchDocHere` 가 실은 파일 칸 인계는 같은 id 라 남는다). 다른 조작 직후 260ms 안에 겹치면 그 조작의 플래그가 켜진 채라 등장이 돈다 — 드물어 그대로 둔다
+    noteDocSwap(pane.id);
     tab.root = replacePane(tab.root, paneId, pane);
-  });
+  } else {
+    withLayoutAnim(() => {
+      tab.root = replacePane(tab.root, paneId, pane);
+    });
+  }
   if (title) tab.title = title;
   activePane[tab.id] = pane.id;
   adoptPane(tab.id, pane.id);

@@ -4,6 +4,8 @@ import {
   filterFiles,
   listRemoteShallow,
   parentDir,
+  scanTextFiles,
+  splitRel,
   textEntries,
   type PickerFile,
 } from "$lib/file-picker";
@@ -128,5 +130,67 @@ describe("listRemoteShallow — 뿌리 한 층 + 하위 폴더 한 층", () => {
 
   it("뿌리를 못 읽으면 던진다", async () => {
     await expect(listRemoteShallow(list, "/nope")).rejects.toThrow();
+  });
+});
+
+describe("scanTextFiles — 로컬 재귀 / 원격 두 층 갈래", () => {
+  const e = (path: string, kind: SftpEntry["kind"]): SftpEntry =>
+    ({ name: path.slice(path.lastIndexOf("/") + 1), path, kind, size: 0, mtime: null, mode: null, symlinkTarget: null, linkIsDir: false }) as SftpEntry;
+
+  it("`listTextFiles` 가 있으면 그것 — 한도 20000 · 뿌리는 돌아온 값 · 글 파일만", async () => {
+    const calls: Array<[string, number]> = [];
+    const listed: string[] = [];
+    const out = await scanTextFiles(
+      {
+        list: async (p) => {
+          listed.push(p);
+          return [];
+        },
+        listTextFiles: async (root, limit) => {
+          calls.push([root, limit]);
+          return {
+            root: "C:\\Notes",
+            files: [
+              { rel: "a.md", path: "C:\\Notes\\a.md" },
+              { rel: "img/b.png", path: "C:\\Notes\\img\\b.png" },
+            ],
+            truncated: true,
+          };
+        },
+      },
+      "C:/Notes/",
+    );
+    expect(calls).toEqual([["C:/Notes/", 20000]]);
+    expect(listed).toEqual([]);
+    expect(out).toEqual({ root: "C:\\Notes", files: [{ rel: "a.md", path: "C:\\Notes\\a.md" }], truncated: true, shallow: false });
+  });
+
+  it("없으면 두 층 SFTP — 뿌리는 넘긴 값 · 글 파일만 · `shallow`", async () => {
+    const tree: Record<string, SftpEntry[]> = {
+      "/srv": [e("/srv/a.md", "file"), e("/srv/b.png", "file"), e("/srv/conf", "dir")],
+      "/srv/conf": [e("/srv/conf/x.conf", "file"), e("/srv/conf/deep", "dir")],
+    };
+    const out = await scanTextFiles({ list: async (p) => tree[p] ?? [] }, "/srv");
+    expect(out).toEqual({
+      root: "/srv",
+      files: [
+        { rel: "a.md", path: "/srv/a.md" },
+        { rel: "conf/x.conf", path: "/srv/conf/x.conf" },
+      ],
+      truncated: false,
+      shallow: true,
+    });
+  });
+
+  it("실패는 그대로 던진다", async () => {
+    await expect(scanTextFiles({ list: async () => [], listTextFiles: async () => Promise.reject(new Error("boom")) }, "C:\\")).rejects.toThrow("boom");
+    await expect(scanTextFiles({ list: async () => Promise.reject(new Error("gone")) }, "/")).rejects.toThrow("gone");
+  });
+});
+
+describe("splitRel", () => {
+  it("마지막 `/` 에서 폴더와 이름을 나눈다", () => {
+    expect(splitRel("a.md")).toEqual({ dir: "", name: "a.md" });
+    expect(splitRel("docs/deep/a.md")).toEqual({ dir: "docs/deep", name: "a.md" });
   });
 });

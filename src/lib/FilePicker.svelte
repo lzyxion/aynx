@@ -5,7 +5,7 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { placeDefaultPalette, type CanvasRect } from "$lib/launcher";
   import { comboFromEvent, effectiveCombo, type Overrides } from "$lib/keybindings";
-  import { filterFiles, type PickerFile } from "$lib/file-picker";
+  import { filterFiles, splitRel, type PickerFile } from "$lib/file-picker";
   import { moveStartSelection } from "$lib/project-start";
   import {
     closeFilePicker,
@@ -62,12 +62,6 @@
     if (!el || i < 0) return;
     void tick().then(() => el.querySelector<HTMLElement>(`[data-fp-row][data-sel="true"]`)?.scrollIntoView({ block: "nearest" }));
   });
-
-  /** 상대 경로 → (폴더 부분, 이름) — 이름을 앞세워 그린다 */
-  function split(rel: string): { dir: string; name: string } {
-    const i = rel.lastIndexOf("/");
-    return i < 0 ? { dir: "", name: rel } : { dir: rel.slice(0, i), name: rel.slice(i + 1) };
-  }
 
   function onKeydown(ev: KeyboardEvent): void {
     const combo = comboFromEvent(ev);
@@ -157,7 +151,7 @@
         </p>
       {:else}
         {#each rows as f, i (f.path)}
-          {@const parts = split(f.rel)}
+          {@const parts = splitRel(f.rel)}
           <button
             type="button"
             class="row"

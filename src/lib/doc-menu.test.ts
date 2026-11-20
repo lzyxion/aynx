@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { docMenuItems, type DocMenuCtx } from "./doc-menu";
+import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems, type DocMenuCtx } from "./doc-menu";
 import { isGroup, rowId, type PaneMenuRow } from "$lib/pane/pane-menu";
 import { UI_ICONS } from "$lib/ui-icons.generated";
 
@@ -80,5 +80,27 @@ describe("docMenuItems — 편집", () => {
     const all = [...docMenuItems({ ...read, link: "x", hasSelection: true }, tr), ...docMenuItems({ ...edit, hasSelection: true }, tr)];
     const icons = all.flatMap((r) => (isGroup(r) ? [r.icon, ...r.children.map((c) => c.icon)] : [r.icon]));
     for (const icon of icons) expect(UI_ICONS).toHaveProperty(icon ?? "");
+  });
+});
+
+describe("docExternalItems — 타일 ⋯ 의 [경로 복사] 위 외부 열기 줄", () => {
+  const none = { canOpenExternal: false, canEdit: false, offline: false };
+
+  it("로컬 — 기본 앱으로 열기", () => {
+    expect(docExternalItems({ ...none, canOpenExternal: true }, tr)).toEqual([
+      { action: `tool:${DOC_TOOL_EXTERNAL}`, label: "files.menu.openexternal", icon: "external" },
+    ]);
+  });
+
+  it("원격 — 외부 편집기로 편집 · 끊기면 흐리고 까닭을 말한다", () => {
+    const [row] = docExternalItems({ ...none, canEdit: true }, tr);
+    expect(row).toEqual({ action: `tool:${DOC_TOOL_EDIT_EXTERNAL}`, label: "files.menu.edit.external", icon: "external" });
+    const [off] = docExternalItems({ ...none, canEdit: true, offline: true }, tr);
+    expect([off.action, off.disabled, off.title]).toEqual([`tool:${DOC_TOOL_EDIT_EXTERNAL}`, true, "files.doc.edit.block.offline"]);
+  });
+
+  it("둘 다 없으면 줄이 없다 · 그림 이름이 생성 목록에 있다", () => {
+    expect(docExternalItems(none, tr)).toEqual([]);
+    expect(UI_ICONS).toHaveProperty("external");
   });
 });

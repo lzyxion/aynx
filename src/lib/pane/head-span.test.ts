@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  docHeadSpan,
   FILE_FOLD_MIN_WIDTH,
   FILE_FOLD_TOOLS_W,
   FILE_HEAD_LEAD_END,
@@ -10,8 +9,6 @@ import {
   FILE_PATH_MIN_W,
   filePlacesLayout,
   isNarrowTree,
-  OUTLINE_LINE_W,
-  OUTLINE_PANEL_W,
   PLACES_FULL_MIN_WIDTH,
   PLACES_LINE_W,
   PLACES_PANEL_W,
@@ -43,22 +40,19 @@ describe("isNarrowTree", () => {
 
 describe("queryTreeLayout", () => {
   const at = (treeOpen: boolean | null, width: number, treeW = 220) => queryTreeLayout({ treeOpen, width, treeW });
-  const none = (narrow: boolean) => ({ narrow, shown: false, boxW: 0, span: null });
+  const none = (narrow: boolean) => ({ narrow, shown: false, boxW: 0 });
 
-  it("넓은 타일 · 자동 — 상자 = 원하는 폭, 무리 끝 = 상자 + 경계선", () => {
-    expect(at(null, 900)).toEqual({ narrow: false, shown: true, boxW: 220, span: 220 + TREE_SPLIT_W });
+  it("넓은 타일 · 자동 — 상자 = 원하는 폭", () => {
+    expect(at(null, 900)).toEqual({ narrow: false, shown: true, boxW: 220 });
   });
-  it("끌어서 생긴 소수 폭은 반올림 — 상자와 무리가 같은 정수", () => {
-    const l = at(null, 900, 233.6);
-    expect(l.boxW).toBe(234);
-    expect(l.span).toBe(234 + TREE_SPLIT_W);
+  it("끌어서 생긴 소수 폭은 반올림", () => {
+    expect(at(null, 900, 233.6).boxW).toBe(234);
   });
-  it("경계 폭에서 트리 · 무리 · 좁음 판정이 같은 순간에 바뀐다", () => {
+  it("경계 폭에서 트리 · 좁음 판정이 같은 순간에 바뀐다", () => {
     for (const open of [null, true] as const) {
       const wide = at(open, TREE_AUTO_MIN_WIDTH);
       expect(wide.narrow).toBe(false);
       expect(wide.shown).toBe(true);
-      expect(wide.span).not.toBeNull();
       expect(at(open, TREE_AUTO_MIN_WIDTH - 1)).toEqual(none(true));
     }
   });
@@ -71,7 +65,7 @@ describe("queryTreeLayout", () => {
   });
   it("폭을 아직 못 쟀으면(0) 자동은 접힘, 사람이 연 것은 원하는 폭 그대로", () => {
     expect(at(null, 0)).toEqual(none(false));
-    expect(at(true, 0)).toEqual({ narrow: false, shown: true, boxW: 220, span: 220 + TREE_SPLIT_W });
+    expect(at(true, 0)).toEqual({ narrow: false, shown: true, boxW: 220 });
   });
   it("사람이 닫았으면 넓어도 없다", () => {
     expect(at(false, 1200)).toEqual(none(false));
@@ -79,16 +73,6 @@ describe("queryTreeLayout", () => {
   it("넓은 타일에서도 편집기 열은 남긴다 — 원하는 폭이 너무 크면 상자가 멈춘다", () => {
     const l = at(true, TREE_AUTO_MIN_WIDTH, 600);
     expect(l.boxW).toBe(TREE_AUTO_MIN_WIDTH - TREE_SPLIT_W - TREE_WORK_MIN_W);
-    expect(l.span).toBe(l.boxW + TREE_SPLIT_W);
-  });
-});
-
-describe("docHeadSpan", () => {
-  it("목차 패널이 열려 있으면 본문 열의 x(패널 폭 + 오른쪽 경계선)", () => {
-    expect(docHeadSpan(true)).toBe(OUTLINE_PANEL_W + OUTLINE_LINE_W);
-  });
-  it("패널이 닫혀 있으면(좁은 타일의 드롭다운 포함) 고정하지 않는다", () => {
-    expect(docHeadSpan(false)).toBeNull();
   });
 });
 

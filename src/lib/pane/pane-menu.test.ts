@@ -182,6 +182,21 @@ describe("menuItemsFor — 종류별 항목 표", () => {
     }
   });
 
+  it("문서 타일이 맡긴 '이 파일' 줄(`fileTools` — 외부 열기)은 '경로 복사' 바로 위 — 선은 묶음 첫 줄에만(2026-11-19)", () => {
+    const ext: PaneMenuItem = { action: "tool:external", label: "x", icon: "external", separator: true };
+    const local = { ...off, docPath: { path: "C:/notes/a.md", alias: "" }, docNew: true, fileTools: [ext] };
+    expect(actionsOf("doc", local)).toEqual(["split-row", "split-col", "tool:external", "copy-path", "new-doc", "detach", "close"]);
+    expect(itemOf("doc", "tool:external", local)?.separator).toBe(true);
+    expect(itemOf("doc", "copy-path", local)?.separator).toBeFalsy();
+  });
+
+  it("경로가 비어 '경로 복사' 가 없으면 '이 파일' 줄이 선을 단다", () => {
+    const ext: PaneMenuItem = { action: "tool:external", label: "x", icon: "external" };
+    const ctx = { ...off, docPath: null, fileTools: [ext] };
+    expect(actionsOf("doc", ctx)).toEqual(["split-row", "split-col", "tool:external", "detach", "close"]);
+    expect(itemOf("doc", "tool:external", ctx)?.separator).toBe(true);
+  });
+
   it("'경로 복사' 는 문서 타일 · 경로가 있을 때만 — 빈 경로 · 다른 종류에는 없다", () => {
     expect(actionsOf("doc", { ...off, docPath: { path: "", alias: "" } })).not.toContain("copy-path");
     expect(actionsOf("doc", { ...off, docPath: null })).not.toContain("copy-path");

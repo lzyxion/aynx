@@ -198,8 +198,11 @@ export function createTileMenu(h: TileMenuHost) {
         ? { flip: isTerminalPane(p) && canFlipPane(p) ? flipViewOf(p.id) : null }
         : undefined;
       // 머리줄로 올라간 도구줄의 ⋯ 줄(파일 타일 B안 — 도구 ⋯ 와 타일 ⋯ 를 하나로) — 머리줄이 서 있을 때만(아니면 도구줄 끝의 제 ⋯ 가 쥔다)
-      const tools = paneHeadShown(p.id) ? paneToolsOf(p.id)?.menu?.() : undefined;
-      return menuItemsFor(p.kind, { ...ctx, phone, tools }, tr);
+      // 문서 타일의 "이 파일" 줄(외부 열기 — [경로 복사] 위 · 2026-11-19 사용자)도 같은 조건이다
+      const head = paneHeadShown(p.id);
+      const tools = head ? paneToolsOf(p.id)?.menu?.() : undefined;
+      const fileTools = head ? paneToolsOf(p.id)?.fileMenu?.() : undefined;
+      return menuItemsFor(p.kind, { ...ctx, phone, tools, fileTools }, tr);
     }
     const termCtx: TermMenuCtx = {
       ...ctx,

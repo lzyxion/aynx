@@ -136,7 +136,7 @@ Downloads a remote file and opens it in **this PC's default editor**.
 <a id="doc-keep"></a>
 ### Preview and Keep
 
-Opening a document from a file tile first shows it as a **preview** (italic name, dotted [Keep] button). The next time you open another file, this
+Opening a document from a file tile first shows it as a **preview** (italic name). The next time you open another file, this
 preview tile **changes** to that file.
 
 - Pressing [Keep] fixes this document in place. The next file you open does not change this tile and appears **beside** it.
@@ -146,6 +146,25 @@ preview tile **changes** to that file.
 - `Ctrl+wheel` over the body changes the text size (80–200%, in preview, source, code files and the editor alike, and lines rewrap to the tile
   width). It is remembered per tile, and when it is not 100%, a small button such as "120%" appears on the toolbar and pressing it returns to 100%. `Ctrl+wheel` over a mermaid diagram
   zooms that diagram.
+
+<a id="doc-panels"></a>
+### Files and Outline
+
+A document tile has a side panel on each side of the body. Each one has a button that stays in the same place, and each tile remembers which ones you turned on
+(turning them on or off does not keep a preview document).
+
+- **Files** (left) — the button right after the tile name in the tile header (or the first button on the toolbar when there is no tile header). It starts in the
+  current document's folder: press a folder to go into it, and press `..` to go up. It lists folders and files a document tile can show.
+  Typing in [Find files] searches subfolders too (a remote document searches two levels deep), and the results show each file's folder after its name.
+  Press a file to open it **in this tile**: only the body changes (it fades in briefly), and the panel keeps its folder, its find text and results, and its
+  scroll position. If the document has unsaved changes, you are asked first ([Save and open] · [Discard and open]).
+  If another tile already shows that file, focus moves to that tile instead. The panel appears for any document — source view, editing and code files included.
+- **Outline** (right) — the last button on the toolbar, after reload. It lists the headings of a rendered Markdown document (it is dimmed when there are no headings,
+  and it is not there in source view, while editing, or for code files). Press a heading to go to it.
+- In a narrow tile, each button opens the same list as a dropdown instead of a panel. Choosing a file closes the Files dropdown, while choosing a folder
+  goes into it inside the dropdown.
+- If the tile is too narrow for both panels, opening one closes the other. If you make the tile narrower while both are open, only the one you opened last
+  stays visible, and the other comes back when the tile is wide enough again.
 
 <a id="doc-edit"></a>
 ### Editing

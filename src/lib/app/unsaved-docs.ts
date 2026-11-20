@@ -20,13 +20,22 @@ import { choiceFromDialog, closeAfterSave } from "$lib/unsaved-guard";
  * (`closeTabAsked` 와 같은 규칙).
  *
  * 탭 모듈을 가져오지 않는다(그쪽이 이것을 부른다 — 순환을 만들지 않게). 이름은 부르는 쪽이 준다.
+ *
+ * `verb` 는 묻는 까닭이다 — `"close"`(기본 · 닫기) · `"switch"`(문서 타일이 이 칸에서 다른 파일로 바뀜 · 2026-11-19
+ * `app/panes` 의 `switchDocHere`). 갈리는 것은 "닫기" 뜻이 박힌 문구뿐이다: 두 단추 · 저장 실패 · 대화를 못 띄움.
+ * 제목 · 본문 · [취소] 는 같다.
  */
 export async function confirmUnsavedClose(
   paneIds: readonly string[],
   nameOf: (paneId: string) => string,
+  verb: "close" | "switch" = "close",
 ): Promise<boolean> {
   if (paneIds.length === 0) return true;
-  const labels = { save: t("app.unsaved.save"), discard: t("app.unsaved.discard") };
+  const sw = verb === "switch";
+  const labels = {
+    save: t(sw ? "app.unsaved.switch.save" : "app.unsaved.save"),
+    discard: t(sw ? "app.unsaved.switch.discard" : "app.unsaved.discard"),
+  };
   const names = paneIds.map(nameOf).filter((n) => n !== "");
   const body = [t("app.unsaved.confirm", { count: paneIds.length }), "", ...names.map((n) => `· ${n}`)]
     .join("\n")
@@ -41,7 +50,7 @@ export async function confirmUnsavedClose(
       cancelLabel: t("app.unsaved.cancel"),
     });
   } catch {
-    showNotice(t("app.unsaved.noDialog"));
+    showNotice(t(sw ? "app.unsaved.switch.noDialog" : "app.unsaved.noDialog"));
     return false;
   }
   const choice = choiceFromDialog(result, labels);
@@ -55,7 +64,7 @@ export async function confirmUnsavedClose(
     const ok = await requestDocSave(id);
     results.push(ok);
     if (!ok) {
-      showNotice(t("app.unsaved.saveFailed", { name: nameOf(id) || id }));
+      showNotice(t(sw ? "app.unsaved.switch.saveFailed" : "app.unsaved.saveFailed", { name: nameOf(id) || id }));
       break;
     }
   }

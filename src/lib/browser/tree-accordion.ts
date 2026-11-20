@@ -196,3 +196,25 @@ export function accordion(node: HTMLElement, params: { key: string }): Transitio
       `padding-top:${(t * padTop).toFixed(2)}px;padding-bottom:${(t * padBottom).toFixed(2)}px`,
   };
 }
+
+/**
+ * 곁 패널의 열고 닫기(2026-11-19 — 문서 타일의 파일 · 목차 패널 · 쿼리 타일의 스키마 트리) — 위 펼침 판의 **가로 짝**: 같은 200ms ·
+ * 같은 곡선으로 바깥 상자의 폭(`width` · `flex-basis`)만 0 에서 제 폭으로. 안쪽 내용은 고정 폭이라 줄이 다시 흐르지 않고 잘려 보인다
+ * (고정 폭은 부르는 쪽 CSS 몫). 패널을 가진 화면마다 문지기(`createToggleMotion`)를 하나씩 두고 사람이 단추로 여닫을 때만 `mark` 한다 —
+ * 첫 그리기 · 폭 문턱에 숨겨지고 돌아오기 · 명세로 선 패널은 그대로 선다. 움직임 줄이기면 곧바로 선다.
+ */
+export function sidePanelGrow(
+  node: HTMLElement,
+  params: { motion: ReturnType<typeof createToggleMotion>; key: string },
+): TransitionConfig {
+  if (reducedMotion() || !params.motion.allows(params.key)) return { duration: 0 };
+  const w = parseFloat(getComputedStyle(node).width) || node.offsetWidth;
+  return {
+    duration: ACCORDION_MS,
+    easing: ACCORDION_EASE,
+    css: (t) => {
+      const px = (t * w).toFixed(2);
+      return `overflow:hidden;width:${px}px;flex-basis:${px}px;min-width:0`;
+    },
+  };
+}

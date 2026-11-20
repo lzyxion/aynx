@@ -197,6 +197,8 @@ export interface SavedLeaf {
   docMode?: DocMode;
   /** 문서 타일의 목차 패널 켬 ([`PaneSpec.docOutline`]) — 켤 때만 적힌다 */
   docOutline?: true;
+  /** 문서 타일의 파일 패널 켬 ([`PaneSpec.docFiles`]) — 켤 때만 적힌다 */
+  docFiles?: true;
   /** 문서 타일의 편집 중 보기 ([`PaneSpec.docEditView`]) — 나란히(기본)가 아닐 때만 적힌다 */
   docEditView?: Exclude<DocEditView, "split">;
   /** 문서 타일의 나란히 경계 비율 ([`PaneSpec.docSplit`]) — 기본(0.5)이 아닐 때만 적힌다 */
@@ -350,8 +352,9 @@ function saveLeaf(pane: PaneSpec, workspaceKeys: boolean): SavedLeaf {
   if (pane.fileHidden === true) out.fileHidden = true;
   // 문서의 보기 — 기본(그린 보기)이 아닐 때만. 같은 배치가 늘 같은 글자를 내야 한다(자동 저장의 문자열 비교).
   if (pane.kind === "doc" && pane.docMode && pane.docMode !== "rendered") out.docMode = pane.docMode;
-  // 목차 패널 — 켤 때만(기본 꺼짐).
+  // 목차 · 파일 패널 — 켤 때만(기본 꺼짐).
   if (pane.kind === "doc" && pane.docOutline === true) out.docOutline = true;
+  if (pane.kind === "doc" && pane.docFiles === true) out.docFiles = true;
   // 편집 중 보기 · 나란히 비율 — 기본(나란히 · 반반)이 아닐 때만.
   if (pane.kind === "doc" && pane.docEditView) out.docEditView = pane.docEditView;
   if (pane.kind === "doc" && pane.docSplit !== undefined && pane.docSplit !== DOC_SPLIT_DEFAULT) out.docSplit = clampDocSplit(pane.docSplit);
@@ -597,6 +600,8 @@ function parseLeaf(raw: Record<string, unknown>): SavedLeaf | null {
   if (out.kind === "doc" && isDocMode(raw.docMode) && raw.docMode !== "rendered") out.docMode = raw.docMode;
   // 목차 패널 — 문서 잎에만, **`true` 만**(다른 글자면 그 칸만 떨어져 꺼진 채 선다).
   if (out.kind === "doc" && raw.docOutline === true) out.docOutline = true;
+  // 파일 패널 — 목차와 같은 규칙.
+  if (out.kind === "doc" && raw.docFiles === true) out.docFiles = true;
   // 편집 중 보기 — 문서 잎에만, 아는 값이고 기본(나란히)이 아닐 때만. 비율은 숫자면 20~80% 로 묶고 기본이면 떨군다.
   if (out.kind === "doc" && isDocEditView(raw.docEditView) && raw.docEditView !== "split") out.docEditView = raw.docEditView;
   if (out.kind === "doc" && typeof raw.docSplit === "number" && Number.isFinite(raw.docSplit)) {
@@ -879,6 +884,7 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean, firstRun: boolean): Pa
       const pane = newDocPane(leaf.path ?? "", alias ? { paneId: "", alias } : undefined);
       if (leaf.docMode) pane.docMode = leaf.docMode;
       if (leaf.docOutline === true) pane.docOutline = true;
+      if (leaf.docFiles === true) pane.docFiles = true;
       if (leaf.docEditView) pane.docEditView = leaf.docEditView;
       if (leaf.docSplit !== undefined) pane.docSplit = clampDocSplit(leaf.docSplit);
       if (leaf.docZoom !== undefined) {

@@ -26,12 +26,13 @@ vi.mock("$lib/app/doc-dirty.svelte.js", () => ({ isDocDirty: () => false, setDoc
 vi.mock("$lib/app/unsaved-docs", () => ({ confirmUnsavedClose: vi.fn() }));
 vi.mock("$lib/app/db-tx", () => ({ confirmDbTxClose: vi.fn(async () => true), dbTxPanes: () => [], hasOpenDbTx: () => false }));
 
-import { leafOf, listPanes, newLocalPane, newTab, splitPane } from "$lib/session";
+import { leafOf, listPanes, newDocPane, newLocalPane, newTab, splitPane } from "$lib/session";
+import { takeDocSwap } from "$lib/doc-swap";
 import { noteTileClosing, withLayoutAnim } from "$lib/layout-anim.svelte.js";
 import {
   activeTabId, closePaneIn, detachPane, detachPaneLeavingStart, focusPane, isLoneStart,
   movePane, openTab, paneOf, promotePane, residentWindowTabs, syncPanes, toggleSync, toggleZoom,
-  restoreNotice, revealPane, unzoomFor,
+  replaceTile, restoreNotice, revealPane, unzoomFor,
 } from "./tabs.svelte.js";
 import { revealResidentPane } from "$lib/workspaces/runtime";
 
@@ -143,6 +144,45 @@ it("포커스만 옮기는 열기(이미 있는 칸) — 다른 타일이 최대
   expect(tab.zoomedPaneId).toBeNull();
   unzoomFor(tab, doc.id); // 최대화가 없으면 아무 일도 없다
   expect(tab.zoomedPaneId).toBeNull();
+});
+
+it("최대화된 칸 갈아 끼우기 — 기본은 최대화를 풀고, `keepZoom` 이면 새 타일이 이어받는다(문서 타일의 파일 칸 바꾸기)", () => {
+  const tab = singleTab();
+  const shell = listPanes(tab.root)[0];
+  const other = newLocalPane();
+  tab.root = splitPane(tab.root, shell.id, "row", other);
+  toggleZoom(tab.id, shell.id);
+  const kept = newLocalPane();
+  expect(replaceTile(tab.id, shell.id, kept, undefined, { keepZoom: true })).toBe(true);
+  expect(tab.zoomedPaneId).toBe(kept.id);
+  expect(paneOf(tab)).toBe(kept.id);
+  const plain = newLocalPane();
+  expect(replaceTile(tab.id, kept.id, plain)).toBe(true);
+  expect(tab.zoomedPaneId).toBeNull();
+  // 최대화가 다른 타일에 있으면 `keepZoom` 은 아무것도 옮기지 않는다
+  toggleZoom(tab.id, other.id);
+  expect(replaceTile(tab.id, plain.id, newLocalPane(), undefined, { keepZoom: true })).toBe(true);
+  expect(tab.zoomedPaneId).toBe(other.id);
+});
+
+it("문서 → 문서 갈아 끼우기는 배치 애니메이션을 켜지 않고 새 id 로 갈아 끼운 문서 표시를 남긴다 · 다른 종류는 켠다", () => {
+  const tab = singleTab();
+  const shell = listPanes(tab.root)[0];
+  const doc = newDocPane("C:/n/a.md");
+  tab.root = splitPane(tab.root, shell.id, "row", doc);
+  const next = newDocPane("C:/n/b.md");
+  expect(replaceTile(tab.id, doc.id, next)).toBe(true);
+  expect(withLayoutAnim).not.toHaveBeenCalled();
+  expect(takeDocSwap(next.id)).toEqual({ paneId: next.id });
+  expect(paneOf(tab)).toBe(next.id);
+  // 문서 → 다른 종류 · 다른 종류 → 문서는 등장 애니메이션을 받는다(표시도 없다)
+  const shell2 = newLocalPane();
+  expect(replaceTile(tab.id, next.id, shell2)).toBe(true);
+  expect(withLayoutAnim).toHaveBeenCalledTimes(1);
+  const doc2 = newDocPane("C:/n/c.md");
+  expect(replaceTile(tab.id, shell2.id, doc2)).toBe(true);
+  expect(withLayoutAnim).toHaveBeenCalledTimes(2);
+  expect(takeDocSwap(doc2.id)).toBeNull();
 });
 
 it("이미 있는 타일로 가기(revealPane) — 다른 타일로 가면 최대화를 풀고, 최대화된 그 타일 자신이면 유지한다", () => {

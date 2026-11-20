@@ -12,7 +12,6 @@
 
   let {
     head,
-    headSpan,
     treeToggle,
     tabs,
     activeN,
@@ -34,7 +33,6 @@
     tabMenu,
   }: {
     head: boolean;
-    headSpan: number | null;
     treeToggle: Snippet<[boolean]>;
     tabs: ScriptTab[];
     activeN: number;
@@ -86,7 +84,7 @@
   }
 </script>
 
-<div class="tabsrow" class:inhead={head} class:flush={head && headSpan !== null}>
+<div class="tabsrow" class:inhead={head}>
   {#if !head}{@render treeToggle(false)}{/if}
   <div class="stabs" role="tablist" aria-label={t("pane.query.tabs")} data-query-tabs>
     {#each tabs as x, i (x.n)}
@@ -192,11 +190,6 @@
     height: auto;
     padding-left: 6px;
     border-bottom: none;
-  }
-
-  /* 사이드바 경계에 맞춘 머리줄 — 탭이 편집기 열의 x 에서 바로 선다(그 x 는 머리줄이 `span` 으로 맞춘다) */
-  .tabsrow.inhead.flush {
-    padding-left: 0;
   }
 
   .stabs {

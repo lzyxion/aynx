@@ -335,8 +335,9 @@ const WANTED = [
    */
   ["list-tree", "material-symbols:account-tree-outline-rounded"],
   /**
-   * 타일 안 **옆 패널 여닫기** — 쿼리 타일의 트리(스키마) 패널 · 문서 타일의 목차 곁 패널 토글(`src/lib/QueryView.svelte` ·
-   * `src/lib/DocView.svelte` · 2026-10-20 사용자 실기). 좁은 문서 타일의 목차 드롭다운은 패널이 아니라 `list-tree` 그대로다.
+   * 타일 안 **왼쪽 옆 패널 여닫기** — 쿼리 타일의 트리(스키마) 패널 · 문서 타일의 파일 곁 패널 토글(`src/lib/QueryView.svelte` ·
+   * `src/lib/DocView.svelte` · 2026-10-20 사용자 실기 · 문서 타일은 2026-11-19 에 목차에서 파일로). 좁은 타일의 드롭다운 단추는 같은
+   * 그림 + `chevron-down` 이다. 문서 타일의 목차(오른쪽 곁 패널)는 아래 `preview` 를 쓴다.
    * 그림은 위 `dock` 과 같은 `left-panel-open` 이지만 뜻이 달라(창의 독 ↔ 타일 안 옆 패널) 이름을 나눈다(위 "한 뜻은 한 이름" 의 반대 경우 — 한 그림 두 뜻).
    */
   ["side-panel", "material-symbols:left-panel-open-outline-rounded"],
@@ -439,16 +440,20 @@ const WANTED = [
   ["stop", "material-symbols:stop-outline-rounded"],
   /** 쿼리 타일의 [스크립트 실행] 단추 — 글이 적힌 두루마리(여러 문장을 차례로). 파일 타일 자세히 보기의 `list` 와 가른다 */
   ["scroll-text", "material-symbols:receipt-long-outline-rounded"],
-  /** 미리 보기 패널 켜고 끄기 (`F11`) — 오른쪽 패널. 장소 패널(`F9`)에는 단추가 없다 */
+  /**
+   * 오른쪽 패널 여닫기 — 파일 타일의 미리 보기 패널(`F11` — 장소 패널(`F9`)에는 단추가 없다) · 문서 타일의 목차 곁 패널 토글
+   * (`src/lib/DocView.svelte` · 2026-11-19 — 목차가 본문 오른쪽으로 옮겨 가 같은 "오른쪽 패널" 그림을 나눠 쓴다. 좁은 타일은 + `chevron-down`)
+   */
   ["preview", "material-symbols:right-panel-open-outline-rounded"],
 
-  // 문서 타일 도구줄 (`src/lib/DocView.svelte`) — 아이콘만 서고 이름은 툴팁이다. `list-tree`(목차) · `pin`/`pin-off` ·
+  // 문서 타일 도구줄 (`src/lib/DocView.svelte` · `src/lib/doc/DocToolbar.svelte`) — 아이콘만 서고 이름은 툴팁이다. `side-panel`(파일 — 이름 뒤) ·
+  //   `preview`(목차 — 도구줄 맨 끝) · `chevron-down`(좁은 타일의 드롭다운) · `pin`(고정 — 고정 전후 같은 그림) ·
   //   `edit` · `external` · `check`(편집 종료) · `split-h`(나란히)는 위와 같은 이름을 나눠 쓴다.
   /** 마크다운 **원문** — 원문 보기 토글 · 편집 중 [원문만] · 좁은 타일의 [원문] 탭이 한 그림이다 */
   ["view-source", "material-symbols:code-outline-rounded"],
   /**
    * 마크다운을 **그린 결과** — 미리 보기 토글 · 편집 중 [미리 보기만] · [미리 보기] 탭. 펼친 책(`menu-book`) — `visibility` 를 쓰는
-   * `show-hidden` 과 뜻이 달라 이름을 따로 둔다(위 AI 권한 주석의 규칙). 파일 타일의 `preview`
+   * `show-hidden` 과 뜻이 달라 이름을 따로 둔다(위 AI 권한 주석의 규칙). 파일 타일 · 문서 타일 목차의 `preview`
    * (오른쪽 패널을 여닫는다)와도 다르다 — 이쪽은 패널이 아니라 **보는 방식**이다.
    */
   ["view-rendered", "material-symbols:menu-book-outline-rounded"],

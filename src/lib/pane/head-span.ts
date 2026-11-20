@@ -1,14 +1,15 @@
 // 타일 머리줄의 **왼쪽 무리 폭**(2026-10-20 — 타일 머리줄 ④판, 목업 SJgp6bQEPiRYkBCvjy3NuL `DbTile`).
 //
-// 몸의 **왼쪽 곁 패널**(쿼리 타일의 스키마 사이드바 · 문서 타일의 목차 패널)이 열려 있으면 머리줄의 왼쪽 무리(로고 · 이름 · 패널 토글)가
-// 정확히 그 패널 폭을 차지하고 토글은 그 오른쪽 끝, 나머지 도구(쿼리 탭 · 문서 도구)는 본문 열 위에서 시작한다. 머리줄과 몸은 같은 타일
-// 상자 안에 `left: 0` 으로 서므로(`PaneHost` 의 `.pane-head` · `.pane-body`) 본문 열의 x = 패널 폭 + 경계선이다 — 그 값을 머리줄에
-// `span` 으로 준다(`pane/pane-tools.svelte.ts`). 머리줄 왼쪽 여백 · 무리 뒤 간격은 머리줄이 CSS 로 뺀다(`PaneHeader` 의 `.pane-group.spanned`).
+// 지금 쓰는 곳은 **파일 타일의 장소 패널** 하나다 — 장소 패널이 펼쳐져 있으면 머리줄 맨 앞 조각(뒤로/앞으로 · 보기 고르개)이 정확히 그
+// 패널 폭을 차지하고 경로 칸이 목록 열 위에서 시작한다(`filePlacesLayout`). 머리줄과 몸은 같은 타일 상자 안에 `left: 0` 으로 서므로
+// (`PaneHost` 의 `.pane-head` · `.pane-body`) 목록 열의 x = 패널 폭 + 경계선이다 — 그 값을 머리줄에 `span` 으로 준다
+// (`pane/pane-tools.svelte.ts`). 머리줄 왼쪽 여백 · 무리 뒤 간격은 머리줄이 CSS 로 뺀다(`PaneHeader` 의 `.pane-group.spanned`).
 //
-// 파일 타일도 같은 규칙이다 — 장소 패널이 펼쳐져 있으면 맨 앞 조각(뒤로/앞으로 · 보기 고르개)이 그 폭을 차지하고 경로 칸이 목록 열 위에서
-// 시작한다(`filePlacesLayout`).
-//
-// 세 패널 모두 본문의 **왼쪽**이다 — 오른쪽 패널이 생기면 이 규칙(왼쪽 끝부터 경계까지)을 그대로 쓰지 말고 따로 정한다.
+// 쿼리 타일(스키마 사이드바) · 문서 타일(목차 패널)도 10-20 부터 같은 규칙이었다(토글이 패널 경계로 옮겨 가고 쿼리 탭 · 문서 도구가 본문
+// 열 위에서 시작) — 2026-11-19 에 걷었다(사용자). 문서 타일에 양옆 곁 패널(왼쪽 파일 · 오른쪽 목차)이 생겼는데 오른쪽은 이 규칙을 대칭으로
+// 만들 수 없어, 왼쪽 패널 토글은 이름 바로 뒤 · 목차 토글은 문서 도구줄 맨 끝의 고정 자리에 두고(패널을 여닫아도 움직이지 않는다) 가운데
+// 도구줄은 늘 왼쪽 무리 바로 뒤에서 시작한다. 문서 타일의 패널 폭은 `doc-side-panels.ts` 가 쥔다. 파일 타일은 머리줄에 여닫는 단추가 없고
+// 경로 칸 정렬만 있어 그대로다.
 //
 // Svelte 를 import 하지 않는다 — vitest 대상이다.
 
@@ -47,46 +48,26 @@ export function isNarrowTree(width: number): boolean {
 }
 
 /**
- * 쿼리 타일 사이드바의 **실제로 그려지는 상자** — 몸(`.side` 의 폭 · 경계선)과 머리줄(`span`)이 이 한 값에서 나온다(10-20 실기: 둘이 따로
- * 판정해 트리가 사라지는 순간과 머리줄 무리가 접히는 순간이 어긋났다).
+ * 쿼리 타일 사이드바의 **실제로 그려지는 상자** — 몸(`.side` 의 폭 · 경계선)과 토글 모양(넓음 · 좁음)이 이 한 값에서 나온다(10-20 실기: 몸과
+ * 머리줄이 따로 판정해 트리가 사라지는 순간과 머리줄 무리가 접히는 순간이 어긋났다 — 머리줄 무리 폭(`span`)은 2026-11-19 에 걷었다).
  *
- * - `narrow` — `isNarrowTree(width)`. 참이면 사이드바 없음(`shown` 거짓 · `span` null) — 토글은 떠 있는 패널을 연다. 사람이 고른 값
+ * - `narrow` — `isNarrowTree(width)`. 참이면 사이드바 없음(`shown` 거짓) — 토글은 떠 있는 패널을 연다. 사람이 고른 값
  *   (`treeOpen`)은 지우지 않으므로 넓어지면 그 기억대로 다시 선다(10-20 사용자 — 좁을 때 상자를 줄이던 동작은 걷었다).
  * - `shown` — 넓으면 사람이 고른 값, 안 골랐으면 폈다. 폭을 아직 못 쟀으면(0) 자동은 접힘 · 고른 값은 그대로.
  * - `boxW` — 사이드바 상자 폭(px, 정수) = 원하는 폭(`treeW` — 끌기 · 화살표). 넓은 타일에서도 편집기 열에 `TREE_WORK_MIN_W` 는 남긴다
  *   (`TREE_MIN_W` 아래로는 줄이지 않는다 — 경계 폭 560 에서 그 상한은 399 라 하한에 닿지 않는다). 폭을 못 쟀으면 원하는 폭 그대로.
- * - `span` — 머리줄 왼쪽 무리가 끝나는 x(= 상자 폭 + 경계선, 쿼리 탭이 여기서 시작). 사이드바가 없으면 `null`.
  */
 export function queryTreeLayout(o: { treeOpen: boolean | null; width: number; treeW: number }): {
   narrow: boolean;
   shown: boolean;
   boxW: number;
-  span: number | null;
 } {
   const narrow = isNarrowTree(o.width);
   const shown = !narrow && (o.treeOpen ?? o.width >= TREE_AUTO_MIN_WIDTH);
-  if (!shown) return { narrow, shown: false, boxW: 0, span: null };
+  if (!shown) return { narrow, shown: false, boxW: 0 };
   const want = Math.round(o.treeW);
   const boxW = o.width > 0 ? Math.min(want, Math.max(TREE_MIN_W, o.width - TREE_SPLIT_W - TREE_WORK_MIN_W)) : want;
-  return { narrow, shown, boxW, span: sideHeadSpan({ open: true, panelW: boxW, lineW: TREE_SPLIT_W }) };
-}
-
-// ── 문서 타일 — 목차 곁 패널 ──────────────────────────────────────────────────
-
-/** 목차 곁 패널 폭(`DocView` 의 `.outline-panel` — 이 값을 인라인으로 받는다) */
-export const OUTLINE_PANEL_W = 240;
-
-/** 목차 패널의 오른쪽 경계선(`.outline-panel` 의 `border-right` — 상자 폭 밖에 붙는다) */
-export const OUTLINE_LINE_W = 1;
-
-/**
- * 문서 타일 머리줄 왼쪽 무리가 끝나는 x — 문서 도구줄이 본문 열 위에서 시작한다. `panelOpen` 은 `DocView` 의 것
- * (켬 · 제목 있음 · 넓은 타일 — 좁은 타일은 목차 드롭다운이라 패널이 없다). 닫혀 있으면 `null`.
- * 패널을 그리는 조건(`{#if panelOpen}`)과 같은 값 하나에서 나오고, 패널은 줄지 않는 고정 폭(`flex: 0 0`)이며 넓은 판정의 하한(640)이
- * 패널 폭보다 넉넉해 그려진 상자 = `OUTLINE_PANEL_W` 다 — 쿼리 타일처럼 따로 잴 것이 없다.
- */
-export function docHeadSpan(panelOpen: boolean): number | null {
-  return sideHeadSpan({ open: panelOpen, panelW: OUTLINE_PANEL_W, lineW: OUTLINE_LINE_W });
+  return { narrow, shown, boxW };
 }
 
 // ── 파일 타일 — 장소 패널 · 경로 칸 · 접히는 단추 ─────────────────────────────────

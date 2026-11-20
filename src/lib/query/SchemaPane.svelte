@@ -4,6 +4,7 @@
    * `.tree-pop`)을 `QueryView.svelte` 에서 뗀 표시 조각. 어느 쪽인지는 `treeDrop`(떠 있는 자리 — 사이드바면 `null`)이 가른다. 부모는
    * 두 자리(`.main` 안 · `.query` 밖)에 이것을 하나씩 두고 각 조건(`treeShown` · `treeDrop`)으로 세운다 — 좁은 타일은 사이드바가 없어
    * 한 번에 하나만 선다(`tree` 손잡이도 하나 — `bind:tree`). 트리 열기/닫기 · 자리 계산 · 폭 끌기 · 펼친 열쇠 · 편집기로 가는 동작은 부모가 쥔다.
+   * 사이드바를 여닫는 움직임도 부모의 감싸개(`.tree-side` — `sidePanelGrow`)가 받는다 — 여기 사이드바는 형제 둘이라 전환을 붙일 한 요소가 없다.
    */
   import SchemaTree from "$lib/query/SchemaTree.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";

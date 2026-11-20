@@ -1121,6 +1121,16 @@ describe("문서 타일 — 저장과 복원 (docs/log/2026-09-27-doc-tile.md)",
     expect(parseNode({ kind: "localfs", path: "C:/w", docOutline: true })).not.toHaveProperty("docOutline");
   });
 
+  it("파일 패널(`docFiles`)은 켤 때만 저장되고 되살아난다 · `true` 밖과 문서가 아닌 잎은 떨어진다", () => {
+    const on = { ...newDocPane("C:/a.md"), docFiles: true as const };
+    expect(saveNode(leafOf(on))).toEqual({ kind: "doc", path: "C:/a.md", docFiles: true });
+    expect(saveNode(leafOf(newDocPane("C:/a.md")))).not.toHaveProperty("docFiles");
+    expect(listPanes(restoreNode({ kind: "doc", path: "C:/a.md", docFiles: true }))[0].docFiles).toBe(true);
+    expect(listPanes(restoreNode({ kind: "doc", path: "C:/a.md" }))[0]).not.toHaveProperty("docFiles");
+    expect(parseNode({ kind: "doc", path: "C:/a.md", docFiles: "yes" })).toEqual({ kind: "doc", path: "C:/a.md" });
+    expect(parseNode({ kind: "localfs", path: "C:/w", docFiles: true })).not.toHaveProperty("docFiles");
+  });
+
   it("글자 크기(`docZoom`)는 100 이 아닐 때만 저장 · 되살아나고 단계 밖 값은 가까운 단계로 · 문서가 아닌 잎은 떨어진다", () => {
     const pane = { ...newDocPane("C:/a.md"), docZoom: 125 };
     expect(saveNode(leafOf(pane))).toEqual({ kind: "doc", path: "C:/a.md", docZoom: 125 });

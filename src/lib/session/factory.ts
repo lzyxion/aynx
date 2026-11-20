@@ -6,7 +6,7 @@
 // `quick-connect.ts` 는 import 가 하나도 없는 잎 모듈이라 순환이 생길 자리가 없다.
 import { quickConnectLabel, type QuickConnectTarget as AdhocTarget } from "$lib/quick-connect";
 import { canonQueryTabs, hasSession, isFileLeafKind, storedRowLimit, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
-import { listPanes } from "./tree";
+import { findPane, listPanes } from "./tree";
 import { parseOrchMark } from "$lib/orchestration/orch-tab";
 import { freshLaunchOf } from "$lib/agent-sessions";
 
@@ -422,6 +422,54 @@ export function planFileOpen(
     if (preview) return { kind: "replace", paneId: preview.id };
   }
   return { kind: "beside" };
+}
+
+/**
+ * 문서 칸을 다른 파일로 갈아 끼울 때 **옛 칸에서 새 명세로 물려주는 것**(순수 함수 · 2026-11-19) — `pane` 에 적고 그것을 돌려준다.
+ *
+ * 물려주는 것은 "이 칸에서 훑어보는 방식" 이다: 목차 · 파일 곁 패널(`docOutline` · `docFiles`) · 편집 중 보기 · 나란히 비율 · 글자 크기.
+ * 보기(`docMode`)는 파일의 것이라 물려주지 않는다(새 파일은 기본으로). `keepPreview` 면 미리 보기 표식(`docPreview`)도 옛 값 그대로 —
+ * 파일 곁 패널에서 바꾸는 길(`app/panes` 의 `switchDocHere`)이다. 없으면 표식은 `pane` 의 것 그대로(`openDoc` 은 늘 미리 보기로 세운다).
+ * `old` 가 없으면 아무것도 적지 않는다.
+ */
+export function carryDocTileView(
+  old: PaneSpec | null | undefined,
+  pane: PaneSpec,
+  opts: { keepPreview?: boolean } = {},
+): PaneSpec {
+  if (!old) return pane;
+  if (old.docOutline === true) pane.docOutline = true;
+  if (old.docFiles === true) pane.docFiles = true;
+  if (old.docEditView) pane.docEditView = old.docEditView;
+  if (old.docSplit !== undefined) pane.docSplit = old.docSplit;
+  if (old.docZoom !== undefined) pane.docZoom = old.docZoom;
+  if (opts.keepPreview) {
+    if (old.docPreview === true) pane.docPreview = true;
+    else delete pane.docPreview;
+  }
+  return pane;
+}
+
+/**
+ * 문서 타일 `paneId` 의 **파일 곁 패널에서 고른 파일을 어떻게 열까**(순수 함수 · 2026-11-19 — `app/panes` 의 `switchDocHere`).
+ *
+ * - `same` — 그 타일이 이미 그 파일을 본다(같은 경로 · 원격이면 같은 터미널 · 같은 별칭 — [`findFilePane`] 의 "같다"). 바꾸지 않는다.
+ * - `focus` — 같은 파일을 **다른** 문서 타일이 이미 본다 → 그 타일로 포커스만([`planDocOpen`] 의 `focus` 와 같은 규칙 · 사용자 결정).
+ * - `replace` — 그 밖 → 이 칸을 새 명세로 갈아 끼운다.
+ */
+export type DocSwitchPlan = { kind: "same" } | { kind: "focus"; paneId: string } | { kind: "replace" };
+
+export function planDocSwitch(
+  root: PaneNode,
+  paneId: string,
+  path: string,
+  source?: { paneId: string; alias: string },
+): DocSwitchPlan {
+  const here = findPane(root, paneId);
+  if (here && isSameFile(here, "doc", path, source)) return { kind: "same" };
+  const other = findFilePane(root, "doc", path, source);
+  if (other && other.id !== paneId) return { kind: "focus", paneId: other.id };
+  return { kind: "replace" };
 }
 
 /**

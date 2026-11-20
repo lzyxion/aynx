@@ -116,6 +116,8 @@
     onopenpath,
     ondocmode,
     ondocoutline,
+    ondocfiles,
+    ondocswitch,
     ondoceditview,
     ondocsplit,
     ondoczoom,
@@ -920,6 +922,9 @@
             onmode={(m) => ondocmode?.(item.pane.id, m)}
             outline={item.pane.docOutline === true}
             onoutline={(open) => ondocoutline?.(item.pane.id, open)}
+            files={item.pane.docFiles === true}
+            onfiles={(open) => ondocfiles?.(item.pane.id, open)}
+            onswitch={(path, files) => ondocswitch?.(item.tab.id, item.pane.id, path, files)}
             editView={item.pane.docEditView ?? "split"}
             oneditview={(v) => ondoceditview?.(item.pane.id, v)}
             split={item.pane.docSplit}

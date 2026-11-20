@@ -12,6 +12,7 @@
   import ScriptTabs from "$lib/query/ScriptTabs.svelte";
   import SchemaTree from "$lib/query/SchemaTree.svelte";
   import SchemaPane from "$lib/query/SchemaPane.svelte";
+  import { createToggleMotion, sidePanelGrow } from "$lib/browser/tree-accordion";
   import DefinitionView from "$lib/query/DefinitionView.svelte";
   import DataTab from "$lib/query/DataTab.svelte";
   import { dataSelectSql, pageSizeOf } from "$lib/query/data-tab";
@@ -538,10 +539,14 @@
   let bodyH = $state(0);
   let treeW = $state(220);
   let treeOpen = $state<boolean | null>(null); // null = 자동(좁으면 접힘)
-  // 사이드바의 **그려지는 상자** 하나(10-20 실기) — 몸의 `.side` 폭 · 경계선 · 머리줄 무리 폭(`span`)이 모두 이 값에서 나온다
-  // (보임 · 상자 폭 · 무리 끝 x — 규칙은 `pane/head-span` 의 `queryTreeLayout`). `treeW` 는 사람이 원하는 폭이고, 타일이 좁으면 상자는 그보다 줄어든다.
+  // 사이드바의 **그려지는 상자** 하나(10-20 실기) — 몸의 `.side` 폭 · 경계선 · 토글 모양(넓음 · 좁음)이 모두 이 값에서 나온다
+  // (보임 · 상자 폭 — 규칙은 `pane/head-span` 의 `queryTreeLayout` · 머리줄 무리 폭(`span`)은 2026-11-19 에 걷었다). `treeW` 는 사람이 원하는 폭이고, 타일이 좁으면 상자는 그보다 줄어든다.
   const treeLayout = $derived(queryTreeLayout({ treeOpen, width, treeW }));
   const treeShown = $derived(treeLayout.shown);
+  /** 사이드바 여닫는 움직임의 문지기(2026-11-19 — 문서 타일 곁 패널과 같은 `sidePanelGrow`) — 사람이 토글을 누른 때만 `mark` 한다.
+   *  첫 그리기 · 폭 문턱에 저절로 숨고 돌아오기(`treeOpen === null`) · 좁은 타일의 떠 있는 패널은 기억에 없으므로 뚝 선다 */
+  const treeMotionGate = createToggleMotion();
+  const TREE_MOTION = "query-tree";
 
   // ── 좁은 타일의 떠 있는 스키마 트리(10-20 사용자 — 문서 타일의 좁은 목차 드롭다운과 같은 결) ──────────────
   // 좁으면(`TREE_AUTO_MIN_WIDTH` 아래) 사이드바는 늘 접히고, 토글이 트리를 토글 아래 떠 있는 패널로 연다. 닫기: 바깥 클릭(투명 백드롭) ·
@@ -798,17 +803,16 @@
   const runShown = $derived<RunShown | null>(ses.outcome.kind === "result" || ses.outcome.kind === "script" || ses.outcome.kind === "error" ? ses.outcome : null);
   // 타일 제목줄 개편(2026-10-20) — 머리줄이 서 있으면 위 줄(트리 토글 · 스크립트 탭 · 연결 상태)이 머리줄로 올라가 한 줄이 된다
   // (`pane/pane-tools.svelte.ts`). 머리줄이 없으면(설정 `tile_header` · 폰) 예전처럼 몸 맨 위에 그린다.
-  // 머리줄 ④판(10-20 목업 `DbTile`): 트리 토글은 이름 뒤(`tail`)이고, 사이드바가 열려 있으면 왼쪽 무리(로고 · 이름 · 토글)가 사이드바 경계까지를
-  // 쥔다(`span` — 쿼리 탭이 편집기 열 위에서 시작, 끌면 함께 움직인다 · `pane/head-span`). 연결 점은 걷었다 — 연결됨 = 표시 없음 · 연결 중만
-  // 로고 자리에 도는 고리(`iconBusy` — 10-20 사용자 결정) · 끊김은 몸의 배너가 말한다(로고 그대로 — 목업).
+  // 머리줄 ④판(10-20 목업 `DbTile`): 트리 토글은 이름 뒤(`tail`)다. 사이드바가 열려 있으면 왼쪽 무리(로고 · 이름 · 토글)가 사이드바 경계까지를
+  // 쥐던 규칙(`span` — 쿼리 탭이 편집기 열 위에서 시작, 끌면 함께 움직였다)은 2026-11-19 에 걷었다(사용자 — 문서 타일의 오른쪽 곁 패널과 맞춘다 ·
+  // `pane/head-span` 머리말). 토글은 사이드바를 여닫거나 끌어도 이름 바로 뒤에 서 있고, 쿼리 탭은 늘 왼쪽 무리 바로 뒤에서 시작한다.
+  // 연결 점은 걷었다 — 연결됨 = 표시 없음 · 연결 중만 로고 자리에 도는 고리(`iconBusy` — 10-20 사용자 결정) · 끊김은 몸의 배너가 말한다(로고 그대로 — 목업).
   const inHead = $derived(paneHeadShown(pane.id));
-  // 토글은 늘 선다 — 넓으면 사이드바 여닫기(열려 있으면 무리 오른쪽 끝 = 사이드바 경계), 좁으면 떠 있는 트리(`treeDrop`). 몸 위 줄도 같다
-  const headSpan = $derived(treeLayout.span);
+  // 토글은 늘 선다 — 넓으면 사이드바 여닫기, 좁으면 떠 있는 트리(`treeDrop`). 몸 위 줄도 같다
   $effect(() =>
     setPaneTools(pane.id, {
       bar: queryBar,
       tail: queryToggle,
-      span: () => headSpan,
       iconBusy: () => (ses.conn.state === "connecting" ? connLabel : null),
       // 타일 ⋯ 맨 위 줄 — 액션 `tool:open-sql`(통로는 `PaneHost` 의 `runTileMenu` → `runOnMenu`)
       menu: () => [{ action: "tool:open-sql", label: t("pane.query.file.open"), icon: "folder-open", hint: "Ctrl+O" }],
@@ -852,7 +856,10 @@
       aria-pressed={treeShown}
       title={treeShown ? t("pane.query.tree.hide") : t("pane.query.tree.show")}
       aria-label={treeShown ? t("pane.query.tree.hide") : t("pane.query.tree.show")}
-      onclick={() => (treeOpen = !treeShown)}><UiIcon name="side-panel" size={head ? 14 : 13} /></button
+      onclick={() => {
+        treeMotionGate.mark(TREE_MOTION);
+        treeOpen = !treeShown;
+      }}><UiIcon name="side-panel" size={head ? 14 : 13} /></button
     >
   {/if}
 {/snippet}
@@ -861,10 +868,9 @@
   <!-- 탭 줄 — 트리 여닫기 · 스크립트 탭 · [+] · 연결 상태(목업의 위 줄 — 쓰기 알약은 실행 줄 맨 왼쪽).
        머리줄 안이면 트리 토글은 이름 뒤(`queryToggle` — 머리줄이 그린다)라 여기 없고, 연결 상태도 없다(연결 중은 머리줄 로고 자리의 고리 — `iconBusy`).
        포커스 밖이면 [+](`data-head-act`)는 접히고 스크립트 탭은 남는다(`pane/pane-tools.svelte.ts` "늘 보임 / 드러날 때만").
-       줄 · 탭 칸의 간격이 0 이라 `--head-act-gap` 은 적지 않는다. 사이드바 경계에 맞춘 머리줄(`flush`)은 왼쪽 여백 없이 탭이 바로 선다 -->
+       줄 · 탭 칸의 간격이 0 이라 `--head-act-gap` 은 적지 않는다 -->
   <ScriptTabs
     {head}
-    {headSpan}
     {treeToggle}
     tabs={sc.tabs}
     activeN={sc.activeN}
@@ -930,26 +936,30 @@
 
   <div class="main">
     {#if treeShown}
-      <SchemaPane
-        treeDrop={null}
-        {treeLayout}
-        opened={ses.opened}
-        conn={ses.conn}
-        busy={ses.running !== null || ses.txBusy || ses.switching || dataMeta > 0}
-        bind:tree
-        bind:treeExpanded
-        bind:treeReading
-        {openData}
-        {insertName}
-        {onTreeFail}
-        {defineFromTree}
-        {openTreeMenu}
-        {closeTreeDrop}
-        {treeDropKey}
-        {dragTree}
-        {splitKey}
-        oncatalog={completer.note}
-      />
+      <!-- 여닫는 움직임은 이 상자가 받는다 — 사이드바는 형제 둘(`.side` + 경계 `.vsplit`)이라 한 상자로 묶고, Svelte 전환은 기본이
+           local 이라 여닫히는 `{#if}` 에 바로 든 요소여야 돈다(그래서 SchemaPane 안이 아니라 여기). 안쪽 `.side` 는 이미 고정 폭이다 -->
+      <div class="tree-side" transition:sidePanelGrow={{ motion: treeMotionGate, key: TREE_MOTION }}>
+        <SchemaPane
+          treeDrop={null}
+          {treeLayout}
+          opened={ses.opened}
+          conn={ses.conn}
+          busy={ses.running !== null || ses.txBusy || ses.switching || dataMeta > 0}
+          bind:tree
+          bind:treeExpanded
+          bind:treeReading
+          {openData}
+          {insertName}
+          {onTreeFail}
+          {defineFromTree}
+          {openTreeMenu}
+          {closeTreeDrop}
+          {treeDropKey}
+          {dragTree}
+          {splitKey}
+          oncatalog={completer.note}
+        />
+      </div>
     {/if}
     <div class="work" bind:clientHeight={bodyH} bind:clientWidth={workW}>
       <!-- 데이터 탭(머리말) — 한 번 본 것은 숨어도 산다. 보이는 동안 편집기 · 실행 줄 · 결과 칸은 숨는다(편집기는 산 채) -->
@@ -1315,20 +1325,20 @@
     padding: 0 3px 0 5px;
   }
 
-  .tree-toggle.inhead.drop[aria-expanded="true"] {
-    color: var(--fg-1);
-    background: color-mix(in srgb, var(--fg) 11%, var(--surface-hover));
-  }
-
   .btn.icon.drop {
     display: inline-flex;
     align-items: center;
     gap: 2px;
   }
 
-  .btn.icon.drop[aria-expanded="true"] {
+  /*
+   * 트리 단추의 켬 — 사이드바가 보인다(`aria-pressed`) · 떠 있는 트리가 열려 있다(`aria-expanded`). 문서 타일의 곁 패널 단추(파일 · 목차 — `DocView` 의
+   * "곁 패널 단추의 켬")와 같은 강조 면 하나다 — 머리줄 안이든 몸 위 줄이든, 토글이든 드롭다운 단추든(2026-11-19 사용자 — 곁 패널 단추는 한 규칙)
+   */
+  .tree-toggle[aria-pressed="true"],
+  .tree-toggle.drop[aria-expanded="true"] {
     color: var(--fg);
-    background: var(--bg-hover);
+    background: var(--accent-soft);
   }
 
   .tree-toggle.inhead:focus-visible {
@@ -1397,6 +1407,16 @@
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
+  }
+
+  /* 사이드바 묶음(`.side` + `.vsplit`) — 여닫는 움직임 동안 이 상자의 폭만 0 에서 자란다(`sidePanelGrow`). `.main` 이 세로로 늘인 높이를
+   * 그대로 두 아이에게 늘여 준다(가로 줄 · 기본 stretch). 경계 `.vsplit` 이 작업 칸 쪽 변이라 안쪽을 오른쪽 변에 붙인다 — 문서 타일
+   * 파일 패널과 같은 서랍 */
+  .tree-side {
+    flex: 0 0 auto;
+    min-height: 0;
+    display: flex;
+    justify-content: flex-end;
   }
 
   .hsplit {

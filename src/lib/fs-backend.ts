@@ -279,6 +279,16 @@ export interface FsBackend {
    * 능력 플래그가 따로 없는 이유: 화면이 이것으로 그리는 것이 없고, 있으면 쓰고 없으면 감시 없이 선다.
    */
   watch?(onChange: (dirs: string[]) => void): FsWatch;
+  /**
+   * **하위 폴더까지의 글 파일 목록** (2026-11-19 — 팔레트 "파일 열기…" · 문서 타일 파일 칸의 찾기 공용). 로컬만(Rust
+   * `list_text_files` — 넓이 우선 · 건너뛸 폴더 · `limit` 상한) — 원격은 없다(부르는 쪽 `file-picker.ts` 의
+   * `scanTextFiles` 가 두 층 SFTP 로 떨어진다). 능력 플래그가 따로 없는 이유는 [`watch`] 와 같다. `rel` 은 `/` 로
+   * 잇는 상대 경로, `root` 는 Rust 가 푼 뿌리. 타입이 인라인인 것은 `file-picker.ts` 를 들이면 고리가 되기 때문이다.
+   */
+  listTextFiles?(
+    root: string,
+    limit: number,
+  ): Promise<{ root: string; files: { rel: string; path: string }[]; truncated: boolean }>;
 
   /** 상위 디렉터리 — **더 갈 곳이 없으면 자기 자신**을 돌려준다 (화면의 ↑ 비활성 판정) */
   parentOf(path: string): string;
@@ -877,6 +887,9 @@ const LOCAL: FsBackend = {
   readImage: (path, op, onProgress) => readImageVia("local_read_image", { op }, path, onProgress),
   writeText: (path, text, expectedVersion) => localWriteText(path, text, expectedVersion),
   watch: (onChange) => localWatch(onChange),
+  // 감싸지 않는다 — 팔레트가 받던 실패 문구 그대로(`stripReason` 은 부르는 쪽)
+  listTextFiles: (root, limit) =>
+    invoke<{ root: string; files: { rel: string; path: string }[]; truncated: boolean }>("list_text_files", { root, limit }),
   parentOf: winParentOf,
   joinPath: winJoinPath,
   crumbsOf: winCrumbsOf,

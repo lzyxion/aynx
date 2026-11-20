@@ -770,6 +770,10 @@ export const app: Record<keyof typeof koApp, string> = {
   "unsaved.tearChanged": "The document changed while moving, so it wasn't moved.",
   "unsaved.tearKept": "The document changed while moving, so it was also kept in the original window.",
   "unsaved.tear": "Can't move an unsaved document — save it first.",
+  "unsaved.switch.save": "Save and open",
+  "unsaved.switch.discard": "Discard and open",
+  "unsaved.switch.saveFailed": "Couldn't save, so the document wasn't switched — {name}",
+  "unsaved.switch.noDialog": "Couldn't show the confirmation, so the document wasn't switched (there are unsaved changes).",
   "tabs.unsaved": "Has unsaved changes",
 
 

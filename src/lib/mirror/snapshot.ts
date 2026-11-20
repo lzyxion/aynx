@@ -176,6 +176,7 @@ export function sanitizePane(p: PaneSpec): PaneSpec {
   keep("fileHidden");
   keep("docMode");
   keep("docOutline");
+  keep("docFiles");
   keep("docEditView");
   keep("docSplit");
   keep("docZoom");

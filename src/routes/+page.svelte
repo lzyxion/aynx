@@ -197,6 +197,7 @@
     unkeepDoc,
     noteDocMode,
     noteDocOutline,
+    noteDocFiles,
     noteDocEditView,
     noteDocSplit,
     noteDocZoom,
@@ -208,6 +209,7 @@
     openDocFrom,
     openPathFromTerminal,
     openDocLink,
+    switchDocHere,
     openFilesFor,
     sftpRefreshKey,
   } from "$lib/app/panes.svelte.js";
@@ -779,6 +781,8 @@
         onopenpath={(tabId, paneId, target, line) => void openPathFromTerminal(tabId, paneId, target, line)}
         ondocmode={noteDocMode}
         ondocoutline={noteDocOutline}
+        ondocfiles={noteDocFiles}
+        ondocswitch={(tabId, paneId, path, files) => void switchDocHere(tabId, paneId, path, files)}
         ondoceditview={noteDocEditView}
         ondocsplit={noteDocSplit}
         ondoczoom={noteDocZoom}

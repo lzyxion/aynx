@@ -171,6 +171,61 @@ node scripts/dev/run-harness.mjs doc-head-narrow-harness.mjs <outdir> --size 128
 - ③ [새 문서…] → 이름 상자("새 문서 · 폴더" · `untitled.md` · [만들기] · [바꾸기] 없음) → 같은 폴더에 빈 파일 하나(쓰기 없음) → 그 파일이 편집 상태로
 - ④ 같은 이름 → 만들기 거절뿐(덮어쓰지 않음 · 상자에 까닭) · Esc 로 닫힘 ⑤ 콘솔 오류 0
 
+## doc-side-panels-harness.mjs — 문서 타일의 곁 패널(왼쪽 파일 · 오른쪽 목차)
+
+`DocView` 의 "곁 패널" 절(2026-11-19 — `doc-side-panels.ts` 의 폭 규칙 · `doc/files-controller.svelte.ts` · `DocFiles.svelte` · `app/panes` 의 `switchDocHere`).
+스텁은 `doc-head-narrow-harness` 의 것에 폴더 목록(`local_list`)과 하위 폴더 찾기(`list_text_files`)를 더했다 — 파일 · 폴더는 `window.__files` ·
+`window.__dirs` 표뿐이다(디스크에 쓰지 않는다). 가짜 폴더 `C:\notes`(a.md · b.md · c.txt · photo.png · .hidden.md · sub\deep.md · empty\) 의
+a.md 를 열고, 곁에 다른 폴더의 z.md 타일을 세워 **분할 비율**(`tab.root.ratio`)로 문서 타일 폭을 1100 · 760 · 520px 로 바꾼다(상자 폭을 덮어쓰지 않는다).
+확인 상자는 앱 확인 상자(`app/confirm-dialog` 의 `currentConfirm` · `answerConfirm`)로 읽고 답한다.
+
+```bash
+node scripts/dev/run-harness.mjs doc-side-panels-harness.mjs <outdir> --size 1400x900
+#   → p1-wide · p2-files · p3-empty · p4-find · p4-nomatch · p5-switched · p5-root · p6-outline · p7-both · p7-mid ·
+#     p8-narrow · p8-files-drop · p8-outline-drop · p9-confirm · p10-zoomed · p12-swapped ·
+#     p13-narrow-swapped · p13-narrow-reopen · p13-narrow-find-reopen (.png)
+```
+
+- 기다림 — 누른 뒤에는 패널 상자(`.files-panel` · `.outline-panel`)의 여닫는 움직임(200ms)이 끝날 때까지 기다린다(`settle` — `document.getAnimations()`
+  조건 기다림 · 고정 sleep 아님). 폭은 프레임마다 `offsetWidth` 로 적어 본다(`startSampling` — 타일 등장의 크기 변환에 흔들리지 않게)
+- ① 머리줄 — 파일 단추는 이름 바로 뒤 · 목차 단추는 도구줄 맨 끝(새로고침 뒤) · 패널을 여닫아도 두 단추 x 그대로 · `aria-pressed` = 보이는가 ·
+  연 직후 폭이 0 과 240 사이를 지나 240 에 닿음(움직임이 돈다) · 켜진 파일 토글과 켜진 목차 토글의 계산된 `background-color` 가 같음(포인터를 치우고 잰다)
+- ② 파일 패널 — 본문 왼쪽 240(+선 1) · 찾기 칸 · 지금 폴더 줄 · `..` → 폴더 → 파일(그림 · 숨김 없음) · 지금 문서 `aria-current="page"` · 포커스를 가져가지 않음
+- ③ 폴더 들어가기 · `..` · 빈 폴더 문구는 목록 안 `..` 줄 바로 아래(꼬리 줄엔 없음 · ↑↓ 가 건너뜀) ④ 찾기(하위 폴더 결과 + 흐린 폴더 · 맞는 것 없음 ·
+  ↑↓ 는 본문을 밀지 않음 · Esc 두 번 = 비움 → 본문)
+- ⑤ 파일 줄 → 이 타일에서 바뀜(타일 수 · 이름 · 패널 · 본문 포커스 · 미리 보기/고정 표식 · 새 DocView 의 켜진 패널은 첫 프레임부터 240 — 움직이지 않음) ·
+  지금 문서 다시 고름 = 그대로 · 곁 타일이 보는 파일 = 그 타일로 · 합성 루트("내 PC")는 찾기 칸이 막힘
+- ⑥ 목차 패널 — 본문 오른쪽 240 · `border-left` · 줄 → 그 제목 ⑦ 둘 다(≥882) · 760px 는 나중 것만(넓히면 돌아옴 · 그 폭에서 열면 먼저 것이 명세에서도 꺼짐)
+- ⑧ 520px — 같은 자리의 드롭다운 단추 · 파일 드롭다운(단추 왼쪽 변 · 칸 포커스 · 폴더는 안 닫힘 · 파일은 닫히고 바뀜) · 목차 드롭다운(오른쪽 변) · 열린 두 드롭다운 단추의
+  바탕색이 같음(켜진 토글과도) · 하나만 · Esc · 넓어지면 닫힘
+- ⑨ 편집 중 저장 안 한 변경 → 확인 상자([저장하고 열기] · [버리고 열기]) · [취소] = 그대로 · [버리고 열기] = 바뀜(쓰기 없음) ⑩ 최대화 유지
+- ⑫ 넓은 타일의 곁 패널에서 골라 문서 바꾸기(`doc-swap.ts`) — 등장 애니메이션 없음 · 본문만 떠오름 · 파일 칸(폴더 · 줄 · 찾기 글 · 스크롤) 그대로
+- ⑬ 같은 것을 좁은 타일(520px)의 파일 드롭다운에서 — 새 타일이 선 모든 프레임에서 드롭다운 닫힘 · 등장 애니메이션 없음 · 다시 열면 넘겨받은
+  폴더 · 줄 · 스크롤(든 뒤 10 프레임 내내 — `reopen mount log`) · 닫았다 다시 열어도 스크롤 그대로 · ↑↓ 로 고른 줄이 목록 안에 보임 · 폴더를 옮기면
+  맨 위(둘러보기) / 폴더(문서의 폴더가 아님) · 찾기 글 · 결과 · 다시 훑지 않음(찾기). 좁은 새 타일에 곁 패널 목록이 선 rAF 프레임 수는 판정이 아니라
+  **관찰** 줄이다(표의 판정 칸 `관찰` — 폭을 재기 전 첫 그리기의 알려진 동작 · 고치지 않기로 함)
+- ⑪ 콘솔 오류 · 예외 · Svelte 경고 0
+
+## query-side-harness.mjs — 쿼리(DB) 타일의 스키마 사이드바 여닫는 움직임
+
+`QueryView` 의 감싸개 `.tree-side`(`.side` + 경계 `.vsplit` 을 묶음) + `transition:sidePanelGrow`(2026-11-19 — `browser/tree-accordion.ts` · 200ms ·
+문지기 `treeMotionGate` — 사람이 토글을 누른 때만 움직인다). 스텁은 문서 하네스 바탕에 DB 명령 몇(`db_conn_list` 가짜 SQLite 연결 · `db_open` 늘 열림 ·
+`db_schema` · `db_objects`)을 더한 것 — 진짜 DB 없이 연결이 열린 상태와 트리(테이블 3 · 뷰 1)까지 선다. 쿼리 타일 둘을 `app/query` 의 `openQueryTile` 로
+세우고 첫 타일 폭을 **분할 비율**로 900 · 480px 로 바꾼다.
+
+```bash
+node scripts/dev/run-harness.mjs query-side-harness.mjs <outdir> --size 1400x900
+#   → q1-open · q2-mid-close · q3-closed · q4-mid-open · q5-dragged · q6-narrow · q6-narrow-drop · q7-wide-back (.png)
+```
+
+- 폭은 프레임마다 `offsetWidth`(배치 폭 — 타일 등장의 크기 변환에 흔들리지 않게)로 적는다. 중간 프레임 스크린샷(q2 · q4)은 CDP
+  `Animation.setPlaybackRate`(0.1)로 늦춰 찍는다 — 폭 판정은 제 속도의 판에서 잰다
+- (c) 처음 설 때 첫 프레임부터 제 폭(221 = `.side` 220 + 경계 1) (a) 토글로 닫기 · 열기 — 폭이 0 과 제 폭 사이를 지남 · 끝나면 인라인 스타일 없음
+  (`style=""` 은 전환이 잠깐 건 `overflow` 를 걷은 자리 — 선언 없음) · 감싸개 = `.side` + 1 · `.side` · `.vsplit` 높이 = `.main` 높이
+- (b) 닫힌 뒤 `.tree-side` 없음 · `.work` 가 `.main` 폭을 다 씀 (d) 경계 끌기(`button: "left"` 를 실은 mouseMoved — 없으면 끌기로 가지 않는다) ·
+  화살표 ← → · Shift (e) 480px 에서 저절로 숨고 900px 로 돌아올 때 전환 없음 · 좁은 토글 = 떠 있는 패널 · Esc
+- (f) 켠 토글 · 열린 드롭다운 단추의 계산된 바탕색 = `--accent-soft`(문서 곁 패널 단추의 켬과 같은 토큰) · 끈 토글은 투명 (g) 콘솔 오류 0
+
 ## msg-actions-harness.mjs — 대화의 말 복사 (사이드 채팅 · AI 타일 대화 면)
 
 `TranscriptBody` 의 `copyable`(2026-11-14 — 목업 F1 · `transcript.ts` 의 `agentTurnCopies`). 스텁은 `code-to-term-chat-harness` 를 줄인 것이고,

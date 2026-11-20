@@ -53,7 +53,7 @@
    * 나란히 보여 준다(읽기 전용 — `doc-compare.ts` · `doc/DocCompareView.svelte`, 편집 면은 가리기만 한다). 저장 안 한 변경은 `app/doc-dirty` 에
    * 적고(닫기 가드 · 머리줄 ● 가 읽는다), 저장 함수도 거기 등록한다 — 둘 다 [`paneId`] 가 있을 때만.
    *
-   * 마크다운이면 편집 중에도 그린 결과를 본다. 넓은 타일(`isWideEdit` — 900px 이상)은 도구줄 맨 앞 세 칸 묶음
+   * 마크다운이면 편집 중에도 그린 결과를 본다. 넓은 타일(`isWideEdit` — 곁 패널을 뺀 본문 폭 900px 이상)은 도구줄 맨 앞 세 칸 묶음
    * [원문만 | 나란히 | 미리 보기만](기본 나란히 — 고른 값과 경계 비율은 타일의 것: `PaneSpec.docEditView` · `docSplit`,
    * 미리 보기를 고정하지 않는다), 좁은 타일은 [원문 | 미리 보기] 두 칸 탭(저장하지 않는 한때 값). 편집기는 보기를 바꿔도
    * **내리지 않고 숨기기만** 한다(되돌리기 기록 · 커서가 산다). 미리 보기는 입력이 200ms 멈춘 뒤 다시 파싱한다(mermaid 는
@@ -97,13 +97,33 @@
    * 글이 다시 그려지면(자동 새로고침 · 보기 전환 · 늦은 mermaid) `MutationObserver` 가 다시 찾는다 — 고른 번호는 지키고
    * 스크롤은 하지 않는다. 지금 일치로 미는 것은 본문 상자만이다(`scrollIntoView` 를 쓰지 않는 까닭은 앵커 스크롤과 같다).
    *
-   * ## 목차
+   * ## 곁 패널 (왼쪽 파일 · 오른쪽 목차 — 2026-11-19)
    *
-   * 그린 마크다운에만 선다(원문 · 편집 · 코드 파일에는 없다). 넓은 타일은 [목차] 토글(머리줄이면 이름 뒤 `tail` · 몸 위 줄이면 도구줄
-   * 맨 앞)이 본문 왼쪽 곁 패널을 여닫고 — 켬은 타일의 것(`PaneSpec.docOutline`, 배치에 저장 · **미리 보기를 고정하지 않는다**) —, 좁은 타일
-   * (`isNarrowOutline`)은 **그 자리에 같은 그림**(`side-panel`)의 "지금 절 ▾" 드롭다운 단추가 선다(메뉴 통로 `runOnMenu` 를 지난다). 지금 읽는 절은 본문
-   * 스크롤과 본문 내용 상자의 크기 변화(늦게 그려지는 mermaid — `ResizeObserver`)를 rAF 로 묶어 다시 잰다(`currentSection`). 줄을 고르면 앵커 링크와 같은 [`scrollToAnchor`] 로 가고 포커스는
-   * 본문(키보드 몸)으로 돌아온다. 규칙은 `doc-outline.ts`, 목록 그림은 `DocOutline.svelte`.
+   * 본문 줄은 `[파일 | 본문 | 목차]` 다. 켬은 둘 다 타일의 것(`PaneSpec.docFiles` · `docOutline` — 배치에 저장 · **미리 보기를 고정하지 않는다**)이고,
+   * 무엇이 패널로 보이나 · 본문 폭은 순수 함수 하나(`doc-side-panels.ts` 의 `docPanelLayout`)가 정한다.
+   *
+   * - **단추 자리는 고정** — 파일 토글은 이름 바로 뒤(머리줄의 `tail` — 몸 위 줄이면 도구줄 맨 앞), 목차 토글은 도구줄 맨 끝(새로고침 뒤).
+   *   패널을 여닫아도 · 폭이 바뀌어도 x 가 움직이지 않는다. 그림은 파일 = `side-panel`(왼쪽 패널) · 목차 = `preview`(오른쪽 패널 — 파일 타일의 미리 보기
+   *   패널과 같은 그림). 파일 단추는 경로가 있으면 늘(원문 · 편집 중 · 코드 파일 포함), 목차 단추는 그린 마크다운에만 서고 제목이 없으면 흐린 채 툴팁이 까닭을 말한다.
+   * - **좁은 타일**(640 미만 — `isNarrowOutline` 문턱 하나) — 두 단추 모두 같은 자리 · 같은 그림 + ▾ 의 드롭다운 단추가 된다. 드롭다운은 한 번에 하나만
+   *   (하나를 열면 다른 것을 닫는다) · 넓어지면 닫는다. 파일 드롭다운은 단추 왼쪽 변, 목차 드롭다운은 단추 오른쪽 변에 맞춘다. 고르는 줄은 메뉴 통로
+   *   `runOnMenu` 를 지난다(파일 드롭다운의 폴더 줄은 닫지 않고 그 안에서 들어간다).
+   * - **둘 다 열기** — 둘이 함께 설 폭(882 — `DOC_BOTH_PANELS_MIN_PX`)이 없을 때 토글로 **열면** 먼저 열려 있던 쪽을 명세에서도 끈다(`panelToCloseOnOpen`).
+   *   창을 줄여 그 밑으로 간 것은 보이기만 숨긴다(나중에 연 쪽 `last` 만 — 넓히면 돌아온다). 토글의 눌림(`aria-pressed`)은 "보이는가" 다 — 숨겨진 쪽의
+   *   토글을 누르면 여는 것으로 다룬다. 편집 보기의 넓음(`isWideEdit`)은 타일 폭이 아니라 패널을 뺀 본문 폭(`bodyW`)으로 잰다.
+   * - **파일**(`doc/files-controller.svelte.ts` · `DocFiles.svelte`) — 지금 문서의 폴더에서 시작해 폴더로 들어가고, 찾기는 하위 폴더까지(팔레트 "파일 열기…" 와
+   *   같은 `scanTextFiles`). 패널이 보이거나 드롭다운이 열려 있을 때만 읽는다(그리고 `backend.key` 가 바뀌면 다시). 고른 파일은 **이 타일에서** 열린다 —
+   *   [`onswitch`] → 상위 `switchDocHere`(같은 문서면 본문 포커스 · 다른 타일이 보고 있으면 그리로 · 저장 안 한 변경이면 묻는다 · 최대화는 새 타일이 이어받는다).
+   *   여기서는 따로 막지 않는다. 고를 때 파일 칸의 상태 사본(`fc.snapshot`)을 함께 올리고, 갈아 끼워 선 새 DocView 는 그것을 씨앗으로 받아
+   *   폴더 · 목록 · 찾기 글 · 찾기 자료 · 고른 줄 · 스크롤 그대로 선다(`doc-swap.ts` 의 `takeDocSwap` — 초기화 때 한 번). 문서 → 문서 갈아 끼우기는
+   *   타일 등장 애니메이션 없이 뚝 서고 본문만 떠오른다(스크립트의 "갈아 끼워진 문서" 절).
+   * - **목차**(`doc/outline-controller.svelte.ts` · `DocOutline.svelte`) — 지금 읽는 절은 본문 스크롤과 본문 내용 상자의 크기 변화(늦게 그려지는 mermaid —
+   *   `ResizeObserver`)를 rAF 로 묶어 다시 잰다(`currentSection`). 줄을 고르면 앵커 링크와 같은 [`scrollToAnchor`] 로 간다. 규칙은 `doc-outline.ts`.
+   * - **움직임** — 사람이 토글로 여닫을 때만 패널이 옆 변에서 폭을 키우며 들어오고 줄며 나간다(`sidePanelGrow` — 독 펼침 판과 같은 200ms ·
+   *   곡선 · 문지기 `panelMotion`). 첫 그리기 · 이 타일에서 문서 바꾸기(새 DocView — 패널은 그대로 서고 본문만 떠오른다) · 폭 문턱(882 · 640)에 숨고 돌아오기 · 움직임 줄이기는 뚝 선다.
+   *   안쪽 내용은 고정 폭(`.side-inner`)이라 자라는 동안 줄이 다시 흐르지 않는다. 폭 판정(`layout` · `isWideEdit`)은 명세 값이라 중간 폭에 흔들리지 않는다.
+   * - **포커스** — 곁 패널은 토글로 열어도 포커스를 가져가지 않는다. 패널 줄을 고르면 · 패널 칸에서 Esc(질의 없음) 하면 본문(키보드 몸)으로 돌아온다.
+   *   패널 안 입력 칸의 키는 뿌리의 키 손잡이가 비켜난다(`onkeydown` 의 입력 칸 거름).
    *
    * ## 글자 크기
    *
@@ -135,6 +155,18 @@
   import { imageSrcsOf } from "$lib/doc-images";
   import { DocImageCache } from "$lib/doc-images.svelte";
   import { createDocOutline } from "$lib/doc/outline-controller.svelte.js";
+  import { createDocFiles } from "$lib/doc/files-controller.svelte.js";
+  import type { DocFilesSeed } from "$lib/doc-files";
+  import { DOC_SWAP_FADE_MS, takeDocSwap } from "$lib/doc-swap";
+  import DocFiles from "$lib/doc/DocFiles.svelte";
+  import { createToggleMotion, sidePanelGrow } from "$lib/browser/tree-accordion";
+  import {
+    DOC_FILES_PANEL_W,
+    DOC_OUTLINE_PANEL_W,
+    docPanelLayout,
+    panelToCloseOnOpen,
+    type DocSidePanel,
+  } from "$lib/doc-side-panels";
   import { createDocDocument } from "$lib/doc/document-controller.svelte.js";
   import {
     DOC_SPLIT_DEFAULT,
@@ -170,7 +202,7 @@
   import DomFindBar from "$lib/DomFindBar.svelte";
   import { DirtyBinding } from "$lib/doc-dirty-table";
   import { runOnMenu } from "$lib/browser/menu-runner";
-  import { docMenuItems } from "$lib/doc-menu";
+  import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems } from "$lib/doc-menu";
   import { runEditMenu, runReadMenu, selectionIn, type ReadMenuActions } from "$lib/doc/context-actions";
   import type { PaneMenuRow } from "$lib/pane/pane-menu";
   import { formatSize } from "$lib/sftp-browser";
@@ -179,7 +211,6 @@
   import { paneHeadShown, setPaneTools } from "$lib/pane/pane-tools.svelte.js";
   import { codeToTerminal } from "$lib/app/code-to-term.svelte.js";
   import { newDocState } from "$lib/app/new-doc.svelte.js";
-  import { docHeadSpan, OUTLINE_PANEL_W } from "$lib/pane/head-span";
 
   let {
     paneId,
@@ -189,6 +220,9 @@
     onmode,
     outline = false,
     onoutline,
+    files = false,
+    onfiles,
+    onswitch,
     editView = "split",
     oneditview,
     split,
@@ -220,10 +254,19 @@
     mode?: DocMode;
     /** [원문]/[보기] — 상위가 패널 명세에 적는다(배치 저장·창 이관이 따라온다) */
     onmode?: (mode: DocMode) => void;
-    /** 목차 곁 패널을 켰는가 (`PaneSpec.docOutline` — 없으면 꺼짐). 좁은 타일에서는 드롭다운이 대신한다 */
+    /** 목차 곁 패널(오른쪽)을 켰는가 (`PaneSpec.docOutline` — 없으면 꺼짐). 좁은 타일에서는 드롭다운이 대신한다 */
     outline?: boolean;
     /** [목차] 토글 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
     onoutline?: (open: boolean) => void;
+    /** 파일 곁 패널(왼쪽)을 켰는가 (`PaneSpec.docFiles` — 없으면 꺼짐). 좁은 타일에서는 드롭다운이 대신한다 */
+    files?: boolean;
+    /** [파일] 토글 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
+    onfiles?: (open: boolean) => void;
+    /**
+     * 파일 칸에서 파일을 골랐다 — 상위가 **이 타일에서** 그 파일로 바꾼다(`switchDocHere` — 물음 · 같은 문서 · 다른 타일은 거기서 가른다).
+     * `files` 는 파일 칸의 지금 상태 사본 — 갈아 끼울 때만 새 타일에 넘어간다(`doc-swap.ts`)
+     */
+    onswitch?: (path: string, files: DocFilesSeed) => void;
     /** 마크다운 편집 중 고른 보기 (`PaneSpec.docEditView` — 없으면 나란히). 좁은 타일에서는 두 칸 탭이 대신한다 */
     editView?: DocEditView;
     /** 세 칸 묶음 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
@@ -273,6 +316,21 @@
 
   let bodyEl = $state<HTMLDivElement | null>(null);
   let rootEl = $state<HTMLDivElement | null>(null);
+
+  // ── 갈아 끼워진 문서 (`doc-swap.ts` — 2026-11-20) ─────────────────────────────────
+  // 이 타일에서 문서만 바뀐 것이면(파일 칸에서 고름 · 파일 타일의 미리 보기 바꾸기) 타일 틀은 등장 애니메이션 없이 뚝 서고(`replaceTile`),
+  // 본문만 처음 내용을 그릴 때 한 번 떠오른다. 읽는 동안의 빈 본문에는 걸지 않는다. 거는 자리는 본문 상자(`.body`)다 — 타일 상자나
+  // 그 조상에 `opacity` 를 걸면 글래스 흐림 판이 빠진다(`PaneHost` 의 `.glass-tile` 절). 파일 칸 인계(`files`)는 아래 `createDocFiles` 의 씨앗.
+  // 첫 id 로 한 번만 꺼낸다(뒤에 바뀐 id 는 갈아 끼워진 문서가 아니다) — 그래서 `untrack`
+  const swapped = untrack(() => (paneId ? takeDocSwap(paneId) : null));
+  let fadePending = swapped !== null;
+  $effect(() => {
+    const el = bodyEl;
+    if (!fadePending || !el || dc.file === null) return;
+    fadePending = false;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DOC_SWAP_FADE_MS, easing: "ease-out" });
+  });
 
   // ── 문서 (불러오기 · 자동 새로고침 · 편집 · 저장 · 띠 · 체크박스 쓰기) ───────────────────────
   // 마지막으로 읽은 파일 · 읽는 중 · 오류 · 도장 · 편집 중 · 더러움 · 저장 · 띠 · 체크박스 쓰기 — `doc/document-controller.svelte.ts`
@@ -738,9 +796,10 @@
     return bodyEl.querySelector<HTMLElement>("[data-code-view]") ?? bodyEl;
   }
 
-  // ── 목차 ─────────────────────────────────────────────────────────────────────
-  // 목차 줄 · 자리 · 좁은가 · 곁 패널 · 지금 절(rAF) · 고른 자리 · 드롭다운 — `doc/outline-controller.svelte.ts`(2026-10-27 분할 6차).
-  // 관찰자 · 리스너 · 효과는 아래 원래 자리 · 원래 순서 그대로다(타일 폭은 편집 보기도 읽어 여기 산다).
+  // ── 곁 패널 — 목차(오른쪽) ───────────────────────────────────────────────────
+  // 목차 줄 · 자리 · 지금 절(rAF) · 고른 자리 · 드롭다운 — `doc/outline-controller.svelte.ts`(2026-10-27 분할 6차).
+  // 좁은가 · 보이는가는 아래 `layout`(양옆 곁 패널의 폭 규칙 한 곳)에서 받는다. 관찰자 · 리스너 · 효과는 아래 원래 자리 · 원래 순서 그대로다
+  // (타일 폭은 곁 패널 · 편집 보기도 읽어 여기 산다).
 
   /** 타일 폭 — 좁으면 곁 패널 대신 드롭다운. 못 쟀으면 0 */
   let tileWidth = $state(0);
@@ -757,11 +816,11 @@
     get text() {
       return text;
     },
-    get outline() {
-      return outline;
+    get narrow() {
+      return layout.narrow;
     },
-    get tileWidth() {
-      return tileWidth;
+    get outlineShown() {
+      return layout.outlineShown;
     },
     get bodyEl() {
       return bodyEl;
@@ -771,6 +830,111 @@
     },
     scrollToAnchor,
   });
+
+  // ── 곁 패널 — 파일(왼쪽) · 폭 규칙 · 토글 ───────────────────────────────────────
+
+  /** 나중에 연 쪽 — 둘이 함께 설 폭이 없을 때 이쪽만 보인다(한때 값 · 저장하지 않는다) */
+  let lastPanel = $state<DocSidePanel | null>(null);
+  /** 파일 단추가 서는가 — 경로가 있으면 늘(원문 · 편집 중 · 코드 파일 포함) */
+  const filesSlot = $derived(path !== "");
+  /** 무엇이 패널로 보이나 · 본문 폭 — 곁 패널 둘 · 편집 보기 넓음이 이 한 값을 읽는다(`doc-side-panels.ts`) */
+  const layout = $derived(
+    docPanelLayout({ width: tileWidth, files: files && filesSlot, outline, outlineReady: oc.hasOutline, last: lastPanel }),
+  );
+
+  /** 파일 칸에서 고른 파일 — 이 타일에서 바꾸기는 상위(`switchDocHere`)가 한다. 파일 칸의 지금 상태를 함께 올린다(새 칸이 이어받는다) */
+  const switchTo = (p: string) => onswitch?.(p, fc.snapshot());
+  const fc = createDocFiles({
+    seed: swapped?.files ?? null,
+    get backend() {
+      return backend;
+    },
+    get path() {
+      return path;
+    },
+    get sourceGone() {
+      return sourceGone;
+    },
+    root: () => rootEl,
+    // 드롭다운이면 메뉴 통로(고른 것을 쥐고 → 닫고 → 간다) — 패널이면 바로
+    onpick: (p) => (fc.drop ? runOnMenu(() => p, fc.closeDrop, switchTo) : switchTo(p)),
+  });
+
+  /**
+   * 곁 패널 하나를 **연다** — 숨겨진 쪽(켜 두었지만 다른 쪽에 밀려 안 보임)의 토글도 여기로 온다. 둘이 함께 설 폭이 없으면 다른 쪽을 명세에서도
+   * 끈다(`panelToCloseOnOpen` — 규칙은 머리말 "곁 패널"). 포커스는 옮기지 않는다.
+   */
+  function openPanel(which: DocSidePanel) {
+    const close = panelToCloseOnOpen({
+      width: tileWidth,
+      opening: which,
+      files: which === "files" ? false : files,
+      outline: which === "outline" ? false : outline,
+      outlineReady: oc.hasOutline,
+    });
+    if (close === "files") onfiles?.(false);
+    else if (close === "outline") onoutline?.(false);
+    lastPanel = which;
+    if (which === "files" && !files) onfiles?.(true);
+    else if (which === "outline" && !outline) onoutline?.(true);
+  }
+
+  /** 곁 패널 움직임의 문지기 — 사람이 토글을 누른 때만 `mark`(첫 그리기 · 폭 문턱 · 새 DocView 는 그대로 선다). 두 패널이 한 키를 쓴다 —
+   *  좁은 폭에서 하나를 열면 다른 하나가 함께 닫히고, 그 둘이 같이 움직인다 */
+  const panelMotion = createToggleMotion();
+  const PANEL_MOTION = "doc-panel";
+
+  /** [파일] 토글 — 보이면 끄고, 아니면(꺼짐 · 숨겨짐) 연다 */
+  function toggleFiles() {
+    panelMotion.mark(PANEL_MOTION);
+    if (layout.filesShown) onfiles?.(false);
+    else openPanel("files");
+  }
+
+  /** [목차] 토글 — 보이면 끄고, 아니면(꺼짐 · 숨겨짐) 연다 */
+  function toggleOutline() {
+    panelMotion.mark(PANEL_MOTION);
+    if (layout.outlineShown) onoutline?.(false);
+    else openPanel("outline");
+  }
+
+  /** 좁은 타일의 드롭다운 — 한 번에 하나만(하나를 열면 다른 것을 닫는다) */
+  function toggleFilesDrop() {
+    if (fc.drop) fc.closeDrop();
+    else {
+      oc.closeOutlineDrop();
+      fc.openDrop();
+    }
+  }
+
+  function toggleOutlineDrop() {
+    if (oc.outlineDrop) oc.closeOutlineDrop();
+    else {
+      fc.closeDrop();
+      oc.openOutlineDrop();
+    }
+  }
+
+  /** 파일 목록을 읽어야 하는가 — 패널이 보이거나 드롭다운이 열려 있다 */
+  const filesLive = $derived(layout.filesShown || fc.drop !== null);
+  /** 원본(재연결이면 바뀐다) · 끊김 — 백엔드 객체가 새로 내려와도 값이 같으면 아래 효과를 깨우지 않는다 */
+  const filesSource = $derived(`${backend.key}\n${backend.online}`);
+
+  // 파일 목록 다시 읽기 — 보이기 시작할 때 · 원본이 바뀔 때. 닫혀 있으면 읽지 않는다. 읽기는 제가 쓰는 상태(목록 · 질의 · 찾기 자료)를
+  // 읽으므로 `untrack` — 아니면 제가 쓴 값에 다시 깨어난다(`pane-tools.svelte.ts` 머리말의 함정과 같다)
+  $effect(() => {
+    void filesSource;
+    if (!filesLive) return;
+    untrack(() => void fc.load());
+  });
+
+  // 파일 드롭다운은 좁은 타일의 것 — 넓어졌거나 단추가 사라지면 닫는다(목차 드롭다운의 효과와 같다)
+  $effect(() => {
+    const keep = layout.narrow && filesSlot;
+    if (!keep) untrack(() => fc.closeDrop());
+  });
+
+  onDestroy(() => fc.dispose());
 
   $effect(() => {
     const el = rootEl;
@@ -980,9 +1144,11 @@
   const mdEdit = $derived(dc.editing && markdown);
   /** 좁은 타일의 두 칸 탭 — 저장하지 않는다. 편집을 시작할 때 고른 값에서 정한다 */
   let narrowTab = $state<NarrowEditTab>("source");
-  const wideEdit = $derived(isWideEdit(tileWidth));
+  /** 편집 면의 폭 — 곁 패널을 뺀 본문 폭(`layout.bodyW`), 못 쟀으면 타일 폭 */
+  const editWidth = $derived(layout.bodyW || tileWidth);
+  const wideEdit = $derived(isWideEdit(editWidth));
   /** 지금 보이는 보기 — 넓으면 고른 값, 좁으면 탭 */
-  const editShown = $derived<DocEditView>(mdEdit ? visibleEditView(editView, tileWidth, narrowTab) : "source");
+  const editShown = $derived<DocEditView>(mdEdit ? visibleEditView(editView, editWidth, narrowTab) : "source");
   const showPreview = $derived(mdEdit && editShown !== "source");
   /** 끄는 동안의 비율 — 놓을 때 상위에 한 번 적는다(끄는 동안 배치 자동 저장을 두드리지 않게) */
   let dragSplit = $state<number | null>(null);
@@ -1329,71 +1495,114 @@
   }
   // 타일 제목줄 개편(2026-10-20) — 머리줄이 서 있으면 이 도구줄이 머리줄 가운데로 올라가 한 줄이 된다(`pane/pane-tools.svelte.ts`).
   // 머리줄이 없으면(설정 `tile_header` · 폰) 예전처럼 몸 맨 위에 그린다. 스니펫이라 어디에 그려지든 이 화면의 상태 · 단축키가 그대로다.
+  // 외부 열기(기본 앱으로 열기 · 외부 편집기로 편집)는 머리줄에서는 도구줄이 아니라 타일 ⋯ 의 [경로 복사] 위 줄이다(`fileMenu` · `run` — 2026-11-19 사용자).
+  // ⋯ 에 도구 줄이 얹히는 것은 머리줄이 서 있을 때뿐이라, 몸 위 도구줄은 예전 단추를 그대로 그린다(`DocToolbar` 의 `!head` 갈래).
   const inHead = $derived(!!paneId && paneHeadShown(paneId));
   $effect(() => {
     const id = paneId;
     if (!id) return;
-    return setPaneTools(id, { bar: docBar, tail: docTail, span: () => headSpan, keepBar: true });
+    return setPaneTools(id, {
+      bar: docBar,
+      tail: docTail,
+      keepBar: true,
+      fileMenu: () => docExternalItems({ canOpenExternal: backend.canOpenExternal, canEdit: backend.canEdit, offline }, t),
+      run: (key) => {
+        if (key === DOC_TOOL_EXTERNAL) void dc.openExternally();
+        else if (key === DOC_TOOL_EDIT_EXTERNAL) void dc.editRemote();
+      },
+    });
   });
-  // 머리줄 ④판(10-20 — 쿼리 타일과 같은 규칙 `pane/head-span`): 목차 토글은 이름 뒤(`tail`)이고, 목차 패널이 열려 있으면(넓은 타일 · 본문 **왼쪽**)
-  // 왼쪽 무리(아이콘 · 이름 · 토글)가 패널 경계까지를 쥔다(`span` — 문서 도구가 본문 열 위에서 시작). 좁은 타일의 "지금 절 ▾" 도 같은 `tail` 자리다(10-20 실기 — 넓음 ↔ 좁음에 단추가 튀지 않게).
-  const headSpan = $derived(docHeadSpan(oc.panelOpen));
+  // 머리줄 ④판(10-20): 왼쪽 곁 패널 토글은 이름 뒤(`tail`)다 — 2026-11-19 부터 파일 토글(그 앞은 목차 토글이었다). 좁은 타일의 드롭다운 단추도
+  // 같은 `tail` 자리다(10-20 실기 — 넓음 ↔ 좁음에 단추가 튀지 않게). 목차 토글은 도구줄 맨 끝(새로고침 뒤 — `DocToolbar`)이다.
+  // 왼쪽 패널이 열리면 왼쪽 무리가 패널 경계까지를 쥐던 규칙(`span` — 문서 도구가 본문 열 위에서 시작)은 2026-11-19 에 걷었다(사용자 — 오른쪽
+  // 곁 패널과 맞춘다). 토글은 패널을 여닫아도 제자리에 서 있고, 문서 도구는 늘 왼쪽 무리 바로 뒤에서 시작한다(`pane/head-span` 머리말).
 </script>
 
-<!-- 목차 곁 패널 토글 — 머리줄 안이면 테두리 없는 아이콘 단추(쿼리 타일의 트리 토글과 같은 결 — `inhead`), 몸 위 줄이면 예전 단추.
-     제목이 없으면 흐린 채 서서 툴팁이 까닭을 말한다 -->
-{#snippet outlineToggle(head: boolean)}
+<!-- 파일 곁 패널(왼쪽) 토글 — 머리줄 안이면 이름 뒤의 테두리 없는 아이콘 단추(쿼리 타일의 트리 토글과 같은 결 — `inhead`), 몸 위 줄이면 도구줄
+     맨 앞의 예전 단추. 그림은 왼쪽 패널(`side-panel`). 눌림은 "보이는가"(`layout.filesShown`) — 켜지면 어느 줄이든 목차 토글과 같은 강조 면
+     (몸 위 줄은 `.on`, 머리줄 안은 `aria-pressed` — 아래 "곁 패널 단추의 켬") -->
+{#snippet filesToggle(head: boolean)}
   <button
     type="button"
-    class={head ? "outline-toggle inhead" : "btn ico"}
+    class={head ? "side-toggle inhead" : "btn ico"}
     data-head-act
-    class:on={!head && oc.panelOpen}
-    aria-pressed={oc.panelOpen}
-    disabled={!oc.hasOutline}
-    title={oc.hasOutline ? t("files.doc.outline") : t("files.doc.outline.none")}
-    aria-label={t("files.doc.outline")}
-    onclick={() => onoutline?.(!outline)}><UiIcon name="side-panel" size={head ? 14 : 13} /></button
+    class:on={!head && layout.filesShown}
+    aria-pressed={layout.filesShown}
+    title={t("files.doc.files")}
+    aria-label={t("files.doc.files")}
+    onclick={toggleFiles}><UiIcon name="side-panel" size={head ? 14 : 13} /></button
   >
 {/snippet}
 
-<!-- 좁은 타일의 목차 드롭다운 단추 — 넓은 타일의 토글과 **같은 그림**(`side-panel`)에 ▾ 를 붙인 것(지금 절 이름은 글자로 두지 않고 말풍선에만 — 10-20 사용자, DB 타일 트리 드롭다운과 같은 꼴).
-     머리줄 안이면 토글과 같은 자리(이름 뒤 `tail`) · 같은 결(테두리 없음 — 아이콘이 토글과 같은 x 에 선다)이라 넓음 ↔ 좁음 전환에 단추가 튀지 않는다.
-     몸 위 줄이면 도구줄 맨 앞(예전 테두리 단추) -->
-{#snippet outlineDropButton(head: boolean)}
+<!-- 좁은 타일의 파일 드롭다운 단추 — 토글과 **같은 그림**(`side-panel`)에 ▾. 머리줄 안이면 토글과 같은 자리(이름 뒤 `tail`) · 같은 결이라
+     넓음 ↔ 좁음 전환에 단추가 튀지 않는다. 몸 위 줄이면 도구줄 맨 앞 -->
+{#snippet filesDropButton(head: boolean)}
   <button
     type="button"
-    class={head ? "outline-drop inhead" : "btn outline-drop"}
+    class={head ? "side-drop inhead" : "btn side-drop"}
+    data-head-act
+    bind:this={fc.button}
+    title={t("files.doc.files.drop.title", { folder: fc.dirName })}
+    aria-label={t("files.doc.files.drop.title", { folder: fc.dirName })}
+    aria-haspopup="dialog"
+    aria-expanded={fc.drop !== null}
+    onclick={toggleFilesDrop}
+    ><UiIcon name="side-panel" size={head ? 14 : 13} /><UiIcon name="chevron-down" size={12} /></button
+  >
+{/snippet}
+
+<!-- 목차 곁 패널(오른쪽) 토글 — 도구줄 맨 끝(새로고침 뒤)의 도구줄 단추. 그림은 오른쪽 패널(`preview` — 파일 타일의 미리 보기 패널과 같은
+     "오른쪽 패널을 여닫는다" 그림). 제목이 없으면 흐린 채 서서 툴팁이 까닭을 말한다. 눌림은 "보이는가"(`layout.outlineShown`) -->
+{#snippet outlineToggle()}
+  <button
+    type="button"
+    class="btn ico"
+    data-head-act
+    class:on={layout.outlineShown}
+    aria-pressed={layout.outlineShown}
+    disabled={!oc.hasOutline}
+    title={oc.hasOutline ? t("files.doc.outline") : t("files.doc.outline.none")}
+    aria-label={t("files.doc.outline")}
+    onclick={toggleOutline}><UiIcon name="preview" size={13} /></button
+  >
+{/snippet}
+
+<!-- 좁은 타일의 목차 드롭다운 단추 — 토글과 **같은 그림**(`preview`)에 ▾ 를 붙인 것(지금 절 이름은 글자로 두지 않고 말풍선에만 — 10-20 사용자,
+     DB 타일 트리 드롭다운과 같은 꼴). 토글과 같은 자리(도구줄 맨 끝)라 넓음 ↔ 좁음 전환에 단추가 튀지 않는다. 상자는 단추 오른쪽 변에 맞춘다 -->
+{#snippet outlineDropButton()}
+  <button
+    type="button"
+    class="btn side-drop"
     data-head-act
     bind:this={oc.outlineButton}
     title={t("files.doc.outline.drop.title", { name: oc.curName })}
     aria-label={t("files.doc.outline.drop.title", { name: oc.curName })}
     aria-haspopup="dialog"
     aria-expanded={oc.outlineDrop !== null}
-    onclick={() => (oc.outlineDrop ? oc.closeOutlineDrop() : oc.openOutlineDrop())}
-    ><UiIcon name="side-panel" size={head ? 14 : 13} /><UiIcon
-      name="chevron-down"
-      size={12}
-    /></button
+    onclick={toggleOutlineDrop}
+    ><UiIcon name="preview" size={13} /><UiIcon name="chevron-down" size={12} /></button
   >
 {/snippet}
 
-<!-- 이름 뒤 조각(머리줄이 그린다) — 넓은 타일은 목차 토글(패널이 열려 있으면 무리 오른쪽 끝 = 패널 경계), 좁은 타일은 같은 자리의 드롭다운 단추 -->
+<!-- 이름 뒤 조각(머리줄이 그린다) — 넓은 타일은 파일 토글(패널을 여닫아도 이름 바로 뒤 그대로 — 2026-11-19), 좁은 타일은 같은 자리의 드롭다운 단추 -->
 {#snippet docTail()}
-  {#if oc.outlineSlot}
-    {#if oc.narrow && oc.hasOutline}{@render outlineDropButton(true)}{:else}{@render outlineToggle(true)}{/if}
+  {#if filesSlot}
+    {#if layout.narrow}{@render filesDropButton(true)}{:else}{@render filesToggle(true)}{/if}
   {/if}
 {/snippet}
 
 <!-- 도구줄 — 머리줄이 서 있으면 머리줄 가운데(`head` = 참)에, 아니면 몸 맨 위에 그린다(위 `inHead` · `pane/pane-tools.svelte.ts`).
      머리줄 안에서 포커스 밖이면 조작 단추(`data-head-act`)는 접히고 글자 크기 · 미리 보기 핀 · 저장 표시(● · 저장됨)는 남는다
-     ("늘 보임 / 드러날 때만"). 미리 보기 핀은 누르면 고정하는 단추지만 "다음 파일이 이 칸을 갈아 끼운다" 를 말하는 표지라 남긴다.
+     ("늘 보임 / 드러날 때만"). 머리줄 안에는 외부 열기 단추가 없다 — 타일 ⋯ 의 [경로 복사] 위 줄이 쥔다(위 `setPaneTools` 의 `fileMenu`). 미리 보기 핀은 누르면 고정하는 단추지만 "다음 파일이 이 칸을 갈아 끼운다" 를 말하는 표지라 남긴다.
      **경로 글자는 없다**(10-20 사용자) — 이름은 머리줄이 말하고, 전체 경로는 타일 ⋯ 의 [경로 복사] 줄이 말풍선으로 보여 주고 복사한다 -->
 {#snippet docBar(head: boolean)}
   <DocToolbar
     {head}
-    {headSpan}
+    {filesSlot}
+    {filesToggle}
+    {filesDropButton}
     outlineSlot={oc.outlineSlot}
-    narrow={oc.narrow}
+    narrow={layout.narrow}
     hasOutline={oc.hasOutline}
     {outlineToggle}
     {outlineDropButton}
@@ -1452,8 +1661,8 @@
 >
   <!--
     도구줄 단추는 **아이콘만**이다 — 이름은 툴팁 · `aria-label`(같은 글)이고, 부연 설명은 두지 않는다. 툴팁이 이름과
-    다른 것은 **비활성 까닭**뿐이다(편집 불가 · 목차 없음). 미리 보기의 **[고정] 핀**은 점선 테두리로 임시임을 말하고,
-    다른 조작처럼 포커스 밖에서는 접힌다(`data-head-act` — 그때는 이름의 기울임이 말한다). 좁은 타일(`isNarrowOutline`)에서는 목차가 드롭다운으로 바뀐다.
+    다른 것은 **비활성 까닭**뿐이다(편집 불가 · 목차 없음). **[고정] 핀**은 미리 보기에서 강조 없이 서고(임시임은
+    이름의 기울임이 말한다) 고정되면 강조 면(`.on`)이 된다. 다른 조작처럼 포커스 밖에서는 접힌다(`data-head-act`). 좁은 타일(`layout.narrow`)에서는 파일 · 목차가 드롭다운으로 바뀐다.
   -->
   {#if !inHead}{@render docBar(false)}{/if}
 
@@ -1465,6 +1674,33 @@
     label={t("files.doc.find")}
     onclose={() => (compare !== null ? compareEl : rootEl)?.focus({ preventScroll: true })}
   />
+
+  {#if fc.drop}
+    <!-- 좁은 타일의 파일 드롭다운 — 목차 드롭다운과 같은 상자 · 같은 닫기 몸짓(바깥 누르기 · 우클릭 · Esc). 파일 줄은 메뉴 통로를 지난다
+         (`fc` 의 `onpick`), 폴더 줄은 닫지 않고 그 안에서 들어간다 -->
+    <button
+      type="button"
+      class="menu-backdrop"
+      tabindex="-1"
+      aria-label={t("files.menu.close.aria")}
+      onclick={fc.closeDrop}
+      oncontextmenu={(ev) => {
+        ev.preventDefault();
+        fc.closeDrop();
+      }}
+    ></button>
+    <div
+      class="files-pop menu-surface"
+      role="dialog"
+      aria-label={t("files.doc.files")}
+      style:left={`${fc.drop.x}px`}
+      style:top={`${fc.drop.y}px`}
+      style:width={`${fc.drop.w}px`}
+      style:max-height={`${fc.drop.maxH}px`}
+    >
+      <DocFiles {fc} variant="drop" />
+    </div>
+  {/if}
 
   {#if oc.outlineDrop}
     <button
@@ -1608,18 +1844,15 @@
     {/if}
   {/if}
 
-  <!-- 본문 줄 — 넓은 타일에서 목차를 켰으면 왼쪽에 곁 패널. `.md-page` 의 가운데 배치는 남은 폭 안에서다 -->
-  <div class="content">
-    {#if oc.panelOpen}
-      <nav class="outline-panel" aria-label={t("files.doc.outline")} style:--outline-w="{OUTLINE_PANEL_W}px">
-        <DocOutline
-          items={oc.outlineItems}
-          current={oc.curIdx}
-          variant="panel"
-          onpick={oc.pickOutline}
-          onescape={() => rootEl?.focus({ preventScroll: true })}
-        />
-      </nav>
+  <!-- 본문 줄 — `[파일 | 본문 | 목차]`(보이는 것은 `layout`). `.md-page` 의 가운데 배치는 남은 폭 안에서다 -->
+  <div class="content" style:--files-w="{DOC_FILES_PANEL_W}px" style:--outline-w="{DOC_OUTLINE_PANEL_W}px">
+    {#if layout.filesShown}
+      <!-- `<nav aria-label=파일>` 은 `DocFiles` 가 제 뿌리로 그린다 — 여기는 폭 · 경계선 · 여닫는 움직임(바깥 상자만 자란다 — 위 "곁 패널") -->
+      <div class="files-panel" transition:sidePanelGrow={{ motion: panelMotion, key: PANEL_MOTION }}>
+        <div class="side-inner">
+          <DocFiles {fc} variant="panel" />
+        </div>
+      </div>
     {/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="body" class:md={rendered} bind:this={bodyEl} oncontextmenu={onBodyContextMenu}>
@@ -1696,6 +1929,23 @@
         <CodeView code={text} {lang} lineNumbers fill flashLine={codeFlash} />
       {/if}
     </div>
+    {#if oc.panelOpen}
+      <nav
+        class="outline-panel"
+        aria-label={t("files.doc.outline")}
+        transition:sidePanelGrow={{ motion: panelMotion, key: PANEL_MOTION }}
+      >
+        <div class="side-inner">
+          <DocOutline
+            items={oc.outlineItems}
+            current={oc.curIdx}
+            variant="panel"
+            onpick={oc.pickOutline}
+            onescape={() => rootEl?.focus({ preventScroll: true })}
+          />
+        </div>
+      </nav>
+    {/if}
   </div>
 </div>
 
@@ -1717,10 +1967,10 @@
   }
 
   /*
-   * 머리줄 안의 목차 토글(④판) — 쿼리 타일의 트리 토글(`QueryView` 의 `.tree-toggle.inhead`)과 같은 결: 테두리 없이 아이콘만, 호버 · 누르는
+   * 머리줄 안의 파일 토글(④판 — 이름 뒤 `tail` · 2026-11-19 전에는 목차 토글이 이 자리였다) — 쿼리 타일의 트리 토글(`QueryView` 의 `.tree-toggle.inhead`)과 같은 결: 테두리 없이 아이콘만, 호버 · 누르는
    * 순간 옅은 판(24px). 머리줄 왼쪽 무리의 칸이라 포커스 밖에서 접힐 때 지울 앞 간격 = 머리줄 `gap`(`--head-act-gap` — `PaneHeader` "드러냄" 절).
    */
-  .outline-toggle.inhead {
+  .side-toggle.inhead {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -1739,22 +1989,22 @@
     --head-act-gap: var(--space-2);
   }
 
-  .outline-toggle.inhead:hover:not(:disabled) {
+  .side-toggle.inhead:hover:not(:disabled) {
     color: var(--fg-2);
     background: color-mix(in srgb, var(--fg) 7%, var(--surface-hover));
   }
 
-  .outline-toggle.inhead:active:not(:disabled) {
+  .side-toggle.inhead:active:not(:disabled) {
     color: var(--fg-1);
     background: color-mix(in srgb, var(--fg) 11%, var(--surface-hover));
   }
 
-  .outline-toggle.inhead:focus-visible {
+  .side-toggle.inhead:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
 
-  .outline-toggle.inhead:disabled {
+  .side-toggle.inhead:disabled {
     opacity: 0.4;
     cursor: default;
   }
@@ -1792,7 +2042,7 @@
     cursor: default;
   }
 
-  /* 아이콘만 선 단추 — 정사각 한 크기(목차 드롭다운처럼 글자가 내용인 단추만 이 밖이다) */
+  /* 아이콘만 선 단추 — 정사각 한 크기(그림 + ▾ 의 드롭다운 단추만 이 밖이다 — `.btn.side-drop`) */
   .btn.ico {
     width: 24px;
     height: 24px;
@@ -1911,16 +2161,56 @@
     min-height: 0;
   }
 
-  /* 목차 곁 패널 — 폭 고정(`--outline-w` = `pane/head-span` 의 `OUTLINE_PANEL_W` — 머리줄 무리 폭과 한 값), 목록은 제 상자에서 민다 */
-  .outline-panel {
-    flex: 0 0 var(--outline-w);
-    width: var(--outline-w);
+  /*
+   * 곁 패널 — 폭 고정(`--files-w` · `--outline-w` = `doc-side-panels.ts` 의 `DOC_FILES_PANEL_W` · `DOC_OUTLINE_PANEL_W` — `.content` 가 받는다),
+   * 목록은 제 상자에서 민다. 경계선(1px = `DOC_PANEL_LINE_W`)은 본문 쪽 변이다: 파일은 오른쪽 · 목차는 왼쪽
+   */
+  .files-panel {
+    flex: 0 0 var(--files-w);
+    width: var(--files-w);
     min-height: 0;
     overflow: hidden;
     border-right: 1px solid var(--line);
   }
 
-  /* 좁은 타일의 목차 드롭다운 — 높이 상한은 자리 셈이 준다, 목록이 그 안에서 민다 */
+  .outline-panel {
+    flex: 0 0 var(--outline-w);
+    width: var(--outline-w);
+    min-height: 0;
+    overflow: hidden;
+    border-left: 1px solid var(--line);
+  }
+
+  /*
+   * 패널 안쪽 — 늘 제 폭(패널 폭)이라 여닫는 움직임(`sidePanelGrow` 가 바깥 상자의 폭만 키운다) 동안 줄이 다시 흐르지 않고 잘려 보인다.
+   * 파일 패널은 왼쪽에서 나오는 서랍이라 안쪽을 오른쪽 변(본문 쪽)에, 목차 패널은 오른쪽 서랍이라 왼쪽 변(본문 쪽)에 붙인다
+   */
+  .files-panel,
+  .outline-panel {
+    display: flex;
+  }
+
+  .files-panel {
+    justify-content: flex-end;
+  }
+
+  .files-panel > .side-inner {
+    flex: 0 0 var(--files-w);
+    width: var(--files-w);
+  }
+
+  .outline-panel > .side-inner {
+    flex: 0 0 var(--outline-w);
+    width: var(--outline-w);
+  }
+
+  .side-inner {
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* 좁은 타일의 드롭다운(파일 · 목차) — 높이 상한은 자리 셈이 준다, 목록이 그 안에서 민다 */
+  .files-pop,
   .outline-pop {
     position: fixed;
     z-index: 41;
@@ -1930,16 +2220,19 @@
     overflow: hidden;
   }
 
-  /* 지금 절 단추 — 줄면 말줄임 */
-  .btn.outline-drop {
+  /* 몸 위 줄 · 도구줄의 드롭다운 단추(그림 + ▾) — 아이콘 단추 줄과 같은 높이. 글자가 없어 줄지 않는다 */
+  .btn.side-drop {
     flex: 0 0 auto;
+    height: 24px;
+    gap: 2px;
+    padding: 0 5px;
   }
 
   /*
-   * 머리줄 안의 목차 드롭다운 단추(좁은 타일 — 이름 뒤 `tail`). 넓은 타일의 `.outline-toggle.inhead` 와 같은 결 · 높이이고, 왼쪽 안쪽 여백을
-   * (24 − 14) / 2 = 5px 로 두어 아이콘이 토글의 아이콘과 같은 x 에 선다. 지금 절 이름은 말풍선에만 있다.
+   * 머리줄 안의 파일 드롭다운 단추(좁은 타일 — 이름 뒤 `tail`). 넓은 타일의 `.side-toggle.inhead` 와 같은 결 · 높이이고, 왼쪽 안쪽 여백을
+   * (24 − 14) / 2 = 5px 로 두어 아이콘이 토글의 아이콘과 같은 x 에 선다. 지금 폴더 이름은 말풍선에만 있다.
    */
-  .outline-drop.inhead {
+  .side-drop.inhead {
     /* 글자 없이 그림 둘(패널 · ▾)이라 줄지 않는다 — 줄면 ▾ 부터 잘린다(10-20) */
     flex: 0 0 auto;
     display: flex;
@@ -1960,24 +2253,34 @@
     --head-act-gap: var(--space-2);
   }
 
-  .outline-drop.inhead :global(svg) {
+  .side-drop.inhead :global(svg) {
     flex: 0 0 auto;
   }
 
-  .outline-drop.inhead:hover {
+  .side-drop.inhead:hover {
     color: var(--fg-2);
     background: color-mix(in srgb, var(--fg) 7%, var(--surface-hover));
   }
 
-  .outline-drop.inhead:active,
-  .outline-drop.inhead[aria-expanded="true"] {
+  .side-drop.inhead:active {
     color: var(--fg-1);
     background: color-mix(in srgb, var(--fg) 11%, var(--surface-hover));
   }
 
-  .outline-drop.inhead:focus-visible {
+  .side-drop.inhead:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
+  }
+
+  /*
+   * 곁 패널 단추의 켬 — 패널이 보인다(`aria-pressed`) · 드롭다운이 열려 있다(`aria-expanded`). 목차 토글의 `.btn.on` 과 같은 강조 면 하나다 — 머리줄 안이든
+   * 몸 위 줄이든, 토글이든 드롭다운 단추든(2026-11-19 사용자 — 문서 · DB 타일의 곁 패널 단추는 한 규칙 · 쿼리 타일의 트리 단추도 같다). 크기 · 모서리는
+   * 각 단추의 것(24px · `--radius-sm`)이 이미 같다. 호버가 덮는 것도 `.btn.on` 과 같다
+   */
+  .side-toggle.inhead[aria-pressed="true"],
+  .side-drop[aria-expanded="true"] {
+    color: var(--fg);
+    background: var(--accent-soft);
   }
 
   .body {
