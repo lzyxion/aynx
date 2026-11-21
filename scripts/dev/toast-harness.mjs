@@ -18,6 +18,7 @@
 //   PAGE_PORT=1434 node scripts/dev/toast-harness.mjs <outdir> 9250
 //     → <outdir>/toast-stack.png · toast-stack-light.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot, waitToastsGone } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const [outDir = ".", port = process.env.CDP_PORT ?? "9250"] = process.argv.slice(2);
@@ -98,6 +99,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
     reap_window_sessions: null, vault_status: 'none', vault_list: [], mcp_status: { clis: [] },
     list_ai_clis: [], operation_results: {}, list_console_sessions: [], delegation_list_targets: [],
     audit_status: { state: 'off', written: 0, failed: 0 }, mcp_activity: null, list_forwards: [],
+    // 부팅이 부르는 둘 — 없으면 console.error 로 남아 "콘솔 예외 0" 을 깬다(agent-banner-harness 와 같은 값)
+    term_theme_list: [], restore_done_sessions: { closed: 0, unclaimed: 0 },
   };
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main', windowLabel: 'main' }, windows: [{ label: 'main' }], webviews: [{ label: 'main', windowLabel: 'main' }] },
@@ -120,8 +123,9 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
 collecting = true;
-await send("Page.reload", { ignoreCache: true });
-await sleep(4000);
+await reloadBoot(send, ev);
+// 부팅 토스트("탭 N개를 복원했습니다.")가 걷힌 뒤 센다 — 안 그러면 셋이 아니라 넷이다
+await waitToastsGone(ev);
 
 // 오래 떠 있게 — 단언 도중 시계가 먼저 지우지 않도록
 const LONG = "{ ms: 600000 }";
@@ -206,7 +210,9 @@ const exit = JSON.parse(
     const r = {
       midTx: ${TX}(mid), midW: mid.getBoundingClientRect().width,
       midPos: getComputedStyle(mid).position, midDy: mid.getBoundingClientRect().top - midY0,
-      midOpacity: +getComputedStyle(mid).opacity,
+      // 글래스(기본 재질)는 상자 opacity 대신 내용(.toast 의 자식 — --toast-fade)을 페이드한다(10-29 · Toasts.svelte) —
+      // 상자와 첫 자식의 opacity 를 곱해 두 재질을 같이 잰다
+      midOpacity: +getComputedStyle(mid).opacity * +getComputedStyle(mid.firstElementChild).opacity,
       lowAnims: low.getAnimations().length, lowDy: low.getBoundingClientRect().top - lowY0,
       topAnims: top.getAnimations().length, topDy: top.getBoundingClientRect().top - topY0,
     };

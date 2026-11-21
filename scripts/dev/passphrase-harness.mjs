@@ -13,8 +13,10 @@
 // 이 파일이 지키는 규칙이 곧 앱이 지키는 규칙이다 (`keygen-harness.mjs` 의 같은 줄).
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
+import { reloadBoot } from "./boot-wait.mjs";
 
 const [outdir = ".", port = "9224"] = process.argv.slice(2);
+fs.mkdirSync(outdir, { recursive: true });
 const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const t = list.find((x) => x.type === "page" && x.url.includes(`localhost:${process.env.PAGE_PORT ?? "1420"}`));
 const ws = new WebSocket(t.webSocketDebuggerUrl);
@@ -35,8 +37,11 @@ const send = (method, params = {}) =>
     pending.set(id, r);
     ws.send(JSON.stringify({ id, method, params }));
   });
+// 판정 없이 값을 찍는 캡처용 판이지만, 식이 예외로 끝나면(`EXC …`) 그 수를 세어 0 이 아닌 코드로 끝낸다(2026-11-21).
+let excs = 0;
 const ev = async (e) => {
   const r = await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true });
+  if (r.result?.exceptionDetails) excs++;
   return r.result?.exceptionDetails
     ? "EXC " + (r.result.exceptionDetails.exception?.description ?? "").split("\n")[0]
     : r.result?.result?.value;
@@ -126,8 +131,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 `,
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await sleep(4500);
+await reloadBoot(send, ev);
 
 const key = async (code, modifiers, keyName) => {
   const vk = code.startsWith("Key") ? code.charCodeAt(3) : code === "Escape" ? 27 : code === "Enter" ? 13 : 0;
@@ -228,3 +232,6 @@ const exc = events
   .slice(0, 6);
 if (exc.length) console.log("EXC", exc);
 ws.close();
+const bad = excs + exc.length;
+console.log(bad ? `${bad} EXC (식 ${excs} · 페이지 ${exc.length})` : "no EXC");
+process.exit(bad ? 1 : 0);

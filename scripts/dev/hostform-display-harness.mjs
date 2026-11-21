@@ -16,6 +16,7 @@
 // Mongodb" · "기본값의 색 · #8a8a8a" ⑥ 색을 치면 견본의 흐림이 걷힌다. 콘솔 예외 0.
 // PNG: `hf-display-inherited.png` · `hf-display-none.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -87,7 +88,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
 
 const key = async (code, modifiers = 0, k = code, wait = 250) => { const VK = { Enter: 13 }; const vk = code.startsWith("Key") ? code.charCodeAt(3) : VK[code] ?? 0; for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers, code, key: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(wait); };
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 
 const H = `window.__H`;
 await ev(`(async () => { const u = performance.getEntriesByType('resource').map(r => r.name).find(n => n.includes('/src/lib/app/hosts.svelte.ts')); window.__H = await import(u); return 'ok'; })()`);
@@ -142,7 +143,8 @@ await sleep(300);
 await openDisplay(1);
 const b = await ev(state);
 console.log("lab-01:", JSON.stringify(b));
-check(b.iconPh === "이름으로 검색하거나 이모지 입력", "아이콘 평소 문구 ((선택) 없음)");
+// 문구는 사전 원문(`app.iconcolor.icon.placeholder` — src/lib/i18n/ko/app.ts) 그대로
+check(b.iconPh === "이름으로 찾거나 이모지 입력", `아이콘 평소 문구 ((선택) 없음) (${b.iconPh})`);
 check(b.colorPh === "없음 — 기본 색", "색 평소 문구 = 없음 — 기본 색");
 check(!b.previewInherited && !b.swatchInherited, "흐림 없음");
 check(b.resetTitles.length === 2 && b.resetTitles.every((x) => x === "지우기"), "되돌리기 말풍선 = 지우기");

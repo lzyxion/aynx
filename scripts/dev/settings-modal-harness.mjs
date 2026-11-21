@@ -1,6 +1,7 @@
 // 설정 모달: 가운데 배치 · 배경 닫기 · 포커스 순회 · 단축키 · 설정 섹션 상태.
 // 실행: node scripts/dev/run-harness.mjs settings-modal-harness.mjs <outdir>
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -117,7 +118,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
 ` });
 
 
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 러너가 새로 띄운 찬 vite 에서 모자랐다(2026-11-20) — 새 문서의 부팅 끝까지 기다린다
+await reloadBoot(send, ev);
 await send("Page.bringToFront");
 counting = true;
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded: ${file}'); return await import(e); })()`;
@@ -133,11 +135,12 @@ const opened = async () => {
   await ev(`(async () => { (await ${dockMod}).openDock('settings'); })()`); await sleep(250);
 };
 // 등장 움직임(2026-10-04) — 상자는 살짝 커지며 떠오르고 배경막은 0→1. 끝 프레임에 transform 이 남지 않는다.
-const modalAnim = () => ev(`(() => { const el = document.querySelector('.settings-modal'); const b = document.querySelector('.settings-backdrop'); const cs = getComputedStyle(el); return JSON.stringify({ t: cs.transform, o: +(+cs.opacity).toFixed(2), anim: el.getAnimations().length, bo: b ? +(+getComputedStyle(b).opacity).toFixed(2) : null }); })()`).then(JSON.parse);
+// 글래스(기본 재질)는 상자의 opacity 를 움직이지 않고 안의 내용(자식)을 페이드한다(`Dock.svelte` 의 `glass-content-in` · theme.css "글래스 면의 등장" — 10-28)
+const modalAnim = () => ev(`(() => { const el = document.querySelector('.settings-modal'); const b = document.querySelector('.settings-backdrop'); const cs = getComputedStyle(el); const kid = el.firstElementChild; return JSON.stringify({ t: cs.transform, o: +(+cs.opacity).toFixed(2), co: kid ? +(+getComputedStyle(kid).opacity).toFixed(2) : null, glass: document.documentElement.dataset.material === 'glass', anim: el.getAnimations().length, bo: b ? +(+getComputedStyle(b).opacity).toFixed(2) : null }); })()`).then(JSON.parse);
 await ev(`(async () => { (await ${dockMod}).openDock('settings'); })()`); await sleep(50);
 let ma = await modalAnim();
 console.log('modal open+50ms', JSON.stringify(ma));
-check(ma.anim === 1 && ma.t !== 'none' && ma.o < 1 && ma.bo !== null && ma.bo < 1, `modal entrance: box mid transform/opacity, backdrop fading in (${JSON.stringify(ma)})`);
+check(ma.anim === 1 && ma.t !== 'none' && (ma.glass ? ma.o === 1 && ma.co !== null && ma.co < 1 : ma.o < 1) && ma.bo !== null && ma.bo < 1, `modal entrance: box mid transform/opacity (glass: content opacity), backdrop fading in (${JSON.stringify(ma)})`);
 await sleep(350);
 ma = await modalAnim();
 check(ma.anim === 0 && ma.t === 'none' && ma.o === 1 && ma.bo === 1, `modal entrance ends at transform none · opacity 1 (${JSON.stringify(ma)})`);
@@ -309,7 +312,7 @@ await key('Tab', 8, 'Tab');
 check(await ev(`document.activeElement === document.querySelector('.settings-view > .actions button:last-child')`), 'MCP Shift+Tab from container wraps to last control');
 await key('Tab');
 check(await ev(`document.activeElement === document.querySelector('.settings-modal .head button')`), 'MCP Tab wraps to first control');
-check(await ev(`document.querySelector('#ai-mcp-sessions .scope')?.textContent.trim() === '앱 전체' && !!document.querySelector('#ai-mcp-sessions .slist-chev')`), 'pinned session server has app-wide scope and a sub-view chevron');
+check(await ev(`document.querySelector('#ai-mcp-sessions .scope')?.textContent.trim() === '모든 프로젝트' && !!document.querySelector('#ai-mcp-sessions .slist-chev')`), 'pinned session server has app-wide scope and a sub-view chevron');
 await ev(`document.querySelector('#ai-mcp-sessions-toggle').click()`);
 await sleep(300);
 const pinnedView = `document.querySelector('.settings-panel [data-view="pinned"]')`;
@@ -319,6 +322,16 @@ check(await ev(`!document.querySelector('[id^="ai-mcp-allow-"]') && !${pinnedVie
 await key('Escape');
 check(await ev(`!document.querySelector('[data-view="pinned"]') && document.activeElement?.id === 'ai-mcp-sessions-toggle'`), 'Escape returns from the session server sub-view to its row');
 const settingsMod = importApp('settings/model/store.svelte.ts');
+// 설정을 닫는 길은 한 문을 지난다(2026-10-22 — `SettingsModal` 의 `setSettingsLeaveGuard`): 미저장 변경이 있으면 "저장하지 않은 변경" 을
+// 묻는다([계속 편집] · [저장 안 함] · [저장]). Escape 를 누르고, 물으면 그 물음인지 보고 `choice` 로 답한다. 초안이 깨끗하면 묻지 않아야 한다.
+const escapeCloseSettings = async (choice) => {
+  const dirty = await ev(`(async () => (await ${settingsMod}).settings.dirty)()`);
+  await key('Escape'); await sleep(250);
+  const asked = await ev(`document.querySelector('[data-confirm-dialog] #confirm-dialog-title')?.textContent.trim() ?? null`);
+  if (asked !== null) { await ev(`[...document.querySelectorAll('[data-confirm-dialog] .actions button')].find(b => b.textContent.trim() === ${JSON.stringify(choice)})?.click()`); await sleep(350); }
+  const open = (await ev(`(async () => (await ${dockMod}).dockKind())()`)) === 'settings';
+  return { dirty, asked, open, ok: !open && (dirty ? asked === '저장하지 않은 변경' : asked === null) };
+};
 await ev(`document.querySelector('#ai-mcp-sessions [role="switch"]').click(); document.querySelector('#ai-mcp-sessions .mcp-agents button').click()`); await sleep(100);
 check(await ev(`(async () => { const s=(await ${settingsMod}).settings; return s.current.ai.mcp_sessions_enabled===false && s.current.ai.mcp_sessions_agents.length===1 && s.current.ai.mcp_sessions_agents[0]==='codex' && s.saved.ai.mcp_sessions_enabled===undefined && !window.__calls.some(c=>['register_mcp','mcp_setup_command'].includes(c[0])); })()`), 'pinned switch and targets edit draft without registering globally');
 await ev(`document.querySelector('#ai-mcp-add').click()`); await sleep(100);
@@ -330,10 +343,12 @@ await ev(`(() => { for (const [id,value] of [['ai-mcp-name','playwright'],['ai-m
 await sleep(100); await ev(`document.querySelector('#ai-mcp-submit').click()`); await sleep(150);
 check(await ev(`document.querySelector('.settings-panel .mcp-name:nth-child(1)') && Array.from(document.querySelectorAll('.settings-panel .mcp-open .mcp-name')).some(e=>e.textContent==='playwright')`), 'validated server added to list');
 check(await ev(`document.activeElement?.matches('.mcp-open[data-index]') && document.activeElement.textContent.includes('playwright') && !!document.activeElement.closest('.mcp-row').querySelector('.mcp-edit-btn')`), 'after add the summary focuses the new row, which has an edit chevron');
+// 대상 칩(Claude · Codex)만 — 구분선 뒤의 사이드 채팅 칩(2026-10-25 · 기본 꺼짐)은 대상이 아니다
+const TARGET_CHIPS = '.mcp-agents > button:not(.mcp-divider ~ button)';
 const externalRow = `Array.from(document.querySelectorAll('.settings-panel .mcp-row')).find(e=>e.querySelector('.mcp-open .mcp-name')?.textContent==='playwright')`;
-check(await ev(`(() => { const r=${externalRow}; return r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('.mcp-agents button')).every(b=>b.getAttribute('aria-pressed')==='true'); })()`), 'new server starts enabled with both targets');
+check(await ev(`(() => { const r=${externalRow}; return r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('${TARGET_CHIPS}')).every(b=>b.getAttribute('aria-pressed')==='true'); })()`), 'new server starts enabled with both targets');
 await ev(`${externalRow}.querySelector('[role="switch"]').click()`); await sleep(100);
-check(await ev(`(() => { const r=${externalRow}; return r.classList.contains('off') && !r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('.mcp-agents button')).every(b=>b.getAttribute('aria-pressed')==='true' && !b.disabled); })()`), 'disabled server keeps both targets editable');
+check(await ev(`(() => { const r=${externalRow}; return r.classList.contains('off') && !r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('${TARGET_CHIPS}')).every(b=>b.getAttribute('aria-pressed')==='true' && !b.disabled); })()`), 'disabled server keeps both targets editable');
 await ev(`${externalRow}.querySelector('.mcp-agents button').click()`); await sleep(100);
 check(await ev(`(async () => { const s=(await ${settingsMod}).settings.current.ai.mcp_servers[0]; return s.enabled===false && s.agents.length===1; })()`), 'target chip changes agents without enabling server');
 await ev(`${externalRow}.querySelector('.mcp-open .mcp-name').click()`); await sleep(100);
@@ -342,7 +357,7 @@ await ev(`document.querySelector('.settings-panel .agent-chips button[aria-press
 await ev(`document.querySelector('#ai-mcp-submit').click()`); await sleep(150);
 check(await ev(`(async () => { const s=(await ${settingsMod}).settings.current.ai.mcp_servers[0]; return s.enabled===false && s.agents.length===2; })()`), 'dialog target edits keep the server disabled');
 await ev(`(async () => { const s=(await ${settingsMod}).settings; s.current.ai.mcp_servers[0]={...s.current.ai.mcp_servers[0],agents:undefined}; })()`); await sleep(100);
-check(await ev(`(() => { const r=${externalRow}; return !r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('.mcp-agents button')).every(b=>b.getAttribute('aria-pressed')==='true'); })()`), 'legacy disabled server without agents displays both targets selected');
+check(await ev(`(() => { const r=${externalRow}; return !r.querySelector('[role="switch"]').checked && Array.from(r.querySelectorAll('${TARGET_CHIPS}')).every(b=>b.getAttribute('aria-pressed')==='true'); })()`), 'legacy disabled server without agents displays both targets selected');
 await ev(`${externalRow}.querySelector('.mcp-open .mcp-name').click()`); await sleep(100);
 check(await ev(`!document.querySelector('#ai-mcp-enabled').checked && Array.from(document.querySelectorAll('.settings-panel .agent-chips button')).every(b=>b.getAttribute('aria-pressed')==='true')`), 'legacy dialog displays both targets while switch stays off');
 await ev(`document.querySelector('#ai-mcp-submit').click()`); await sleep(150);
@@ -367,7 +382,7 @@ await opened();
 const inputValue = async (id, value) => { await ev(`(() => { const e=document.getElementById(${JSON.stringify(id)}); e.value=${JSON.stringify(value)}; e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true})); })()`); await sleep(60); };
 const addServer = async () => { await ev(`document.querySelector('#ai-mcp-add').click()`); await sleep(100); };
 const submitServer = async () => { await ev(`document.querySelector('#ai-mcp-submit').click()`); await sleep(150); };
-const editPostgres = async () => { await ev(`Array.from(document.querySelectorAll('.settings-panel .mcp-row')).find(e=>e.querySelector('.mcp-open .mcp-name')?.textContent==='postgres' && e.querySelector('.scope.project')?.textContent.trim()==='aynx').querySelector('.mcp-open .mcp-name').click()`); await sleep(100); };
+const editPostgres = async () => { await ev(`Array.from(document.querySelectorAll('.settings-panel .mcp-row')).find(e=>e.querySelector('.mcp-open .mcp-name')?.textContent==='postgres' && e.querySelector('.scope.project')?.textContent.trim()==='aynx 프로젝트만').querySelector('.mcp-open .mcp-name').click()`); await sleep(100); };
 await addServer();
 // 범위 고르개는 앱의 `Dropdown`(10-18 — 네이티브 select 대신): 펴서 줄(`data-value`)을 본다 · 고른다
 const scopeOptions = async () => ev(`(async () => { document.querySelector('#ai-mcp-form-scope').click(); await new Promise((r) => setTimeout(r, 60)); const v = [...document.querySelectorAll('#ai-mcp-form-scope-listbox [role="option"]')].map(o => o.dataset.value); document.querySelector('#ai-mcp-form-scope').closest('.dd').querySelector('.menu-backdrop')?.click(); return v.join(','); })()`);
@@ -383,15 +398,15 @@ await submitServer();
 check(await ev(`window.__calls.some(c=>c[0]==='vault_create') && window.__calls.some(c=>c[0]==='vault_store_mcp_env' && c[1].value.includes('global-fixture'))`), 'opted-in environment encrypted via vault API');
 check(await ev(`(async () => { const s=(await ${settingsMod}).settings.current.ai.mcp_servers.find(s=>s.name==='postgres'); return !s.project_id && !!s.env[0].secret_ref && !JSON.stringify(s).includes('global-fixture'); })()`), 'global MCP settings contain only vault references');
 await addServer();
-check((await scopeValue()) !== 'aynx', 'new registration defaults to app-wide scope');
+check((await scopeValue()) === '모든 프로젝트', 'new registration defaults to app-wide scope');
 await pickScope('P1');
-check((await scopeValue()) === 'aynx', 'new registration uses project scope selected in dialog');
+check((await scopeValue()) === 'aynx 프로젝트만', 'new registration uses project scope selected in dialog');
 await inputValue('ai-mcp-name','postgres'); await inputValue('ai-mcp-command','npx');
 await ev(`document.querySelector('.env-add').click()`); await sleep(100);
 await inputValue('ai-mcp-env-name-0','DATABASE_URL'); await inputValue('ai-mcp-env-value-0','postgres://test:project-fixture@localhost/db');
 await ev(`document.querySelector('.env-consent input').click()`); await submitServer();
 check(await ev(`(async () => { const all=(await ${settingsMod}).settings.current.ai.mcp_servers.filter(s=>s.name==='postgres'); return all.length===2 && all.some(s=>s.project_id==='P1') && new Set(all.map(s=>s.env[0].secret_ref)).size===2; })()`), 'same server name has independent project and global environments');
-check(await ev(`(() => { const rows=Array.from(document.querySelectorAll('.settings-panel .mcp-row')).filter(e=>e.querySelector('.mcp-open .mcp-name')?.textContent==='postgres'); return rows.length===2 && rows.every(e=>e.getClientRects().length>0) && rows[0].querySelector('.scope')?.textContent.trim()==='앱 전체' && !rows[0].querySelector('.scope.project') && rows[1].querySelector('.scope.project')?.textContent.trim()==='aynx'; })()`), 'MCP list shows app-wide and project servers together with scope chips');
+check(await ev(`(() => { const rows=Array.from(document.querySelectorAll('.settings-panel .mcp-row')).filter(e=>e.querySelector('.mcp-open .mcp-name')?.textContent==='postgres'); return rows.length===2 && rows.every(e=>e.getClientRects().length>0) && rows[0].querySelector('.scope')?.textContent.trim()==='모든 프로젝트' && !rows[0].querySelector('.scope.project') && rows[1].querySelector('.scope.project')?.textContent.trim()==='aynx 프로젝트만'; })()`), 'MCP list shows app-wide and project servers together with scope chips');
 await ev(`document.querySelector('.settings-view > .actions button:last-child').click()`); await sleep(150);
 check(await ev(`!JSON.stringify(window.__calls.filter(c=>c[0]==='save_settings').at(-1)).includes('fixture')`), 'saved settings payload never contains environment values');
 await editPostgres();
@@ -400,7 +415,7 @@ const storedBefore = await ev(`window.__calls.filter(c=>c[0]==='vault_store_mcp_
 await submitServer();
 check(await ev(`window.__calls.filter(c=>c[0]==='vault_store_mcp_env').length`)===storedBefore, 'unchanged environment retains its immutable vault reference');
 await editPostgres(); await inputValue('ai-mcp-env-value-0','postgres://test:replacement-fixture@localhost/db');
-check(await ev(`document.querySelector('#ai-mcp-name').getClientRects().length>0 && document.querySelector('.env-consent input').getBoundingClientRect().width===14`), 'environment form and consent checkbox visibly fit the dialog');
+check(await ev(`document.querySelector('#ai-mcp-name').getClientRects().length>0 && (() => { const r=document.querySelector('.env-consent input').getBoundingClientRect(); const b=document.querySelector('.settings-panel .mcp-box').getBoundingClientRect(); return r.width===40 && r.height===24 && r.left>=b.left && r.right<=b.right; })()`), 'environment form and consent switch (Toggle 40×24 — 2026-11-13) visibly fit the dialog');
 await send('Emulation.setDeviceMetricsOverride', {width:480,height:600,deviceScaleFactor:1,mobile:false}); await sleep(100);
 check(await ev(`(() => { const d=document.querySelector('.settings-panel .mcp-box'); const p=document.querySelector('.settings-panel'); const r=d.getBoundingClientRect(); return r.x>=0 && r.right<=innerWidth && d.scrollWidth<=d.clientWidth && p.scrollWidth<=p.clientWidth; })()`), 'environment form fits a small window without horizontal overflow');
 await shot('settings-mcp-env-small.png');
@@ -425,7 +440,8 @@ await ev(`document.querySelector('.settings-view > .actions button:first-child')
 await opened();
 // HTTP 헤더도 같은 저장 동의·새 참조 흐름을 쓴다. 하네스 전용 값만 사용한다.
 await addServer(); await inputValue('ai-mcp-name','remote-headers');
-await ev(`Array.from(document.querySelectorAll('.settings-panel .seg-btn')).find(b=>b.textContent==='HTTP').click()`); await sleep(100);
+// 갈래 단추 글자 = 이름 + 프로토콜 꼬리(`.proto` — '원격 서버HTTP') — 꼬리로 고른다
+await ev(`Array.from(document.querySelectorAll('.settings-panel .seg-btn')).find(b=>b.querySelector('.proto')?.textContent==='HTTP').click()`); await sleep(100);
 await inputValue('ai-mcp-url','https://example.invalid/mcp');
 await ev(`document.querySelector('.env-add').click()`); await sleep(100);
 await inputValue('ai-mcp-header-name-0','Authorization'); await inputValue('ai-mcp-header-value-0','Bearer header-fixture');
@@ -446,8 +462,10 @@ await ev(`document.querySelector('.settings-panel .sub-head .back').click()`); a
 check(await ev(`!document.querySelector('[data-view="pinned"]') && document.activeElement?.id === 'ai-mcp-sessions-toggle'`), 'sub-view back button returns to the pinned row');
 await ev(`document.querySelector('.settings-panel #ai-mcp-sessions .mcp-agents button').click()`); await sleep(150);
 check(await ev(`(async () => { const s=(await ${settingsMod}).settings; return (s.current.ai.mcp_sessions_agents ?? ['claude','codex']).includes('claude') && !s.saved.ai.mcp_sessions_agents.includes('claude') && !window.__calls.some(c=>c[0]==='register_mcp'); })()`), 'pinned server chip edits only the target draft');
-await key('Escape');
-check(await ev(`(async () => (await ${dockMod}).dockKind())()`) === null, 'Escape closes MCP settings');
+{
+  const r = await escapeCloseSettings('저장 안 함');
+  check(r.ok, `Escape closes MCP settings (unsaved draft → asks first, [저장 안 함]) (${JSON.stringify(r)})`);
+}
 await ev(`(async () => (await ${dockMod}).openDock('settings'))()`); await sleep(100);
 await ev(`document.querySelector('.settings-backdrop').click()`); await sleep(100);
 check(await ev(`(async () => (await ${dockMod}).dockKind())()`) === null, 'MCP settings backdrop closes modal');
@@ -535,8 +553,9 @@ await ev(`document.querySelector('.settings-modal [data-nav-tab="automation"]').
   check(s1.summary === '10개 중 1개 켜짐 · 규칙 13줄', `summary counts follow the draft (${s1.summary})`);
   await shot('settings-automation-680-summary.png');
   await send('Emulation.clearDeviceMetricsOverride'); await sleep(300);
-  await key('Escape'); await sleep(150);
-  check(!(await dockOpen()), 'a second Escape closes the settings modal as before');
+  // 초안은 아래 판이 이어 쓴다 — [저장] 으로 답해 남긴다(옛 판은 닫아도 초안이 남았다)
+  const esc2 = await escapeCloseSettings('저장');
+  check(esc2.ok, `a second Escape closes the settings modal as before (unsaved draft → asks first, [저장]) (${JSON.stringify(esc2)})`);
 
   // ── 다시 열기 · 뒤로 가기 단추 · 섹션 떠나면 요약으로 ──
   await opened();
@@ -831,8 +850,9 @@ await ev(`document.querySelector('.settings-modal [data-nav-tab="triggers"]').cl
   check(v.view === 'summary' && /sub-view-in-back/.test(v.anim ?? '') && await dockOpen(), `Escape → summary (slides back), modal stays (${v.view} ${v.anim})`);
   await sleep(300);
   check((await view()).focusAdd && (await trg()).length === before.length + 1, 'focus on [트리거 추가 ›]; Escape added nothing');
-  await key('Escape'); await sleep(150);
-  check(!(await dockOpen()), 'second Escape closes the settings modal');
+  // 아래 판이 그 트리거(초안)를 다시 연다 — [저장] 으로 답해 남긴다
+  const esc2 = await escapeCloseSettings('저장');
+  check(esc2.ok, `second Escape closes the settings modal (unsaved draft → asks first, [저장]) (${JSON.stringify(esc2)})`);
 
   // ── 섹션을 떠나면 요약으로 · 편집 화면 [삭제] ──
   await opened();

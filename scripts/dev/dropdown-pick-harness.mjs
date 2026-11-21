@@ -1,6 +1,7 @@
 // 고르개(Dropdown) 열기·고르기 — 진짜 마우스로 손잡이를 눌러 펴고 줄을 누른다(층 · 바로 닫힘까지 잡는다, 10-18).
-// 실행: node scripts/dev/run-harness.mjs settings-modal-harness.mjs <outdir>
+// 실행: node scripts/dev/run-harness.mjs dropdown-pick-harness.mjs <outdir>
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -112,7 +113,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
 
 
 
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초 대신 새 문서의 부팅 끝까지(찬 vite — `boot-wait.mjs` · 2026-11-21)
+await reloadBoot(send, ev);
 await send("Page.bringToFront");
 counting = true;
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded: ${file}'); return await import(e); })()`;
@@ -124,8 +126,16 @@ const CSS_ESC = (id) => id.replace(/([^a-zA-Z0-9_-])/g, "\$1");
 const clickAt = async (selector) => {
   const r = await ev(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; el.scrollIntoView({ block: 'center' }); const b = el.getBoundingClientRect(); return JSON.stringify({ x: b.left + b.width / 2, y: b.top + b.height / 2, w: b.width, h: b.height }); })()`);
   if (!r) return null;
-  const { x, y, w, h } = JSON.parse(r);
-  await sleep(60);
+  // 굴림 · 섹션 전환 움직임이 끝나 손잡이 자리가 멈출 때까지 다시 잰다 — 첫 잰 자리가 낡아 누름이 옆 줄(`srow`)에 떨어진 판이
+  // 있었다(2026-11-21 · 데운 vite 세 번 중 하나)
+  let { x, y, w, h } = JSON.parse(r);
+  for (let i = 0; i < 20; i++) {
+    await sleep(80);
+    const n = JSON.parse(await ev(`(() => { const b = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return JSON.stringify({ x: b.left + b.width / 2, y: b.top + b.height / 2, w: b.width, h: b.height }); })()`));
+    const still = Math.abs(n.x - x) < 0.5 && Math.abs(n.y - y) < 0.5;
+    ({ x, y, w, h } = n);
+    if (still) break;
+  }
   const hit = await ev(`(() => { const t = document.elementFromPoint(${x}, ${y}); const el = document.querySelector(${JSON.stringify(selector)}); return t ? (el.contains(t) ? 'self' : (t.className?.baseVal ?? t.className ?? t.tagName)) : 'none'; })()`);
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
   await sleep(150);
@@ -169,7 +179,19 @@ await sleep(400);
 const fullBefore = await ev(`(async () => (await ${settingsMod}).settings.presetKey)()`);
 // 긴 목록을 휠로 끝까지 굴린다 — 열린 채 남고, 굴러가는 것은 안쪽 상자뿐(바깥 판 · 흐림 층은 제자리, 10-18)
 {
-  await clickAt("#term-preset");
+  // full · dynamic 으로 바꾼 직후엔 테마 고르개가 다시 그려지는 중일 수 있다(목록 8 → 10줄) — 그 사이 누름이 허공에 가
+  // 목록이 안 열린 판이 있었다(2026-11-21 · 데운 vite 두 번 중 둘). 손잡이 글자가 dynamic 쪽으로 바뀐 뒤 누르고, 안 열렸으면 한 번 더.
+  for (let i = 0; i < 20 && !(await ev(`(document.querySelector('#term-preset .cur-text')?.textContent ?? '').trim() !== 'Graphite Dark'`)); i++) await sleep(150);
+  await sleep(200);
+  // 열린 뒤 0.5초 더 열려 있는지까지 본다 — 연 직후 늦게 도는 다시 그리기에 목록이 닫혀 휠이 설정 판을 굴린 판이 있었다(2026-11-21)
+  const listOpen = `!!document.querySelector('#term-preset-listbox .md3-scroll')`;
+  let tries = 0;
+  for (; tries < 4; tries++) {
+    if ((await ev(listOpen)) !== true) await clickAt("#term-preset");
+    await sleep(500);
+    if ((await ev(listOpen)) === true) break;
+  }
+  if (tries > 0) console.log(`term-preset (full) 목록 열기: ${tries + 1}번째에 열려 머묾`);
   const box = JSON.parse(await ev(`(() => { const s = document.querySelector('#term-preset-listbox .md3-scroll'); const b = s.getBoundingClientRect(); return JSON.stringify({ x: b.left + b.width / 2, y: b.top + b.height / 2 }); })()`));
   for (let i = 0; i < 8; i++) { await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: box.x, y: box.y, deltaX: 0, deltaY: 200 }); await sleep(60); }
   await sleep(200);
@@ -195,7 +217,15 @@ const snipId = await ev(`document.querySelector('.settings-panel > section:not([
 await tryPick("설정 › 스니펫 › 범위", snipId ? "#" + CSS_ESC(snipId) : "#missing-snippet-scope");
 
 // ── 스니펫 저장 대화상자 — 범위(SSH 타일이면 둘) ──
+// 위에서 고른 값들로 설정이 미저장이다 — 닫기는 "저장하지 않은 변경" 을 먼저 묻는다(2026-10-22 · `setSettingsLeaveGuard`).
+// 예전엔 그대로 닫혔다고 보고 넘어가 물음 상자의 단추가 스니펫 저장 손잡이를 가렸다(2026-11-21). [저장 안 함] 으로 답하고 닫혔는지 본다.
 await ev(`(async () => { (await ${dockMod}).closeDock(); })()`); await sleep(300);
+{
+  const asked = await ev(`document.querySelector('[data-confirm-dialog] #confirm-dialog-title')?.textContent.trim() ?? null`);
+  if (asked !== null) { await ev(`[...document.querySelectorAll('[data-confirm-dialog] .actions button')].find(b => b.textContent.trim() === '저장 안 함')?.click()`); await sleep(350); }
+  const kind = await ev(`(async () => (await ${dockMod}).dockKind())()`);
+  check(asked === "저장하지 않은 변경" && kind === null, `설정 닫기 — 미저장이라 먼저 묻고 [저장 안 함] 으로 닫힘 (물음 ${JSON.stringify(asked)} · 독 ${JSON.stringify(kind)})`);
+}
 await ev(`(async () => { (await ${importApp('app/snippets.svelte.ts')}).openSnippetSave('ls -la', 'dev-01'); })()`); await sleep(500);
 await tryPick("스니펫 저장 › 범위", "#snippet-save-scope");
 

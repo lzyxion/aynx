@@ -20,6 +20,7 @@
 // 1df6879 · docs/log/2026-10-02-settings-modal.md, 팔레트는 모듈로 연다) · 글자 칸(number)에서도 쉰다 · 터미널에서는 열린다 (docs/log/2026-09-25-editable-target.md) ⑤ 라이트 캡처 ⑥ 콘솔 예외 0.
 // PNG: `palette-dark.png` · `palette-settings.png` · `palette-light.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -97,7 +98,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 새 문서의 부팅 끝까지(고정 4.5초는 찬 vite 에서 모자랐다 — `boot-wait.mjs` · 2026-11-21)
+await reloadBoot(send, ev);
 // 앱 모듈이 다 뜰 때까지 기다린다 — 찬 vite 에서는 4.5초 안에 tabs 모듈이 안 떠 첫 Ctrl+Shift+P 가 허공에 갔다
 for (let i = 0; i < 60 && !(await ev(`performance.getEntriesByType('resource').some((r) => r.name.includes('app/tabs.svelte.ts')) && !!document.querySelector('[data-tile-canvas]')`)); i++) await sleep(250);
 await sleep(800);
@@ -128,8 +130,11 @@ check(geo === "560|48|15px", `폭 560 · 검색 줄 48 · 입력 15px (${geo})`)
 // 2026-10-28 위젯 판에서 칸과 함께 걷었다 — docs/log/2026-10-28-start-widgets.md)
 const keyPos = await ev(`(() => { const p = ${P}.getBoundingClientRect(); const c = document.querySelector('[data-tile-canvas]').getBoundingClientRect(); const d = [p.left + p.width / 2 - (c.left + c.width / 2), p.top - (c.top + c.height * 0.12)]; return { ok: d.every(v => Math.abs(v) <= 1), d: d.map(v => Math.round(v * 10) / 10) }; })()`);
 check(keyPos?.ok === true, `키로 연 자리 — 기본 자리(캔버스 가운데 · 위 12%) (차 ${JSON.stringify(keyPos?.d)})`);
+// 판 = 재질 글래스면 중 층 유리 판(`--glass-float`), 아니면 불투명 `--surface-raised-solid`(`CommandPalette.svelte` — 기본 재질이 글래스다)
+const material = await ev(`document.documentElement.dataset.material ?? null`);
+const panelBg = await cssVal("--glass-float, var(--surface-raised-solid)");
 const solid = await cssVal("--surface-raised-solid");
-check((await ev(`getComputedStyle(${P}).backgroundColor`)) === solid, `판 = --surface-raised-solid (${solid})`);
+check((await ev(`getComputedStyle(${P}).backgroundColor`)) === panelBg && (material !== "glass" || panelBg !== solid), `판 = 글래스면 --glass-float · 아니면 --surface-raised-solid (재질 ${material} · ${panelBg})`);
 const foot = await ev(`${P}.querySelector('[data-palette-foot]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 check(typeof foot === "string" && foot.startsWith("↑↓이동 ↵실행 Esc닫기"), `바닥 줄 = ↑↓ 이동 · ↵ 실행 · Esc 닫기 (${foot})`);
 check(typeof foot === "string" && /> ?명령/.test(foot) && foot.includes("@탭") && foot.includes("!이력"), "바닥 줄 오른쪽 = 접두사");
@@ -239,6 +244,14 @@ const keysRow = await ev(`[...${P}.querySelectorAll('[data-row] .label')].map(e 
 check(keysRow === "설정 › 단축키", `섹션 줄 = 설정 › 단축키 (${keysRow})`);
 await key("Escape"); await sleep(300);
 await ev(`(async () => (await ${dockMod}).closeDock())()`); await sleep(300);
+// 설정이 미저장이면(합자 스위치를 두 번 눌러 기본값 자리가 명시 값이 된다) 닫기는 "저장하지 않은 변경" 을 먼저 묻는다(2026-10-22 ·
+// `setSettingsLeaveGuard`). 예전엔 그대로 닫혔다고 보고 넘어가 물음 상자(모달)가 남아 아래 Ctrl+Shift+P 가 다 쉬었다(2026-11-21).
+{
+  const asked = await ev(`document.querySelector('[data-confirm-dialog] #confirm-dialog-title')?.textContent.trim() ?? null`);
+  if (asked !== null) { await ev(`[...document.querySelectorAll('[data-confirm-dialog] .actions button')].find(b => b.textContent.trim() === '저장 안 함')?.click()`); await sleep(350); }
+  const kind = await ev(`(async () => (await ${dockMod}).dockKind())()`);
+  check(kind === null && (asked === null || asked === "저장하지 않은 변경"), `설정 닫힘 (물음 ${JSON.stringify(asked)} → [저장 안 함] · 독 ${JSON.stringify(kind)})`);
+}
 
 // 터미널 포커스 규칙은 그대로다 — xterm 의 숨은 textarea 위에서도 Ctrl+Shift+P 가 팔레트를 연다.
 const xtaFocused = await ev(`(() => { const ta = [...document.querySelectorAll('.xterm-helper-textarea')].find(e => e.offsetParent !== null || e.closest('.xterm')?.getBoundingClientRect().width > 0); if (!ta) return false; ta.focus(); return document.activeElement === ta; })()`);

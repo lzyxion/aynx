@@ -1199,21 +1199,25 @@
   /* 그 판은 크롬 투명도를 타 비친다 — 떠 있는 동안(닫히며 내려가는 동안은 빼고) 밑의 타일을 감춘다. `visibility` 라 타일은
      마운트된 채 출력 · 크기를 그대로 받는다(10-27 사용자: 판도 다른 창처럼 투명도를 타게).
      **판과 엇갈려 페이드한다**(10-29 사용자 — 타일이 순간 사라지고 판만 400ms 차올라, 그 사이 빈 캔버스가 깜빡였다). 타일은
-     `--tile-in`(theme.css `@property`)이 1 ↔ 0 으로 200ms 에 흐려지고 · 돌아오며, `visibility` 는 그 끝에서 바뀐다(`visibility` 전환은
-     한쪽 끝이 `visible` 이면 도는 동안 내내 보인다 — 여닫기 모두 그 시간 동안 보인다). 상자의 `opacity` 가 아니라 `--tile-in` 인 것은
+     `--tile-in`(theme.css `@property`)이 1 ↔ 0 으로 200ms 에 흐려지고 · 돌아온다. `visibility` 전환은 **숨는 방향에만** 건다(전환은
+     도착 상태의 `transition` 을 따른다): 숨을 때는 200ms 동안 보이다가 그 끝에서 `hidden`, 돌아올 때는 곧바로 `visible` 이고
+     `--tile-in` 만 차오른다(2026-11-20 — 판을 닫으며 타일로 포커스를 돌려주려면 그 순간 보여야 한다 · `usage-view` 의 `closeCoverView`).
+     상자의 `opacity` 가 아니라 `--tile-in` 인 것은
      글래스 타일의 흐림 판을 끊지 않으려고다(`PaneHost` 의 `.glass-tile` 페이드 절 — 그 밖의 상자 · 분할선은 같은 값을 `opacity` 로 받는다).
      판을 다른 판으로 바꿀 때는 새 판이 곧바로 서므로 타일은 숨은 채다. */
   .pane > main {
-    transition:
-      --tile-in 200ms ease-out,
-      visibility 200ms linear;
+    transition: --tile-in 200ms ease-out;
   }
   .pane:has(> :global([data-cover-view]:not([hidden], [data-closing]))) > main {
     visibility: hidden;
     --tile-in: 0;
+    transition:
+      --tile-in 200ms ease-out,
+      visibility 200ms linear;
   }
   @media (prefers-reduced-motion: reduce) {
-    .pane > main {
+    .pane > main,
+    .pane:has(> :global([data-cover-view]:not([hidden], [data-closing]))) > main {
       transition: none;
     }
   }

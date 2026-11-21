@@ -26,7 +26,9 @@
 //     → <outdir>/run-history-list.png · -filtered.png · -optin.png · -canary.png · -collapsed.png ·
 //       -empty.png · -narrow.png · polish-untitled.png
 //   (또는 러너: node scripts/dev/run-harness.mjs run-history-harness.mjs <outdir> --size 1400x900)
+//   판의 "지금" 은 오늘 23:30 으로 못 박는다(아래 "시계" 절) · `RUN_HISTORY_NOW=2027-01-01T00:05` = 실제 시계를 그 시각으로 흉내(날짜 경계 확인)
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const [outdir = "out", port = process.env.CDP_PORT ?? "9273"] = process.argv.slice(2);
@@ -99,8 +101,19 @@ const check = (name, got, want) => {
 const importApp = (file) =>
   `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 
-// ── 데이터 — 목업 안 A 의 줄들. 시각은 지금 기준 로컬 날짜 ─────────────────────
-const now = new Date();
+// ── 시계 — 오늘 23:30 으로 못 박는다 (2026-11-21) ─────────────────────────────────
+// 오늘 줄은 고정 시각(09:00 · 14:32 · 15:10 …)이고 화면에 그 글자를 기대한다. 그런데 ⑬-b [기록 지우기] 는 "지금" 보다 **앞**의
+// 실행만 감추므로, 오전에 돌리면 오늘 줄이 미래라 남아 빈 상태가 안 됐다(02:29 실행에서 실패 · 저녁 실행은 통과). 그래서 이 판의
+// "지금"(아래 `now` · 페이지의 `Date` 둘 다)을 **오늘의 23:30** 으로 둔다 — 하루 중 언제 돌려도 같다. 페이지 시계는 실제 시계에
+// 고정 차이(`SKEW`)를 더해 흐르므로 판이 10분(러너 시한) 돌아도 자정을 넘지 않고, 실제 시계가 판 도중 자정을 넘어도 판의 날짜는 그대로다.
+// `RUN_HISTORY_NOW=2027-01-01T00:05` 처럼 주면 실제 시계를 그 시각으로 **흉내 내** 고른다(그 날짜의 23:30 — 월 · 해 경계 확인용).
+const realStart = process.env.RUN_HISTORY_NOW ? new Date(process.env.RUN_HISTORY_NOW) : new Date();
+if (Number.isNaN(realStart.getTime())) throw new Error(`RUN_HISTORY_NOW 를 읽지 못했다: ${process.env.RUN_HISTORY_NOW}`);
+const now = new Date(realStart.getFullYear(), realStart.getMonth(), realStart.getDate(), 23, 30);
+const SKEW = now.getTime() - Date.now();
+console.log(`     clock: page now = ${now.toString()} (skew ${Math.round(SKEW / 1000)}s)`);
+
+// ── 데이터 — 목업 안 A 의 줄들. 시각은 위 `now` 기준 로컬 날짜 ─────────────────────
 const at = (daysAgo, h, m) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h, m).getTime();
 const LABELS = { s1: "web-01", s2: "web-02", s3: "web-03", s4: "db-01", s5: "dev-01" };
 const labels = (ids) => ids.map((id) => ({ id, label: LABELS[id], code: `p${id.slice(1)}` }));
@@ -167,6 +180,18 @@ await send("Runtime.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: `
   performance.setResourceTimingBufferSize(10000);
+  // 페이지 시계 = 실제 시계 + SKEW (판 머리의 "시계" 절) — \`Date.now()\` 와 인자 없는 \`new Date()\` · \`Date()\` 만 민다
+  {
+    const RealDate = Date; const skew = ${SKEW};
+    function FakeDate(...a) {
+      if (!new.target) return new RealDate(RealDate.now() + skew).toString();
+      return a.length === 0 ? new RealDate(RealDate.now() + skew) : new RealDate(...a);
+    }
+    FakeDate.prototype = RealDate.prototype;
+    Object.setPrototypeOf(FakeDate, RealDate);
+    FakeDate.now = () => RealDate.now() + skew;
+    globalThis.Date = FakeDate;
+  }
   const cbs = new Map(); let n = 0; window.__cbs = cbs; window.__chan = {}; window.__calls = [];
   const evts = new Map();
   window.__emit = (name, payload) => {
@@ -219,8 +244,10 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 `,
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await sleep(2600);
+await reloadBoot(send, ev);
+check("시계 — 페이지의 지금이 이 판의 23:30 (몇 분 안 · 날짜 같음)",
+  JSON.parse(await ev(`JSON.stringify([Math.abs(Date.now() - ${now.getTime()}) < 15 * 60_000, new Date().getDate() === ${now.getDate()}, new Date().getHours()])`)),
+  [true, true, 23]);
 // 탭 복원이 끝난 뒤에 작업안을 연다(채팅 독 · 주 창에서만 마운트 — 부팅이 끝나야 선다)
 for (let i = 0; i < 40 && !(await ev(`window.__calls.some(([c]) => c === 'restore_done_sessions')`)); i++) await sleep(250);
 await sleep(500);

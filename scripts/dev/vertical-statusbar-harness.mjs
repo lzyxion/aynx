@@ -1,5 +1,7 @@
-// 헤드리스 검증 — 세로(왼쪽) 상태줄: 낮은 창에서 메뉴가 스크롤하지 않고 사용량 고리가 아래로 밀린다.
+// 헤드리스 검증 — 세로(왼쪽) 상태줄: 낮은 창에서 메뉴가 스크롤하지 않고, 메뉴가 28% 보다 길면 사용량 고리가 아래로 밀린다.
 // 메뉴 줄은 `minmax(28%, max-content)` — 넉넉하면 28% 지점, 메뉴가 더 길면 메뉴 끝에서 사용량이 시작한다.
+// 2026-11-21: 선두단(메뉴)은 지금 **비어 있다**(2026-10-18 통합 독 — `StatusBar.svelte` 의 `.lead` 주석). 그래서 480 에서도 메뉴가
+// 28% 를 넘지 않아 사용량은 28% 지점 그대로다 — 480 의 "밀렸다" 판정은 메뉴 키가 28% 를 넘을 때만 걸고, 아니면 28% 지점을 본다.
 //
 // usage: node scripts/dev/run-harness.mjs vertical-statusbar-harness.mjs <prefix>
 //   → <prefix>-vstatus-800.png · -vstatus-480.png
@@ -104,6 +106,7 @@ const read = async () => JSON.parse(await ev(`JSON.stringify((() => {
     midTop: Math.round(mid.getBoundingClientRect().top),
     ringsTop: rings ? Math.round(rings.getBoundingClientRect().top) : null,
     ringsN: s.querySelectorAll('[data-usage-ring]').length,
+    leadItems: lead.children.length, leadH: Math.round(lead.scrollHeight), minRow: Math.round(inner * 0.28),
     midBottom: Math.round(mid.getBoundingClientRect().bottom), tailTop: Math.round(tail.getBoundingClientRect().top),
     ratio: Math.round(((mid.getBoundingClientRect().top - top) / inner) * 1000) / 1000,
   };
@@ -111,7 +114,10 @@ const read = async () => JSON.parse(await ev(`JSON.stringify((() => {
 
 const boot = async (w, h) => {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+  // 새 문서에서 고리를 기다린다(옛 문서의 고리를 보고 바로 넘어가지 않게 — 2026-11-21)
+  const before = await ev(`performance.timeOrigin`);
   await send("Page.reload", { ignoreCache: true });
+  for (let i = 0; i < 200 && (await ev(`performance.timeOrigin`)) === before; i += 1) await sleep(50);
   for (let i = 0; i < 60 && !(await ev(`document.querySelectorAll('.statusbar.vertical [data-usage-ring]').length === 2`)); i += 1) await sleep(500);
   await sleep(400);
 };
@@ -124,13 +130,14 @@ check("800: 사용량은 28% 지점에서 시작", Math.abs(s.ratio - 0.28) < 0.
 check("800: 메뉴 · 사용량 스크롤 없음", !s.leadScrolls && !s.midScrolls, s);
 await shot(`${outdir}-vstatus-800.png`);
 
-// ── 2. 창 최소 높이(480) — 메뉴가 28% 보다 길다: 스크롤 없이 제 키를 다 쓰고 사용량이 밀린다 ──
+// ── 2. 창 최소 높이(480) — 메뉴는 스크롤 없이 제 키를 다 쓴다. 메뉴가 28% 보다 길면 사용량이 밀리고, 아니면 28% 지점 ──
 await boot(1100, 480);
 s = await read();
 check("480: 메뉴가 스크롤하지 않는다", !s.leadScrolls, s);
 check("480: 사용량 칸은 메뉴 끝 아래에서 시작(겹치지 않음)", s.midTop >= s.leadBottom && s.ringsTop >= s.leadBottom, s);
 check("480: 사용량 칸도 스크롤 없음", !s.midScrolls, s);
-check("480: 사용량이 28% 보다 아래로 밀렸다", s.ratio > 0.28, s.ratio);
+if (s.leadH > s.minRow) check("480: 메뉴가 28% 보다 길어 사용량이 아래로 밀렸다", s.ratio > 0.28, s);
+else check("480: 메뉴가 28% 보다 짧다(지금은 빈 선두단) — 사용량은 28% 지점 그대로", Math.abs(s.ratio - 0.28) < 0.01, s);
 check("480: 후미와 겹치지 않는다", s.midBottom <= s.tailTop + 1, s);
 await shot(`${outdir}-vstatus-480.png`);
 

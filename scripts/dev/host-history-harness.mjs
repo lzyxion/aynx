@@ -14,11 +14,12 @@
 // `app-01`(1시간 전 성공, 5분 전 `tcp_refused` 실패). 탭은 없다(시작 화면이 본문이다).
 //
 // 보는 것: ① 명령 팔레트(`Ctrl+Shift+P`)를 빈 질의로 열면 맨 위 "최근" 묶음이
-// `db-01 → app-01` 순서로 서고(첫 줄이 선택), 한 글자를 치면 묶음이 사라진다 ② 독의 정렬 버튼을 누르면 줄 순서가 이름(설정 순서)에서 최근순으로 바뀌고, `save_settings`
+// `db-01 → app-01` 순서로 서고(첫 줄이 선택), 한 글자를 치면 묶음이 사라진다 ② 독의 정렬 버튼을 누르면 줄 순서가 이름(글자순 — 2026-10-20)에서 최근순으로 바뀌고, `save_settings`
 // 로 `[hosts] sort = "recent"` 가 나간다 ③ `app-01` 줄 말풍선에 마지막 접속·실패가 적힌다.
 // PNG 둘: `<outdir>/host-history-palette.png` · `<outdir>/host-history-dock.png`.
 // (시작 화면에는 "최근" 이 없다 — 로고 + 즐겨찾기뿐, 사용자 결정 2026-09-23.)
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -70,7 +71,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 
 const key = async (code, modifiers, k) => { const vk = code.startsWith("Key") ? code.charCodeAt(3) : 0; for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers, code, key: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(250); };
 
@@ -99,7 +100,8 @@ await key("KeyH", 10, "H"); await sleep(1200);
 const rowsNow = () => ev(`[...document.querySelectorAll('[data-id^="h:"]')].map(e => e.getAttribute('data-id').slice(2)).join('|')`);
 const before = await rowsNow();
 console.log("rows (name):", before);
-check(before === "web-01|db-01|app-01", "이름 정렬 = 설정 파일 순서 그대로");
+// 2026-10-20 — "이름순" 은 글자순이다(`host-folders.ts` 의 `folderRows` 머리말 · 사용자 보고: 설정 파일 순서로 서던 것을 고쳤다)
+check(before === "app-01|db-01|web-01", `이름 정렬 = 글자순 (${before})`);
 console.log("sort button:", await ev(`(() => { const b = document.querySelector('[data-host-sort]'); if (!b) return 'no button'; const was = b.getAttribute('data-host-sort'); b.click(); return was; })()`));
 await sleep(600);
 const after = await rowsNow();

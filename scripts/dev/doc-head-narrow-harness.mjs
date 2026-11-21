@@ -5,15 +5,15 @@
 //
 // 보는 것:
 // ① 머리줄(지금 폭) — 도구 칸의 단추([저장] 포함)가 모두 머리줄 안
-// ② 머리줄(310px · 270px) — [저장] 이 머리줄 · 도구 칸 안에 다 들고 이름이 말줄임(이름이 먼저 준다)
+// ② 머리줄(310px · 300px) — [저장] 이 머리줄 · 도구 칸 안에 다 들고 이름이 말줄임(이름이 먼저 준다). 더 좁으면 도구 칸이 잘린다(아래 ② 주석)
 // ③ [새 문서…] → 이름 상자("새 문서 · 폴더" · untitled.md · [만들기] · [바꾸기] 없음) → [만들기] → 같은 폴더에 빈 파일 하나(쓰기 없음) ·
 //    상자 닫힘 · 새 문서 타일이 그 파일로 편집 상태
 // ④ 같은 이름 → 만들기 거절뿐(덮어쓰지 않음 · 상자에 까닭) · Esc 로 닫힘
 // ⑤ 콘솔 오류 0(`stub:` 거절 제외)
 //
 //   node scripts/dev/run-harness.mjs doc-head-narrow-harness.mjs <outdir> --size 1280x860
-//     → <outdir>/h1-wide.png · h2-310.png · h2-270.png · h3-new-box.png · h3-new-opened.png · h4-exists.png
-import { waitBoot } from "./boot-wait.mjs";
+//     → <outdir>/h1-wide.png · h2-310.png · h2-300.png · h3-new-box.png · h3-new-opened.png · h4-exists.png
+import { reloadBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -185,12 +185,12 @@ await send("Page.enable");
 await send("Runtime.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", { source: stub() });
 await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await waitBoot(ev);
+// 새 문서의 부팅 끝까지(`Page.reload` + `waitBoot` 는 옛 문서를 보고 바로 끝날 수 있다 — 2026-11-21)
+await reloadBoot(send, ev);
 await send("Page.bringToFront");
 await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 for (let i = 0; i < 50; i++) {
-  if ((await ev(`(async () => { try { await ${W}; await ${SESS}; await ${PANES}; await ${ANCH}; return true; } catch { return false; } })()`)) === true) break;
+  if ((await ev(`(async () => { try { await ${W}; await ${S}; await ${SESS}; await ${PANES}; await ${ANCH}; return true; } catch { return false; } })()`)) === true) break;
   await sleep(300);
 }
 await sleep(800);
@@ -261,8 +261,10 @@ console.log("fitWide", JSON.stringify(fitWide));
 check("① 머리줄(지금 폭) — [저장] 이 있고 도구 단추가 모두 머리줄 · 도구 칸 안", [fitWide?.save, fitWide?.saveInHead, fitWide?.allInHead], [true, true, true]);
 await shot("h1-wide.png");
 
-// ② 310px · 270px
-for (const w of [310, 270]) {
+// ② 310px · 300px — 2026-11-20 머리줄에 [파일] 단추가 들어온 뒤 [저장] 이 다 드는 폭은 약 289px 부터다(270 에서는 19px 잘린다).
+// 좁을 때 맨 앞 아이콘을 접어 270 을 지키는 안은 받지 않았다(2026-11-21 사용자 결정 — 다른 타일 머리줄에서 아이콘이 접히는 일이 없다 ·
+// 아주 좁으면 도구 칸이 잘린다는 `keep-tools` 규칙 그대로). 기준은 여유를 둔 300.
+for (const w of [310, 300]) {
   const fit = await headFit(w, true);
   console.log(`fit${w}`, JSON.stringify(fit));
   check(`② 머리줄(${w}px) — [저장] 이 머리줄 · 도구 칸 안에 다 듦 · 이름 말줄임`, [fit?.save, fit?.saveInHead, fit?.saveInTools, fit?.nameCut], [true, true, true, true]);

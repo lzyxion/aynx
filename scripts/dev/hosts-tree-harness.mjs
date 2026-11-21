@@ -19,6 +19,7 @@
 // 폴더 줄에 놓기 = 그 폴더로 · 빈 바닥 = 최상위 · 호스트 줄 = 그 호스트의 폴더 · 폴더 중첩 ⑨ 라이트.
 // 콘솔 예외 0. PNG: `hosts-tree.png` · `hosts-tree-time.png` · `hosts-tree-search.png` · `hosts-tree-light.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -120,7 +121,7 @@ const pickFolder = async (sel) => {
 const click = async (sel) => { const r = JSON.parse(await ev(`JSON.stringify(document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect())`)); const x = r.x + r.width / 2, y = r.y + r.height / 2; await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 }); await sleep(300); };
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 const cssVal = (v, prop = "background-color") => ev(`(() => { const d = document.createElement('div'); d.style.setProperty('${prop}', 'var(${v})'); document.body.appendChild(d); const c = getComputedStyle(d).getPropertyValue('${prop}'); d.remove(); return c; })()`);
-const reload = async () => { await send("Page.reload", { ignoreCache: true }); await sleep(4500); };
+const reload = async () => { await reloadBoot(send, ev); };
 
 
 const rows = () => ev(`[...document.querySelectorAll('.dock .sidebar [data-id]')].map(e => (e.getAttribute('aria-expanded') === 'true' ? '▾' : e.getAttribute('aria-expanded') === 'false' ? '▸' : '') + e.getAttribute('data-id') + '@' + e.getAttribute('data-depth')).join(' ')`);
@@ -157,7 +158,8 @@ for (let i = 0; i < 15; i++) { await reload(); if ((await ev(`!!document.querySe
 await key("KeyH", 10, "H", 600);
 check((await ev(`localStorage.getItem('aynx:hosts:view')`)) === "grid", "옛 보기 모드 키가 남아 있어도 뜬다 (읽지 않는다)");
 let r = await rows();
-check(r === "▾g:운영@0 ▸g:운영/db@1 h:web-01@1 h:web-02@1 ▸g:개발@0 h:lab-01@0", `저장된 펼침(운영) — 중첩 db 는 접힘 · 폴더 먼저 (${r})`);
+// 폴더 · 호스트는 층마다 이름순(2026-10-20 — host-folders.ts `folderRows`) — 개발 < 운영
+check(r === "▸g:개발@0 ▾g:운영@0 ▸g:운영/db@1 h:web-01@1 h:web-02@1 h:lab-01@0", `저장된 펼침(운영) — 중첩 db 는 접힘 · 폴더 먼저 · 이름순 (${r})`);
 const pad = await ev(`[parseFloat(getComputedStyle(document.querySelector('${row("g:운영")}')).paddingLeft), parseFloat(getComputedStyle(document.querySelector('${row("h:web-01")}')).paddingLeft)].join('|')`);
 const [p0, p1] = String(pad).split("|").map(Number);
 check(p1 - p0 === 14, `한 단 = 14px 들여쓰기 (${pad})`);
@@ -186,7 +188,7 @@ console.log("capture:", await shot("hosts-tree-time.png"));
 check((await ev(`document.querySelector('${row("g:운영")} .count').textContent.trim()`)) === "4", "폴더 개수 = 하위까지 합친 수 (운영 4)");
 // 검색 칸에서 ↓ 한 번 = 첫 줄
 await key("ArrowDown", 0, "ArrowDown");
-check((await selected()) === "g:운영", `검색 칸에서 ↓ → 첫 줄 (${await selected()})`);
+check((await selected()) === "g:개발", `검색 칸에서 ↓ → 첫 줄 (${await selected()})`);
 console.log("capture:", await shot("hosts-tree.png"));
 
 // ── ② 줄 클릭 = 고르기 + 펼치기/접기 + 저장 (2026-10-19 — 꺾쇠도 줄의 일부) ────────────
@@ -203,7 +205,7 @@ await click(`${row("g:운영/db")} [data-host-twisty]`);
 await reload();
 await key("KeyH", 10, "H", 600);
 r = await rows();
-check(r === "▾g:운영@0 ▾g:운영/db@1 h:db-01@2 h:db-02@2 h:web-01@1 h:web-02@1 ▸g:개발@0 h:lab-01@0", `다시 띄워도 펼침이 산다 (중첩 db 까지) (${r})`);
+check(r === "▸g:개발@0 ▾g:운영@0 ▾g:운영/db@1 h:db-01@2 h:db-02@2 h:web-01@1 h:web-02@1 h:lab-01@0", `다시 띄워도 펼침이 산다 (중첩 db 까지) (${r})`);
 // 폴더 더블클릭은 뜻이 없다(앞의 두 클릭이 이미 펼쳤다 접었다 — 세 번 뒤집히지 않는다)
 await ev(`document.querySelector('${row("g:개발")}').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`); await sleep(200);
 check((await rows()).includes("▸g:개발"), "폴더 더블클릭 → 그대로");
@@ -234,7 +236,7 @@ const sshA = (await calls("open_ssh_session")).slice(ssh0).map((a) => a?.alias);
 check(JSON.stringify(sshA) === '["db-01"]', `검색 칸에서 Enter → 첫 호스트 접속 (${JSON.stringify(sshA)})`);
 await ensureDock();
 await setQuery("");
-check((await rows()) === "▾g:운영@0 ▾g:운영/db@1 h:db-01@2 h:db-02@2 h:web-01@1 h:web-02@1 ▸g:개발@0 h:lab-01@0", "검색어를 지우면 저장된 펼침으로 돌아온다");
+check((await rows()) === "▸g:개발@0 ▾g:운영@0 ▾g:운영/db@1 h:db-01@2 h:db-02@2 h:web-01@1 h:web-02@1 h:lab-01@0", "검색어를 지우면 저장된 펼침으로 돌아온다");
 check((await selected()) === "", "검색어를 다 지우면 선택도 빈다");
 
 // ── ④ 키보드 ─────────────────────────────────────────────────────────────────
@@ -254,12 +256,13 @@ await step("ArrowLeft", "g:운영/db"); // 펼친 db 를 접는다 (커서 그�
 check((await rows()).includes("▸g:운영/db"), "← 가 db 를 접었다");
 await step("ArrowLeft", "g:운영"); // 접힌 폴더의 ← = 부모로
 await step("End", "h:lab-01");
-await step("Home", "g:운영");
-await step("ArrowUp", "g:운영"); // 끝에서 멈춘다 (감싸지 않는다)
+await step("Home", "g:개발");
+await step("ArrowUp", "g:개발"); // 끝에서 멈춘다 (감싸지 않는다)
+await step("ArrowDown", "g:운영");
 await key("Enter", 0, "Enter", 250);
-check((await rows()) === "▸g:운영@0 ▸g:개발@0 h:lab-01@0", `폴더에서 Enter → 접는다 (${await rows()})`);
+check((await rows()) === "▸g:개발@0 ▸g:운영@0 h:lab-01@0", `폴더에서 Enter → 접는다 (${await rows()})`);
 await key("Enter", 0, "Enter", 250);
-check((await rows()).startsWith("▾g:운영@0"), "한 번 더 Enter → 펼친다");
+check((await rows()).includes("▾g:운영@0"), `한 번 더 Enter → 펼친다 (${await rows()})`);
 await step("End", "h:lab-01");
 await key("ArrowLeft", 0, "ArrowLeft", 200);
 check((await selected()) === "h:lab-01", "최상위 호스트의 ← 는 갈 곳이 없다");
@@ -367,8 +370,10 @@ check((await drag(row("g:운영/db"), row("h:web-02"))) === "refused", "폴더�
 await ensureDock();
 await ev(`(async () => { const m = await ${importApp("mode.svelte.ts")}; m.setAppMode('light'); })()`); await sleep(500);
 await click(row("h:web-02"));
-const softL = await cssVal("--accent-soft");
-check((await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`)) === softL, `라이트 고른 줄 = --accent-soft (${softL})`);
+// 독(.dock.launcher)의 고른 줄 = 글래스면 `--glass-pick`, 평면이면 `--accent-soft` (HostList.svelte · theme.css 재질 절 2026-10-21)
+const softL = await cssVal("--glass-pick, var(--accent-soft)");
+const selBgL = await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`);
+check(selBgL === softL, `라이트 고른 줄 = --glass-pick(평면은 --accent-soft) (${selBgL} · ${softL})`);
 console.log("capture:", await shot("hosts-tree-light.png"));
 await ev(`(async () => { const m = await ${importApp("mode.svelte.ts")}; m.setAppMode('dark'); })()`); await sleep(300);
 

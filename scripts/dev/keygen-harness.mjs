@@ -11,15 +11,22 @@
 // **암호구는 로그에 찍지 않는다** — 단언은 "보냈는가"(typeof/length)만 보고 값은 보지 않는다.
 // 이 파일이 지키는 규칙이 곧 앱이 지키는 규칙이다 (docs/log/2026-09-17-keygen.md).
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
-const prefix = process.argv[2] ?? "keygen";
+import path from "node:path";
+// 첫 인자는 PNG 앞머리 — 이미 있는 폴더(러너의 outdir)면 그 안의 `keygen-*.png` 로 쓴다.
+const arg = process.argv[2] ?? "keygen";
+const prefix = fs.existsSync(arg) && fs.statSync(arg).isDirectory() ? path.join(arg, "keygen") : arg;
+fs.mkdirSync(path.dirname(path.resolve(prefix)), { recursive: true });
 const list = await (await fetch(`http://127.0.0.1:${process.argv[3] ?? process.env.CDP_PORT ?? "9224"}/json`)).json();
 const t = list.find((x) => x.type === "page" && x.url.includes(`localhost:${process.env.PAGE_PORT ?? "1420"}`));
 const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));
 let seq = 0; const pending = new Map(); const events = [];
 ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); } else if (d.method) events.push(d); };
 const send = (method, params = {}) => new Promise((r) => { const id = ++seq; pending.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
-const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); return r.result?.exceptionDetails ? "EXC " + (r.result.exceptionDetails.exception?.description ?? "").split("\n")[0] : r.result?.result?.value; };
+// 판정 없이 값을 찍는 캡처용 판이지만, 식이 예외로 끝나면(`EXC …`) 그 수를 세어 0 이 아닌 코드로 끝낸다(2026-11-21).
+let excs = 0;
+const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.result?.exceptionDetails) { excs++; return "EXC " + (r.result.exceptionDetails.exception?.description ?? "").split("\n")[0]; } return r.result?.result?.value; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const shot = async (name) => { const r = await send("Page.captureScreenshot", { format: "png" }); fs.writeFileSync(name, Buffer.from(r.result.data, "base64")); return name; };
 await send("Page.enable"); await send("Runtime.enable");
@@ -59,7 +66,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4000);
+await reloadBoot(send, ev);
 
 // Vite dev 는 모듈을 URL 로 서빙한다 — 앱이 이미 올린 것과 **같은 인스턴스**를 다시 import 해
 // 모듈의 export 를 직접 부른다 (독을 열고 우클릭 메뉴를 더듬는 것보다 짧고 덜 부서진다).
@@ -68,11 +75,14 @@ await send("Page.reload", { ignoreCache: true }); await sleep(4000);
 // 질의가 다르면 브라우저에게는 **다른 모듈**이라 `$state` 를 공유하지 않는 사본이 하나 더
 // 생긴다 (화면은 그대로인데 함수만 먹는 것처럼 보인다). 그래서 실제로 받아 간 URL 을
 // performance 항목에서 찾아 그대로 쓴다.
+// 2026-11-21: 호스트 모듈은 폴더(`app/hosts/`)로 쪼개졌고 배럴(`hosts.svelte.ts`)은 앱이 안 불러 리소스 목록에 없다 —
+// 폼(`form.svelte.ts` · `form-model.svelte.ts`)과 설치 고르개(`install-key.ts`)를 각각 실제로 받아 간 URL 로 불러 합친다.
 const load = `(async () => {
-  const url = performance.getEntriesByType('resource').map(r => r.name)
-    .find(n => n.includes('/src/lib/app/hosts.svelte.ts'));
-  if (!url) return 'module not loaded yet';
-  window.__H = await import(url);
+  const names = performance.getEntriesByType('resource').map(r => r.name);
+  const urls = ['/src/lib/app/hosts/form-model.svelte.ts', '/src/lib/app/hosts/form.svelte.ts', '/src/lib/app/hosts/install-key.ts']
+    .map(f => names.find(n => n.includes(f)) ?? f);
+  window.__H = {};
+  for (const u of urls) Object.assign(window.__H, await import(u));
   return Object.keys(window.__H).length + ' exports';
 })()`;
 console.log("import hosts module:", await ev(load));
@@ -150,3 +160,6 @@ console.log("capture:", await shot(`${prefix}-groups.png`));
 const exc = events.filter((e) => e.method === "Runtime.exceptionThrown").map((e) => (e.params.exceptionDetails.exception?.description ?? "").split("\n")[0]).filter((s) => !/stub:/.test(s)).slice(0, 5);
 if (exc.length) console.log("EXC", exc);
 ws.close();
+const bad = excs + exc.length;
+console.log(bad ? `${bad} EXC (식 ${excs} · 페이지 ${exc.length})` : "no EXC");
+process.exit(bad ? 1 : 0);

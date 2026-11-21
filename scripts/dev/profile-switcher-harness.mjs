@@ -16,6 +16,7 @@
 //   PAGE_PORT=1430 node scripts/dev/profile-switcher-harness.mjs <outdir> 9231
 //     → <outdir>/switcher-dark.png · switcher-light.png · settings-cards.png · switcher-empty.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot, waitToastsGone } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const [outDir = ".", port = process.env.CDP_PORT ?? "9231"] = process.argv.slice(2);
@@ -36,7 +37,18 @@ ws.onmessage = (m) => {
     pending.delete(d.id);
   }
   if (!collecting) return;
-  if (d.method === "Runtime.exceptionThrown") errors.push(d.params.exceptionDetails?.exception?.description ?? "exception");
+  if (d.method === "Runtime.exceptionThrown") {
+    const x = d.params.exceptionDetails;
+    const desc = x?.exception?.description ?? "exception";
+    // Edge 가 문서에 끼워 넣는 스크립트(학습 도구 · 몰입형 리더)의 예외 — 앱 소스 · 의존성 어디에도 없는 이름이다. 찬 서버에서
+    // ⑧의 다시 읽기 뒤에만 가끔 났다(2026-11-21 · 찬 서버 아홉 번 중 넷 · 카드 클릭과는 무관 — 클릭 실패는 토스트 탓이었다).
+    // 이 한 이름만 거르고 자리를 찍어 둔다 — 다른 예외는 그대로 센다.
+    if (/^ReferenceError: learningToolsRuntime is not defined/.test(desc)) {
+      console.log(`SKIP Edge 주입 스크립트 예외 (${desc.split("\n")[0]} @ ${x?.url || "(url 없음)"}:${x?.lineNumber ?? "?"})`);
+      return;
+    }
+    errors.push(desc);
+  }
   if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error")
     errors.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
 };
@@ -93,7 +105,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
   const grad = (a, b) => 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs><rect width="320" height="200" fill="url(#g)"/><circle cx="240" cy="60" r="36" fill="' + b + '" opacity=".6"/></svg>');
   const files = { 'wp-aaaaaaaaaaaa.png': grad('#1b2a4a', '#d95a9e'), 'wp-bbbbbbbbbbbb.png': grad('#0f3d2e', '#9fd6a8') };
   const empty = sessionStorage.getItem('ps-empty') === '1';
-  const profiles = empty ? null : JSON.stringify({ version: 1, active: 'T2', profiles: [
+  let profiles = empty ? null : JSON.stringify({ version: 1, active: 'T2', profiles: [
     { id: 'T1', name: '밤 — 노을', savedAt: 4, appearance: { app: { accent: '#d95a9e', mode: 'dark', bg: '#121218', fg: '#ececef' }, terminal: { theme: 'aynx-dark' }, wallpaper: { file: 'wp-aaaaaaaaaaaa.png', dim: 30, blur: 0, fit: 'cover' } } },
     { id: 'T2', name: '숲', savedAt: 3, appearance: { app: { accent: '#6fbf73', mode: 'dark', bg: '#0e1512', fg: '#e3efe6' }, terminal: { theme: 'aynx-dark' }, wallpaper: { file: 'wp-bbbbbbbbbbbb.png', dim: 20, blur: 10, fit: 'cover' } } },
     { id: 'T3', name: '사진 없는 기본', savedAt: 2, appearance: { app: { mode: 'dark' }, terminal: { theme: 'aynx-dark' }, wallpaper: {} } },
@@ -124,6 +136,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
       if (cmd === 'open_local_session') return Promise.resolve({ id: nextSession++, shell: args?.shell ?? 'pwsh' });
       if (cmd === 'load_settings') return Promise.resolve(window.__settings);
       if (cmd === 'load_theme_profiles') return Promise.resolve(profiles);
+      // 2026-11-03 부터 쓰기는 조작 단위(theme_profiles_edit) — 고르기(activate)만 파일에 얹어 돌려준다(Rust 가 디스크 최신 위에 얹는 것과 같은 답)
+      if (cmd === 'theme_profiles_edit') { if (profiles && args?.op?.op === 'activate') { const f = JSON.parse(profiles); f.active = args.op.id; profiles = JSON.stringify(f); } return Promise.resolve(profiles); }
       if (cmd === 'wallpaper_resolve') return Promise.resolve(files[args?.file] ?? null);
       return (cmd in answers) ? Promise.resolve(answers[cmd]) : Promise.reject(new Error('stub: ' + cmd));
     },
@@ -137,8 +151,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
 await ev(`sessionStorage.removeItem('ps-empty')`);
 collecting = true;
-await send("Page.reload", { ignoreCache: true });
-await sleep(4000);
+await reloadBoot(send, ev);
 
 const STATE = `(() => {
   // 나가는 전이(180ms) 동안 남아 있는 그림은 Svelte 가 \`inert\` 를 건다 — 닫힌 것으로 본다
@@ -162,12 +175,14 @@ const STATE = `(() => {
 const state = async () => JSON.parse(await ev(STATE));
 const saves = async () =>
   JSON.parse(
-    await ev(`JSON.stringify(window.__calls.filter(([c]) => c === 'save_settings' || c === 'save_theme_profiles').map(([c, a]) => c === 'save_settings' ? ['s', a.settings?.wallpaper?.file ?? null, a.settings?.app?.mode ?? null] : ['p', JSON.parse(a.json).active]))`),
+    await ev(`JSON.stringify(window.__calls.filter(([c, a]) => c === 'save_settings' || (c === 'theme_profiles_edit' && a?.op?.op === 'activate')).map(([c, a]) => c === 'save_settings' ? ['s', a.settings?.wallpaper?.file ?? null, a.settings?.app?.mode ?? null] : ['p', a.op.id]))`),
   );
 
 // ── 셸 타일 하나 · 포커스는 터미널 ─────────────────────────────────────────
 await ev(`(async () => { const m = await ${importApp("/lib/app/panes.svelte.ts")}; await m.openDefaultShell(); })()`);
-await sleep(1200);
+// 찬 vite 에서는 xterm 이 1.2초 안에 안 선다 — 입력 칸이 설 때까지 기다린다(2026-11-21)
+for (let i = 0; i < 60 && (await ev(`!!document.querySelector('.xterm textarea')`)) !== true; i++) await sleep(200);
+await sleep(300);
 await ev(`document.querySelector('.xterm textarea')?.focus()`);
 let s = await state();
 check(s.focusInTerm, `시작 포커스는 터미널 (${s.focusInTerm})`);
@@ -283,9 +298,14 @@ await sleep(300);
 await ev(`document.querySelector('.xterm textarea')?.focus()`);
 
 // ── ⑥ 카드 클릭 = 적용 — 라이트 벌(T4) · 라이트 캡처 ─────────────────────────
+// ③의 적용 토스트("… 테마 프로필을 적용했습니다." — 오른쪽 위 · z 120 으로 이 줄(110) 위)가 찬 vite 에서는 아직 떠 있어
+// T4 카드의 누르는 자리(1200 폭에서 x≈915 · y≈124)를 덮었다 — 클릭이 토스트에 떨어져 적용이 안 됐다(2026-11-21 · 찬 서버 세 번 중 셋).
+await waitToastsGone(ev);
 await SWITCH();
 await sleep(350); // 들어오는 전이(300ms)가 끝난 자리를 잰다
 const r = JSON.parse(await ev(`JSON.stringify(document.querySelector('[data-ps-card=T4]').getBoundingClientRect())`));
+const hit = await ev(`document.elementFromPoint(${r.x + r.width / 2}, ${r.y + 30})?.closest('[data-ps-card]')?.dataset.psCard ?? null`);
+check(hit === "T4", `누르는 자리가 T4 카드다 — 덮는 것이 없다 (${hit})`);
 await send("Input.dispatchMouseEvent", { type: "mousePressed", x: r.x + r.width / 2, y: r.y + 30, button: "left", clickCount: 1 });
 await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: r.x + r.width / 2, y: r.y + 30, button: "left", clickCount: 1 });
 await sleep(800);
@@ -328,8 +348,7 @@ const errs1 = errors.filter((e) => !/stub: /.test(e));
 
 // ── ⑧ 빈 목록 — 한 줄 · Esc ────────────────────────────────────────────────
 await ev(`sessionStorage.setItem('ps-empty', '1')`);
-await send("Page.reload", { ignoreCache: true });
-await sleep(4000);
+await reloadBoot(send, ev);
 await ev(`document.body.focus()`);
 await SWITCH();
 await sleep(300);

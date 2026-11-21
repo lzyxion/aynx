@@ -10,10 +10,10 @@
 // 심어 두는 것: 호스트 넷(web-01 · dev-01 · db-02 · stage) · 접속 이력 셋(2분 전 · 1시간 전 · 어제 —
 // stage 는 이력 없음) · 프로젝트 셋(로컬 aynx · 원격 api@dev-01 · 로컬 infra) · 셸 셋(PowerShell 7 기본 ·
 // Ubuntu · 명령 프롬프트) · 즐겨찾기 하나(web-01).
-// aynx 은 첫 탭에 AI 타일로 열어 두고 **입력 대기**로 만든다(탭 점과 같은 신호 — `agentTitle`).
+// aynx 은 첫 탭에 AI 타일로 열어 두고 안 보는 탭에서 턴이 끝난 **완료** 점으로 만든다(가짜 훅 신호 start → stop — agent-signal-fake.mjs).
 //
 // 보는 것 (2026-10-28 위젯 판 — docs/log/2026-10-28-start-widgets.md): ① 처음 배치 = 위 줄 시계(글자를 감싼 264×136 — 크기 모서리 = 글자 크기) + 아래 줄 위젯 셋
-// (240×208 · 가로 가운데 · 세로 가운데보다 위 — 2026-11-03) · 검색 칸 없음 · 줄의 뒷글자 · 입력 대기 프로젝트가 맨 위 · 포커스가 기본 셸 줄에 · 격자 점 없음
+// (240×208 · 가로 가운데 · 세로 가운데보다 위 — 2026-11-03) · 검색 칸 없음 · 줄의 뒷글자 · 점(완료) 있는 프로젝트가 맨 위 · 포커스가 기본 셸 줄에 · 격자 점 없음
 // ② 화살표(←→ 위젯 사이 · ↓ 위젯 안) + Enter 가 호스트 접속(`open_ssh_session { alias }`) ③ 프로젝트 줄 Enter = 열기
 // (`open_local_session { cwd }`) · 최근 워크트리 줄 ④ 셸 줄 클릭 = 로컬 세션(`shell`) · 시작 타일이 교체된다 ⑤ 글자를 치면
 // 팔레트(입력칸에 그 글자) — **기본 자리**(캔버스 가운데 · 위 12%)
@@ -30,6 +30,8 @@
 // PNG: `launcher-dark.png` · `launcher-light.png` · `launcher-moved.png` · `launcher-empty-board.png` · `launcher-small.png` · `launcher-narrow.png` ·
 // `launcher-empty.png` · `launcher-key-left.png` · `palette-default-left.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
+import { fakeAgentSignal } from "./agent-signal-fake.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -54,6 +56,8 @@ ws.addEventListener("message", (m) => { const d = JSON.parse(m.data); if (d.meth
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   const cbs = new Map(); let n = 0; window.__calls = []; let nextSession = 100;
   window.__listeners = {};
+  // 가짜 Rust 방송 — agent-signal-fake.mjs 가 이것으로 쏜다
+  window.__emit = (event, payload) => (window.__listeners[event] ?? []).forEach((h) => cbs.get(h)?.({ event, id: h, payload }));
   // 앱 모듈을 URL 로 다시 찾는다(importApp) — 기본 버퍼(250)는 모듈 수보다 작아 뒤에 올린 모듈이 빠진다.
   performance.setResourceTimingBufferSize(5000);
   // 빈 사용자 판(⑧)은 sessionStorage 표식으로 고른다 — 이력·프로젝트·즐겨찾기가 없다.
@@ -126,7 +130,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
 ` });
 await ev(`sessionStorage.removeItem('launcher-empty')`);
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 
 const VK = { Enter: 13, Escape: 27, Backspace: 8, ArrowDown: 40, ArrowUp: 38, ArrowLeft: 37, ArrowRight: 39, Home: 36, End: 35, F10: 121 };
 const key = async (code, modifiers = 0, k = code) => { const vk = code.startsWith("Key") ? code.charCodeAt(3) : VK[code] ?? 0; for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers, code, key: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, ...(type === "keyDown" && k.length === 1 ? { text: k } : {}) }); await sleep(200); };
@@ -174,24 +178,26 @@ const overlapFree = (rs) => rs.every((a, i) => rs.every((b, j) => i === j || a.l
 const canvasDiff = () => ev(`(() => { const p = document.querySelector('.palette')?.getBoundingClientRect(); const c = document.querySelector('[data-tile-canvas]')?.getBoundingClientRect(); if (!p || !c) return null; return [p.left + p.width / 2 - (c.left + c.width / 2), p.top - (c.top + c.height * 0.12)].map(v => Math.round(v * 10) / 10); })()`);
 const within1 = (d) => Array.isArray(d) && d.every((v) => Math.abs(v) <= 1);
 
-// ── 준비: aynx 을 첫 탭에 AI 타일로 열고 입력 대기로 ─────────────────────────────
+// ── 준비: aynx 을 첫 탭에 AI 타일로 열고 완료(안 봄) 점으로 ─────────────────────────────
 const projMod = importApp("app/projects.svelte.ts");
 const tabsMod = importApp("app/tabs.svelte.ts");
 const agentMod = importApp("app/agent-status.svelte.ts");
 await ev(`(async () => { const m = await ${projMod}; const p = m.projects().find(p => p.id === 'P1'); await m.openProject(p); })()`);
 await sleep(1200);
 const agentPane = await ev(`(async () => { const m = await ${tabsMod}; const walk = (n, out) => (n.type === 'leaf' ? out.push(n.pane) : (walk(n.a, out), walk(n.b, out)), out); for (const tab of m.residentWindowTabs()) for (const p of walk(tab.root, [])) if (p.cwd === 'C:\\\\src\\\\proj') return p.id; return null; })()`);
-check(typeof agentPane === "string", `준비: aynx AI 타일이 열렸다 (${agentPane})`);
+check(typeof agentPane === "string" && !agentPane.startsWith("EXC"), `준비: aynx AI 타일이 열렸다 (${agentPane})`);
 await newStartTab();
-// 입력 대기 = "출력이 조용해진 뒤 제목이 바뀌었다" (projects-harness ⑦ 과 같은 신호 순서 · AGENT_QUIET_MS = 3000)
-const report = (fn) => ev(`(async () => { const a = await ${agentMod}; const w = await ${tabsMod}; a.${fn}(w.findPaneAnywhere('${agentPane}')); })()`);
 // 첫 입력(claude)이 실려야 AI 타일로 읽힌다 — 차가운 dev 서버에서는 늦게 온다(최대 8초 기다린다)
 for (let i = 0; i < 16; i++) {
   if ((await ev(`(async () => { const a = await ${agentMod}; const w = await ${tabsMod}; return a.isAgentPane(w.findPaneAnywhere('${agentPane}')); })()`)) === true) break;
   await sleep(500);
 }
-await report("agentOutput"); await sleep(3600);
-await report("agentTitle"); await sleep(600);
+// 나를 기다리는 에이전트 = 안 보는 탭에서 턴이 끝났다(훅 `start` → `stop` = 점 "완료"). 2026-10-01 점 셋(실행 · 권한 · 완료)으로
+// 바뀌며 예전 "출력이 조용해진 뒤 제목이 바뀜 = 입력 대기"(agentOutput · agentTitle) 갈래는 없어졌다 — 상태는 Rust 표의 훅 신호만 정한다
+// (agent-status.svelte.ts). 가짜 신호는 agent-signal-fake.mjs 가 Rust 와 같은 모양으로 만든다.
+const agentStream = await ev(`(async () => { const w = await ${tabsMod}; const p = w.findPaneAnywhere('${agentPane}'); return p.historyStreamId ?? p.id; })()`);
+await ev(fakeAgentSignal(`{ stream: ${JSON.stringify(agentStream)}, event: 'start', cli: 'claude' }`)); await sleep(100);
+await ev(fakeAgentSignal(`{ stream: ${JSON.stringify(agentStream)}, event: 'stop', cli: 'claude' }`)); await sleep(400);
 
 // ── ① 화면 ─────────────────────────────────────────────────────────────────
 check((await ev(`!!${L}`)) === true, "새 탭 = launcher");
@@ -211,10 +217,10 @@ check(!!clk && /^\d{2}:\d{2}$/.test(clk.time) && /요일$/.test(clk.date) && clk
 check((await colNames("hosts")) === "web-01|dev-01|db-02", `최근 호스트 = 이력 있는 셋, 늦은 순 (${await colNames("hosts")})`);
 check((await colMeta("hosts")) === "2분 전|1시간 전|1일 전", `뒷글자 = 상대 시각 (${await colMeta("hosts")})`);
 // 최근 워크트리 줄(feat-x, 2시간 전)이 시각 순으로 끼고 · 폴더가 없는 gone 은 빠진다
-check((await colNames("projects")) === "aynx|api|aynx · feat-x|infra", `프로젝트 = 입력 대기 aynx 이 맨 위 · 최근 워크트리가 시각 순으로 (${await colNames("projects")})`);
+check((await colNames("projects")) === "aynx|api|aynx · feat-x|infra", `프로젝트 = 에이전트 점(완료)이 있는 aynx 이 맨 위 · 최근 워크트리가 시각 순으로 (${await colNames("projects")})`);
 check((await colMeta("projects")) === "로컬|dev-01|로컬|로컬", `위치 = 로컬 / 호스트 (${await colMeta("projects")})`);
 const dots = await ev(`[...${L}.querySelectorAll('[data-start-widget="projects"] [data-agent-dot]')].map(e => e.getAttribute('data-agent-dot')).join('|')`);
-check(dots === "waiting|none|none|none", `에이전트 점 = 주 폴더의 입력 대기 하나 — 워크트리 줄에 번지지 않는다 (${dots})`);
+check(dots === "finished|none|none|none", `에이전트 점 = 주 폴더의 완료(안 봄) 하나 — 워크트리 줄에 번지지 않는다 (${dots})`);
 const wtKind = await ev(`[...${L}.querySelectorAll('[data-start-widget="projects"] .row')].map(e => e.getAttribute('data-launch-kind')).join('|')`);
 check(wtKind === "project|project|worktree|project", `줄 종류 (${wtKind})`);
 check((await colNames("shells")) === "PowerShell 7|WSL: Ubuntu|명령 프롬프트", `셸 = 기본 셸 먼저 (${await colNames("shells")})`);
@@ -456,7 +462,10 @@ check(st.widgets.every((w) => w.x % 8 === 0 && w.y % 8 === 0), "놓인 자리는
 // 리셋(처음 배치) — 우클릭 메뉴(편집 중)
 await rightClickEmpty();
 check((await ev(`document.querySelector('[data-start-board-menu]')?.getAttribute('data-start-board-menu')`)) === "board", "빈 자리 우클릭 = 판 메뉴");
-check((await ev(`[...document.querySelectorAll('[data-start-board-menu] .menu-row')].map(e => e.textContent.replace(/\\s+/g, ' ').trim()).join('|')`)) === "위젯 추가 ▸|편집 완료|되돌리기|레이아웃 리셋", "메뉴 = 위젯 추가 ▸ · (구분선) 편집 완료(편집 중) · 되돌리기 · 레이아웃 리셋 — 되돌리기 · 리셋은 편집 중에만");
+const boardMenu = await ev(`[...document.querySelectorAll('[data-start-board-menu] .menu-row')].map(e => e.textContent.replace(/\\s+/g, ' ').trim()).join('|')`);
+// ▸ 는 글자가 아니라 꺾쇠 아이콘(`.chev` — StartBoardMenu.svelte · Material 아이콘 통일 2026-11-04)
+const addChev = await ev(`!!document.querySelector('[data-start-board-menu] [data-board-menu="add"][aria-haspopup="menu"] .chev svg')`);
+check(boardMenu === "위젯 추가|편집 완료|되돌리기|레이아웃 리셋" && addChev === true, `메뉴 = 위젯 추가 ▸ · (구분선) 편집 완료(편집 중) · 되돌리기 · 레이아웃 리셋 — 되돌리기 · 리셋은 편집 중에만 (${boardMenu})`);
 check((await ev(`document.activeElement?.getAttribute('role')`)) === "menuitem", "메뉴 첫 항목에 포커스");
 const errBefore = errors.length;
 await ev(`document.querySelector('[data-board-menu="reset"]').click()`); await sleep(400);
@@ -496,15 +505,21 @@ rs = await Promise.all(["hosts", "projects", "shells"].map(rectOf));
 const pr = rs[1];
 check(pr && overlapFree(rs) && Math.abs(pr.top + pr.h / 2 - clickAt[1]) < 260 && errors.length === errBefore, `추가 = 누른 자리 가까운 빈자리 · 겹침 없음 (${JSON.stringify(pr)})`);
 // 키보드 — 아래로 놓인 위젯으로 ↓ 가 이어진다: 셸을 호스트 바로 아래로 옮겨 본다
-await rightClickEmpty(); await ev(`document.querySelector('[data-board-menu="reset"]').click()`); await sleep(400);
+// 리셋은 편집 단추 줄로 — 방금 더한 프로젝트가 누른 자리(판 왼쪽 위)에 놓여 rightClickEmpty 가 그 위젯을 짚는다(편집 중 위젯 우클릭 = 메뉴 없음)
+await ev(`${L}.querySelector('[data-start-edit-reset]').click()`); await sleep(400);
 const h0 = await rectOf("hosts"); const s0 = await rectOf("shells");
-await dragBy('[data-start-widget="shells"][data-widget-grip]', h0.left - s0.left, h0.h + 24);
+// 2026-11-21 — 처음 배치가 위 줄 시계 + 아래 줄 셋(2026-11-03)이 된 뒤로 1100×800 판에는 호스트 **아래**에 208px 위젯이 들어갈 자리가
+// 없어(가장 가까운 빈자리 = 호스트 위로 옮겨졌다) 셸을 호스트 바로 **위**(시계 왼쪽 빈자리)에 놓고 같은 이어짐을 거꾸로 본다
+await dragBy('[data-start-widget="shells"][data-widget-grip]', h0.left - s0.left, -(s0.h + 16));
+const s1 = await rectOf("shells");
+check(Math.abs(s1.left - h0.left) <= 8 && s1.top + s1.h <= h0.top && h0.top - (s1.top + s1.h) <= 24, `셸을 호스트 바로 위로 옮겼다 (${JSON.stringify(s1)} · 호스트 ${JSON.stringify(h0)})`);
 await ev(`${L}.querySelector('[data-ime-proxy]').focus()`); await sleep(100);
-await ev(`[...${L}.querySelectorAll('[data-launch-key]')].find(e => e.dataset.launchKey === 'host:db-02').dispatchEvent(new FocusEvent('focus'))`); await sleep(100);
+await ev(`[...${L}.querySelectorAll('[data-launch-key]')].find(e => e.dataset.launchKey === 'shell:cmd').dispatchEvent(new FocusEvent('focus'))`); await sleep(100);
 await key("ArrowDown");
-check((await activeKey()) === "shell:pwsh", `호스트 맨 아랫줄 ↓ = 바로 아래 셸 위젯 첫 줄 (${await activeKey()})`);
+check((await activeKey()) === "host:web-01", `셸 맨 아랫줄 ↓ = 바로 아래 호스트 위젯 첫 줄 (${await activeKey()})`);
 await key("ArrowUp");
-check((await activeKey()) === "host:db-02", `셸 첫 줄 ↑ = 위 호스트 위젯 끝 줄 (${await activeKey()})`);
+check((await activeKey()) === "shell:cmd", `호스트 첫 줄 ↑ = 위 셸 위젯 끝 줄 (${await activeKey()})`);
+await key("ArrowDown");
 await key("ArrowRight");
 const rightKey = await activeKey();
 check((await ev(`!!${L}.querySelector('[data-start-widget="projects"] [data-launch-key="${rightKey}"]')`)) === true, `→ = 오른쪽의 가장 가까운 위젯(프로젝트) (${rightKey})`);
@@ -535,9 +550,11 @@ check((await ev(`!${L}.querySelector('[data-start-empty]') && !${L}.querySelecto
 check(JSON.stringify((await stored())?.widgets) === "[]", "빈 배치도 저장된다(다시 열어도 빈 판)");
 console.log("capture:", await shot("launcher-empty-board.png"));
 await rightClickEmpty(); await ev(`document.querySelector('[data-board-menu="add"]').click()`); await sleep(300);
-await ev(`document.querySelector('[data-start-board-menu] [data-board-add="shells"]').click()`); await sleep(300);
-check((await ev(`[...${L}.querySelectorAll('[data-start-widget]')].map(e => e.dataset.startWidget).join('|')`)) === "shells", "빈 판에서 셸 위젯을 더했다");
-await rightClickEmpty(); await ev(`document.querySelector('[data-board-menu="reset"]').click()`); await sleep(400);
+// 옆목록은 판 메뉴 밖의 형제 요소다(`[data-start-board-flyout]` — StartBoardMenu.svelte)
+await ev(`document.querySelector('[data-start-board-flyout] [data-board-add="shells"]').click()`); await sleep(300);
+const addedEmpty = await ev(`[...${L}.querySelectorAll('[data-start-widget]')].map(e => e.dataset.startWidget).join('|')`);
+check(addedEmpty === "shells", `빈 판에서 셸 위젯을 더했다 (${addedEmpty})`);
+await ev(`${L}.querySelector('[data-start-edit-reset]').click()`); await sleep(400);
 // 작은 창 — 최소 창(720×480)에서 처음 배치(반폭 376 · 위로 232)는 통째로 줄인다(배율 0.5 ~ 1) · 줄어든 판에서 끌기는 배율로 나눈다
 // (처음 배치로는 저장 글자가 지워진다 — 끌기 전후를 저장 글자로 비교하려고 같은 배치를 한 번 저장해 둔다)
 await ev(`(async () => { const m = await ${importApp("start-widgets.svelte.ts")}; const s = await ${importApp("src/lib/start-widgets.ts")}; m.setStartWidgets(s.defaultStartWidgets()); })()`); await sleep(300);
@@ -597,7 +614,7 @@ await ev(`(async () => { const m = await ${modeMod}; m.setAppMode('dark'); })()`
 
 // ── ⑧ 빈 사용자 ─────────────────────────────────────────────────────────────
 await ev(`sessionStorage.setItem('launcher-empty', '1')`);
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 const empties = await ev(`[...${L}.querySelectorAll('.empty')].map(e => e.textContent.trim()).join('|')`);
 check(empties === "접속한 호스트가 여기에 쌓입니다|독의 프로젝트 칸에서 추가합니다", `빈 위젯 = 안내 줄 (${empties})`);
 check((await colNames("shells")) === "PowerShell 7|WSL: Ubuntu|명령 프롬프트", "셸 위젯은 그대로");

@@ -12,6 +12,7 @@
 // ⑥ 프로젝트 탭(새 탭에서 열기) — 안이면 그 폴더 · 밖으로 cd 했으면 프로젝트 폴더 · SSH 포커스면 프로젝트 폴더 · AI 도
 // ⑦ `Ctrl+Shift+N` · `>_` 메뉴(addLocal) 경로 ⑧ 원격 프로젝트 탭은 프로젝트 탭이 아니다 ⑨ 저장 짐에 `projectFolder` ⑩ 예외 0.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -95,7 +96,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 찬 vite 에서 모자라 첫 판정이 "module not loaded yet: app/panes.svelte.ts" 로 무너졌다 — 새 문서의 부팅 끝까지(2026-11-21)
+await reloadBoot(send, ev);
 counting = true;
 
 const CTRL = 2, SHIFT = 8;
@@ -137,6 +139,11 @@ const openShell = `(async () => { const p = await ${panesMod}; await p.openDefau
 const openAi = `(async () => { const p = await ${panesMod}; await p.openAiPaneHere({ command: 'claude', id: 'claude' }); })()`;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// 쓰는 모듈이 다 적재될 때까지(부팅 뒤라 곧 선다)
+for (let i = 0; i < 50; i++) {
+  if ((await ev(`(async () => { try { await ${tabsMod}; await ${sessMod}; await ${panesMod}; await ${projMod}; await ${plMod}; await ${sessionsMod}; return true; } catch { return false; } })()`)) === true) break;
+  await sleep(300);
+}
 await sleep(800);
 // ── ① 빈 탭 → 홈 ─────────────────────────────────────────────────────────────
 let got = await opened(openShell);

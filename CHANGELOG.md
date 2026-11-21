@@ -17,6 +17,8 @@ Write the next version's section before tagging it — the release workflow stop
 - **Side chat permission modes**: a chip next to the model switches each chat between **Manual** (asks with a card) and **Auto** (the app answers file changes, commands and MCP tool calls for you). Permission cards gain **Allow in this chat**, which stops asking about that kind in that chat; the chip menu lists what you allowed, and × asks again. New chats start in the mode you picked last.
 - **Settings › MCP no longer has "Don't ask in side chat"**: side chat MCP tools now follow the chat's permission mode, so a server you had set not to ask will ask once in Manual.
 - **The chat box gives your message the full width**: in the side chat and the AI tile chat view, **+**, the model and **Send** sit on a row below the text, the model name now shows on phones too, and the box grows with wrapped lines (up to 6) before it scrolls.
+- Fixed: the conversation history view did not show the **Open elsewhere** chip for a conversation that was still open outside Aynx.
+- Fixed: opening the usage view from the command palette left the keyboard nowhere, and closing it with Escape did not return the keyboard to the tile.
 
 ## [0.1.5] - 2026-11-20
 
@@ -132,7 +134,9 @@ The app was renamed from **AYNX** to **Aynx**. Uninstall the previous version be
 
 - First public release.
 
-[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/lzyxion/aynx/releases/tag/v0.1.5
+[0.1.4]: https://github.com/lzyxion/aynx/releases/tag/v0.1.4
 [0.1.3]: https://github.com/lzyxion/aynx/releases/tag/v0.1.3
 [0.1.2]: https://github.com/lzyxion/aynx/releases/tag/v0.1.2
 [0.1.1]: https://github.com/lzyxion/aynx/releases/tag/v0.1.1

@@ -231,8 +231,14 @@ check("⑤ focus back to terminal · display kept", [await ev(`document.activeEl
 // ⑥ 막 누르기 · × 로 닫힘
 await ev(`document.querySelector('.aynx-rich-view[data-block-id="${bJson}"]').click()`);
 await sleep(450);
-await mouse("mousePressed", 30, 820);
-await mouse("mouseReleased", 30, 820);
+// 막은 터미널 상자만 덮는다 — 고정 자리(30, 820)는 창 배치(상태바 · 독)에 따라 막 밖에 떨어졌다(2026-11-21). 막의 왼쪽 아래 귀퉁이
+// (카드는 안쪽 16px 이라 그 자리는 막)를 재서 누르고, 그 자리가 정말 막인지도 본다.
+const scrimPt = JSON.parse(await ev(`(() => { const r = document.querySelector('[data-block-view-scrim]').getBoundingClientRect(); const x = Math.round(r.left + 6), y = Math.round(r.bottom - 6);
+  const hit = document.elementFromPoint(x, y); return JSON.stringify({ x, y, onScrim: !!hit?.matches('[data-block-view-scrim]'), old: document.elementFromPoint(30, 820)?.className ?? null }); })()`));
+console.log("scrim point", JSON.stringify(scrimPt));
+check("⑥ scrim corner is the scrim (not the card)", scrimPt.onScrim, true);
+await mouse("mousePressed", scrimPt.x, scrimPt.y);
+await mouse("mouseReleased", scrimPt.x, scrimPt.y);
 await sleep(400);
 check("⑥ scrim click closes", await ev(`!!${CARD}`), false);
 await ev(`document.querySelector('.aynx-rich-view[data-block-id="${bJson}"]').click()`);

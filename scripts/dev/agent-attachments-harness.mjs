@@ -2,6 +2,7 @@
 // 백엔드는 스텁이고 실제 Svelte 화면/터미널을 사용한다. AI CLI 자체를 실행하지 않는다.
 // 실행: node scripts/dev/run-harness.mjs agent-attachments-harness.mjs <outdir>
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -86,7 +87,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 counting = true;
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded: ${file}'); return await import(e); })()`;
 const tabsMod = importApp("app/tabs.svelte.ts");

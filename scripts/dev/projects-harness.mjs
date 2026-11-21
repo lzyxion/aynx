@@ -11,7 +11,7 @@
 //
 // 심어 두는 것: 호스트 하나(`dev-01`, tmux 호스트) · `projects_list` 에 프로젝트 **둘** —
 // 로컬 `aynx`(C:\src\proj · 에이전트 claude) · 원격 `api`(dev-01 · ~/api · 에이전트 codex · tmux 켬).
-// 탭은 없다(시작 화면이 본문이다). 네이티브 확인(`plugin:dialog|message`)은 "아니오" 로 답한다.
+// 탭은 없다(시작 화면이 본문이다). 확인은 앱 확인 상자(`app/confirm-dialog` — 10-16 에 OS 상자를 대신했다)를 읽고 답한다.
 //
 // 보는 것: ① 호스트 독(`Ctrl+Shift+H`)에는 **프로젝트가 없다**(가짜 폴더·줄 없음, `+` 는 평범한
 // "호스트 추가") · 프로젝트 독(`Ctrl+Shift+J`)이 제목 "프로젝트" 로 뜨고 검색 칸이 포커스를 받으며
@@ -48,6 +48,7 @@
 // 에이전트 타일로 남고 stop 이 알림에 닿는다 (docs/log/2026-09-25-shell-claude-signals.md).
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { fakeAgentSignal, FAKE_AGENT_SIGNAL_FN } from "./agent-signal-fake.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -169,7 +170,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 // 앱 모듈이 다 뜰 때까지 기다린다 — 찬 vite 에서는 4.5초 안에 tabs 모듈이 안 떠 첫 단축키가 허공에 갔다
 for (let i = 0; i < 60 && !(await ev(`performance.getEntriesByType('resource').some((r) => r.name.includes('app/tabs.svelte.ts')) && !!document.querySelector('[data-tile-canvas]')`)); i++) await sleep(250);
 await sleep(800);
@@ -177,6 +178,15 @@ await sleep(800);
 const key = async (code, modifiers, k) => { const vk = code.startsWith("Key") ? code.charCodeAt(3) : ({ Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, ArrowLeft: 37, ArrowRight: 39, Tab: 9, F2: 113, Delete: 46, Insert: 45 })[code] ?? 0; for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers, code, key: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(250); };
 /** 앱이 이미 올린 것과 **같은 모듈 인스턴스** (`?t=` 질의까지 그대로 — README 의 keygen 절) */
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
+// 2026-11-21 — 확인은 OS 상자(`plugin:dialog|message`)가 아니라 앱 확인 상자다(10-16 · `app/confirm-dialog`). 떠 있는 상자를 읽고 답한다.
+const confMod = importApp("app/confirm-dialog.svelte.ts");
+const confirmNow = () => ev(`(async () => { const c = (await ${confMod}).currentConfirm(); return c ? JSON.stringify({ title: c.title, remote: c.hooks?.remote ?? null, settingsPath: c.hooks?.settingsPath ?? null, choices: c.choices.map((x) => x.result) }) : null; })()`).then((v) => (typeof v === "string" && !v.startsWith("EXC") ? JSON.parse(v) : null));
+const answerConfirm = async (r) => { await ev(`(async () => (await ${confMod}).answerConfirm(${JSON.stringify(r)}))()`); await sleep(300); };
+// 독 목록은 이름순(`compareNames` — 로캘 기본 · 2026-10-20). ko 로캘(헤드리스 Edge 가 시스템 로캘을 따른다)은 한글을 라틴보다 앞에
+// 두므로 ⑤ 에서 만든 '새 프로젝트'(N1)가 맨 위, en 이면 맨 아래다 — 같은 비교로 갈라 기대 모양을 고른다.
+const N_FIRST = (await ev(`"새 프로젝트".localeCompare("api", undefined, { sensitivity: "base", numeric: true }) < 0`)) === true;
+const nfix = (s) => (N_FIRST && s.endsWith("|P:N1") ? "P:N1|" + s.slice(0, -"|P:N1".length) : s);
+const npre = N_FIRST ? "P:N1|" : "";
 // OS 알림 제목 앞머리 = 앱이 쓰는 `APP_TITLE`(`src/lib/app/instance.ts`). vite 개발 서버에서는
 // `import.meta.env.DEV` 라 `Aynx (dev)` 다(릴리스 번들이면 `Aynx`) — docs/log/2026-09-26-dev-release-isolation.md.
 const appTitle = async () => { const t = await ev(`(async () => (await ${importApp("app/instance.ts")}).APP_TITLE)()`); if (t !== "Aynx (dev)" && t !== "Aynx") throw new Error(`unexpected APP_TITLE: ${t}`); return t; };
@@ -184,7 +194,7 @@ const projectRowIds = () => ev(`[...document.querySelectorAll('[data-project-doc
 const projectDockShown = () => ev(`(() => { const el = document.querySelector('[data-project-dock]'); return !!el && el.offsetParent !== null; })()`);
 // 런처 독(호스트 · 프로젝트)은 머리줄 이름 대신 칸 막대를 세운다 — 고른 칸의 이름을 읽는다
 // (docs/log/2026-09-25-unified-dock.md). 설정 독은 예전처럼 `.title` 이다.
-const dockTitle = () => ev(`(document.querySelector('.dock .head .title') ?? document.querySelector('.dock .head .seg[aria-selected="true"]'))?.textContent?.trim() ?? null`);
+const dockTitle = () => ev(`(document.querySelector('.dock .head .title') ?? document.querySelector('.dock .segs .seg[aria-selected="true"] .seg-lbl'))?.textContent?.trim() ?? null`);
 
 // ── ① 호스트 독에는 프로젝트가 없다 · 프로젝트 독은 자기 자리에 ─────────────────
 await key("KeyH", 10, "H"); await sleep(1200);
@@ -232,7 +242,8 @@ check((await openMenuOn("L1")) === true, "로컬 프로젝트 우클릭 → 프�
 await sleep(300);
 const items = await ev(`[...document.querySelectorAll('[data-project-menu] button')].map(b => (b.disabled ? '~' : '') + b.textContent.trim()).join('|')`);
 console.log("menu items:", items);
-check(items === "열기|지금 탭에 열기|브랜치 그래프|새 워크트리에서 열기…|편집…|삭제", "메뉴 = 열기 · 지금 탭에 · 브랜치 그래프 · 새 워크트리 · 편집 · 삭제 (옆목록 `워크트리 ▸` 는 독의 트리로 옮겼다 · 브랜치 그래프는 docs/log/2026-09-29-branch-graph.md)");
+// 무리 순서 = 열기(새 워크트리 포함) → 브랜치 그래프 → 앨범(로컬만 · orch.start.openAiTile) → 편집 → 삭제 (ProjectMenu.svelte 의 프로젝트 줄 메뉴 주석)
+check(items === "열기|지금 탭에 열기|새 워크트리에서 열기…|브랜치 그래프|이 스튜디오로 새 앨범|편집…|삭제", `메뉴 = 열기 · 지금 탭에 · 새 워크트리 · 브랜치 그래프 · 새 앨범 · 편집 · 삭제 (옆목록 \`워크트리 ▸\` 는 독의 트리로 옮겼다 · 브랜치 그래프는 docs/log/2026-09-29-branch-graph.md) (${items})`);
 console.log("capture:", await shot("projects-menu.png"));
 const before = await ev(`window.__calls.length`);
 await ev(`[...document.querySelectorAll('[data-project-menu] button')].find(b => b.textContent.trim() === '열기').click()`);
@@ -273,8 +284,10 @@ await showProjects();
 await ev(`(() => { const b = document.querySelector('[data-project-dock] [data-project-id="L1"]'); b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); b.focus(); })()`); await sleep(150);
 const b3 = await ev(`window.__calls.length`);
 await key("Delete", 0, "Delete"); await sleep(500);
+const delAsk = await confirmNow();
+await answerConfirm("Cancel");
 const del = await ev(`JSON.stringify(window.__calls.slice(${b3}).map(c => c[0]).filter(n => n === 'plugin:dialog|message' || n === 'project_remove'))`);
-check(del === JSON.stringify(["plugin:dialog|message"]), `Delete → 네이티브 확인 · "아니오" 면 지우지 않는다 (${del})`);
+check(delAsk !== null && delAsk.choices.join("|") === "Cancel|Ok" && del === "[]", `Delete → 앱 확인 상자 · [취소] 면 지우지 않는다 (${JSON.stringify(delAsk)} · ${del})`);
 
 // ── ④ 팔레트 ─────────────────────────────────────────────────────────────────
 await key("Escape", 0, "Escape"); await sleep(200);
@@ -331,11 +344,11 @@ const selectedKey = () => ev(`(() => { const e = document.querySelector('[data-p
 const storedExpanded = () => ev(`localStorage.getItem('aynx:projects:expanded')`);
 
 await showProjects();
-check((await treeShape()) === "P:R1|P:L1|P:N1", `처음엔 전부 접힘 (${await treeShape()})`);
+check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), `처음엔 전부 접힘 (${await treeShape()})`);
 const bList = await ev(`window.__calls.length`);
 await twisty("L1"); await sleep(500);
 console.log("tree after expand:", await treeShape());
-check((await treeShape()) === "P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1", "펼침 → 워크트리 줄 둘(주 폴더 표식) — 끝의 '+' 아이 줄은 없다");
+check((await treeShape()) === nfix("P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1"), "펼침 → 워크트리 줄 둘(주 폴더 표식) — 끝의 '+' 아이 줄은 없다");
 check((await ev(`window.__calls.slice(${bList}).filter(c => c[0] === 'git_worktree_list').map(c => c[1].repo).join('|')`)) === "C:\\src\\proj", "펼치는 순간 git_worktree_list { repo } 한 번");
 const primaryBold = await ev(`getComputedStyle(document.querySelector('[data-worktree-row="C:/src/proj"] .branch')).fontWeight`);
 check(Number(primaryBold) >= 600, `주 폴더 브랜치는 굵게 (${primaryBold})`);
@@ -346,10 +359,10 @@ check(Number(otherBold) < 600, `나머지 줄의 왼쪽 칸(폴더 이름)은 �
 await ev(`window.__wtDetached = true`);
 await twisty("L1"); await sleep(200); await twisty("L1"); await sleep(500);
 const detachedShape = await treeShape();
-check(detachedShape === "P:R1|P:L1+|W:proj* · main|W:feat-x · (분리된 HEAD)|P:N1", `나머지 줄 = 왼쪽 폴더 이름 · 오른쪽 브랜치(없으면 분리된 HEAD) · 주 폴더 줄도 같은 배치 — 27180b8 (${detachedShape})`);
+check(detachedShape === nfix("P:R1|P:L1+|W:proj* · main|W:feat-x · (분리된 HEAD)|P:N1"), `나머지 줄 = 왼쪽 폴더 이름 · 오른쪽 브랜치(없으면 분리된 HEAD) · 주 폴더 줄도 같은 배치 — 27180b8 (${detachedShape})`);
 await ev(`window.__wtDetached = false`);
 await twisty("L1"); await sleep(200); await twisty("L1"); await sleep(500);
-check((await treeShape()) === "P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1", "다시 브랜치 feat-x 로 (뒤 시나리오는 그대로)");
+check((await treeShape()) === nfix("P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1"), "다시 브랜치 feat-x 로 (뒤 시나리오는 그대로)");
 const rowTip = await ev(`document.querySelector('[data-worktree-row="C:/src/proj-wt/feat-x"]').title`);
 check(rowTip === "C:/src/proj-wt/feat-x", `워크트리 줄 툴팁 = 온전한 경로 (${rowTip})`);
 check((await ev(`[...document.querySelectorAll('[data-project-dock] [data-worktree-add]')].every(e => !!e.closest('[data-project-id]'))`)) === true, "'+' 는 프로젝트 줄 안에만 (아이 줄로 서지 않는다)");
@@ -359,31 +372,33 @@ check((await ev(`!!document.querySelector('[data-project-dock] li.dtree-node.ope
 check((await ev(`(() => { const row = document.querySelector('[data-project-dock] [data-project-id="L1"]'); const ch = row.querySelector('[data-project-twisty]'); return row.querySelector('.line').lastElementChild === ch; })()`)) === true, "꺾쇠는 줄 오른쪽 끝");
 // 줄 한 번 누르기 = 고르기 + (250ms 뒤) 펼치기/접기 · Ctrl 누르기 = 고르기만. 아래 시나리오가 줄을 고를 때는 Ctrl 누르기를 쓴다
 await ev(`document.querySelector('[data-project-dock] [data-project-id="L1"]').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))`); await sleep(400);
-check((await treeShape()).startsWith("P:R1|P:L1+"), "Ctrl 누르기는 펼침을 건드리지 않는다");
+check((await treeShape()).startsWith(npre + "P:R1|P:L1+"), "Ctrl 누르기는 펼침을 건드리지 않는다");
 await ev(`document.querySelector('[data-project-dock] [data-project-id="L1"]').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))`); await sleep(100);
-check((await treeShape()).startsWith("P:R1|P:L1+") && (await selectedKey()) === "P:L1", "한 번 누르기 — 곧바로 고르고, 접기는 잠깐 미룬다");
+check((await treeShape()).startsWith(npre + "P:R1|P:L1+") && (await selectedKey()) === "P:L1", "한 번 누르기 — 곧바로 고르고, 접기는 잠깐 미룬다");
 await sleep(250);
 check((await ev(`document.querySelector('[data-project-dock] [data-project-id="L1"]').getAttribute('aria-expanded')`)) === "false", "250ms 뒤 접힌다");
 await sleep(300); // 아이들 묶음이 접혀 사라지는 200ms
-check((await treeShape()) === "P:R1|P:L1|P:N1", `접힘 움직임이 끝나면 아이 줄이 없다 (${await treeShape()})`);
+check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), `접힘 움직임이 끝나면 아이 줄이 없다 (${await treeShape()})`);
 await ev(`document.querySelector('[data-project-dock] [data-project-id="L1"]').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))`); await sleep(500);
-check((await treeShape()).startsWith("P:R1|P:L1+|W:proj*"), "다시 한 번 누르기 → 펼친다");
+check((await treeShape()).startsWith(npre + "P:R1|P:L1+|W:proj*"), "다시 한 번 누르기 → 펼친다");
 
 // 키보드 — ← 접기 · → 펼치기 · → 첫 아이 · ↓ 아이들을 지난다 · ← 부모로
 await ev(`(() => { const b = document.querySelector('[data-project-dock] [data-project-id="L1"]'); b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); b.focus(); })()`); await sleep(150);
 await key("ArrowLeft", 0, "ArrowLeft"); await sleep(200);
-check((await treeShape()) === "P:R1|P:L1|P:N1", "← → 접힌다");
+check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), "← → 접힌다");
 check((await storedExpanded()) === "[]", "접힘도 저장된다");
 await key("ArrowRight", 0, "ArrowRight"); await sleep(400);
-check((await treeShape()).startsWith("P:R1|P:L1+|W:proj*"), "→ → 펼친다");
+check((await treeShape()).startsWith(npre + "P:R1|P:L1+|W:proj*"), "→ → 펼친다");
 await key("ArrowRight", 0, "ArrowRight");
 check((await selectedKey()) === "W:C:/src/proj", `→ (펼친 줄) → 첫 아이 (${await selectedKey()})`);
 await key("ArrowDown", 0, "ArrowDown");
 check((await selectedKey()) === "W:C:/src/proj-wt/feat-x", `↓ → 마지막 아이 feat-x ('+' 줄이 없다) (${await selectedKey()})`);
 await key("ArrowDown", 0, "ArrowDown"); await key("ArrowDown", 0, "ArrowDown");
-check((await selectedKey()) === "P:N1", `↓↓ → 마지막 프로젝트에서 멈춘다 (${await selectedKey()})`);
-await key("ArrowUp", 0, "ArrowUp");
-check((await selectedKey()) === "W:C:/src/proj-wt/feat-x", "↑ → 마지막 아이로 복귀");
+// N1 이 맨 위면(N_FIRST) feat-x 가 이미 마지막 줄이다 — 그 자리에서 멈춘다
+const lastRow = N_FIRST ? "W:C:/src/proj-wt/feat-x" : "P:N1";
+check((await selectedKey()) === lastRow, `↓↓ → 마지막 줄(${lastRow})에서 멈춘다 (${await selectedKey()})`);
+if (!N_FIRST) await key("ArrowUp", 0, "ArrowUp");
+check((await selectedKey()) === "W:C:/src/proj-wt/feat-x", `↑ → 마지막 아이로 복귀 (${await selectedKey()})`);
 await key("ArrowUp", 0, "ArrowUp");
 check((await selectedKey()) === "W:C:/src/proj", `↑ → 주 폴더 (${await selectedKey()})`);
 await key("ArrowDown", 0, "ArrowDown");
@@ -410,10 +425,11 @@ console.log("capture:", await shot("worktree-tree.png"));
 const openWtMenu = (path) => ev(`(() => { const el = document.querySelector('[data-worktree-row="${path}"]'); const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 8 })); return new Promise((ok) => setTimeout(() => ok([...document.querySelectorAll('[data-project-menu] button')].map(b => b.textContent.trim()).join('|')), 150)); })()`);
 const wtMenu = await openWtMenu("C:/src/proj-wt/feat-x");
 // 브랜치 그래프(docs/log/2026-09-29-branch-graph.md) · 설정 스크립트 실행(docs/log/2026-09-28-project-agent-setup-script.md)
-check(wtMenu === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|브랜치 삭제…|설정 스크립트 실행|폴더 열기|제거…", `워크트리 줄 메뉴 (${wtMenu})`);
+// 무리 순서 = 열기 → 보기(그래프 · 변경) → 이 폴더의 일(설정 스크립트 · 폴더 열기) → 지우는 둘(브랜치 삭제 · 제거) 맨 아래 (ProjectMenu.svelte)
+check(wtMenu === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|설정 스크립트 실행|폴더 열기|브랜치 삭제…|제거…", `워크트리 줄 메뉴 (${wtMenu})`);
 await key("Escape", 0, "Escape"); await sleep(200);
 const wtMenu0 = await openWtMenu("C:/src/proj");
-check(wtMenu0 === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|브랜치 삭제…|설정 스크립트 실행|폴더 열기", `주 폴더 줄 메뉴 — 제거 없음, 브랜치 삭제는 있다 (${wtMenu0})`);
+check(wtMenu0 === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|설정 스크립트 실행|폴더 열기|브랜치 삭제…", `주 폴더 줄 메뉴 — 제거 없음, 브랜치 삭제는 있다 (${wtMenu0})`);
 await key("Escape", 0, "Escape"); await sleep(200);
 
 // 제거 — 브랜치는 같이 지운다 (docs/log/2026-09-24-worktrees.md "브랜치는 같이 지운다")
@@ -587,7 +603,7 @@ check((await tabTitles()).split("|").includes("aynx · feat-x"), `있는 워크�
 await showProjects();
 await ev(`(() => { const b = document.querySelector('[data-project-dock] [data-project-id="L1"]'); b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); b.focus(); })()`); await sleep(100);
 await key("ArrowLeft", 0, "ArrowLeft"); await sleep(200);
-check((await treeShape()) === "P:R1|P:L1|P:N1", "(검색 전) L1 접음");
+check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), "(검색 전) L1 접음");
 await ev(`document.querySelector('[data-project-dock] .search').focus()`);
 await send("Input.insertText", { text: "feat-x" }); await sleep(600);
 console.log("search tree:", await treeShape());
@@ -607,7 +623,7 @@ await showProjects();
   await ev(`document.querySelector('[data-project-dock] .search').focus()`); await key("Escape", 0, "Escape");
   if ((await projectDockShown()) !== true) { await key("KeyJ", 10, "J"); await sleep(800); }
   await mouse("mouseMoved", 1000, 700); await sleep(250);
-  check((await treeShape()) === "P:R1|P:L1|P:N1", `(시험 전) 전부 접힘 (${await treeShape()})`);
+  check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), `(시험 전) 전부 접힘 (${await treeShape()})`);
   check((await ev(`document.querySelector('[data-project-dock] .item.selected')`)) === null, "(시험 전) 고른 줄 없음");
   check((await plusOpacity("L1")) === "0", `평소에는 '+' 가 보이지 않는다 (opacity ${await plusOpacity("L1")})`);
   check((await ev(`getComputedStyle(${plusOf("L1")}).pointerEvents`)) === "none", "보이지 않는 '+' 는 잡히지도 않는다");
@@ -629,7 +645,7 @@ await showProjects();
   const bP = await ev(`window.__calls.length`);
   await mouse("mouseMoved", plusBox.x, plusBox.y); await mouse("mousePressed", plusBox.x, plusBox.y); await mouse("mouseReleased", plusBox.x, plusBox.y); await sleep(350);
   check((await ev(`document.activeElement?.hasAttribute('data-worktree-name') && !!document.activeElement.closest('[data-project-menu]')`)) === true, "'+' → 메뉴 상자의 이름 칸이 뜨고 포커스를 받는다");
-  check((await treeShape()) === "P:R1|P:L1|P:N1", `'+' 는 펼침을 건드리지 않는다 (접힌 채) (${await treeShape()})`);
+  check((await treeShape()) === nfix("P:R1|P:L1|P:N1"), `'+' 는 펼침을 건드리지 않는다 (접힌 채) (${await treeShape()})`);
   check((await ev(`window.__calls.slice(${bP}).some(c => c[0] === 'open_local_session' || c[0] === 'git_worktree_list')`)) === false, "'+' 는 프로젝트를 열지도, 목록을 읽지도 않는다");
   check((await selectedKey()) === "P:L1", `'+' 를 누른 줄이 골라진다 (${await selectedKey()})`);
   const anchor = await ev(`(() => { const row = document.querySelector('[data-project-dock] [data-project-id="L1"]').getBoundingClientRect(); const m = document.querySelector('[data-project-menu]').getBoundingClientRect(); return Math.round(m.top - row.bottom) + ',' + Math.round(m.left - row.left); })()`);
@@ -644,7 +660,7 @@ await showProjects();
   // 펼친 줄에서도 같다 — 펼침은 그대로, 칸은 프로젝트 줄 아래
   await twisty("L1"); await sleep(500);
   await ev(`${plusOf("L1")}.click()`); await sleep(300);
-  check((await ev(`document.activeElement?.hasAttribute('data-worktree-name')`)) === true && (await treeShape()) === "P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1", `펼친 줄의 '+' → 같은 칸 · 펼침 그대로 (${await treeShape()})`);
+  check((await ev(`document.activeElement?.hasAttribute('data-worktree-name')`)) === true && (await treeShape()) === nfix("P:R1|P:L1+|W:proj* · main|W:feat-x · feat-x|P:N1"), `펼친 줄의 '+' → 같은 칸 · 펼침 그대로 (${await treeShape()})`);
   await key("Escape", 0, "Escape"); await sleep(150); await key("Escape", 0, "Escape"); await sleep(200); // 목록 접기 → 상자 닫기
 }
 // 프로젝트 메뉴의 항목도 같은 칸이다
@@ -836,10 +852,10 @@ check(rRows === "/root/api|/root/api-wt/fix", `원격 트리 = 붙어 있는 세
   check((await ev(`window.__calls.filter(c => c[0] === 'ssh_remote_home').length`)) === 1, "다시 펼쳐도 홈은 다시 묻지 않는다 (사본)");
 }
 const rMenu = await openWtMenu("/root/api-wt/fix");
-check(rMenu === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|브랜치 삭제…|설정 스크립트 실행|제거…", `원격 워크트리 메뉴 — 폴더 열기 없음 · 제거 있음 (${rMenu})`);
+check(rMenu === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|설정 스크립트 실행|브랜치 삭제…|제거…", `원격 워크트리 메뉴 — 폴더 열기 없음 · 제거 있음 (${rMenu})`);
 await key("Escape", 0, "Escape"); await sleep(200);
 const rMenu0 = await openWtMenu("/root/api");
-check(rMenu0 === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|브랜치 삭제…|설정 스크립트 실행", `원격 주 폴더 메뉴 — 제거 없음 (${rMenu0})`);
+check(rMenu0 === "열기|지금 탭에 열기|브랜치 그래프|변경 보기main 대비|설정 스크립트 실행|브랜치 삭제…", `원격 주 폴더 메뉴 — 제거 없음 (${rMenu0})`);
 await key("Escape", 0, "Escape"); await sleep(200);
 
 // 원격 브랜치 삭제 — 붙은 세션으로 (docs/log/2026-10-01-worktree-branch-ops.md)
@@ -896,23 +912,25 @@ await key("Escape", 0, "Escape"); await sleep(200);
   const liveId = await ev(`(async () => (await ${rhMod}).liveSessionFor('dev-01'))()`);
   await openMenuOn("R1"); await sleep(300);
   const rItems = await ev(`[...document.querySelectorAll('[data-project-menu] button')].map(b => b.textContent.trim()).join('|')`);
-  check(rItems === "열기|지금 탭에 열기|브랜치 그래프|새 워크트리에서 열기…|원격에 Claude Code 훅 설치…|원격 Claude Code 훅 제거|원격에 Codex 훅 설치…|원격 Codex 훅 제거|편집…|삭제", `원격 프로젝트 메뉴에 훅 설치·제거 (${rItems})`);
+  check(rItems === "열기|지금 탭에 열기|새 워크트리에서 열기…|브랜치 그래프|원격에 Claude Code 훅 설치…|원격 Claude Code 훅 제거|원격에 Codex 훅 설치…|원격 Codex 훅 제거|편집…|삭제", `원격 프로젝트 메뉴에 훅 설치·제거 (${rItems})`);
   console.log("capture:", await shot("projects-menu-remote-hooks.png"));
   // 확인 창에서 "아니오" — 상태만 읽고 쓰지 않는다
   const bH = await ev(`window.__calls.length`);
   await ev(`document.querySelector('[data-project-action="hooksInstall"]').click()`); await sleep(600);
-  const hCalls = await ev(`JSON.stringify(window.__calls.slice(${bH}).filter(c => c[0].startsWith('agent_hooks_remote') || c[0] === 'plugin:dialog|message').map(c => c[0] === 'plugin:dialog|message' ? [c[0], c[1].message.split('\\n')[0], c[1].message.includes('~/.claude/settings.json')] : [c[0], c[1]]))`);
-  check(hCalls === JSON.stringify([["agent_hooks_remote_status", { id: liveId, agent: 'claude' }], ["plugin:dialog|message", "원격: dev-01", true]]), `설치… → 상태(id) → 확인 창 첫 줄 '원격: dev-01' + 서버 경로 · "아니오" 면 쓰지 않는다 (${hCalls})`);
-  // "설치" — 쓴다
-  await ev(`window.__dialogAnswer = '설치'`);
+  // 확인 상자(`askHookInstall`) — 원격 칩 = 호스트 · 서버의 설정 경로. [취소] 면 쓰지 않는다
+  const hAsk = await confirmNow();
+  await answerConfirm("Cancel");
+  const hCalls = await ev(`JSON.stringify(window.__calls.slice(${bH}).filter(c => c[0].startsWith('agent_hooks_remote') || c[0] === 'plugin:dialog|message').map(c => [c[0], c[1]]))`);
+  check(hCalls === JSON.stringify([["agent_hooks_remote_status", { id: liveId, agent: 'claude' }]]) && hAsk?.remote === "dev-01" && hAsk.settingsPath === "~/.claude/settings.json", `설치… → 상태(id) → 확인 상자(원격 dev-01 · 서버 경로) · [취소] 면 쓰지 않는다 (${hCalls} · ${JSON.stringify(hAsk)})`);
+  // [설치] — 쓴다
   await openMenuOn("R1"); await sleep(300);
   const bH2 = await ev(`window.__calls.length`);
-  await ev(`document.querySelector('[data-project-action="hooksInstall"]').click()`); await sleep(700);
+  await ev(`document.querySelector('[data-project-action="hooksInstall"]').click()`); await sleep(600);
+  await answerConfirm("Ok"); await sleep(400);
   const hCalls2 = await ev(`JSON.stringify(window.__calls.slice(${bH2}).filter(c => c[0].startsWith('agent_hooks_remote')).map(c => [c[0], c[1]]))`);
   check(hCalls2 === JSON.stringify([["agent_hooks_remote_status", { id: liveId, agent: 'claude' }], ["agent_hooks_remote_install", { id: liveId, agent: 'claude' }]]), `확인 → agent_hooks_remote_install { id, agent } (${hCalls2})`);
   const hToast = await ev(`[...document.querySelectorAll('.toast .text')].map(e => e.textContent.trim()).find(x => x.startsWith('dev-01 에 Claude Code 훅을')) ?? null`);
   check(hToast !== null, `설치 알림 (${hToast})`);
-  await ev(`window.__dialogAnswer = undefined`);
   // 제거 — 확인 없이
   await openMenuOn("R1"); await sleep(300);
   const bH3 = await ev(`window.__calls.length`);
@@ -1029,7 +1047,9 @@ check((await dotClass()) === "none", `그 탭을 보면 완료가 사라진다 (
   const banner = await bannerOf(agentPane);
   check(banner?.kind === "stop" && banner.text === `${tileName} — Claude Code 작업이 끝났습니다`, `(b) 다른 탭에서 stop → 배너 (${JSON.stringify(banner)})`);
   const bannerTitle = await ev(`document.querySelector('[data-agent-banner][data-pane="${agentPane}"] .title')?.textContent?.trim() ?? null`);
-  check(bannerTitle === `Claude Code · ${tileName}`, `(b) 배너 머리줄 = 에이전트 · 탭 제목 (${bannerTitle})`);
+  // 머리줄 = 이름만(에이전트는 옆 CLI 로고가 말한다) · 화면 읽기 이름표가 에이전트까지 (agent-banners.ts 의 bannerTitle · bannerAria)
+  const bannerAriaLabel = await ev(`document.querySelector('[data-agent-banner][data-pane="${agentPane}"] .card')?.getAttribute('aria-label') ?? null`);
+  check(bannerTitle === tileName && bannerAriaLabel === `Claude Code · ${tileName}`, `(b) 배너 머리줄 = 탭 제목 · aria-label = 에이전트 · 탭 제목 (${bannerTitle} · ${bannerAriaLabel})`);
   check((await osCalls(c1)) === "[]", `(b) 창을 보고 있으면 OS 알림은 없다 (${await osCalls(c1)})`);
   console.log("capture:", await shot("agent-stop-toast.png"));
   const act = await ev(`(() => { const b = document.querySelector('[data-agent-banner][data-pane="${agentPane}"] [data-banner-open]'); if (!b) return null; const label = b.textContent.trim(); b.click(); return label; })()`);
@@ -1222,14 +1242,14 @@ check((await dotClass()) === "none", `세션 종료 → 끝남 = 점 없음 (${a
   await direct(remoteStream, "hookVersion: 4, hookLatest: 5"); await sleep(300);
   check((await noteCount(REMOTE_NOTE)) === 1 && (await noteCount("dev-01 의 Codex 훅이 옛 판입니다 (v4 →")) === 0, "(c) 같은 호스트는 한 번만");
   // (d) [다시 설치…] → 프로젝트 메뉴와 같은 길 — 상태(그 타일의 세션) → 확인 창 → 설치
-  await ev(`window.__dialogAnswer = '설치'`);
   const bV = await ev(`window.__calls.length`);
-  await ev(`[...document.querySelectorAll('.toast')].find(e => e.textContent.includes(${JSON.stringify(REMOTE_NOTE)})).querySelector('.act').click()`); await sleep(900);
-  const vCalls = await ev(`JSON.stringify(window.__calls.slice(${bV}).filter(c => c[0].startsWith('agent_hooks_remote') || c[0] === 'plugin:dialog|message').map(c => c[0] === 'plugin:dialog|message' ? [c[0], c[1].message.split('\\n')[0]] : [c[0], c[1]]))`);
-  check(vCalls === JSON.stringify([["agent_hooks_remote_status", { id: remoteSid, agent: "codex" }], ["plugin:dialog|message", "원격: dev-01"], ["agent_hooks_remote_install", { id: remoteSid, agent: "codex" }]]), `(d) 다시 설치… → 상태 → 확인 창 → agent_hooks_remote_install { 그 타일의 세션, codex } (${vCalls})`);
+  await ev(`[...document.querySelectorAll('.toast')].find(e => e.textContent.includes(${JSON.stringify(REMOTE_NOTE)})).querySelector('.act').click()`); await sleep(600);
+  const vAsk = await confirmNow();
+  await answerConfirm("Ok"); await sleep(600);
+  const vCalls = await ev(`JSON.stringify(window.__calls.slice(${bV}).filter(c => c[0].startsWith('agent_hooks_remote') || c[0] === 'plugin:dialog|message').map(c => [c[0], c[1]]))`);
+  check(vAsk?.remote === "dev-01" && vCalls === JSON.stringify([["agent_hooks_remote_status", { id: remoteSid, agent: "codex" }], ["agent_hooks_remote_install", { id: remoteSid, agent: "codex" }]]), `(d) 다시 설치… → 상태 → 확인 상자(원격 dev-01) → agent_hooks_remote_install { 그 타일의 세션, codex } (${vCalls} · ${JSON.stringify(vAsk)})`);
   const vDone = await ev(`[...document.querySelectorAll('.toast .text')].map(e => e.textContent.trim()).find(x => x.startsWith('dev-01 에 Codex 훅을')) ?? null`);
   check(vDone !== null && vDone.includes("/hooks"), `(d) 완료 알림 + Codex 신뢰 안내 (${vDone})`);
-  await ev(`window.__dialogAnswer = undefined`);
   await direct(remoteStream, "hookVersion: null, hookLatest: 5"); await sleep(300);
   check((await noteCount(REMOTE_NOTE)) === 0, "(d) 설치 뒤에도 같은 호스트는 다시 권하지 않는다");
   // (e) 로컬 AI 타일의 옛 판 → [설정 열기] (자동으로 고치지 않는다) — ⑪ 의 손으로 친 claude 타일(지금 에이전트인 로컬 타일)

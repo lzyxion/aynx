@@ -9,9 +9,11 @@
  * - **자원 화면**(`ResourceView.svelte` — 로컬 자원 모니터) — 진입점은 상태바의 CPU · 메모리 고리(토글)와 타일 머리줄의 자원 칩.
  *   10-17 첫 조각에서는 사용량 화면 안의 [사용량 | 자원] 칸이었다 — 상태바 자원 고리를 세우며 판을 갈랐다.
  *
- * 한 판이 떠 있는데 다른 판을 열면 판만 바뀐다(포커스를 돌려줄 자리는 처음 열 때 적은 그대로). 이 모듈은 아무것도 import 하지
- * 않는다(잎). 파일 이름은 하네스가 부르는 경로라 그대로 둔다.
+ * 한 판이 떠 있는데 다른 판을 열면 판만 바뀐다(포커스를 돌려줄 자리는 처음 열 때 적은 그대로). 이 모듈은 앱 모듈을 import 하지
+ * 않는다(잎 — svelte 의 `tick` 뿐). 파일 이름은 하네스가 부르는 경로라 그대로 둔다.
  */
+
+import { tick } from "svelte";
 
 /**
  * 캔버스를 덮는 판의 종류. (2026-10-25 ~ 11-13 에는 원격 창의 작업안 판 `plans` 도 있었다 — 이제 원격도 채팅 독의 작업안 갈래다 ·
@@ -71,14 +73,20 @@ export function openResourceView(): void {
 /**
  * 떠 있는 판을 닫는다. `restore` 는 **토글·Escape·× 로 닫았을 때만** 참이다 — 적어 둔 요소가 아직 살아 있으면 그리로
  * 포커스를 돌려준다. 타일로 가면서 닫을 때는 [`leaveCoverView`] 가 거짓으로 부른다.
+ *
+ * 돌려주기는 `tick()` 뒤다(2026-11-20) — 판이 떠 있는 동안 타일 쪽(`.pane > main`)은 `visibility: hidden` 이라(`+page.svelte`),
+ * 닫는 그 순간의 `focus()` 는 아무 일도 하지 않았다. 판에 `data-closing`/`hidden` 이 붙어 숨김이 풀린 뒤, 그 사이 판이 다시 열리지
+ * 않았을 때만 준다. `tick()` 한 번이면 되는 것은 돌아오는 방향의 `visibility` 에 전환이 없어 곧바로 보이기 때문이다(`+page.svelte`).
  */
 export function closeCoverView(restore = true): void {
   if (view === null) return;
   view = null;
   const back = returnFocusTo;
   returnFocusTo = null;
-  if (!restore) return;
-  if (back?.isConnected) back.focus({ preventScroll: true });
+  if (!restore || back === null) return;
+  void tick().then(() => {
+    if (view === null && back.isConnected) back.focus({ preventScroll: true });
+  });
 }
 
 /** 상태바 사용량 고리 — 같은 고리로 열고 닫는다(자원 화면이 떠 있으면 사용량으로 바꾼다) */

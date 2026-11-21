@@ -7,6 +7,7 @@
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 const [outdir = "."] = process.argv.slice(2);
+fs.mkdirSync(outdir, { recursive: true });
 const list = await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT ?? "9224"}/json`)).json();
 const t = list.find((x) => x.type === "page" && x.url.includes(`localhost:${process.env.PAGE_PORT ?? "1420"}`));
 const ws = new WebSocket(t.webSocketDebuggerUrl);

@@ -4,8 +4,8 @@
 //
 // 대시보드 에이전트 칸의 "지난 대화" 덩어리(범위 목록 · 오른쪽 줄 · 호버 단추 · 경로 없음 · 열림 · 거르개 · 키보드 · 줄의 토큰 ·
 // 풀이 · 머리줄 합)는 4dda594(2026-09-28 — docs/log/2026-09-28-dashboard-session-cards.md)에 빠졌다. 지난 대화는 이제
-// 팔레트 `대화 ` · 프로젝트 시작 화면 · 기록 시트가 맡는다(시작 화면 · 시트는 `project-start-harness.mjs`). 대시보드 칸은
-// 세션 · 작업안 · 사용량 셋이다.
+// 팔레트 `대화 ` · 프로젝트 시작 화면 · 기록 시트가 맡는다(시작 화면 · 시트는 `project-start-harness.mjs`). 대시보드 자체는
+// 2026-10-07 에 세션 목록 판 · 작업안으로 나뉘어 걷혔다(`app/console.svelte.ts` 머리말) — 사용량 화면은 상태바 고리 · 팔레트 줄로 연다.
 //
 //   npx vite --port 1434 --strictPort
 //   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new \
@@ -18,14 +18,15 @@
 // 기타 2(~/scratch 하나 · 사라진 폴더 하나).
 //
 // 보는 것: Ⓐ 사용량 화면 맨 위 "사용 한도" — 카드 둘(Claude 값 · Codex 빈 안내) · 창 라벨은 분에서 · 80% 경고색 · 잰 시각 ·
-// 초기화 글자 · 대시보드에 지난 대화 덩어리가 없다 ⑧ 팔레트 `대화 ` — 줄 · Enter = 재개(AI 타일 · autorun 이
+// 초기화 글자 ⑧ 팔레트 `대화 ` — 줄 · Enter = 재개(AI 타일 · autorun 이
 // `agent_autorun_command` 를 지나 `--settings` 가 붙어 쓰인다) · 부분 글자 · 빈 찾기 = 최신순 · 접두사 없으면 대화 없음
 // Ⓕ 상태바 고리 — 늘 선다 · 값 없는 에이전트는 "–" · 단 · 묵음 · 네 자리(위·아래·왼쪽·오른쪽 — 세로는 % 없는 숫자) ·
-// 누르면 사용량 화면 토글(열림 · 다시 누르면 닫힘 · 움직임 · 배타 · Escape · 탭으로 걷힘) Ⓖ 팔레트 "사용량" 줄 → 사용량 화면 Ⓗ 사용량 화면 — 머리줄 · 한도 카드 자리 ·
+// 누르면 사용량 화면 토글(열림 · 다시 누르면 닫힘 · 움직임 · Escape · 탭으로 걷힘) Ⓖ 팔레트 "사용량" 줄 → 사용량 화면 Ⓗ 사용량 화면 — 머리줄 · 한도 카드 자리 ·
 // 거르개(기본 30일 · 기억) · 요약 띠 · 잔디 · 고른 날 · 7일 막대 · 토큰 구성 · 모델 표 ⑩ 페이지가 다시 떠도 재개 타일은
 // autorun 을 다시 돌리고 그 대화는 "열림"(팔레트 줄) ⑪ 예외 0.
 // PNG: convo-palette.png · usage-section.png · usage-rings-left.png · usage-rings-bottom.png · usage-section-1920.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -199,7 +200,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
 await ev(`sessionStorage.clear()`); // 지난 실행의 배치(⑩)가 첫 부팅에 되살아나지 않게
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 러너가 새로 띄운 찬 vite 에서 모자랐다(2026-11-20) — 새 문서의 부팅 끝까지 기다린다
+await reloadBoot(send, ev);
 counting = true;
 
 const VK = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38 };
@@ -208,12 +210,9 @@ const SHIFT = 8, CTRL = 2;
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 const projMod = importApp("app/projects.svelte.ts");
 const tabsMod = importApp("app/tabs.svelte.ts");
-const C = `document.querySelector('[data-convo]')`;
-const dashOpen = () => ev(`(() => { const c = document.querySelector('.console'); return !!c && !c.hidden && !c.inert; })()`);
 // 사용량 화면(2026-10-04 — 대시보드의 칸에서 제 판으로) — 닫히는 중(inert)은 닫힌 것으로 센다
 const usageOpen = () => ev(`(() => { const c = document.querySelector('[data-usage-view]'); return !!c && !c.hidden && !c.inert; })()`);
 const ringPressed = () => ev(`[...document.querySelectorAll('[data-usage-ring]')].map(b => b.getAttribute('aria-pressed') + (b.classList.contains('active') ? '*' : '')).join('|')`);
-const toggle = async () => { await key("KeyM", 10, "M"); await sleep(900); };
 const hover = async (sel) => { const r = await ev(`(() => { const b = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [b.left + 40, b.top + b.height / 2]; })()`); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: r[0], y: r[1] }); await sleep(250); };
 const unhover = async () => { await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 }); await sleep(200); };
 const where = () => ev(`(async () => { const w = await ${tabsMod}; const t = w.activeTab(); return t ? t.id + '/' + w.paneOf(t) : null; })()`);
@@ -221,15 +220,11 @@ const lastPane = () => ev(`(async () => { const w = await ${tabsMod}; const t = 
 
 // ── Ⓐ 사용 한도 ────────────────────────────────────────────────────────────
 // (대시보드 "지난 대화" 덩어리 ①~⑦ · Ⓑ~Ⓓ 는 4dda594 에 빠졌다 — 머리말)
-await toggle();
-check((await dashOpen()) === true, "Ctrl+Shift+M → 대시보드");
-await sleep(600);
-check((await ev(`!document.querySelector('[data-convo]') && !document.querySelector('[data-agent-board]')`)) === true, "대시보드에 지난 대화 · 에이전트 칸 덩어리는 없다 (4dda594)");
+// 2026-11-20: 대시보드 판정 다섯(Ctrl+Shift+M → 대시보드 · 지난 대화 덩어리 없음 · 칸 둘 · 고리/키의 배타 둘)은 지웠다 — 대시보드가
+// 2026-10-07 에 걷혀 Ctrl+Shift+M 은 세션 목록 판이다(`app/session-sheet` · `open-console`). 사용량 화면은 고리로 연다.
 const U = `document.querySelector('[data-usage-limits]')`;
-check((await ev(`!document.querySelector('[data-section-btn="usage"]') && [...document.querySelectorAll('.console [data-section-btn]')].map(b => b.dataset.sectionBtn).join('|')`)) === "sessions|operations", "대시보드 칸은 둘 — 사용량 칸 없음 (2026-10-04)");
-// 대시보드가 떠 있는 채 고리를 누른다 → 사용량 화면이 서고 대시보드는 걷힌다(배타)
 await ev(`document.querySelector('[data-usage-ring="claude"]').click()`); await sleep(700);
-check([await usageOpen(), await dashOpen()].join() === "true,false", "대시보드 위에서 고리 → 사용량 화면 · 대시보드 걷힘(배타)");
+check((await usageOpen()) === true, "고리 → 사용량 화면");
 check((await ev(`document.querySelector('[data-usage-view] [data-usage-board]')?.firstElementChild?.hasAttribute('data-usage-limits')`)) === true, "사용 한도 = 사용량 화면의 맨 위");
 const lim = JSON.parse(await ev(`JSON.stringify({ heading: ${U}.querySelector('#agents-usage-h').textContent.trim(), refresh: ${U}.querySelector('[data-usage-refresh]').getAttribute('aria-label'), cards: [...${U}.querySelectorAll('[data-usage-card]')].map(c => ({ agent: c.dataset.usageCard, empty: c.hasAttribute('data-empty'), measured: c.querySelector('[data-measured]')?.textContent.trim() ?? null, hint: c.querySelector('[data-usage-empty]')?.textContent.trim() ?? null, rows: [...c.querySelectorAll('[data-usage-row]')].map(r => [r.dataset.usageRow, r.querySelector('.pct').textContent.trim(), r.dataset.level, r.querySelector('[data-reset]').textContent.trim()]) })) })`));
 console.log("limits:", JSON.stringify(lim));
@@ -244,10 +239,7 @@ const warnFill = await ev(`(() => { const p = document.createElement('span'); p.
 check(warnFill === true, "83% 막대 = 경고색 · 폭 83%");
 const noAccent = await ev(`(() => { const p = document.createElement('span'); p.style.background = 'var(--accent)'; document.body.appendChild(p); const v = getComputedStyle(p).backgroundColor; p.remove(); return [...${U}.querySelectorAll('[data-level="normal"] .fill')].every(f => getComputedStyle(f).backgroundColor === v); })()`);
 check(noAccent === true, "보통 단 막대 = primary(MD3 게이지 채움 — 10-18)");
-// 사용량 화면 위에서 대시보드 키 → 대시보드가 서고 사용량 화면은 걷힌다(배타의 반대쪽)
-await toggle();
-check([await dashOpen(), await usageOpen()].join() === "true,false", "사용량 화면 위에서 Ctrl+Shift+M → 대시보드 · 사용량 화면 걷힘(배타)");
-await toggle(); // 닫기
+await ev(`(async () => (await ${importApp("app/usage-view.svelte")}).closeCoverView())()`); await sleep(500); // 닫기(닫는 길 자체는 Ⓕ 가 본다)
 
 // ── ⑧ 팔레트 `대화 ` ─────────────────────────────────────────────────────────
 const P = `document.querySelector('.palette')`;
@@ -290,7 +282,6 @@ check(!String(plain).includes("지난 대화"), `접두사 없는 질의에는 �
 await key("Escape");
 
 // ── Ⓕ 상태바 고리 ────────────────────────────────────────────────────────────
-if (await dashOpen()) await toggle();
 const ringsOf = () => ev(`JSON.stringify([...document.querySelectorAll('[data-usage-ring]')].map(b => ({ agent: b.dataset.usageRing, level: b.dataset.level, stale: b.hasAttribute('data-stale'), pct: b.querySelector('[data-ring-pct]').textContent.trim(), fill: !!b.querySelector('.r-fill'), tip: b.getAttribute('aria-label') ?? '' })))`);
 // 고리의 숫자 — 가로 띠는 "83%", 세로 기둥은 "83"(칸 폭이 좁다). 상태바 기본 자리는 왼쪽 기둥이다(f8416d7).
 const pctOf = async (n) => ((await ev(`document.querySelector('.statusbar')?.classList.contains('vertical') ?? false`)) ? String(n) : `${n}%`);
@@ -346,20 +337,25 @@ await ev(`window.__limits[1].seen = false`); await reloadLimits(); await sleep(3
 check(JSON.parse(await ringsOf()).length === 1, "본 적 없는 에이전트는 고리를 세우지 않는다");
 await ev(`window.__limits[1].seen = true`); await reloadLimits(); await sleep(300);
 // 네 자리 — 고리가 띠 안에 서고, 세로 기둥은 % 없는 숫자. 고리 묶음은 후미(신호) 옆이 아니라 **가운데 묶음**의 맨 앞이다 —
-// 사용량 → 구분선 → 워크스페이스, 시작점은 상태바 길이의 28% (8b2b110 · docs/log/2026-10-02-floating-status-dock.md)
+// 시작점은 상태바 길이의 28% (8b2b110 · docs/log/2026-10-02-floating-status-dock.md). 위 배치는 데스크톱에서 탭 줄 안(`data-pos="inline"` —
+// 2026-10-28 · 28% 칸 없이 탭 뒤에 붙는다)이라 28% 대신 그 자리를 본다. 2026-11-20: "뒤에 워크스페이스와 가르는 선" 판정은 지웠다 — 상태바
+// 가운데 묶음에 워크스페이스가 더는 없다(`StatusBar.svelte` 의 `data-status-middle` 은 고리 묶음뿐).
 const settingsMod = importApp("lib/settings.svelte.ts");
 for (const pos of ["bottom", "left", "right", "top"]) {
   await ev(`(async () => { window.__settings = { app: { status_bar: '${pos}' } }; await (await ${settingsMod}).loadSettings(); })()`);
   await sleep(700);
-  const geo = JSON.parse(await ev(`(() => { const bar = document.querySelector('.statusbar'); const b = bar.getBoundingClientRect(); const rs = [...bar.querySelectorAll('[data-usage-ring]')].map(r => r.getBoundingClientRect()); const cl = bar.querySelector('[data-usage-rings]'); const sig = bar.querySelector('.signals'); const mid = bar.querySelector('[data-status-middle]'); const m = mid.getBoundingClientRect(); const vertical = bar.classList.contains('vertical'); return JSON.stringify({ vertical, inside: rs.length === 2 && rs.every(r => r.left >= b.left - 0.5 && r.right <= b.right + 0.5 && r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5), pct: [...bar.querySelectorAll('[data-ring-pct]')].map(e => e.textContent.trim()), inMiddle: mid.contains(cl) && !sig.contains(cl), first: mid.firstElementChild === cl, sepAfter: cl.nextElementSibling?.hasAttribute('data-usage-workspaces-separator') === true, start: Math.round(1000 * (vertical ? (m.top - b.top) / b.height : (m.left - b.left) / b.width)) / 1000 }); })()`));
+  const geo = JSON.parse(await ev(`(() => { const bar = document.querySelector('.statusbar'); const b = bar.getBoundingClientRect(); const rs = [...bar.querySelectorAll('[data-usage-ring]')].map(r => r.getBoundingClientRect()); const cl = bar.querySelector('[data-usage-rings]'); const sig = bar.querySelector('.signals'); const mid = bar.querySelector('[data-status-middle]'); const m = mid.getBoundingClientRect(); const vertical = bar.classList.contains('vertical'); return JSON.stringify({ vertical, barPos: bar.dataset.pos, inside: rs.length === 2 && rs.every(r => r.left >= b.left - 0.5 && r.right <= b.right + 0.5 && r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5), pct: [...bar.querySelectorAll('[data-ring-pct]')].map(e => e.textContent.trim()), inMiddle: mid.contains(cl) && !sig.contains(cl), first: mid.firstElementChild === cl, start: Math.round(1000 * (vertical ? (m.top - b.top) / b.height : (m.left - b.left) / b.width)) / 1000 }); })()`));
   const vert = pos === "left" || pos === "right";
   check(geo.vertical === vert && geo.inside && geo.pct[0] === (vert ? "97" : "97%"), `상태바 ${pos} — 고리 둘이 띠 안 · ${vert ? "숫자만" : "%"} (${JSON.stringify(geo)})`);
-  check(geo.inMiddle && geo.first && geo.sepAfter && Math.abs(geo.start - 0.28) < 0.04, `상태바 ${pos} — 고리는 가운데 묶음의 맨 앞(28%) · 뒤에 워크스페이스와 가르는 선 (${JSON.stringify({ mid: geo.inMiddle, first: geo.first, sep: geo.sepAfter, start: geo.start })})`);
+  const placed = pos === "top" ? geo.barPos === "inline" : geo.barPos === pos && Math.abs(geo.start - 0.28) < 0.04;
+  check(geo.inMiddle && geo.first && placed, `상태바 ${pos} — 고리는 가운데 묶음의 맨 앞(${pos === "top" ? "탭 줄 안" : "28%"}) (${JSON.stringify({ mid: geo.inMiddle, first: geo.first, pos: geo.barPos, start: geo.start })})`);
   if (pos === "left") console.log("capture:", await shot("usage-rings-left.png"));
   if (pos === "bottom") console.log("capture:", await shot("usage-rings-bottom.png"));
 }
 
 // ── Ⓖ 팔레트 "사용량" ────────────────────────────────────────────────────────
+// 열기 전 포커스 = 타일 — 위 상태바 자리 바꾸기(설정 다시 읽기)가 포커스를 body 에 떨군다. 끝의 Escape 판정이 돌아갈 자리를 정해 둔다
+await ev(`document.querySelectorAll('.xterm-helper-textarea')[0]?.focus()`); await sleep(100);
 await key("KeyP", CTRL | SHIFT, "P"); await sleep(400);
 await send("Input.insertText", { text: "사용량" }); await sleep(400);
 const up = await ev(`[...${P}.querySelectorAll('[data-usage-entry]')].map(e => e.dataset.usageEntry + '|' + e.textContent.trim()).join(' / ')`);
@@ -370,7 +366,10 @@ for (let i = 0; i < 6; i++) {
   await key("ArrowDown");
 }
 await key("Enter"); await sleep(700);
-check((await usageOpen()) === true && (await dashOpen()) === false && (await ev(`!!document.querySelector('[data-usage-view] [data-usage-board]')?.offsetParent`)) === true, "사용량 줄 Enter → 사용량 화면");
+check((await usageOpen()) === true && (await ev(`!!document.querySelector('[data-usage-view] [data-usage-board]')?.offsetParent`)) === true, "사용량 줄 Enter → 사용량 화면");
+// 팔레트로 열어도 키보드는 판 안이다 — 닫히는 팔레트의 타일 되돌리기(`revealPane` 의 rAF)가 판의 포커스를 되가져가면 타일이 숨어
+// body 로 떨어졌다(2026-11-20 — `tabs.svelte.ts` 의 revealPane). 판이 서고 타일이 숨는 200ms 전환이 끝난 뒤에 본다
+check((await ev(`!!document.activeElement?.closest('[data-cover-view]')`)) === true, `팔레트로 열어도 키보드는 사용량 화면 안 (${await ev(`document.activeElement === document.body ? 'BODY' : document.activeElement?.tagName + '.' + String(document.activeElement?.className).slice(0, 40)`)})`);
 
 // ── Ⓗ 사용량 칸 ──────────────────────────────────────────────────────────────
 const UB = `document.querySelector('[data-usage-board]')`;
@@ -417,7 +416,7 @@ const pick = await ev(`(() => { const c = [...${UB}.querySelectorAll('[data-heat
 await sleep(300);
 const dayAfter = JSON.parse(await ev(`JSON.stringify({ day: ${UB}.querySelector('[data-usage-day]').dataset.usageDay, on: ${UB}.querySelector('[data-heat-date="${pick}"]').classList.contains('on'), agents: [...${UB}.querySelectorAll('[data-day-agent]')].map(a => a.dataset.dayAgent), mix: ${UB}.querySelectorAll('[data-day-mix] span').length, legend: [...${UB}.querySelectorAll('[data-day-model] .m-name')].map(m => m.textContent.trim()) })`));
 check(dayAfter.day === pick && dayAfter.on, `칸을 누르면 그날을 고른다(테두리) (${pick})`);
-check(dayAfter.agents.join(",") === "claude,codex" && dayAfter.mix === 3 && dayAfter.legend[0] === "opus-5", `고른 날 — 에이전트 몫 · 모델 구성 (${JSON.stringify(dayAfter)})`);
+check(dayAfter.agents.join(",") === "claude,codex" && dayAfter.mix === 3 && dayAfter.legend[0] === "Opus 5", `고른 날 — 에이전트 몫 · 모델 구성 (${JSON.stringify(dayAfter)})`);
 await ev(`${UB}.querySelector('[data-heat-date="${pick}"]').focus()`);
 await key("ArrowRight"); await sleep(300);
 const moved = await ev(`document.activeElement?.dataset?.heatDate ?? null`);
@@ -428,34 +427,35 @@ check(down7 !== null && new Date(down7) - new Date(moved) === 7 * 86400_000, `�
 await key("ArrowUp"); await sleep(300);
 check((await ev(`document.activeElement?.dataset?.heatDate ?? null`)) === moved, "키보드 ↑ = 한 주 앞(되돌아온다)");
 const wk = JSON.parse(await ev(`JSON.stringify({ cols: ${UB}.querySelectorAll('[data-week-day]').length, today: ${UB}.querySelector('[data-week-day].today')?.dataset.weekDay ?? null, legend: [...${UB}.querySelectorAll('[data-usage-week] .legend li')].map(l => l.textContent.trim()) })`));
-check(wk.cols === 7 && wk.today === today && wk.legend.join("|") === "opus-5|gpt-6-codex|haiku-5", `7일 막대 · 오늘 표시 · 범례 (${JSON.stringify(wk)})`);
+check(wk.cols === 7 && wk.today === today && wk.legend.join("|") === "Opus 5|GPT-6-Codex|Haiku 5", `7일 막대 · 오늘 표시 · 범례 (${JSON.stringify(wk)})`);
 await ev(`document.querySelector('[data-week-day="${today}"]').scrollIntoView({ block: 'center' })`); await sleep(200);
 await hover(`[data-week-day="${today}"]`);
 const wtip = await ev(`document.querySelector('[data-week-tip]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
-check(typeof wtip === "string" && wtip.includes("opus-5") && wtip.includes("gpt-6-codex"), `막대 말풍선 = 모델별 줄 (${wtip})`);
+check(typeof wtip === "string" && wtip.includes("Opus 5") && wtip.includes("GPT-6-Codex"), `막대 말풍선 = 모델별 줄 (${wtip})`);
 await unhover();
 const comp = JSON.parse(await ev(`JSON.stringify({ rows: [...${UB}.querySelectorAll('[data-comp-row]')].map(r => r.dataset.compRow), hit: ${UB}.querySelector('[data-comp-hit]').textContent.trim(), reuse: ${UB}.querySelector('[data-comp-reuse]').textContent.trim() })`));
 check(comp.rows.join(",") === "cacheRead,cacheWrite,output,input" && comp.hit === "84%" && comp.reuse === "8회", `토큰 구성 · 히트율 · 재사용 (${JSON.stringify(comp)})`);
 const tbl = JSON.parse(await ev(`JSON.stringify([...${UB}.querySelectorAll('[data-model-row]')].map(r => [...r.querySelectorAll('td')].map(td => td.textContent.trim())))`));
 console.log("table:", JSON.stringify(tbl));
-check(tbl.length === 3 && tbl[0][0] === "opus-5" && tbl[0][4] === "3" && /%$/.test(tbl[0][2]), `모델 표 — 짧은 이름 · 몫 · 대화 (${JSON.stringify(tbl[0])})`);
+check(tbl.length === 3 && tbl[0][0] === "Opus 5" && tbl[0][4] === "3" && /%$/.test(tbl[0][2]), `모델 표 — 표시 이름(modelLabel) · 몫 · 대화 (${JSON.stringify(tbl[0])})`);
 check((await ev(`/\\$|USD|₩|비용|cost/i.test(${UB}.textContent)`)) === false, "요금은 어디에도 없다");
 check(/^Claude Code 는 대화 기록을 기본 30일 뒤 지웁니다/.test(await ev(`${UB}.querySelector('[data-usage-retention]')?.textContent.trim() ?? ''`)), "보존 기간 각주(Claude 기록이 있을 때 — 문구는 8b02136)");
 const sw = JSON.parse(await ev(`JSON.stringify([...${UB}.querySelectorAll('[data-model-row] .sw')].map(e => getComputedStyle(e).backgroundColor))`));
-check(new Set(sw).size === sw.length, `모델 빛깔이 서로 다르다 — 같은 에이전트의 opus-5 · haiku-5 도 (${sw.join(" / ")})`);
+check(new Set(sw).size === sw.length, `모델 빛깔이 서로 다르다 — 같은 에이전트의 Opus 5 · Haiku 5 도 (${sw.join(" / ")})`);
 const legendSw = await ev(`[...${UB}.querySelectorAll('[data-usage-week] .legend .sw')].map(e => getComputedStyle(e).backgroundColor).join('|')`);
 const tableSw = await ev(`[...${UB}.querySelectorAll('[data-model-row] .sw')].map(e => getComputedStyle(e).backgroundColor).join('|')`);
 check(legendSw === tableSw, "같은 모델은 7일 막대와 표에서 같은 빛깔");
 const accentHere = await ev(`(() => { const p = document.createElement('span'); p.style.color = 'var(--accent)'; document.body.appendChild(p); const v = getComputedStyle(p).color; p.remove(); return [...${UB}.querySelectorAll('*')].some(e => !e.matches('.fill') && (getComputedStyle(e).backgroundColor === v || getComputedStyle(e).color === v)); })()`);
 check(accentHere === false, "사용량 칸에 강조색이 없다(게이지 채움 primary 말고 — 10-18 MD3)");
 console.log("capture:", await shot("usage-section.png"));
-// 실제 창 폭(≈1900px)에서 두 칸 줄의 키가 비슷한가
+// 실제 창 폭(≈1900px)에서 두 칸 줄의 키가 비슷한가 — 막으려는 것은 잔디 카드가 옆 카드의 두 배로 길어지는 모양이다(`buildHeatmap` 머리말).
+// 기준 1.6(2026-11-20 사용자 결정 — 지금 화면은 잔디 253 · 고른 날 167 = 1.515 로 0.1.0 부터 이 모양이고, 옛 기준 1.5 를 근소하게 넘었다)
 await ev(`${UB}.querySelector('[data-heat-date="${today}"]').click()`); await sleep(200); // 고른 날 = 오늘(기록이 있는 날)
 await send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false }); await sleep(600);
 const pairs = JSON.parse(await ev(`JSON.stringify([...${UB}.querySelectorAll('.pair')].map(p => [...p.children].map(c => Math.round(c.getBoundingClientRect().height))))`));
 const naturals = JSON.parse(await ev(`JSON.stringify([...${UB}.querySelectorAll('.pair')].map(p => [...p.children].map(c => { const s = c.style.alignSelf; c.style.alignSelf = 'start'; const h = Math.round(c.getBoundingClientRect().height); c.style.alignSelf = s; return h; })))`));
 console.log("pairs@1920:", JSON.stringify(pairs), "natural:", JSON.stringify(naturals));
-check(pairs.every(([a, b]) => a === b) && naturals.every(([a, b]) => Math.max(a, b) / Math.min(a, b) < 1.5), `1920px — 두 칸 줄의 제 키가 비슷하다 (${JSON.stringify(naturals)})`);
+check(pairs.every(([a, b]) => a === b) && naturals.every(([a, b]) => Math.max(a, b) / Math.min(a, b) < 1.6), `1920px — 두 칸 줄의 제 키가 비슷하다 (${JSON.stringify(naturals)})`);
 await ev(`${UB}.scrollIntoView({ block: 'start' })`); await sleep(200);
 console.log("capture:", await shot("usage-section-1920.png"));
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(500);
@@ -483,7 +483,7 @@ const savedWs = await ev(`sessionStorage.getItem('h.ws') ?? ''`);
 check(savedWs.includes(`claude --resume ${SCRATCH}`), "준비: 재개 타일이 배치에 저장됐다");
 await ev(`sessionStorage.setItem('h.reload', '1')`);
 counting = false;
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 counting = true;
 const calls = JSON.parse(await ev(`JSON.stringify(window.__calls.map(c => c[0]).filter(c => c === 'reap_window_sessions' || c === 'open_local_session'))`));
 check(calls[0] === "reap_window_sessions" && calls.includes("open_local_session"), `다시 뜬 페이지 = 먼저 거두고 새 셸을 연다 (${calls.slice(0, 3).join(",")}…)`);

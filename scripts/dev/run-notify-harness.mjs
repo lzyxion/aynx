@@ -11,9 +11,9 @@
 // 시나리오: ① 성공(3초 · 단추 없음) · ② 일부 실패(이름 둘 + 외 N · [결과 보기]) · ③ canary 멈춤 ·
 // ③′ canary 검증에서 멈춤 ·
 // ④ 취소(무채 · [결과 보기]) · ⑤ 자동 칩 · ⑤′ 제목 없는 25ms(`0.1초 미만`) · ⑥ 결과 읽기 실패 → 상태만 · ⑦ 작업안마다 한 번 ·
-// ⑧ 부팅 때 이미 끝나 있던 것은 씨(알리지 않는다) · ⑨ 거절·만료는 알리지 않는다 · ⑩ 대시보드
-// 작업안 칸이 떠 있으면 토스트 없이 센터만 · ⑪ 알림 센터 줄 → 대시보드 작업안 칸의 그 실행 ·
-// 토스트 [결과 보기]도 같은 곳 · ⑫ 가림막 — 개수만(합쳐 센다) · ⑬ OS 알림 — 창이 뒤일 때만 ·
+// ⑧ 부팅 때 이미 끝나 있던 것은 씨(알리지 않는다) · ⑨ 거절·만료는 알리지 않는다 · ⑩ 채팅 독의
+// 작업안 갈래가 떠 있으면 토스트 없이 센터만(자동 승인 실행은 그래도 뜬다) · ⑪ 알림 칸 줄 → 작업안 갈래의 그 실행 ·
+// 토스트 [결과 보기]도 같은 곳 · ⑫ 가림막 — 토스트 없이 가림막 화면에 개수만(합쳐 센다) · ⑬ OS 알림 — 창이 뒤일 때만 ·
 // 설정을 끄면 없음 · 가림막 아래는 개수만 · ⑭ 잡히지 않은 예외·콘솔 오류 0.
 //
 // usage (격리 서버 — 1420/9222 는 개발 앱의 것이라 건드리지 않는다):
@@ -25,6 +25,7 @@
 //     → <outdir>/run-notify-success.png · -partial.png · -canary.png · -validate.png · -cancelled.png · -auto.png ·
 //       -unavailable.png · -stack.png · -center.png · -veiled.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot, waitToastsGone } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const [outdir = "out", port = process.env.CDP_PORT ?? "9272"] = process.argv.slice(2);
@@ -173,12 +174,16 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 `,
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await sleep(2400);
+await reloadBoot(send, ev);
+// 부팅 토스트("탭 N개를 복원했습니다." · 3초)가 걷힌 뒤 센다 — 안 그러면 ⑧ · ① 이 그 한 장을 더 센다
+await waitToastsGone(ev);
 errors.length = 0;
 
 const toastMod = importApp("lib/toast.svelte.ts");
-const consoleMod = importApp("app/console.svelte.ts");
+// 2026-11-21 — 대시보드의 작업안 칸은 10-07 에 걷혔고(작업안 타일 → 10-25 채팅 독의 작업안 갈래) 결과 토스트가 물러나는
+// 조건은 `app/plans.svelte.ts` 의 `plansShown()`(채팅 독이 열려 있고 작업안 갈래)이다.
+const plansMod = importApp("app/plans.svelte.ts");
+const chatDockMod = importApp("app/chat-dock.svelte.ts");
 const notesMod = importApp("app/notifications.svelte.ts");
 
 /** 작업안 하나를 목록에 올리고 결과를 먹인 뒤 종료 상태 이벤트를 쏜다 */
@@ -292,7 +297,7 @@ const S5 = ["s1", "s2", "s3", "s4", "s5"];
 await finish(plan({ operationId: "op-a", title: "로그 정리", targets: S5, approvalMethod: "auto" }),
   Object.fromEntries(S5.map((id) => [id, res("succeeded", { startedAt: T0, endedAt: T0 + 3100 })])));
 check("⑤ 자동 칩", await readToasts(), [
-  { kind: "success", head: "로그 정리", chip: "자동", lead: "성공 5/5", tone: "good", tail: "3.1초", text: null, buttons: [] },
+  { kind: "success", head: "로그 정리", chip: "자동 승인", lead: "성공 5/5", tone: "good", tail: "3.1초", text: null, buttons: [] },
 ]);
 await shot("run-notify-auto.png");
 await clearToasts();
@@ -301,14 +306,14 @@ await clearToasts();
 await finish(plan({ operationId: "op-fast", command: "hostname && uptime\nwho", targets: ["s5"], approvalMethod: "auto" }),
   { s5: res("succeeded", { startedAt: T0, endedAt: T0 + 25 }) });
 check("⑤′ 25ms 는 0.1초 미만 · 제목 없으면 명령 첫 줄", await readToasts(), [
-  { kind: "success", head: "hostname && uptime…", chip: "자동", lead: "성공 1/1", tone: "good", tail: "0.1초 미만", text: null, buttons: [] },
+  { kind: "success", head: "hostname && uptime…", chip: "자동 승인", lead: "성공 1/1", tone: "good", tail: "0.1초 미만", text: null, buttons: [] },
 ]);
 await clearToasts();
 
 // ── ⑥ 결과 읽기 실패 → 상태만 ─────────────────────────────────────────────
 await finish(plan({ operationId: "op-u", state: "failed", title: "nginx 설정 재적용", targets: S3 }), null, { fail: true });
 check("⑥ 물러선 문구", await readToasts(), [
-  { kind: "error", head: "nginx 설정 재적용", chip: null, lead: "실패", tone: "bad", tail: "대상별 결과는 대시보드에서", text: null, buttons: ["결과 보기"] },
+  { kind: "error", head: "nginx 설정 재적용", chip: null, lead: "실패", tone: "bad", tail: "대상별 결과는 작업안에서", text: null, buttons: ["결과 보기"] },
 ]);
 await shot("run-notify-unavailable.png");
 await clearToasts();
@@ -340,18 +345,26 @@ await finish(plan({ operationId: "op-e", state: "expired", title: "만료됨" })
 check("⑨ 거절·만료 → 토스트 없음", (await readToasts()).length, 0);
 check("⑨ 센터에도 없음", (await center()).filter((e) => ["op-r", "op-e"].includes(e.operationId)).length, 0);
 
-// ── ⑩ 대시보드 작업안 칸이 떠 있으면 토스트 없이 센터만 ─────────────────────
-await ev(`(async () => (await ${consoleMod}).openConsoleAt('operations'))()`);
+// ── ⑩ 채팅 독의 작업안 갈래가 떠 있으면 토스트 없이 센터만 (10-25 — 옛 대시보드 작업안 칸) ─────────
+await ev(`(async () => (await ${chatDockMod}).openChatDockAt('plans'))()`);
 await sleep(600);
-await finish(plan({ operationId: "op-dash", state: "failed", title: "대시보드에서 본 실행", targets: ["s1"] }), { s1: res("failed") });
-check("⑩ 작업안 칸 → 토스트 없음", (await readToasts()).length, 0);
+check("⑩ 작업안 갈래가 보인다", await ev(`(async () => (await ${plansMod}).plansShown())()`), true);
+await finish(plan({ operationId: "op-dash", state: "failed", title: "작업안에서 본 실행", targets: ["s1"] }), { s1: res("failed") });
+check("⑩ 작업안 갈래 → 토스트 없음", (await readToasts()).length, 0);
 check("⑩ 센터에는 기록", (await center()).find((e) => e.operationId === "op-dash")?.level ?? null, "error");
-// 에이전트 칸(작업안 칸이 아니다)에서는 토스트가 뜬다
-await ev(`(async () => (await ${consoleMod}).openConsoleAt('agents'))()`);
+// 자동 승인된 실행은 작업안이 보여도 띄운다(10-22 — `shouldToast` · 사람이 본 적이 없다)
+await finish(plan({ operationId: "op-dash-auto", title: "작업안 갈래의 자동 실행", targets: ["s1"], approvalMethod: "auto" }), { s1: res("succeeded") });
+check("⑩ 작업안 갈래여도 자동 승인 실행 → 토스트가 뜬다", (await readToasts()).map((t) => [t.head, t.chip]), [["작업안 갈래의 자동 실행", "자동 승인"]]);
+await clearToasts();
+// 채팅 갈래(작업안 갈래가 아니다)에서는 토스트가 뜬다
+await ev(`(async () => (await ${chatDockMod}).openChatDockAt('chat'))()`);
 await sleep(400);
-await finish(plan({ operationId: "op-agents", title: "에이전트 칸에서", targets: ["s1"] }), { s1: res("succeeded") });
-check("⑩ 에이전트 칸 → 토스트가 뜬다", (await readToasts()).length, 1);
-await ev(`(async () => (await ${consoleMod}).closeConsole(false))()`);
+await finish(plan({ operationId: "op-agents", title: "채팅 갈래에서", targets: ["s1"] }), { s1: res("succeeded") });
+// 채팅 갈래는 새 채팅을 열려다 스텁에 막혀("새 채팅을 열지 못했습니다: … side_chat_dir") 한 줄 토스트를 하나 더 띄운다 —
+// 스텁 몫이라 실행 결과 토스트(두 줄 몸 = 머리가 있다)만 센다. `side_chat_dir` 을 스텁에 넣으면 채팅 면이 다음 명령을
+// 기다리며 페이지가 멈췄다(2026-11-21).
+check("⑩ 채팅 갈래 → 토스트가 뜬다", (await readToasts()).filter((t) => t.head !== null).map((t) => t.head), ["채팅 갈래에서"]);
+await ev(`(async () => (await ${chatDockMod}).closeChatDock(false))()`);
 await sleep(400);
 await clearToasts();
 
@@ -366,16 +379,24 @@ await finish(plan({ operationId: "op-st3", title: "로그 정리", targets: S5, 
 await ev(`(async () => (await ${toastMod}).holdToasts())()`);
 await shot("run-notify-stack.png");
 
-// ── ⑪ 토스트 [결과 보기] · 알림 센터 줄 → 대시보드 작업안 칸의 그 실행 ──────
+// ── ⑪ 토스트 [결과 보기] · 알림 센터 줄 → 채팅 독 작업안 갈래의 그 실행 ──────
 await ev(`[...document.querySelectorAll('.toasts button.act')].find((b) => b.textContent.trim() === '결과 보기')?.click()`);
 await sleep(500);
-check("⑪ [결과 보기] → 대시보드 작업안 칸",
-  JSON.parse(await ev(`(async () => { const c = await ${consoleMod}; return JSON.stringify([c.consoleOpen(), c.consoleMode()]); })()`)), [true, "operations"]);
-await ev(`(async () => { const c = await ${consoleMod}; c.closeConsole(false); (await ${toastMod}).releaseToasts(); })()`);
+check("⑪ [결과 보기] → 채팅 독 작업안 갈래",
+  await ev(`(async () => (await ${plansMod}).plansShown())()`), true);
+await ev(`(async () => { (await ${chatDockMod}).closeChatDock(false); (await ${toastMod}).releaseToasts(); })()`);
 await clearToasts();
 await sleep(400);
 // 2026-10-18 통합 독 — 알림 상자는 독의 알림 칸이다(상태바 독 입구는 걷혔다 — 모듈로 알림 칸을 연다 · 줄의 표식은 그대로)
 await ev(`(async()=>{const e=performance.getEntriesByType('resource').map(r=>r.name).find(u=>u.includes('app/dock.svelte'));(await import(e)).openDock('alerts');})()`);
+await sleep(700);
+// 2026-11-02 묶음 — 같은 대상 이름 집합에 돈 실행은 카드 한 장(가장 최근 줄 + 개수)으로 접힌다(`dock-alert-groups.ts` 의
+// `operationAlertGroup`). 카드 머리 줄의 둘째 줄은 출처(`작업안 · web-01 외 2`)로 시작하고, 펼친 나머지 줄은 예전 낱줄 그대로다.
+// 모든 줄을 보려고 카드를 다 펼친다.
+check("⑪ 같은 대상(web-01 하나 · web-01..03 · S5)의 실행은 카드로 접힌다 — 머리는 가장 최근 줄",
+  JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[data-notify-group-count]')].map((c) => c.closest('.row').querySelector('[data-notify-run]')?.getAttribute('data-notify-run')).sort())`)),
+  ["op-agents", "op-st2", "op-st3"]);
+await ev(`(() => { for (const b of document.querySelectorAll('[data-notify-expand][aria-expanded="false"]')) b.click(); })()`);
 await sleep(700);
 const rows = JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[data-notify-run]')].map((b) => ({
   id: b.getAttribute('data-notify-run'),
@@ -387,21 +408,23 @@ const rows = JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('
 })))`));
 console.log("CENTER", JSON.stringify(rows, null, 1));
 const byId = (id) => rows.find((r) => r.id === id) ?? null;
-check("⑪ 일부 실패 줄 — 머리 — 결과 / 작업안 실행 · 실패 이름 · 결과 보기 →", byId("op-st2") && [byId("op-st2").name, byId("op-st2").detail, byId("op-st2").result, byId("op-st2").mark],
-  ["nginx 설정 재적용 — 일부 실패 2/3", "작업안 실행 · 실패: web-02 · <when> · 결과 보기 →", "result bad", "mark run error"]);
-check("⑪ 자동 성공 줄 — 칩 · 결과 보기 없음", byId("op-st3") && [byId("op-st3").name, byId("op-st3").detail, byId("op-st3").mark],
-  ["로그 정리자동 — 성공 5/5", "작업안 실행 · <when>", "mark run success"]);
+check("⑪ 일부 실패 카드 머리 — 머리 — 결과 / 출처 · 실패 이름 · 결과 보기 →", byId("op-st2") && [byId("op-st2").name, byId("op-st2").detail, byId("op-st2").result, byId("op-st2").mark],
+  ["nginx 설정 재적용 — 일부 실패 2/3", "작업안 · web-01 외 2 · 실패: web-02 · <when> · 결과 보기 →", "result bad", "mark run error"]);
+check("⑪ 자동 성공 카드 머리 — 칩 · 결과 보기 없음", byId("op-st3") && [byId("op-st3").name, byId("op-st3").detail, byId("op-st3").mark],
+  ["로그 정리자동 승인 — 성공 5/5", "작업안 · db-01 외 4 · <when>", "mark run success"]);
+check("⑪ 낱줄(대상이 겹치지 않는 실행)은 예전 모양 — 작업안 실행 · …", byId("op-p") && [byId("op-p").name, byId("op-p").detail],
+  ["패키지 목록 갱신 — 일부 실패 5/8", "작업안 실행 · 실패: web-02, db-01 외 1 · <when> · 결과 보기 →"]);
 check("⑪ 검증 멈춤 줄 — 같은 문구", byId("op-val") && [byId("op-val").name, byId("op-val").detail],
   ["nginx 설정 재적용 — canary 검증 실패로 멈춤", "작업안 실행 · web-01 · 나머지 2곳은 실행 안 함 · <when> · 결과 보기 →"]);
 check("⑪ 성공까지 전부 기록 (op-s · op-p · op-c · op-x1 · op-a · op-u · op-dup · op-dash · op-agents · op-st1..3)",
   ["op-s", "op-p", "op-c", "op-x1", "op-a", "op-u", "op-dup", "op-dash", "op-agents", "op-st1", "op-st2", "op-st3"].every((id) => byId(id)), true);
 await shot("run-notify-center.png");
-await ev(`document.querySelector('[data-notify-run="op-c"]').click()`);
+check("⑪ 펼친 카드 안의 op-c 줄을 누른다", await ev(`(() => { const b = document.querySelector('[data-notify-run="op-c"]'); if (!b) return false; b.click(); return true; })()`), true);
 await sleep(600);
-check("⑪ 줄을 누르면 센터가 닫히고 대시보드 작업안 칸",
-  JSON.parse(await ev(`(async () => { const c = await ${consoleMod}; return JSON.stringify([!!document.querySelector('.notifycenter'), c.consoleOpen(), c.consoleMode()]); })()`)),
-  [false, true, "operations"]);
-await ev(`(async () => (await ${consoleMod}).closeConsole(false))()`);
+check("⑪ 줄을 누르면 알림 칸이 닫히고 채팅 독 작업안 갈래",
+  JSON.parse(await ev(`(async () => { const d = await ${importApp("app/dock.svelte.ts")}; return JSON.stringify([d.dockKind(), (await ${plansMod}).plansShown()]); })()`)),
+  [null, true]);
+await ev(`(async () => (await ${chatDockMod}).closeChatDock(false))()`);
 await sleep(400);
 
 // ── ⑬ OS 알림 — 창이 앞이면 없음 · 뒤면 한 장 · 설정 끄면 없음 ───────────────
@@ -425,17 +448,19 @@ await sleep(700);
 await finish(plan({ operationId: "op-v1", state: "failed", title: "비밀스러운 제목", targets: S3 }), {
   s1: res("failed"), s2: res("failed"), s3: res("failed"),
 });
-check("⑫ 가림막 아래 — 제목·호스트·단추 없이 개수만", await readToasts(), [
-  { kind: "error", head: "작업안 실행이 끝났습니다", chip: null, lead: "실패 1건", tone: "plain", tail: "", text: null, buttons: [] },
-]);
-check("⑫ 토스트 글자에 제목·호스트 이름이 없다",
-  await ev(`document.querySelector('.toasts').textContent.includes('비밀스러운') || document.querySelector('.toasts').textContent.includes('web-0')`), false);
+// 2026-10-28 잠금 화면 통일 — 가림막 아래에서는 토스트를 띄우지 않고 **가림막 화면이 잠금 카드 밑에** 개수를 그린다
+// (`Veil.svelte` 의 `[data-veil-runs]` · `operation-notify.svelte.ts` 의 `veiledTally`).
+const veilRuns = `JSON.stringify([...(document.querySelector('[data-veil-runs]')?.querySelectorAll('.part') ?? [])].map((p) => [p.classList.contains('err') ? 'err' : p.classList.contains('info') ? 'info' : 'ok', p.textContent.trim()]))`;
+check("⑫ 가림막 아래 — 토스트 없음", (await readToasts()).length, 0);
+check("⑫ 가림막 화면에 개수만 — 실패 1건", JSON.parse(await ev(veilRuns)), [["err", "실패 1건"]]);
+check("⑫ 가림막 글자에 제목·호스트 이름이 없다",
+  await ev(`(() => { const v = document.querySelector('.veil')?.textContent ?? null; const t = document.querySelector('.toasts')?.textContent ?? ''; return v === null ? 'no veil' : [v, t].some((s) => s.includes('비밀스러운') || s.includes('web-0')); })()`), false);
 check("⑬ 가림막 아래 OS 알림도 개수만", (await osNotes()).at(-1), { title: "작업안 실행이 끝났습니다", body: "실패 1건" });
 await finish(plan({ operationId: "op-v2", title: "또 다른 제목", targets: ["s1"] }), { s1: res("succeeded") });
-check("⑫ 둘째 건은 합쳐 센다 — 한 장, `실패 1건 · 성공 1건`",
-  (await readToasts()).map((t) => [t.kind, t.lead]), [["error", "실패 1건 · 성공 1건"]]);
-check("⑫ 가림막 위에 실제로 보인다 (토스트 120 > 가림막 115)",
-  await ev(`(() => { const c = document.querySelector('.toasts .toast').getBoundingClientRect(); const e = document.elementFromPoint((c.left + c.right) / 2, (c.top + c.bottom) / 2); return !!e?.closest('.toast'); })()`), true);
+check("⑫ 둘째 건은 합쳐 센다 — `실패 1건 · 성공 1건`",
+  JSON.parse(await ev(veilRuns)), [["err", "실패 1건"], ["ok", "성공 1건"]]);
+check("⑫ 개수가 가림막 위에 실제로 보인다",
+  await ev(`(() => { const c = document.querySelector('[data-veil-runs]').getBoundingClientRect(); const e = document.elementFromPoint((c.left + c.right) / 2, (c.top + c.bottom) / 2); return !!e?.closest('[data-veil-runs]'); })()`), true);
 check("⑫ 센터에는 전문으로 기록",
   (await center()).find((e) => e.operationId === "op-v1")?.text ?? null, "비밀스러운 제목 — 실패 0/3 · 실패: web-01, web-02 외 1 · 1.0초");
 await shot("run-notify-veiled.png");

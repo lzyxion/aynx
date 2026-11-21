@@ -26,6 +26,7 @@
 // fp-project-dock.png · fp-project-general.png · fp-project-worktree.png · fp-project-display.png ·
 // fp-project-dock-after.png · fp-project-start.png · fp-palette.png · fp-hostform-display.png · fp-light-host-dock.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -49,6 +50,8 @@ ws.addEventListener("message", (m) => { const d = JSON.parse(m.data); if (d.meth
 
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   const cbs = new Map(); let n = 0; window.__calls = []; let nextSession = 100;
+  // 자원 타이밍 버퍼(기본 250)가 넘치면 뒤에 적재된 모듈은 \`importApp\` 이 못 찾는다 — 다른 판과 같이 넉넉히
+  performance.setResourceTimingBufferSize(5000);
   try { localStorage.removeItem('aynx:dock'); localStorage.removeItem('aynx:status-order'); localStorage.removeItem('aynx:hosts:expanded'); } catch {}
   const host = (name, ip, group) => ({ name, host_name: ip, user: 'root', port: 22, identity_file: null, proxy_jump: null, meta: { tags: [], forwards: [], icon: null, color: null, group } });
   const META = { tags: [], forwards: [], color: null, icon: null, group: null, scrollback: null, on_connect: null, log: false, shell_integration: null, tmux: false };
@@ -120,7 +123,8 @@ await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, dev
 const VK = { Enter: 13, Escape: 27, F2: 113 };
 // Enter 는 글자(`\r`)까지 실어야 폼의 암묵 제출이 일어난다 (keyDown 만으로는 keydown 이벤트뿐이다)
 const key = async (code, modifiers = 0, k = code, wait = 250) => { const vk = code.startsWith("Key") ? code.charCodeAt(3) : VK[code] ?? 0; for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers, code, key: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, ...(type === "keyDown" && code === "Enter" ? { text: "\r" } : {}) }); await sleep(wait); };
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 러너가 새로 띄운 찬 vite 에서 모자랐다(2026-11-20) — 새 문서의 부팅 끝까지 기다린다
+await reloadBoot(send, ev);
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 const calls = (name) => ev(`JSON.stringify(window.__calls.filter(c => c[0] === '${name}').map(c => c[1]))`).then((s) => JSON.parse(s));
 const typeInto = (sel, v) => ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.focus(); el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
@@ -176,7 +180,7 @@ check(fe !== null && fe.title === "폴더 편집", `제목 "폴더 편집" (${fe
 check(fe?.labels.join("|") === "이름|아이콘|색", `한 면 · 차례 이름 → 아이콘 → 색 (${fe?.labels.join("|")})`);
 check(fe?.nav === false, "사이드 메뉴 없음");
 check(fe?.name === "prod" && fe?.focus === true, `이름 칸 = prod · 포커스 (${fe?.name}, ${fe?.focus})`);
-check(fe?.iconPh === "이름으로 검색하거나 이모지 입력" && fe?.colorPh === "없음 — 기본 색", "곁말 둘");
+check(fe?.iconPh === "이름으로 찾거나 이모지 입력" && fe?.colorPh === "없음 — 기본 색", `곁말 둘 (${fe?.iconPh} · ${fe?.colorPh})`);
 check(fe?.leaksSvg === false, "svg: 누출 없음");
 const fseg = await segOrder("[data-folder-edit]");
 check(fseg.startsWith("basic:기본|logos:로고"), `고르개 차례 = 기본 → 로고 (${fseg})`);

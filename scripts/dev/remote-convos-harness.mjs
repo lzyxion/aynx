@@ -16,11 +16,12 @@
 // 그 자리에 SSH 재개 타일(별칭 · 폴더 · 명령 · 프로젝트의 tmux) ⑤ SSH 타일에서 Ctrl+Shift+Y — 그 서버 · 셸이 알려 준 폴더(칩 · 호스트 칩 ·
 // 바닥 "방금 읽음 · F5") · 1분 캐시(다시 부르지 않음) ⑥ F5 = force ⑦ Enter = 옆에 SSH 타일(같은 탭 · 빛남 · 공유 별칭) ⑧ 열림 → 그 타일
 // ⑨ Codex 줄 Shift+Enter = codex fork ⑩ Ctrl+Enter = 원격 기록 보기(2단계 — 붙은 세션으로 쪽 넘기기 · 이전 쪽 · 세션이 사라지면 한 줄)
-// ⑪ 로컬 타일은 예전 그대로(원격 호출 없음) ⑫ 저장 짐 — 주소에 host · 대화 제목 없음 ⑬ 대시보드 "어디서" 칩(2단계 — 이 PC · dev-01 ·
-// 흐린 lab-02(읽은 뒤 끊김 — 다시 부르지 않음) · 모두 · 한 목록 · 호스트 칩 · 서버 폴더) ⑭ 사용량 칸(출처가 Rust 요약 인자로 · 덮개 한 줄 ·
+// ⑪ 로컬 타일은 예전 그대로(원격 호출 없음) ⑫ 저장 짐 — 주소에 host · 대화 제목 없음 ⑬ (대시보드 "어디서" 칩 — 2026-11-20 지움, 대시보드가 걷혔다 ·
+// lab-02 를 읽은 뒤 끊긴 준비만 남음) ⑭ 사용량 칸(모두 칩 · 출처가 Rust 요약 인자로 · 덮개 한 줄 ·
 // [전체 사용량 읽기] 이어 부름 · 멈춤 없이 끝 · 원격 Codex 한도 · 이 PC 로 돌아가면 예전 그대로) ⑮ 예외 0.
-// PNG: rconv-start-offline.png · rconv-start.png · rconv-picker.png · rconv-split.png · rconv-viewer.png · rconv-dash.png · rconv-usage.png
+// PNG: rconv-start-offline.png · rconv-start.png · rconv-picker.png · rconv-split.png · rconv-viewer.png · rconv-usage.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -176,7 +177,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 러너가 새로 띄운 찬 vite 에서 모자랐다(2026-11-20) — 새 문서의 부팅 끝까지 기다린다
+await reloadBoot(send, ev);
 counting = true;
 
 const VK = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, Tab: 9, F5: 116 };
@@ -209,7 +211,8 @@ check(st.panes.length === 1 && st.panes[0].kind === "start" && st.panes[0].start
 let sv = await startView();
 console.log("start offline:", JSON.stringify(sv));
 check(sv.remote === "dev-01" && sv.host === "⇄ dev-01" && sv.newHead === "새로 시작 — dev-01에서", `호스트 칩 · "새로 시작 — dev-01에서" (${sv.host} · ${sv.newHead})`);
-check(JSON.stringify(sv.acts) === JSON.stringify(["shell", "claude", "codex", "command"]), `새로 시작 — 셸 · 알려진 AI 전부(서버에 무엇이 깔렸는지 모른다) · 시작 명령 (${sv.acts})`);
+// 시작 명령 단추(R)는 2026-09-28 에 걷혔다(project-start.ts — 시작 명령이 에이전트 선택으로 · project-start-harness 와 같다)
+check(JSON.stringify(sv.acts) === JSON.stringify(["shell", "claude", "codex"]), `새로 시작 — 셸 · 알려진 AI 전부(서버에 무엇이 깔렸는지 모른다) (${sv.acts})`);
 check(sv.qstate === "offline" && sv.quiet?.startsWith("dev-01 연결이 없어"), `붙은 세션 없음 — 조용한 한 줄 (${sv.quiet})`);
 check((await remoteCalls()).length === 0, "붙은 세션이 없으면 원격 목록을 부르지 않는다(새 접속 없음)");
 console.log("capture:", await shot("rconv-start-offline.png"));
@@ -243,7 +246,7 @@ console.log("capture:", await shot("rconv-start.png"));
 await ev(`window.__remote.fail = 'exec 채널을 열지 못했습니다: closed'; window.__remote.delay = 0;`);
 await ev(`(async () => { const r = await ${rcMod}; await r.loadRemoteConversations('dev-01', true); })()`); await sleep(300);
 sv = await startView();
-check(sv.err === "dev-01 에서 대화를 읽지 못했습니다 — exec 채널을 열지 못했습니다: closed" && sv.rows.length === 3 && sv.acts.length === 4, `실패 — 한 줄 · 읽은 줄과 새로 시작은 그대로 (${sv.err})`);
+check(sv.err === "dev-01 에서 대화를 읽지 못했습니다 — exec 채널을 열지 못했습니다: closed" && sv.rows.length === 3 && sv.acts.length === 3, `실패 — 한 줄 · 읽은 줄과 새로 시작은 그대로 (${sv.err})`);
 await ev(`window.__remote.fail = null`);
 await ev(`(async () => { const r = await ${rcMod}; await r.loadRemoteConversations('dev-01'); })()`); await sleep(300);
 check((await startView()).err === null, "다시 읽으면 실패 줄이 걷힌다");
@@ -267,7 +270,8 @@ check(pk?.remote === "dev-01" && pk.source === "tile", `SSH 타일 → 원격 �
 check(JSON.stringify(pk.chips) === JSON.stringify(["이 폴더 · 3*", "dev-01 전체 · 7"]), `칩 — 이 폴더 · 3 / dev-01 전체 · 7 (${pk.chips})`);
 check(pk.host === "⇄ dev-01" && pk.where?.includes("~/work/api"), `범위 줄 오른쪽 — 호스트 칩 · 서버 홈을 ~ 로 (${pk.where})`);
 check(JSON.stringify(pk.rows.map((r) => r.split(":")[0])) === JSON.stringify([id(5), id(4), xid(6)]), `이 폴더의 줄 최신순 (${pk.rows})`);
-check(pk.metas[2] === "Codex·88k 토큰" && pk.metas[0] === "Claude Code", `줄 모양 — Claude 는 토큰 없음 · Codex 는 누적 (${pk.metas})`);
+// 아래 줄 = 브랜치 · 모델 · 사용량(`convo-meta.ts` — 2026-10-16) · 에이전트는 줄 앞 로고가 말한다
+check(pk.metas[2] === "main·88k 토큰" && pk.metas[0] === "main", `줄 모양 — Claude 는 토큰 없음 · Codex 는 누적 (${pk.metas})`);
 check(/방금 읽음·F5다시 읽기$/.test(pk.keys ?? "") && /Ctrl\+Enter/.test(pk.keys ?? ""), `바닥 — "방금 읽음 · F5 다시 읽기" · 기록 보기 안내(2단계) (${pk.keys})`);
 check((await remoteCalls()).length === before5, "1분 안에 다 읽었으면 다시 부르지 않는다(캐시)");
 console.log("capture:", await shot("rconv-picker.png"));
@@ -355,42 +359,24 @@ const saved = await ev(`(() => { const c = window.__calls.filter(c => c[0] === '
 check(typeof saved === "string" && saved.includes('"host":"dev-01"') && !/nginx|Log rotation|health check|version header|Rollback|dry-run|Something else/.test(saved), `workspaces.json — 시작 화면 주소에 host · 대화 제목 없음 (${saved ? saved.length + " B" : "저장 없음"})`);
 
 // ── ⑬ 대시보드 "어디서" 칩 (2단계) ──────────────────────────────────────────────
-const conMod = importApp("app/console.svelte.ts");
+// 2026-11-20: 대시보드의 지난 대화 목록 · "어디서" 칩 판정은 지웠다 — 그 덩어리는 2026-09-28 에, 대시보드 자체는 2026-10-07 에 걷혔다
+// (`app/console.svelte.ts` · `app/dashboard-source.svelte.ts` 머리말). "어디서" 칩은 사용량 화면에만 남아 ⑭ 가 본다. 아래는 ⑭ 의 준비뿐이다.
 // lab-02 — 붙어서 한 번 읽은 뒤 끊겼다(마지막 값이 흐리게 남는다)
 const labPane = await ev(`(async () => { const w = await ${tabsMod}; const s = await ${sessMod}; const p = s.newSshPane('lab-02'); w.openInNewTab(p, 'lab-02'); return p.id; })()`);
 await sleep(600);
 await ev(`(async () => { const r = await ${rcMod}; await r.loadRemoteConversations('lab-02'); })()`); await sleep(200);
 await ev(`(async () => { const w = await ${tabsMod}; const t = w.tabOfPane('${labPane}'); w.closePaneIn(t.id, '${labPane}'); })()`); await sleep(500);
-const listCalls0 = (await remoteCalls()).length;
-await ev(`(async () => (await ${conMod}).openConsoleAt('agents'))()`); await sleep(1200);
-const dash = async () => JSON.parse(await ev(`(() => { const b = document.querySelector('[data-convo]'); if (!b) return JSON.stringify(null); return JSON.stringify({ chips: [...b.querySelectorAll('[data-source-chip]')].map(c => c.textContent.replace(/\\s+/g, ' ').trim() + (c.classList.contains('on') ? '*' : '') + (c.classList.contains('dim') ? '~' : '')), rows: [...b.querySelectorAll('[data-convo-row]')].map(r => (r.dataset.host ?? 'pc') + ':' + r.dataset.convoRow.slice(-2) + (r.classList.contains('dim') ? '~' : '')), hostchips: [...b.querySelectorAll('[data-row-host]')].map(h => h.textContent.replace(/\\s+/g, ' ').trim()), folders: [...b.querySelectorAll('[data-meta="folder"]')].map(f => f.textContent.trim()), offline: [...b.querySelectorAll('[data-convo-offline]')].map(p => p.textContent.replace(/\\s+/g, ' ').trim()), scopes: !!b.querySelector('.scopes') }); })()`));
-let d = await dash();
-console.log("dash:", JSON.stringify(d));
-check(JSON.stringify(d?.chips) === JSON.stringify(["이 PC · 0*", "⇄dev-01 · 7", "⇄lab-02 · 2방금 읽음 · 연결 없음~", "모두"]), `칩 — 이 PC(기본) · dev-01 · 흐린 lab-02(방금 읽음 · 연결 없음) · 모두 (${d?.chips})`);
-await ev(`document.querySelector('[data-source-chip="host:dev-01"]').click()`); await sleep(500);
-d = await dash();
-check(d.rows.length === 7 && d.rows.every((r) => r.startsWith("dev-01:") && !r.endsWith("~")) && d.hostchips.every((h) => h === "⇄ dev-01") && !d.scopes, `dev-01 — 한 목록(범위 칸 없음) · 줄마다 호스트 칩 (${d.rows})`);
-check(d.folders.includes("~/work/api") && d.folders.includes("~/work/aynx-lab"), `둘째 줄에 서버의 폴더(~) (${[...new Set(d.folders)]})`);
-const listCalls1 = (await remoteCalls()).length;
-await ev(`document.querySelector('[data-source-chip="host:lab-02"]').click()`); await sleep(500);
-d = await dash();
-check(d.rows.length === 2 && d.rows.every((r) => r.startsWith("lab-02:") && r.endsWith("~")) && d.offline[0]?.startsWith("lab-02 — 연결 없음 · 방금 읽음"), `lab-02 — 마지막 값이 흐리게 · 한 줄 안내 (${d.rows} · ${d.offline})`);
-check((await remoteCalls()).length === listCalls1 && listCalls1 >= listCalls0, "끊긴 호스트를 골라도 서버를 부르지 않는다(자동으로 접속하지 않음)");
-await ev(`document.querySelector('[data-source-chip="all"]').click()`); await sleep(500);
-d = await dash();
-await ev(`document.querySelector('[data-convo-more]')?.click()`); await sleep(300);
-d = await dash();
-check(d.rows.length === 9 && d.rows.filter((r) => r.startsWith("lab-02")).length === 2, `모두 — 이 PC + 두 호스트가 한 목록 (${d.rows.length})`);
-console.log("capture:", await shot("rconv-dash.png"));
 
 // ── ⑭ 사용량 칸 (2단계) ──────────────────────────────────────────────────────────
 const sumCalls = () => ev(`JSON.stringify(window.__calls.filter(c => c[0] === 'agent_usage_summary').map(c => ({ local: c[1].local, hosts: c[1].hosts })))`).then(JSON.parse);
 await ev(`(async () => (await ${importApp("app/usage-view.svelte")}).openUsageView())()`); await sleep(1200); // 사용량 화면(2026-10-04 — 대시보드 칸에서 나갔다 · 대시보드는 걷힌다)
 const usage = async () => JSON.parse(await ev(`(() => { const b = document.querySelector('[data-usage-board]'); if (!b) return JSON.stringify(null); return JSON.stringify({ chips: [...b.querySelectorAll('[data-source-chip]')].map(c => c.textContent.replace(/\\s+/g, ' ').trim() + (c.classList.contains('on') ? '*' : '')), lines: [...b.querySelectorAll('[data-usage-remote]')].map(p => p.dataset.usageRemote + ':' + p.dataset.state + (p.querySelector('[data-usage-remote-read]') ? '[read]' : '') + (p.querySelector('[data-usage-remote-stop]') ? '[stop]' : '')), texts: [...b.querySelectorAll('[data-usage-remote] span')].map(s => s.textContent.trim()), limitsHost: b.querySelector('[data-usage-limits]')?.dataset.limitsHost ?? null, limitsNote: b.querySelector('[data-limits-note]')?.textContent.trim() ?? null, cards: [...b.querySelectorAll('[data-usage-card]')].map(c => c.dataset.usageCard), today: b.querySelector('[data-cell="today"] .v')?.textContent.trim() ?? null }); })()`));
+// 출처의 기본은 "이 PC" — 옛 판은 대시보드에서 고른 "모두" 를 이어받았다. 이제 사용량 화면의 칩으로 고른다
+await ev(`document.querySelector('[data-usage-board] [data-source-chip="all"]')?.click()`); await sleep(800);
 let u = await usage();
 let sc = await sumCalls();
 console.log("usage:", JSON.stringify(u));
-check(u?.chips.at(-1) === "모두*" && JSON.stringify(sc.at(-1)) === JSON.stringify({ local: true, hosts: ["dev-01", "lab-02"] }), `같은 선택(모두) — Rust 요약에 이 PC + 두 호스트 (${JSON.stringify(sc.at(-1))})`);
+check(u?.chips.at(-1) === "모두*" && JSON.stringify(sc.at(-1)) === JSON.stringify({ local: true, hosts: ["dev-01", "lab-02"] }), `모두 — Rust 요약에 이 PC + 두 호스트 (${JSON.stringify(sc.at(-1))})`);
 check(JSON.stringify(u.lines) === JSON.stringify(["dev-01:pendingClaude[read]", "lab-02:offline"]), `호스트마다 한 줄 — 붙은 dev-01 은 [전체 사용량 읽기] · 끊긴 lab-02 는 단추 없음 (${u.lines})`);
 check(u.texts[0] === "dev-01: Claude 토큰은 [전체 사용량 읽기] 뒤에 더해집니다(큰 대화 2개 · 34 MB)", `남은 몫의 글자 (${u.texts[0]})`);
 check(u.limitsNote === null || u.limitsNote === "한도는 이 PC 의 것입니다", `모두 — 한도는 이 PC 의 것 (${u.limitsNote})`);

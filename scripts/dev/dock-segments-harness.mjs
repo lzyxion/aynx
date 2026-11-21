@@ -14,11 +14,12 @@
 // Ctrl+Shift+H/J 가 그 칸으로 열고 · 같은 키는 닫고 · 다른 키는 여닫이를 다시 돌리지 않고 칸만
 // 바꾼다 ② 칸 막대 클릭 = 칸 전환 + 그 칸의 검색 칸 포커스 ③ 칸마다 상태가 산다(검색어) ④ 칸 막대의
 // ←/→/Home/End(감싸기 · 포커스는 막대에 머문다) ⑤ 바닥 줄 = 그 칸에 있는 키만 ⑥ 검색 알약 48px · 13px ·
-// 타일 면, 줄 13px ⑦ 고른 줄 = `--accent-soft` · 그 밖에 강조색 없음 ⑧ 상태바 독 칸 하나 — 두 칸 어디서나
+// 타일 면, 줄 13px ⑦ 고른 줄 = 글래스면 `--glass-pick` · 평면이면 `--accent-soft` · 그 밖에 강조색 없음 ⑧ 상태바 독 칸 하나 — 두 칸 어디서나
 // 불 · 누르면 마지막 칸 · 설정 독이면 불 없음 · 말풍선에 두 조합 ⑨ 호스트 Ctrl+Enter = 새 탭 접속 ·
 // 폐기 조합은 무해하다 ⑩ 설정 독은 칸 막대·바닥 줄이 없다 ⑪ 라이트. 콘솔 예외 0.
 // PNG: `dock-hosts.png` · `dock-projects.png` · `dock-light.png` · `statusbar-merged.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -102,7 +103,8 @@ const typeText = async (text) => { await send("Input.insertText", { text }); awa
 const click = async (sel) => { const r = JSON.parse(await ev(`JSON.stringify(document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect())`)); const x = r.x + r.width / 2, y = r.y + r.height / 2; await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 }); await sleep(300); };
 const importApp = (file) => `(async () => { const e = performance.getEntriesByType('resource').map(r => r.name).find(u => u.includes('${file}')); if (!e) throw new Error('module not loaded yet: ${file}'); return await import(e); })()`;
 const cssVal = (v, prop = "background-color") => ev(`(() => { const d = document.createElement('div'); d.style.setProperty('${prop}', 'var(${v})'); document.body.appendChild(d); const c = getComputedStyle(d).getPropertyValue('${prop}'); d.remove(); return c; })()`);
-const reload = async () => { await send("Page.reload", { ignoreCache: true }); await sleep(4500); };
+// 새 문서의 부팅 끝까지(고정 4.5초는 찬 vite 에서 모자랐다 — `boot-wait.mjs` · 2026-11-21)
+const reload = async () => { await reloadBoot(send, ev); await sleep(300); };
 
 /** 독의 지금 — 열림 · 그리는 칸 · 고른 칸 단추 · 여닫이 수 · 포커스가 어느 본문의 검색 칸인가 */
 const state = () => ev(`(() => {
@@ -143,8 +145,9 @@ let s = await state();
 check(!s.hidden && s.kind === "hosts" && s.seg === "hosts", `Ctrl+Shift+H → 호스트 칸 (${JSON.stringify(s)})`);
 check(s.focus === "hosts:search", `열리는 순간 호스트 검색 칸에 커서 (${s.focus})`);
 check((await ev(`document.querySelectorAll('.dock .segs .seg').length`)) === 4, "칸 줄 = 네 칸 (알림 · 호스트 · 프로젝트 · DB)");
-const segW = await ev(`[...document.querySelectorAll('.dock .seg')].map(e => Math.round(e.getBoundingClientRect().width)).join('|')`);
-check(new Set(String(segW).split("|")).size === 1, `두 칸이 같은 폭 (${segW})`);
+// 칸 막대(`.segs`)의 네 칸만 — `.dock .seg` 는 독 안 다른 곳의 숨은 `.seg` 넷(폭 0)까지 잡았다(2026-11-21)
+const segW = await ev(`[...document.querySelectorAll('.dock .segs .seg')].map(e => Math.round(e.getBoundingClientRect().width)).join('|')`);
+check(String(segW).split("|").length === 4 && !String(segW).split("|").includes("0") && new Set(String(segW).split("|")).size === 1, `네 칸이 같은 폭 (${segW})`);
 const segStyle = await ev(`(() => { const a = document.querySelector('.dock .seg.active'), b = document.querySelector('.dock .seg:not(.active)'); const ca = getComputedStyle(a), cb = getComputedStyle(b); return [ca.fontSize, ca.fontWeight, ca.color, ca.backgroundColor, cb.color, cb.backgroundColor].join('|'); })()`);
 const fg1 = await cssVal("--fg-1", "color"), ctrlFg = await cssVal("--control-fg", "color"), selBg = await cssVal("--control-sel-bg");
 // 2026-10-18 MD3 내비게이션 바 — 칸 자신은 판이 없고 아이콘 뒤 알약 지시자(60×32)가 secondaryContainer 로 찬다
@@ -158,10 +161,14 @@ const sBox = await ev(`(() => { const b = document.querySelector('.dock .sidebar
 const tileBg = await cssVal("--control-tile-bg");
 check(sBox === `48|13px|${tileBg}|999px|solid`, `검색 알약 48px · 13px · surfaceContainerHigh · 포커스 링 (${sBox} vs ${tileBg})`);
 await key("ArrowDown", 0, "ArrowDown");
-const rowF = await ev(`(() => { const r = document.querySelector('.dock .sidebar .item'); return [getComputedStyle(r.querySelector('.name')).fontSize, Math.round(r.getBoundingClientRect().height), getComputedStyle(r.querySelector('.tag')).fontSize].join('|'); })()`);
+// 태그는 태그 있는 줄(web-01 · prod)에서 잰다 — 첫 줄(최근 순 db-02)에는 태그가 없다(2026-11-21)
+const rowF = await ev(`(() => { const items = [...document.querySelectorAll('.dock .sidebar .item:not(.folder)')]; const r = items[0]; const tg = items.map((x) => x.querySelector('.tag')).find(Boolean); return [getComputedStyle(r.querySelector('.name')).fontSize, Math.round(r.getBoundingClientRect().height), tg ? getComputedStyle(tg).fontSize : 'no-tag'].join('|'); })()`);
 check(String(rowF).startsWith("13px|") && String(rowF).endsWith("|12px"), `호스트 줄 13px · 태그 12px (${rowF})`);
 const soft = await cssVal("--accent-soft"), accent = await cssVal("--accent");
-check((await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`)) === soft, `고른 호스트 줄 = --accent-soft (${soft})`);
+// 런처 독의 고른 줄 = 재질 글래스면 흰 반투명 칠(`--glass-pick`), 평면이면 `--accent-soft`(`browser/HostList` · `ProjectList` 의 `.dock.launcher .item.selected`)
+const pick = await cssVal("--glass-pick, var(--accent-soft)");
+const material = await ev(`document.documentElement.dataset.material ?? null`);
+check((await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`)) === pick && (material !== "glass" || pick !== soft), `고른 호스트 줄 = 글래스면 --glass-pick · 아니면 --accent-soft (재질 ${material} · ${pick})`);
 console.log("capture:", await shot("dock-hosts.png"));
 
 await key("KeyJ", 10, "J", 40);
@@ -172,7 +179,7 @@ s = await state();
 check(s.focus === "projects:search", `프로젝트 검색 칸에 커서 (${s.focus})`);
 check((await foot()) === "↵ 열기 · Ctrl+↵ 지금 탭에 · Ins 워크트리 · Esc 닫기", `프로젝트 바닥 줄 (${await foot()})`);
 await key("ArrowDown", 0, "ArrowDown");
-check((await ev(`getComputedStyle(document.querySelector('[data-project-dock] .item.selected')).backgroundColor`)) === soft, "고른 프로젝트 줄 = --accent-soft");
+check((await ev(`getComputedStyle(document.querySelector('[data-project-dock] .item.selected')).backgroundColor`)) === pick, `고른 프로젝트 줄 = 글래스면 --glass-pick · 아니면 --accent-soft (${pick})`);
 const meta = await ev(`(() => { const w = document.querySelector('[data-project-dock] .where'); const cs = getComputedStyle(w); return [cs.fontSize, cs.backgroundColor, cs.borderTopWidth].join('|'); })()`);
 check(meta === "12px|rgba(0, 0, 0, 0)|1px", `위치 = 12px 테두리 보조 칩(outlineVariant · 판 없음) (${meta})`);
 // ⑦ 강조색(primary) — 실행 타일(아이콘 · 기본 셸 타일)과 고른 줄 · 칸 지시자의 secondaryContainer 판 말고는 없다
@@ -266,8 +273,8 @@ await ev(`(async () => { const m = await ${importApp("mode.svelte.ts")}; m.setAp
 await ev(`(() => { const i = document.querySelector('.dock .sidebar input.search'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); })()`);
 await sleep(200);
 await key("ArrowDown", 0, "ArrowDown");
-const softL = await cssVal("--accent-soft");
-check((await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`)) === softL, `라이트 고른 줄 = --accent-soft (${softL})`);
+const softL = await cssVal("--glass-pick, var(--accent-soft)");
+check((await ev(`getComputedStyle(document.querySelector('.dock .sidebar .item.selected')).backgroundColor`)) === softL, `라이트 고른 줄 = 글래스면 --glass-pick · 아니면 --accent-soft (${softL})`);
 console.log("capture:", await shot("dock-light.png"));
 await ev(`(async () => { const m = await ${importApp("mode.svelte.ts")}; m.setAppMode('dark'); })()`); await sleep(300);
 

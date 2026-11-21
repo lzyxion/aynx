@@ -187,8 +187,9 @@ const openShellTab = async (cwd, report) => {
 const focusPaneBody = async (paneId) => { await ev(`(async () => { const w = await ${tabsMod}; const t = w.tabOfPane('${paneId}'); w.focusTile(t.id, '${paneId}'); document.querySelector('[data-pane="${paneId}"] .xterm-helper-textarea')?.focus(); })()`); await sleep(250); };
 const picker = async () => JSON.parse(await ev(`(() => { const p = ${PICK}; if (!p) return JSON.stringify(null); return JSON.stringify({ scope: p.dataset.scope, source: p.dataset.source, chips: [...p.querySelectorAll('[data-scope-chip]')].map(c => c.textContent.trim() + (c.classList.contains('on') ? '*' : '')), where: p.querySelector('[data-fc-where]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null, rows: [...p.querySelectorAll('[data-fc-row]')].map(r => r.dataset.fcRow), sel: [...p.querySelectorAll('[data-fc-row]')].findIndex(r => r.dataset.sel === 'true'), empty: p.querySelector('[data-fc-empty]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null, keys: p.querySelector('[data-fc-keys]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null, focusIn: document.activeElement === p.querySelector('[data-fc-filter]') }); })()`));
 const glyph = async () => { await openConvoItem(); const out = JSON.parse(await ev(`(() => { const g = ${GLYPH}; return JSON.stringify(g ? { badge: g.querySelector('.seg-badge')?.textContent.trim() ?? null, opacity: getComputedStyle(g).opacity, title: g.title } : null); })()`)); await closeDockNow(); return out; };
-/** Lucide `messages-square` 의 첫 획 — 이 기능의 아이콘(말풍선 둘)이 그려졌나 */
-const CONVO_ICON = `svg path[d^="M16 10a2 2 0 0 1-2 2H6.828"]`;
+/** UiIcon `conversations` = Material `forum-outline-rounded`(말풍선 둘)의 첫 획 — 이 기능의 아이콘이 그려졌나.
+ * (2026-11-20 — 11-04 UiIcon 의 Material Rounded 통일로 옛 Lucide `messages-square` 에서 옮김 · `ui-icons.generated.ts`) */
+const CONVO_ICON = `svg path[d^="M21 20.6q-.2 0-.375-.075"]`;
 
 // ── ① 부팅에 읽지 않는다 · 상태바 칸(배지 없음) ─────────────────────────────────
 await sleep(1200);
@@ -199,7 +200,7 @@ let g = await glyph();
 check(g && g.badge === null && g.opacity === "1", `상태바 칸 — 배지 · 흐림 없음 (${JSON.stringify(g)})`);
 check(g?.title === "이 폴더의 지난 대화 (Ctrl+Shift+Y)", `말풍선 (${g?.title})`);
 await openConvoItem();
-check((await ev(`!!${GLYPH}?.querySelector('${CONVO_ICON}')`)) === true, "독 지난 대화 칸 아이콘 = messages-square(말풍선 둘)");
+check((await ev(`!!${GLYPH}?.querySelector('${CONVO_ICON}')`)) === true, "독 지난 대화 칸 아이콘 = conversations(forum · 말풍선 둘)");
 await closeDockNow();
 const callsAfterFocus = await ev(`window.__calls.filter(c => c[0] === 'agent_sessions_list').length`);
 check(callsAfterFocus === 0, "포커스·폴더가 바뀌어도 디스크를 읽지 않는다");
@@ -210,7 +211,7 @@ await key("KeyY", CTRL | SHIFT, "Y"); await sleep(500);
 let pk = await picker();
 console.log("picker:", JSON.stringify(pk));
 check(pk !== null && pk.focusIn, "Ctrl+Shift+Y → 목록이 뜨고 거르는 칸에 포커스");
-check((await ev(`!!${PICK}.querySelector('${CONVO_ICON}')`)) === true, "목록 머리 아이콘 = messages-square");
+check((await ev(`!!${PICK}.querySelector('${CONVO_ICON}')`)) === true, "목록 머리 아이콘 = conversations(forum)");
 // 끝의 "모든 대화" 칩 — 지난 대화 목록은 늘 `scopeChips(…, withAll)` (folder-conversations.ts)
 check(JSON.stringify(pk?.chips) === JSON.stringify(["이 워크트리 · 3*", "이 프로젝트 전체 · 10", "모든 대화 · 11"]), `칩 — 이 워크트리 · 3 / 이 프로젝트 전체 · 10 / 모든 대화 · 11 (${pk?.chips})`);
 check(pk?.where === "⎇ feat-y · C:/src/proj-wt/feat-y", `오른쪽 ⎇ 브랜치 · 폴더 (${pk?.where})`);
@@ -318,7 +319,7 @@ const menuRow = await ev(`(() => { const b = document.querySelector('.tilemenu [
 check(menuRow === "이 폴더의 지난 대화Ctrl+Shift+Y|Ctrl+Shift+Y", `⋯ 메뉴에 "이 폴더의 지난 대화" + 단축키 글자 (${menuRow})`);
 const menuFits = await ev(`(() => { const b = document.querySelector('.tilemenu [data-action="folder-conversations"]'); return b.scrollWidth <= b.clientWidth + 1; })()`);
 check(menuFits === true, "메뉴 줄이 잘리지 않는다");
-check((await ev(`!!document.querySelector('.tilemenu [data-action="folder-conversations"] ${CONVO_ICON}')`)) === true, "⋯ 메뉴 아이콘 = messages-square");
+check((await ev(`!!document.querySelector('.tilemenu [data-action="folder-conversations"] ${CONVO_ICON}')`)) === true, "⋯ 메뉴 아이콘 = conversations(forum)");
 console.log("capture:", await shot("fconv-menu.png"));
 await ev(`document.querySelector('.tilemenu [data-action="folder-conversations"]').click()`); await sleep(500);
 const anchor = await ev(`(async () => { const f = await ${fcMod}; return f.folderConversationsAnchor()?.paneId ?? null; })()`);

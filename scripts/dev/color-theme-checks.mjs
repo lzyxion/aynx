@@ -1,6 +1,9 @@
 // dock-unified-harness 에서 실행하는 색 테마의 실제 클릭·저장·취소·추출 검증.
 export async function checkColorThemes({ ev, check, click, sleep, send, importApp, shot }) {
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
+  // 테마 칩은 원 퍼짐(2026-11-02 `theme-reveal.ts` — View Transition 850ms) 안에서 적용된다. 그동안 진짜 클릭은 칩에 닿지 않아 연달아
+  // 누르는 순환 판정이 비껴갔다 — 여기서 보는 것은 모델 · 저장이라 움직임 줄이기(효과 없이 곧바로 적용)로 몰고 끝에서 되돌린다(2026-11-21).
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await ev(`(async()=>{
     window.__themeSettings=await ${importApp('lib/settings.svelte.ts')};
     window.__themeMode=await ${importApp('lib/mode.svelte.ts')};
@@ -40,20 +43,21 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
 
     const saves = await ev(`window.__calls.filter(([c])=>c==='save_settings').length`);
     await pick('forest');
-    check(await selected() === 'forest' && await ev(`window.__themeSettings.settings.current.app.dynamic==='off' && window.__themeSettings.settings.presetKey==='dynamic'`) === true,
-      'palette applies app and terminal colors without wallpaper following');
+    check(await selected() === 'forest' && await ev(`window.__themeSettings.settings.current.app.dynamic==='off' && window.__themeSettings.settings.presetKey===(document.documentElement.dataset.theme==='light'?'dynamic-light':'dynamic-dark')`) === true,
+      'palette applies app and terminal colors without wallpaper following (터미널 = 그때 밝기의 고정 키 — 2026-11-08)');
     check(await ev(`window.__calls.filter(([c])=>c==='save_settings').length===${saves}`) === true, 'palette previews without saving');
     for (const mode of ['light', 'dark']) {
       await tap('[data-app-mode="'+mode+'"]');
-      check(await ev(`(()=>{const s=window.__themeSettings.settings,c=window.__themeColors,p=c.appColorPalette('forest',${mode === 'dark'});return document.documentElement.dataset.theme==='${mode}' && s.current.app.accent===p.chrome.accent && ["accent","bg","bg_panel","fg","border","err","ok","warn"].every(k=>s.current.app[k]===p.chrome[k]) && s.termTheme.background===p.term.background;})()`) === true && await selected() === 'forest',
-        mode+'에서 크롬 여덟 칸과 터미널은 테마 전체 팔레트를 따른다');
+      check(await ev(`(()=>{const s=window.__themeSettings.settings,c=window.__themeColors,p=c.appColorPalette('forest',${mode === 'dark'});return document.documentElement.dataset.theme==='${mode}' && s.current.app.accent===p.chrome.accent && ["accent","bg","bg_panel","fg","border","err","ok","warn"].every(k=>s.current.app[k]===p.chrome[k]) && s.termTheme.background===c.appColorPalette('forest',true).term.background;})()`) === true && await selected() === 'forest',
+        mode+'에서 크롬 여덟 칸은 테마 전체 팔레트를 따르고 터미널은 고른 밝기(다크) 그대로다(2026-11-08 고정 밝기 키)');
     }
-    for (let i=0; i<2; i++) {
-      await tap('#app-color-prism');
-      check(await selected() === 'aynx' && await ev(`document.querySelector('#app-color-prism').getAttribute('aria-label')==='Aynx'`) === true,
-        'Aynx 는 변형 하나 — 다시 눌러도 기본이고 순환 문구가 없다');
-    }
+    // 2026-11-02 — 기본 계열(id `prism` · 화면 이름 Signal)은 Azure(`aynx`)에 강조색만 다른 다섯이 붙어 순환한다(`app-color-themes.ts` 머리말 —
+    // 옛 "Aynx 는 변형 하나 · 순환 문구 없음" 판정을 이 순환으로 옮겼다, 2026-11-21)
+    await tap('#app-color-prism');
+    check(await selected() === 'aynx' && /^Signal · Azure/.test(String(await ev(`document.querySelector('#app-color-prism').getAttribute('aria-label')`))),
+      'Signal 칩 — 다른 계열에서 누르면 기본 Azure(aynx) · 순환 문구');
     for (const [family, ids] of [
+      ['prism', ['tide','phosphor','volt','ember','iris','aynx']],
       ['classic', ['ocean','forest','sunset','lavender','rose','amber','slate','ocean']],
       ['mono', ['mono-white','mono-silver','mono-graphite','mono-white']],
     ]) {
@@ -84,14 +88,16 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
       const r = await ev(`new Promise((res)=>{
         const s=window.__themeSettings.settings,root=document.documentElement;
         const lum=(h)=>{const n=parseInt(String(h).slice(1),16);return ((n>>16&255)*299+(n>>8&255)*587+(n&255)*114)/1000;};
-        const ok=()=>{const light=root.dataset.theme==='light';return root.dataset.theme==='${mode}' && (lum(s.current.app.bg)>128)===light && (lum(s.current.terminal.dynamic?.background)>128)===light && (lum(getComputedStyle(root).getPropertyValue('--term-bg').trim()||'#808080')>128)===light;};
+        // 터미널은 고정 밝기 키(2026-11-08 — 앱 밝기를 따르지 않는다)라 그 그림(--term-bg)은 앱 밝기를 바꿔도 그대로여야 한다 · 크롬만 같은 틱에 새 밝기
+        const termBefore=getComputedStyle(root).getPropertyValue('--term-bg').trim();
+        const ok=()=>{const light=root.dataset.theme==='light';return root.dataset.theme==='${mode}' && (lum(s.current.app.bg)>128)===light && !!termBefore && getComputedStyle(root).getPropertyValue('--term-bg').trim()===termBefore;};
         window.__themeMode.setAppMode('${mode}');
         const tick=ok();
         requestAnimationFrame(()=>res(JSON.stringify({tick,frame:ok(),bg:s.current.app.bg,theme:root.dataset.theme})));
       })`);
       const o = JSON.parse(r);
       check(o.tick && o.frame && await ev(`window.__themeSettings.settings.dynamicTheme`) === true,
-        'wallpaper palette switches to '+mode+' in the same tick as data-theme (no black flash) '+r);
+        'wallpaper palette switches chrome to '+mode+' in the same tick as data-theme (no black flash · terminal keeps its fixed brightness) '+r);
       await sleep(200);
     }
     await tap('[data-app-mode="light"]'); await sleep(700);
@@ -123,6 +129,7 @@ export async function checkColorThemes({ ev, check, click, sleep, send, importAp
       'palette buttons fit narrow settings panel '+await ev(`(()=>{const p=document.querySelector('.settings-panel'),r=p.getBoundingClientRect();return JSON.stringify({sw:p.scrollWidth,cw:p.clientWidth,over:[...p.querySelectorAll('*')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().right>r.left+p.clientLeft+p.clientWidth+1).slice(0,8).map(e=>e.tagName+'.'+[...e.classList].join('.')+'#'+e.id+':'+Math.round(e.getBoundingClientRect().right-r.left-p.clientLeft-p.clientWidth))});})()`));
     await shot('color-themes-narrow.png');
   } finally {
+    await send('Emulation.setEmulatedMedia', { features: [] });
     await ev(`(()=>{const m=window.__themeSettings,o=window.__themeOriginal;m.settings.current=o.current;m.settings.saved=o.saved;window.__themeWallpaper.wallpaper.src=o.src;window.__themeMode.syncStoredMode();m.applySettings();})()`);
   }
 }

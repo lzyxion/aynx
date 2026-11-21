@@ -17,6 +17,7 @@
 // 팔레트의 밖에서 열린 대화 Enter = 기록 시트(시트의 [재개]가 한 번 묻는다). 대시보드 "지난 대화" 줄은 4dda594 에 빠져
 // 그 판(대시보드 V · 대시보드 줄 확인)은 없다. PNG: pstart.png · pstart-light.png · pstart-split.png · viewer.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -149,7 +150,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+// 고정 4.5초는 러너가 새로 띄운 찬 vite 에서 모자라 첫 import 가 "module not loaded yet" 으로 무너졌다(2026-11-20) — 새 문서의 부팅 끝까지 기다린다
+await reloadBoot(send, ev);
 counting = true;
 
 const VK = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38 };
@@ -193,11 +195,15 @@ check(head.rows.length === 5 && head.rows[0] === id(8) && head.rows[1] === id(1)
 const busyPill = await ev(`${PS}.querySelector('[data-start-row="${id(8)}"]')?.dataset.state + '/' + (${PS}.querySelector('[data-start-row="${id(8)}"] [data-pill="elsewhere"]')?.textContent.trim() ?? '')`);
 check(busyPill === "elsewhere/밖에서 열림", `aynx 밖에서 방금 고쳐진 대화 = "밖에서 열림" 알약 (${busyPill})`);
 const pillTip = await ev(`${PS}.querySelector('[data-pill="elsewhere"]')?.getAttribute('title') ?? null`);
-check(pillTip === "aynx 밖에서 열림 · 방금 바뀜", `알약 말풍선 = 연결 없음 · 상대 시각 (${pillTip})`);
+check(pillTip === "Aynx 밖에서 열림 · 방금 바뀜", `알약 말풍선 = 연결 없음 · 상대 시각 (${pillTip})`);
 const warnPill = await ev(`(() => { const p = document.createElement('span'); p.style.color = 'var(--warn)'; document.body.appendChild(p); const v = getComputedStyle(p).color; p.remove(); return getComputedStyle(${PS}.querySelector('[data-pill="elsewhere"]')).color === v; })()`);
 check(warnPill === true, "알약 = 경고색");
-const surface = await ev(`(() => { const box = ${PS}.closest('.pane-box'); const p = document.createElement('span'); p.style.background = 'var(--surface-field)'; document.body.appendChild(p); const v = getComputedStyle(p).backgroundColor; p.remove(); return JSON.stringify({ chrome: box.classList.contains('chrome'), same: getComputedStyle(box).backgroundColor === v, bg: getComputedStyle(box).backgroundColor }); })()`);
-check(JSON.parse(surface).chrome === false && JSON.parse(surface).same === true, `타일 면 = 크롬의 우물(--surface-field — 2026-10-01) (${surface})`);
+// 평면 = 크롬의 우물(--surface-field — 2026-10-01) · 글래스(기본 재질) = 독 등급 유리 판(`.glass-tile` 의 --glass-mid — 10-29 · PaneHost 의 글래스 크롬 타일 절)
+const surface = await ev(`(() => { const box = ${PS}.closest('.pane-box'); const glass = document.documentElement.dataset.material === 'glass'; const p = document.createElement('span'); p.style.background = glass ? 'color-mix(in srgb, var(--glass-mid) 100%, transparent)' : 'var(--surface-field)'; document.body.appendChild(p); const v = getComputedStyle(p).backgroundColor; p.remove(); return JSON.stringify({ material: document.documentElement.dataset.material ?? null, chrome: box.classList.contains('chrome'), glassTile: box.classList.contains('glass-tile'), same: getComputedStyle(box).backgroundColor === v, bg: getComputedStyle(box).backgroundColor }); })()`);
+{
+  const sf = JSON.parse(surface);
+  check(sf.chrome === false && sf.same === true && (sf.material !== "glass" || sf.glassTile === true), `타일 면 = 평면이면 크롬의 우물(--surface-field) · 글래스면 유리 판(--glass-mid) (${surface})`);
+}
 const launcherSurface = await ev(`(() => { const box = document.querySelector('[data-launcher]')?.closest('.pane-box'); return box ? box.classList.contains('chrome') : 'none'; })()`);
 check(launcherSurface === true || launcherSurface === "none", `빈 탭 launcher 는 그대로 비친다 (${launcherSurface})`);
 // 기본 단추(`defaultStartAction`) — 프로젝트의 에이전트, 없으면 셸. aynx(P1)은 이관으로 에이전트가 없어 셸이 기본이다.
@@ -209,21 +215,27 @@ check(head.keys === "↑↓ 고르기 Enter 재개 Shift+Enter 새 대화로 계
 check(head.header === false, "시작 화면에는 타일 헤더가 없다(launcher 와 같다)");
 const selBg = await ev(`(() => { const p = document.createElement('span'); p.style.background = 'var(--accent-soft)'; document.body.appendChild(p); const v = getComputedStyle(p).backgroundColor; p.remove(); return getComputedStyle(${PS}.querySelector('[data-start-row].selected')).backgroundColor === v; })()`);
 check(selBg === true, "고른 줄 = --accent-soft");
-const acts0 = await ev(`[...${PS}.querySelectorAll('[data-start-acts] button')].map(b => b.textContent.trim() + (b.classList.contains('btn-primary') ? '*' : '')).join('|')`);
-check(acts0 === "기록 보기|새 대화로 계속|재개*", `고른 줄에 [기록 보기][새 대화로 계속][재개*] (${acts0})`);
-const fb = await ev(`${PS}.querySelector('[data-start-row="${id(2)}"] [data-meta="untitled"]')?.textContent.trim() ?? null`);
+// 줄 단추는 [⋯][재개] 둘(`ConvoRowActions` — 2026-10-16 사용자 결정) · 기록 보기 · 새 대화로 계속은 ⋯ 메뉴
+const acts0 = await ev(`[...${PS}.querySelectorAll('[data-start-acts] button')].map(b => b.dataset.act + ':' + b.textContent.trim() + (b.classList.contains('btn-primary') ? '*' : '')).join('|')`);
+check(acts0 === "more:|resume:재개*", `고른 줄에 [⋯][재개*] (${acts0})`);
+// 합성 제목은 "제목 없음" 칩 대신 그 제목을 흐린 글자로(`.title.fallback`)
+const fb = await ev(`${PS}.querySelector('[data-start-row="${id(2)}"] .title.fallback')?.textContent.trim() ?? null`);
 const fk = await ev(`${PS}.querySelector('[data-agent="codex"] [data-meta="forked"]')?.textContent.trim() ?? null`);
-check(fb === "제목 없음" && fk === "↳ 갈라짐", `줄 모양 = 대시보드와 같다 (합성 제목 · 갈라짐) (${fb} · ${fk})`);
+check(fb === "Claude Code · main" && fk === "↳ 갈라짐", `줄 모양 = 대시보드와 같다 (합성 제목 · 갈라짐) (${fb} · ${fk})`);
 console.log("capture:", await shot("pstart.png"));
 const focused = await ev(`!!document.activeElement?.closest('[data-project-start]')`);
 check(focused === true, `키보드가 시작 화면 안에 있다 (${await ev(`document.activeElement?.tagName + '.' + document.activeElement?.className`)})`);
-// 호버는 단추만 옮긴다(선택은 그대로)
+// 호버는 단추와 고른 줄을 함께 옮긴다(`ProjectStart` 의 줄 `onmouseenter` — ⋯ 메뉴가 열린 동안만 고정) · 주 동작은 늘 하나
 {
   const r = await ev(`(() => { const b = ${PS}.querySelector('[data-start-row="${id(4)}"]').getBoundingClientRect(); return [b.left + 60, b.top + b.height / 2]; })()`);
   await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: r[0], y: r[1] }); await sleep(200);
   const hov = await ev(`JSON.stringify({ acts: [...${PS}.querySelectorAll('[data-start-acts]')].map(a => a.closest('[data-start-row]').dataset.startRow), sel: ${PS}.querySelector('[data-start-row].selected').dataset.startRow, primaries: ${PS}.querySelectorAll('.btn-primary').length })`);
   const h = JSON.parse(hov);
-  check(h.acts.length === 1 && h.acts[0] === id(4) && h.sel === id(1) && h.primaries === 1, `호버 줄에 단추 · 선택은 그대로 · 주 동작 하나 (${hov})`);
+  check(h.acts.length === 1 && h.acts[0] === id(4) && h.sel === id(4) && h.primaries === 1, `호버 줄에 단추 · 고른 줄도 그 줄 · 주 동작 하나 (${hov})`);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 }); await sleep(200);
+  // 아래 키 판은 처음 고른 줄(id 1)에서 시작한다 — 호버가 옮긴 선택을 같은 길(그 줄 위로 포인터)로 되돌리고 포인터를 치운다
+  const r1 = await ev(`(() => { const b = ${PS}.querySelector('[data-start-row="${id(1)}"]').getBoundingClientRect(); return [b.left + 60, b.top + b.height / 2]; })()`);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: r1[0], y: r1[1] }); await sleep(200);
   await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 }); await sleep(200);
 }
 
@@ -236,7 +248,7 @@ const launches0 = await ev(`window.__launch.length`);
 await key("Enter");
 const conf = await ev(`${PS}.querySelector('[data-start-row="${id(8)}"] [data-start-confirm]')?.textContent.trim() ?? null`);
 const confBtns = await ev(`[...${PS}.querySelectorAll('[data-start-row="${id(8)}"] [data-start-acts] button')].map(b => b.textContent.trim()).join('|')`);
-check(conf === "aynx 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && confBtns === "취소|그래도 재개" && (await ev(`window.__launch.length`)) === launches0, `Enter → 그 줄에서 확인(곧장 띄우지 않는다) (${conf} ${confBtns})`);
+check(conf === "Aynx 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && confBtns === "취소|그래도 재개" && (await ev(`window.__launch.length`)) === launches0, `Enter → 그 줄에서 확인(곧장 띄우지 않는다) (${conf} ${confBtns})`);
 await key("Escape");
 check((await ev(`!!${PS}.querySelector('[data-start-confirm]')`)) === false && (await state()).panes[0].kind === "start", "Escape → 확인만 거둔다");
 await key("ArrowDown"); // 첫 줄(밖에서 열리지 않은 것)로 되돌린다
@@ -383,7 +395,7 @@ await ev(`Object.values(window.__convo).flat().find(x => x.title === 'Busy elsew
   check(sheet.pill === "밖에서 열림", `시트 머리에도 알약 (${sheet.pill})`);
   await ev(`${VW}.querySelector('[data-act="resume"]').click()`); await sleep(300);
   const sconf = await ev(`${VW}?.querySelector('[data-viewer-confirm]')?.textContent.trim() ?? null`);
-  check(sconf === "aynx 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && (await ev(`window.__launch.length`)) === before, `시트 [재개] → 그 자리에서 확인 (${sconf})`);
+  check(sconf === "Aynx 밖에서 열려 있는 대화입니다 — 여기서도 재개하면 두 곳에서 이어 쓰게 됩니다" && (await ev(`window.__launch.length`)) === before, `시트 [재개] → 그 자리에서 확인 (${sconf})`);
   await ev(`${VW}.querySelector('[data-viewer-body]')?.focus()`);
   await key("Escape"); await sleep(300);
   check((await ev(`!!${VW}`)) === true && (await ev(`!!document.querySelector('[data-viewer-confirm]')`)) === false, "Escape → 확인만 거두고 시트는 남는다");
@@ -412,8 +424,9 @@ await freshStart("P1");
   const head = JSON.parse(await ev(`JSON.stringify({ id: ${VW}?.dataset.convoViewer ?? null, title: ${VW}?.querySelector('[data-viewer-title]')?.textContent.trim() ?? null, path: ${VW}?.querySelector('[data-viewer-path]')?.textContent.trim() ?? null, branch: ${VW}?.querySelector('[data-viewer-branch]')?.textContent.trim() ?? null, model: ${VW}?.querySelector('[data-viewer-model]')?.textContent.trim() ?? null, acts: [...(${VW}?.querySelectorAll('[data-viewer-acts] button') ?? [])].map(b => b.textContent.trim() + (b.classList.contains('btn-primary') ? '*' : '')).join('|'), call: window.__tr.at(-1) ?? null })`));
   console.log("viewer:", JSON.stringify(head));
   check(head.id === selRow && head.id === id(1) && head.title === "Fix the flaky build script", `V(한글 자판 ㅍ) → 고른 줄의 기록 시트 (${head.id} · ${head.title})`);
-  check(head.path === "C:\\src\\proj" && head.branch === "⎇ main" && head.model === "claude-opus-5", `머리 — 폴더 · 브랜치 · 모델 (${head.path} · ${head.branch} · ${head.model})`);
-  check(head.acts === "새 대화로 계속|재개*", `머리의 두 동작 — 재개가 주 동작 (${head.acts})`);
+  check(head.path === "C:\\src\\proj" && head.branch === "⎇ main" && head.model === "Opus 5", `머리 — 폴더 · 브랜치 · 모델(표시 이름 — modelLabel) (${head.path} · ${head.branch} · ${head.model})`);
+  // 삭제…(로컬 대화 — 2026-10-24 convo-rename)가 앞에 선다
+  check(head.acts === "삭제…|새 대화로 계속|재개*", `머리의 동작 — 삭제… · 새 대화로 계속 · 재개(주 동작) (${head.acts})`);
   check(JSON.stringify(head.call) === JSON.stringify({ agent: "claude", id: id(1), before: null, limit: 40 }), `최신 쪽을 id 로만 부른다(경로 없음) (${JSON.stringify(head.call)})`);
   const body = JSON.parse(await ev(`(() => { const b = ${VW}.querySelector('[data-viewer-body]'); const it = [...b.querySelectorAll('[data-item]')]; return JSON.stringify({ n: it.length, kinds: [...new Set(it.map(x => x.dataset.item))].sort().join(','), last: it.at(-1)?.textContent.replace(/\\s+/g, ' ').trim().slice(0, 9), bottom: Math.abs(b.scrollHeight - b.clientHeight - b.scrollTop) < 4, scripts: document.querySelectorAll('[data-convo-viewer] script').length, pwned: window.__pwned ?? 0, shown: b.textContent.includes('<script>'), older: !!b.querySelector('[data-viewer-older]'), cut: it.at(-1)?.querySelector('.cut')?.textContent.trim() ?? null, focusIn: !!document.activeElement?.closest('[data-convo-viewer]') }); })()`));
   console.log("body:", JSON.stringify(body));

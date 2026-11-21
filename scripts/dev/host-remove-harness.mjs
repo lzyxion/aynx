@@ -15,9 +15,15 @@
 // 그 상태에서 독을 열고 `web-01` 을 우클릭 → 제거 → 확인까지 몰아 본 뒤, 확인 문구의 숫자와
 // 백엔드로 나간 짐(`save_snippets`·`workspaces_apply`)·localStorage 를 확인한다.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
-const out = process.argv[2] ?? "host-remove-confirm.png";
-const port = process.env.CDP_PORT ?? "9224";
+import path from "node:path";
+// 첫 인자는 PNG 경로 또는 outdir(러너) — `.png` 로 끝나지 않으면 폴더로 보고 그 안에 `host-remove-confirm.png` 를 쓴다.
+const arg = process.argv[2] ?? "host-remove-confirm.png";
+const out = arg.toLowerCase().endsWith(".png") ? arg : path.join(arg, "host-remove-confirm.png");
+fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
+const port = process.env.CDP_PORT ?? process.argv[3] ?? "9224";
+let failed = 0;
 const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const t = list.find((x) => x.type === "page" && x.url.includes(`localhost:${process.env.PAGE_PORT ?? "1420"}`));
 const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));
@@ -80,7 +86,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 
 console.log("favorites seeded:", await ev(`localStorage.getItem('aynx:favorites')`));
 console.log("open ssh tiles:", await ev(`document.querySelectorAll('[data-pane]').length`));
@@ -111,7 +117,7 @@ const confirmText = `[...document.querySelectorAll('.ctx-confirm')].map(e => e.t
 const text = await ev(confirmText);
 console.log("confirm text:", JSON.stringify(text));
 const want = ["즐겨찾기 1", "스니펫 1", "저장된 워크스페이스 타일 1", "열린 타일 1"];
-for (const w of want) console.log(`${text && text.includes(w) ? "PASS" : "FAIL"} 확인 문구에 '${w}'`);
+for (const w of want) { const pass = typeof text === "string" && text.includes(w); if (!pass) failed++; console.log(`${pass ? "PASS" : "FAIL"} 확인 문구에 '${w}'`); }
 console.log("capture:", await shot(out));
 
 // ── ④ 확인 → 제거 + 팬아웃 ────────────────────────────────────────────────
@@ -137,7 +143,7 @@ const asserts = `(() => {
   };
 })()`;
 const r = await ev(asserts);
-const ok = (name, cond) => console.log(`${cond ? "PASS" : "FAIL"} ${name}`);
+const ok = (name, cond) => { if (!cond) failed++; console.log(`${cond ? "PASS" : "FAIL"} ${name}`); };
 console.log("calls:", JSON.stringify(r));
 ok("remove_host 가 web-01 로 불렸다", JSON.stringify(r.removeHostArgs) === JSON.stringify(["web-01"]));
 ok("save_snippets 짐에 web-01 범위가 없다", !!r.snippetsJson && !r.snippetsJson.includes("web-01"));
@@ -149,5 +155,7 @@ ok("즐겨찾기의 db-01 은 그대로다", !!r.favorites && r.favorites.includ
 console.log("열린 타일은 그대로 (닫지 않는다):", await ev(`document.querySelectorAll('[data-pane]').length`));
 
 const exc = events.filter((e) => e.method === "Runtime.exceptionThrown").map((e) => (e.params.exceptionDetails.exception?.description ?? "").split("\n")[0]).filter((s) => !/stub:/.test(s)).slice(0, 5);
-if (exc.length) console.log("EXC", exc);
+if (exc.length) { failed++; console.log("EXC", exc); }
 ws.close();
+console.log(failed ? `${failed} FAIL` : "ALL PASS");
+process.exit(failed ? 1 : 0);

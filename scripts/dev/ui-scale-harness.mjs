@@ -16,6 +16,7 @@
 // 스텁 환경이라 웹뷰가 실제로 확대되지는 않는다 — 걸린 **호출**을 본다(실제 그림은 실기 몫).
 // PNG: `ui-scale-settings.png`(설정 › 일반).
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -72,12 +73,12 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 ` });
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await sleep(5000);
+await reloadBoot(send, ev);
 
-// 터미널 하나 — Ctrl+Shift+N (new-shell)
+// 터미널 하나 — Ctrl+Shift+N (new-shell). xterm 이 서고 첫 resize_session 이 나갈 때까지 기다린다(고정 대기는 찬 vite 에서 모자랐다)
 for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers: 10, code: "KeyN", key: "N", windowsVirtualKeyCode: 78, nativeVirtualKeyCode: 78 });
-await sleep(2000);
+for (let i = 0; i < 60; i++) { if ((await ev(`!!document.querySelector('.xterm-screen') && window.__calls.some((c) => c[0] === 'resize_session')`)) === true) break; await sleep(250); }
+await sleep(500);
 
 const zooms = () => ev(`window.__calls.filter(([c]) => c === 'plugin:webview|set_webview_zoom').map(([, a]) => a.value)`);
 /**
@@ -116,8 +117,11 @@ check(typeof s0.cellW === "number" && s0.cellW > 0, "terminal: xterm 이 떴다 
 // 독이 열렸다 닫힌다 — 닫히는 동안 본문이 DOM 에 남아 있어 요소 검사만으로는 안 보인다).
 for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, modifiers: 2, code: "Comma", key: ",", windowsVirtualKeyCode: 188, nativeVirtualKeyCode: 188 });
 await sleep(1200);
-const opened = await ev(`(() => { const e = document.querySelector('#app-ui-scale'); if (!e) return 'no row'; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? true : 'hidden'; })()`);
-check(opened === true, "settings: 일반 섹션에 UI 크기 줄");
+// 설정은 테마 섹션으로 열린다(SettingsModal 의 activeTab 첫 값 "theme") — 일반 칸을 눌러 옮긴다
+await ev(`document.querySelector('.settings-view .nav-item[data-nav-tab="general"]')?.click()`);
+await sleep(500);
+const opened =await ev(`(() => { const e = document.querySelector('#app-ui-scale'); if (!e) return 'no row'; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? true : 'hidden'; })()`);
+check(opened === true, `settings: 일반 섹션에 UI 크기 줄 (${opened})`);
 const sliderNow = await ev(`(() => { const s = document.querySelector('#app-ui-scale'); return { type: s.type, min: s.min, max: s.max, step: s.step, value: s.value, text: s.getAttribute('aria-valuetext') }; })()`);
 console.log("slider:", JSON.stringify(sliderNow));
 check(sliderNow?.type === "range" && sliderNow.min === "0" && sliderNow.max === "5" && sliderNow.step === "1", "settings: UI 크기 = 후보 인덱스 슬라이더 (0~5, step 1)");

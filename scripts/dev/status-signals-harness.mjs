@@ -2,8 +2,8 @@
 // (docs/log/2026-09-21-statusbar-signals.md · docs/log/2026-10-05-statusbar-trim.md — ✦ AI 연결 ·
 // ▶ 실행 중은 2026-10-05 에 상태바에서 뺐다. 이 하네스는 둘이 **없음**도 본다).
 //
-// `console-hosts-harness.mjs` 의 사본 — 스텁 표와 시나리오만 다르다. 대시보드는 한 번만
-// 연다(옆 기둥을 덮지 않는가 — 2026-09-25). 나머지는 **띠만** 본다: 신호가 전부 켜진 상태를 한 번 찍고(툴팁까지),
+// `plans-pending-harness.mjs` 의 사본 — 스텁 표와 시나리오만 다르다. (옛 대시보드 판정은 2026-11-21 에 걷었다 — 그 화면이
+// 2026-10-07 에 없어졌다.) **띠만** 본다: 신호가 전부 켜진 상태를 한 번 찍고(툴팁까지),
 // 그 다음 스텁을 뒤집어 **전부 사라지는지**를 본다. 조건부 규칙("꺼져 있으면 글리프가 아예 없다")이 이
 // 기능의 전부이므로, 켜진 모습 하나만으로는 검증이 절반이다.
 //
@@ -17,6 +17,7 @@
 //   node scripts/dev/status-signals-harness.mjs out-prefix
 //     → <prefix>-status-signals.png (아래 가로 띠) · <prefix>-status-signals-vertical.png (왼쪽 기둥)
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 const [outdir = "out"] = process.argv.slice(2);
 const list = await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT ?? "9224"}/json`)).json();
@@ -118,7 +119,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 await send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
 
 // 도는 작업안 하나 — 옛 `▶` 가 세던 것. 이제 상태바에 아무것도 서지 않아야 한다. 검토 대기는 **두지 않는다**:
-// 대시보드 칸의 대기 배지(`console-hosts-harness.mjs` 가 보는 것)와 이 신호를 갈라 두려는 것이다.
+// 검토 대기 배지(`plans-pending-harness.mjs` 가 보는 것 — 옛 대시보드 칸의 배지는 2026-10-07 에 없어졌다)와 이 신호를 갈라 두려는 것이다.
 const NOW = Date.now();
 const OPS_ON = {
   pending: [],
@@ -130,10 +131,8 @@ const OPS_ON = {
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: `window.__opsOn = ${JSON.stringify(OPS_ON)};`,
 });
-await send("Page.reload", { ignoreCache: true });
-await sleep(1200);
+await reloadBoot(send, ev);
 await ev(`window.__ops = window.__opsOn`);
-await sleep(3800);
 
 // 도장은 **깨우기 직전에** 다시 찍는다 — "연결됨" 판정(60초 창)이 읽은 시각 기준이라, 주입
 // 시점에 박아 두면 부팅을 기다리는 동안 저 혼자 늙는다.
@@ -169,11 +168,10 @@ check("⚡ 툴팁", on[1].tip, "자동 승인 켜짐");
 check("알약만 누를 수 있고 ⚡ 는 표시", on.map((g) => g.tag), ["button", "span"]);
 check("⚡ 는 알약 안에 있다",
   await ev(`!!document.querySelector('.statusbar [data-signal="notify"] [data-signal="auto-approve"]')`), true);
-// 선두단 다섯 칸은 그대로다 — 신호는 **더하는 것**이지 자리를 뺏지 않는다 (설정은 후미로 나갔다 ·
-// 호스트 · 프로젝트은 2026-09-25 에 독 칸 하나로 합쳤다 — docs/log/2026-09-25-unified-dock.md).
-// (2026-09-27 에 "이 폴더의 지난 대화" 칸이 더해져 여섯 — docs/log/2026-09-27-folder-conversations.md)
-check("선두단 여섯 칸은 그대로",
-  await ev(`document.querySelectorAll('.statusbar .lead [data-status-id]').length`), 6);
+// 선두단은 **비어 있다** — 2026-10-18 통합 독 때 칸들이 독 안으로 들어가고 실기 뒤 독 입구 칸까지 걷혔다
+// (`status-items.ts` 의 `STATUS_ITEMS = []` · 옛 id 는 `RETIRED_STATUS_IDS`). 신호가 그 자리를 채우지 않는다.
+check("선두단은 비어 있다 (2026-10-18)",
+  await ev(`document.querySelectorAll('.statusbar .lead [data-status-id]').length`), 0);
 check("신호는 끌어 옮기는 순서에 들지 않는다",
   await ev(`document.querySelectorAll('.statusbar .signals [data-status-id]').length`), 0);
 // 묶음을 가르는 선은 **양옆이 다 있을 때만** 그려진다 — 이 하네스에는 칩이 없으므로 하나도
@@ -210,19 +208,8 @@ check("기둥에서 신호 묶음은 호스트 칩 **아래**에 선다", await 
 })()`), true);
 await shot(`${outdir}-status-signals-vertical.png`);
 
-// ── 2b. 대시보드는 옆 기둥을 덮지 않는다 (docs/log/2026-09-25-dashboard.md) ──
-// (예전엔 ▶ 로 열었다 — 2026-10-05 에 ▶ 가 빠져 대시보드 칸으로 연다)
-await ev(`document.querySelector('.statusbar [data-status-id="open-console"]').click()`);
-await sleep(600);
-check("대시보드 칸이 대시보드를 연다", await ev(`document.querySelector('.console')?.hidden === false`), true);
-check("대시보드는 왼쪽 기둥을 덮지 않는다 (판의 왼쪽 끝 ≥ 기둥의 오른쪽 끝)", await ev(`(() => {
-  const d = document.querySelector('.console').getBoundingClientRect();
-  const b = document.querySelector('.statusbar.vertical').getBoundingClientRect();
-  return d.left >= b.right - 0.5;
-})()`), true);
-await ev(`document.querySelector('.console .head-close').click()`); // × 로 닫는다 (2단계부터 고스트 버튼 `.head-close`)
-await sleep(300);
-check("× 로 닫힌다", await ev(`document.querySelector('.console')?.hidden`), true);
+// ── 2b. (걷음) 대시보드는 옆 기둥을 덮지 않는다 — 2026-11-21: 전체 화면 대시보드(`.console`)와 상태바의 대시보드 칸
+// (`open-console`)은 2026-10-07 에 없어졌다(`app/console.svelte.ts` 머리말 — 세션 판 · 작업안으로 나뉨). 판정 셋을 걷었다.
 
 // ── 2c. 세로 기둥 + 둥근 패널 — 창 안에 들어온다 (docs/log/2026-09-29-statusbar-panel-vertical.md) ──
 // 예전엔 `height:100%` 에 panel 의 위·아래 여백이 더해져 기둥 아래 모서리·설정 톱니가 창 밖으로 잘렸다.
@@ -270,11 +257,11 @@ check("묶음은 종을 품고 남는다",
   await ev(`document.querySelectorAll('.statusbar .signals').length`), 1);
 // 이 하네스는 세션 타일을 하나도 열지 않으므로 중앙 호스트 칩도 없다 — 남는 것은 선두단뿐이다
 // (2026-09-21 ② 에서 후미 readout `.trail` 은 칩이 흡수하며 사라졌다).
-check("띠는 예전 그대로다 — 선두단 여섯 · 중앙 칩 없음",
+check("띠는 예전 그대로다 — 선두단 빈 칸(2026-10-18) · 중앙 칩 없음",
   await ev(`JSON.stringify([
     document.querySelectorAll('.statusbar .lead [data-status-id]').length,
     document.querySelectorAll('.statusbar .chips').length,
-  ])`), JSON.stringify([6, 0]));
+  ])`), JSON.stringify([0, 0]));
 
 // ── 4. 잠긴 볼트도 상태바에는 그림이 없다 (2026-10-23 — 자물쇠는 독 실행 판의 화면 잠금 칸으로 옮겼다) ──────
 await ev(`window.__vault = { state: 'locked', hasMaster: true, entryCount: 2 }`);
@@ -290,3 +277,5 @@ const exc = events
 if (exc.length) console.log("EXC", exc);
 console.log(bad === 0 ? "ALL OK" : `${bad} FAILED`);
 ws.close();
+// 종료 코드가 판정을 말한다(2026-11-21 — 예전엔 없어서 FAIL 이 있어도 러너가 0 을 받았다)
+process.exit(bad === 0 ? 0 : 1);

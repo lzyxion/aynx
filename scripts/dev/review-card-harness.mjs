@@ -12,7 +12,7 @@
 // 않는다 · ⑤ 안전 승인 한 번 = `approve_operation{manual}` · ⑥ 위험 = 두 걸음(첫 클릭은
 // 확인 상태만 · ›·Escape 가 푼다) · ⑦ 승인 거부 → 오른쪽 위 토스트, 카드는 남는다 · ⑧ 접기 ·
 // 새 머리가 다시 편다 · ⑨ 작업안(채팅 독의 작업안 갈래)이 보이면 물러나고 채팅 갈래 · 독 닫힘에서 선다 ·
-// ⑩ 왼쪽 상태바 — 카드가 본문 기둥 안에 선다 · ⑪ 가림막 — 개수 한 줄만, 가림막 위 ·
+// ⑩ 왼쪽 상태바 — 카드가 본문 기둥 안에 선다 · ⑪ 가림막 — 카드는 그리지 않고 가림막 요약의 알약에 개수만(10-28 잠금 화면 통일) ·
 // ⑫ 잡히지 않은 예외·콘솔 오류 0 · ⑬ (10-24) 판결 띠 · 명령 나눠 보기 — 어긋남(9줄 중 1줄) · 원문 보기 · 모두 읽기(초록) ·
 // 짧은 안전 · 짧은 위험(find -delete) — 카드만 잘라 배율 2 로 찍는다 · ⑭ (10-24 실기 피드백 — 분석 JSON 은 Rust 실제 출력) sudo 읽기
 // 한 줄(낱말만 경고색 · 행 판 없음) · heredoc(초록 · 본문은 연 행 안 · 표시 없음) · DB WHERE 없는 DELETE(나눠 보기 · 실패색 낱말 ·
@@ -27,7 +27,7 @@
 //     → <outdir>/review-card-one.png · -many.png · -danger.png · -left.png · -veiled.png
 //       · -mismatch(-armed).png · -raw.png · -ok.png · -short.png · -find(-armed).png
 //       · -sudo.png · -heredoc.png · -db-delete.png · -db-update.png
-import { waitBoot } from "./boot-wait.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -164,8 +164,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", {
 `,
 });
 await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await waitBoot(ev);
+await reloadBoot(send, ev);
 // 부팅 중의 스텁 거절(모르는 명령)은 이 판의 관심사가 아니다 — 여기서부터 센다.
 errors.length = 0;
 
@@ -222,7 +221,14 @@ const center = async (sel) =>
   JSON.parse(await ev(`(() => { const e = ${sel}; if (!e) return 'null'; const r = e.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
 const btn = (text) => `[...document.querySelectorAll('.rcard button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
 const mouseClick = async (sel) => {
-  const p = await center(sel);
+  // 자리가 멎을 때까지 — 무장을 푼 뒤(Escape) 경고 줄이 걷히며 카드가 줄어드는 동안 잰 좌표는 단추를 비껴 눌렀다(2026-11-21 · ⑬a 원문 보기)
+  let p = await center(sel);
+  for (let i = 0; i < 20 && p; i++) {
+    await sleep(80);
+    const q = await center(sel);
+    if (q && q.x === p.x && q.y === p.y) break;
+    p = q;
+  }
   if (!p) return false;
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
     await send("Input.dispatchMouseEvent", { type, x: p.x, y: p.y, button: "left", clickCount: type === "mouseMoved" ? 0 : 1 });
@@ -707,15 +713,19 @@ await feed([plan({ operationId: "op-new", title: "새 요청", command: "uptime"
 // ── ⑪ 가림막 — 개수만, 가림막 위 ──────────────────────────────────────────────
 await ev(`(async () => (await ${importApp("app/veil.svelte.ts")}).openVeil())()`);
 await sleep(900);
+// 2026-11-21: 2026-10-28 잠금 화면 통일(`ReviewCard.svelte` 머리 주석 · `Veil.svelte`) 뒤로 가림막 아래의 카드는 **아무것도
+// 그리지 않고**, 검토 대기 수는 가림막 요약의 알약(`[data-veil-reviews]`)이 그린다 — 옛 "카드의 개수 한 줄(z 118)" 판정을 그 자리로 옮겼다.
 const v = await readCard();
 console.log("CARD(veiled)", JSON.stringify(v, null, 1));
+const vp = JSON.parse(await ev(`(() => { const veil = document.querySelector('.veil'); const p = veil?.querySelector('[data-veil-reviews]'); if (!p) return 'null';
+  const r = p.getBoundingClientRect(); const e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+  return JSON.stringify({ text: p.textContent.trim(), onTop: !!e && p.contains(e), leak: ['uptime', '새 요청'].filter((w) => veil.textContent.includes(w)) }); })()`));
 check("⑪ 가림막이 섰다", await ev(`document.querySelectorAll('.veil').length`), 1);
-check("⑪ 개수 한 줄만", [v.veiled, v.count], [true, "검토 대기 2건"]);
-check("⑪ 명령·제목·대상·단추가 없다", [v.cmd, v.title, v.tcount, v.buttons], [null, null, null, []]);
-check("⑪ z: 가림막 115 < 한 줄 118 < 토스트 120",
-  [await ev(`getComputedStyle(document.querySelector('.veil')).zIndex`), v.z], ["115", "118"]);
-check("⑪ 가림막 위에 실제로 보인다",
-  await ev(`(() => { const c = document.querySelector('.rcard').getBoundingClientRect(); const e = document.elementFromPoint((c.left + c.right) / 2, (c.top + c.bottom) / 2); return !!e?.closest('.rcard'); })()`), true);
+check("⑪ 가림막 아래 카드는 그리지 않는다", v, null);
+check("⑪ 개수 한 줄만 — 가림막 요약의 알약", vp?.text ?? null, "검토 대기 2건");
+check("⑪ 명령·제목·대상이 가림막에 없다", vp?.leak ?? null, []);
+check("⑪ z: 가림막 115 (토스트 120 아래)", await ev(`getComputedStyle(document.querySelector('.veil')).zIndex`), "115");
+check("⑪ 알약이 실제로 보인다", vp?.onTop ?? null, true);
 await shot("review-card-veiled.png");
 
 // ── ⑫ 오류 0 ───────────────────────────────────────────────────────────────

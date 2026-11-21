@@ -21,7 +21,7 @@
 //   node scripts/dev/run-harness.mjs query-side-harness.mjs <outdir> --size 1400x900
 //     → <outdir>/q1-open.png · q2-mid-close.png · q3-closed.png · q4-mid-open.png · q5-dragged.png · q6-narrow.png · q6-narrow-drop.png · q7-wide-back.png
 //   중간 프레임 스크린샷은 CDP `Animation.setPlaybackRate`(0.1)로 움직임을 늦춰 찍는다 — 폭 판정은 제 속도(1)의 판에서 잰다.
-import { waitBoot } from "./boot-wait.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -181,8 +181,8 @@ await send("Runtime.enable");
 await send("Animation.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", { source: stub() });
 await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await waitBoot(ev);
+// 새 문서의 부팅 끝까지(옛 문서를 보고 바로 끝나면 아래 모듈 대기도 옛 문서에서 통과해 `panes()` 가 막 뜨는 문서에서 깨졌다 — 2026-11-21)
+await reloadBoot(send, ev);
 await send("Page.bringToFront");
 await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 for (let i = 0; i < 50; i++) {

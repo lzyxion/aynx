@@ -954,13 +954,15 @@ export function revealPane(paneId: string): boolean {
       if (typeof requestAnimationFrame !== "undefined") {
         // 다음 프레임에 키보드를 그 타일로 — 단 포커스를 **잃었거나 다른 타일에 남아 있을 때만**.
         // 그 사이 타일 밖(기록 보기 시트·팔레트 등)이 일부러 가져간 포커스는 빼앗지 않는다.
+        // 판(사용량 · 자원) 안의 포커스는 **판이 걷혔을 때만** 잃은 것이다(2026-11-20) — 팔레트의 사용량 줄은 닫히며 여기를
+        // 먼저 지나고 그 뒤에 판을 연다. 이 rAF 가 방금 판이 가져간 포커스를 타일로 되가져가면 타일은 숨어 포커스가 body 로 떨어졌다.
         requestAnimationFrame(() => {
           const el = document.activeElement;
           const lost =
             el === null ||
             el === document.body ||
             (el instanceof HTMLElement &&
-              (el.closest("[data-cover-view]") !== null ||
+              ((el.closest("[data-cover-view]") !== null && !coverViewOpen()) ||
                 (el.closest("[data-pane]") !== null &&
                   el.closest(`[data-pane="${CSS.escape(id)}"]`) === null)));
           if (lost) focusPaneBody(id);

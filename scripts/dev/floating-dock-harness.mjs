@@ -1,5 +1,7 @@
 // 하단 가운데 End-4 식 독 — 즐겨찾기 0개 · 몇 개 두 경우 펼친 모양 · 런처 단추 토글(10-18).
-// 실행: node scripts/dev/run-harness.mjs settings-modal-harness.mjs <outdir>
+// 판 = 핀 | 즐겨찾기… | 런처(2026-10-23 · `StatusBar.svelte` — 구분선은 즐겨찾기 묶음 양옆, 비면 핀 | 런처 하나).
+// 실행: node scripts/dev/run-harness.mjs floating-dock-harness.mjs <outdir>
+import { reloadBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -117,7 +119,8 @@ const dockMod = importApp('app/dock.svelte.ts');
 const size = JSON.parse(await ev(`JSON.stringify({ w: innerWidth, h: innerHeight })`) ?? '{"w":1200,"h":900}');
 async function load(favs) {
   await send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem('aynx:favorites', ${JSON.stringify(JSON.stringify(favs))}); } catch {}` });
-  await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+  // 고정 4.5초 대신 새 문서의 부팅 끝까지(찬 vite — 2026-11-21)
+  await reloadBoot(send, ev);
   for (let i = 0; i < 30 && !(await ev(`!!document.querySelector('[data-floating-status-dock]')`)); i++) await sleep(300);
   counting = true;
 }
@@ -135,14 +138,14 @@ async function capture(name) {
   return r;
 }
 
-// ① 즐겨찾기 0개 — 런처 단추만 선 독이 뜬다
+// ① 즐겨찾기 0개 — 핀 | 런처만 선 독이 뜬다(구분선은 둘 사이 하나 — 2026-10-23 판 순서)
 await load([]);
 await sleep(1500);
 await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: size.w / 2, y: size.h / 2 }); await sleep(300);
 await reveal();
 if (await ev(`document.querySelector('[data-floating-status-dock]').dataset.expanded`) !== "true") { await sleep(800); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: size.w / 2, y: size.h / 2 }); await sleep(300); await reveal(); }
-let st = JSON.parse(await ev(`(() => { const d = document.querySelector('[data-floating-status-dock]'); const l = document.querySelector('[data-floating-launcher]'); return JSON.stringify({ hidden: d.hidden, expanded: d.dataset.expanded, launcher: !!l, favs: document.querySelectorAll('[data-dock-fav]').length, sep: !!document.querySelector('.fdock-sep'), lbg: l ? getComputedStyle(l).backgroundColor : '', title: l?.title }); })()`));
-check(!st.hidden && st.expanded === "true" && st.launcher && st.favs === 0 && !st.sep, `즐겨찾기 0개 — 독이 뜨고 런처만 · 구분선 없음 (${JSON.stringify(st)})`);
+let st = JSON.parse(await ev(`(() => { const d = document.querySelector('[data-floating-status-dock]'); const l = document.querySelector('[data-floating-launcher]'); return JSON.stringify({ hidden: d.hidden, expanded: d.dataset.expanded, launcher: !!l, favs: document.querySelectorAll('[data-dock-fav]').length, pin: !!document.querySelector('[data-floating-pin]'), sep: document.querySelectorAll('.floating-menu .fdock-sep').length, lbg: l ? getComputedStyle(l).backgroundColor : '', title: l?.title }); })()`));
+check(!st.hidden && st.expanded === "true" && st.launcher && st.favs === 0 && st.pin === true && st.sep === 1, `즐겨찾기 0개 — 독이 뜨고 핀 | 런처 · 구분선 하나 (${JSON.stringify(st)})`);
 await capture("floating-dock-empty.png");
 // 글래스 — 내려가는 도중에도 패널 `opacity` 는 1(배경 뿌리가 되지 않아 흐림이 선다) · 판의 흐림은 켜진 채 · 내용만 페이드
 {
@@ -181,8 +184,8 @@ check(k1 === "alerts" && k2 === null, `런처 단추: 누르면 사이드 독(�
 // ② 즐겨찾기 셋(호스트 하나 · 프로젝트 둘)
 await load([{ kind: "host", alias: "dev-01" }, { kind: "project", id: "P1" }, { kind: "project", id: "P2" }]);
 await reveal();
-st = JSON.parse(await ev(`(() => { const f = document.querySelector('[data-dock-fav] .fav-face'); return JSON.stringify({ favs: document.querySelectorAll('[data-dock-fav]').length, sep: !!document.querySelector('.fdock-sep'), cell: f ? Math.round(f.getBoundingClientRect().width) : 0, radius: f ? getComputedStyle(f).borderTopLeftRadius : '' }); })()`));
-check(st.favs === 3 && st.sep && st.cell === 44 && st.radius === '50%', `즐겨찾기 셋 — 런처 · 구분선 · 44px 원 칸 (${JSON.stringify(st)})`);
+st = JSON.parse(await ev(`(() => { const f = document.querySelector('[data-dock-fav] .fav-face'); return JSON.stringify({ favs: document.querySelectorAll('[data-dock-fav]').length, sep: document.querySelectorAll('.floating-menu .fdock-sep').length, cell: f ? Math.round(f.getBoundingClientRect().width) : 0, radius: f ? getComputedStyle(f).borderTopLeftRadius : '' }); })()`));
+check(st.favs === 3 && st.sep === 2 && st.cell === 44 && st.radius === '50%', `즐겨찾기 셋 — 핀 | 즐겨찾기 | 런처 · 구분선 둘 · 44px 원 칸 (${JSON.stringify(st)})`);
 await capture("floating-dock-favs.png");
 
 console.log(errors.length ? "errors: " + errors.join(" / ") : "no page errors");

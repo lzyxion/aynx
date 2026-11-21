@@ -17,6 +17,7 @@
 // PNG: `files-after.png` · `files-after-light.png` · `hosts-folders-after.png` · `drag-dir.png` · `drag-file.png`
 // (셋째 인자 뒤에 `before` 를 주면 `files-before.png` 한 장만 찍고 검사는 건너뛴다 — 옛 코드에서 찍는 용도).
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
 import path from "node:path";
 const outDir = process.argv[2] ?? ".";
@@ -99,7 +100,7 @@ const clickRow = async (i, modifiers = 0) => { const r = JSON.parse(await ev(`JS
 /** 목록 위쪽을 잘라 찍는다 — 줄 11개와 머리줄이 들어갈 만큼 */
 const listClip = async () => { const r = JSON.parse(await ev(`JSON.stringify(document.querySelector('.list .row').closest('.list').getBoundingClientRect())`)); return { x: Math.max(0, r.x - 8), y: Math.max(0, r.y - 36), width: Math.min(r.width + 16, 520), height: Math.min(r.height + 44, 300) }; };
 
-await send("Page.reload", { ignoreCache: true }); await sleep(4500);
+await reloadBoot(send, ev);
 await ev(`${importApp("app/panes.svelte")}.then(m => m.openLocalFsPaneHere())`); await sleep(1500);
 const rows = await ev(`document.querySelectorAll('.list .row').length`);
 check(rows === 11, `로컬 파일 타일에 줄 11개 (${rows})`);
@@ -133,7 +134,10 @@ check(by("latest.log").body === (await iconD("file-symlink")), "파일 링크 = 
 check(by("shared").body === (await iconD("folder-symlink")), "폴더 링크 = folder-symlink");
 check(by("shared").color === folderC, `폴더 링크는 폴더 색 --folder (${by("shared").color})`);
 check(by("latest.log").color === fg3, `파일 링크는 --fg-3 (${by("latest.log").color})`);
-check((await ev(`document.querySelectorAll('.list .glyph-svg').length`)) === 0, "손으로 딴 채움 글리프 없음");
+// 파일 목록 안만 센다 — 호스트 독의 목록(`HostList` 도 `.list`)은 아이콘을 안 고른 호스트에 손으로 딴 서버 랙(`Glyph`)을
+// 그대로 그린다(Glyph.svelte 머리말 — 그 하나만 남은 쓰임). 독이 닫혀 있어도 그 목록이 문서에 있어 예전 선택자가 집었다.
+const handGlyphs = await ev(`(() => { const list = document.querySelector('.list .row')?.closest('.list'); if (!list) return 'no list'; const out = [...document.querySelectorAll('.glyph-svg')].filter((g) => !list.contains(g)).map((g) => g.closest('ul.list, .dock') ? 'host-or-dock' : 'other'); return JSON.stringify({ inFiles: list.querySelectorAll('.glyph-svg').length, elsewhere: out }); })()`);
+check(JSON.parse(handGlyphs).inFiles === 0, `손으로 딴 채움 글리프 없음 (${handGlyphs})`);
 const grip = await ev(`(() => { const s = document.querySelector('.list .row .grip svg'); return s ? s.getAttribute('class') + '#' + [...s.querySelectorAll('path')].map(p => p.getAttribute('d')).join('|') : 'none'; })()`);
 check(grip.startsWith("ui-icon") && grip.endsWith("#" + (await iconD("export"))), `내보내기 손잡이 = export (${grip.slice(0, 24)})`);
 
@@ -149,7 +153,9 @@ console.log("capture:", await shot("files-after.png", await listClip()));
 // ── ③ 끌기 그림 ───────────────────────────────────────────────────────────────
 for (const [isDir, file] of [[true, "drag-dir.png"], [false, "drag-file.png"]]) {
   const url = await ev(`${importApp("native-drag")}.then(m => m.nativeDragIcon(${isDir ? 3 : 1}, ${isDir}, '3'))`);
-  const ok = typeof url === "string" && url.startsWith("data:image/png;base64,") && url.length > 2000;
+  // 길이는 "1×1 투명 PNG 가 아니다" 만 본다(`TRANSPARENT_PNG` 는 100자 남짓) — Material 윤곽 파일 그림은 2000자 아래로
+  // 나온다(2026-11-21 · 1938자). 도형이 찍혔는지는 아래 잉크 색 수가 판정한다.
+  const ok = typeof url === "string" && url.startsWith("data:image/png;base64,") && url.length > 500;
   check(ok, `끌기 그림 ${isDir ? "폴더" : "파일"} PNG (${typeof url === "string" ? url.length : url})`);
   if (!ok) continue;
   fs.writeFileSync(path.join(outDir, file), Buffer.from(url.split(",")[1], "base64"));

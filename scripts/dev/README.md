@@ -178,10 +178,10 @@ node scripts/dev/run-harness.mjs side-chat-banner-harness.mjs <outdir> --size 12
 
 ```bash
 node scripts/dev/run-harness.mjs doc-head-narrow-harness.mjs <outdir> --size 1280x860
-#   → h1-wide.png · h2-310.png · h2-270.png · h3-new-box.png · h3-new-opened.png · h4-exists.png
+#   → h1-wide.png · h2-310.png · h2-300.png · h3-new-box.png · h3-new-opened.png · h4-exists.png
 ```
 
-- ① 지금 폭 — 도구 단추가 모두 머리줄 안 ② 310px · 270px — [저장] 이 머리줄 · 도구 칸 안에 다 들고 이름이 말줄임(이름이 먼저 준다)
+- ① 지금 폭 — 도구 단추가 모두 머리줄 안 ② 310px · 300px — [저장] 이 머리줄 · 도구 칸 안에 다 들고 이름이 말줄임(이름이 먼저 준다 · 약 289px 아래로는 [저장] 이 잘린다 — 11-21 그대로 두기로)
 - ③ [새 문서…] → 이름 상자("새 문서 · 폴더" · `untitled.md` · [만들기] · [바꾸기] 없음) → 같은 폴더에 빈 파일 하나(쓰기 없음) → 그 파일이 편집 상태로
 - ④ 같은 이름 → 만들기 거절뿐(덮어쓰지 않음 · 상자에 까닭) · Esc 로 닫힘 ⑤ 콘솔 오류 0
 
@@ -344,6 +344,17 @@ node scripts/dev/run-harness.mjs sheet-tile-drag-harness.mjs <outdir> --size 128
 HARNESS_REAL=1 CDP_PORT=9222 PAGE_PORT=1420 node scripts/dev/sheet-tile-drag-harness.mjs <outdir>   # 이 워크트리의 개발 앱(만든 탭 · 워크스페이스는 끝에 지운다)
 ```
 
+## session-sheet-harness.mjs — 세션 판 여닫기 · 키보드 · 덮개
+
+`Ctrl+Shift+M` 세션 판(2026-11-21 — 지운 대시보드 판들이 보던 것 가운데 살아 있는 넷). 진짜 키로: 열면 키보드가 판으로 · Escape 와
+같은 단축키로 접히고 열기 전 터미널로 돌아옴(전이 뒤까지) · Tab 으로 로빙 칸에 들어가 ←→ · ↑↓(탭 카드) · Home/End · Enter 로 그 탭 · 그
+타일의 터미널로 · 떠 있는 동안과 여닫는 사이 `resize_session` · 타일 상자 그대로 · 여닫기 몸짓(열리는 중간 transform · 닫는 순간 `inert` ·
+`reduce` 면 즉시) · 콘솔 예외 0. 끌기는 위 판이 본다.
+
+```bash
+node scripts/dev/run-harness.mjs session-sheet-harness.mjs <outdir> --size 1280x860   # sheet-open.png · sheet-keyboard.png
+```
+
 ## blocks-harness.mjs — 헤드리스 Edge 에 가짜 로컬 세션을 열고 OSC 133/7 바이트를 직접 밀어 넣기
 
 render-web.mjs 의 스텁을 확장한 것. `open_local_session` 을 가로채 Tauri `Channel` 의 콜백 id 를
@@ -390,7 +401,12 @@ osc52 query → writes: 1 reads: 0 new invokes: 0
 ```bash
 "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9224   --user-data-dir=%TEMP%/edge-aynx --window-size=1100,800 http://localhost:1420/
 node scripts/dev/keygen-harness.mjs out-prefix   # <prefix>-modal.png · <prefix>-groups.png
+node scripts/dev/run-harness.mjs keygen-harness.mjs <outdir>   # 인자가 있는 폴더면 그 안의 keygen-modal.png · keygen-groups.png
 ```
+
+- 판정 없이 값을 찍는 캡처용이지만, 식이 예외(`EXC …`)로 끝나거나 페이지 예외가 있으면 종료 코드 1 이다(2026-11-21).
+- 폼은 `app/hosts/form.svelte.ts` · `form-model.svelte.ts`, 설치 고르개는 `app/hosts/install-key.ts` 에서 부른다 — 배럴
+  `hosts.svelte.ts` 는 앱이 안 불러 리소스 목록에 없다.
 
 - **앱의 모듈 인스턴스를 직접 부른다** — `performance.getEntriesByType('resource')` 에서 실제
   URL(`?t=<시각>` 포함)을 찾아 `import()` 한다. URL 을 손으로 적으면 Vite HMR 의 질의가 달라
@@ -505,6 +521,7 @@ node scripts/dev/connect-diag-harness.mjs outdir   # connect-error-hint.png · s
 node scripts/dev/passphrase-harness.mjs outdir 9224   # passphrase-prompt.png
 ```
 
+- 판정 없이 값을 찍는 캡처용이지만, 식이 예외(`EXC …`)로 끝나거나 페이지 예외가 있으면 종료 코드 1 이다(2026-11-21).
 - **암호구의 값은 찍지 않는다** — 단언은 `typeof`·`length` 뿐이다(`keygen-harness.mjs` 와
   같은 규칙). "DOM 에 안 남는다"·"우리가 찍는 로그에 안 섞인다" 도 함께 본다.
 - **주입 스크립트 안의 주석에 백틱을 쓰지 않는다** — 템플릿 리터럴이 거기서 끝나
@@ -522,7 +539,10 @@ node scripts/dev/passphrase-harness.mjs outdir 9224   # passphrase-prompt.png
 "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9224   --user-data-dir=%TEMP%/edge-aynx --window-size=1100,800 http://localhost:1420/
 node scripts/dev/host-remove-harness.mjs host-remove-confirm.png
 CDP_PORT=9225 node scripts/dev/host-remove-harness.mjs out.png   # 9224 를 이미 다른 판이 쓰고 있을 때
+node scripts/dev/run-harness.mjs host-remove-harness.mjs <outdir>   # .png 가 아닌 인자는 폴더 — 그 안의 host-remove-confirm.png
 ```
+
+- FAIL 이 하나라도 있거나 페이지 예외가 있으면 종료 코드 1 이다(2026-11-21 — 그 전에는 FAIL 을 찍고도 0 이었다).
 
 - 확인 문구의 숫자(`즐겨찾기 1 · 스니펫 1 · 저장된 워크스페이스 타일 1 · 열린 타일 1`)와, 그 뒤 백엔드로 나간 짐
   (`save_snippets`·`workspaces_apply`의 `rewriteHostAliases`)·`localStorage['aynx:favorites']` 를 함께 단언한다.
@@ -546,7 +566,7 @@ host-form-tabs 도 다른 하네스처럼 두 변수를 읽는다.)
 
 - 단언: 팔레트(`Ctrl+Shift+P`) 빈 질의의 첫 머리글 "최근" · 묶음 `db-01|app-01`(줄에
   `data-recent`) · 첫 줄 선택 · 한 글자(`d`)를 치면 묶음이 사라짐 · Escape 로 닫힘 · 독 줄 순서가 정렬 버튼
-  (`[data-host-sort]`) 한 번에 `web-01|db-01|app-01` → `db-01|app-01|web-01` · `save_settings`
+  (`[data-host-sort]`) 한 번에 `app-01|db-01|web-01`(이름순 = 글자순 — 2026-10-20) → `db-01|app-01|web-01` · `save_settings`
   의 `hosts = {sort:"recent"}` · `app-01` 줄 `title` 에 마지막 접속·실패 · 이력 없는 줄은 `title` 없음.
 
 ## vault-harness.mjs — 자격증명 금고의 저장 체크·잠금 해제 관문
@@ -616,34 +636,25 @@ node scripts/dev/vault-veil-harness.mjs <outdir> 9228   # <outdir>/vault-veil-un
   이 하네스의 단언이다 — 마스터 없는 볼트는 `null` 로 열려야 하고, 빈 문자열이면 백엔드에서
   "틀린 마스터" 가 된다.
 
-## console-hosts-harness.mjs — 대시보드 세션 칸의 목록 모드(호스트로 묶은 한 벌)
+## plans-pending-harness.mjs — 검토 대기 만료 (알림 알약 · 작업안 카드 · 만료는 실행 뷰를 만들지 않는다)
 
-> **2026-09-28 부터 낡음** — 이 판이 보던 화면(세션 칸 목록 모드 · 거르개 칩)은 대시보드 세션 칸의 카드 한 면으로 합쳐지며 사라졌다
-> ([docs/log/2026-09-28-dashboard-session-cards.md](../../docs/log/2026-09-28-dashboard-session-cards.md)). 스텁은 다른 하네스의 재료로 남긴다.
-
-`connect-diag-harness.mjs` 의 사본 — 스텁 표와 시나리오만 다르다
-(docs/log/2026-09-21-console-host-groups.md). 독에서 `web-01` 을 열어 **이 창의 타일 하나**를
-만들고, 그 타일의 거울 키(`report_session` 의 `key`)를 `list_console_sessions` 스텁에 **같은
-streamId 로** 실어 중복 제거를 재현한다. 나머지는 지어낸다: 다른 창의 공유 세션 · 살아 있는
-헤드리스(작업안 실행 중) · 아직 안 붙은 위임 · 고아 위임.
+> **2026-11-21 옮김 · 이름 바꿈(옛 `console-hosts-harness.mjs`)** — 이 판이 보던 대시보드 세션 칸의 목록 모드(호스트로 묶은 한 벌 ·
+> 거르개 칩)는 2026-09-28 에 사라졌고, 대시보드 자체(`.console` · 상태바 `open-console` 칸과 배지)는 2026-10-07 에 없어졌다. 세션 판은
+> 호스트로 묶지 않고 헤드리스를 빼므로 그 판정은 걷었다(묶음 · 중복 제거 규칙은 `console/host-groups.test.ts`). 살아 있는 몫만 채팅 독의
+> 작업안 갈래로 옮겼다.
 
 ```bash
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9224   --user-data-dir=%TEMP%/edge-aynx --window-size=1100,800 http://localhost:1420/
-node scripts/dev/console-hosts-harness.mjs <prefix>   # <prefix>-console-hosts.png
+node scripts/dev/run-harness.mjs plans-pending-harness.mjs <outdir>   # <outdir>-pending-badge.png
 ```
 
-- 단언: 묶음 순서(실패 → 작업중) · 같은 streamId 는 **한 줄** · 머리줄이 최악 상태 ·
-  거르개 칩 셋(`전체3 · 타일1 · 헤드리스1`) · **아직 안 붙은 위임과 고아는 대시보드에 없다**
-  (그 목록은 설정 › 보안으로 옮겨 갔다 — 아래 `vault-settings-harness.mjs` ⑤) ·
-  경과가 **마지막 활동**(방금 흘린 블록) 기준인지 · 가로 넘침 0.
-- `blocks-harness.mjs` 의 `__feed` 를 가져다 **SSH 타일에 OSC 133 블록 한 건**을 흘린다 —
-  이 창 줄의 명령·종료 코드·경과는 전역 거울이 아니라 그 블록에서 온다.
-- `vault_status` 스텁을 `null` 로 두면 접속 경로가 `hasMaster` 를 읽다 죽어 타일이 안 열린다
-  (그러면 `report_session` 이 없어 streamId 를 못 잡는다).
+- 단언: 알림 알약 말풍선의 `승인 대기 1` · 배지 · 작업안 갈래(`openPlans`)의 대기 카드 `만료까지 12분` · `operation-state{expired}`
+  가 실행 카드를 만들지 않는다(수 그대로 · "(다른 창에서 시작한 실행)" 없음) · 복구 루프(폴링 2초)도 목록의 `expired` 를 되살리지 않고
+  대기 카드는 사라진다(`console/ops-controller.svelte.ts` 의 `EXEC_STATES`) · 예외 0.
 
 ## status-signals-harness.mjs — 상태바 후미 전역 신호 넷
 
-`console-hosts-harness.mjs` 의 사본 — 대시보드는 `▶` 로 한 번만 연다(작업안 칸 · 왼쪽 기둥을 덮지 않음). 나머지는 **띠만** 본다
+`plans-pending-harness.mjs` 의 옛 사본 — **띠만** 본다(대시보드를 열던 판정은 2026-11-21 에 걷었다 — 그 화면이 2026-10-07 에 없어졌다 ·
+선두단은 2026-10-18 부터 비어 있다)
 (docs/log/2026-09-21-statusbar-signals.md). 스텁 네 칸(`window.__activity`·`__ops`·`__settings`·
 `__vault`)이 신호 하나씩을 먹인다.
 
@@ -686,7 +697,7 @@ PAGE_PORT=1438 node scripts/dev/review-card-harness.mjs <outdir> 9270
   첫 클릭은 무장만(`확인했습니다 — 실행`·경고 줄), ›‹ 와 Escape 가 풀고, 두 번째 클릭에 **한 번** 나간다 ·
   ⑦ 승인 거부 → 오른쪽 위 토스트(`승인 거부: …`), 카드와 단추는 그대로 · ⑧ 접기 한 줄 · 새 머리가
   다시 편다 · ⑧-b [나중에](2026-11-13) — 대기 둘을 모두 치움(승인 · 거절 없음) · 새 작업안이 오면 그것만 카드로 · 대기가 비면 치운 표도 빈다 · ⑨ 대시보드 작업안·에이전트 칸에서 물러나고 세션 칸에서 선다 · ⑩ 왼쪽 상태바
-  (`loadSettings` 로 옮긴다) — 띠 오른쪽·본문 안 · ⑪ 가림막 — 개수 한 줄만, z 118 로 가림막(115) 위 ·
+  (`loadSettings` 로 옮긴다) — 띠 오른쪽·본문 안 · ⑪ 가림막 — 카드는 그리지 않고 가림막 요약의 알약(`[data-veil-reviews]`)에 개수만(2026-10-28 잠금 화면 통일) · 가림막 z 115 ·
   ⑫ 잡히지 않은 예외·콘솔 오류 0.
 - **④ 는 `element.click()` 으로는 의미가 없다** — 프로그램 클릭은 애초에 포커스를 옮기지 않는다.
   진짜 마우스 이벤트여야 `mousedown` 의 기본 동작(포커스 이동)을 카드가 막는지 본다.
@@ -696,7 +707,9 @@ PAGE_PORT=1438 node scripts/dev/review-card-harness.mjs <outdir> 9270
 
 ## run-notify-harness.mjs — 작업안 실행 결과 알림 (토스트 · 알림 센터 · OS 알림 · 가림막)
 
-> **낡은 구간 있음** — 대시보드 작업안 칸을 보는 ⑩ · ⑪ 의 화면은 2026-10-07 에 사라졌고, 알림 센터는 지금 독의 알림 칸이다.
+> **2026-11-21 옮김** — ⑩ · ⑪ 은 옛 대시보드 작업안 칸 대신 **채팅 독의 작업안 갈래**(`plansShown()` — 자동 승인 실행은 그래도 뜬다 · 10-22)와
+> 독의 알림 칸(같은 대상의 실행은 카드로 접힌다 · 11-02 — 펼쳐서 본다)을 본다. ⑫ 가림막 아래는 토스트 없이 가림막 화면의 `[data-veil-runs]` 에
+> 개수만(10-28). 부팅 토스트가 걷힌 뒤(`waitToastsGone`) 센다.
 
 `review-card-harness.mjs` 의 사본(docs/log/2026-09-28-run-result-notify.md). 먹이는 칸은 넷이다 —
 `window.__ops`(`list_operations`) · `window.__results[id]`(`operation_results`, 없으면 빈 맵) ·
@@ -728,8 +741,9 @@ PAGE_PORT=1440 node scripts/dev/run-notify-harness.mjs <outdir> 9272
 `run-notify-harness.mjs` 의 사본 — 스텁 표와 시나리오만 다르다(docs/log/2026-09-28-run-history.md). 먹이는
 칸: `window.__auditRuns`(`audit_runs` — 스텁이 `sinceMs`·`limit` 으로 자르고 최신순으로 준다) ·
 `window.__auditFail`(참이면 거부) · `window.__ops`(`list_operations`) · `window.__results[id]`. 데이터는 목업
-안 A 의 줄들(오늘 셋 · 어제 넷 · 그저께 다섯 · 20일 전 하나)이고 시각은 **지금** 기준 로컬 날짜로 만든다(화면이
-로컬 날짜로 묶는다). 이름은 감사 스냅샷(`targetLabels`)에서 온다(`s1` → `web-01` …). **기본 포트가 vite 1441 ·
+안 A 의 줄들(오늘 셋 · 어제 넷 · 그저께 다섯 · 20일 전 하나)이고 시각은 **판의 지금** 기준 로컬 날짜로 만든다(화면이
+로컬 날짜로 묶는다). 판의 지금은 **오늘 23:30 으로 못 박는다**(2026-11-21 — 페이지의 `Date` 도 같은 차이로 민다 · 오전에 돌리면 오늘
+줄이 미래라 ⑬-b 가 실패했다). `RUN_HISTORY_NOW=2027-01-01T00:05` 는 실제 시계를 그 시각으로 흉내 낸다(날짜 경계 확인). 이름은 감사 스냅샷(`targetLabels`)에서 온다(`s1` → `web-01` …). **기본 포트가 vite 1441 ·
 CDP 9273** 다.
 
 ```bash
@@ -787,7 +801,9 @@ PAGE_PORT=1441 node scripts/dev/run-history-harness.mjs <outdir> 9273
 `host-history-harness.mjs` 의 사본 — 스텁 표와 시나리오만 다르다
 (docs/log/2026-09-24-projects.md). `projects_list` 에 로컬 하나·원격 하나를 심는다. 독은
 `Ctrl+Shift+J`(프로젝트 독)로 연다 — 호스트 독(`Ctrl+Shift+H`)에는 프로젝트가 **없어야** 맞다(①).
-네이티브 확인은 `plugin:dialog|message` 를 `"No"` 로 스텁한다(플러그인의 `ask` 가 그 명령을 부른다).
+확인은 앱 확인 상자(`app/confirm-dialog` — 10-16 에 OS 상자를 대신했다)다: 하네스가 `currentConfirm()` 으로 읽고
+`answerConfirm()` 으로 답한다(삭제 · 원격 훅 설치). 독 목록은 이름순(`compareNames` — 로캘 기본)이라 ⑤ 에서 만든
+`새 프로젝트`(N1)는 ko 로캘이면 맨 위 · en 이면 맨 아래 — 하네스가 같은 비교로 기대 모양을 고른다(2026-11-21).
 
 ```bash
 node scripts/dev/run-harness.mjs projects-harness.mjs <outdir>     # 권장 (러너 — 약 2분 반)
@@ -814,8 +830,8 @@ node scripts/dev/projects-harness.mjs <outdir> 9224
 - ⑦·⑧ **에이전트 상태 점**(docs/log/2026-10-01-agent-status-three.md — 2026-10-03 다시 맞춤): 점은 셋(실행 중 ·
   권한 대기 · 완료)이고 근거는 훅 신호(`agent-signal` — 스텁 버스 `window.__emit`)뿐이다. 열린 직후 · 출력만으로는 점이
   없고(미상 없음), `waiting` 은 범주 `permission` 일 때만 권한 대기, 범주 없음 · `idle` 은 상태를 바꾸지 않는다. 완료는 그
-  탭을 안 볼 때만 서고 보면 사라진다. 독의 워크트리 줄 점도 같은 신호로 세운다. 아래 launcher 하네스의 입력 대기 만들기는
-  아직 옛 규칙이다.
+  탭을 안 볼 때만 서고 보면 사라진다. 독의 워크트리 줄 점도 같은 신호로 세운다. launcher 하네스도 같은 규칙으로
+  점을 세운다(가짜 훅 `start` → `stop` = 안 보는 탭의 완료 — 2026-11-21).
 - ⑥ 워크트리 줄은 **모두 왼쪽 폴더 이름 · 오른쪽 브랜치**다(주 폴더 줄도 — 27180b8). 줄 모양 `W:proj* · main`.
 - ⑪ **평범한 셸에서 친 claude · 권한 물음 알림**(docs/log/2026-09-25-shell-claude-signals.md): `addLocal` 로
   연 타일이 `injectMcpToken:false` + `streamId` 로 열리고, `reportRunningCommand(…, 'claude')` +
@@ -957,40 +973,14 @@ PAGE_PORT=1434 node scripts/dev/file-tree-harness.mjs <outdir> 9250
 PAGE_PORT=1436 node scripts/dev/ui-scale-harness.mjs <outdir> 9260   # ui-scale-settings.png
 ```
 
+- 러너 + 함께 쓰는 vite(`--vite-port`)로도 돈다(2026-11-21 — 아래 따로 된 설정은 파일을 고치는 중일 때만). 설정은 테마 섹션으로
+  열리므로 `.nav-item[data-nav-tab="general"]` 을 눌러 일반으로 옮긴다.
 - 스텁이라 웹뷰가 실제로 확대되지는 않는다 — `plugin:webview|set_webview_zoom` **호출**(값)을 본다.
 - 터미널 글자는 둘로 본다: 설정 모듈의 `termFontSize`(같은 URL 을 `import()` 하면 앱과 같은 인스턴스)와,
   마지막 `resize_session` 의 cols 로 잰 xterm 셀 폭의 비(WebGL 렌더러라 DOM 측정 요소가 없다).
 - 다른 작업이 파일을 고치는 중이면 HMR 새로고침이 시나리오를 끊는다 — 그때는 `server.hmr:false` ·
   `watch:null` · 따로 된 `cacheDir` 을 얹은 설정 파일로 vite 를 띄운다(같은 `.vite/deps` 를 여러 dev
   서버가 나눠 쓰면 재최적화가 서로의 청크를 지워 500 이 난다).
-
-## dashboard-harness.mjs — 대시보드 (캔버스 덮기 · 타일 유지 · 닫는 길)
-
-> **2026-10-07 부터 낡음** — 이 판이 보던 전체 화면 대시보드는 세션 목록 판과 작업안으로 나뉘어 사라졌다. 아래는 그때의 기록이다.
-
-관리뷰 패널을 흡수한 전체 화면 대시보드가 약속한 것만 본다
-(docs/log/2026-09-25-dashboard.md). 스텁은 `review-card-harness.mjs` 의 사본(로컬 셸 +
-`list_operations` 한 칸)이고, 탭 둘 · 터미널 둘을 키(`Ctrl+Shift+N`·`Ctrl+Shift+T`)로 만든다.
-
-```bash
-npx vite --port 1437 --strictPort
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9265   --user-data-dir=%TEMP%/edge-aynx-dash --window-size=1200,800 http://localhost:1437/
-PAGE_PORT=1437 node scripts/dev/dashboard-harness.mjs <outdir> 9265   # dashboard-sessions.png · -operations.png
-```
-
-- 단언: 칸 단추 넷(에이전트 · 세션 · 작업안 · 사용량 — docs/log/2026-09-26-agent-usage.md) · 판의 상자 = `.pane` 의 상자 · 탭 바/상태바 밖 · 불투명 · 터미널이 DOM 에 그대로 ·
-  **`resize_session` 호출 수가 여닫는 동안 그대로**(덮기라 xterm 이 크기를 다시 재지 않는다) ·
-  열리면 키보드가 안으로 · Escape 로 닫히고 터미널로 · 다른 탭/지금 탭 클릭 · 목록 줄 클릭
-  (`focusTile`)으로 걷힘 · `openConsoleAt('operations')` → 작업안 칸(보기 셋 · 비교로 옮겨도 칸 안) · 검토 카드는
-  작업안 칸에서만 물러남 · 콘솔 예외 0. 2026-09-28 부터 칸은 세션 · 작업안 · 사용량 셋이고 새 창은 **세션 칸**으로 연다
-  (세션 칸의 "줄" 은 카드 `[data-session-card]` 다).
-- ⑪ **세션 카드 축소판**(docs/log/2026-09-29-dashboard-thumbs.md) — 창을 1400×900 으로 넓히고 세션 여덟(탭 셋)을
-  세워 넷에 색 출력을 `__feed` 로 먹인다(실패는 OSC 133 `D;1`). 스냅샷 호출 수는 창구(`termActionsOf`)의
-  `screenSnapshot` 을 감싸 세고, 1초 칸의 비용은 `setInterval` 을 감싸 **`thumbTick` 을 부르는 시계만** 잰다(앱의 다른
-  1초 시계가 섞이지 않게). 보기 저장값(`aynx:dashboard:session-view`)은 처음 새로 고치기 **전에** 지운다 — 앞선 실행이
-  남긴 "간단히" 로 시작하지 않게. 캡처 `dashboard-{thumbs,compact}-{dark,light}.png`.
-- 같은 dev 서버를 다른 작업이 함께 쓰면(`svelte-kit sync` 등) 페이지가 도중에 리로드되어 스텁
-  표가 비는 일이 있다 — 그때는 다시 돌린다.
 
 ## tab-slide-harness.mjs — 탭 전환 슬라이드 (방향 · 크기 그대로 · 키보드 · 연타)
 
@@ -1026,30 +1016,6 @@ node scripts/dev/run-harness.mjs hidden-tab-measure-harness.mjs <outdir> --size 
 
 - 헤드리스는 재기 한 번이 싸서 longtask 는 크게 안 벌어진다 — 판정은 **재기 수**로 한다(릴리스 앱은 번당 ~1ms).
 - xterm 번들은 압축이라 스택의 클래스 이름이 짧다(`Yt` = DomRenderer · `Qt` = RenderService · `ei` = SelectionService).
-
-## agent-board-harness.mjs — 대시보드 에이전트 칸 (나를 기다리는 것 · 카드 · 승인 없음)
-
-> **2026-09-28 부터 낡음** — 이 판이 보던 화면(에이전트 칸 — 나를 기다리는 것 · 에이전트 카드)은 대시보드 세션 칸의 카드 한 면으로 합쳐지며 사라졌다
-> ([docs/log/2026-09-28-dashboard-session-cards.md](../../docs/log/2026-09-28-dashboard-session-cards.md)). 스텁은 다른 하네스의 재료로 남긴다.
-
-`launcher-harness.mjs`(프로젝트 · 이벤트 버스 `__emit`) + `dashboard-harness.mjs`(`list_operations`)의
-합본 (docs/log/2026-09-25-agent-board.md). 빈 창을 먼저 보고, 프로젝트 셋으로 AI 타일 넷(주 폴더 ·
-워크트리 탭 · 원격 · 끝난 것)과 작업안 하나를 심는다 — 상태는 `agent-signal` 훅 이벤트와 `agentExit` 로.
-
-```bash
-npx vite --port 1434 --strictPort     # 다른 작업이 파일을 고치는 중이면 ui-scale 절의 no-HMR 설정
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --remote-debugging-port=9250   --user-data-dir=%TEMP%/edge-aynx-agents --window-size=1200,800 http://localhost:1434/
-PAGE_PORT=1434 node scripts/dev/agent-board-harness.mjs <outdir> 9250
-# agents-board.png · agents-board-empty.png · agents-board-light.png
-```
-
-- 단언: 새 창 토글 = 에이전트 칸 · 칸 셋 · 빈 상태 [프로젝트 열기] → 독 프로젝트 칸 · 대기 줄 순서/글자/대상 이름/만료 ·
-  카드 순서·알약·시각·세 열 · 단추는 [타일로 가기]·[검토] 뿐 · **강조색 요소 = 입력 대기 점·알약 + 주 동작 하나** ·
-  검토 카드 물러남 · 키보드(←→↑↓ · 줄 ↑↓ · Enter) · [검토] → 작업안 칸 · 카드/줄 → focusTile + 걷힘 · 예외 0.
-- CDP 의 `keyDown` 으로 버튼을 Enter 로 누르려면 `text: "
-"` 가 실려야 한다(키 코드만으로는 버튼이 눌리지 않는다).
-- 첫 판은 차가운 dev 서버의 의존성 재최적화로 모듈 적재가 깨질 수 있다 — 한 번 더 돌린다.
-- 지난 대화 덩어리는 비워 둔다(`agent_sessions_list` 빈 답) — 그쪽은 아래 `convo-harness.mjs`.
 
 ## convo-harness.mjs — 사용량 칸 · 상태바 고리 · 팔레트 `대화 ` · 다시 뜬 뒤의 재개 타일
 
@@ -1159,7 +1125,7 @@ PAGE_PORT=1567 node scripts/dev/remote-convos-harness.mjs <outdir> 9377
 ## launcher-harness.mjs — 빈 탭 launcher (세 단 · 화살표 · 타자 → 팔레트)
 
 `projects-harness.mjs` 의 사본 (docs/log/2026-09-25-launcher.md). 호스트 넷 · 이력 셋 · 프로젝트 셋 ·
-셸 셋 · 즐겨찾기 하나를 심고, Aynx 를 AI 타일로 열어 **입력 대기**로 만든 뒤 새 탭의
+셸 셋 · 즐겨찾기 하나를 심고, Aynx 를 AI 타일로 열어 **완료(안 봄) 점**으로 만든 뒤 새 탭의
 launcher 를 본다. 마지막에 `sessionStorage` 표식으로 **빈 사용자** 판을 다시 싣는다.
 
 ```bash
@@ -1177,9 +1143,12 @@ PAGE_PORT=1434 node scripts/dev/launcher-harness.mjs <outdir> 9250
 - **`performance.setResourceTimingBufferSize(5000)`** 를 주입 스크립트 첫머리에 둔다. 기본 버퍼(250)가 앱
   모듈 수보다 작아 늦게 올린 모듈은 `importApp` 이 `module not loaded yet` 으로 못 찾는다 — 다른 하네스의
   "첫 판은 한 번 더 돌린다" 증상의 일부가 이것일 수 있다.
-- (2026-10-01 에 낡음 — 점은 훅 신호로만 선다, `agent-signal` 의 `waiting`+`permission` 을 쓸 것) 입력 대기는
-  `agentOutput` → 3.6초 → `agentTitle`(projects ⑦ 과 같은 순서). 그 전에 `isAgentPane` 이 참이
-  될 때까지 기다린다 — 첫 입력(`claude`)이 실려야 AI 타일로 읽힌다.
+- 점은 훅 신호로만 선다(2026-10-01 점 셋) — 새 탭을 연 뒤(= aynx 탭을 안 볼 때) `agent-signal-fake.mjs` 로 `start` → `stop`
+  을 쏘아 **완료** 점을 세운다(2026-11-21 — 옛 `agentOutput` → `agentTitle` 입력 대기 갈래는 없어졌다). 그 전에 `isAgentPane` 이
+  참이 될 때까지 기다린다 — 첫 입력(`claude`)이 실려야 AI 타일로 읽힌다.
+- ⑦ 키보드 이어짐은 셸 위젯을 호스트 **위**로 옮겨 본다 — 처음 배치(시계 + 아래 줄 셋, 2026-11-03) 뒤로 1100×800 판의 호스트 아래에는
+  208px 위젯이 들어갈 자리가 없다. 위젯을 더한 뒤의 리셋은 편집 단추 줄(`[data-start-edit-reset]`)로 한다(판 왼쪽 위 우클릭이 방금
+  놓인 위젯을 짚는다).
 - no-HMR(`watch:null`) 서버는 파일을 고쳐도 **옛 변환을 계속 준다** — 고쳤으면 서버를 다시 띄운다
   (`npx` 셸만 죽이면 node 가 남아 포트를 쥔다 — 그 pid 를 따로 끈다).
 
@@ -1357,10 +1326,11 @@ PAGE_PORT=1587 node scripts/dev/dock-dots-harness.mjs <outdir> 9397
 # dockdots-projects.png · dockdots-hosts.png · dockdots-entrance.png
 ```
 
-- 셸의 폴더는 `app/pane-cwd` 의 `noteReportedCwd` 로 심는다(독은 반응형 사본만 읽는다), 상태는 `window.__emit('agent-signal', …)`.
-- 단언: 폴더 밖 → 점 없음 · cd 로 주 폴더 안 → 접힌 프로젝트 점 + 말풍선 · 펼치면 워크트리 줄로 · cd 가 줄을 옮긴다 · 가장 깊은 줄만 ·
-  접힌 말풍선 `<워크트리> — <에이전트> <상태>` · 점 클릭은 선택뿐 · 입구 점은 독이 닫혔고 입력 대기일 때만 · 접힌 폴더 lab · 펼치면
-  dev-01 줄 · 로컬 타일은 호스트 줄에 없음 · 원격 대기 → 입구 말풍선 "호스트: …" · 예외 0.
+- 셸의 폴더는 `app/pane-cwd` 의 `noteReportedCwd` 로 심는다(독은 반응형 사본만 읽는다), 상태는 `agent-signal-fake.mjs` 의 훅 신호.
+  점은 실행 중 · 권한 대기 · 완료 셋뿐이라(2026-10-01 "미상" 점 걷힘) 타일을 연 뒤 `start` 를 먼저 쏜다 · 대기는 `waiting`+`permission`.
+- 단언: 폴더 밖(실행 중) → 점 없음 · cd 로 주 폴더 안 → 접힌 프로젝트 점 + 말풍선 · 펼치면 워크트리 줄로 · cd 가 줄을 옮긴다 · 가장 깊은 줄만 ·
+  접힌 말풍선 `<워크트리> — <에이전트> <상태>` · 점 클릭 = 줄 누르기(선택 + 펼침 · 새 탭 없음) · 상태바에 독 입구 칸 · 부름 점이 없다(2026-10-18) ·
+  접힌 폴더 lab · 펼치면 dev-01 줄 · 로컬 타일은 호스트 줄에 없음 · 원격 권한 대기 → dev-01 줄 · 예외 0.
 
 ## profile-switcher-harness.mjs — 테마 프로필 빠른 전환 (Ctrl+Shift+U · 위에서 내려오는 카드 줄)
 
@@ -1514,7 +1484,7 @@ node scripts/dev/run-harness.mjs diff-tile-harness.mjs <outdir> --size 1400x900 
 
 `hosts-tree-harness.mjs` 의 사본 (docs/log/2026-09-29-logos-full-icons.md). 이미 `svg:logos:mariadb-icon`
 을 쓰는 호스트가 독에 있어 표(JSON 한 벌)를 **한 번** 받아 로고로 서는지, lab-01 편집 폼의 아이콘 칸이
-빈 칸 = 큐레이션 34 · `mongodb` = logos 두 칸(정사각 표장이 첫 칸) · `a` = 200칸 + "N개 더" 인지,
+빈 칸 = 큐레이션 36 · `mongodb` = logos 두 칸(정사각 표장이 첫 칸) · `a` = 200칸 + "N개 더" 인지,
 저장이 `svg:logos:mongodb-icon` 을 싣고 독 줄이 그 로고로 서는지 본다. ⑥은 **lucide("기본" 칸)** — 색
 `#e5484d` 인 nas-01 폼에서 [로고/기본] 스위치 · "기본에서 N개" 한 줄(이모지로 안 떨어짐) · 빈 칸 24 ·
 `database` → `svg:lucide:database` · 미리보기와 독 줄의 획이 호스트 색(굵기 1.75) · 칸 기억.
@@ -1538,7 +1508,11 @@ PAGE_PORT=1430 node scripts/dev/logos-icons-harness.mjs outdir 9231
 
 공용 주입 문자열은 `workspace-stub.mjs::WORKSPACE_STUB`다. `workspaces_load`는 v2, `workspaces_claim_writer`는 generation, `workspaces_apply`는 scope별 저장 변경/metadata/호스트 별칭 변경을 흉내 낸다. 개별 판은 `window.__workspaceSeed`로 초기 파일을 지정한다. `convo-harness`는 v2 파일을 sessionStorage에 보관해 다시 뜬 복원을 본다.
 
-`workspaces-harness`는 별도 v2 스텁으로 프로젝트 소속/이동·aux·삭제를 검사한다. 세로 도구 → 구분선 → 워크스페이스 목록(제 스크롤·추가 버튼), 가로에서는 현재 칩 없이 이름과 함께 나열된 목록(현재 표시 · 고른 아이콘 색)을 단언한다. STEP 6 구현에서는 하네스를 실행하지 않았으며 실행 게이트는 외부에서 돌린다.
+`workspaces-harness`는 별도 v2 스텁으로 프로젝트 소속/이동·aux·삭제를 검사한다. 워크스페이스는 **탭 줄 맨 앞 단추 + 목록**
+(`[data-workspace-button]` · `[data-workspace-menu]` — 2026-10-07 · 10-13)에서 본다: 목록(제 스크롤 · 새 워크스페이스) · 줄 배지(`data-workspace-badge` —
+실패 · aux 권한 대기 = `input` 우선 · 보조 창이 닫히면 빠짐) · 줄 우클릭 메뉴(편집 · 삭제) · F2 · 편집 뒤 포커스는 타일로 · 줄 끌기(삽입선 `.ws-row.drop-*`) ·
+가로 상태바에서도 단추가 지금 이름 · 고른 아이콘 색. 옛 상태바 띠 · 채움 판(`.workspace-indicator`) 판정은 2026-11-21 에 걷었다. 판정은 모두 `=== true` 로 받는다.
+`node scripts/dev/run-harness.mjs workspaces-harness.mjs <outdir>`.
 
 ## orch-tab-harness.mjs — 오케스트레이션 탭(앨범 먼저 · 프로듀서 채팅)
 

@@ -212,7 +212,15 @@ const card0 = JSON.parse(
   await ev(`(() => { const c = document.querySelector('[data-agent-banner] .card'); return JSON.stringify({ title: c.querySelector('.title')?.textContent.trim(), when: c.querySelector('.when')?.textContent.trim(), line2: c.querySelector('.line2')?.textContent.trim(), act: c.querySelector('[data-banner-open]')?.textContent.trim(), logo: !!c.querySelector('.logo svg, .logo img'), status: c.querySelector('.status')?.className, radius: getComputedStyle(c).borderRadius }); })()`),
 );
 console.log("card:", JSON.stringify(card0));
-check(card0.title?.startsWith("Claude Code · "), "머리줄 = Claude Code · 탭 이름");
+// 보이는 머리줄은 이름(탭 이름 — `tileLabel`)만, 에이전트 이름은 aria-label 에만(2026-11-15 `bannerTitle` · `bannerAria` — 로고가 에이전트를 말한다)
+const want0 = await ev(`(async () => { const w = await ${tabsMod}; const s = await ${sessionMod}; const m = await ${importApp("app/messenger-label.ts")};
+  for (const tab of w.residentWindowTabs()) { const p = s.listPanes(tab.root).find((x) => x.id === '${tiles[0].pane}'); if (p) return m.tileLabel(p); } return null; })()`);
+const aria0 = await ev(`document.querySelector('[data-agent-banner] .card')?.getAttribute('aria-label') ?? null`);
+console.log("want title:", JSON.stringify(want0), "aria:", JSON.stringify(aria0));
+check(
+  typeof want0 === "string" && !want0.startsWith("EXC") && want0.length > 0 && card0.title === want0 && aria0 === `Claude Code · ${want0}`,
+  "머리줄 = 탭 이름만 · aria-label = Claude Code · 탭 이름",
+);
 check(card0.when === "방금" && card0.line2 === "작업이 끝났습니다" && card0.act === "보기", "방금 · 작업이 끝났습니다 · [보기]");
 check(card0.logo && /stop/.test(card0.status ?? ""), "로고 + 끝남 표식");
 check(card0.radius === "16px", "모서리 16px");

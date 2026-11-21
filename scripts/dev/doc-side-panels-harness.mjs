@@ -35,7 +35,7 @@
 //     → <outdir>/p1-wide.png · p2-files.png · p3-empty.png · p4-find.png · p4-nomatch.png · p5-switched.png · p5-root.png · p6-outline.png ·
 //       p7-both.png · p7-mid.png · p8-narrow.png · p8-files-drop.png · p8-outline-drop.png · p9-confirm.png · p10-zoomed.png · p12-swapped.png ·
 //       p13-narrow-swapped.png · p13-narrow-reopen.png · p13-narrow-find-reopen.png
-import { waitBoot } from "./boot-wait.mjs";
+import { reloadBoot } from "./boot-wait.mjs";
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -290,12 +290,13 @@ await send("Page.enable");
 await send("Runtime.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", { source: stub() });
 await send("Emulation.setDeviceMetricsOverride", { width: VW, height: VH, deviceScaleFactor: 1, mobile: false });
-await send("Page.reload", { ignoreCache: true });
-await waitBoot(ev);
+// 새 문서의 부팅 끝까지 — `Page.reload` + `waitBoot` 는 옛 문서를 보고 바로 끝나 ⑨ 에서 "module not loaded yet:
+// app/confirm-dialog.svelte.ts" 가 났다(2026-11-21). 쓰는 모듈은 다 기다린다(`S` · `CONF` 포함 — 둘 다 `+page` 가 곧바로 들인다).
+await reloadBoot(send, ev);
 await send("Page.bringToFront");
 await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 for (let i = 0; i < 50; i++) {
-  if ((await ev(`(async () => { try { await ${W}; await ${SESS}; await ${PANES}; await ${ANCH}; return true; } catch { return false; } })()`)) === true) break;
+  if ((await ev(`(async () => { try { await ${W}; await ${S}; await ${SESS}; await ${PANES}; await ${ANCH}; await ${CONF}; return true; } catch { return false; } })()`)) === true) break;
   await sleep(300);
 }
 await sleep(800);
