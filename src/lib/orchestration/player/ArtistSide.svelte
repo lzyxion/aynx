@@ -1,8 +1,4 @@
 <script lang="ts">
-  // 트랙 오른쪽 칸의 선택 시도 정보(목업 `V3TrackSide` · `V3TrackSideGate`) — 카드 넷을 세로로:
-  // ① 상태(머리 = 부모 · 막힘 띠 · 턴 시한 · 숫자 세 칸 · 사람 관문 = 부모의 `gates` — 사람 확인이 필요하면 호박 카드)
-  // ② 시도 · 검토(부모의 `attempts`) ③ 바뀐 파일 + [diff 보기] ④ 작업 자원(worktree · 기준 · [턴 | 시도 정보] 탭)
-  // 맨 아래 [대화 기록 전체] ■ ⋯(⋯ = 부모의 `more`). 칸 자체는 바탕 없이 카드 사이 10px — 칸의 스크롤은 부모(`TrackPlayer` 의 `.side`).
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import {
@@ -25,7 +21,6 @@
   import EqBars from "../EqBars.svelte";
   import SegTabs from "./SegTabs.svelte";
 
-  /** 파일 목록에 보이는 줄 상한(나머지는 "외 n개 — diff 에서") */
   const SHOWN_FILES = 12;
 
   let {
@@ -54,35 +49,25 @@
     detail: RunDetail;
     now: number;
     busy: boolean;
-    /** 가사의 대화 항목(턴 목록의 지시 요약) */
     items: readonly TranscriptItem[];
     judge: boolean;
-    /** 파일 목록의 보고(쓰기형 보고 뒤 · 판정형의 검토 대상) — 없으면 작업 중 목록 */
     report: ReportView | null;
     wip: WipFilesView | undefined;
     reportFiles: ReportFilesView | "loading" | { error: string } | undefined;
-    /** 사람 확인이 필요하다 — 첫 카드가 호박 카드(턴 시한 · 숫자 칸은 도는 턴이 있을 때만) */
     gate: boolean;
-    /** 숫자 셋째 칸 "검토 n / m"(없으면 칸 둘) */
     reviews: { have: number; need: number } | null;
     onTranscript: () => void;
     onStop: () => void;
     onDiff: () => void;
     onPermissions: () => void;
-    /** 상태 카드 머리 한 줄(부모가 짓는다) */
     head: Snippet;
-    /** 상태 카드 안의 사람 관문 · 판정 · 조정(부모가 짓는다) */
     gates?: Snippet;
-    /** 시도 · 검토 카드(부모가 짓는다) */
     attempts?: Snippet;
-    /** 작업 자원 카드 안의 접힘(시도 세부 정보) */
     technical?: Snippet;
-    /** 맨 아래 줄 끝의 ⋯(트랙 취소 · 다시 열기 메뉴 — 부모가 짓는다) */
     more?: Snippet;
   } = $props();
 
   let confirmStop = $state(false);
-  /** 작업 자원 카드의 탭 — [턴 | 시도 정보](목업 V3FoldA · 옛 '턴 목록 ›' 펼침과 '시도 세부 정보' 접힘을 한 자리에서 바꿔 본다) */
   let resTab = $state<"turns" | "info">("turns");
   const uid = $props.id();
 
@@ -91,7 +76,6 @@
   const turns = $derived(turnList(a, items, now, t));
   const band = $derived(attemptBand(a));
   const wa = $derived(attemptActions(a, detail.state, detail.leftovers));
-  /** 파일 목록 — `{mode, rows, total, truncated, error, loading}` */
   const list = $derived.by(() => {
     if (report) {
       const v = reportFiles;
@@ -102,7 +86,6 @@
     if (!wip) return { mode: "wip", rows: [], total: null, truncated: false, error: null, loading: !!a.worktree };
     return { mode: "wip", rows: fileRows(wip.files), total: wip.fileCount, truncated: wip.truncated, error: wip.error ?? null, loading: false };
   });
-  /** 머리 곁 회색 글 — "작업 중 2" · "보고 커밋 2" · "검토 대상 2" */
   const filesNote = $derived(
     t(list.mode === "review" ? "orch.artist.files.review" : list.mode === "report" ? "orch.artist.files.report" : "orch.artist.files.wip", {
       n: list.total ?? (list.loading ? "…" : list.rows.length),
@@ -110,19 +93,15 @@
   );
   const canDiff = $derived(report ? !!report.commitOid && !!report.baseCommitOid : !!a.worktree && list.rows.length > 0);
   const moreFiles = $derived(Math.max(0, (list.total ?? list.rows.length) - Math.min(SHOWN_FILES, list.rows.length)));
-  /** 쓰기형이 열려 있으면 "이어 시키면 턴 n+1" 안내 */
   const nextTurnHint = $derived(!judge && (a.state === "idle" || a.state === "running") && !a.conversationBroken ? (lastTurn?.n ?? 0) + 1 : null);
   const baseOid = $derived(judge ? (a.reviewOf?.commitOid ?? null) : (a.baseCommit ?? null));
-  /** 숫자 칸 — 사람 확인 카드에서는 도는 턴이 있을 때만(관문이 먼저) */
   const showClock = $derived(!gate || !!clockBar);
 </script>
 
 <aside class="side" data-artist-side={a.id}>
-  <!-- ① 상태 — 사람 확인이 필요하면 호박 카드(목업 V3TrackSideGate) -->
   <section class="card status" class:gate data-track-card="status" data-human-gate={gate ? "true" : "false"}>
     {@render head()}
 
-    <!-- 막힘 · 대화 끊김 — 사람이 볼 것이 먼저 -->
     {#if band}
       <div class="band" role="status" data-artist-band={band.blocked ? "blocked" : "broken"}>
         {#if band.blocked}
@@ -161,10 +140,8 @@
     {@render gates?.()}
   </section>
 
-  <!-- ② 시도 · 검토 -->
   {@render attempts?.()}
 
-  <!-- ③ 바뀐 파일 -->
   <section class="card" data-track-card="files" data-artist-files={list.mode}>
     <div class="card-head">
       <h4>{t("orch.artist.stat.files")}</h4><span class="faint">· {filesNote}</span>
@@ -203,7 +180,6 @@
     {/if}
   </section>
 
-  <!-- ④ 작업 자원 — worktree · 기준(라벨은 UI 글꼴 · 값만 고정폭) · 머리 오른쪽 [턴 | 시도 정보] 탭(같은 자리를 바꿔 본다 — ▶ 펼침 없음) -->
   <section class="card res" data-track-card="resources">
     <div class="card-head">
       <h4>{t("orch.artist.resources")}</h4>
@@ -250,7 +226,6 @@
     {/if}
   </section>
 
-  <!-- 맨 아래 — [대화 기록 전체] ■(중단은 확인 뒤) ⋯ -->
   <div class="bottom">
     {#if confirmStop}
       <div class="confirm" role="alertdialog" data-artist-stop-confirm>
@@ -291,7 +266,6 @@
     color: var(--fg-1);
     box-sizing: border-box;
   }
-  /* 카드 — 둥근 16 · 안쪽 14/16 · 앱 토큰 면(사람 확인이면 호박) */
   .card {
     display: flex;
     flex-direction: column;
@@ -349,7 +323,6 @@
   .res-info[hidden] {
     display: none;
   }
-  /* 턴 시한 — 라벨 · 모노 시간 + 얇은 막대 */
   .clock-row {
     display: flex;
     justify-content: space-between;
@@ -379,7 +352,6 @@
   .fill.late {
     background: var(--warn);
   }
-  /* 숫자 세 칸(도구 · 거절 · 검토) */
   .nums {
     display: grid;
     grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
@@ -512,7 +484,6 @@
   .dels {
     color: var(--err);
   }
-  /* 작업 자원 — 라벨 열 64px · 값 고정폭 말줄임 */
   .kv {
     display: grid;
     grid-template-columns: 64px minmax(0, 1fr);
@@ -571,7 +542,6 @@
     color: var(--warn);
     white-space: nowrap;
   }
-  /* 맨 아래 줄 — [대화 기록 전체](넓은 알약) ■ ⋯ */
   .bottom {
     margin-top: auto;
     display: flex;

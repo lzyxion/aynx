@@ -1,30 +1,12 @@
-/**
- * **문서 타일 본문 우클릭 메뉴의 항목 — 순수 층** (2026-10-25). 그리는 것은 타일 메뉴(`pane/PaneMenu.svelte` — 터미널 본문 우클릭과 같은
- * 상자 · 같은 옆목록)이고, 누른 줄은 `tool:<열쇠>` 로 `PaneHost` 를 지나 그 문서 타일(`DocView` 의 `runDocMenu`)로 돌아온다.
- *
- * 두 모양 — 무리 순서는 다른 우클릭 메뉴와 같은 규칙(링크 → 클립보드 → 찾기 → 이 문서의 일):
- *
- * - **읽기**(그린 문서 · 원문 · 코드 파일 · 편집 중 미리 보기): 링크 열기 · 링크 주소 복사(링크 위) ─ 복사(고른 글) · 모두 선택 ─ 찾기 ─ 편집(편집할 수 있을 때)
- *   ─ 새 문서…(타일 ⋯ 와 같은 줄 `new-doc` — `tool:` 이 아니라 `tile-menu-controller` 의 배선 칸으로 간다)
- * - **편집**(편집기 안): 실행 취소 · 다시 실행 ─ 잘라내기 · 복사(고른 글) · 붙여넣기 · 모두 선택 ─ 서식 ▸ · 단락 ▸ · 삽입 ▸(마크다운만) ─ 찾기 · 바꾸기 ─ 저장
- *
- * 옆목록 셋(마크다운만 — 바꾸는 일은 `doc-format.ts`):
- * - **서식 ▸** 굵게 · 기울임 · 취소선 · 인라인 코드 — 고른 글을 감싼다
- * - **단락 ▸** 제목 1 · 2 · 3 ─ 글머리 목록 · 번호 목록 · 체크 목록 ─ 인용 — 걸친 줄 전부
- * - **삽입 ▸** 링크 · 코드 블록
- *
- * `docExternalItems` 는 본문 우클릭이 아니라 **타일 ⋯ 메뉴의 [경로 복사] 위에 얹는 줄**(`pane/pane-tools` 의 `fileMenu`)이다 — 외부 열기(로컬 = 기본 앱으로 열기 ·
- * 원격 = 외부 편집기로 편집). 머리줄 도구줄에서 옮겨 왔다(2026-11-19 사용자). 둘이 한 묶음("이 문서")이라 선은 묶음 첫 줄에만 선다.
- */
+/** 문서 타일 본문 우클릭 메뉴의 항목 — 순수 층. 무리 순서는 다른 우클릭 메뉴와 같은 규칙(링크 → 클립보드 → 찾기 → 이 문서의 일). */
 
 import { newDocItem, type PaneMenuItem, type PaneMenuRow } from "$lib/pane/pane-menu";
 import type { DocFormat } from "$lib/doc-format";
 import type { Tr } from "$lib/session";
 
-/** 줄의 액션 머리 — `pane/pane-tools.svelte.ts` 의 `TOOL_ACTION_PREFIX` 와 같은 값(그 모듈은 룬 상태라 순수 층에서 부르지 않는다) */
+/** `pane/pane-tools.svelte.ts` 의 `TOOL_ACTION_PREFIX` 와 같은 값(그 모듈은 룬 상태라 순수 층에서 부르지 않는다) */
 const TOOL_ACTION_PREFIX = "tool:";
 
-/** 누른 줄의 열쇠 — `fmt:<서식>` 은 서식 옆목록의 줄 */
 export type DocMenuKey =
   | "open-link"
   | "copy-link"
@@ -41,19 +23,15 @@ export type DocMenuKey =
 
 export interface DocMenuCtx {
   mode: "read" | "edit";
-  /** 우클릭한 자리의 링크(읽기만) */
   link: string | null;
-  /** 고른 글이 있나 — 있을 때만 복사(편집이면 잘라내기도)가 선다 */
   hasSelection: boolean;
-  /** 읽기: [찾기] — 찾을 글이 보일 때 */
   canFind: boolean;
-  /** 읽기: [편집] — 이 문서를 편집으로 바꿀 수 있을 때(편집 중 미리 보기에서는 거짓) */
+  /** 편집 중 미리 보기에서는 거짓 */
   canEdit: boolean;
-  /** 편집: 마크다운 파일인가 — [서식 ▸] */
   markdown: boolean;
   canUndo: boolean;
   canRedo: boolean;
-  /** 읽기: [새 문서…] — `true` 눌림 · `false` 흐리게 · `null`/없음 줄 없음(`app/new-doc` 의 `newDocState` — 타일 ⋯ 와 같은 판정) */
+  /** `true` 눌림 · `false` 흐리게 · `null`/없음 줄 없음 */
   newDoc?: boolean | null;
 }
 
@@ -64,7 +42,6 @@ const item = (key: DocMenuKey, label: string, icon: string | null, extra: Partia
   ...extra,
 });
 
-/** 서식 옆목록의 줄들 */
 const FORMAT_LABEL = {
   bold: "files.doc.menu.fmt.bold",
   italic: "files.doc.menu.fmt.italic",
@@ -85,7 +62,6 @@ function fmt(tr: Tr, kind: DocFormat, icon: string, separator = false): PaneMenu
   return item(`fmt:${kind}`, tr(FORMAT_LABEL[kind]), icon, separator ? { separator } : {});
 }
 
-/** 옆목록 셋 — 서식(글자) · 단락(줄) · 삽입 */
 function formatGroups(tr: Tr): PaneMenuRow[] {
   return [
     {
@@ -118,19 +94,18 @@ function formatGroups(tr: Tr): PaneMenuRow[] {
   ];
 }
 
-/** 타일 ⋯ 외부 열기 줄([경로 복사] 위)의 열쇠 — `DocView` 의 `run` 이 같은 값으로 가른다 */
+/** `DocView` 의 `run` 이 같은 값으로 가른다 */
 export const DOC_TOOL_EXTERNAL = "external";
 export const DOC_TOOL_EDIT_EXTERNAL = "edit-external";
 
-/** 외부 열기 판정 — `fs-backend` 에서 `canOpenExternal` · `canEdit` 은 동시에 서지 않는다 */
+/** `fs-backend` 에서 `canOpenExternal` · `canEdit` 은 동시에 서지 않는다 */
 export interface DocExternalCtx {
   canOpenExternal: boolean;
   canEdit: boolean;
-  /** 원격이 끊겼나 — 외부 편집기로 편집 줄을 흐리게 한다 */
   offline: boolean;
 }
 
-/** 타일 ⋯ 의 [경로 복사] 위에 서는 외부 열기 줄 —로컬은 기본 앱으로 열기, 원격은 외부 편집기로 편집(끊기면 흐림), 둘 다 없으면 빈 배열 */
+/** 본문 우클릭이 아니라 타일 ⋯ 메뉴의 [경로 복사] 위에 얹는 줄 */
 export function docExternalItems(ctx: DocExternalCtx, tr: Tr): PaneMenuItem[] {
   if (ctx.canOpenExternal) {
     return [{ action: `${TOOL_ACTION_PREFIX}${DOC_TOOL_EXTERNAL}`, label: tr("files.menu.openexternal"), icon: "external" }];
@@ -150,7 +125,6 @@ export function docExternalItems(ctx: DocExternalCtx, tr: Tr): PaneMenuItem[] {
 
 export function docMenuItems(ctx: DocMenuCtx, tr: Tr): PaneMenuRow[] {
   const rows: PaneMenuRow[] = [];
-  /** 앞에 줄이 있을 때만 구분선 — 첫 줄은 긋지 않는다 */
   const sep = () => rows.length > 0;
   if (ctx.mode === "read") {
     if (ctx.link !== null) {

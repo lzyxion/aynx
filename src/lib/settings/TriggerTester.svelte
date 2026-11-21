@@ -2,20 +2,12 @@
   import { canSaveForm, testTrigger, TEST_MAX_LINES, type TriggerForm } from "$lib/settings/model/trigger-form";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
-  /**
-   * 트리거 **시험 칸** — 추가 · 편집 하위 화면(`TriggerEditor`)의 규칙 칸 아래 (docs/log/2026-10-05-trigger-examples.md).
-   *
-   * 붙여 넣은 출력 줄(여러 줄)에 **지금 칸의 규칙**이 어떻게 걸리는지 바로 보인다 — 계산은 `testTrigger`(순수)가 터미널과
-   * 같은 엔진(`compileTriggers` · `matchLine` · `expandTemplate` · `safeUrl` · `translucent`)으로 한다. 아래 줄은 맞은
-   * 구간마다 링크(실제로 열릴 주소, 못 열면 그 이유)와 툴팁(치환한 문구)을 펼쳐 보인다 — 마우스를 올려 보지 않아도 된다.
-   * 여기서는 아무것도 열지 않는다(링크는 글자로만 보인다).
-   */
+  /** 여기서는 아무것도 열지 않는다 — 링크는 글자로만 보인다. 계산은 터미널과 같은 엔진(`testTrigger`)이다. */
   let { form, text = $bindable("") }: { form: TriggerForm; text?: string } = $props();
 
   const uid = $props.id();
 
   const result = $derived(testTrigger(form, text));
-  /** 링크 · 툴팁이 있는 맞은 구간들 — 펼쳐 보이는 줄 (너무 길어지지 않게 앞 몇 개만) */
   const details = $derived(
     result.lines
       .flat()
@@ -23,7 +15,6 @@
       .slice(0, 8),
   );
   const empty = $derived(text.trim() === "");
-  /** 패턴이 엔진에 들어가지 못하면 "맞은 곳 없음" 대신 "패턴을 고치면" 을 말한다 */
   const valid = $derived(canSaveForm(form));
 </script>
 
@@ -97,7 +88,6 @@
 </div>
 
 <style>
-  /* 시험 칸 — 자동 승인 시험 칸(`AutomationTester`)과 같은 필드 우물 판 */
   .tester {
     display: flex;
     flex-direction: column;
@@ -134,7 +124,6 @@
     color: var(--fg-3);
   }
 
-  /* 결과 — 터미널처럼 고정폭 한 줄씩, 길면 가로로 굴린다 */
   .out {
     overflow-x: auto;
     padding: var(--space-2);
@@ -155,7 +144,6 @@
     border-radius: 2px;
   }
 
-  /* 색이 없는 트리거(링크 · 툴팁만)도 어디가 맞았는지는 보이게 */
   .hit.plain {
     outline: 1px dashed var(--line-strong);
     outline-offset: -1px;

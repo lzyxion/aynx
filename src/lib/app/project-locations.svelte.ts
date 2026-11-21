@@ -33,12 +33,6 @@ export function knownProjectFolders(): ProjectFolder[] {
     }));
   });
 }
-/**
- * **이 창에서 그 워크트리와 함께 닫을 탭** — 워크트리 제거 상자의 "열린 탭 N개도 닫기" 칸
- * (docs/log/2026-10-05-worktree-cleanup-tabs-refresh.md). 이 창에 상주하는 탭만(워크스페이스를 가리지 않는다 —
- * [`residentWindowTabs`]) 보고, 다른 창 · 아직 펼치지 않은 저장 탭은 건드리지 않는다. 타일의 자리는 독의 "열린 곳" 과
- * 같은 [`paneProjectLocation`] 이고 판정은 순수 층 [`worktreeTabsVerdict`] 다. 반응형(셸이 알려 준 폴더를 따라간다).
- */
 export function worktreeTabsOf(project: Project, worktreePath: string): { close: string[]; mixed: number } {
   const host = project.host || null;
   const target: ProjectFolder = { projectId: project.id, host, path: expandRemotePath(worktreePath, host ? remoteHomeOf(host) : null) };
@@ -54,12 +48,7 @@ export function worktreeTabsOf(project: Project, worktreePath: string): { close:
 function savedPanes(node: SavedNode): SavedLeaf[] {
   return isSavedSplit(node) ? [...savedPanes(node.a), ...savedPanes(node.b)] : [node];
 }
-/**
- * **열린 타일의 자리들** — 이 창에 상주하는 탭(워크스페이스를 가리지 않는다)의 타일 + 다른 워크스페이스 · 다른 보조 창의
- * **저장된** 탭의 잎. 타일마다 `place` 가 자리(`null` = 셈에 넣지 않는다)를 정한다 — 프로젝트는 폴더(`paneProjectLocation`),
- * 독의 DB 칸은 쿼리 타일의 연결(`app/db-dock`). `aux` 는 보조 창이 알려 준 **살아 있는** 자리라, 그 탭의 저장본은 건너뛴다.
- * 상주(`live`)와 저장본(`saved`)을 따로 돌려준다 — 프로젝트는 그 사이에 보조 창의 살아 있는 자리를 끼운다(같은 시각이면 앞이 먼저다).
- */
+/** `live` · `saved` 를 따로 돌려준다 — 부르는 쪽이 그 사이에 보조 창의 살아 있는 자리를 끼운다(같은 시각이면 앞이 먼저다) */
 export function openPaneLocations<E extends Pick<OpenLocation, "host" | "folder">>(
   place: (pane: PaneSpec, projectFolder?: string) => E | null,
   aux: readonly OpenLocation[] = [],
@@ -99,7 +88,6 @@ export function openProjectLocations(): OpenLocation[] {
 export function projectLocations(project: Project, path?: string): OpenLocation[] {
   const host = project.host || null;
   const folders = knownProjectFolders();
-  // 최근 워크트리/막 선택한 경로는 목록 응답 전에도 위치 후보로 쓸 수 있다.
   const expanded = path === undefined ? undefined : expandRemotePath(path, host ? remoteHomeOf(host) : null);
   if (expanded) folders.push({ projectId: project.id, host, path: expanded });
   return locationsForProject(project.id, openProjectLocations(), folders, expanded);

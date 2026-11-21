@@ -1,15 +1,7 @@
 <script lang="ts">
   /**
-   * **앱 분석 칩 줄**(승인 요약 — docs/log/2026-10-21-approval-summary.md) — 화면 아래 검토 카드(`ReviewCard`)와 작업안 타일의
-   * 카드(`console/PlanList`)가 같은 조각을 쓴다(둘이 어긋나지 않게).
-   *
-   * 고르는 것은 순수 함수 `analysisChips`(Rust 의 `analysis` · `mismatch` 그대로 — 판정을 두 벌 두지 않는다), 글자는 여기서 `t()` 로.
-   * 두 줄까지(넘치면 잘린다 · 칩마다 말풍선에 전문). 첫 칸 `앱 분석` 표지는 분석이 있을 때만 — 옛 작업안이면 자동 승인 거부 사유
-   * 칩 하나만 서거나 아무것도 없다. `only` 를 주면 그 종류만 그린다.
-   *
-   * **10-24 "A + 명령 나눠 보기"** 부터 두 카드는 `only` 로만 부른다 — DB 문장 · 상한(`stmt` · `limit`).
-   * 효과 · 어긋남은 카드 맨 위 판결 띠(`VerdictBand`)가, sudo · 자동 승인 거부는 메타 줄이 말한다. 프로그램 사슬 칩은 걷었다(명령을
-   * 되풀이할 뿐이었다 — 줄마다의 효과는 `CommandLines` 가 줄 옆에 보인다).
+   * 앱 분석 칩 줄 — 판정은 Rust 의 `analysis` · `mismatch` 그대로다(판정을 두 벌 두지 않는다).
+   * 프로그램 사슬 칩은 쓰지 않는다 — 명령을 되풀이할 뿐이다.
    */
   import type { ComputedEffect, Operation } from "$lib/operations";
   import { analysisChips, type AnalysisChip } from "$lib/review-card";
@@ -17,9 +9,7 @@
 
   interface Props {
     op: Operation;
-    /** 자동 승인 거부 사유(서버가 쥔 그 글) — 없으면 `null` */
     autoRefused?: string | null;
-    /** 이 종류만(없으면 전부) */
     only?: AnalysisChip["kind"][];
   }
   let { op, autoRefused = null, only }: Props = $props();
@@ -27,12 +17,10 @@
   const chips = $derived(analysisChips(op, autoRefused).filter((c) => !only || only.includes(c.kind)));
   const labelled = $derived(!!op.analysis && !only);
 
-  /** 앱이 매긴 효과 → 낱말 */
   function effectWord(e: ComputedEffect): string {
     return t(`app.review.effect.${e}` as "app.review.effect.read");
   }
 
-  /** 칩 하나의 글자 */
   function chipText(c: AnalysisChip): string {
     switch (c.kind) {
       case "effect":
@@ -55,7 +43,6 @@
     }
   }
 
-  /** 말풍선 — 어긋남은 AI 가 무엇이라 했는지, 나머지는 글자 전부(말줄임된 칩을 읽게) */
   function chipTitle(c: AnalysisChip): string {
     if (c.kind === "mismatch") {
       return t("app.review.declared.mismatch.title", {
@@ -87,7 +74,6 @@
 {/if}
 
 <style>
-  /* 두 줄까지(칩 20px · 사이 4px). 넘치면 잘린다 */
   .achips {
     display: flex;
     flex-wrap: wrap;
@@ -125,7 +111,6 @@
     color: var(--warn);
     background: var(--warn-soft);
   }
-  /* 칩 안 낱말의 색 — 삭제 = 실패색, 쓰기 · 확인 필요 = 경고색(판은 칩의 것 그대로) */
   .tok.err {
     color: var(--err);
     font-weight: var(--fw-semibold);

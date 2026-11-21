@@ -1,4 +1,4 @@
-//! 첫 말로 앨범 시작(사람 op). 모양 → 신원 → ref → 프로세스 → 한 잠금 확정 → 단일 전송기.
+//! 첫 말로 앨범 시작 — 사람 op `producer_album_start` 만 Run 을 연다(→ docs/invariants.md 전문 2 · 9).
 
 use super::*;
 use crate::orchestration::album_start::{checkpoint, repository, AlbumInput, ProducerConfig, StartRun};
@@ -62,7 +62,7 @@ pub(super) fn start(value: Value) -> Result<Value, WireError> {
 fn start_once(mut b: StartBody) -> Result<Value, WireError> {
     // 빈 강도 = 칸 없음(CLI 기본) — 모델의 빈 값과 같은 뜻. Run · 띄우기 인자에 빈 값이 새지 않게 여기서 한 번.
     b.effort = blank_none(b.effort);
-    // ① 모양 검사. 지금 producer_chat_send는 그림 첨부를 받지 않으므로 같은 글 규칙이다.
+    // ① 모양 검사 — producer_chat_send 와 같은 글 규칙이다.
     if !id_ok(&b.chat)
         || b.text.trim().is_empty()
         || b.text.len() > TEXT_MAX
@@ -111,7 +111,7 @@ fn start_once(mut b: StartBody) -> Result<Value, WireError> {
         .zip(path.file_name())
         .map(|(p, n)| p.join(format!("{}-wt", n.to_string_lossy())).display().to_string())
         .ok_or_else(|| fail("not-a-repo", "작업 폴더를 정할 수 없습니다"))?;
-    // ④~⑤ 아티스트와 상한 확인 뒤 ref 준비. 준비 객체가 확정 전 반환에서 ref를 거둔다.
+    // ④~⑤ 준비 객체가 확정 전 반환에서 ref를 거둔다.
     let mut prepared = o
         .prepare_album(
             StartRun {
@@ -216,7 +216,7 @@ fn start_once(mut b: StartBody) -> Result<Value, WireError> {
     Ok(result)
 }
 
-/// 대화 색인의 시작 cwd → git toplevel → 주 저장소 신원. 맡기기 파일은 보지 않는다.
+/// 대화 색인의 시작 cwd → git toplevel → 주 저장소 신원.
 fn fork_repo(cli: Cli, conv: &str) -> Result<String, WireError> {
     use crate::agent_sessions::{recorded_cwd_in, target, CwdMiss};
     let t = target(match cli {

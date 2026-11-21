@@ -1,25 +1,9 @@
 <script lang="ts">
   /**
-   * **타일 권한 카드 한 장**(2026-11-01 화면 단계 — docs/log/2026-11-01-tile-permission-hook.md 10절). AI 타일 대화 면(`pane/AiFlip`)의
-   * 입력 칸 위에 선다. 모양 · 토큰은 사이드 채팅 권한 카드(`SideChatFace` 의 `.perm`)와 같고 도구별 본문만 다르다(모델은 순수
-   * `$lib/tile-permission` 의 `cardBody`):
-   * - 명령(Bash · Codex 셸): 판결 띠(작업안 승인 카드와 같은 앱 분석 — Rust `operations::analysis` · `VerdictBand`) · AI 가 쓴 설명 한 줄 · 명령
-   * - Edit · MultiEdit · apply_patch: 경로 + 줄 diff(Edit 는 `old_string` → `new_string` 조각만 — 파일의 앞뒤 줄은 훅에 없다)
-   * - Write · NotebookEdit: 경로 + 새 내용(12줄 넘으면 접기)
-   * - WebFetch(URL + 지시) · WebSearch(검색어) · Read 류(경로) · MCP(서버 · 도구 + 인자 JSON) · 그 밖(도구 + 입력)
-   * 단추: [허용 한 번] · [이 세션 동안 허용](`canAllowSession`) · [거절](+ 선택 사유 — 모델에게 간다) · 아래 작은 [터미널에서 답하기](= release —
-   * 결정 없이 풀어 CLI 가 평소 창을 띄운다). 결정은 처음 하나만 먹는다 — 다른 창이 먼저 답했으면 조용히 걷힌다.
-   *
-   * **질문 카드**(2026-11-02 — Claude `AskUserQuestion` · 실측 7절): 질문마다 머리 · 글 · 선택지(하나 고르기 = 라디오 · 여러 개 = 체크) · [직접 입력]
-   * 칸. [답하기]는 모든 질문에 답이 있을 때만 서고, 답(`answers` — 사람이 고른 선택지 이름 · 친 글뿐)은 훅 응답(`updatedInput.answers`)으로만 CLI 에
-   * 간다(PTY 키 주입 없음 — Claude 는 `updatedInput.answers`, Codex `request_user_input` 은 `PreToolUse` deny 이유 글 · A안). 허용 · 세션 허용 · 거절 단추는
-   * 없다. Codex 는 하나 고르기 + 직접 입력만("None of the above" 자리). 답 길이 없는 카드(잘린 입력)는 질문 · 선택지만 보이고 선택지를 누르면 [터미널에서
-   * 답하기]와 같다(카드를 풀고 터미널 면으로 — 고르기는 TUI 에서).
-   *
-   * **질문이 여럿이면 한 장씩**(2026-11-02 사용자 확정 목업): 머리 줄에 `n / N` · 그 아래 단계 막대(질문마다 한 칸 단추 — 지금 = 강조색 · 답함 = 옅은 강조색 ·
-   * 나머지 = 선 색 · 누르면 그 질문으로). 본문은 지금 질문 하나. 고르기는 고르기만 하고(저절로 넘기지 않는다) [이전] · [다음](이 질문에 답이 있어야) ·
-   * 마지막은 [답하기](모두 답했어야) · 빠진 질문 안내 한 줄. 질문이 하나면 예전 그대로(숫자 · 막대 · 이전/다음 없음). 답이 먹으면 대화 면 그 자리에
-   * "답을 보냈습니다" 요약([`recordQuestionSummary`] — 보낸 답 그대로)이 남는다.
+   * AI 타일 대화 면의 권한 · 질문 카드 한 장 (docs/log/2026-11-01-tile-permission-hook.md).
+   * - 결정은 처음 하나만 먹는다 — 다른 창이 먼저 답했으면 조용히 걷힌다. [터미널에서 답하기] = release(결정 없이 풀어 CLI 가 평소 창을 띄운다).
+   * - 질문의 답(사람이 고른 선택지 이름 · 친 글뿐)은 훅 응답으로만 CLI 에 간다 — PTY 키 주입 없음(Claude 는 `updatedInput.answers`,
+   *   Codex `request_user_input` 은 `PreToolUse` deny 이유 글).
    */
   import { t } from "$lib/i18n/i18n.svelte.js";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -49,15 +33,11 @@
     onterminal,
   }: {
     card: TilePermCard;
-    /** 지금 시각(ms) — 부모가 1초마다 올린다 */
     now: number;
-    /** 폰(터치) — 단추를 키운다 */
     phone?: boolean;
-    /** [터미널에서 답하기] 를 풀었다 — 부모가 터미널 면으로 넘긴다 */
     onterminal: () => void;
   } = $props();
 
-  /** 접기 전 글 줄 수 */
   const FOLD_LINES = 12;
 
   const body = $derived(cardBody(card));
@@ -72,13 +52,10 @@
   let unfolded = $state(false);
 
   // ── 질문 카드 ──
-  /** 질문 글 → 고른 것 */
   let picks = $state<Record<string, QuestionPick>>({});
   const answers = $derived(body.kind === "question" && body.answerable ? cardAnswers(body.questions, picks) : null);
   const questions = $derived(body.kind === "question" ? body.questions : []);
-  /** 질문이 여럿이면 한 장씩 */
   const paged = $derived(questions.length > 1);
-  /** 지금 보는 질문(0부터) */
   let step = $state(0);
   const at = $derived(Math.min(step, Math.max(0, questions.length - 1)));
   const isLast = $derived(at === questions.length - 1);
@@ -91,7 +68,6 @@
     const r = await decideTilePermission(card, "answer", null, sent);
     if (r === "not-viewing") showNotice(t("pane.perm.notViewing"));
     else if (typeof r === "object") showNotice(t("pane.perm.failed", { e: stripReason(r.error) }));
-    // 먹었다 — 대화 면 그 자리에 보낸 답 그대로의 요약
     else if (r === "applied") recordQuestionSummary(card, questionSummary(questions, sent));
   }
 
@@ -158,7 +134,6 @@
     {#if paged}<span class="q-count" data-tile-perm-qcount>{at + 1} / {questions.length}</span>{/if}
   </div>
   {#if paged}
-    <!-- 단계 막대 — 질문마다 한 칸(단추): 지금 · 답함 · 나머지 -->
     <div class="q-steps" role="tablist" aria-label={t("pane.perm.qSteps")} data-tile-perm-steps>
       {#each questions as q, i (q.question)}
         {@const done = questionAnswered(q, picks[q.question])}
@@ -324,7 +299,7 @@
 </div>
 
 <style>
-  /* 사이드 채팅 권한 카드(`SideChatFace` 의 `.perm`)와 같은 판 — 기다리는 동안 경고색 테두리 */
+  /* 사이드 채팅 권한 카드(`SideChatFace` 의 `.perm`)와 같은 판 */
   .perm {
     display: flex;
     flex-direction: column;
@@ -336,7 +311,7 @@
     border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line-strong));
     border-radius: 10px;
     overflow: hidden;
-    /* 카드 목록(`AiFlip` 의 `.perms`)이 스크롤한다 — 카드는 줄어들지 않는다 */
+    /* 카드 목록(`AiFlip` 의 `.perms`)이 스크롤한다 */
     flex: none;
   }
 
@@ -368,7 +343,6 @@
     border-radius: 999px;
   }
 
-  /* 1분 안쪽만 — 아주 작게 */
   .perm-left {
     flex: none;
     font-size: var(--t-xs);
@@ -522,7 +496,6 @@
     margin-left: auto;
   }
 
-  /* 질문 카드 — 질문마다 한 덩이 · 선택지는 줄 단추(고른 것 = 강조 테두리) */
   .q {
     display: flex;
     flex-direction: column;
@@ -607,7 +580,6 @@
     min-height: 40px;
   }
 
-  /* n / N — 머리 줄 끝 */
   .q-count {
     flex: none;
     font-size: var(--t-xs);
@@ -616,7 +588,6 @@
     color: var(--fg-2);
   }
 
-  /* 단계 막대 — 보이는 막대는 6px, 누르는 칸은 넉넉히(폰 32px 이상) */
   .q-steps {
     display: flex;
     gap: 6px;
@@ -670,7 +641,6 @@
     color: var(--fg-3);
   }
 
-  /* 폰 · 터치 — 단추를 32px 넘게 */
   .perm.phone .perm-actions .btn {
     min-height: 40px;
   }

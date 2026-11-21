@@ -1,10 +1,6 @@
-//! **무엇을 담나 — 허용 목록 하나.** 묶음 안의 경로 → 범주 판정과 `settings.toml` 칸 → 범주 표가 여기 있다.
-//!
-//! 규칙은 **기본 거절**이다: 여기 이름이 없는 파일은 내보내지 않고, 묶음에 들어 있어도 가져오지 않는다(받은 zip 에 누가
-//! `vault.bin` 을 넣어도 쓸 자리가 없다). 설정 루트 파일별 담음/뺌 판정과 그 이유는 [`ROOT_FILES`] 에 적고, 같은 표를
-//! docs/log/2026-11-17-settings-transfer.md 에 옮겨 두었다.
+//! **허용 목록 하나 — 기본 거절.** 여기 이름이 없는 파일은 내보내지 않고, 묶음에 들어 있어도 가져오지 않는다.
 
-/// 범주 id — 화면 · 묶음 manifest · 가져오기 선택이 모두 이 글자를 쓴다(순서 = 화면 순서).
+/// 범주 id — 화면 · 묶음 manifest · 가져오기 선택이 모두 이 글자를 쓴다(순서 = 화면 순서 · 프런트 `settings-transfer.ts` 와 같은 글자).
 pub(crate) const CATEGORIES: &[&str] = &[
     "hosts",
     "ai",
@@ -20,14 +16,12 @@ pub(crate) const CATEGORIES: &[&str] = &[
     "notifications",
 ];
 
-/// 묶음 안의 고정 경로들.
 pub(crate) const SSH_HOSTS: &str = "ssh/hosts.conf";
 pub(crate) const SSH_META: &str = "ssh/sessions.toml";
 pub(crate) const DELEGATION: &str = "home/delegation.toml";
 pub(crate) const SETTINGS: &str = "config/settings.toml";
 pub(crate) const MANIFEST: &str = "manifest.json";
 
-/// 설정 루트 바로 아래의 파일 하나(`config/<이름>`)가 어느 범주인가.
 const CONFIG_FILES: &[(&str, &str)] = &[
     ("db-connections.json", "db"),
     ("db-folders.json", "db"),
@@ -38,7 +32,6 @@ const CONFIG_FILES: &[(&str, &str)] = &[
     ("orchestration-artists.toml", "artists"),
 ];
 
-/// 고정 이름의 설정 루트 파일(묶음 경로 `config/<이름>`).
 pub(crate) fn config_files() -> &'static [(&'static str, &'static str)] {
     CONFIG_FILES
 }
@@ -63,15 +56,13 @@ pub(crate) const SETTINGS_SECTIONS: &[(&str, &str)] = &[
     ("ai", "general"),
 ];
 
-/// `[ai]` 안의 외부 MCP 서버 목록 칸.
 pub(crate) const AI_MCP_KEY: &str = "mcp_servers";
 
 pub(crate) fn section_category(key: &str) -> Option<&'static str> {
     SETTINGS_SECTIONS.iter().find(|(k, _)| *k == key).map(|(_, c)| *c)
 }
 
-/// 묶음 안의 경로가 받아들이는 자리인가 — 그렇다면 범주(`settings.toml` 은 `"settings"` — 칸마다 범주가 갈린다).
-/// 이 함수가 `None` 인 경로는 가져오기가 **읽지도 쓰지도 않는다**.
+/// `None` 인 경로는 가져오기가 읽지도 쓰지도 않는다. `settings.toml` 은 `"settings"` — 칸마다 범주가 갈린다.
 pub(crate) fn category_of(path: &str) -> Option<&'static str> {
     match path {
         SSH_HOSTS | SSH_META => return Some("hosts"),
@@ -101,7 +92,6 @@ pub(crate) fn category_of(path: &str) -> Option<&'static str> {
     None
 }
 
-/// 지침 라이브러리 파일 이름 — 하위 폴더 없이 `<이름>.md` 하나(구분자 · 숨김 · 제어 글자 없음).
 pub(crate) fn is_instruction_name(name: &str) -> bool {
     name.len() <= 200
         && name.ends_with(".md")
@@ -111,8 +101,7 @@ pub(crate) fn is_instruction_name(name: &str) -> bool {
         && !name.chars().any(char::is_control)
 }
 
-/// 설정 루트(`<config_dir>/aynx`) · 홈 루트(`~/.aynx`) · `~/.ssh` 의 파일별 판정 — **문서용 표이자 시험의 근거**.
-/// `(이름 또는 꼴, 담는 범주 — None 이면 뺌, 이유)`. 읽는 곳은 시험 `root_files_table_matches_allowlist` 하나다.
+/// 파일별 담음/뺌 판정 — `(이름 또는 꼴, 범주 — None 이면 뺌, 이유)`. 시험 `root_files_table_matches_allowlist` 가 허용 목록과 맞춰 본다.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const ROOT_FILES: &[(&str, Option<&str>, &str)] = &[
     ("settings.toml", Some("(칸별)"), "칸마다 범주 — [vault] · [remote] 는 뺀다(볼트 · 원격 관문)"),

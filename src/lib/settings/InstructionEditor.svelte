@@ -14,7 +14,6 @@
   import Toggle from "$lib/Toggle.svelte";
   import MultiDropdown from "$lib/MultiDropdown.svelte";
 
-  // 초안은 이 화면 안에만 산다. 저장·삭제는 자기 파일에 즉시 쓰고, 파일 반영은 따로 한다.
   let { item, targets, onback, onsaved, ondeleted }: {
     item: Instruction | null;
     targets: AgentArgsTarget[];
@@ -131,7 +130,6 @@
           {/if}
         </div>
       {/if}
-      <!-- 활성화는 MCP 서버 편집의 "서버 켜기" 처럼 독립된 줄 — 범위·대상 어느 쪽에도 딸리지 않는 지침 전체의 상태다. -->
       <div class="field">
         <label for="{uid}-enabled">{t("settings.instructions.field.enabled")}</label>
         <Toggle id="{uid}-enabled" bind:checked={form.enabled} disabled={busy} title={t("settings.instructions.enabled.help")} />

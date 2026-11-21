@@ -1,10 +1,5 @@
 <script lang="ts">
-  // DB 연결 고르기 — 목록(SSH 경유 = 호스트별 · 내 PC/직접) + DB 연결 폼(새로 · 편집 — 경유 칸). 값 · 여닫기 · 저장 · 삭제는
-  // `app/query.svelte.ts` 의 `dbPicker`, Escape 사슬 · `anyModalOpen` 은 `app/keys`(폼 → 목록 → 닫기). 연결은 모두
-  // `db-connections.json` 하나(10-13 저장 하나로). 독의 DB 칸 · 호스트 우클릭 "DB 연결 추가…" 는 이 모달의 **폼만** 연다
-  // (`openConnForm` — `formOnly`: [목록으로] 대신 [취소], 저장 · Escape 가 닫는다). 삭제는 OS 확인 대화(`deleteConn`).
-  // 폼 바닥 줄 왼쪽의 [연결 테스트] + 그 옆 칩 하나(목업 "A안 칩" — 규칙은 `query/conn-test`, 배선은 `startConnTest`). 칩은 바닥 줄 안에만
-  // 서서 폼의 높이를 바꾸지 않는다 · 칸을 바꾸면 사라진다 · 판 27 세션 서버면 단추를 숨긴다(`dbConnTestReady`).
+  // DB 연결 고르기 — 목록 + DB 연결 폼. 연결 테스트 칩은 바닥 줄 안에만 서서 폼의 높이를 바꾸지 않는다.
   import { tick } from "svelte";
   import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
   import Dropdown from "$lib/Dropdown.svelte";
@@ -55,7 +50,7 @@
 
   let modalEl = $state<HTMLElement | null>(null);
 
-  // 모달이 **닫히면** 떠 있던 ⓘ 팝오버도 닫는다(호스트 폼과 같은 규칙 — 칸은 모듈 상태라 떨어져 나간 ⓘ 를 붙든다).
+  // 닫히면 ⓘ 팝오버도 닫는다 — 팝오버는 모듈 상태라 떨어져 나간 ⓘ 를 붙든다.
   let wasVisible = false;
   $effect(() => {
     const now = dbPickerVisible();
@@ -66,7 +61,6 @@
   const engineLabel = (e: DbEngine) => t(`app.query.engine.${e}` as Key);
   const engineItems = $derived(DB_ENGINES.map((value) => ({ value, label: engineLabel(value) })));
   const tlsItems = $derived(DB_TLS_MODES.map((value) => ({ value, label: t(`app.query.form.tls.${value}` as Key) })));
-  // 경유 칸 — 없음(직접) + 호스트 목록(아이콘 · 별칭). 목록에 없는 경유(지워진 별칭)도 그 글자로 남겨 보인다.
   const viaItems = $derived.by(() => {
     const out: { value: string; label: string; icon?: string }[] = [{ value: "", label: t("app.query.form.via.none") }];
     const cur = dbPicker.form.via;
@@ -74,24 +68,15 @@
     for (const h of dbPicker.hosts) out.push({ value: h.name, label: h.name, icon: h.icon ?? undefined });
     return out;
   });
-  // 직접 + 이 PC 밖 + 인증서를 확인하지 않는 모드 — 막지 않고 밝힌다(SSH 경유는 SSH 가 감싼다)
+  // 막지 않고 밝힌다(SSH 경유는 SSH 가 감싼다)
   const tlsWarn = $derived(directTlsWarning(dbPicker.form));
 
-  // AI 권한 칸(쿼리 타일 3a) — 보이는 단계는 "대상이 바뀌었고 안 만졌으면 끔"(`connAiShown`). 세그먼트 버튼은 호스트 폼과 같은 꼴.
   const aiShown = $derived(connAiShown());
-  /** 대상이 바뀌어 끔으로 되돌렸다(만지기 전 · 원래 끔이 아니었을 때) */
   const aiReset = $derived(connTargetChanged() && !dbPicker.aiTouched && dbPicker.ai !== "off");
-  // 헤드리스 칸(2026-11-09) — 단계와 같은 "대상이 바뀌면 끔" 규칙(`connHeadlessShown`). 볼트가 없으면 켤 자리가 없다(켜진 것은 끌 수 있다).
   const headlessShown = $derived(connHeadlessShown());
   const vaultAbsent = $derived(vaultStatus().state === "absent");
-  // 엔진에 맞춘 문구 · 볼트 조건(SQLite 는 볼트를 쓰지 않는다 — `dbHeadlessBox`).
   const headlessBox = $derived(dbHeadlessBox(dbPicker.form.engine, vaultAbsent, headlessShown));
 
-  /**
-   * **폼의 두 면**(2026-11-10 사용자 결정 — 목업 P89y9sHMVHGTt2x3uackJS B안): 호스트 · 프로젝트 폼과 같은 왼쪽 내비(`SectionNav`) +
-   * 오른쪽 패널. [접속] = 연결 칸 · [AI 권한] = 게이지 · 할 수 있는 일 · 헤드리스. 헤드리스 줄이 붙으며 폼이 창보다 길어졌던 것을 나눈다.
-   * 지난 면은 기억하지 않는다(폼을 열 때마다 [접속] — 포커스가 이름 칸에 간다).
-   */
   type FormTab = "connect" | "ai";
   const SECTIONS: readonly { id: FormTab; labelKey: Key }[] = [
     { id: "connect", labelKey: "app.hostform.tab.connect" },
@@ -100,17 +85,15 @@
   let tab = $state<FormTab>("connect");
   let panelEl = $state<HTMLElement | null>(null);
   const aiSummary = $derived(dbAiSummary(aiShown));
-  // 면을 갈면 패널의 맨 위부터(호스트 폼과 같다)
   $effect(() => {
     if (tab && panelEl) panelEl.scrollTop = 0;
   });
 
-  // [연결 테스트] — 칸이 하나라도 바뀌면 칩을 지운다(폼의 모든 칸을 읽어 따라간다 · 비교는 `conn-test` 의 열쇠).
+  // 폼의 모든 칸을 읽어 따라간다 — 하나라도 바뀌면 테스트 칩을 지운다.
   $effect(() => {
     void JSON.stringify(dbPicker.form);
     noteConnFormChanged();
   });
-  // 도는 동안만 1초마다 지난 초를 센다.
   let testNow = $state(Date.now());
   const testRunning = $derived(connTestUi.state.phase.kind === "running");
   $effect(() => {
@@ -121,7 +104,6 @@
   });
   const testChip = $derived(connTestChip(connTestUi.state.phase, testNow, (k, p) => t(k as Key, p)));
 
-  /** 목록 위쪽 — 경유 호스트별 묶음(별칭 순 · 대소문자 무시) */
   const viaGroups = $derived.by(() => {
     const groups: { host: string; icon: string | null; conns: DbConn[] }[] = [];
     for (const d of pickerConns()) {
@@ -135,7 +117,6 @@
   });
   const directConns = $derived(pickerConns().filter((d) => !d.via));
 
-  // 뜰 때 · 화면을 바꿀 때 — 목록이면 모달 뿌리, 폼이면 이름 칸
   $effect(() => {
     if (!dbPickerVisible()) return;
     const view = dbPicker.view;
@@ -222,10 +203,8 @@
       bind:this={modalEl}
       onkeydown={(ev) => modalEl && trapTab(ev, modalEl)}
     >
-      <!-- ⓘ 설명 팝오버 한 벌(10-30 — 늘 보이는 설명은 한 줄 · 나머지는 ⓘ. 호스트 폼과 같은 `InfoNote` + `NotePopover`) -->
       <NotePopover active={true} />
-      <!-- 스크롤은 이 안쪽 칸이 한다 — 글래스 흐림(`.glass-raised::before`)은 상자에 붙은 절대 위치 층이라, 상자 자신이 스크롤하면
-           내용과 함께 밀려 올라가 밑동에 흐림이 빠진다(11-10 — 헤드리스 줄로 폼이 창보다 길어지며 드러남). -->
+      <!-- 스크롤은 이 안쪽 칸이 한다 — 상자 자신이 스크롤하면 흐림 층(`.glass-raised::before`)이 밀려 밑동에 흐림이 빠진다 -->
       <div class="glass-scroll">
       {#if dbPicker.view === "list"}
         <h2 id="dbp-title">{t("app.query.picker.title")}</h2>
@@ -282,7 +261,6 @@
           </InfoNote>
         </p>
         <form onsubmit={(ev) => void submitConn(ev)}>
-          <!-- 본문 = 왼쪽 내비 + 오른쪽 패널(호스트 · 프로젝트 폼과 같은 `SectionNav` · 같은 모양). 면은 `hidden` 으로만 숨긴다 -->
           <div class="form-body">
           <SectionNav tabs={SECTIONS} active={tab} onselect={(id) => (tab = id as FormTab)} />
           <div class="form-panel" bind:this={panelEl}>
@@ -301,7 +279,7 @@
               <div class="stack">
                 <div class="with-btn">
                   <input id="dbp-path" bind:value={dbPicker.form.path} autocomplete="off" spellcheck="false" placeholder="C:\data\app.db" />
-                  <!-- [찾아보기…] 두 곳은 메인 PC 의 파일 고르기 대화상자라 원격 창에는 없다 — 칸에 경로를 직접 적는다 -->
+                  <!-- [찾아보기…] 는 메인 PC 의 파일 대화상자라 원격 창에는 없다 -->
                   {#if !isRemote}
                     <button type="button" class="btn btn-sm btn-secondary" onclick={() => void browse()}>{t("app.query.form.path.browse")}</button>
                   {/if}
@@ -309,7 +287,6 @@
                 <span class="note">{t("app.query.form.path.help")}</span>
               </div>
             {:else}
-              <!-- 경유 — 없음(직접) 또는 호스트(그 호스트로 SSH 터널). SQLite 는 경유가 없어 칸이 숨는다 -->
               <label for="dbp-via">{t("app.query.form.field.via")}</label>
               <div class="stack" data-db-via-field>
                 <div class="narrow">
@@ -344,7 +321,7 @@
               <label for="dbp-user">{t("app.query.form.field.user")}</label>
               <input id="dbp-user" bind:value={dbPicker.form.user} autocomplete="off" spellcheck="false" placeholder={t("app.query.form.field.optional")} />
 
-              <!-- 비밀번호(2026-11-13) — 저장된 값은 받지 않는다: 있으면 점 8개 자리표시뿐(길이도 드러나지 않음) · 비워 두면 그대로 -->
+              <!-- 저장된 비밀번호는 받지 않는다 — 있으면 점 8개 자리표시뿐(길이도 드러나지 않음) · 비워 두면 그대로 -->
               <label for="dbp-pw">{t("app.query.form.field.password")}</label>
               <div class="stack">
                 <input
@@ -398,11 +375,6 @@
           </section>
 
           <section hidden={tab !== "ai"} data-db-form-tab="ai">
-          <!--
-            **AI 권한**(쿼리 타일 3a — docs/user/query-tile.md "Showing a database to the AI"). 단계 다섯(끔 · 구조만 · 읽기 전용 · 승인 후 실행 ·
-            모두 승인(10-23 — 고르면 확인 상자)). 저장은 [저장] 이 연결을 쓴 뒤 `delegation.toml` 에(스냅샷은 Rust 가 계산). 대상이 바뀌면 끔으로 되돌려 보인다.
-          -->
-          <!-- 머리 한 줄 + ⓘ(무엇에 대한 권한인가 · 계정 권한 권고) — 위험 고지(행이 나감 · YOLO)는 아래에 늘 보인다 -->
           {#snippet aiNote()}
             <p class="pop-p">{t("app.dbai.note")}</p>
             <p class="pop-p">{t("app.dbai.account")}</p>
@@ -412,7 +384,6 @@
               {#snippet summary()}{t("app.dbai.title")}{/snippet}
             </InfoNote>
           </p>
-          <!-- 게이지(10-23 — `AiGauge.svelte`): 호스트 폼과 같은 고르개. 고르는 규칙(모두 승인 확인 상자)은 `setConnAi` 그대로 -->
           <div class="ai-gauge">
             <AiGauge
               levels={DB_AI_LEVELS}
@@ -425,7 +396,6 @@
               onpick={(l) => void setConnAi(l)}
             />
           </div>
-          <!-- 할 수 있는 일(2026-11-10 — 호스트 폼의 `.ai-sum` 과 같은 모양 · 단계 누적) -->
           <ul class="ai-sum" data-db-ai-sum>
             {#each aiSummary as row (row.key)}
               <li class:on={row.on}>
@@ -441,7 +411,6 @@
             <p class="ai-desc warn" role="note" data-db-ai-broken>{t("app.dbai.broken")}</p>
           {/if}
           {#if dbAiSendsRows(aiShown)}
-            <!-- 위험 고지 — 늘 보이는 한 줄(짧게) · 긴 권고는 ⚠ 팝오버 -->
             {#snippet rowsNote()}{t("app.dbai.rows.warn")}{/snippet}
             <p class="ai-desc warn" role="note" data-db-ai-rows>
               <InfoNote id="dbp-ai-rows" label={t("app.dbai.rows.aria")} note={rowsNote} tone="warn" plain>
@@ -450,7 +419,6 @@
             </p>
           {/if}
           {#if aiShown === "approve" || aiShown === "all"}
-            <!-- "사람이 승인해야 실행 · 자동 승인 없음" 안내는 승인 후 실행만 — 모두 승인의 뜻은 게이지 설명 상자가 말한다 -->
             {#if aiShown === "approve"}
               {#snippet plansNote()}{t("app.dbai.approve.plans")}{/snippet}
               <p class="ai-desc">
@@ -464,12 +432,7 @@
             {/if}
           {/if}
           {#if aiShown !== "off"}
-            <!--
-              **헤드리스**(2026-11-09 — 호스트 폼의 "헤드리스" 상자와 같은 모양): 타일 없이 AI 가 볼트의 비밀번호로 이 연결을 여는 위임.
-              단계와 따로인 칸 · 같은 저장(`db_ai_set` 의 `headless`). AI 권한이 끔이면 숨긴다. SQLite 도 있다(2026-11-09 — 비밀번호가
-              없어도 타일 없이 AI 가 여는 것은 위임 · 문구는 엔진에 맞춘다). 볼트가 없으면 비밀번호 엔진은 켤 자리가 없다(호스트 폼의
-              `vault.absent` 처럼) — SQLite 는 볼트를 쓰지 않아 켤 수 있다.
-            -->
+            <!-- 헤드리스 — 타일 없이 AI 가 볼트의 비밀번호로 이 연결을 여는 위임(SQLite 는 비밀번호 없이도 위임이다) -->
             <p class="section">{t("app.hostform.ai.headless.title")}</p>
             <div class="fields headless" data-db-headless>
               <label for="dbp-headless">{t(headlessBox.label)}</label>
@@ -480,7 +443,6 @@
                   disabled={headlessBox.blocked}
                   onchange={(on) => setConnHeadless(on)}
                 />
-                <!-- 설명은 한 줄 · 나머지(볼트 잠김 · 꺼져도 타일이 있으면 됨)는 ⓘ 안(2026-11-10 — 설명이 길다는 사용자 판단) -->
                 {#snippet headlessNote()}{#each headlessBox.note as k (k)}<p class="pop-p">{t(k)}</p>{/each}{/snippet}
                 <span class="field-note">
                   <InfoNote id="dbp-headless-note" label={t("app.dbai.headless.aria")} note={headlessNote} plain>
@@ -503,7 +465,6 @@
 
           <div class="actions">
             {#if dbConnTestReady()}
-              <!-- [연결 테스트] — 도는 동안은 [취소](화면에서만 버린다 · [저장] 은 그대로 쓸 수 있다) -->
               {#if testRunning}
                 <button type="button" class="ghost btn btn-secondary test-btn" data-db-test-cancel onclick={cancelConnTest}
                   >{t("app.query.form.test.cancel")}</button
@@ -519,7 +480,6 @@
                 >
               {/if}
               {#if testChip}
-                <!-- 결과 — 면 없는 글자 상태(목업 "D", 2026-11-09): 작은 동그란 표식 + 색 글자 · 상세는 말풍선(호버 · 포커스)뿐 -->
                 <span
                   class="test-status {testChip.mark}"
                   title={testChip.detail}
@@ -570,27 +530,23 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(480px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
+    max-width: calc(480px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
     outline: none;
   }
 
-  /* 스크롤 칸(공용 `.glass-scroll` — theme.css) — 흐림 층은 바깥 상자에 그대로 서 있고 이 안쪽만 움직인다(위 마크업 주석) */
   .glass-scroll {
     padding: var(--space-4);
   }
 
-  /*
-    폼 화면 — 호스트 · 프로젝트 폼과 같은 틀(2026-11-10): 왼쪽 내비 150px 을 보태 넓히고 **높이를 못 박는다**(면마다 칸 수가 달라
-    면을 누를 때마다 상자가 늘었다 줄었다 하지 않게). 스크롤은 오른쪽 패널만 맡는다 — 바깥 칸(`.glass-scroll`)은 늘어나는 세로 스택.
-  */
+  /* 높이를 못 박는다 — 면마다 칸 수가 달라 면을 누를 때마다 상자가 늘었다 줄었다 하지 않게. 스크롤은 오른쪽 패널만 */
   .modal.form-modal {
     box-sizing: border-box;
     max-width: 680px;
@@ -616,7 +572,6 @@
     min-height: 0;
   }
 
-  /* 본문: 좌 내비 | 우 패널 (`HostForm` 의 `.host-body` · `.host-panel` 과 같은 값) */
   .form-body {
     display: flex;
     gap: 12px;
@@ -629,9 +584,8 @@
     flex: 1 1 auto;
     min-width: 0;
     overflow-y: auto;
-    /* 포커스 링이 스크롤 자리에 잘리지 않을 만큼 안쪽을 비우고, 바깥 여백으로 되돌려 칸 자리는 그대로 둔다.
-       4px = 큰 쪽인 `.btn` 의 링(2px + 2px 틈 — 입력 칸 `.value` 는 2 + 1). 3px 였을 때 끝에 선 [찾아보기…]의 링이
-       오른쪽 1px 잘렸다(2026-11-19 — `scripts/dev/focus-ring-clip-harness.mjs --outside`). */
+    /* 포커스 링이 스크롤 자리에 잘리지 않게 안쪽을 비우고 바깥 여백으로 되돌린다. 4px = `.btn` 의 링(2px + 2px 틈) —
+       줄이면 끝에 선 [찾아보기…]의 링이 잘린다(`scripts/dev/focus-ring-clip-harness.mjs --outside`) */
     padding: 4px;
     margin: -4px;
     container-type: inline-size;
@@ -641,7 +595,6 @@
     display: none !important;
   }
 
-  /* 좁은 패널 — 라벨을 입력 위로 올린다(호스트 · 프로젝트 폼의 같은 규칙과 한 벌) */
   @container (max-width: 380px) {
     .form-panel .fields {
       grid-template-columns: minmax(0, 1fr);
@@ -649,7 +602,6 @@
     }
   }
 
-  /* 할 수 있는 일 — 호스트 폼의 `.ai-sum` 과 같은 값 */
   .ai-sum {
     display: flex;
     flex-direction: column;
@@ -700,7 +652,6 @@
     color: var(--fg-2);
   }
 
-  /* 면의 첫 머리 — 패널 맨 위에 빈 줄을 두지 않는다 */
   .section.first {
     margin-top: 0;
   }
@@ -711,7 +662,6 @@
     gap: 2px;
   }
 
-  /* 헤드리스 상자 — 호스트 폼의 `.log-row` · `.field-note` 와 같은 꼴(라벨 열 · 스위치 + 옆 설명). 라벨이 길어 줄바꿈을 허용한다 */
   .fields.headless label {
     max-width: 14em;
     white-space: normal;
@@ -746,7 +696,6 @@
     word-break: keep-all;
   }
 
-  /* AI 권한 — 호스트 폼과 같은 게이지(`AiGauge.svelte` — 10-23). 여기서는 둘레 간격만 */
   .ai-gauge {
     margin-top: var(--space-2);
   }
@@ -762,7 +711,6 @@
     color: var(--warn);
   }
 
-  /* ⓘ 팝오버 안 문단(이 모달이 넘긴 스니펫 — 팝오버 상자는 `NotePopover` 가 그린다) */
   .pop-p {
     margin: 0;
   }
@@ -896,7 +844,6 @@
     margin-top: var(--space-4);
   }
 
-  /* 폼 바닥의 [취소 · 뒤로] · [저장] — 설정 모달 바닥과 같은 크기(40px). 목록 화면의 [닫기]는 `<form>` 밖이라 그대로 */
   form .actions > .btn {
     height: 40px;
     padding: 0 22px;
@@ -904,7 +851,6 @@
     font-weight: 500;
   }
 
-  /* 바닥 줄 — 왼쪽 [연결 테스트] · 칩, 빈칸, 오른쪽 [뒤로/취소] · [저장]. 칩은 이 줄 안에서만 줄어든다(폼 높이를 바꾸지 않는다) */
   form .actions {
     align-items: center;
     min-width: 0;
@@ -922,7 +868,6 @@
     flex: 1 1 auto;
   }
 
-  /* 결과 — 면 없는 글자 상태(목업 D). 바닥 줄의 덩어리는 단추 셋 그대로, 결과는 정보라 단추처럼 보이지 않게 */
   .test-status {
     display: inline-flex;
     align-items: center;
@@ -999,12 +944,10 @@
   .fields {
     display: grid;
     grid-template-columns: auto 1fr;
-    /* 위 정렬 — 라벨은 항목의 **첫 줄** 이름이다 (`HostForm` 과 한 벌) */
     align-items: start;
     gap: var(--space-2) var(--space-3);
   }
 
-  /* 첫 줄(칸 높이)의 가운데 — `nowrap` 이라 줄 간격이 벌어질 일이 없다 */
   .fields label {
     font-size: var(--t-sm);
     line-height: var(--field-height);
@@ -1012,7 +955,7 @@
     white-space: nowrap;
   }
 
-  /* 글 칸만 — 체크박스(비밀번호 저장)는 빼야 칸 모양(너비 100% · 높이 · 바탕)을 입지 않는다 */
+  /* 체크박스는 빼야 칸 모양(너비 100% · 높이 · 바탕)을 입지 않는다 */
   .fields input:not([type="checkbox"]) {
     width: 100%;
     box-sizing: border-box;
@@ -1069,7 +1012,6 @@
     min-width: 0;
   }
 
-  /* 경로 칸 옆 [찾아보기] — 칸과 같은 높이, 글자 · 여백은 전역 `.btn` 값 */
   .with-btn .btn {
     height: var(--field-height);
     padding: 0 var(--space-3);
@@ -1082,7 +1024,6 @@
     color: var(--fg-3);
   }
 
-  /* 비밀번호 칸 아래 "비밀번호 저장" — 앱 스위치(`Toggle` — 켬/끔은 토글, 2026-11-13 사용자 결정) · 설명 줄 없음 */
   .pwsave {
     display: inline-flex;
     align-self: flex-start;

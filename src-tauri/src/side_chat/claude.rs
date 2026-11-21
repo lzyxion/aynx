@@ -1,19 +1,12 @@
-//! **Claude Code 어댑터** — `claude -p` stream-json 양방향(실측 docs/log/2026-10-23-side-chat-structured-spike.md 1차 · 3차). 순수.
+//! Claude Code 어댑터 — `claude -p` stream-json 양방향(docs/log/2026-10-23-side-chat-structured-spike.md). 순수.
 //!
-//! - 인자 [`argv`] — 3차 후보 그대로 + `--tools`(내장 도구를 읽기 · 웹 다섯으로 줄임 — 10-23 v2 1단계 실측: `--permission-prompt-tool
-//!   stdio` 와 함께 써도 `can_use_tool` 이 그대로 오고 `system/init` 의 `tools` 가 다섯으로 준다 · 지연 도구였던 WebFetch 가 `ToolSearch`
-//!   없이 바로 묻는다). 설정 출처 통제 = 판정형 턴과 같은 후보 B(`--setting-sources ""` + 훅 끈 설정 파일) · MCP 는 채팅 파일만
-//!   (`--strict-mcp-config`). 미리 허용 = cwd 안 `Read(./**)` + `WebSearch` + `WebFetch`(10-25 사용자 결정) — cwd 밖 읽기만 카드로 묻는다(설계 4절 · 8절 2).
-//!   예외 하나: 갈라 온 채팅은 서버가 채팅 자기 폴더의 첨부 폴더 읽기(`--add-dir` + `Read(//…/**)`)를 인자 끝에 더한다(`server::side_chat::attach_read` · 판 32).
-//! - 준비 = `initialize` 제어 요청의 답(버전 `response.response.claude_code_version` · 모델 별칭 목록). `system/init` 은 **턴마다** 온다 —
-//!   턴 시작 신호로 쓴다(함정 1).
-//! - 추론 강도 = 띄울 때 `--effort <낱말>`, 대화 중에는 제어 요청 `apply_flag_settings{settings:{effortLevel}}`(플래그 설정 층 — 메모리뿐 ·
-//!   설정 파일을 쓰지 않는다 · `null` = 모델 기본으로 · 모르는 낱말도 성공으로 답하고 무시하니 [`effort_ok`] 로 거른다 — 10-23 실측
-//!   `get_settings.applied.effort`). 모델마다 받는 강도는 `initialize` 답의 `models[].supportedEffortLevels`(없으면 강도 없음).
-//! - 끊기 = 제어 요청 `interrupt` → `result{terminal_reason:"aborted_streaming"}` = `turnEnded{interrupted}`(함정 2).
-//! - `AskUserQuestion` · `EnterPlanMode` · `ExitPlanMode` 가 `can_use_tool` 로 오면(막았어도) 곧바로 거절 + 고정 문장 [`ASK_PLAINLY`](함정 3).
-//!   모르는 제어 요청은 오류로 답한다(영영 기다리지 않게).
-//! - 하위 에이전트 줄(`parent_tool_use_id` 있음)은 대화창에 섞지 않는다(`--tools` 로 Task 가 없어 실제로는 오지 않는다).
+//! - 설정 출처 통제: `--setting-sources ""` + 훅 끈 설정 파일 · MCP 는 채팅 파일만(`--strict-mcp-config`). 내장 도구는 `--tools` 로 읽기 · 웹 다섯뿐(쓰기 · 명령 · Task 없음).
+//! - 미리 허용 = cwd 안 `Read(./**)` + `WebSearch` + `WebFetch` — cwd 밖 읽기만 카드로 묻는다. 예외: 갈라 온 채팅은 서버가 첨부 폴더 읽기를 인자 끝에 더한다(`server::side_chat::attach_read`).
+//! - `--permission-prompt-tool stdio` 와 `--tools` 를 함께 써도 `can_use_tool` 이 그대로 온다(실측).
+//! - `system/init` 은 턴마다 온다 — 턴 시작 신호로 쓴다. 준비 = `initialize` 제어 요청의 답.
+//! - 대화 중 강도 = `apply_flag_settings{settings:{effortLevel}}`(메모리뿐 · 설정 파일을 쓰지 않는다) — 모르는 낱말도 성공으로 답하고 무시하니 [`effort_ok`] 로 거른다.
+//! - 끊기 = 제어 요청 `interrupt` → `result{terminal_reason:"aborted_streaming"}`.
+//! - 대화형 도구가 `can_use_tool` 로 오면(막았어도) 곧바로 거절 + [`ASK_PLAINLY`]. 모르는 제어 요청은 오류로 답한다(영영 기다리지 않게).
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -25,17 +18,15 @@ use super::event::{
 };
 use super::Adapter;
 
-/// 확인한 버전(실측) — 다르면 `notice{untested-version}` 만(칩 경고 — 설계 7절 위험).
+/// 확인한 버전 — 다르면 `notice{untested-version}` 만 낸다.
 pub(crate) const TESTED_VERSION: &str = "2.1.312";
-/// 확인한 버전들(사이드 채팅 1단계 재료 2.1.309 · 프로듀서 단계 0 실측 2.1.312 — 10-30).
 pub(crate) const TESTED_VERSIONS: [&str; 2] = ["2.1.309", TESTED_VERSION];
 /// `--settings` 파일의 본문 — 훅을 모두 끈다(판정형 턴 후보 B 와 같다).
 pub(crate) const SETTINGS_JSON: &str = r#"{"disableAllHooks":true}"#;
 /// `--mcp-config` 파일의 기본 본문 — MCP 없음(세션 서버의 MCP 포트가 없거나 채팅 토큰을 못 뽑았을 때).
 pub(crate) const MCP_CONFIG_EMPTY: &str = r#"{"mcpServers":{}}"#;
 
-/// `--mcp-config` 파일의 본문 — Aynx 세션 서버 하나 · **그 프로세스의 채팅 토큰**(5단계 — `crate::chat_token`). `--strict-mcp-config` 와 짝이라
-/// 사용자 MCP 서버는 싣지 않는다. 순수(파일은 서버가 채팅 임시 자리에 쓴다 · 끝나면 지운다).
+/// Aynx 세션 서버 하나 · 그 프로세스의 채팅 토큰(`crate::chat_token`) — `--strict-mcp-config` 와 짝이라 사용자 MCP 서버는 싣지 않는다.
 pub(crate) fn mcp_config(name: &str, url: &str, token: &str) -> String {
     serde_json::json!({
         "mcpServers": { name: { "type": "http", "url": url, "headers": { "Authorization": format!("Bearer {token}") } } }
@@ -43,9 +34,7 @@ pub(crate) fn mcp_config(name: &str, url: &str, token: &str) -> String {
     .to_string()
 }
 
-/// `--mcp-config` 본문에 **사람이 사이드 채팅에 고른 외부 서버**(2026-10-25 — `agent_mcp::side_chat_servers` · 서버가 준비한 실행 모양)를
-/// 더한다. 그 밖의 서버(사용자 CLI 설정)는 `--strict-mcp-config` 가 막는다. 이미 있는 이름(Aynx 서버 — 외부 목록에서는 거절되는 이름)은 덮지
-/// 않는다. 순수.
+/// 사람이 사이드 채팅에 고른 외부 서버를 더한다 — 그 밖(사용자 CLI 설정)은 `--strict-mcp-config` 가 막는다. 이미 있는 이름(Aynx 서버)은 덮지 않는다.
 pub(crate) fn mcp_config_with(base: &str, external: &[crate::agent_mcp::McpServer]) -> String {
     let mut v: Value = serde_json::from_str(base).unwrap_or_else(|_| json!({"mcpServers": {}}));
     if let Some(map) = v["mcpServers"].as_object_mut() {
@@ -58,12 +47,11 @@ pub(crate) fn mcp_config_with(base: &str, external: &[crate::agent_mcp::McpServe
     v.to_string()
 }
 
-// 외부 서버의 도구는 CLI 에 미리 허용하지 않는다(2026-11-20 — 설정의 '묻지 않기' `no_ask_rules` 를 걷었다): 늘 `can_use_tool` 로 오고,
-// 묻지 않기는 세션 서버가 그 채팅의 모드 · 허용 목록으로 정한다(`side_chat::perm`).
+// 외부 MCP 서버의 도구는 CLI 에 미리 허용하지 않는다 — 늘 `can_use_tool` 로 오고, 묻지 않기는 세션 서버가 그 채팅의 모드 · 허용 목록으로 정한다(`side_chat::perm`).
 
 /// 내장 도구 — 읽기 셋 + 웹 둘(`--tools`). 쓰기 · 명령 · Task · 대화형 도구는 아예 없다.
 pub(crate) const TOOLS: &str = "Read,Grep,Glob,WebSearch,WebFetch";
-/// 묻지 않고 쓰는 것 — cwd 안 읽기 · 웹 검색 · 페이지 읽기(설계 8절 2 · 10-25). cwd 밖 읽기만 카드로.
+/// 묻지 않고 쓰는 것 — cwd 안 읽기 · 웹 검색 · 페이지 읽기. cwd 밖 읽기만 카드로.
 pub(crate) const ALLOWED: [&str; 3] = ["Read(./**)", "WebSearch", "WebFetch"];
 /// 대화형 도구 — 막고, 그래도 오면 [`ASK_PLAINLY`] 로 거절.
 pub(crate) const INTERACTIVE: [&str; 3] = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"];
@@ -73,28 +61,21 @@ pub(crate) const DENIED: &str = "사용자가 거절했습니다";
 
 /// 인자 재료 — 파일 경로는 서버가 채팅 자리에 쓴 것(본문 [`SETTINGS_JSON`] · [`MCP_CONFIG_EMPTY`] · 지침).
 pub(crate) struct Opts<'a> {
-    /// 실행 파일 절대 경로(PATH 의 `.exe`).
     pub exe: &'a str,
     pub mode: Mode<'a>,
-    /// 새 대화 · 갈라 온 대화의 id(서버가 정한다 — `--session-id`). 이어 가기에는 쓰지 않는다.
+    /// 새 대화 · 갈라 온 대화의 id(`--session-id`) — 이어 가기에는 쓰지 않는다.
     pub session_id: &'a str,
     pub model: &'a str,
     pub effort: Option<&'a str>,
     pub settings_file: &'a str,
     pub mcp_config_file: &'a str,
-    /// 지침 파일(검색 지침 + 전역 CLAUDE.md + `sidechat/CLAUDE.md` — `--append-system-prompt-file` · 서버는 늘 싣는다).
+    /// 지침 파일(`--append-system-prompt-file`).
     pub append_file: Option<&'a str>,
-    /// 묻지 않고 부르는 Aynx MCP 도구(`mcp__<서버>__<도구>` — 5단계 읽기 도구 · `--allowedTools` 에 더한다). 비면 없음.
+    /// 묻지 않고 부르는 Aynx MCP 도구(`--allowedTools` 에 더한다).
     pub mcp_allowed: &'a [String],
 }
 
-/// 실행 인자 배열 `[exe, …]`(셸 없음 · 사용자 추가 인자 없음). 대화 id · 모델 · 강도 낱말이 틀리면 거절.
-///
-/// | 모양 | 대화 인자 |
-/// |---|---|
-/// | 새 대화 | `--session-id <새 id>` |
-/// | 이어 가기 | `--resume <id>`(`--session-id` 를 함께 주면 시작 오류) |
-/// | 갈라 오기 | `--resume <원본> --fork-session --session-id <새 id>`(실측 — 새 id 가 그대로 선다 · 기억함) |
+/// 셸 없음 · 사용자 추가 인자 없음. 이어 가기에 `--session-id` 를 함께 주면 시작 오류다 · 갈라 오기는 `--resume <원본> --fork-session --session-id <새 id>`(새 id 가 그대로 선다).
 pub(crate) fn argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
     if !model_ok(o.model) || o.effort.is_some_and(|e| !word_ok(e)) {
         return Err("bad-model");
@@ -158,12 +139,11 @@ pub(crate) fn argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
     Ok(a)
 }
 
-/// **프로듀서 채팅의 내장 도구**(오케스트레이션 2단계 단계 2 — 설계 1-2 · R9): 읽기 셋뿐(웹 · 쓰기 · 명령 없음).
+/// 프로듀서 채팅의 내장 도구 — 읽기 셋뿐(웹 · 쓰기 · 명령 없음).
 pub(crate) const PRODUCER_TOOLS: &str = "Read,Grep,Glob";
 
-/// **프로듀서 인자**(설계 1-2) — [`argv`] 와 같은 줄에서 내장 도구를 [`PRODUCER_TOOLS`] 로, 묻지 않음을 `Read(./**)` 하나(+ Aynx MCP 미리
-/// 허용)로 바꾼다. `--setting-sources ""` · `--settings`(훅 끔) · `--strict-mcp-config` · 대화형 도구 막기는 그대로다(실측 P9 — 사용자 · 프로젝트
-/// 설정의 허용 규칙 · 훅 · MCP 가 새지 않는다). 순수.
+/// [`argv`] 에서 내장 도구를 [`PRODUCER_TOOLS`] 로 바꾸고 웹 미리 허용을 뺀다. 설정 출처 통제 · 훅 끔 · `--strict-mcp-config` · 대화형 도구 막기는 그대로다
+/// (실측 — 사용자 · 프로젝트 설정의 허용 규칙 · 훅 · MCP 가 새지 않는다).
 pub(crate) fn producer_argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
     let mut a = argv(o)?;
     if let Some(i) = a.iter().position(|x| x == "--tools") {
@@ -173,7 +153,6 @@ pub(crate) fn producer_argv(o: &Opts<'_>) -> Result<Vec<String>, &'static str> {
     Ok(a)
 }
 
-/// 도구 입력에서 한 줄 요약(파일 · 명령 · 검색어 · 주소).
 fn tool_summary(name: &str, input: &Value) -> String {
     let key = match name {
         "Read" | "Write" | "Edit" | "NotebookEdit" => "file_path",
@@ -187,7 +166,6 @@ fn tool_summary(name: &str, input: &Value) -> String {
     input.get(key).and_then(Value::as_str).map(one_line).unwrap_or_default()
 }
 
-/// 도구 결과 본문 → 글(문자열 · 텍스트 조각 배열).
 fn result_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -201,17 +179,14 @@ struct Pending {
     input: Value,
 }
 
-/// 어댑터 상태 — 줄 사이의 작은 장부.
 pub(crate) struct Claude {
     model: String,
     conversation: String,
     seq: u64,
-    /// 우리가 보낸 제어 요청 → 무엇(`set_model` 이면 고른 별칭).
     controls: BTreeMap<String, Control>,
-    /// 모델 → 받는 강도(`initialize` 답 — `Ev::Ready.efforts` 와 같은 것).
     efforts: BTreeMap<String, Vec<String>>,
     pending: BTreeMap<String, Pending>,
-    /// 보냈지만 아직 턴이 시작되지 않은 글의 `clientId`(차례대로 — CLI 는 글 하나에 턴 하나).
+    /// 보냈지만 아직 턴이 시작되지 않은 글의 `clientId` — CLI 는 글 하나에 턴 하나.
     queued: VecDeque<Option<String>>,
     in_turn: bool,
     ready: bool,
@@ -226,7 +201,6 @@ enum Control {
 }
 
 impl Claude {
-    /// `argv` 와 같은 재료로 — 대화 id 는 새 대화 · 갈라 오기면 `session_id`, 이어 가기면 그 id.
     pub(crate) fn new(o: &Opts<'_>) -> Self {
         let conversation = match o.mode {
             Mode::Resume { conv } => conv,
@@ -332,7 +306,7 @@ impl Claude {
             };
         }
         let input = req["input"].clone();
-        // 외부 MCP 도구(2.1.310 실측 — `mcp_server{name}` · `display_name` 은 도구의 사람 이름뿐) — 제목 `<서버> · <도구>` · 상세 = 입력 JSON
+        // 외부 MCP 도구 — `mcp_server{name}` 이 오고 `display_name` 은 도구의 사람 이름뿐이다(실측)
         let mcp = req["mcp_server"]["name"].as_str().and_then(|s| split_mcp_tool(&tool, Some(s)));
         let (kind, title, detail) = match mcp {
             Some((server, name)) => {
@@ -369,8 +343,7 @@ impl Claude {
     }
 }
 
-/// `initialize` 답 → 모델 → 받는 강도. `supportedEffortLevels` 가 없는 모델은 빈 목록(강도를 받지 않는다 — 실측 `claude-haiku-4-5-…`).
-/// 열쇠 `""` = 지금 뜬 CLI 기본 = 별칭 `default` 의 목록(`--model` 을 싣지 않았을 때 칩이 쓰는 것).
+/// `supportedEffortLevels` 가 없는 모델은 빈 목록(강도를 받지 않는다). 열쇠 `""` = `--model` 을 싣지 않았을 때의 CLI 기본 = 별칭 `default` 의 목록.
 pub(crate) fn initialize_efforts(body: &Value) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     for m in body["models"].as_array().into_iter().flatten() {
@@ -499,7 +472,7 @@ impl Adapter for Claude {
             }
             "result" => {
                 self.in_turn = false;
-                // 도구 호출 중 끊기면 `aborted_tools`(`is_error:true` — 2.1.312 실측 P4) — 이것도 끊김이다(오류 끝이 아니다).
+                // 도구 호출 중 끊기면 `aborted_tools`(`is_error:true`) — 이것도 끊김이다(실측).
                 let outcome = if v["terminal_reason"] == "aborted_streaming" || v["terminal_reason"] == "aborted_tools" {
                     Outcome::Interrupted
                 } else if v["is_error"] == true {

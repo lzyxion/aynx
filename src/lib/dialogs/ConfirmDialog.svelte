@@ -1,10 +1,5 @@
 <script lang="ts">
-  // **확인 · 알림 상자**(10-16) — OS 기본 메시지 상자(`plugin-dialog` 의 `ask` · `message`) 대신 앱 테마를 따르는 모달.
-  // 상태 · 줄 · 포커스 되돌리기는 `app/confirm-dialog.svelte.ts`, Escape 사슬 · `anyModalOpen` 은 `app/keys`. 꼴은
-  // `WorkspaceDeleteDialog` 와 같다(Tab 순환 `trapTab` · 바깥 누르기 = 취소). 첫 포커스는 상태 모듈이 고른 단추 —
-  // 위험 · 경고 · 오류면 [취소](`DbWriteDialog` 와 같은 규칙). 다른 모달(설정 · 호스트 폼 …) 안에서 물어도 그 위에 뜬다.
-  // 훅 설치 확인(`askHookInstall` — `req.hooks`)은 같은 줄 · 키 · 포커스를 쓰되 폭이 넓고(520px) 본문 한 줄 아래에
-  // `HookInstallBody` 를 그린다(원격이면 제목 옆 칩).
+  // 확인 · 알림 상자 — OS 기본 메시지 상자(`plugin-dialog` 의 `ask` · `message`) 대신 쓴다.
   import { tick } from "svelte";
   import { trapTab } from "$lib/focus-trap";
   import AiGaugeMini from "$lib/AiGaugeMini.svelte";
@@ -34,7 +29,7 @@
 
   function onKey(ev: KeyboardEvent): void {
     if (modalEl && trapTab(ev, modalEl)) return;
-    // 앱의 전역 단축키 · 파일 타일 키 · 터미널이 이 상자의 키를 받지 않게(창 버블 리스너보다 먼저 끊는다).
+    // 전역 단축키 · 터미널이 이 상자의 키를 받지 않게 창 버블 리스너보다 먼저 끊는다.
     ev.stopPropagation();
     if (ev.key === "Escape") {
       ev.preventDefault();
@@ -85,12 +80,11 @@
         </h2>
       {/if}
       {#if req.variant === "approve-all"}
-        <!-- 모두 승인 미리 보기(10-23 목업) — 고르려는 단계의 게이지가 가득 찬 모양 -->
         <div class="preview"><AiGaugeMini at={GAUGE_SEGMENTS} shape="track" /></div>
       {/if}
       <p class="body" id="confirm-dialog-body">{req.body}</p>
       {#if req.hooks}
-        <!-- 줄의 다음 훅 확인이 접힘 · 복사 상태를 물려받지 않게 요청마다 새로 -->
+        <!-- 다음 훅 확인이 접힘 · 복사 상태를 물려받지 않게 요청마다 새로 -->
         {#key req}<HookInstallBody hooks={req.hooks} />{/key}
       {/if}
       {#if req.callout}<p class="callout" role="note">{req.callout}</p>{/if}
@@ -139,7 +133,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    /* 다른 모달(100~111 — 설정 독 · 호스트 폼 · DB 고르기 …) 안에서 물어도 그 위 · 가림막(115) 아래 */
+    /* 다른 모달(100~111) 위 · 가림막(115) 아래 */
     z-index: 114;
     display: grid;
     place-items: center;
@@ -151,11 +145,11 @@
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     box-sizing: border-box;
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
     color: var(--fg-1);
   }
@@ -207,7 +201,7 @@
     margin: 0;
     font-size: var(--t-sm);
     line-height: 1.5;
-    /* 부르는 쪽이 `\n` 으로 줄을 나눈다(목록 · 두 문장) */
+    /* 부르는 쪽이 `\n` 으로 줄을 나눈다 */
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -247,7 +241,6 @@
     margin-top: var(--space-4);
   }
 
-  /* Destructive button pattern from src/lib/console/PlanList.svelte. */
   .btn.danger-solid {
     color: var(--err);
     background: var(--err-soft);
@@ -257,7 +250,6 @@
     background: color-mix(in srgb, var(--err) 22%, var(--err-soft));
   }
 
-  /* 모두 승인 확인(10-23 목업) — 따뜻한 테두리 · 주황 경고 그림 · 게이지 미리 보기 · 점 목록 · 「이해했습니다」 칸 · 주황 확인 단추 */
   .modal.yolo {
     border-color: var(--ai-all-line);
   }
@@ -309,7 +301,7 @@
     color: var(--fg-2);
   }
 
-  /* 폰 · 태블릿(원격 웹 R5) — 손가락으로 누를 단추는 44px 높이 */
+  /* 폰 · 태블릿 — 손가락으로 누를 단추는 44px 높이 */
   @media (pointer: coarse) {
     .actions button {
       min-height: 44px;

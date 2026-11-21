@@ -9,22 +9,7 @@
   import { findPaneAnywhere } from "$lib/app/tabs.svelte.js";
   import { veilVisible } from "$lib/app/veil.svelte.js";
 
-  /**
-   * **코드 블록을 셸 타일에 넣기 — 고르기 상자** (`app/code-to-term.svelte.ts` — 문서 타일 · AI 타일 대화 면 · 사이드 채팅의 [터미널에 넣기]).
-   *
-   * [AI에게 묻기] 의 고르기 상자(`AskAiPicker.svelte`)와 **같은 결의 형제**다 — 키 · 닫힘 · 포커스 복귀 · 자리 잡기 · 모양을 그대로
-   * 따르되 줄이 셸 타일이다. 받을 셸 타일이 곧장 정해지지 않을 때(이 탭에 여럿 · 다른 탭에만 있음 · 없음) 뜬다. 상태는
-   * `app/code-to-term.svelte.ts` 에 있고 이 컴포넌트는 `+page` 에 늘 마운트돼 그 상태가 있을 때만 그린다.
-   *
-   * - 줄 순서: **이 탭** → **다른 탭** → 새 터미널 열기(사이드 채팅에서 열었으면 "새 탭에 터미널 열기" — 옆에 설 타일이 없다).
-   *   마지막에 포커스했던 셸 타일이 골라진 채 뜬다.
-   * - 원격(SSH) 셸은 줄에 **호스트 이름**을 보인다 — 어느 서버에 넣는지 보고 고른다. 로컬은 셸 이름.
-   * - "명령 도는 중" 은 표시만 한다(막지 않는다).
-   * - 키: ↑↓ · Home/End 로 고르고 Enter 로 넣는다. **Esc 는 여기서 끊는다**(뒤 화면의 Escape 사슬로 새지 않게) — 닫고 포커스를
-   *   누른 단추(사라졌으면 누른 타일 — 문서 타일 · AI 타일, 사이드 채팅은 단추만)로 돌려준다.
-   * - 줄을 고르면 메뉴 통로(`runOnMenu`)로 **값을 스냅샷하고 닫은 뒤** 실행한다(docs/conventions.md).
-   * - 바깥을 누르면 닫는다(포커스는 누른 자리의 것). 가림막이 내려와도 닫는다.
-   */
+  /** [터미널에 넣기]의 고르기 상자 — `AskAiPicker.svelte` 와 같은 결. Esc 는 여기서 끊는다(뒤 화면의 Escape 사슬로 새지 않게) */
 
   const picker = $derived(codeTermPicker());
 
@@ -32,7 +17,6 @@
   let sel = $state(0);
   let pos = $state<{ left: number; top: number } | null>(null);
 
-  /** 상자가 새로 뜨면 골라진 줄 · 자리를 처음부터 */
   $effect(() => {
     const p = picker;
     if (!p) return;
@@ -40,7 +24,6 @@
     pos = null;
   });
 
-  /** 자리 — 기준점 아래, 화면 밖이면 기준점 위로 뒤집고 좌우는 안쪽으로 민다(`AskAiPicker` 와 같은 규칙) */
   $effect(() => {
     const node = el;
     const p = picker;
@@ -57,12 +40,8 @@
   });
 
   /**
-   * 자리를 잡은 뒤 포커스 — 숨은(측정 전) 상자는 포커스를 받지 않는다.
-   *
-   * `tick` 이 아니라 **rAF** 인 까닭: 활성이 아닌 문서 타일의 단추를 누르면 pointerdown 이 그 타일을 활성으로 바꾸고, `PaneHost` 의
-   * `routeTileFocus` 가 rAF 안에서 문서 타일 뿌리(`div.doc` — `[data-tile-focus]`)에 포커스를 준다. 그 rAF 가 click 보다 늦게 돌면(빠른
-   * 클릭 · 바쁜 프레임) 상자는 이미 포커스를 받았고 상자는 그 타일 밖이라 그대로 빼앗긴다. 이 rAF 는 click 뒤에 걸리므로 같은 프레임이면
-   * 그 뒤에 돌고, 저쪽이 먼저 돌았으면(포커스가 단추 — 타일 안이라 비켜났다) 그대로 상자가 받는다.
+   * 숨은(측정 전) 상자는 포커스를 받지 않아 자리를 잡은 뒤 준다. `tick` 이 아니라 rAF 다 — `PaneHost` 의 `routeTileFocus` 가
+   * rAF 안에서 문서 타일 뿌리에 포커스를 주므로, 그보다 먼저 주면 상자가 포커스를 빼앗긴다.
    */
   $effect(() => {
     const node = el;
@@ -71,7 +50,6 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  /** 바깥 클릭으로 닫는다 */
   $effect(() => {
     if (!picker) return;
     const onDown = (ev: PointerEvent) => {
@@ -83,12 +61,10 @@
     return () => window.removeEventListener("pointerdown", onDown, true);
   });
 
-  /** 가림막이 내려오면 닫는다 */
   $effect(() => {
     if (picker && veilVisible()) closeCodeTermPicker("none");
   });
 
-  /** 줄 하나를 고른다 — 스냅샷 → 닫기 → 실행 */
   function choose(i: number): void {
     runOnMenu(
       () => {
@@ -137,7 +113,6 @@
     sel = next;
   }
 
-  /** 줄 앞 무리 머리 — 무리가 바뀌는 자리에서만 */
   function groupLabel(rows: readonly TermRow[], i: number, hasTiles: boolean): string | null {
     const row = rows[i];
     const prev = i > 0 ? rows[i - 1] : null;
@@ -148,7 +123,6 @@
     return hasTiles ? null : t("files.doc.codeterm.picker.none");
   }
 
-  /** 줄 이름 — 원격은 호스트 이름이 이름과 다르면 덧붙이고, 다른 탭 줄은 탭 이름을 붙인다 */
   function rowName(row: Extract<TermRow, { kind: "tile" }>): string {
     const tile = row.tile;
     const base = tile.host && tile.host !== tile.name ? `${tile.name} · ${tile.host}` : tile.name;
@@ -248,7 +222,7 @@
 {/if}
 
 <style>
-  /* 상자 — 모양은 전역 메뉴 한 벌(`.menu-surface`) · `AskAiPicker` 와 같은 층(121) · 같은 치수 */
+  /* `AskAiPicker` 와 같은 층(121) */
   .codeterm {
     position: fixed;
     z-index: 121;
@@ -270,7 +244,7 @@
       transform: none;
     }
   }
-  /* 글래스 — 메뉴의 `opacity` 대신 판 색 · 그림자와 내용만 페이드(theme.css `glass-surface-in`) */
+  /* 글래스 — `opacity` 대신 판 색 · 그림자와 내용만 페이드(theme.css `glass-surface-in`) */
   @media (prefers-reduced-motion: no-preference) {
     :global(:root[data-material="glass"]) .codeterm {
       --glass-in-from: translateY(-4px);
@@ -323,7 +297,6 @@
     grid-template-columns: 16px minmax(0, 1fr);
     color: var(--fg-2);
   }
-  /* 강조색이 서는 자리 — 골라진 줄 하나 */
   .opt.sel {
     background: var(--accent-soft);
   }

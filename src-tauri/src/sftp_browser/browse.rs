@@ -40,8 +40,7 @@ pub async fn sftp_list(
         }
     };
 
-    // readdir 이 이름과 속성을 함께 준다 — 여기서 항목마다 stat 을 더 부르지 않는다.
-    // (`ReadDir` 이터레이터는 `.` 과 `..` 을 이미 걸러 준다.)
+    // readdir 이 이름과 속성을 함께 준다 — 항목마다 stat 을 더 부르지 않는다(`ReadDir` 은 `.` · `..` 을 이미 거른다).
     let mut entries: Vec<SftpEntry> = read
         .map(|entry| {
             let name = entry.file_name();
@@ -55,10 +54,7 @@ pub async fn sftp_list(
     Ok(entries)
 }
 
-/// 항목 하나의 정보 (작업 뒤 새로고침·상세 표시용).
-///
-/// **`lstat` 이다** — 심링크는 자기 자신으로 보고된다 (`kind: "symlink"`). 가리키는 곳의
-/// 정보는 목록과 똑같이 `symlinkTarget` · `linkIsDir` 로 딸려 온다.
+/// `lstat` 이다 — 심링크는 자기 자신으로 보고되고, 가리키는 곳은 목록과 같이 `symlinkTarget` · `linkIsDir` 로 딸려 온다.
 #[tauri::command]
 pub async fn sftp_stat(
     app: tauri::AppHandle,
@@ -89,11 +85,7 @@ pub async fn sftp_stat(
     Ok(entry)
 }
 
-/// 이 경로가 사는 볼륨의 남은 공간 — 파일 타일의 상태 줄 (docs/log/2026-10-07-file-tile-dolphin.md).
-///
-/// SFTP 본 규격에는 이런 질문이 없다. OpenSSH 의 확장 `statvfs@openssh.com` 을 **서버가 알린 때만** 묻고
-/// (`SftpSession::fs_info` 가 확장 목록을 보고 `None` 을 준다), 모르는 서버·실패는 `Ok(None)` 이다 — 화면은 그 칸을
-/// 숨긴다. 세션을 못 찾은 것만 `Err` 다(목록과 같은 갈래 — 화면이 이미 연결 대기 배너를 띄운다).
+/// 볼륨의 남은 공간 — OpenSSH 확장 `statvfs@openssh.com` 을 서버가 알린 때만 묻는다. 모르는 서버·실패는 `Ok(None)`(화면이 칸을 숨긴다), 세션을 못 찾은 것만 `Err`.
 #[tauri::command]
 pub async fn sftp_free_space(
     app: tauri::AppHandle,

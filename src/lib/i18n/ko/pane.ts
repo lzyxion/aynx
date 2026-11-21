@@ -1,37 +1,20 @@
 /**
  * `pane` 영역의 문구 — 한국어가 기준 사전이다 (규칙은 `ko/settings.ts` 머리말).
- *
- * 이 네임스페이스가 덮는 것은 **타일 하나 안에서 벌어지는 일** 전부다: 머리줄 · 타일
- * 메뉴(⋯ · 터미널 우클릭) · tmux 세션 목록 · 터미널 배너와 안내 · 드롭 미리보기 ·
- * 분할선 · 타일 이름과 세션 오류 · 명령 블록의 표식과 알림 · 포트 포워딩의 상태 한 마디.
- *
- * ## 순수 모듈은 `tr` 를 인자로 받는다
- *
- * 이 영역의 문구를 만드는 자리 중 여럿이 **vitest 가 그대로 도는 평범한 `.ts`** 다
- * (`finish-notify` · `shell-integration` · `pane/pane-menu` · `pane/drop-rules` · `tmux` ·
- * `session` · `forward`). 그 파일들은 `i18n.svelte.ts` 를 들여올 수 없으므로
- * (`$state` 가 svelte 컴파일러를 탄다 — `vitest.config.ts` 의 머리말) **`t` 를 인자로
- * 받는다**: `blockOutcomeLabel(input, tr)` 처럼. 화면 쪽은 `t` 를 그대로 넘기고, 테스트는
- * `dict.ts` 의 `translate` 로 만든 한 줄짜리 `tr` 를 넘긴다.
- *
- * 아직 `t` 를 넘기지 않는 부름(이 단계 밖의 화면 — 탭 바·상태 표시줄·시작 화면)은
- * 인자를 생략하고, 그때는 **언제나 한국어**다. 그 자리들은 각자의 단계에서 `t` 를
- * 넘기는 한 줄만 더하면 끝난다.
+ * 순수 모듈(vitest 가 그대로 도는 `.ts` — `finish-notify` · `shell-integration` · `pane/pane-menu` · `pane/drop-rules` · `tmux` · `session` · `forward`)은
+ * `i18n.svelte.ts` 를 들여올 수 없어(`$state` 가 svelte 컴파일러를 탄다) `t` 를 인자로 받는다 — 화면은 `t` 를, 테스트는 `translate` 로 만든 `tr` 를 넘긴다.
+ * 인자를 생략한 부름은 언제나 한국어다.
  */
 export const pane = {
-  // ── 머리줄 (PaneHeader.svelte) ─────────────────────────────────────────────
+  // ── 머리줄 ─────────────────────────────────────────────────────────────────
   "header.title.host": "{name} — {host}",
   // 저장 안 한 변경(편집 중 문서) — 이름 옆 ● (docs/log/2026-09-27-doc-edit.md "F2")
   "header.doc.unsaved": "저장하지 않은 변경이 있습니다",
-  // 머리줄 표식·칩의 말풍선은 **이름만** 짧게 (docs/log/2026-09-28-tile-header-tooltips.md) —
-  // 뜻풀이·해제 방법은 ⋯ 메뉴 항목의 툴팁이 쥔다.
+  // 머리줄 표식·칩의 말풍선은 이름만 짧게 — 뜻풀이·해제 방법은 ⋯ 메뉴 항목의 툴팁이 쥔다 (docs/log/2026-09-28-tile-header-tooltips.md).
   "header.tmux.aria": "tmux 세션 {name} — 세션 목록 열기",
-  // 연결 상태 말풍선 (session-info.ts) — 문장이 아니라 **조각**이다. `·` 로 잇는 자리가
-  // 언어마다 다르지 않도록 조각 하나씩 사전이 쥔다 (docs/log/2026-09-17-connect-diagnostics.md).
+  // 연결 상태 말풍선 — 문장이 아니라 조각이다. `·` 로 잇는 자리가 언어마다 같도록 조각 하나씩 사전이 쥔다 (docs/log/2026-09-17-connect-diagnostics.md).
   "header.info.auth": "인증: {method}",
   "header.info.auth.with_identity": "인증: {method} ({identity})",
-  // 금고에 담긴 암호구로 그 키를 열었을 때 — "암호구가 걸린 키인데 왜 안 물었지" 의 답이
-  // 같은 줄에 있어야 한다 (docs/log/2026-09-19-vault.md).
+  // 금고의 암호구로 키를 열었을 때 — "암호구가 걸린 키인데 왜 안 물었지" 의 답이 같은 줄에 있어야 한다 (docs/log/2026-09-19-vault.md).
   "header.info.auth.with_identity.stored": "인증: {method} ({identity}, 저장됨)",
   "header.info.auth.key": "키",
   "header.info.auth.key_file": "키 파일",
@@ -44,16 +27,12 @@ export const pane = {
   "header.info.rtt": "지연 {ms}ms",
   // keepalive 는 **꺼져 있을 때만** 적는다 — 끊김을 한참 모르고 지나는 이유가 되는 값이다.
   "header.info.keepalive.off": "keepalive 꺼짐",
-  // 연결 공유 (docs/log/2026-09-23-ssh-connection-sharing.md) — 이 타일이 새 연결을
-  // 세운 것이 아니라 이미 선 연결에 얹혔다는 사실. 인증 줄과 **이어 붙이지 않고**
-  // 자리표시자 하나로 감싼다(어순을 언어가 정한다).
+  // 연결 공유 — 인증 줄과 이어 붙이지 않고 자리표시자 하나로 감싼다(어순을 언어가 정한다) (docs/log/2026-09-23-ssh-connection-sharing.md).
   "header.info.auth.joined": "(공유 연결) {auth}",
   "header.info.shared": "연결 공유: 다른 타일 {n}개와 같은 연결",
-  // 같은 연결을 빌린 쿼리 타일의 DB 연결(타일 수에 넣지 않는다 — 쿼리 타일 9단계).
   "header.info.db": "이 연결을 쓰는 DB 연결 {n}개",
   "header.info.agent_forward": "에이전트 포워딩 켬",
-  // 연결 상태 카드 (SessionInfoCard.svelte · docs/log/2026-09-28-tile-header-tooltips.md "SSH 이름 카드") —
-  // 왼쪽 칸은 **라벨**, 오른쪽 칸은 **값**이다. 위의 조각(`인증: …`)은 접근성 한 줄(`sessionInfoLines`)이 그대로 쓴다.
+  // 연결 상태 카드 — 위의 조각(`인증: …`)은 접근성 한 줄(`sessionInfoLines`)도 그대로 쓴다.
   "header.info.card.auth": "인증",
   "header.info.card.jump": "경유",
   "header.info.card.connected": "접속",
@@ -65,7 +44,7 @@ export const pane = {
   "header.info.card.agent": "AI",
   "header.info.card.shell": "셸",
   "header.info.card.folder": "폴더",
-  // 쿼리 타일 이름 카드(10-14 — 위 띠의 엔진 이름을 옮겼다, `query/info-card`)
+  // 쿼리 타일 이름 카드
   "header.info.card.state": "상태",
   "header.info.card.engine": "엔진",
   "header.info.card.conn": "연결",
@@ -83,30 +62,27 @@ export const pane = {
   "header.info.card.shared.value": "다른 타일 {n}개와 같은 연결",
   "header.info.card.db.value": "DB 연결 {n}",
   "header.info.card.forward.agent": "에이전트",
-  // 경유 칩 — 칩 글자는 짧게(`경유 bastion`), 말풍선이 뜻을 편다. 둘 다 자리표시자 하나라
-  // 영어가 어순을 스스로 정한다 (`files.host.jump` 와 같은 값이 아니다 — 저쪽은 목록의
-  // 표식이고 이쪽은 "이 세션이 그렇게 붙었다" 는 사실이다).
+  // 경유 칩 — 자리표시자 하나라 영어가 어순을 정한다 · `files.host.jump` 와 같은 값이 아니다(저쪽은 목록의 표식이다).
   "header.jump.chip": "via {jump}",
   "header.jump.title": "{jump} 을 거쳐 접속",
   "header.forward.title": "포트 포워딩 {n}개",
   "header.forward.aria": "포트 포워딩 목록",
-  // 칩 안의 글자. 한국어는 수를 세지 않지만 영어는 `Forward 1` / `Forwards 2` 로 갈린다 —
-  // 키를 둘로 나눠 두면 화면 쪽 코드는 언어를 몰라도 된다.
+  // 칩 안의 글자 — 영어는 `Forward 1` / `Forwards 2` 로 갈려 키를 둘로 나눈다(화면 쪽 코드는 언어를 몰라도 된다).
   "header.forward.chip.one": "forward {n}",
   "header.forward.chip.other": "forward {n}",
   "header.forward.relaying": "연결 {n}개 중계 중",
-  // 머리줄 "+N" 칩(넘쳐서 숨은 칩 — pane/HeaderChips · 2026-10-23)
+  // 머리줄 "+N" 칩
   "header.more.aria": "숨은 칩 {n}개 — {list}",
-  // 로컬 타일의 눈 칩(11-18 — 읽기 허용이 켜졌을 때만 선다 · 누르면 바로 끈다)
+  // 로컬 타일의 눈 칩
   "header.aiRead.title": "AI 읽기 허용 켜짐 — 누르면 끕니다",
   "header.sync.title": "동시 입력 중",
   "header.menu.title": "타일 메뉴",
   "header.menu.aria": "타일 메뉴",
-  // 폴더 칩 · 브랜치 칩 (2026-10-11 — 예전 📂 머리 버튼 자리). 말풍선 = 접근성 이름
+  // 폴더 칩 · 브랜치 칩 — 말풍선 = 접근성 이름
   "header.folder.title": "폴더 열기 · {path}",
   "header.resource.title": "이 타일(셸과 그 아래) CPU {cpu} · 메모리 {mem}",
   "header.folder.unknown": "폴더 열기",
-  // 폴더를 모를 때(10-23) — 칩 글자는 모든 언어에서 영어 낱말 `folder`(AI 단계 이름처럼 번역하지 않는다) · 말풍선은 까닭
+  // 폴더를 모를 때 — 칩 글자는 모든 언어에서 영어 낱말 `folder`(AI 단계 이름처럼 번역하지 않는다) · 말풍선은 까닭
   "header.folder.unknown.chip": "Folder",
   "header.folder.unknown.tmux": "tmux 안의 폴더는 알 수 없습니다 · 폴더 열기",
   "header.folder.unknown.shell": "셸이 지금 폴더를 알려 주지 않습니다 — 셸 통합(bash · zsh)이 필요합니다 · 폴더 열기",
@@ -116,7 +92,7 @@ export const pane = {
   "header.zoom.aria": "타일 최대화",
   "header.close.title": "타일 닫기",
   "header.close.aria": "타일 닫기",
-  // AI 타일 [터미널 | 대화] 넘기기 (2026-10-17 — pane/AiFlip.svelte)
+  // AI 타일 [터미널 | 대화] 넘기기
   "flip.toConvo": "대화로 전환",
   "flip.toTerm": "터미널로 전환",
   "flip.sending": "보내는 중…",
@@ -124,7 +100,7 @@ export const pane = {
   "flip.composer.send": "보내기 (Enter)",
   "flip.composer.interrupt": "중단",
   "flip.composer.stop": "지금 턴 중지 (Esc)",
-  // 대화 면 입력 칸의 [+] · 모델 키워드(2026-11-13 — 목업 E2 · E3 · E4)
+  // 대화 면 입력 칸의 [+] · 모델 키워드
   "flip.composer.attach": "파일 업로드",
   "flip.model.menu": "모델 · Effort 고르기",
   "flip.model.unknown": "모델 — 첫 답 뒤에 보입니다",
@@ -155,7 +131,7 @@ export const pane = {
   "flip.switch.gate": "위 확인에 먼저 답하세요",
   "flip.convo.aria": "이 타일의 대화",
   "flip.find": "대화에서 찾기",
-  // AI 타일 대화 면의 권한 카드 (2026-11-01 — pane/TilePermissionCard.svelte · docs/log/2026-11-01-tile-permission-hook.md)
+  // AI 타일 대화 면의 권한 카드 (docs/log/2026-11-01-tile-permission-hook.md)
   "perm.title.command": "명령을 실행하려 합니다",
   "perm.title.edit": "파일을 고치려 합니다",
   "perm.title.write": "파일을 쓰려 합니다",
@@ -203,7 +179,7 @@ export const pane = {
   "find.close": "닫기 (Esc)",
   "flip.notAi": "대화 보기는 AI 타일(Claude Code · Codex)에서만 넘길 수 있습니다.",
 
-  // ── 타일 메뉴 (pane/pane-menu.ts · PaneMenu.svelte) ────────────────────────
+  // ── 타일 메뉴 ──────────────────────────────────────────────────────────────
   "menu.aria": "{title} 타일 메뉴",
   "menu.split_row": "좌우로 분할",
   "menu.split_col": "상하로 분할",
@@ -232,15 +208,13 @@ export const pane = {
   "menu.session_log.title.on": "이 세션이 쌓고 있는 로그 파일을 기본 앱으로 엽니다",
   "menu.session_log.title.off":
     "이 세션은 로그를 남기지 않습니다 — 호스트 설정의 '세션 로깅' 을 켜면 다음 접속부터 쌓입니다",
-  // "로그 폴더 열기" 는 2026-09-17 에 이 메뉴를 떠났다 — 대상이 타일이 아니라 앱 전역의
-  // 한 폴더라, 지금은 설정 › 터미널(`settings.terminal.logs_folder.*`)과 호스트 폼에 있다.
-  // 로컬 타일의 체크 줄(11-18 — 로컬 셸 · 로컬 AI CLI 타일 같은 규칙). 누르면 그 자리에서 켜고 끈다
+  // 로컬 타일의 체크 줄 — 로컬 셸 · 로컬 AI CLI 타일 같은 규칙
   "menu.aiRead": "AI 읽기 허용",
   "menu.aiRead.title": "AI(MCP)가 이 타일의 화면과 명령 기록을 읽습니다 — 이 타일에만 적용됩니다 · 끄면 이 타일의 서버 데이터도 지워집니다",
-  // 원격 타일 — 권한은 타일이 아니라 **호스트 하나의 단계**다(2026-10-07). 누르면 권한 팝오버가 뜬다.
+  // 원격 타일 — 권한은 타일이 아니라 호스트 하나의 단계다.
   "menu.aiperm": "AI 권한…",
   "menu.aiperm.title": "{stage} — 이 호스트의 타일과 헤드리스 세션에 함께 적용됩니다",
-  // 쿼리 타일의 "AI 권한…"(10-14 — DB 연결 하나의 단계, 팝오버는 원격과 같은 `AiPermMenu`)
+  // 쿼리 타일의 "AI 권한…" — DB 연결 하나의 단계
   "menu.dbaiperm.title": "{stage} — 이 DB 연결에 적용됩니다",
   "menu.dbaiperm.missing": "연결 목록에 없는 연결이라 AI 권한을 줄 수 없습니다",
   "menu.sync": "동시 입력 참여",
@@ -272,7 +246,7 @@ export const pane = {
   "menu.continueOrch": "오케스트레이션으로 이어 가기",
   "menu.continueOrch.title": "이 타일의 대화와 저장소를 고정한 새 앨범 초안을 엽니다 — 첫 말을 보내면 앨범이 시작됩니다",
 
-  // ── 블록을 AI 타일에 넘기기 (ask-ai.ts · app/ask-ai.svelte.ts · AskAiPicker.svelte) ──
+  // ── 블록을 AI 타일에 넘기기 ──
   // 넘기는 글은 AI 가 읽지만 **사람이 고른 말투 그대로** 표시 언어를 탄다(사람이 보고 보탠 뒤 보낸다).
   "askai.lead.fail": "이 명령이 실패했어. 원인을 봐 줘.",
   "askai.lead.ok": "이 명령의 결과를 봐 줘.",
@@ -290,7 +264,7 @@ export const pane = {
   "askai.output.unavailable": "(출력은 화면에서 밀려나 담지 못했어)",
   "askai.summary": "{command} · 종료 {exit}",
   "askai.button": "AI에게 묻기",
-  // 명령 블록 리치 보기 (2026-10-18 — term/BlockView.svelte)
+  // 명령 블록 리치 보기
   "blockview.button": "리치하게 보기",
   "blockview.button.title": "이 블록의 출력을 트리 · 표 · 문서로 보기",
   "blockview.aria": "블록 보기",
@@ -326,7 +300,7 @@ export const pane = {
   "askai.picker.keys.open": "열고 넘기기",
   "askai.picker.keys.close": "닫기",
   "askai.private": "AI 가 이 타일을 읽지 못합니다 — 넘긴 글은 그 AI 대화에 남습니다",
-  // ── AI 권한 팝오버 (pane/AiPermMenu.svelte — 원격 타일의 머리줄 칩 · ⋯ 메뉴 "AI 권한…") ──
+  // ── AI 권한 팝오버 ──
   "aiperm.title": "{alias} 의 AI 권한",
   "aiperm.sub": "이 호스트의 타일 {n}개와 헤드리스 세션에 함께 적용됩니다",
   "aiperm.settings": "호스트 설정 › AI",
@@ -340,7 +314,7 @@ export const pane = {
   "askai.no_bracketed": "{name} 타일이 지금 붙여 넣기를 받을 상태가 아닙니다 — 여러 줄이 곧바로 보내질 수 있어 넣지 않았습니다",
   "askai.gone": "받을 AI 타일이 사라졌습니다",
 
-  // ── tmux 세션 목록 (pane/TmuxMenu.svelte · tmux.ts · PaneHost.svelte) ──────
+  // ── tmux 세션 목록 ──────
   "tmux.aria": "{title} tmux 세션",
   "tmux.group": "{title} · tmux 세션",
   "tmux.loading": "목록 읽는 중…",
@@ -361,8 +335,7 @@ export const pane = {
     "이 호스트에 새 tmux 세션을 만들어 새 타일로 엽니다 (이름은 앱이 다음 번호로 고릅니다)",
   "tmux.bad_name": "이 이름은 쓸 수 없습니다",
 
-  // ── 포워딩 목록 메뉴 (pane/ForwardMenu.svelte — 머리줄 포워딩 칩 · ⋯ 메뉴 "포트 포워딩…") ──
-  // 호버 카드(pane/ForwardsCard.svelte)는 머리 글자에 `header.forward.title` · `header.forward.relaying` 을 쓴다.
+  // ── 포워딩 목록 메뉴 ──
   "fwmenu.aria": "{title} 포트 포워딩",
   "fwmenu.group": "{title} · 포트 포워딩",
   "chipmore.aria": "{title} 숨은 칩",
@@ -378,7 +351,7 @@ export const pane = {
   "tmux.ago.days": "{n}일",
   "tmux.refresh.title": "세션 목록을 서버에 다시 묻습니다",
   "tmux.refresh.aria": "tmux 세션 목록 새로고침",
-  // 세션 끄기(줄 오른쪽 끝 단추 · 확인 대화 — tmux.ts 의 tmuxKillPrompt)
+  // 세션 끄기
   "tmux.kill.title_attr": "'{name}' 세션을 끕니다 (tmux kill-session — 확인을 먼저 묻습니다)",
   "tmux.kill.title_attr_here": "이 타일이 붙어 있는 '{name}' 세션을 끕니다 — 이 타일의 연결도 끝납니다 (확인을 먼저 묻습니다)",
   "tmux.kill.aria": "{name} 세션 끄기",
@@ -392,7 +365,7 @@ export const pane = {
   "tmux.kill.ok_here": "끄고 이 타일도 끝내기",
   "tmux.kill.failed": "tmux 세션을 끄지 못했습니다: {reason}",
 
-  // ── 끌어다 놓기 (pane/drop-rules.ts) ───────────────────────────────────────
+  // ── 끌어다 놓기 ───────────────────────────────────────
   "drop.paste": "터미널에 경로 붙여넣기",
   "drop.paste.elsewhere": "이 터미널이 있는 곳의 파일이 아니라 붙여넣을 수 없습니다",
   "drop.attach.otherserver": "다른 서버의 파일은 이 타일에 첨부할 수 없습니다",
@@ -408,13 +381,13 @@ export const pane = {
   "drop.upload.localfs": "이 폴더로 복사",
   "drop.upload.none": "SSH 타일에만 업로드할 수 있습니다",
 
-  // ── 분할선 (SplitView.svelte) ──────────────────────────────────────────────
+  // ── 분할선 ──────────────────────────────────────────────
   "split.row.title": "좌우 분할선 (드래그 · ← →)",
   "split.row.aria": "좌우 분할선",
   "split.col.title": "상하 분할선 (드래그 · ↑ ↓)",
   "split.col.aria": "상하 분할선",
 
-  // ── 터미널 안내 (Terminal.svelte) ──────────────────────────────────────────
+  // ── 터미널 안내 ──────────────────────────────────────────
   "term.copy.ok": "마지막 명령의 출력을 복사했습니다",
   "term.copy.empty": "복사할 출력이 없습니다 — 셸 통합(OSC 133)이 없거나 끝난 명령이 아직 없습니다",
   "term.copy.denied": "클립보드에 쓰지 못했습니다",
@@ -431,10 +404,9 @@ export const pane = {
   "term.scrollback.empty": "저장할 내용이 없습니다",
   "term.scrollback.failed": "저장하지 못했습니다: {reason}",
   "term.log.open_failed": "세션 로그를 열지 못했습니다",
-  // 폴더는 Rust 가 답하기 전에 만들어 둔다 — "없어서" 실패하는 경우는 사라졌다.
   "term.logs_folder.failed": "로그 폴더를 열지 못했습니다",
   "term.link.copied": "링크 주소를 복사했습니다",
-  // 트리거 링크 위의 툴팁 둘째 줄 (`triggers.ts` — 글자는 `textContent` 로만 들어간다)
+  // 트리거 링크 툴팁 둘째 줄 — 글자는 `textContent` 로만 들어간다
   "term.link.hint": "Ctrl+클릭 → {url}",
   "term.screen_only": "tmux 타일에서는 명령 이력을 쓸 수 없습니다",
   "term.mount_error": "터미널 초기화 실패:",
@@ -445,7 +417,7 @@ export const pane = {
   "term.paste.edit": "붙여넣을 글 — 고칠 수 있습니다",
   "term.paste.edit.title": "고친 뒤 Ctrl+Enter 로 붙여넣습니다",
 
-  // ── 터미널 버퍼에 찍는 안내 줄 (Terminal.svelte 의 `notice`) ───────────────
+  // ── 터미널 버퍼에 찍는 안내 줄 ───────────────
   "notice.tmux_reattached": "tmux 세션에 다시 붙었습니다.",
   "notice.connected": "접속했습니다.",
   "notice.reconnected": "다시 접속했습니다 — 새 셸입니다.",
@@ -457,14 +429,14 @@ export const pane = {
   "notice.dropped.reason": "⚠ 연결이 끊겼습니다 — {reason}. 자동으로 다시 연결합니다.",
   "notice.reconnected.new": "다시 연결되었습니다 — 새 셸입니다.",
   "notice.session_left_behind": "이 타일의 세션은 함께 옮기지 못했습니다.",
-  // 로컬 종료 사유(세션 서버는 코드만 보낸다 — ③-2)
+  // 로컬 종료 사유 — 세션 서버는 코드만 보낸다
   "notice.exit_code": "종료 코드 {code}",
   "notice.server_stopped": "세션 서버가 멈췄습니다 — Enter 로 새 셸을 엽니다",
   "notice.reattached_lost": "⚠ 다시 붙었습니다 — 출력 일부 유실({kib} KiB), 화면은 다시 그렸습니다.",
   "notice.restored":
     "{name} — 지난 배치에서 복원했습니다. 아직 연결하지 않았습니다 ([연결] 또는 Ctrl+Shift+R).",
 
-  // ── 타일 위에 겹쳐 뜨는 배너 셋 (Terminal.svelte) ─────────────────────────
+  // ── 타일 위에 겹쳐 뜨는 배너 셋 ─────────────────────────
   "banner.reconnect.head": "⚠ 연결이 끊겼습니다 —",
   "banner.reconnect.trying": "{n}번째 재시도 중…",
   "banner.reconnect.countdown": "{n}번째 재시도, {secs}초 후",
@@ -482,8 +454,7 @@ export const pane = {
   "banner.ended.reattaching": "다시 붙는 중…",
   "banner.ended.connecting": "접속하는 중…",
   "banner.ended.reconnecting": "다시 접속하는 중…",
-  // `<kbd>Ctrl+B</kbd> <kbd>d</kbd>` 가 문장 가운데 들어가 앞뒤로 갈린다 (HTML 은 사전에
-  // 넣지 않는다 — `ko/settings.ts` 머리말의 규칙 셋).
+  // `<kbd>Ctrl+B</kbd> <kbd>d</kbd>` 가 문장 가운데 들어가 앞뒤로 갈린다 — HTML 은 사전에 넣지 않는다(`ko/settings.ts` 머리말의 규칙 셋).
   "banner.ended.tmux.before": "tmux 에서 나왔습니다 — ",
   "banner.ended.tmux.after": " 로 떼면 세션은 살아 있습니다",
   "banner.ended.unopened": "접속하지 못했습니다 — Enter: 다시 시도 · Ctrl+D: 닫기",
@@ -512,32 +483,30 @@ export const pane = {
   "worktree.failed.hint": "워크트리 없이 평범한 셸(홈)로 열었습니다.",
   "worktree.close": "닫기",
 
-  // ── 타일 이름 (session.ts) ─────────────────────────────────────────────────
-  //
-  // 셸 표시 이름은 Rust `list_shells` 의 라벨을 옮겨 적은 표다 — 고유명(PowerShell 7 ·
-  // Git Bash)은 두 언어가 같으므로 사전에 두지 않고, 옮길 말이 있는 `cmd` 만 여기 있다.
+  // ── 타일 이름 ─────────────────────────────────────────────────
+  // 셸 표시 이름은 Rust `list_shells` 의 라벨을 옮긴 표다 — 고유명(PowerShell 7 · Git Bash)은 사전에 두지 않고 옮길 말이 있는 `cmd` 만 둔다.
   "shell.cmd": "명령 프롬프트",
   "name.local": "로컬",
   "name.start": "시작",
   "name.ssh": "SSH",
   "name.files.local": "내 PC",
   "name.files.remote": "원격",
-  // 문서 보기 타일 (docs/log/2026-09-27-doc-tile.md) — 이름은 파일 이름이고, 원격이면 별칭이 붙는다
+  // 문서 보기 타일 (docs/log/2026-09-27-doc-tile.md)
   "name.doc": "문서",
   "name.doc.remote": "{file} · {alias}",
-  // 이미지 타일(2026-11-14) — 이름은 파일 이름(원격이면 위 `name.doc.remote` 꼴), 경로를 모를 때만 이것
+  // 이미지 타일 — 경로를 모를 때만 쓰는 이름
   "name.image": "그림",
-  // 브랜치 그래프 타일 (docs/log/2026-09-29-branch-graph.md) — 프로젝트 이름을 알면 붙는다
+  // 브랜치 그래프 타일 (docs/log/2026-09-29-branch-graph.md)
   "name.branches": "브랜치",
   "name.branches.project": "브랜치 · {name}",
   "name.diff": "변경",
   "name.diff.named": "변경 · {name}",
-  // 오케스트레이션 보드(2b) — Run 이름이 있으면 "Run · 이름", 없으면(목록) 그냥 "Run"
+  // 오케스트레이션 보드
   "name.run": "앨범",
   "name.run.named": "앨범 · {name}",
   "name.producer": "프로듀서",
   "name.query": "쿼리",
-  // 쿼리 타일 (2026-10-12 — 6단계, docs/log/2026-10-12-query-tile.md)
+  // 쿼리 타일 (docs/log/2026-10-12-query-tile.md)
   "query.editor.failed": "편집기를 불러오지 못했습니다: {reason}",
   "query.copied": "칸 {n}개를 복사했습니다",
   "query.copy": "복사",
@@ -616,7 +585,7 @@ export const pane = {
   "query.schema.sub.composite": "복합",
   "query.schema.default": "기본값: {value}",
   "query.schema.pk": "기본 키",
-  // DDL 읽기 전용 보기(10-13) — 트리 우클릭 "DDL 보기" · F4 → 아래 칸의 [결과 | DDL]
+  // DDL 읽기 전용 보기
   "query.def.menu": "DDL 보기",
   "query.def.menu.aria": "스키마 트리 메뉴",
   "query.def.hint": "F4 · 우클릭 — DDL 보기",
@@ -634,7 +603,7 @@ export const pane = {
   "query.def.copyFailed": "DDL 을 복사하지 못했습니다",
   "query.def.insert": "편집기에 넣기",
   "query.def.insert.title": "편집기 커서 자리에 넣기 (실행 안 함)",
-  // 스키마 트리 이름 필터(10-13) — 읽어 온 것만 거른다
+  // 스키마 트리 이름 필터
   "query.filter.placeholder": "이름 찾기",
   "query.filter.title": "이름 찾기 (Ctrl+F · Ctrl+I · Esc 로 지우기)",
   "query.filter.clear": "찾기 지우기",
@@ -803,7 +772,7 @@ export const pane = {
   "query.tx.writeOff.ok": "되돌리고 읽기 전용으로",
   "query.tx.writeOff.cancel": "취소",
   "query.run": "실행",
-  // "AI 에 묻기"(쿼리 타일 3b) — 연결 · SQL · 마지막 오류를 AI 타일 입력 줄에 붙여 넣는다(결과 행의 값은 넣지 않는다)
+  // "AI 에 묻기" — 연결 · SQL · 마지막 오류를 붙여 넣는다(결과 행의 값은 넣지 않는다)
   "query.ask": "AI 에 묻기",
   "query.ask.title": "AI 에 묻기 ({key})",
   "query.ask.title.off": "AI 권한 꺼짐 — 켜는 곳 보기",
@@ -883,10 +852,9 @@ export const pane = {
   "query.dialect.mysql": "MySQL",
   "query.rows.limit": "행 상한",
   "query.rows.option": "{n}행",
-  // 자동 탭 제목은 여기 없다 — **저장되는 값**이라 만드는 자리에서 번역하지 않고
-  // (`session.ts` 의 `newTab`) 그리는 자리에서 `app.tabs.default` 로 옮긴다.
+  // 자동 탭 제목은 여기 없다 — 저장되는 값이라 만드는 자리(`newTab`)에서 번역하지 않고 그리는 자리에서 `app.tabs.default` 로 옮긴다.
 
-  // ── 세션 오류 (session.ts 의 `describeSessionError`) ──────────────────────
+  // ── 세션 오류 ──────────────────────
   "error.unknown_value": "(알 수 없음)",
   "error.no_session": "{name} 타일에는 세션이 없습니다.",
   "error.host_key.unknown": "호스트 키를 확인하지 못했습니다 ({type} {fingerprint}).",
@@ -905,11 +873,8 @@ export const pane = {
   "error.password_cancelled": "비밀번호 입력을 취소해 접속을 중단했습니다.",
   "error.other": "세션을 열지 못했습니다: {reason}",
 
-  // -- 다음에 할 일 (session.ts 의 `openErrorHint`) --------------------------
-  //
-  // 실패 문구 **아래** 흐린 한 줄. 사실이 아니라 **제안**이라 톤이 다르고, 그래서 문장을
-  // 잇지 않고 줄을 나눈다. 갈래는 Rust `ssh::OpenCause` 가 정한다
-  // (docs/log/2026-09-17-connect-diagnostics.md). `other` 에는 힌트가 없다.
+  // -- 다음에 할 일 --------------------------
+  // 갈래는 Rust `ssh::OpenCause` 가 정한다 (docs/log/2026-09-17-connect-diagnostics.md) · `other` 에는 힌트가 없다.
   "error.hint.dns": "호스트 주소를 확인하세요 (호스트 폼 → 호스트 주소)",
   "error.hint.tcp_refused": "포트가 맞는지, 서버에 sshd 가 떠 있는지 확인하세요",
   "error.hint.tcp_timeout": "방화벽·VPN 을 확인하거나, 경유 호스트가 필요한지 보세요",
@@ -925,15 +890,13 @@ export const pane = {
   // 사유가 아니라 **꼬리**다 — 위 힌트 한 줄 끝에 그대로 이어 붙는다.
   "error.hint.identities_only": " (IdentitiesOnly 가 켜져 있어 지정한 키만 시도했습니다)",
 
-  // ── 명령 상태 배지 (shell-integration.ts) ─────────────────────────────────
+  // ── 명령 상태 배지 ─────────────────────────────────
   "status.running": "명령 실행 중",
   "status.fail": "명령이 실패했습니다",
   "status.ok": "명령이 끝났습니다",
 
-  // ── 끝난 명령 한 줄 (finish-notify.ts · app/finish-notify.ts) ─────────────
-  //
-  // 걸린 시간은 자릿수가 언제나 셋 이하다 (`0.8초` · `3분 05초` · `1시간 02분`). 초·분의
-  // 두 자리 맞춤은 함수가 해서 넘기므로 사전은 단위만 붙인다.
+  // ── 끝난 명령 한 줄 ─────────────
+  // 초·분의 두 자리 맞춤은 함수가 해서 넘긴다 — 사전은 단위만 붙인다.
   "block.duration.under": "0.1초 미만",
   "block.duration.seconds": "{n}초",
   "block.duration.minutes": "{m}분 {s}초",
@@ -946,11 +909,10 @@ export const pane = {
   "block.when.range": "{from} → {to}",
   "block.notify": "\"{command}\" {outcome}",
   "block.notify.view": "보기",
-  // 타일 안 프로그램이 보낸 알림 (OSC 9 · 777) — 토스트·지난 알림 줄. 타일 이름이 앞에 서야
-  // 앱이 말한 것처럼 보이지 않는다 (app/osc-notify.ts)
+  // 타일 안 프로그램이 보낸 알림(OSC 9 · 777) — 타일 이름이 앞에 서야 앱이 말한 것처럼 보이지 않는다.
   "program_notify.toast": "{tile}의 프로그램: {text}",
 
-  // ── 포트 포워딩 (forward.ts) ───────────────────────────────────────────────
+  // ── 포트 포워딩 ───────────────────────────────────────────────
   "forward.active": "활성 {n}",
   "forward.idle": "대기 중",
   "forward.add_failed": "포워드를 걸지 못했습니다",
@@ -968,13 +930,12 @@ export const pane = {
   "forward.kind.local": "로컬 (-L)",
   "forward.kind.remote": "원격 (-R)",
   "forward.kind.dynamic": "동적 · SOCKS (-D)",
-  // 목록·칩 툴팁의 한 줄 — 로컬은 언어를 타지 않는 `127.0.0.1:l → host:r` 그대로다
   "forward.label.remote": "원격 127.0.0.1:{r} → 내 PC 127.0.0.1:{l}",
   "forward.label.dynamic": "SOCKS 127.0.0.1:{l}",
-  // ── 원격 창의 시청자 타일 · 메인 PC 화면 거울 (원격 웹 R2-B — docs/user/remote-web.md) ─────────────
+  // ── 원격 창의 시청자 타일 · 메인 PC 화면 거울 (docs/user/remote-web.md) ─────────────
   "viewer.waiting": "메인 PC 에서 이 타일의 세션이 아직 열려 있지 않습니다.",
   "viewer.ended": "세션이 끝났습니다.",
-  // 다른 기기 크기 안내(10-20 — 크기 주인이 아닌 타일의 꼬리표 · 카드 · `$lib/term/size-notice`)
+  // 다른 기기 크기 안내
   "sizeNotice.tag.remoteDevice": "원격 기기 {cols}×{rows}",
   "sizeNotice.tag.mainPc": "메인 PC {cols}×{rows}",
   "sizeNotice.tag.otherWindow": "다른 창 {cols}×{rows}",

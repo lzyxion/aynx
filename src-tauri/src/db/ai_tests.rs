@@ -1,6 +1,5 @@
-//! **AI DB 평면 시험**(쿼리 타일 3단계 3a — docs/log/2026-10-13-db-write-mcp-design.md B-9). MCP 경유(`mcp::dispatch_full` + 시험 뒷면 —
-//! 진짜 `db::ai::run` 을 부르되 비밀번호는 몸으로) · 소스 훑기 · SQLite 는 늘 · 실제 서버는 `#[ignore]` + 환경변수(사용자 볼트 ·
-//! `delegation.toml` · `db-connections.json` 은 건드리지 않는다 — 위임은 손으로 짠 것, 연결 목록은 시험 뒷면의 메모리).
+//! AI DB 평면 시험(docs/log/2026-10-13-db-write-mcp-design.md B-9) — MCP 경유 · 소스 훑기 · SQLite 는 늘, 실제 서버는 `#[ignore]` + 환경변수.
+//! 사용자 볼트 · `delegation.toml` · `db-connections.json` 은 건드리지 않는다.
 //!
 //! ```text
 //! AYNX_TEST_PG_URL=postgres://postgres:<pw>@127.0.0.1:55433/postgres
@@ -42,8 +41,7 @@ fn src(rel: &str) -> String {
         .join("\n")
 }
 
-/// 시험 `db_ai_connections_are_read_only_forever`(B-9) — AI 평면 코드에 쓰기로 바꾸는 길이 없다: 쓰기 전환 · 트랜잭션 작업 · 쓰기 ·
-/// 작업 안 스크립트 · 가드의 쓰기 모드 · SQLite 쓰기 열기를 부르지 않고, 조회는 읽기 전용 스크립트 계획을 지난다.
+/// AI 평면 코드에 쓰기로 바꾸는 길이 없다(B-9).
 #[test]
 fn db_ai_connections_are_read_only_forever() {
     let code = src("db/ai.rs");
@@ -58,8 +56,7 @@ fn db_ai_connections_are_read_only_forever() {
     assert!(code.contains("if engine.writable()"), "쓰기 가능으로 보이면 거절하는 그물");
 }
 
-/// 시험 `db_ai_never_touches_tile_entries`(B-9) — AI 평면은 사람 타일의 표(항목 · 타일 열쇠 · 임대 · 작업)에 닿지 않는다. 표에서 빌리는
-/// 것은 엔진 꼴 · 연결 해석 · 시한 그물 · 문구뿐이다.
+/// AI 평면은 사람 타일의 표(항목 · 타일 열쇠 · 임대 · 작업)에 닿지 않는다(B-9).
 #[test]
 fn db_ai_never_touches_tile_entries() {
     let code = src("db/ai.rs");
@@ -85,7 +82,7 @@ fn db_ai_never_touches_tile_entries() {
 // MCP 경유 시험 뒷면
 // ---------------------------------------------------------------------------
 
-/// 진짜 `ai::run` 을 부르는 시험 뒷면 — 연결 목록은 메모리, 비밀번호는 연결마다 몸으로(없으면 `None` = 볼트 — 시험엔 볼트가 없다).
+/// 진짜 `ai::run` 을 부른다 — 연결 목록은 메모리, 비밀번호는 몸으로(시험엔 볼트가 없다).
 struct TestDb {
     conns: Vec<DbConn>,
     passwords: HashMap<String, String>,
@@ -109,7 +106,6 @@ impl AiDb for TestDb {
     }
 }
 
-/// 증표의 연결 id(시험 — 증표 칸은 비공개라 감사 줄 대신 디버그 꼴에서 읽지 않고, 목록과 대조한다).
 fn grant_id(g: &Grant) -> String {
     ai::grant_conn_id_for_test(g)
 }
@@ -188,8 +184,6 @@ fn sqlite_conn(id: &str, path: &str) -> DbConn {
     }
 }
 
-/// SQLite — MCP 경유 `db_query` 는 읽기 전용(쓰기 · 트랜잭션 · 세션 바꾸기 · CTE 안 쓰기 · ATTACH 전부 거절, 파일 그대로) · 여러 문장은
-/// 읽기 스크립트 · 구조만 단계에서 `db_query` 거절 · 끔이면 목록에 없음 · 감사에 값 없음.
 #[test]
 fn sqlite_ai_reads_only_through_mcp() {
     let dir = std::env::temp_dir().join(format!("aynx-ai-sqlite-{}", std::process::id()));
@@ -299,7 +293,6 @@ fn net_conn(id: &str, engine: DbEngine, host: &str, port: u16, database: Option<
     }
 }
 
-/// 사람 타일을 표로 연다(그 연결 줄을 시험 연결 목록 파일에 — `conns::set_path_override`).
 async fn open_tile(stream: &str, conn: &DbConn, pw: &str) -> super::table::Opened {
     let dir = std::env::temp_dir().join(format!("aynx-ai-tile-{}-{}", conn.id, std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

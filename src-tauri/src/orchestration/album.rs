@@ -1,5 +1,5 @@
-//! 앨범 판정 원천(앨범 먼저 설계 2-4 · S2). 파일 · git 은 잠금 밖, 판정은 Run 과 읽은 재료만 본다.
-//! 앨범 구성만 판정하며 저장소 맡기기 값은 읽지 않는다. 앨범이 없거나 판정에 실패하면 실행 범위를 닫는다.
+//! 앨범 판정 원천. 파일 · git 은 잠금 밖, 판정은 Run 과 읽은 재료만 본다.
+//! 앨범 구성만 판정하며 저장소 위임 값은 읽지 않는다. 앨범이 없거나 판정에 실패하면 실행 범위를 닫는다.
 
 use std::sync::Arc;
 
@@ -51,7 +51,7 @@ fn error(code: &'static str, text: &str) -> OrchError {
     OrchError::new(code, text)
 }
 
-/// 넓힘 표(2-3). 판정형은 유효한 구성에서 언제나 read 이므로 들이기만으로 넓어지지 않는다.
+/// 판정형은 유효한 구성에서 언제나 read 이므로 들이기만으로 넓어지지 않는다.
 pub(crate) fn widens(old: &AlbumConfig, new: &AlbumConfig) -> bool {
     new.members.iter().any(|n| match old.members.iter().find(|o| o.artist == n.artist) {
         Some(o) => n.grade > o.grade || n.allowed_commands.iter().any(|c| !o.allowed_commands.contains(c)),
@@ -112,7 +112,7 @@ pub(crate) fn gate<'a>(run: &'a Run, inputs: &AlbumInputs) -> Result<&'a AlbumCo
     Ok(album)
 }
 
-/// 멤버 범위 + 지금 프로필 → 한 턴의 역할. 읽기 작업형은 실행 모드가 아니다(2-7 b).
+/// 멤버 범위 + 지금 프로필 → 한 턴의 역할. 읽기 작업형은 실행 모드가 아니다.
 pub(crate) fn pick_role(run: &Run, inputs: &AlbumInputs, id: &str) -> Result<TurnRole, OrchError> {
     let album = gate(run, inputs)?;
     let member = album

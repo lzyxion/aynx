@@ -1,19 +1,8 @@
-//! **감독 사건**(리뷰 F11 · 설계 C-7 "알림 — 서버가 낸다" · 10-15 결정 ①) — 창이 하나도 없어도 사람이 개입해야 할 일을 놓치지 않게,
-//! 오케스트레이션 사건(작업자 권한 대기 · 부트스트랩 사람 필요 · 멈춤 · `needs-recovery` · 비정상 종료 · 생성 실패 · 한도 · 조정자 종료 ·
-//! Run 끝 · 사람이 풀어야 하는 `commit_changes` 거절)을 **서버가 사건 id 와 함께** 만든다.
-//!
-//! 흐름:
-//! - 사건은 상태가 바뀌는 그 잠금 안에서 선다([`Orchestration::raise`] — id = `<runId>#<seq>:<kind>`, 같은 사건은 한 번). 미확인 큐(상한
-//!   [`NOTICES_MAX`])에 넣고 서버 이벤트 [`EVT_NOTICE`] 를 낸다.
-//! - **붙은 GUI 가 없으면** 세션 서버가 기존 메신저 길(작업안 알림과 같은 자리 — `server::ai::AiPlane::start_timers`)로 보낸다. 메신저가
-//!   꺼져 있으면 큐만.
-//! - 주 창은 이벤트로 받은 사건과, 창이 없던 동안 쌓인 사건(op `orchestration_notices_take`)을 **사건 id 로 한 번만** 보이고 확인한다
-//!   (op `orchestration_notices_ack`). 보드의 알림은 이 길 하나로 모였다(보드가 따로 알리지 않는다 — 중복 없음).
-//! - 확인된 사건은 서버 메모리의 최근 목록([`RECENT_MAX`])으로 옮긴다 — F5 · 재부착으로 다시 뜬 주 창이 알림 센터에만 다시 적는다
-//!   (op `orchestration_notices{recent: true}` · 실기 b 고침 A).
+//! **감독 사건** — 창이 하나도 없어도 사람이 개입해야 할 일을 놓치지 않게 서버가 사건 id 와 함께 만든다(창이 없으면 메신저로).
+//! 주 창은 사건 id 로 한 번만 보인다 — 오케스트레이션 알림은 이 길 하나다(보드가 따로 알리지 않는다).
 //!
 //! 불변식: 사건에는 토큰 · 프롬프트 본문이 없다(Run 이름 · Task 제목 · 종류 낱말 · Attempt id 만). 제목은 사람이 쓴 것이라 메신저에는
-//! 길이를 잘라 싣는다. 저장소 경로는 사건과 메신저 글에 싣지 않는다([`message_text`]).
+//! 길이를 잘라 싣는다. 저장소 경로는 사건과 메신저 글에 싣지 않는다.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -23,38 +12,33 @@ use serde_json::{json, Value};
 
 use super::store::{Orchestration, Slot};
 
-/// 서버 이벤트 — 감독 사건 하나(몸 = [`Notice`]). GUI 가 같은 이름으로 창에 중계한다(`client::RELAYED`).
+/// GUI 가 같은 이름으로 창에 중계한다(`client::RELAYED`).
 pub(crate) const EVT_NOTICE: &str = "orchestration-notice";
 
-/// 미확인 큐 상한(넘으면 오래된 것부터 버린다).
 pub(crate) const NOTICES_MAX: usize = 100;
 
-/// 감독 사건 하나 — 비밀 · 본문 없음.
+/// 비밀 · 본문을 싣지 않는다.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Notice {
     pub id: String,
     pub run_id: String,
     pub run_name: String,
-    /// `worker-exited` · `reviewer-exited`(판정 없이 끝난 검토자) · `exit-unconfirmed` · `spawn-failed` ·
-    /// `limit` · `coordinator-exited`(이미 멈춘 Run 이면 `detail` = `already-paused`) · `run-ended` · `commit-rejected`(10-15 — `detail` = 거절 사유 낱말).
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_title: Option<String>,
-    /// 짧은 낱말(한도 이름 · 끝 상태) — 사람 글이 아니다.
+    /// 고정 낱말(한도 이름 · 거절 사유 등) — 사람 글이 아니다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     pub at: u64,
 }
 
-/// 확인된 사건을 몇 개까지 남기나(실기 b — 아래 [`Notices`] 의 `recent`).
 pub(crate) const RECENT_MAX: usize = 50;
 
-/// 미확인 큐 + **확인된 최근 사건**(실기 b 고침 A). 창의 알림 센터는 페이지 메모리라(`app/notifications` — 디스크에 쓰지 않는다) F5 · 웹뷰
-/// 크래시 재부착이 지난 줄을 지우는데, 사건은 보인 순간 확인돼 미확인 큐에서도 빠진다 — 그래서 다시 뜬 주 창이 "지난 알림이 없습니다" 였다.
-/// 확인된 것을 서버 메모리에 조금 남겨 다시 뜬 주 창이 알림 센터에만(토스트 없이) 다시 적는다. 디스크에는 쓰지 않는다(서버가 끝나면 사라진다).
+/// 미확인 큐 + 확인된 최근 사건. 창의 알림 센터는 페이지 메모리라 F5 · 재부착이 지우므로, 확인된 것을 서버 메모리에 남겨
+/// 다시 뜬 주 창이 알림 센터에만 다시 적는다. 디스크에는 쓰지 않는다.
 #[derive(Default)]
 pub(crate) struct Notices(Mutex<VecDeque<Notice>>, Mutex<VecDeque<Notice>>);
 
@@ -71,12 +55,10 @@ impl Notices {
         true
     }
 
-    /// 지금 미확인 사건(오래된 것부터) — 지우지 않는다(확인은 [`Notices::ack`]).
     pub(crate) fn list(&self) -> Vec<Notice> {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect()
     }
 
-    /// 확인 — 그 id 들을 큐에서 빼 최근 목록으로 옮긴다(상한 [`RECENT_MAX`] — 오래된 것부터 버린다). 뺀 수.
     pub(crate) fn ack(&self, ids: &[String]) -> usize {
         let mut q = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let (gone, keep): (VecDeque<Notice>, VecDeque<Notice>) = q.drain(..).partition(|n| ids.iter().any(|i| i == &n.id));
@@ -93,15 +75,12 @@ impl Notices {
         n
     }
 
-    /// 확인된 최근 사건(오래된 것부터) — 다시 뜬 주 창이 알림 센터에 다시 적는다.
     pub(crate) fn recent(&self) -> Vec<Notice> {
         self.1.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect()
     }
 }
 
-/// 종류 낱말을 고정 글자로(이벤트 몸에서 다시 읽을 때 — 모르는 것은 `other`).
-/// 메신저로 보낼 사건의 **등급** — `None` 이면 메신저로 보내지 않는다(앱 안 알림만 — 진단성 사건: 종료 미확인 · 깨움 · 보고 없는 턴 ·
-/// 턴 시한 · 이어받음 · 모르는 낱말). 표는 프런트 `messenger-notify.ts` 의 `noticeGrade` 와 **같다**(창이 있으면 프런트가 보낸다).
+/// `None` 이면 메신저로 보내지 않는다(앱 안 알림만). 표는 프런트 `messenger-notify.ts` 의 `noticeGrade` 와 같아야 한다.
 pub(crate) fn messenger_grade(kind: &str) -> Option<crate::messenger::Grade> {
     use crate::messenger::Grade;
     match kind {
@@ -113,7 +92,6 @@ pub(crate) fn messenger_grade(kind: &str) -> Option<crate::messenger::Grade> {
     }
 }
 
-/// 메신저 이름표 — `앨범 «이름»`(이름을 모르면 "앨범"). 이름은 사람이 쓴 것이라 자른다.
 pub(crate) fn messenger_label(run_name: &str) -> String {
     use crate::i18n::tr;
     let name = clip(run_name, 60);
@@ -124,9 +102,8 @@ pub(crate) fn messenger_label(run_name: &str) -> String {
     }
 }
 
+/// 이벤트 몸의 종류 낱말을 고정 글자로(모르는 것은 `other`).
 pub(crate) fn kind_word(k: &str) -> &'static str {
-    // (3차 6단계) 2차 PTY 작업자의 종류(`permission` · `bootstrap` · `stalled` · `needs-recovery`)는 걷었다 — 헤드리스 작업자에게는 권한 화면 ·
-    // 첫 화면 · 붙여넣기가 없어 서지 않는다(모르는 낱말은 `other`).
     match k {
         "worker-exited" => "worker-exited",
         "reviewer-exited" => "reviewer-exited",
@@ -138,26 +115,22 @@ pub(crate) fn kind_word(k: &str) -> &'static str {
         "commit-rejected" => "commit-rejected",
         "verify-approval" => "verify-approval",
         "verify-failed" => "verify-failed",
-        // 3차 3a — 헤드리스 작업자 · 맡기기.
         "worker-blocked" => "worker-blocked",
         "worker-idle" => "worker-idle",
         "turn-timeout" => "turn-timeout",
         "verify-needs-human" => "verify-needs-human",
         "repo-identity-changed" => "repo-identity-changed",
-        // 3차 5단계 — AI 가 Run 을 연다.
         "run-adopted" => "run-adopted",
-        // 2단계 단계 4 — 앱이 깨움(`wake.rs` — 꺼짐 · 무시 · 전송 실패 · 깨움 턴 시한).
         "wake-limit" => "wake-limit",
         "wake-ignored" => "wake-ignored",
         "wake-failed" => "wake-failed",
         "wake-turn-timeout" => "wake-turn-timeout",
-        // 앨범 병합 — 자동 병합이 멈췄다(`album_merge.rs` — `detail` = 까닭 낱말).
         "auto-merge-stopped" => "auto-merge-stopped",
         _ => "other",
     }
 }
 
-/// 메신저 한 통의 글자(서버 — 창이 없을 때). 언어는 서버의 지금 언어.
+/// 창이 없을 때 서버가 보내는 메신저 글.
 pub(crate) fn message_text(n: &Notice) -> String {
     use crate::i18n::tr;
     let task = n.task_title.as_deref().map(|t| clip(t, 60));
@@ -226,7 +199,6 @@ pub(crate) fn message_text(n: &Notice) -> String {
         ),
         _ => tr!(ko: "앨범에 사건이 있습니다", en: "Something happened in the album"),
     };
-    // 거절 사유 낱말(고정 글자)은 사람이 무엇을 할지 고르는 재료라 싣는다.
     let why = match (n.kind, n.detail.as_deref()) {
         ("commit-rejected" | "verify-failed" | "verify-needs-human" | "spawn-failed" | "auto-merge-stopped", Some(d)) => format!(" ({})", clip(d, 40)),
         _ => String::new(),
@@ -246,7 +218,7 @@ fn clip(text: &str, max: usize) -> String {
 }
 
 impl Orchestration {
-    /// 감독 사건 하나를 세운다 — **상태를 바꾼 그 잠금 안에서** 부른다(`slot.run.seq` 가 이미 그 사건으로 올랐다). 같은 id 면 아무 일 없음.
+    /// 상태를 바꾼 그 잠금 안에서 부른다 — id 가 이미 그 사건으로 오른 `slot.run.seq` 를 쓴다.
     pub(super) fn raise(&self, slot: &Slot, kind: &'static str, attempt_id: Option<&str>, detail: Option<&str>) {
         let r = &slot.run;
         let task_title = attempt_id
@@ -269,17 +241,14 @@ impl Orchestration {
         }
     }
 
-    /// 미확인 사건(op `orchestration_notices`) — 창이 붙으면 주 창이 꺼내 보인다.
     pub(crate) fn notices_view(&self) -> Value {
         json!(self.notices.list())
     }
 
-    /// 확인된 최근 사건(op `orchestration_notices{recent: true}`) — F5 · 재부착 뒤 주 창이 알림 센터에만 다시 적는다(토스트 없이).
     pub(crate) fn notices_recent_view(&self) -> Value {
         json!(self.notices.recent())
     }
 
-    /// 확인(op `orchestration_notices_ack`) — 뺀 수.
     pub(crate) fn notices_ack(&self, ids: &[String]) -> usize {
         self.notices.ack(ids)
     }
@@ -293,7 +262,6 @@ mod tests {
         Notice { id: id.into(), run_id: "run-x".into(), run_name: "앨범".into(), kind, attempt_id: None, task_title: None, detail: None, at: 1 }
     }
 
-    /// 메신저 등급 — 사람이 필요한 것 · 끝 · 실패만 보내고 진단성 사건은 보내지 않는다(프런트 `noticeGrade` 와 같은 표).
     #[test]
     fn messenger_grade_table() {
         use crate::messenger::Grade;
@@ -309,7 +277,6 @@ mod tests {
         assert_eq!(messenger_label(""), "앨범");
     }
 
-    /// 실기 b 고침 A — 확인된 사건은 미확인 큐에서 빠지고 최근 목록에 남는다(다시 뜬 주 창의 알림 센터) · 상한 · 확인 안 된 것은 남지 않는다.
     #[test]
     fn acked_notices_stay_recent() {
         let q = Notices::default();

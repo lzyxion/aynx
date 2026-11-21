@@ -302,8 +302,8 @@ for (const [position, style] of [['left','panel'],['left','flat'],['left','hug']
   await ev(`(async()=>{const m=await ${importApp('/src/lib/settings.svelte.ts')};m.settings.statusBar='${position}';m.settings.statusBarStyle='${style}';})()`);
   await sleep(350); await away(); await sleep(60);
   // 띠는 늘 창 끝 16px — 창 끝에서 10px 안쪽(OS 크기 조절 띠 너머)에 머물면 연다, 20px 안쪽은 띠 밖.
-  // 런처 독의 쪽은 `[dock] layout`(기본 launcher-left)이 정하고 **상태바 자리와 무관**하다(2026-10-23 채팅 독 —
-  // `settings/model/options.ts` "예전에는 상태바가 오른쪽이면 런처가 오른쪽이었다"). 오른쪽 끝 띠는 채팅 독의 것이다(아래).
+  // 런처 독의 쪽은 `[dock] layout`(기본 launcher-left)이 정하고 **상태바 자리와 무관**하다(`settings/model/options.ts`).
+  // 오른쪽 끝 띠는 채팅 독의 것이다(아래).
   const vw=await ev('innerWidth'), vh=await ev('innerHeight');
   const xIn = 10, xOut = 20;
   await move(xOut, vh/2); await sleep(400);

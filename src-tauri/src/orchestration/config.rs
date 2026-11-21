@@ -1,24 +1,17 @@
 //! 앨범 구성의 공통 자료형과 입력 검사. 저장소 위임 파일은 읽지 않는다.
 use serde::{Deserialize, Serialize};
 
-/// 역할 이름 글자 수 상한.
 pub(crate) const ROLES_MAX: usize = 8;
 pub(crate) const NAME_MAX: usize = 40;
-/// 역할 설명 글자 수 상한.
-/// 역할 지침 바이트 상한(4 KiB).
+/// 바이트.
 pub(crate) const INSTRUCTIONS_MAX: usize = 4 * 1024;
-/// 모델 이름 글자 수 상한.
 pub(crate) const MODEL_MAX: usize = 64;
-/// 허용 명령 개수 · 한 줄 길이 상한.
 pub(crate) const ALLOWED_MAX: usize = 32;
 pub(crate) const ALLOWED_LEN_MAX: usize = 200;
-/// 필수 판정의 pass 수 상한(설계 2-1 — 1..=3).
 pub(crate) const PASSES_MAX: u32 = 3;
-/// 되돌림 한도(설계 2-1 — 0..=10 · 기본 3).
 pub(crate) const REWORK_MAX: u32 = 10;
 pub(crate) const REWORK_DEFAULT: u32 = 3;
 
-/// 받아들인 판 해시 파일 이름(`<데이터 루트>/orchestration/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum RoleKind {
@@ -35,7 +28,6 @@ impl RoleKind {
     }
 }
 
-/// 역할의 CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum RoleCli {
@@ -52,14 +44,14 @@ impl RoleCli {
     }
 }
 
-/// 모델 이름 꼴 — 빈 값(CLI 기본) 또는 `[A-Za-z0-9._:\[\]-]` ≤ 64(설계 2-1 [추측] — 목록 검증은 하지 않는다: CLI 가 거절하면 턴 실패).
+/// 꼴만 본다(빈 값 = CLI 기본) — 목록 검증은 하지 않는다(CLI 가 거절하면 턴 실패).
 pub(crate) fn model_ok(s: &str) -> bool {
     s.chars().count() <= MODEL_MAX
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || "._:[]-".contains(c))
 }
 
-/// 추론 강도 — 빈 값(CLI 기본) 또는 CLI 별 값(Claude `--effort` [확인 — `--help` 2.1.301] · Codex `model_reasoning_effort` [추측]).
+/// 빈 값 = CLI 기본 · Claude `--effort` · Codex `model_reasoning_effort` 의 값(Codex 쪽은 확인 안 됨).
 pub(crate) fn effort_ok(cli: RoleCli, s: &str) -> bool {
     match cli {
         RoleCli::Claude => matches!(s, "" | "low" | "medium" | "high" | "xhigh" | "max"),
@@ -83,7 +75,7 @@ pub(crate) struct AcceptRule {
     pub passes: u32,
 }
 
-/// 수락 규칙(설계 U7 — 표가 없으면 필수 판정 없음 · 되돌림 기본 3).
+/// 표가 없으면 필수 판정 없음 · 되돌림 기본 3.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AcceptRules {
@@ -99,10 +91,6 @@ impl Default for AcceptRules {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// 파일의 날 모양 → 해석(좁은 쪽으로)
-// ---------------------------------------------------------------------------
 
 pub(crate) fn new_role_id(taken: &[String]) -> String {
     loop {

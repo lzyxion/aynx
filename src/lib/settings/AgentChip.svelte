@@ -15,9 +15,8 @@
     showLabel?: boolean;
     title: string;
     onclick?: () => void;
-    /** 에이전트 로고 대신 그릴 그림(사이드 채팅 칩 — 2026-10-25). 눌림 · 꺼짐(회색) 모양은 같다 */
+    /** 에이전트 로고 대신 그릴 그림 */
     icon?: Snippet;
-    /** 오른쪽 위 작은 초록 점(사이드 채팅 '묻지 않기' 켜짐) — 뜻은 `title` 이 말한다 */
     dot?: boolean;
   } = $props();
 </script>

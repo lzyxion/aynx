@@ -1,6 +1,5 @@
 <script lang="ts">
-  // 원격 창의 앱 모달(R4) — 묻기(네이티브 confirm 대신)와 마스터 재확인. 상태는 `app/remote-dialog.svelte.ts`, 단추·문구는
-  // `$lib/remote-dialog`. 원격 창에서만 줄이 찬다(메인 PC 창에서는 아무것도 그리지 않는다).
+  // 원격 창의 앱 모달 — 묻기(네이티브 confirm 대신)와 마스터 재확인. 원격 창에서만 줄이 찬다.
   import { tick } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
@@ -21,7 +20,6 @@
   let password = $state("");
   const buttons: HTMLButtonElement[] = $state([]);
 
-  // 새 모달이 서면 포커스 — 재확인(마스터 있음)은 암호 칸, 묻기는 경고면 취소 쪽 · 아니면 강조 단추.
   $effect(() => {
     const r = req;
     if (!r) return;
@@ -32,7 +30,7 @@
     });
   });
 
-  // 실패하면 칸을 비우고 다시 포커스(암호는 이 컴포넌트의 칸에만 — 상태 모듈에 두지 않는다).
+  // 암호는 이 컴포넌트의 칸에만 둔다 — 상태 모듈에 두지 않는다.
   $effect(() => {
     if (remoteDialogError() === null) return;
     password = "";
@@ -47,7 +45,7 @@
 
   function onKey(ev: KeyboardEvent): void {
     if (modalEl && trapTab(ev, modalEl)) return;
-    // 앱의 전역 단축키·터미널이 이 상자의 키를 받지 않게.
+    // 전역 단축키·터미널이 이 상자의 키를 받지 않게.
     ev.stopPropagation();
     if (ev.key === "Escape") {
       ev.preventDefault();
@@ -106,7 +104,7 @@
             <p class="error" role="alert" data-remote-reauth-error>{remoteDialogError()}</p>
           {/if}
         {:else}
-          <!-- 9-① 사용자 결정의 화면 몫 — 마스터가 없으면 암호를 묻지 않는다는 사실을 그대로 밝힌다. -->
+          <!-- 마스터가 없으면 암호를 묻지 않는다(사용자 결정) — 그 사실을 그대로 밝힌다 -->
           <p class="lead">{t("app.remoteReauth.lead.noMaster")}</p>
         {/if}
         <div class="actions">
@@ -168,7 +166,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    /* 다른 모달(설정 독 · 호스트 폼 …) 안에서 물어도 그 위에 — 원격 페어링 상자(110)보다 위 */
+    /* 다른 모달 위 — 원격 페어링 상자(110)보다 위 */
     z-index: 120;
     display: grid;
     place-items: center;
@@ -180,11 +178,11 @@
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     box-sizing: border-box;
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
     color: var(--fg-1);
   }
@@ -247,7 +245,7 @@
     justify-content: flex-end;
     gap: var(--space-2);
   }
-  /* 폰 · 태블릿(R5) — 손가락으로 누를 단추는 44px 높이 */
+  /* 폰 · 태블릿 — 손가락으로 누를 단추는 44px 높이 */
   @media (pointer: coarse) {
     .actions button {
       min-height: 44px;

@@ -1,23 +1,16 @@
-//! **DB 도구**(쿼리 타일 3단계 3a · 3b — docs/log/2026-10-13-db-write-mcp-design.md B-4 · B-6 · D6 · D7) — `list_db_connections` · 구조 넷
-//! (`db_list_schemas` · `db_list_objects` · `db_describe_table` · `db_get_definition`) · `db_query`(읽기 전용) · `create_db_write_plan`(3b — 쓰기
-//! **작업안 초안**을 저장할 뿐, 실행 · 승인은 없다).
+//! DB 도구 — `list_db_connections` · 구조 넷 · `db_query`(읽기 전용) · `create_db_write_plan`(쓰기 **작업안 초안** 저장뿐)
+//! (docs/log/2026-10-13-db-write-mcp-design.md).
 //!
-//! 불변식:
-//! - **DB 평면에는 `crate::db::ai` 로만 닿는다**(시험 `mcp_reaches_db_only_through_ai_facade`) — 타일 연결 표 · 서버 op · 쓰기 전환에 닿는
-//!   길이 없다.
-//! - **권한 판정이 먼저다** — 도구 호출마다 `delegation.toml` 을 새로 읽고(`tools_call` 의 `load_delegation`) 연결마다 단계 + 신원 스냅샷을
-//!   본다(`ai::authorize`). 끔(또는 스냅샷 어긋남)인 연결은 **없는 연결과 같은 말**을 한다 · `list_db_connections` 에도 없다.
-//!   도구 일곱은 DB 뒷면이 있으면 권한과 무관하게 늘 `tools/list` 에 있다(2026-11-09 — [`tool_schemas`]) — 권한을 바꾸면 다음 호출부터 바로 적용된다.
-//! - **AI 의 쓰기는 작업안뿐이다**(3b) — `create_db_write_plan` 은 'Ask' 연결에만, 사전 검증(`crate::db::ai_plan::check` — 2단계 쓰기
-//!   스크립트 규칙)을 지난 문장 목록을 **초안으로 저장**한다(연결 · 트랜잭션을 열지 않는다). 검토 요청 · 기다림 · 결과 읽기는 셸 작업안과 같은
-//!   도구다. 승인 · 실행 · 취소는 MCP 에 없고(Tauri 명령뿐), DB 작업안은 연결이 'YOLO' 일 때만 자동 승인된다(`operations::approval`). 실행 모듈
-//!   `db::ai_write` 는 이 파일에서 닿지 않는다(시험 `mcp_reaches_db_only_through_ai_facade`). 권한을 고치는 도구도 없다(위임 편집은 Tauri 명령뿐).
-//! - **비밀번호 · 주소 · 사용자 이름 · 파일 경로를 돌려주지 않는다** — `list_db_connections` 는 이름 · 엔진 · DB 이름 · 경유 여부 · 단계만
-//!   (근거: AI 가 SQL 을 쓰는 데 주소는 필요 없고, 연결 목록은 사용자의 기반 시설 지도라 모델 제공자로 보낼 까닭이 없다 — 호스트 위임의
-//!   `get_auto_approval_policy` 가 별칭을 내보내지 않는 것과 같은 규칙).
-//! - **감사**: 연결에 닿는 도구(구조 넷 · `db_query`)는 호출마다 한 줄(`audit` `db_read` — 도구 · 연결 · SQL/인자 · 행 수 · ms · 결과 코드).
-//!   **결과 값은 남기지 않는다.** 권한에서 거절된 호출도 `denied` 로 남긴다.
-//! - 이 도구들은 **컨텍스트 잠금 앞**에서 갈라진다(`rpc::tools_call`) — 최대 60초 + 여유를 자는 동안 거울 갱신을 막지 않게.
+//! 불변식 (→ docs/invariants.md 전문 8):
+//! - **DB 평면에는 `crate::db::ai` 로만 닿는다** — 타일 연결 표 · 서버 op · 쓰기 전환 · 실행 모듈 `db::ai_write` 에 닿는 길이 없다
+//!   (시험 `mcp_reaches_db_only_through_ai_facade`).
+//! - **권한 판정이 먼저다** — 호출마다 `delegation.toml` 을 새로 읽고 연결마다 단계 + 신원 스냅샷을 본다(`ai::authorize`). 끔(또는 스냅샷
+//!   어긋남)인 연결은 **없는 연결과 같은 말**을 하고 `list_db_connections` 에도 없다.
+//! - **AI 의 쓰기는 작업안뿐이다** — `create_db_write_plan` 은 'Ask' 이상 연결에만, 사전 검증(`crate::db::ai_plan::check`)을 지난 문장을
+//!   **초안으로 저장**한다(연결 · 트랜잭션을 열지 않는다). 승인 · 실행 · 취소 · 권한 편집은 MCP 에 없고(Tauri 명령뿐), DB 작업안은
+//!   연결이 'YOLO' 일 때만 자동 승인된다(`operations::approval`).
+//! - **비밀번호 · 주소 · 사용자 이름 · 파일 경로를 돌려주지 않는다** — 연결 목록은 사용자의 기반 시설 지도라 모델 제공자로 보낼 까닭이 없다.
+//! - **감사**: 연결에 닿는 도구(구조 넷 · `db_query`)는 호출마다 한 줄(`audit` `db_read`) — **결과 값은 남기지 않는다.** 거절된 호출도 `denied` 로 남긴다.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -28,14 +21,13 @@ use crate::audit::{AuditDbRead, AuditRecord};
 use crate::db::ai::{self, AiDb, AiRequest, DbAiLevel, DbConn, DefTarget, Denied};
 use crate::delegation::Delegation;
 
-/// MCP 요청이 들고 가는 DB 뒷면 — 없으면(시험 · DB 를 모르는 서버) DB 도구가 목록에 없고 연결도 없다.
+/// 없으면(시험 · DB 를 모르는 서버) DB 도구가 목록에 없고 연결도 없다.
 #[derive(Clone, Default)]
 pub(crate) struct DbEnv {
     backend: Option<Arc<dyn AiDb>>,
 }
 
 impl DbEnv {
-    /// DB 뒷면이 있나 — `tools/list` 가 DB 도구 일곱을 실을지(권한은 보지 않는다 — [`tool_schemas`]).
     pub(crate) fn has_backend(&self) -> bool {
         self.backend.is_some()
     }
@@ -49,7 +41,6 @@ impl DbEnv {
     }
 }
 
-/// DB 도구 이름 전부. 쓰기는 **작업안 초안** 하나(`create_db_write_plan` — 3b)뿐이고, 그것도 실행하지 않는다.
 pub(crate) const DB_TOOLS: [&str; 7] = [
     "list_db_connections",
     "db_list_schemas",
@@ -60,7 +51,7 @@ pub(crate) const DB_TOOLS: [&str; 7] = [
     WRITE_PLAN_TOOL,
 ];
 
-/// 쓰기 작업안 초안 도구(3b) — 목록에는 늘 있고, 호출마다 그 연결이 'Ask' 이상인지 서버가 판정한다.
+/// 목록에는 늘 있고, 호출마다 그 연결이 'Ask' 이상인지 서버가 판정한다.
 pub(crate) const WRITE_PLAN_TOOL: &str = "create_db_write_plan";
 
 pub(crate) fn is_db_tool(name: &str) -> bool {
@@ -86,10 +77,8 @@ fn conn_id_prop() -> Value {
     json!({ "type": "string", "description": "the connId from list_db_connections" })
 }
 
-/// DB 도구 일곱의 스키마 — **권한과 무관하게 늘 전부**(2026-11-09 사용자 결정). AI CLI 는 처음 받은 `tools/list` 를 캐시하고
-/// 이 서버는 `notifications/tools/list_changed` 를 보내지 않는다(Codex 는 대화 중 목록 갱신도 받지 않는다) — 단계로 목록을 거르면 사람이
-/// 권한을 올려도 MCP 재연결 전에는 도구가 생기지 않았다. 셸 작업안 도구와 같은 모양으로, 단계 판정은 호출마다 서버(`call` ·
-/// `create_write_plan` — 끔 · 스냅샷 어긋남 = 없는 연결 · 모자란 단계 = 거절)가 한다.
+/// 권한과 무관하게 늘 전부 — AI CLI 는 처음 받은 `tools/list` 를 캐시하고 이 서버는 `list_changed` 를 보내지 않아, 단계로 거르면
+/// 사람이 권한을 올려도 재연결 전에는 도구가 생기지 않는다. 단계 판정은 호출마다 서버가 한다.
 pub(crate) fn tool_schemas() -> Vec<Value> {
     vec![
         json!({
@@ -224,7 +213,7 @@ pub(crate) fn level_of(d: &Delegation, env: &DbEnv, conn_id: &str) -> DbAiLevel 
     shared(d, b.as_ref()).into_iter().find(|(c, _)| c.id == conn_id).map(|(_, l)| l).unwrap_or(DbAiLevel::Off)
 }
 
-/// `create_db_write_plan` — 권한 판정('Ask') → 사전 검증 → **초안 저장**(실행 · 연결 없음). 답은 `create_execution_plan` 과 같은 꼴.
+/// 권한 판정('Ask') → 사전 검증 → **초안 저장**(실행 · 연결 없음).
 pub(crate) fn create_write_plan(
     args: Option<&Value>,
     d: &Delegation,
@@ -254,7 +243,7 @@ pub(crate) fn create_write_plan(
             ));
         }
     };
-    // 승인 요약(필수) — 권한 판정 뒤(권한 밖이면 연결이 없는 것처럼 답하는 규칙을 이 인자가 앞질러 흘리지 않게).
+    // 승인 요약은 권한 판정 뒤 — 권한 밖이면 연결이 없는 것처럼 답하는 규칙을 이 인자가 앞질러 흘리지 않게.
     let (summary, effect) = super::plan::declaration_args(args)?;
     let raw = args.get("statements").and_then(Value::as_array).ok_or("A statements array is required (one SQL statement per item)")?;
     let mut statements = Vec::with_capacity(raw.len());
@@ -312,7 +301,6 @@ fn unknown_conn(id: &str) -> String {
     format!("Unknown database connection '{id}' — call list_db_connections for the connections shared with AI")
 }
 
-/// 도구 이름 · 인자 → 요청과 감사 글자.
 fn request_of(name: &str, args: Option<&Value>) -> Result<(AiRequest, String), String> {
     let schema = opt_string(args, "schema");
     let schema_note = schema.as_deref().map(|s| format!(" schema={s}")).unwrap_or_default();
@@ -350,7 +338,7 @@ fn engine_name(c: &DbConn) -> &'static str {
     crate::delegation::database::engine_str(c.engine)
 }
 
-/// `list_db_connections` — 권한이 끔이 아닌 연결만(비밀 · 주소 없음).
+/// 권한이 끔이 아닌 연결만(비밀 · 주소 없음).
 fn list(d: &Delegation, env: &DbEnv) -> Value {
     let Some(b) = &env.backend else {
         return json!([]);
@@ -376,7 +364,6 @@ fn list(d: &Delegation, env: &DbEnv) -> Value {
     json!(items)
 }
 
-/// DB 도구 하나 — 판정 → 뒷면 → 감사.
 pub(crate) fn call(name: &str, args: Option<&Value>, d: &Delegation, env: &DbEnv) -> Result<Value, String> {
     if name == "list_db_connections" {
         return Ok(list(d, env));

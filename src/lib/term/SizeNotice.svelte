@@ -1,10 +1,5 @@
 <script lang="ts">
-  /**
-   * **다른 기기 크기 안내의 그림**(10-20 — 목업 B) — `Terminal.svelte` 에서 뗀 표시 조각(2026-10-26 분할 3차): 그려진 영역의 점선 테두리 ·
-   * 위 가장자리 꼬리표(카드가 없으면 눌러 여는 단추) · 꼬리표 상자 · 카드. 크기 주인 판정 · 잰 값 · 카드 자리 · `refit` · 되찾기와
-   * 바깥 누름/Esc 로 닫기는 부모가 쥐고, 여기는 받은 값대로 그리기만 한다 — 단추는 `onrun`, 꼬리표 상자 열림은 `bind:pop`,
-   * 카드 높이(잰 값)는 `bind:cardH`. 감싸개 없음 — 부모 `.term` 안에 그대로 선다(`.size-pop` · `.size-tag` 표식은 부모의 바깥 누름 판정이 본다).
-   */
+  // 다른 기기 크기 안내의 그림. `.size-pop` · `.size-tag` 클래스는 부모의 바깥 누름 판정이 본다.
   import { t as tr } from "$lib/i18n/i18n.svelte.js";
   import type { CardPlace, NoticeAction, NoticeSide, Size2 } from "$lib/term/size-notice";
   import type { TermSize } from "$lib/term/size-owner";
@@ -20,21 +15,15 @@
     buttons,
     onrun,
   }: {
-    /** 꼬리표 문구 갈래(`noticeSide`) */
     kind: NoticeSide;
-    /** 주인의 크기(cols × rows) */
     ownerSize: TermSize;
-    /** 점선 테두리 상자(`outlineBox`) */
     outline: Size2;
-    /** 카드 자리(`placeCard`) — `null` 이면 카드 없이 꼬리표 단추 */
+    /** `null` 이면 카드 없이 꼬리표 단추 */
     card: CardPlace | null;
-    /** 카드 폭(px — CSS 고정) */
     cardW: number;
-    /** 카드 높이 — 그려지면 잰 값으로 고친다 */
+    /** 그려지면 잰 값으로 고친다 */
     cardH: number;
-    /** 꼬리표를 눌러 연 단추 상자 */
     pop: boolean;
-    /** 단추(`noticeActions`) */
     buttons: NoticeAction[];
     onrun: (a: NoticeAction) => void;
   } = $props();
@@ -104,10 +93,7 @@
 
 
 <style>
-  /*
-   * 다른 기기 크기 안내(10-20 — 목업 B). 층: 테두리 · 꼬리표 · 카드(3) < 배너(4) < 토스트(5) < 확인 막(6) — 앱 모달은 그 위.
-   * 테두리는 마우스를 받지 않는다(선택은 아래 터미널로). 꼬리표는 그려진 영역의 위 가장자리에 걸친다.
-   */
+  /* 층: 테두리 · 꼬리표 · 카드(3) < 배너(4) < 토스트(5) < 확인 막(6). 테두리는 마우스를 받지 않는다(선택은 아래 터미널로). */
   .size-outline {
     position: absolute;
     left: var(--term-pad);

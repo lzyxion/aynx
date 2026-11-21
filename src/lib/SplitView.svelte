@@ -7,37 +7,17 @@
     root,
     base = FULL_RECT,
   }: {
-    /** 이 탭의 패널 트리 (`+page.svelte` 가 소유하는 `$state` 의 일부) */
     root: PaneNode;
-    /** 트리의 뿌리 사각형 — 오케스트레이션 탭은 재생 막대 띠를 뺀 캔버스(`pane/boxes.ts` 의 `tabCanvas` — 상자와 같은 값) */
+    /** 오케스트레이션 탭은 재생 막대 띠를 뺀 캔버스 — 상자(`pane/boxes.ts` 의 `tabCanvas`)와 같은 값이어야 한다 */
     base?: Rect;
   } = $props();
 
-  // ---------------------------------------------------------------------------
-  // 한 탭의 **분할선 레이어**.
-  //
-  // 예전에는 이 컴포넌트가 패널 목록까지 그렸다. 지금 터미널은 `PaneHost.svelte` 의
-  // **앱 전역 목록** 하나에서 그려진다 — 탭 간 이동에서 인스턴스가 살아남으려면 목록이
-  // 하나여야 하기 때문이다 (docs/log/2026-09-02-pane-host.md).
-  //
-  // 그러면 오버레이(✓ · × · 드랍 미리보기)는 왜 같이 못 넘어왔는가: 그것들은 터미널을
-  // **덮는** 자리라 반드시 터미널 상자의 자식이어야 한다. 별도 레이어로 띄우면 그 레이어가
-  // 커서를 먹어 xterm 의 선택·휠이 죽거나, `pointer-events: none` 으로 비켜 주면 이번엔
-  // 오버레이 자체를 못 누른다. 분할선은 사정이 다르다 — **패널 사이 6px 간격**에만 있어서
-  // 터미널과 겹치는 면적이 0 이다. 그래서 분할선만 위층에 남았다.
-  //
-  // 기하는 `layout.ts` 의 같은 함수로 계산한다 — 패널 상자와 분할선이 같은 사각형을 본다.
-  // ---------------------------------------------------------------------------
+  // 한 탭의 분할선 레이어. 오버레이(✓ · × · 드랍 미리보기)는 여기 두지 않는다 — 터미널을 덮는 자리라 터미널 상자의 자식이어야 한다
+  // (별도 층이면 xterm 의 선택·휠이 죽는다). 분할선은 타일 사이 간격에만 있어 터미널과 겹치지 않는다.
 
   const lines = $derived(computeLayout(root, base).lines);
 
-  // ---------------------------------------------------------------------------
-  // 분할선 드래그
-  //
-  // pointerdown 에서 노드의 픽셀 영역을 한 번 재 두고(=드래그 중에는 안 바뀐다),
-  // 이후 move 는 그 원점·길이로 비율만 환산한다. setPointerCapture 덕에 커서가
-  // 터미널 위로 넘어가도 이벤트는 분할선이 계속 받는다.
-  // ---------------------------------------------------------------------------
+  // ── 분할선 드래그 ──
 
   let host = $state<HTMLDivElement | null>(null);
   let drag = $state<{
@@ -78,7 +58,6 @@
       ev.currentTarget.releasePointerCapture(ev.pointerId);
   }
 
-  /** 키보드로도 분할선을 움직인다 (한 번에 2%p) */
   function keyDrag(ev: KeyboardEvent, d: DividerBox) {
     const back = d.dir === "row" ? "ArrowLeft" : "ArrowUp";
     const fwd = d.dir === "row" ? "ArrowRight" : "ArrowDown";
@@ -95,10 +74,7 @@
 
 <div class="dividers" bind:this={host}>
   {#each lines as line (line.key)}
-    <!--
-      분할선은 `<button>` 이다 — div + role="separator" 로 두면 "포커스 가능한 비대화형
-      요소" 로 잡혀 a11y 경고가 난다. 버튼이면 Tab 순회·화살표 조작이 공짜로 따라온다.
-    -->
+    <!-- `<button>` 이다 — div + role="separator" 면 "포커스 가능한 비대화형 요소" a11y 경고가 난다 -->
     <button
       type="button"
       class="divider {line.dir}"
@@ -121,8 +97,7 @@
     inset: 0;
   }
 
-  /* 잡기 편하게 GAP 만큼 두껍고, 눈에 보이는 선은 가운데 1px 만.
-     레이어는 `pointer-events: none` 이므로 분할선만 커서를 되받는다 */
+  /* 레이어는 `pointer-events: none` 이라 분할선만 커서를 되받는다 */
   .divider {
     position: absolute;
     z-index: 2;
@@ -142,8 +117,6 @@
     cursor: row-resize;
   }
 
-  /* 쉬는 동안은 보이지 않는다 — 타일 사이 거터(빈 공간)가 이미 경계를 말한다.
-     잡으려 다가가면(hover·focus·drag) 그때만 accent 로 또렷해진다. */
   .divider::after {
     content: "";
     position: absolute;

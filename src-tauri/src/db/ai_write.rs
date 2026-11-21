@@ -1,31 +1,25 @@
-//! **AI 작업안의 DB 쓰기 실행**(쿼리 타일 3단계 3b — docs/log/2026-10-13-db-write-mcp-design.md B-6 · D7) — 사람이 앱에서 승인한 DB 작업안을
-//! 세션 서버의 작업안 실행기(`operations::db_exec`)가 **여기로만** 돌린다. MCP 에는 이 모듈로 오는 길이 없다(시험
-//! `mcp_reaches_db_only_through_ai_facade` · `db_ai_write_is_reached_only_by_the_operations_executor`).
+//! AI 작업안의 DB 쓰기 실행(docs/log/2026-10-13-db-write-mcp-design.md B-6 · D7) — 사람이 앱에서 승인한 DB 작업안을 세션 서버의 작업안
+//! 실행기(`operations::db_exec`)가 여기로만 돌린다. MCP 에는 이 모듈로 오는 길이 없다(시험 `mcp_reaches_db_only_through_ai_facade` ·
+//! `db_ai_write_is_reached_only_by_the_operations_executor`).
 //!
 //! ## 쓰기 연결 — 실행 한 번에 새로 하나, 끝나면 닫는다
 //!
-//! 3a 의 AI 전용 연결(`db::ai` 의 풀)은 **늘 읽기 전용**이고 그것을 시험이 지킨다(`db_ai_connections_are_read_only_forever`). 그 연결을 쓰기
-//! 모드로 바꿔 쓰지 않고 **따로 연다**([`open`] → [`WriteConn`]) — 근거:
-//! - 읽기 풀은 "쓰기로 바꾸는 함수를 부를 수 없다" 는 형 · 소스 수준의 보장을 그대로 둔다(쓰기 연결이 풀에 섞이면 그 보장이 "보통은" 으로 약해진다).
-//! - 쓰기 연결은 **승인된 실행 하나 동안만** 산다 — 비밀번호(볼트) · SSH 핀을 쥔 쓰기 가능 연결이 실행 밖에 남지 않는다(`Drop` 이 닫는다).
-//!   AI 작업안은 드물어(사람 승인 한 번에 하나) 매번 여는 값(SSH 경유 · TLS 접속 한 번)이 문제 되지 않는다.
-//! - 사람 타일의 연결(`table` 의 표 · 트랜잭션 작업)과는 **절대 나누지 않는다** — 이 모듈은 표에 닿지 않는다(시험이 소스를 훑는다).
+//! - `db::ai` 의 읽기 풀은 늘 읽기 전용이다(시험 `db_ai_connections_are_read_only_forever`) — 그 연결을 쓰기로 바꾸지 않고 따로 연다
+//!   (쓰기 연결이 풀에 섞이면 그 보장이 "보통은" 으로 약해진다).
+//! - 쓰기 연결은 승인된 실행 하나 동안만 산다 — 비밀번호(볼트) · SSH 핀을 쥔 쓰기 가능 연결이 실행 밖에 남지 않는다(`Drop` 이 닫는다).
+//! - 사람 타일의 연결(`table` 의 표 · 트랜잭션 작업)과는 나누지 않는다 — 이 모듈은 표에 닿지 않는다(시험이 소스를 훑는다).
 //!
 //! ## 실행
 //!
-//! 2단계 스크립트 실행기(`script::plan` → `script::execute(…, ScriptMode::Write)`) 그대로 — 한 트랜잭션 · 문장마다 가드(트랜잭션 · 암묵 커밋
-//! 문장 거절) · 첫 오류 · 취소 · 시한이면 전부 되돌림 · 모두 성공하면 커밋 · 커밋 답을 못 받으면 **결과 불명**(다시 보내지 않는다). 여기에
-//! **영향 행 상한**(`Ctl::with_affected_cap` — `maxAffected`)이 더해진다: 문장마다 엔진이 알려 준 영향 행을 더해 상한을 넘으면 다음 문장을
-//! 시작하지 않고 **커밋 전에 되돌린다**(사유 `maxAffected`).
+//! 스크립트 실행기(`script::execute(…, ScriptMode::Write)`) 그대로 한 트랜잭션이다 — 커밋 답을 못 받으면 결과 불명(다시 보내지 않는다).
+//! 영향 행 상한(`Ctl::with_affected_cap` — `maxAffected`)을 넘으면 다음 문장을 시작하지 않고 커밋 전에 되돌린다.
 //!
 //! ## 경유 SSH · 비밀번호
 //!
-//! 3a 와 같다 — 비밀번호는 빌린 값(그 연결의 사람 쿼리 타일이 비밀번호(친 값 · 볼트 값)로 붙어 있는 동안 — 볼트 잠금과 무관 · `db::borrowed`, 2026-11-09) → 볼트
-//! (`ai::open_with` — 둘 다 세션 서버 안 · **볼트 차례는 그 연결의 헤드리스 위임 `[[database]] headless` 가 켜졌을 때만** — 실행 직전 재판정의
-//! 증표가 지금 파일로 싣는다, 2026-11-09), 경유 SSH 는 무인 관문(`ai::secrets_for` — 사람의 답 없음 · 볼트의 SSH 비밀번호 없음 · 키 암호구는 그
-//! 호스트의 `vault_passphrase` 위임일 때만). 빌린 값은 **열 때만** 본다 — 연 뒤 타일이 닫혀도 도는 트랜잭션은 끝까지 가고, 연결은 실행이
-//! 끝나면 닫힌다(다음 실행은 다시 빌려야 한다). 실패 문구도 3a 의 것(`ai::open_error_text`)이다. **SQLite 쓰기 연결도 같은 문**
-//! (`ai::sqlite_gate` — 그 연결의 사람 타일이 표에 있거나 헤드리스 위임이 있을 때만 · 2026-11-09).
+//! 읽기(`db::ai`)와 같은 문이다 — 비밀번호는 빌린 값(그 연결의 사람 쿼리 타일이 붙어 있는 동안 · 볼트 잠금과 무관) → 볼트(그 연결의 헤드리스
+//! 위임 `[[database]] headless` 가 켜졌을 때만), 경유 SSH 는 무인 관문(사람의 답 없음 · 볼트의 SSH 비밀번호 없음 · 키 암호구는 그 호스트의
+//! `vault_passphrase` 위임일 때만). SQLite 쓰기 연결도 같은 문(`ai::sqlite_gate`)이다. 빌린 값은 열 때만 본다 — 연 뒤 타일이 닫혀도 도는
+//! 트랜잭션은 끝까지 가고, 다음 실행은 다시 빌려야 한다.
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -75,7 +69,7 @@ pub(crate) async fn open(grant: &Grant, src: &PasswordSource) -> Result<WriteCon
     let id = grant.conn().id.clone();
     let engine = match resolved {
         Resolved::Sqlite(path) => {
-            // 읽기와 같은 문(2026-11-09) — 사람 타일이 없으면 헤드리스 위임이 있어야 연다(실행 직전 재판정의 증표가 지금 파일로 싣는다).
+            // 읽기와 같은 문 — 사람 타일이 없으면 헤드리스 위임이 있어야 연다(실행 직전 재판정의 증표가 지금 파일로 싣는다).
             ai::sqlite_gate(grant, src)?;
             let s = tokio::task::spawn_blocking(move || Sqlite::open(std::path::Path::new(&path), true))
                 .await
@@ -107,7 +101,6 @@ pub(crate) async fn open(grant: &Grant, src: &PasswordSource) -> Result<WriteCon
     Ok(conn)
 }
 
-/// 실행 한 번의 결과 — 결과 칸(`TargetResult.db`)에 실을 값 · 사람이 읽는 요약 줄 · 감사 요약.
 #[derive(Debug, Clone)]
 pub(crate) struct WriteRun {
     /// `committed` · `rolledBack` · `unknown` · `disconnected` · `notRun`.
@@ -146,8 +139,8 @@ impl WriteRun {
     }
 }
 
-/// **승인된 문장들을 한 트랜잭션으로** — 다시 계획(가드)하고, 영향 행 상한을 건 실행기로 돌린다. `cancel` 은 작업안의 취소 스위치(사람의
-/// [취소] · 서버 끝) — 세우면 다음 문장 전에 멈추거나 도는 문장을 끊고 되돌린다.
+/// 다시 계획(가드)한 뒤 영향 행 상한을 건 실행기로 돌린다. `cancel`(사람의 [취소] · 서버 끝)을 세우면 다음 문장 전에 멈추거나 도는
+/// 문장을 끊고 되돌린다.
 pub(crate) async fn run(
     conn: &WriteConn,
     statements: &[String],
@@ -184,7 +177,6 @@ pub(crate) async fn run(
     shape(out, max_affected, ctl.affected_total())
 }
 
-/// 실행기의 화면 꼴 → 결과 칸 · 요약 · 감사.
 fn shape(out: script::ScriptOut, max_affected: u64, total: u64) -> WriteRun {
     let mut budget = RESULT_ROWS_BUDGET;
     let mut summary = Vec::new();
@@ -203,7 +195,6 @@ fn shape(out: script::ScriptOut, max_affected: u64, total: u64) -> WriteRun {
             let has_rows = !r.out.columns.is_empty();
             let (mut v, _) = ai::shape_query(r.out, &mut budget);
             if !has_rows {
-                // 행을 돌려주지 않는 문장 — 빈 칸들을 싣지 않는다.
                 if let Some(o) = v.as_object_mut() {
                     for k in ["columns", "rows", "rowCount", "truncated", "cellTruncated"] {
                         o.remove(k);
@@ -216,8 +207,7 @@ fn shape(out: script::ScriptOut, max_affected: u64, total: u64) -> WriteRun {
         })
         .collect();
     let message = match (out.outcome, out.reason) {
-        // 되돌림은 트랜잭션에 드는 변경에 한한다(Codex 검토 반영 1 — MySQL · MariaDB 의 비트랜잭션 테이블은 되돌려지지 않는다. 서버가 경고
-        // 1196 을 냈으면 엔진의 덧말(`out.message`)이 뒤에 붙는다).
+        // 되돌림은 트랜잭션에 드는 변경에 한한다 — MySQL · MariaDB 의 비트랜잭션 테이블은 되돌려지지 않는다(경고 1196 은 `out.message` 로 붙는다).
         (_, Some("maxAffected")) => Some(
             [
                 Some(tr!(
@@ -279,7 +269,6 @@ fn shape(out: script::ScriptOut, max_affected: u64, total: u64) -> WriteRun {
     }
 }
 
-/// 끝 한 줄(사람 말).
 fn outcome_text(outcome: &str, reason: Option<&str>) -> String {
     match (outcome, reason) {
         ("committed", _) => tr!(ko: "커밋했습니다", en: "Committed"),

@@ -1,8 +1,7 @@
-//! 원격 창(R1a-3) 시험 — 프레임·부팅 표·창 셈의 순수 시험과, **`tauri::test`(MockRuntime) 위의 다리 통합 시험**(설계 14.5).
+//! 원격 창 시험 — 프레임 · 부팅 표 · 창 셈의 순수 시험과 `tauri::test`(MockRuntime) 위의 다리 통합 시험.
 //!
-//! 통합 시험(`bridge_*`)은 불안정 API(`InvokeRequest`·`Webview::on_message`·`channel_interceptor`)가 tauri 판을 올려도 그대로인지 지키는
-//! 문이다 — 스파이크(14.2)의 넷: ping invoke · 명령이 보는 창 라벨 = `remote-*` · `Channel<ArrayBuffer>` 300개 순서 · 이벤트(`emit_to`).
-//! 깨지면 tauri 올리기를 멈추고 `bridge.rs` 부터 본다.
+//! 통합 시험(`bridge_*`)은 불안정 API(`InvokeRequest` · `Webview::on_message` · `channel_interceptor`)가 tauri 판을 올려도 그대로인지
+//! 지키는 문이다 — 깨지면 tauri 올리기를 멈추고 `bridge.rs` 부터 본다.
 
 use std::time::{Duration, Instant};
 
@@ -102,7 +101,6 @@ fn boot_ticket_is_once_same_session_and_expires() {
     assert_eq!(st.take_ticket(ticket.as_str(), &dev, &key, t0), Some((label3.clone(), gen2 + 1)));
     assert_eq!(st.take_ticket(ticket.as_str(), &dev, &key, t0), None, "두 번은 안 된다");
     assert_ne!(label2, label3);
-    // 시한.
     let (ticket, _, _) = st.issue_ticket(&dev, &key, t0).expect("표");
     assert_eq!(st.take_ticket(ticket.as_str(), &dev, &key, t0 + TICKET_TTL + Duration::from_secs(1)), None);
     // 세션이 닫히면 표도 통하지 않는다.
@@ -289,19 +287,17 @@ fn bridge_invoke_channel_and_events_through_a_hidden_window() {
     bridge::register(label, 1, out.clone());
     let handle = app.handle().clone();
 
-    // 1) ping — async 명령.
     bridge::invoke_ungated(&handle, &window, 1, "rt_ping".into(), InvokeBody::Json(json!({"msg":"hi"})), HeaderMap::new(), &out);
     assert_eq!(text(next(&mut rx)), json!({"t":"res","id":1,"ok":true,"b":"pong:hi"}));
 
-    // 2) 명령이 보는 창·웹뷰 라벨 = 원격 창(동기 명령 — 블로킹 풀에서 돈다).
+    // 명령이 보는 창 · 웹뷰 라벨 = 원격 창(동기 명령 — 블로킹 풀에서 돈다).
     bridge::invoke_ungated(&handle, &window, 2, "rt_whoami".into(), InvokeBody::Json(json!({})), HeaderMap::new(), &out);
     assert_eq!(text(next(&mut rx))["b"], json!([label, label]));
 
-    // 없는 명령 → 오류 응답(매달리지 않는다).
     bridge::invoke_ungated(&handle, &window, 3, "nope".into(), InvokeBody::Json(json!({})), HeaderMap::new(), &out);
     assert_eq!(text(next(&mut rx))["ok"], json!(false));
 
-    // 3) Channel<ArrayBuffer> 300개 — 모두 가로채기로, 콜백 id·세대 그대로, 순번 = 차례, 원시 그대로.
+    // Channel<ArrayBuffer> 300개 — 모두 가로채기로, 콜백 id · 세대 그대로, 순번 = 차례, 원시 그대로.
     bridge::invoke_ungated(
         &handle,
         &window,
@@ -334,7 +330,7 @@ fn bridge_invoke_channel_and_events_through_a_hidden_window() {
     }
     assert_eq!(seen, 300);
 
-    // 4) 이벤트 — 대상 Any 는 emit_to("main") 도 받는다(데스크톱 JS 와 같음) · 자기 라벨 대상은 자기 것만.
+    // 이벤트 — 대상 Any 는 emit_to("main") 도 받는다(데스크톱 JS 와 같음) · 자기 라벨 대상은 자기 것만.
     let any = bridge::listen(&handle, &window, "rt-ev", &json!({"kind":"Any"}), 77).expect("listen");
     let own = bridge::listen(&handle, &window, "rt-own", &json!({"kind":"WebviewWindow","label":label}), 78).expect("listen");
     assert!(bridge::listen(&handle, &window, "rt-ev", &json!({"kind":"Window","label":"main"}), 79).is_err());
@@ -344,12 +340,11 @@ fn bridge_invoke_channel_and_events_through_a_hidden_window() {
     handle.emit_to("main", "rt-own", 5).unwrap();
     handle.emit_to(label, "rt-own", 6).unwrap();
     assert_eq!(text(next(&mut rx)), json!({"t":"event","h":78,"e":"rt-own","i":own,"p":6}));
-    // 걷은 뒤에는 오지 않는다.
     bridge::unlisten(&handle, label, any);
     handle.emit("rt-ev", 2).unwrap();
     assert!(rx.try_recv().is_err());
 
-    // 5) 끝 — 표에서 빠지고 리스너를 걷고 창을 부순다. 그 뒤의 Channel 은 버린다(숨은 웹뷰로 eval 하지 않는다).
+    // 끝 — 그 뒤의 Channel 은 버린다(숨은 웹뷰로 eval 하지 않는다).
     bridge::unregister(&handle, &window, label);
     handle.emit_to(label, "rt-own", 7).unwrap();
     assert!(rx.try_recv().is_err(), "리스너가 걷혔다");
@@ -376,7 +371,7 @@ fn bridge_leaves_home_windows_alone() {
     assert!(super::windows::has_home_window_except(&app, "remote-abcd-9"));
 }
 
-// ── 원격 권한 B · 재확인(R1a-4) ───────────────────────────────────────────────
+// ── 원격 권한 B · 재확인 ───────────────────────────────────────────────────────
 
 #[test]
 fn reauth_ticket_is_once_same_session_same_command_and_expires() {
@@ -393,7 +388,6 @@ fn reauth_ticket_is_once_same_session_same_command_and_expires() {
     let t = st.issue_reauth(&key, cmd, t0).expect("표");
     assert!(!st.take_reauth(t.as_str(), &[9u8; 32], cmd, t0));
     assert!(!st.take_reauth("short", &key, cmd, t0));
-    // 시한.
     let t = st.issue_reauth(&key, cmd, t0).expect("표");
     assert!(!st.take_reauth(t.as_str(), &key, cmd, t0 + REAUTH_TTL + Duration::from_secs(1)));
     // 세션이 닫히면 표도 통하지 않고, 죽은 세션엔 뽑지 않는다.
@@ -419,14 +413,13 @@ fn admit_follows_the_tables_and_consumes_reauth() {
     for denied in ["vault_set_master", "vault_delete_all", "remote_pair_respond", "open_tear_window", "nope_cmd"] {
         assert!(!admits(&auth, &key, denied, None), "{denied}");
     }
-    // 재확인 — 표 없이는 거절, 표가 있으면 한 번 통과.
     assert!(!admits(&auth, &key, "approve_operation", None));
     let t = auth.lock().issue_reauth(&key, "approve_operation", Instant::now()).expect("표");
     assert!(!admits(&auth, &key, "delegation_set_target", Some(t.as_str())), "다른 명령의 표");
     let t = auth.lock().issue_reauth(&key, "approve_operation", Instant::now()).expect("표");
     assert!(admits(&auth, &key, "approve_operation", Some(t.as_str())));
     assert!(!admits(&auth, &key, "approve_operation", Some(t.as_str())), "두 번은 안 된다");
-    // 통과한 재확인은 기록에 기기와 일의 이름만 남는다(R4 — 표·인자 없음). 기록은 프로세스 전역이라 이 기기 id 로 찾는다.
+    // 통과한 재확인은 기록에 기기와 일의 이름만 남는다(표 · 인자 없음). 기록은 프로세스 전역이라 이 기기 id 로 찾는다.
     let line = super::activity::snapshot()
         .into_iter()
         .find(|e| e.kind == "reauthorized" && e.device_id == dev)
@@ -470,7 +463,7 @@ fn bridge_refuses_home_only_without_reaching_tauri() {
     }
 }
 
-/// 이벤트 문(R1a-5) — `plugin:event|emit*` 는 이름으로 거른다(기본 거절). 다른 명령·플러그인은 그대로.
+/// 이벤트 문 — `plugin:event|emit*` 는 이름으로 거른다(기본 거절). 다른 명령 · 플러그인은 그대로.
 #[test]
 fn bridge_event_gate_by_name() {
     use super::bridge::admit_event;

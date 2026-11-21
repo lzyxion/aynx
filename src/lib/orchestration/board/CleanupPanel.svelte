@@ -1,9 +1,5 @@
 <script lang="ts">
-  // ---------------------------------------------------------------------------
-  // **[정리] 창**(통합 설계 6-3) — 앨범 위에 뜨는 넓은 모달: 왼쪽 = 고르기, 오른쪽 = 앨범 그래프(`CleanupGraph`). 연 순간 서버에서 읽은 재료(`clean`)와 고름을 그린다.
-  // 열기 · 읽기 · 실행(`doCleanup`)과 고름 상태는 부모 보드가 쥐고, 고름(작업자 worktree · ref · 브랜치도 지우기)만 `bind:` 로 돌려준다.
   // 앨범 판은 컨테이너 질의 상자라 고정 위치가 창이 아니라 판에 묶인다 — 그래서 본문 아래로 옮겨 그린다(`MergeDialog` 와 같은 틀).
-  // ---------------------------------------------------------------------------
   import { onMount, tick } from "svelte";
   import { trapTab } from "$lib/focus-trap";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -64,7 +60,6 @@
   // 읽기 전에는 지난번 고름이 남아 있을 수 있다 — 재료가 선 뒤에만 센다.
   const picked = $derived(clean ? { worktrees: cleanWt, refs: cleanRefs, branches: cleanBranches } : { worktrees: [], refs: [], branches: false });
   const count = $derived(cleanupCount(picked));
-  /** 탭 — 사람이 고르기 전에는 재료로 정한다 */
   let tabPick = $state<string | null>(null);
   const tab = $derived(tabPick ?? (clean ? cleanupFirstTab(clean) : "worktrees"));
 
@@ -107,7 +102,7 @@
       </div>
 
       <div class="picks">
-        <!-- 오케스트레이션 화면은 ▶ 펼침을 쓰지 않는다(no-disclosure.test.ts) — 큰 덩어리는 고르기 알약 탭(2026-11-07 사용자 결정 A) -->
+        <!-- 오케스트레이션 화면은 ▶ 펼침을 쓰지 않는다(no-disclosure.test.ts) — 큰 덩어리는 고르기 알약 탭 -->
         {#if clean.refs.length > 0}
           <SegTabs tabs={[{ id: "worktrees", label: t("orch.cleanup.tab.worktrees", { n: clean.worktrees.length }) }, { id: "refs", label: t("orch.cleanup.tab.refs", { n: clean.refs.length }), title: t("orch.cleanup.tab.refs.tip") }]}
             value={tab} label={t("orch.cleanup.tabs.aria")} idBase="cleanup" name="cleanup" onpick={(id) => (tabPick = id)} />
@@ -212,7 +207,6 @@
   .small { margin: 8px 0 0; font-size: var(--t-xs); color: var(--fg-3); }
   .foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
   .foot span { flex: 1 1 auto; min-width: 0; font-size: var(--t-sm); color: var(--fg-2); }
-  /* 창이 좁거나 폰이면 한 단 — 그래프는 제목 아래, 창 전체가 스크롤한다 */
   @media (max-width: 760px) {
     .dialog { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow-y: auto; }
     .picks, .graph-slot { grid-column: 1; grid-row: auto; }

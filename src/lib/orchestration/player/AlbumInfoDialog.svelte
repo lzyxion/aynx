@@ -1,5 +1,4 @@
 <script lang="ts">
-  // **앨범 정보 창**(2026-11-07 — 목업 TXXyvWihqavpNcEmbgRA4b) — ⋯ 메뉴의 [앨범 정보]. 예전에는 앨범 머리 아래에 한 줄로 이어 붙었다. 읽기만 한다.
   // 앨범 판은 컨테이너 질의 상자라 고정 위치가 창이 아니라 판에 묶인다 — 본문 아래로 옮겨 그린다(`MergeDialog` 와 같은 틀).
   import { onMount, tick } from "svelte";
   import { trapTab } from "$lib/focus-trap";
@@ -19,7 +18,6 @@
     producerCli: string | null;
     elapsed: string;
     coordLimit: string;
-    /** 앨범을 완료할 수 없는 까닭 */
     why?: string | null;
     onclose: () => void;
   } = $props();

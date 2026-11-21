@@ -1,5 +1,4 @@
-//! **메신저 다리의 순수 층** — 보낸 이 문지기 · 지난 글 · 글자 걷기 · 넣기 문지기 · 입력 줄 판정 · 짝짓기 상태 기계 · 라우팅 표. 잠금 · 파일 ·
-//! 네트워크 · 시계는 모른다(시각은 인자로 받는다) — 시험 대상이다. 불변식은 `server::messenger_bridge` 머리말.
+//! 메신저 다리의 순수 층 — 잠금 · 파일 · 네트워크 · 시계는 모른다(시각은 인자로 받는다). 불변식은 `server::messenger_bridge` 머리말.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -9,15 +8,12 @@ use crate::session_core::Kind;
 
 /// 이보다 오래된 글(초)은 넣지 않는다 — 서버가 꺼져 있던 동안 쌓인 것.
 pub(crate) const STALE_SECS: i64 = 120;
-/// 넣는 글의 상한(글자).
 pub(crate) const TEXT_MAX_CHARS: usize = 8000;
-/// 짝짓기 대기의 시한.
 pub(crate) const PAIR_TTL_MS: u64 = 10 * 60 * 1000;
 /// 같은 계정에 코드를 다시 답하는 간격.
 pub(crate) const PAIR_REPEAT_MS: u64 = 30_000;
 /// 타일 고르기 단추를 기다리는 동안 글을 쥐는 시간.
 pub(crate) const HOLD_MS: u64 = 120_000;
-/// "보낸 메시지 id → 스트림" 을 기억하는 수(최근 것부터).
 pub(crate) const SENT_KEEP: usize = 200;
 /// 다리 턴이 끝난 뒤 그 턴의 프런트 알림을 걸러 내는 동안.
 pub(crate) const TURN_KEEP_MS: u64 = 120_000;
@@ -26,7 +22,7 @@ pub(crate) const TURN_KEEP_MS: u64 = 120_000;
 // 보낸 이 · 지난 글
 // ---------------------------------------------------------------------------
 
-/// 짝지은 계정 — 채널마다 짝 파일(Telegram `<설정 루트>/telegram-chat`)의 몸.
+/// 짝 파일(`<설정 루트>/telegram-chat` 등)의 몸 — 글자 그대로 남는다.
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Paired {
@@ -35,10 +31,8 @@ pub(crate) struct Paired {
     pub name: String,
 }
 
-/// 받은 글을 누가 보냈나.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Sender {
-    /// 짝지은 그 사람의 1:1 대화방
     Paired,
     /// 짝이 없을 때의 1:1 대화방 — 짝짓기 후보
     Stranger,
@@ -46,7 +40,7 @@ pub(crate) enum Sender {
     Drop,
 }
 
-/// **보낸 이 문지기** — `chat.type == "private"` 이고 짝이 있으면 그 사용자 · 대화방이 둘 다 맞아야 한다.
+/// **보낸 이 문지기** — 1:1 대화방만. 짝이 있으면 그 사용자 · 대화방이 둘 다 맞아야 한다.
 pub(crate) fn classify(paired: Option<&Paired>, from: Option<i64>, chat: i64, private: bool) -> Sender {
     let Some(from) = from.filter(|_| private) else {
         return Sender::Drop;
@@ -58,7 +52,6 @@ pub(crate) fn classify(paired: Option<&Paired>, from: Option<i64>, chat: i64, pr
     }
 }
 
-/// 지난 글인가 — 보낸 시각이 지금보다 [`STALE_SECS`] 넘게 앞이다.
 pub(crate) fn is_stale(date_secs: i64, now_secs: i64) -> bool {
     now_secs - date_secs > STALE_SECS
 }
@@ -67,7 +60,6 @@ pub(crate) fn is_stale(date_secs: i64, now_secs: i64) -> bool {
 // 글자 걷기
 // ---------------------------------------------------------------------------
 
-/// 걷은 글.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Clean {
     Empty,
@@ -75,8 +67,7 @@ pub(crate) enum Clean {
     Text(String),
 }
 
-/// **글자 걷기** — 줄바꿈을 `\n` 으로 고르고 C0 제어 글자(ESC 포함 — `\n` · `\t` 만 남김) · DEL · C1 을 뺀다. 그래서 붙여넣기 끝 표식
-/// `ESC[201~` 를 글로 만들 수 없다(ESC 가 없다). 끝의 공백은 걷고, 비면 [`Clean::Empty`], [`TEXT_MAX_CHARS`] 를 넘으면 [`Clean::TooLong`].
+/// C0 제어 글자(ESC 포함 — `\n` · `\t` 만 남김) · DEL · C1 을 뺀다 — 그래서 붙여넣기 끝 표식 `ESC[201~` 를 글로 만들 수 없다.
 pub(crate) fn clean_text(raw: &str) -> Clean {
     let unified = raw.replace("\r\n", "\n").replace('\r', "\n");
     let kept: String = unified
@@ -93,7 +84,7 @@ pub(crate) fn clean_text(raw: &str) -> Clean {
     Clean::Text(text.to_string())
 }
 
-/// 붙여넣기 바이트 — `ESC[200~` + 글(줄바꿈은 `\r` — 프런트 `pasteBytes` 와 같다) + `ESC[201~`. Enter(`\r`)는 따로 잠깐 뒤에.
+/// 줄바꿈은 `\r` — 프런트 `pasteBytes` 와 같다. Enter(`\r`)는 따로 잠깐 뒤에 보낸다.
 pub(crate) fn paste_bytes(clean: &str) -> Vec<u8> {
     format!("\x1b[200~{}\x1b[201~", clean.replace('\n', "\r")).into_bytes()
 }
@@ -102,57 +93,46 @@ pub(crate) fn paste_bytes(clean: &str) -> Vec<u8> {
 // 넣기 문지기
 // ---------------------------------------------------------------------------
 
-/// 그 타일의 에이전트 상태 — `agent_state` 항목에서 뽑은 판정 재료.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AgentView {
     pub cli: Option<&'static str>,
     pub state: Option<Phase>,
     pub main_stopped: bool,
-    /// 진행 중 서브 에이전트 수
     pub subagents: usize,
-    /// 한 번이라도 턴이 끝났나(끝 시각이 있다)
+    /// 한 번이라도 턴이 끝났나
     pub stopped_once: bool,
 }
 
-/// 문지기가 보는 그 타일 — 재료는 셋째 열(계획서 표).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub(crate) struct TileView {
-    /// 살아 있는 세션의 종류(`session_core::live_resource`) — 없으면 `None`
     pub kind: Option<Kind>,
-    /// `agent_state` 항목 — **없으면 `None` 이고 그러면 무조건 거절**
+    /// `agent_state` 항목 — **없으면 무조건 거절**(`session-end` 가 항목을 지운다)
     pub agent: Option<AgentView>,
-    /// 권한 카드 · Codex 질문 · TUI 물음이 서 있다(`server::tile_permission`)
+    /// 권한 카드 · Codex 질문 · TUI 물음이 서 있다
     pub asking: bool,
-    /// 서버 해석기의 괄호 붙여넣기 모드 — 해석기가 없으면 `None`
+    /// 서버 해석기의 괄호 붙여넣기 모드 — 해석기가 없으면 `None`(거절)
     pub bracketed: Option<bool>,
-    /// 입력 줄에 치다 만 글 — 모르면 `None`(막지 않는다)
+    /// 모르면 `None`(막지 않는다)
     pub leftover: Option<bool>,
 }
 
-/// 거절의 까닭 — 답장 문구가 된다([`refusal_text`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// 그 채널의 다리(`[messenger]` 의 채널 칸 — Telegram `telegram_chat`)가 꺼져 있다
     Off,
-    /// 세션이 없다
     NoTile,
-    /// 원격(SSH) 타일 — 1단계에서는 길이 없다
+    /// 원격(SSH) 타일에는 길이 없다
     Remote,
     /// CLI 가 없다 · 끝났다(항목 없음 = 셸로 돌아감)
     NoCli,
-    /// 권한 · 질문을 기다린다
     Asking,
-    /// 한 번도 턴이 끝나지 않았다(첫 말은 PC 에서 — 폴더 신뢰 질문에 Enter 가 답이 되지 않게)
+    /// 한 번도 턴이 끝나지 않았다 — 폴더 신뢰 질문에 Enter 가 답이 되지 않게
     NotReady,
-    /// 실행 중
     Running,
-    /// 괄호 붙여넣기 모드가 아니다 · 모른다
     NoBracketed,
-    /// 입력 줄에 치다 만 글
     Leftover,
 }
 
-/// **넣기 문지기** — 전부 참이어야 넣는다(계획서 표의 순서). 지나면 그 CLI 이름.
+/// **넣기 문지기** — 입력을 기다리는 로컬 AI CLI 타일에만 넣는다(→ docs/invariants.md 전문 4). 전부 참이어야 넣는다.
 pub(crate) fn gate(enabled: bool, t: &TileView) -> Result<&'static str, Refusal> {
     if !enabled {
         return Err(Refusal::Off);
@@ -186,7 +166,6 @@ pub(crate) fn gate(enabled: bool, t: &TileView) -> Result<&'static str, Refusal>
     Ok(cli)
 }
 
-/// 거절 답장 문구.
 pub(crate) fn refusal_text(r: Refusal) -> String {
     match r {
         Refusal::Off => tr!(
@@ -219,7 +198,7 @@ pub(crate) fn refusal_text(r: Refusal) -> String {
     }
 }
 
-/// "기다리는 타일이 없다" 목록의 짧은 까닭(실기 후속 2026-11-19 — [`refusal_text`] 의 "그 타일이 …" 문장은 목록에 어색하다).
+/// "기다리는 타일이 없다" 목록의 짧은 까닭.
 pub(crate) fn refusal_short(r: Refusal) -> String {
     match r {
         Refusal::Off => tr!(ko: "메신저에서 말하기가 꺼져 있습니다", en: "Messaging tiles is off"),
@@ -234,16 +213,14 @@ pub(crate) fn refusal_short(r: Refusal) -> String {
     }
 }
 
-/// "기다리는 타일이 없다" 목록에 낼 까닭인가 — 세션이 없는 것(`NoTile`) · 꺼짐(`Off` — 글 하나에 이미 거절)은 내지 않는다.
+/// 꺼짐(`Off`)은 글 하나에 이미 거절했다.
 pub(crate) fn listable(r: Refusal) -> bool {
     !matches!(r, Refusal::NoTile | Refusal::Off)
 }
 
-/// 목록의 최대 줄 수 — 넘치면 "외 N개" 한 줄.
 pub(crate) const NOWHERE_MAX_LINES: usize = 5;
 
-/// **"입력을 기다리는 AI 타일이 없습니다" + 타일별 까닭 줄**(`· <이름표> — <짧은 까닭>` · 최대 [`NOWHERE_MAX_LINES`] · 넘치면 "외 N개").
-/// 낼 까닭이 없으면([`listable`]) 첫 줄 하나만. 걷지 않은 글이다(HTML 걷기는 보내는 쪽).
+/// 걷지 않은 글이다 — 걷기는 보내는 쪽.
 pub(crate) fn nowhere_text(items: &[(String, Refusal)]) -> String {
     let mut out = tr!(ko: "입력을 기다리는 AI 타일이 없습니다", en: "No AI tile is waiting for input");
     let shown: Vec<&(String, Refusal)> = items.iter().filter(|(_, r)| listable(*r)).collect();
@@ -265,7 +242,7 @@ pub(crate) fn nowhere_text(items: &[(String, Refusal)]) -> String {
 /// 화면 줄 하나 = (글자, 흐린가) 덩어리들.
 pub(crate) type Row = Vec<(String, bool)>;
 
-/// 입력 줄의 머리 글리프 — Claude `❯` · Codex `›`(실측 — 프런트와 같다).
+/// 실측 글리프 — 프런트와 같다.
 fn prompt_glyph(cli: &str) -> Option<&'static str> {
     match cli {
         "claude" => Some("❯"),
@@ -274,8 +251,7 @@ fn prompt_glyph(cli: &str) -> Option<&'static str> {
     }
 }
 
-/// **치다 만 글이 남았나** — 화면 줄(위 → 아래)의 맨 아래쪽 입력 줄(그 CLI 의 글리프로 시작하는 마지막 줄)에서 글리프 뒤에 **흐리지 않은**
-/// 글이 있으면 참. 빈 입력 줄의 안내 글은 두 CLI 모두 흐리게(SGR 2) 그린다. 입력 줄을 못 찾으면 `None`(모른다 — 막지 않는다).
+/// 빈 입력 줄의 안내 글은 두 CLI 모두 흐리게(SGR 2) 그린다 — 그래서 **흐리지 않은** 글만 센다.
 pub(crate) fn input_leftover(cli: &str, rows: &[Row]) -> Option<bool> {
     let glyph = prompt_glyph(cli)?;
     for runs in rows.iter().rev() {
@@ -304,7 +280,6 @@ pub(crate) fn input_leftover(cli: &str, rows: &[Row]) -> Option<bool> {
 // 짝짓기
 // ---------------------------------------------------------------------------
 
-/// 대기 중인 짝짓기 하나.
 #[derive(Clone)]
 pub(crate) struct Pending {
     pub code: String,
@@ -315,20 +290,17 @@ pub(crate) struct Pending {
     pub replied_ms: u64,
 }
 
-/// 짝짓기 요청의 결과.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum PairStep {
-    /// 이 코드를 답장한다(새 대기면 `fresh` — 설정 화면에 알린다)
+    /// 새 대기면 `fresh` — 설정 화면에 알린다
     Reply { code: String, fresh: bool },
-    /// 같은 계정이 30초 안에 또 — 조용히
     Quiet,
     /// 다른 계정이 대기 중 — 조용히(대기는 하나)
     Busy,
-    /// 코드를 만들지 못했다(난수 출처 실패)
     NoCode,
 }
 
-/// **짝짓기 상태 기계** — 대기는 하나 · 10분 시한 · 계정당 30초에 한 번 답.
+/// 대기는 하나뿐이다.
 #[derive(Default)]
 pub(crate) struct Pairing {
     pending: Option<Pending>,
@@ -341,13 +313,11 @@ impl Pairing {
         }
     }
 
-    /// 지금 대기(시한이 지났으면 걷는다).
     pub(crate) fn current(&mut self, now: u64) -> Option<&Pending> {
         self.expire(now);
         self.pending.as_ref()
     }
 
-    /// 짝 없는 1:1 대화방에서 글이 왔다.
     pub(crate) fn request(&mut self, user_id: i64, chat_id: i64, name: &str, now: u64, code: impl FnOnce() -> Option<String>) -> PairStep {
         self.expire(now);
         match &mut self.pending {
@@ -366,7 +336,7 @@ impl Pairing {
         }
     }
 
-    /// 사람의 [허용] · [거절] — 코드가 지금 대기의 것일 때만 꺼낸다(낡은 화면의 누름은 먹지 않는다).
+    /// 코드가 지금 대기의 것일 때만 꺼낸다 — 낡은 화면의 누름은 먹지 않는다.
     pub(crate) fn take(&mut self, code: &str, now: u64) -> Option<Pending> {
         self.expire(now);
         if self.pending.as_ref().is_some_and(|p| p.code == code) {
@@ -385,7 +355,7 @@ impl Pairing {
 // 라우팅 — 보낸 메시지 id → 스트림 · 고르기 단추 · 다리 턴
 // ---------------------------------------------------------------------------
 
-/// 보낸 메시지 id → 스트림(최근 [`SENT_KEEP`] 개 — 서버가 다시 뜨면 잊는다).
+/// 서버가 다시 뜨면 잊는다.
 #[derive(Default)]
 pub(crate) struct SentMap {
     order: VecDeque<i64>,
@@ -419,18 +389,13 @@ impl SentMap {
     }
 }
 
-/// 어디로 보낼까.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Route {
-    /// 이 타일(답장 대상 · 하나뿐)
     To(String),
-    /// 입력을 기다리는 타일이 없다
     Nowhere,
-    /// 여럿 — 고르기 단추
     Choose(Vec<String>),
 }
 
-/// 답장이면 그 알림을 보낸 타일, 아니면 입력을 기다리는 타일이 하나뿐일 때 그 타일, 여럿이면 고르기.
 pub(crate) fn route(reply_target: Option<&str>, waiting: &[String]) -> Route {
     if let Some(s) = reply_target {
         return Route::To(s.to_string());
@@ -442,12 +407,12 @@ pub(crate) fn route(reply_target: Option<&str>, waiting: &[String]) -> Route {
     }
 }
 
-/// 고르기 단추를 기다리며 쥔 글 하나(새 글이 오면 갈아 치운다).
+/// 새 글이 오면 갈아 치운다.
 pub(crate) struct Held {
     pub seq: u64,
     pub text: String,
     pub streams: Vec<String>,
-    /// 단추에 보인 글자(`streams` 와 같은 순서) — 고른 뒤 `→ <글자>` 줄도 같은 글자로
+    /// `streams` 와 같은 순서 — 고른 뒤 `→ <글자>` 줄도 같은 글자로
     pub labels: Vec<String>,
     pub at_ms: u64,
     /// 단추를 단 메시지(결과로 바꿔 쓴다)
@@ -456,17 +421,14 @@ pub(crate) struct Held {
     pub source_id: i64,
 }
 
-/// 고르기 단추 글자의 상한(글자).
 pub(crate) const PICK_LABEL_MAX: usize = 60;
 
-/// 대화 제목 걷기 — 제어 글자를 빼고 공백을 하나로 접는다. 비면 `None`.
 pub(crate) fn clean_title(raw: &str) -> Option<String> {
     let kept: String = raw.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     let folded = kept.split_whitespace().collect::<Vec<_>>().join(" ");
     (!folded.is_empty()).then_some(folded)
 }
 
-/// `n` 글자 안으로 — 넘치면 끝을 `…` 로.
 fn clip_chars(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()
@@ -477,8 +439,7 @@ fn clip_chars(s: &str, n: usize) -> String {
     }
 }
 
-/// 겹친 이름표의 단추 글자 — `<이름표> — <제목><꼬리>`(제목이 없으면 `<이름표><꼬리>`)를 [`PICK_LABEL_MAX`] 안으로. 자를 때는 제목 쪽을 `…` 로
-/// 줄이고 꼬리(` (1)`)는 남긴다 — 이름표만으로 넘치면 이름표를 자른다.
+/// 자를 때는 제목 쪽을 줄이고 꼬리(` (1)`)는 남긴다.
 fn fit_pick(label: &str, title: Option<&str>, tail: &str) -> String {
     let budget = PICK_LABEL_MAX.saturating_sub(tail.chars().count());
     let head = label.chars().count() + 3; // " — "
@@ -488,8 +449,7 @@ fn fit_pick(label: &str, title: Option<&str>, tail: &str) -> String {
     }
 }
 
-/// **고르기 단추 글자**(실기 후속 2026-11-19) — 입력: (이름표, 대화 제목) 목록 → 같은 순서의 단추 글자. **이름표가 서로 겹치는 것만** ` — <제목>` 을
-/// 붙이고(안 겹치면 지금 그대로 — 60자에서 자름), 그래도 같은 글자(제목까지 같음 · 제목 없음 · 자른 끝이 같음)면 ` (1)` · ` (2)` 를 붙인다.
+/// 이름표가 서로 겹치는 것만 ` — <제목>` 을 붙이고, 그래도 같은 글자면 ` (1)` · ` (2)` 를 붙인다.
 pub(crate) fn pick_labels(items: &[(String, Option<String>)]) -> Vec<String> {
     let dup = |l: &str| items.iter().filter(|(x, _)| x == l).count() > 1;
     let mut out: Vec<String> = items
@@ -509,7 +469,7 @@ pub(crate) fn pick_labels(items: &[(String, Option<String>)]) -> Vec<String> {
     out
 }
 
-/// 단추의 `callback_data` — `p:<쥔 글 번호>:<칸>`(64바이트 안 — 스트림 id 를 싣지 않는다).
+/// 64바이트 안 — 스트림 id 를 싣지 않는다.
 pub(crate) fn pick_data(seq: u64, index: usize) -> String {
     format!("p:{seq}:{index}")
 }
@@ -520,16 +480,15 @@ pub(crate) fn parse_pick(data: &str) -> Option<(u64, usize)> {
     Some((seq.parse().ok()?, idx.parse().ok()?))
 }
 
-/// 다리가 넣은 턴 하나.
 #[derive(Clone, Copy)]
 struct Turn {
     ended_ms: Option<u64>,
     asked: bool,
-    /// 그 턴을 시작한 글(메시지 id) — 답 · 물음을 그 글의 자리에 다는 채널(Slack 의 스레드)이 쓴다
+    /// 그 턴을 시작한 글 — 답 · 물음을 그 글의 자리에 다는 채널(Slack 의 스레드)이 쓴다
     source: Option<i64>,
 }
 
-/// 다리 턴 표 — 넣은 순간 서고, `stop`(알림)이 끝내고, 끝난 뒤 [`TURN_KEEP_MS`] 동안 그 턴의 프런트 알림을 거른다.
+/// 끝난 뒤 [`TURN_KEEP_MS`] 동안 그 턴의 프런트 알림을 거른다.
 #[derive(Default)]
 pub(crate) struct Turns {
     map: HashMap<String, Turn>,
@@ -545,7 +504,6 @@ impl Turns {
         self.map.insert(stream.to_string(), Turn { ended_ms: None, asked: false, source: None });
     }
 
-    /// [`Turns::begin`] + 그 턴을 시작한 글.
     pub(crate) fn begin_from(&mut self, stream: &str, now: u64, source: i64) {
         self.begin(stream, now);
         if let Some(t) = self.map.get_mut(stream) {
@@ -553,7 +511,7 @@ impl Turns {
         }
     }
 
-    /// **돌고 있는** 다리 턴을 시작한 글(끝난 턴 · 다리 턴이 아닌 것은 `None` — 지난 턴의 자리에 새 글을 달지 않는다).
+    /// **돌고 있는** 다리 턴만 — 지난 턴의 자리에 새 글을 달지 않는다.
     pub(crate) fn source(&self, stream: &str) -> Option<i64> {
         self.map.get(stream).filter(|t| t.ended_ms.is_none()).and_then(|t| t.source)
     }
@@ -602,12 +560,11 @@ impl Turns {
 }
 
 // ---------------------------------------------------------------------------
-// 2단계 — 다리가 돌보는 스트림 · 보낸 카드 · 단추 데이터 · 누름 판정 · 한 물음에 한 통
+// 다리가 돌보는 스트림 · 보낸 카드 · 누름 판정
 // ---------------------------------------------------------------------------
 
-/// 신호의 권한 물음(`waiting permission`)과 카드가 **같은 물음**이라고 보는 틈 — 이 안에 그 스트림의 카드가 섰으면 신호 쪽 "앱에서 답하세요" 를 보내지 않는다.
+/// 신호의 권한 물음과 카드가 **같은 물음**이라고 보는 틈 — 이 안에 카드가 섰으면 신호 쪽 "앱에서 답하세요" 를 보내지 않는다.
 pub(crate) const ASK_PAIR_MS: u64 = 10_000;
-/// 단추 통의 도구 입력 요약 상한(글자).
 pub(crate) const SUMMARY_MAX_CHARS: usize = 300;
 
 #[derive(Default)]
@@ -620,7 +577,7 @@ struct Tend {
     signal_seq: Option<u64>,
 }
 
-/// **다리가 돌보는 스트림**(2단계) — 다리 턴 ∪ 단추 달린 권한 알림을 보낸 스트림. 그 턴이 끝나면(`stop` · `interrupt` · `session-end`) 걷는다.
+/// **다리가 돌보는 스트림** — 다리 턴 ∪ 단추 달린 권한 알림을 보낸 스트림. 다리는 이 스트림의 카드에만 답한다(→ docs/invariants.md 전문 4).
 /// 돌보는 동안 다리는 그 스트림 권한 카드의 **보는 쪽 하나**다(`server::tile_permission` 의 다리 표지).
 #[derive(Default)]
 pub(crate) struct Tending {
@@ -701,13 +658,13 @@ struct SentCard {
     deciding: bool,
 }
 
-/// [`Cards::gone`] · [`Cards::sent`] 의 답 — 바꿔 쓸 통이 있으면 그 (메시지 id, 이름표, 까닭).
+/// (메시지 id, 이름표, 까닭).
 pub(crate) type Rewrite = Option<(i64, String, String)>;
 
-/// 누름이 잡은 카드 — (스트림, 회차, 이름표, 메시지 id).
+/// (스트림, 회차, 이름표, 메시지 id).
 pub(crate) type Pressed = (String, u64, String, Option<i64>);
 
-/// **보낸 카드 표** — 요청 id → {스트림 · 회차 · 메시지 id}. 서버가 다시 뜨면 잊는다.
+/// 열쇠 = 요청 id. 서버가 다시 뜨면 잊는다.
 #[derive(Default)]
 pub(crate) struct Cards {
     map: HashMap<String, SentCard>,
@@ -806,7 +763,7 @@ impl Cards {
     }
 }
 
-/// 카드 단추의 `callback_data` — `pa:<요청 id 32 hex>`(허용) · `pd:<…>`(거절). 35바이트(64 안).
+/// 35바이트 — 단추 데이터 상한(64) 안.
 pub(crate) fn card_press_data(allow: bool, id: &str) -> String {
     format!("{}:{id}", if allow { "pa" } else { "pd" })
 }
@@ -820,7 +777,7 @@ pub(crate) fn parse_card_press(data: &str) -> Option<(bool, String)> {
     (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())).then(|| (allow, id.to_string()))
 }
 
-/// 누름 판정(짝지은 계정은 이미 지났다) — 다리가 보낸 카드인가 → 그 채널의 다리가 **지금** 켜져 있나.
+/// 짝지은 계정은 이미 지났다. 다리가 보낸 카드이고 그 채널이 **지금** 켜져 있어야 한다.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Press {
     /// 다리가 보낸 (풀리지 않은) 카드가 아니다 — "이미 처리됐습니다"
@@ -840,8 +797,7 @@ pub(crate) fn judge_press(known: bool, chat_on: bool) -> Press {
     }
 }
 
-/// 단추 통의 도구 입력 한 줄 — `apply_patch` 는 파일 경로들, 그 밖은 대화 기록 보기와 같은 요약(`agent_transcript::tool_summary`).
-/// 제어 글자를 걷고 [`SUMMARY_MAX_CHARS`] 에서 자른다(채널 서식 걷기는 전송).
+/// 채널 서식 걷기는 전송이 한다.
 pub(crate) fn card_summary(tool: &str, input: &serde_json::Value) -> String {
     let raw = if crate::tile_permission::tool_kind(tool) == "patch" {
         input.get("command").and_then(serde_json::Value::as_str).map(|p| crate::tile_permission::patch_files(p).join(", ")).unwrap_or_default()
@@ -857,7 +813,7 @@ pub(crate) fn card_summary(tool: &str, input: &serde_json::Value) -> String {
     }
 }
 
-/// "묻는 도구: <도구> · <요약>" 한 줄(걷지 않은 글).
+/// 걷지 않은 글.
 pub(crate) fn tool_line(tool: &str, summary: &str) -> String {
     let tool: String = tool.chars().filter(|c| !c.is_control()).take(120).collect();
     if summary.is_empty() {
@@ -867,16 +823,15 @@ pub(crate) fn tool_line(tool: &str, summary: &str) -> String {
     }
 }
 
-/// 단추 하나 — (글자, 단추 데이터). 채널의 모양(Telegram 인라인 단추 …)은 전송이 짓는다.
+/// (글자, 단추 데이터).
 pub(crate) type Button = (String, String);
 
-/// 단추 통의 몸(걷지 않은 글) — `🟡 확인 필요 · <이름표>` / 도구 한 줄. 이름표 120자 · 도구 120자 · 요약 300자라 어느 채널 상한에도 들어간다.
+/// 걷지 않은 글. 이름표 120자 · 도구 120자 · 요약 300자라 어느 채널 상한에도 들어간다.
 pub(crate) fn card_text(label: &str, tool: &str, summary: &str) -> String {
     let head = tr!(ko: "🟡 확인 필요 · {label}", en: "🟡 Needs action · {label}");
     format!("{head}\n{}", tool_line(tool, summary))
 }
 
-/// 단추 둘 — [허용] · [거절](한 줄에 하나).
 pub(crate) fn card_buttons(id: &str) -> Vec<Button> {
     vec![
         (tr!(ko: "허용", en: "Allow"), card_press_data(true, id)),
@@ -884,7 +839,7 @@ pub(crate) fn card_buttons(id: &str) -> Vec<Button> {
     ]
 }
 
-/// 다른 곳에서 풀린 카드의 결과 한 줄(사건 `gone` 의 까닭).
+/// `reason` 은 사건 `gone` 의 까닭 낱말.
 pub(crate) fn gone_text(reason: &str) -> String {
     match reason {
         "allowed" | "allowed-session" => tr!(ko: "앱에서 허용했습니다", en: "Allowed in the app"),
@@ -898,7 +853,6 @@ pub(crate) fn gone_text(reason: &str) -> String {
     }
 }
 
-/// 다리 누름의 결과.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PressResult {
     Allowed,
@@ -924,7 +878,6 @@ pub(crate) fn press_text(r: PressResult) -> String {
     }
 }
 
-/// 바꿔 쓴 통의 몸(걷지 않은 글) — `<이름표> · <결과>`.
 pub(crate) fn result_text(label: &str, line: &str) -> String {
     if label.is_empty() {
         line.to_string()
@@ -933,8 +886,7 @@ pub(crate) fn result_text(label: &str, line: &str) -> String {
     }
 }
 
-/// 이름표가 없을 때(창이 이름표를 알리지 않음) — `<CLI 표시 이름> · <기록된 cwd 끝 폴더>`(폴더를 모르면 CLI 이름만). 프로젝트 밖 타일은 프런트
-/// 이름표(`bridgeLabelText`)와 같은 글자가 된다.
+/// 창이 이름표를 알리지 않을 때 — 프로젝트 밖 타일은 프런트 이름표(`bridgeLabelText`)와 같은 글자가 되어야 한다.
 pub(crate) fn fallback_label(cli: &str, cwd: Option<&str>) -> String {
     let folder = cwd
         .map(|c| c.trim_end_matches(['/', '\\']))
@@ -947,10 +899,9 @@ pub(crate) fn fallback_label(cli: &str, cwd: Option<&str>) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 전송 공용 — 답 나누기 · 갓 붙은 연결의 물러남(Discord · Slack — 4단계에 dc 에서 옮김)
+// 전송 공용 — 답 나누기 · 갓 붙은 연결의 물러남
 // ---------------------------------------------------------------------------
 
-/// `width` 로 잰 `max` 안의 마지막 문자 경계(바이트 위치).
 fn cut_by(text: &str, max: usize, width: &impl Fn(char) -> usize) -> usize {
     let mut used = 0;
     for (i, c) in text.char_indices() {
@@ -962,8 +913,7 @@ fn cut_by(text: &str, max: usize, width: &impl Fn(char) -> usize) -> usize {
     text.len()
 }
 
-/// **나누기** — `telegram::split_text` 와 같은 꼴(문단 → 줄 → 글자 경계 · 최대 `parts` 조각 · 넘치면 마지막 조각 끝에 `more`)이되 조각의 길이를
-/// 글자마다의 `width` 로 잰다(Discord 는 걷은 뒤의 UTF-16 폭 · Slack 은 걷기 없는 UTF-16 폭).
+/// `telegram::split_text` 와 같은 꼴이되 조각의 길이를 글자마다의 `width` 로 잰다.
 pub(crate) fn split_by(text: &str, max: usize, parts: usize, more: &str, width: impl Fn(char) -> usize) -> Vec<String> {
     let total = |s: &str| s.chars().map(&width).sum::<usize>();
     let mut rest = text.trim_end();
@@ -995,15 +945,13 @@ pub(crate) fn split_by(text: &str, max: usize, parts: usize, more: &str, width: 
     out
 }
 
-/// 갓 붙은 연결이 곧 죽기를 거듭할 때의 물러남 — 처음 `first` 부터 두 배씩 `max` 까지, 오래 산 연결 뒤에는 처음으로(Discord 의 IDENTIFY 앞 ·
-/// Slack 의 `apps.connections.open` 앞).
+/// 갓 붙은 연결이 곧 죽기를 거듭할 때의 물러남 — 두 배씩 늘고, 오래 산 연결 뒤에는 처음으로.
 #[derive(Default)]
 pub(crate) struct Flap {
     wait: Option<std::time::Duration>,
 }
 
 impl Flap {
-    /// 지난 연결이 짧게 살았나(`short`) → 이번에 기다릴 만큼(없으면 곧바로).
     pub(crate) fn delay(&mut self, short: bool, first: std::time::Duration, max: std::time::Duration) -> Option<std::time::Duration> {
         if !short {
             self.wait = None;

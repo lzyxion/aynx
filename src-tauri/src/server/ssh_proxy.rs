@@ -1,24 +1,8 @@
-//! GUI 쪽 **SSH 평면 껍데기**(③-3b2) — 대화형 SSH·연결 풀·포워드는 세션 서버에 산다(`crate::ssh` · `crate::port_forward` 가
-//! 서버 프로세스에서 돈다). 여기 있는 것은 프런트가 부르던 Tauri 명령(이름·인자·반환 그대로 — 프런트 변경 최소)이다.
+//! GUI 쪽 SSH 평면 껍데기 — 대화형 SSH · 연결 풀 · 포워드는 세션 서버에 살고, 여기는 프런트가 부르는 Tauri 명령만 있다.
 //!
-//! | Tauri 명령 | 서버 op | 비고 |
-//! | --- | --- | --- |
-//! | [`open_ssh_session`] | `open_ssh`(쓰기) | 비밀번호·암호구·호스트 키 결정은 몸으로 GUI → 서버 한 방향. 실패는 `SshOpenError` 그대로 |
-//! | [`session_info`] | `ssh_info`(읽기) | 머리줄 말풍선 |
-//! | [`add_forward`] · [`list_forwards`] · [`remove_forward`] | `forward_add`·`forward_list`·`forward_remove` | 검사·127.0.0.1 바인드는 서버 |
-//!
-//! 쓰기·크기·닫기·ACK·붙기·떨어지기·이관은 로컬과 같은 kind 무관 명령이다(`server::proxy` · `session_core::commands`).
-//!
-//! ## 접속 관문은 GUI 모달 (사람 쪽 UI)
-//!
-//! 호스트 키 확인·비밀번호·키 암호구는 예전 계약 그대로 "끊고 재시도" 다: 서버가 `SshOpenError`(`host_key_unknown` ·
-//! `password_required` · `passphrase_required` …)로 답하면 프런트(`src/lib/session/open.ts`)가 모달로 묻고, 답을 실어 이 명령을
-//! 다시 부른다. 값은 이 한 번의 몸에만 실리고 GUI 는 로그·`Debug` 에 남기지 않는다(인자를 구조체로 묶지 않는다).
-//!
-//! ## 창이 사라진 열기
-//!
-//! 창의 generation 은 GUI 만 안다(`crate::reap`). 열기를 시작할 때 읽어 두고 서버가 답한 뒤 다시 본다 — 그 사이 창이 리로드·
-//! 파괴됐으면 방금 연 세션을 곧바로 닫는다(로컬 `open_local_session` 과 같은 규칙 · R06).
+//! - 접속 관문(호스트 키 · 비밀번호 · 암호구)은 "끊고 재시도"다 — 서버가 `SshOpenError` 로 답하면 프런트가 모달로 묻고 다시 부른다.
+//!   값은 그 한 번의 몸에만 실리고 GUI 는 로그 · `Debug` 에 남기지 않는다(그래서 인자를 구조체로 묶지 않는다).
+//! - 창의 generation 은 GUI 만 안다 — 여는 사이 창이 리로드 · 파괴됐으면 방금 연 세션을 곧바로 닫는다(로컬 열기와 같은 규칙).
 
 use serde_json::{json, Value};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -48,7 +32,7 @@ fn anonymous_stream() -> String {
     )
 }
 
-/// 서버 op 실패를 `SshOpenError` 로 — `open_ssh` 의 실패는 코드 `ssh-open` + 메시지 = JSON 이다(`server::sessions::SSH_OPEN`).
+/// `open_ssh` 의 실패는 코드 `ssh-open` + 메시지 = `SshOpenError` JSON 이다.
 fn open_error(e: super::ipc::WireError) -> SshOpenError {
     if e.code == super::sessions::SSH_OPEN {
         if let Ok(err) = serde_json::from_str::<SshOpenError>(&e.message) {
@@ -67,11 +51,8 @@ fn open_error(e: super::ipc::WireError) -> SshOpenError {
     SshOpenError::other(msg)
 }
 
-/// SSH 세션을 연다 — 인자는 예전 Tauri 명령 그대로(프런트 `openSsh`). 몸은 세션 서버 op `open_ssh` 로.
-///
-/// - `password`·`passphrase` 는 **저장하지 않는다** — 이 호출 한 번의 몸에만 싣고 곧바로 떨어진다(GUI 로그 없음).
-/// - `host_key_decision`·`adhoc`·`start` 는 서버가 푼다(여기서는 모양을 보지 않고 그대로 싣는다).
-/// - 에이전트 신호를 세울지는 프런트가 정하지 않는다 — 서버 `ssh::open::signal_stream` 한 곳(2026-10-27).
+/// `password`·`passphrase` 는 저장하지 않는다 — 이 호출 한 번의 몸에만 싣는다.
+/// 에이전트 신호를 세울지는 프런트가 정하지 않는다 — 서버 `ssh::open::signal_stream` 한 곳.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn open_ssh_session(
@@ -140,13 +121,12 @@ pub async fn open_ssh_session(
     Ok(opened)
 }
 
-/// 머리줄 이름의 말풍선 — 인증 방식·서버 배너·경유·접속 시각 + 그 자리에서 잰 왕복 시간(서버 op `ssh_info`).
 #[tauri::command]
 pub async fn session_info(id: u32) -> Result<Value, String> {
     call(Grade::Read, "ssh_info", json!({ "id": id })).await
 }
 
-/// 포워드 걸기 — 서버 op `forward_add`(검사·루프백 바인드는 서버). 인자는 예전 명령 그대로.
+/// 검사 · 127.0.0.1 바인드는 서버가 한다.
 #[tauri::command]
 pub async fn add_forward(
     session_id: u32,
@@ -170,7 +150,6 @@ pub async fn add_forward(
     .await
 }
 
-/// 한 세션의 포워드 목록(서버 op `forward_list`). 서버에 닿지 못하면 빈 목록.
 #[tauri::command]
 pub async fn list_forwards(session_id: u32) -> Value {
     call(Grade::Read, "forward_list", json!({ "sessionId": session_id }))
@@ -178,7 +157,7 @@ pub async fn list_forwards(session_id: u32) -> Value {
         .unwrap_or_else(|_| json!([]))
 }
 
-/// 포워드 하나를 중지한다(서버 op `forward_remove` — 앱이 건 신호 포워드는 서버가 거절한다).
+/// 앱이 건 신호 포워드는 서버가 거절한다.
 #[tauri::command]
 pub async fn remove_forward(id: u32) -> Result<(), String> {
     call(Grade::Write, "forward_remove", json!({ "id": id, "lang": lang() }))
@@ -186,7 +165,6 @@ pub async fn remove_forward(id: u32) -> Result<(), String> {
         .map(|_| ())
 }
 
-/// 이 SSH 세션이 쓰는 세션 로그 파일(서버 op `ssh_log_path`) — `crate::session_log::session_log_path` 의 SSH 갈래.
 pub(crate) async fn log_path(id: u32) -> Option<String> {
     call(Grade::Read, "ssh_log_path", json!({ "id": id }))
         .await
@@ -198,8 +176,6 @@ pub(crate) async fn log_path(id: u32) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// **접속 관문의 왕복**(사람 쪽 UI = GUI 모달) — 서버의 `open_ssh` 실패(호스트 키·비밀번호·암호구)는 코드 `ssh-open` +
-    /// `SshOpenError` JSON 으로 오고, GUI 는 그 모양 그대로 프런트에 돌려준다(`open.ts` 가 모달로 묻고 답을 실어 다시 연다).
     #[test]
     fn open_errors_cross_the_pipe_unchanged() {
         let errs = vec![
@@ -226,7 +202,6 @@ mod tests {
             let back = open_error(wire);
             assert_eq!(serde_json::to_value(&back).unwrap(), serde_json::to_value(&e).unwrap());
         }
-        // 다른 실패는 `other` 한 줄로(파이프 끊김은 사람 문구).
         let back = open_error(super::super::ipc::WireError::new("closed", "connection closed"));
         assert!(matches!(back, SshOpenError::Other { .. }));
     }

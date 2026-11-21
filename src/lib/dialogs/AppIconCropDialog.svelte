@@ -1,9 +1,4 @@
 <script lang="ts">
-  // 사용자 앱 아이콘 자르기 — 고른 그림에서 정사각 영역을 고른다(끌어서 옮기기 · 모서리로 크기 · 휠로 확대 · 화살표 키).
-  // 상태 · 넣기는 `app/app-icons.svelte.ts`, 계산은 순수 `$lib/app-icon-crop`(docs/log/2026-10-22-custom-app-icon.md).
-  // 미리보기는 쓰일 모양 셋이다 — 아바타 동그라미 64 · 탭 크기 동그라미 20 · 앱 아이콘 둥근 사각 48(저장될 모양 `PREVIEW_CLIP` — 2026-10-31
-  // 설정 › 테마 › 아바타). 이름 칸은 선택(비우면 "사용자 N" — Rust `names.json`). 다시 자르기(`appIconCrop.replace`)면 제목 · 단추가 "바꾸기" 다.
-  // 설정(독)에서만 열리고 독보다 뒤에 그려진다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import { AVATAR_NAME_MAX, appIconCrop, closeAppIconCrop, submitAppIconCrop } from "$lib/app/app-icons.svelte.js";
@@ -20,9 +15,7 @@
     type Crop,
   } from "$lib/app-icon-crop";
 
-  /** 무대 한 변(px) — 그림은 이 안에 contain 으로 놓인다 */
   const STAGE = 320;
-  /** 미리보기 셋 — 크기 · 모양 · 이름표(아바타 동그라미 · 탭 동그라미 · 앱 아이콘 둥근 사각) */
   const CIRCLE = "circle(50% at 50% 50%)";
   const PREVIEWS = [
     { size: 64, clip: CIRCLE, label: "settings.avatars.crop.previewAvatar" },
@@ -41,14 +34,13 @@
   const stage = $derived(fitStage(w || 1, h || 1, STAGE));
   const box = $derived(cropOnStage(crop, stage));
 
-  // 새 그림이 열릴 때마다 처음 영역 · 포커스(무대 — 화살표 키를 바로 받게).
   $effect(() => {
     if (!appIconCrop.open || !appIconCrop.url) return;
     crop = initialCrop(appIconCrop.width, appIconCrop.height);
     queueMicrotask(() => stageEl?.focus());
   });
 
-  // 휠 — 속성 이벤트는 수동(passive)으로 붙을 수 있어 직접 붙인다(`FileList` 와 같은 이유).
+  // 속성 이벤트는 passive 로 붙을 수 있어 preventDefault 가 먹게 직접 붙인다.
   $effect(() => {
     const el = stageEl;
     if (!el) return;
@@ -60,7 +52,7 @@
     return () => el.removeEventListener("wheel", onWheel);
   });
 
-  /** 끄는 중 — 시작 포인터(무대 px)와 시작 영역. 움직임은 늘 시작 영역에서 다시 계산한다(누적 오차 없음) */
+  /** 움직임은 늘 시작 영역에서 다시 계산한다(누적 오차 없음) */
   let drag: { mode: "move" | Corner; px: number; py: number; start: Crop } | null = null;
 
   function begin(ev: PointerEvent, mode: "move" | Corner): void {
@@ -83,7 +75,6 @@
     drag = null;
   }
 
-  /** 화살표 = 옮기기(Shift 면 열 배), `=`/`+` · `-` = 확대 · 축소 — 키는 `ev.code` 로 본다(IME 안전) */
   function onStageKey(ev: KeyboardEvent): void {
     const step = (ev.shiftKey ? 10 : 1) * Math.max(1, crop.size / 100);
     const moves: Record<string, [number, number]> = {
@@ -140,8 +131,6 @@
       <p class="lead">{t("settings.theme.app_icon.crop.lead")}</p>
 
       <div class="body">
-        <!-- 무대 — 그림 · 어둡게 덮은 바깥 · 고른 영역(끌어서 옮기기) · 모서리 넷(크기). 포커스를 받아 화살표 · +/− 키를 받는
-             조작 면이다(`role="application"` — 맞는 ARIA 위젯이 없다) -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <div
           class="stage"
@@ -247,7 +236,6 @@
 {/if}
 
 <style>
-  /* `.overlay`·`.modal`·`.lead`·`.wrong`·`.actions` 는 다른 모달(`MasterPromptDialog`)의 규칙을 베껴 둔다(스코프 — dialogs/ 규약) */
   .overlay {
     position: fixed;
     inset: 0;
@@ -265,10 +253,10 @@
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -296,7 +284,6 @@
     align-items: flex-start;
   }
 
-  /* 무대 — 크롬 우물 면(글자를 얹지 않지만 테마를 따르는 판). 그림 바깥은 비어 보인다 */
   .stage {
     position: relative;
     flex: 0 0 auto;
@@ -319,7 +306,6 @@
     pointer-events: none;
   }
 
-  /* 고른 영역 — 바깥을 큰 그림자로 어둡게 덮고(무대가 자른다), 영역 테두리는 강조색 */
   .crop {
     position: absolute;
     box-sizing: border-box;
@@ -328,7 +314,6 @@
     cursor: move;
   }
 
-  /* 저장될 둥근 모양의 윤곽 — 모서리 바깥(투명이 될 자리)이 보이게 안쪽만 옅게 비춘다 */
   .shape {
     position: absolute;
     inset: 0;
@@ -379,7 +364,6 @@
     min-width: 180px;
   }
 
-  /* 미리보기 셋 — 바닥을 맞춰 크기 차이가 한눈에 */
   .previews {
     display: flex;
     align-items: flex-end;
@@ -401,7 +385,6 @@
     margin-top: var(--space-2);
   }
 
-  /* 이름 칸 — 다른 모달의 글 칸(`WorkspaceNameDialog`)과 같은 우물 면 */
   .name-field input {
     box-sizing: border-box;
     width: 100%;

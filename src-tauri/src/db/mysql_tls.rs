@@ -1,38 +1,12 @@
-//! **MySQL · MariaDB 의 TLS**(쿼리 타일 9단계) — mysql_async 는 우리 `ClientConfig`·검증기를 받지 않는다(스파이크 함정 2). 그래서
-//! 모드를 드라이버의 `SslOpts` 손잡이로 옮기고, 드라이버에 없는 둘(prefer · verify-ca)은 여기서 만든다. 모드의 뜻·신뢰 기준·오류
-//! 문구는 PG 와 같다(`tls`).
+//! **MySQL · MariaDB 의 TLS** — mysql_async 는 우리 `ClientConfig` · 검증기를 받지 않아 모드를 드라이버의 `SslOpts` 로 옮기고, 드라이버에 없는
+//! 둘(prefer · verify-ca)은 여기서 만든다. 모드의 뜻 · 신뢰 기준 · 오류 문구는 PG 와 같다(`tls`).
 //!
-//! | 모드 | `SslOpts` |
-//! |---|---|
-//! | `disable` | 없음(평문) |
-//! | `prefer` | `accept_invalid_certs` — 서버가 SSL 을 받지 않으면(`NoClientSslFlagFromServer`) **SSL 없이 다시 붙는다**([`Mysql::connect`](super::mysql::Mysql::connect)) |
-//! | `require` | `accept_invalid_certs` |
-//! | `verify-ca` | 탐침(**CA 파일만** 믿는 체인 검증) + 본 접속은 기본 검증(webpki-roots + CA 파일) + 이름 = **탐침이 읽은 인증서의 이름**(아래) |
-//! | `verify-full` | 기본 검증(webpki-roots + CA 파일) + 이름 = 프리셋 host |
-//!
-//! 모든 TLS 모드에서 이름은 `tls_hostname_override` 로 준다 — 드라이버는 터널(`127.0.0.1:<임시>`)에 붙으므로 그대로 두면 SNI·이름이
-//! `127.0.0.1` 이 된다.
-//!
-//! ## verify-ca — 탐침(드라이버의 `skip_domain_validation` 이 이 rustls 에서 죽어 있다)
-//!
-//! mysql_async 0.37 의 `skip_domain_validation` 은 검증 오류의 **글자**에 `NotValidForName` 이 있는지로 이름 오류를 가른다
-//! (`io/tls/rustls_io.rs`). rustls 0.23(std)은 이름 오류를 `NotValidForNameContext` 로 만들고 그 `Display` 는
-//! `certificate not valid for name …` 이라 그 글자가 없다 — 그 손잡이를 켜도 이름이 틀리면 그대로 실패한다(소스 확인 · 9단계 통합
-//! 시험 `MEASURE`). 그래서 verify-ca 는 **두 번** 붙는다:
-//! 1. 탐침 — 같은 주소로 TCP 를 열어 서버 인사 패킷을 읽고(`CLIENT_SSL` 이 없으면 곧바로 "서버가 TLS 를 받지 않는다") SSL 요청
-//!    패킷을 보낸 뒤 **체인만 보는 검증기**(`tls::ChainOnly` — PG verify-ca 와 같은 것, 신뢰 기준은 **CA 파일만** —
-//!    `tls::ca_only_roots`)로 TLS 핸드셰이크를 하고 서버 인증서의 SAN 이름 하나를 읽고 끊는다(인증 전 — 비밀번호를 보내지 않는다).
-//! 2. 본 접속 — 그 이름을 `tls_hostname_override` 로 주고 드라이버의 **기본(전체) 검증**으로 붙는다. 드라이버는 신뢰 기준에
-//!    webpki-roots 를 **늘 넣는다**(`with_root_certs` 는 더하기만 — 뺄 손잡이가 없다). 그래도 verify-ca 의 뜻("CA 파일이 발급한
-//!    인증서만")이 서는 것은 탐침이 **같은 주소의 같은 서버 인증서** 체인을 CA 파일만으로 이미 확인했고, 본 접속은 그 인증서의
-//!    이름으로 다시 전체 검증하기 때문이다.
-//!
-//! **한계(알고 받음)**: 탐침과 본 접속 사이(밀리초 — 같은 TCP 목적지에 두 번 붙는 틈)에 서버(또는 그 사이의 중간자)가 인증서를
-//! 바꾸면, 본 접속은 "그 이름으로 **공개 CA** 가 발급한 인증서" 도 받는다 — 그 틈에서만 verify-full 수준(webpki-roots + 이름)으로
-//! 내려간다. 이름은 탐침이 CA 파일로 확인한 인증서에서 왔으므로 아무 이름이나 받는 것은 아니다. 막으려면 드라이버가 우리 검증기를
-//! 받아야 한다(포크 — 스파이크 함정 2).
-//!
-//! SAN 이 없는 인증서(옛 CN 만)는 webpki 가 어차피 이름을 못 맞추므로 MySQL verify-ca 로는 붙지 않는다(분명한 문구).
+//! - 모든 TLS 모드에서 이름은 `tls_hostname_override` 로 준다 — 드라이버는 터널(`127.0.0.1:<임시>`)에 붙어 그대로 두면 SNI · 이름이 `127.0.0.1` 이 된다.
+//! - **verify-ca 는 두 번 붙는다** — mysql_async 0.37 의 `skip_domain_validation` 은 오류 글자의 `NotValidForName` 으로 가르는데 rustls 0.23 의
+//!   `NotValidForNameContext` 글자에는 없어 죽어 있다(드라이버가 고쳐지면 걷는다). 탐침이 **CA 파일만** 믿는 체인 검증(`tls::ChainOnly`)으로
+//!   핸드셰이크해 SAN 이름 하나를 읽고(인증 전 — 비밀번호를 보내지 않는다), 본 접속은 그 이름으로 드라이버의 전체 검증을 한다.
+//! - **한계(알고 받음)**: 탐침과 본 접속 사이에 인증서가 바뀌면 그 틈에서만 verify-full 수준(webpki-roots + 이름)으로 내려간다 — 드라이버가
+//!   webpki-roots 를 늘 넣어서다. 막으려면 드라이버가 우리 검증기를 받아야 한다(포크).
 
 use std::sync::Arc;
 
@@ -45,8 +19,7 @@ use super::tls::{self, CaFile};
 use crate::i18n::tr;
 use crate::db::conns::DbTlsMode;
 
-/// 모드 → 드라이버 TLS 손잡이 — **순수**(시험 대상). `name` = 인증서에서 맞춰 볼 이름(verify-full 은 프리셋 host, verify-ca 는 탐침이
-/// 읽은 이름, prefer·require 는 SNI 로만 쓰인다). `disable` 은 `None`.
+/// `name` = 인증서에서 맞춰 볼 이름(verify-full 은 프리셋 host, verify-ca 는 탐침이 읽은 이름, prefer · require 는 SNI 로만).
 pub(crate) fn ssl_opts_for(mode: DbTlsMode, ca: Option<&CaFile>, name: &str) -> Option<SslOpts> {
     let base = SslOpts::default().with_danger_tls_hostname_override(Some(name.to_string()));
     match mode {
@@ -60,7 +33,7 @@ pub(crate) fn ssl_opts_for(mode: DbTlsMode, ca: Option<&CaFile>, name: &str) -> 
     }
 }
 
-/// 서버 인사 패킷(Protocol::HandshakeV10)이 `CLIENT_SSL` 을 내거는가 — **순수**. 오류 패킷이면 그 글자.
+/// 서버 인사 패킷(Protocol::HandshakeV10)이 `CLIENT_SSL` 을 내거는가. 오류 패킷이면 그 글자.
 pub(crate) fn greeting_offers_ssl(payload: &[u8]) -> Result<bool, String> {
     const CLIENT_SSL: u16 = 0x0800;
     match payload.first() {
@@ -91,7 +64,7 @@ fn ssl_request() -> [u8; 36] {
     p
 }
 
-/// 서버 인증서의 SAN 이름들 — DNS 이름 먼저, 그다음 IP 주소(글자). 못 읽으면 빈 목록. **순수.**
+/// DNS 이름 먼저, 그다음 IP 주소. 못 읽으면 빈 목록.
 pub(crate) fn cert_names(der: &[u8]) -> Vec<String> {
     use x509_cert::der::Decode;
     use x509_cert::ext::pkix::name::GeneralName;
@@ -122,7 +95,7 @@ pub(crate) fn cert_names(der: &[u8]) -> Vec<String> {
     dns
 }
 
-/// 그 인증서가 맞다고 할 이름 하나 — 와일드카드 `*.example.com` 은 그 아래 이름 하나로 바꾼다. 없으면 `None`. **순수.**
+/// 와일드카드 `*.example.com` 은 그 아래 이름 하나로 바꾼다.
 pub(crate) fn name_for(names: &[String]) -> Option<String> {
     let n = names.first()?;
     Some(match n.strip_prefix("*.") {
@@ -131,7 +104,7 @@ pub(crate) fn name_for(names: &[String]) -> Option<String> {
     })
 }
 
-/// verify-ca 탐침 — 서버 인증서의 체인을 확인하고 그 이름 하나를 돌려준다(위 머리말). `sni` = 프리셋 host. 실패는 사람 문구.
+/// `sni` = 프리셋 host. 실패는 사람 문구.
 pub(crate) async fn probe_name(addr: (&str, u16), sni: &str, ca: Option<&CaFile>) -> Result<String, String> {
     let cant = |e: &dyn std::fmt::Display| {
         tr!(

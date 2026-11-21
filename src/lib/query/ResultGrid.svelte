@@ -1,10 +1,7 @@
 <script lang="ts" module>
   import type { DbQueryResult } from "./query-backend";
 
-  /**
-   * [표 | 차트] — 결과마다 기억한다(`RunResults` 의 `chosenTab` 과 같은 꼴 · 저장하지 않는다 — 다시 실행하면 표로).
-   * 부르는 쪽이 `bind:view` 로 묶으면(데이터 탭) 그쪽 값이 이기고, 다시 읽어 결과가 바뀌어도 남는다.
-   */
+  /** 결과마다 기억한다(저장하지 않는다) — 부르는 쪽이 `bind:view` 로 묶으면 그쪽 값이 이긴다 */
   const chosenView = new WeakMap<DbQueryResult, "grid" | "chart">();
 </script>
 
@@ -41,47 +38,12 @@
   import { saveTextAs } from "./sql-file-io";
 
   /**
-   * **쿼리 결과 표** — 가상 스크롤(보이는 줄 ± 덧그림만 DOM 에 — 행 1만까지), 머리줄은 컬럼 이름 + 형, NULL 은 흐린 `NULL`,
-   * 바이트는 `‹bytes N›`, 긴 칸은 말줄임 + 툴팁(두 번 누르면 아래 칸에 펼친다).
+   * 쿼리 결과 표 — 가상 스크롤(행 1만까지).
    *
-   * 칸 고르기: 누르기 = 한 칸 · `Shift`+누르기 · 끌기 = 사각형 · `Ctrl+A` = 전부 · `Ctrl+C` = 고른 사각형을 TSV 로(전부를
-   * 골랐으면 머리줄도). [CSV 저장] 은 표 전체(RFC 4180 · UTF-8 BOM — `cells.ts`)를 OS 저장 대화상자로 고른 자리에
-   * `write_text_file` 로 쓴다(스크롤백 내보내기와 같은 길).
-   *
-   * 머리의 **[표 | 차트]**(10-15) — 차트는 `ResultChart`(규칙 `chart-model`). 그릴 수 없는 결과(행 0개 · 숫자 열 0개)는 [차트] 가
-   * 비활성이고 말풍선이 이유를 말한다. 고른 쪽은 결과마다 기억한다(`chosenView`). 차트 쪽에서도 아래 상태 줄(행 상한 · CSV)은 그대로다.
-   *
-   * 아래 상태 줄에는 행 상한 고르개(`limit` — 다음 실행에 쓰인다)가 [복사] 앞에 선다(10-14 — 위 띠에서 옮겼다). 표가 없는 결과
-   * (DML · 행 없음)에도 이 줄은 늘 선다.
-   *
-   * **표 안 찾기**(2026-10-19): 포커스가 이 결과 칸에 있을 때 앱의 `find` 키(`Ctrl+F` — 쿼리 타일의 문이 이 표의 찾기 자리를 연다,
-   * `app/tile-find.ts`)가 [표 | 차트] 줄 아래에 찾기 띠(`FindBar`)를 연다. 가상 스크롤이라 DOM 이 아니라 **칸 글자**(그리는 글자 그대로)
-   * 에서 찾고(`grid-find.ts` — 문서 찾기와 같은 매칭 · 상한), 칠은 **보이는 줄의 칸만** 그때그때 `Range` 로 만든다(스크롤하면 다시 칠한다).
-   * `Enter` · `F3` 다음 · `Shift+Enter` · `Shift+F3` 이전(그 칸이 보이게 민다) · `Esc` 닫고 표로. 차트 쪽에는 없다.
-   *
-   * **열 머리글 정렬**(2026-11-10): 머리글을 누르면 ▲ → ▼ → 없음. `onsort` 가 있으면(데이터 탭) 부르는 쪽이 **다시 조회**하고(규칙은
-   * `data-tab` 의 `nextSort`), 없으면(쿼리 탭 결과) **받은 행을 여기서** 정렬한다 — SQL 을 다시 돌리지 않는다(`cells` 의 `sortRows` ·
-   * 행 상한으로 잘린 결과도 따로 알리지 않는다 — 사용자 결정). 복사 · CSV · 찾기는 보이는 순서를 따른다. `rowBase` = 줄 번호의 시작(쪽 넘기기).
-   *
-   * **열 폭 끌기**(2026-11-10): 머리글 오른쪽 끝 손잡이를 끌면 그 열 폭(40~1600px)이 `colWidths`(열 이름 → px)에 남고, 손잡이를 두 번
-   * 누르면 자동 폭으로 돌아간다. 부르는 쪽이 묶으면 결과가 바뀌어도 남는다(데이터 탭) · 묶지 않으면 이 결과 동안만. 저장하지 않는다.
-   *
-   * **칸 우클릭 메뉴**(2026-11-10 — `GridMenu`): 누른 칸이 고른 범위 밖이면 그 칸 하나로 옮긴 뒤 연다. [복사](고른 범위 — `Ctrl+C` 와 같다) ·
-   * [열 이름 복사] 는 늘, 맨 위에 [이 값으로 거르기] · [이 값 빼고 거르기] · [조건에 더하기 / 거르기에 더하기](바이트 칸은 흐림 — `onfilter` 가
-   * 있으면(데이터 탭) 조건 글은 부르는 쪽이 `data-tab` 으로 짓고, 없으면 아래 "받은 행 거르기"), 외래 키 칸이면 [<참조 표> 에서 보기]. 리스너는 표 상자에 **직접** 건다(`gridContext` —
-   * Svelte 의 위임 `oncontextmenu` 는 타일 층 `PaneHost` 의 네이티브 리스너보다 늦다 · 스크립트 탭의 `tabContext` 와 같은 까닭).
-   *
-   * **받은 행 거르기**(2026-11-10 — `onfilter` 가 없을 때 · 쿼리 탭 결과): 같은 세 항목이 다시 실행하지 않고 받은 행만 거른다(`grid-filter` ·
-   * 정렬과 같은 결 — 거른 뒤 정렬). 조건이 있으면 머리 줄 아래 칩 줄(✕ · [모두 지우기]), 상태 줄은 `거른 수 / 받은 수`. 복사 · 내보내기 ·
-   * 고르기 · 찾기는 거른 행 위에서 — 거르기가 바뀌면 고른 칸 · 칸 보기를 걷고, 결과가 바뀌면 거르기도 걷는다. 차트는 받은 행 그대로다.
-   *
-   * **외래 키 따라가기**(데이터 탭 — `fks` · `onfollow`): 외래 키 열의 머리글 이름 뒤에 ↗, 그 행의 외래 키 값이 모두 NULL 아니면 칸 오른쪽 끝에
-   * ↗ 단추(누르기가 칸 고르기 · 끌기를 시작하지 않는다). 무엇을 열지는 부르는 쪽이 정한다. **역방향**(`refs` · `onfollowref`)은 칸 메뉴에만 —
-   * 머리 "이 행을 가리키는 행" 아래 외래 키마다 한 줄(표 이름 · 오른쪽 작은 글자로 열 · 앞 8개), 이 행의 피참조 열 값이 NULL 이거나 결과에 없으면 흐림.
-   *
-   * **내보내기 ▾**(2026-11-10): 상태 줄의 메뉴 — [CSV 로 저장…] · [JSON 으로 저장…] · [CSV 복사] · [JSON 복사] · [Markdown 표 복사]. 대상은 이
-   * 표가 받은 행(보이는 정렬 · 열 순서), 2칸 이상 골랐으면 맨 위 고르개로 "고른 범위 / 전부". 변환은 순수 `export.ts`, 저장은 `.sql` 저장과 같은
-   * `saveTextAs`(기본 이름 = `name` — 데이터 탭은 표 이름, 쿼리 탭은 탭 이름).
+   * - 정렬 · 거르기: `onsort` · `onfilter` 가 있으면(데이터 탭) 부르는 쪽이 다시 조회하고, 없으면 받은 행을 여기서 정렬 · 거른다 —
+   *   SQL 을 다시 돌리지 않고, 행 상한으로 잘린 결과도 따로 알리지 않는다(사용자 결정). 복사 · 내보내기 · 찾기는 보이는 행 · 순서를 따른다.
+   * - 칸 우클릭 리스너는 표 상자에 **직접** 건다(`gridContext`) — Svelte 의 위임 `oncontextmenu` 는 타일 층 `PaneHost` 의 네이티브 리스너보다 늦다.
+   * - 표 안 찾기는 DOM 이 아니라 그리는 칸 글자에서 찾고, 칠은 보이는 줄의 칸만 그때그때 `Range` 로 만든다.
    */
   let {
     result,
@@ -106,35 +68,28 @@
     result: DbQueryResult;
     name: string;
     limit?: RowLimitProps;
-    /** 상태 줄 맨 앞에 붙는 글(문장별 결과 패널의 개수 줄 "✓ 3 · 영향 2행" — 10-14, 아래 줄이 둘로 서지 않게) */
+    /** 상태 줄 맨 앞에 붙는 글 — 아래 줄이 둘로 서지 않게 */
     lead?: string;
-    /** 지금 정렬(데이터 탭) — 그 열 머리에 ▲ · ▼ */
     sort?: { col: string; dir: "asc" | "desc" } | null;
-    /** 열 머리글을 눌렀다(없으면 머리글은 누를 수 없다) */
+    /** 있으면 부르는 쪽이 다시 조회한다 */
     onsort?: (col: string) => void;
-    /** 정렬 머리글을 잠시 막는다(조회 중) */
     sortDisabled?: boolean;
-    /** 줄 번호의 시작(0 = 1부터) */
+    /** 0 = 1부터 */
     rowBase?: number;
-    /** 상태 줄 오른쪽(복사 · CSV 앞)에 부르는 쪽이 끼우는 조절(데이터 탭의 쪽 넘기기 · 쪽 크기) */
     tail?: Snippet;
-    /** 사람이 끌어 바꾼 열 폭(열 이름 → px) — 묶으면 결과가 바뀌어도(데이터 탭의 쪽 · 정렬) 폭이 남는다. 저장하지 않는다 */
+    /** 열 이름 → px. 묶으면 결과가 바뀌어도 남는다 — 저장하지 않는다 */
     colWidths?: Record<string, number>;
-    /** [표 | 차트] — 묶으면 결과가 바뀌어도(데이터 탭의 조건 · 쪽 · 정렬) 고른 쪽이 남는다. 없으면 결과마다 기억(`chosenView`) */
+    /** 묶지 않으면 결과마다 기억(`chosenView`) */
     view?: "grid" | "chart";
-    /** 차트의 고른 축 · 종류 — 묶으면 결과가 바뀌어도 남는다(`ResultChart` 의 `kept`) */
     chartPick?: KeptPick;
-    /** 칸 우클릭의 거르기 — 있으면(데이터 탭) 메뉴에 거르기 세 항목이 선다. `and` = 지금 조건에 더하기 */
+    /** 있으면(데이터 탭) 조건 글은 부르는 쪽이 짓는다. `and` = 지금 조건에 더하기 */
     onfilter?: (col: string, cell: Cell, op: "eq" | "ne" | "and") => void;
-    /** 이 표의 기본 키 열 이름(데이터 탭 — 머리글 앞 열쇠) */
     pks?: readonly string[];
-    /** 이 표의 외래 키(데이터 탭 — 열 이름 · 참조 표 이름) */
     fks?: readonly { columns: readonly string[]; refTable: string }[];
-    /** ↗ — `fks[fk]` 를 그 행의 값들(`fks[fk].columns` 차례)로 따라간다 */
+    /** 값들은 `fks[fk].columns` 차례 */
     onfollow?: (fk: number, values: Cell[]) => void;
-    /** 이 표를 가리키는 외래 키(데이터 탭 — 참조하는 표 이름 · 그쪽 열 · 이 표의 피참조 열) */
     refs?: readonly { table: string; columns: readonly string[]; refColumns: readonly string[] }[];
-    /** 역방향 — `refs[ref]` 를 이 행의 피참조 열 값들(`refs[ref].refColumns` 차례)로 */
+    /** 값들은 `refs[ref].refColumns` 차례 */
     onfollowref?: (ref: number, values: Cell[]) => void;
   } = $props();
 
@@ -147,10 +102,9 @@
   let viewH = $state(0);
 
   const columns = $derived(result.columns);
-  // 정렬 — `onsort` 가 있으면 부르는 쪽이 다시 조회(데이터 탭), 없으면 **받은 행을 여기서** 정렬한다(쿼리 탭 결과 — SQL 을 다시 돌리지 않는다)
   let localSort = $state<{ col: string; dir: "asc" | "desc" } | null>(null);
   const activeSort = $derived(onsort ? sort : localSort);
-  // 받은 행 거르기 — `onfilter` 가 없을 때만(쿼리 탭 결과). 결과가 바뀌면 걷는다(아래 `lastResult`)
+  // 결과가 바뀌면 걷는다(아래 `lastResult`)
   let filters = $state.raw<RowFilter[]>([]);
   const kept = $derived(onfilter ? result.rows : filterRows(result.rows, filters));
   const rows = $derived.by(() => {
@@ -160,7 +114,7 @@
     return i < 0 ? kept : sortRows(kept, i, s.dir);
   });
 
-  /** 거르기를 바꾼다 — 행 번호가 달라지니 고른 칸 · 칸 보기를 걷고, 찾기가 열렸으면 다시 찾는다 */
+  /** 행 번호가 달라지니 고른 칸 · 칸 보기를 걷는다 */
   function setFilters(next: RowFilter[]) {
     filters = next;
     detail = null;
@@ -181,7 +135,7 @@
     head = null;
   }
 
-  // 부르는 쪽이 `{#key result}` 로 결과마다 새로 만든다 — 묶지 않았으면 처음 값만 기억에서 꺼낸다
+  // 부르는 쪽이 `{#key result}` 로 결과마다 새로 만든다 — 처음 값만 기억에서 꺼낸다
   // svelte-ignore state_referenced_locally
   if (view === undefined) view = chosenView.get(result) ?? "grid";
   const classes = $derived(columns.length > 0 ? classifyColumns(result) : []);
@@ -194,12 +148,11 @@
     chosenView.set(result, v);
   }
 
-  /** 컬럼 폭 — 머리 글자와 앞 200행 · 끝 50행의 글자 길이로 어림(64~360px) */
   const widths = $derived.by(() => {
-    // 앞 200행 + 끝 50행 — 뒤로 갈수록 길어지는 값(일련번호 · 이름)도 잡는다
+    // 끝 50행도 본다 — 뒤로 갈수록 길어지는 값(일련번호 · 이름)도 잡는다
     const sample = rows.length > 250 ? [...rows.slice(0, 200), ...rows.slice(-50)] : rows;
     return columns.map((c, i) => {
-      // 머리글 이름 앞 키 표시(열쇠 · 고리)는 하나에 글자 두 칸쯤
+      // 머리글 이름 앞 키 표시는 하나에 글자 두 칸쯤
       const marks = (pkSet.has(c.name) ? 2 : 0) + (fkIdx.has(c.name) ? 2 : 0);
       let len = Math.max(c.name.length + marks, c.type.length + 2);
       for (const r of sample) {
@@ -211,7 +164,7 @@
     });
   });
 
-  // ── 열 폭 끌기 — 머리글 오른쪽 끝의 손잡이(두 번 누르면 자동 폭으로) ─────────────────
+  // ── 열 폭 끌기 ─────────────────
   const COL_MIN = 40;
   const COL_MAX = 1600;
 
@@ -265,16 +218,16 @@
   let findOpen = $state(false);
   let findQuery = $state("");
   let findCase = $state(false);
-  /** 지금 일치 — 없으면 -1 */
+  /** 없으면 -1 */
   let findIdx = $state(-1);
-  /** 일치들 — 행 → 열 차례(크다 — 깊은 반응형이 필요 없다) */
+  /** 크다 — 깊은 반응형이 필요 없다 */
   let matches = $state.raw<GridMatch[]>([]);
   let findBar = $state<ReturnType<typeof FindBar> | null>(null);
-  /** 하이라이트 표에서 이 표의 몫을 가르는 열쇠(`paintFind`) */
+  /** 하이라이트 표에서 이 표의 몫을 가르는 열쇠 */
   const findOwner = {};
   let findFrame = 0;
 
-  /** 쿼리 타일의 문이 부른다 — 표가 없거나 차트 쪽이면 `false`(스키마 트리 거르기로) */
+  /** `false` 면 쿼리 타일이 스키마 트리 거르기로 간다 */
   function openFind(): boolean {
     if (columns.length === 0 || charting) return false;
     findOpen = true;
@@ -282,7 +235,7 @@
     return true;
   }
 
-  /** 띠를 닫고 칠을 걷는다 — 질의는 남긴다. `refocus` 면 표로 */
+  /** 질의는 남긴다 */
   function closeFind(refocus = true) {
     findOpen = false;
     matches = [];
@@ -293,7 +246,6 @@
     if (refocus) scroller?.focus({ preventScroll: true });
   }
 
-  /** 질의 · 대소문자가 바뀌었다 — 그림 틀에 한 번 다시 찾고, 맨 위에 보이는 줄 뒤 첫 일치로 */
   function refind() {
     findFrame = 0;
     if (!findOpen) return;
@@ -308,7 +260,7 @@
     revealFind();
   }
 
-  /** 지금 일치의 칸이 보이게 민다 — 머리줄(위) · 줄 번호 칸(왼쪽)은 붙박이라 그만큼 뺀 자리에서 잰다 */
+  /** 머리줄(위) · 줄 번호 칸(왼쪽)은 붙박이라 그만큼 뺀 자리에서 잰다 */
   function revealFind() {
     const m = matches[findIdx];
     const box = scroller;
@@ -328,7 +280,6 @@
     });
   });
 
-  // 칠 — 보이는 줄의 칸만(가상 스크롤). 창 · 일치 · 고른 번호가 바뀌면 DOM 이 선 뒤에 다시 칠한다
   $effect(() => {
     const box = scroller;
     const w = win;
@@ -359,12 +310,10 @@
     paintFind(findOwner, ranges, current);
   }
 
-  // 차트로 넘기면 띠를 닫는다
   $effect(() => {
     if (charting && untrack(() => findOpen)) untrack(() => closeFind(false));
   });
 
-  // 쿼리 타일의 문이 포커스가 든 결과 칸에서 이 자리를 찾는다(`openFindZoneIn`)
   $effect(() => {
     const el = wrapEl;
     if (!el) return;
@@ -376,7 +325,6 @@
     clearFind(findOwner);
   });
 
-  // 고르기 — 닻 · 머리(행 · 열). 결과가 바뀌면 걷는다
   let anchor = $state<{ r: number; c: number } | null>(null);
   let head = $state<{ r: number; c: number } | null>(null);
   let dragging = false;
@@ -412,7 +360,7 @@
     rowDrag = false;
   }
 
-  // ── 행 고르기 — 왼쪽 줄 번호를 누르면 그 행 전체(Shift = 고른 행부터 여기까지 · 끌면 여러 행) ─────────
+  // ── 행 고르기 ─────────
   let rowDrag = false;
 
   function rowDown(ev: PointerEvent, r: number) {
@@ -435,7 +383,6 @@
     if (dragging && anchor) head = { r, c: rowDrag ? columns.length - 1 : (head?.c ?? 0) };
   }
 
-  /** 그 행이 통째로 골라졌나(줄 번호 칸도 칠한다) */
   const rowPicked = (r: number) => !!range && r >= range.r0 && r <= range.r1 && range.c0 === 0 && range.c1 === columns.length - 1;
 
   function selectAll() {
@@ -475,10 +422,8 @@
 
   // ── 외래 키 · 칸 우클릭 메뉴 ─────────────────────────────────────────────────────
 
-  /** 열 이름 → 그 열을 담은 첫 외래 키 번호 */
   const fkIdx = $derived(fkColumnIndex(fks));
   const pkSet = $derived(new Set(pks));
-  /** 그 행 · 열의 ↗ 값들 — 외래 키 열이 아니거나 값 하나라도 NULL 이면 `null` */
   function followOf(row: readonly Cell[], col: string): { fk: number; values: Cell[] } | null {
     if (!onfollow) return null;
     const fk = fkIdx.get(col);
@@ -488,22 +433,22 @@
   }
 
   /**
-   * 칸 우클릭의 스냅샷 — 연 순간의 칸 · 값을 쥔다(메뉴가 떠 있는 사이 표가 다시 읽혀도 그 칸의 값으로). 메뉴는 타일 메뉴(`PaneMenu` —
-   * 문서 편집기 우클릭과 같은 상자 · 줄은 `grid-menu.ts`)이고 누른 줄이 닫힌 **뒤** `pickCell` 이 이것을 읽는다(menu-runner 의 "스냅샷 → 닫기 → 실행")
+   * 연 순간의 칸 · 값을 쥔다 — 메뉴가 떠 있는 사이 표가 다시 읽혀도 그 칸의 값으로. 메뉴가 닫힌 **뒤** `pickCell` 이 읽는다
+   * (menu-runner 의 "스냅샷 → 닫기 → 실행")
    */
   type CellSnap = {
     c: number;
     col: string;
     cell: Cell;
     follow: { fk: number; values: Cell[] } | null;
-    /** 역방향 외래 키마다 이 행의 피참조 값(앞 `REFS_MAX` 개 · 못 따라가면 `null`) */
+    /** 앞 `REFS_MAX` 개 · 못 따라가면 `null` */
     back: (Cell[] | null)[];
   };
   let cellSnap: CellSnap | null = null;
   const tileMenu = getContext<GridTileMenu | undefined>(GRID_TILE_MENU);
   const REFS_MAX = 8;
 
-  /** 칸 우클릭 — 직접 리스너(머리말의 까닭). 칸 밖(머리글 · 줄 번호)은 메뉴 없이 네이티브 메뉴만 막는다 */
+  /** 직접 리스너(머리말의 까닭). 칸 밖은 메뉴 없이 네이티브 메뉴만 막는다 */
   function gridContext(el: HTMLElement) {
     const on = (ev: MouseEvent) => {
       const cellEl = ev.target instanceof Element ? ev.target.closest<HTMLElement>(".cell[data-c]") : null;
@@ -557,7 +502,7 @@
 
   // ── 내보내기 ▾ ──────────────────────────────────────────────────────────────────
 
-  /** 상태 줄 [내보내기 ▾] — 파일 저장 둘만 · 늘 받은 행 전부(거른 결과면 거른 행). 형식별 복사는 칸 우클릭의 [다른 형식으로 복사 ▸] */
+  /** 파일 저장 둘만 — 형식별 복사는 칸 우클릭 메뉴에 있다 */
   let exportMenu = $state<{ x: number; y: number } | null>(null);
   const closeExportMenu = () => (exportMenu = null);
 
@@ -598,7 +543,7 @@
     if (await writeClipboard(text)) toast.info(t("pane.query.export.copied", { n: table.rows.length }));
   }
 
-  // 결과가 바뀌면 열린 메뉴를 닫는다(다른 표의 칸을 가리키지 않게)
+  // 결과가 바뀌면 열린 메뉴를 닫는다 — 다른 표의 칸을 가리키지 않게
   $effect(() => {
     void result;
     untrack(() => {
@@ -606,7 +551,7 @@
     });
   });
 
-  /** 툴팁 — 긴 칸만(앱 말풍선이 `title` 을 가로챈다). 너무 길면 앞부분만 */
+  /** 긴 칸만(앱 말풍선이 `title` 을 가로챈다) */
   function tipOf(text: string, w: number): string | undefined {
     if (text.length * 7.2 + 14 < w) return undefined;
     return text.length > 1000 ? text.slice(0, 1000) + "…" : text;
@@ -627,7 +572,7 @@
           ? t("pane.query.status.rowsFiltered", { shown: rows.length, total: result.rows.length })
           : t("pane.query.status.rows", { n: rows.length }),
       );
-      // `… RETURNING` — 돌려준 행(상한까지)과 따로 바뀐 행 수 전체(서버가 상한 너머까지 센다 — 2단계)
+      // `… RETURNING` — 바뀐 행 수는 서버가 상한 너머까지 센다
       if (result.affected !== undefined) parts.push(t("pane.query.status.affected", { n: result.affected }));
     }
     parts.push(t("pane.query.status.ms", { ms: result.elapsedMs }));
@@ -638,7 +583,7 @@
 <svelte:window onpointerup={up} />
 
 {#snippet viewToggle()}
-  <!-- [표 | 차트] — 둘 다 Tab 으로 닿는다. 그릴 수 없으면 [차트] 는 aria-disabled(말풍선이 이유를 보이도록 disabled 를 쓰지 않는다) -->
+  <!-- [차트] 는 disabled 가 아니라 aria-disabled — 말풍선이 이유를 보이게 -->
   <span class="views" role="group" aria-label={t("pane.query.view.aria")} data-query-view={charting ? "chart" : "grid"}>
     <button type="button" class="vbtn" aria-pressed={!charting} onclick={() => setView("grid")} data-query-view-btn="grid"
       ><UiIcon name="table" size={12} /><span>{t("pane.query.view.grid")}</span></button
@@ -868,7 +813,7 @@
     min-height: 0;
   }
 
-  /* 머리 — [표 | 차트] 전환(차트 쪽에서는 `ResultChart` 의 조절 줄 맨 앞에 선다 — 같은 치수) */
+  /* 차트 쪽에서는 `ResultChart` 의 조절 줄 맨 앞에 선다 — 같은 치수 */
   .vbar {
     flex: 0 0 auto;
     display: flex;
@@ -921,7 +866,6 @@
     outline-offset: -1px;
   }
 
-  /* 받은 행 거르기의 칩 줄 — 낮게(머리 줄 · 상태 줄과 같은 결) */
   .fbar {
     flex: 0 0 auto;
     display: flex;
@@ -1028,7 +972,6 @@
     font-family: var(--font-ui);
   }
 
-  /* 열 폭 손잡이 — 머리글 오른쪽 끝(경계선 위) */
   .col-resize {
     position: absolute;
     top: 0;
@@ -1040,7 +983,6 @@
     touch-action: none;
   }
 
-  /* 정렬 머리글(데이터 탭) — 칸 전체가 단추. 모양은 보통 머리글 그대로 */
   .hcell.sortable {
     padding: 0;
   }
@@ -1105,7 +1047,6 @@
     background: color-mix(in srgb, var(--surface-hover) 40%, transparent);
   }
 
-  /* 줄 번호 칸 — 가로로 밀어도 왼쪽에 붙어 있다(줄 안의 sticky) */
   .gutter {
     position: sticky;
     left: 0;
@@ -1156,8 +1097,7 @@
     color: var(--fg-2);
   }
 
-  /* 외래 키 — 머리글 이름 뒤 ↗ · 칸 오른쪽 끝 ↗ 단추(칸 글자가 단추 밑으로 들어가지 않게 오른쪽 안쪽 여백) */
-  /* 머리글 이름 앞 키 표시 — 기본 키 = 열쇠(강조색) · 외래 키 = 고리(흐림). 이름 앞이라 좁은 열에서도 잘리지 않는다 */
+  /* 키 표시는 이름 앞이라 좁은 열에서도 잘리지 않는다 */
   .key-mark {
     display: inline-flex;
     margin-right: 4px;
@@ -1188,7 +1128,7 @@
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    /* DBeaver 처럼 칸에 올렸을 때 · 고른 칸 · 키보드 포커스일 때만 보인다(자리는 늘 비워 둬 글자가 밀리지 않는다 — 머리글의 고리가 외래 키 열을 알린다) */
+    /* 자리는 늘 비워 둔다 — 보일 때 글자가 밀리지 않게 */
     visibility: hidden;
   }
 
@@ -1208,7 +1148,6 @@
     color: var(--fg);
   }
 
-  /* 줄 번호 칸 — 누르면 그 행 전체를 고른다 */
   .gutter.rowpick {
     cursor: pointer;
     user-select: none;
@@ -1216,7 +1155,7 @@
 
   .gutter.rowpick.sel {
     color: var(--fg);
-    /* 고정 칸이라 아래로 지나는 칸이 비치지 않게 불투명 바탕 위에 칠한다 */
+    /* 고정 칸이라 아래로 지나는 칸이 비치지 않게 불투명 바탕 위에 */
     background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface-raised-solid);
   }
 

@@ -20,14 +20,7 @@
   import UiIcon from "$lib/UiIcon.svelte";
   import Toggle from "$lib/Toggle.svelte";
 
-  /**
-   * **세션 서버 하위 화면** — 설정 › MCP 의 고정 줄(`McpManager`)을 누르면 열린다(2026-10-19). 틀은 외부 서버 편집과 같은
-   * `SettingsSubView`, 움직임 · Escape · 돌아온 뒤 포커스는 요약(`ExternalMcpServers` 의 `SubViewStack`)이 맡는다.
-   *
-   * 네 묶음: ① 상태(실행 · URL · 서버 이름 · 마지막 활동 — `mcp_activity`) ② 연결 대상(고정 줄과 **같은** 설정 칸 — 켜기 · 에이전트 칩)
-   * ③ 제공 도구(`mcp_tools` — 서버가 `tools/list` 스키마에서 뽑는다, 손으로 옮긴 표가 없다) ④ 최근 호출(`mcp_calls` — 서버 메모리
-   * 200줄, 인자 · 결과 없음). 이 화면이 떠 있는 동안만 5초마다 활동 · 호출을 다시 읽는다(화면이 닫히면 멈춘다).
-   */
+  /** 제공 도구는 서버가 `tools/list` 스키마에서 뽑는다 — 손으로 옮긴 표를 두지 않는다 */
   let {
     mcp,
     targets,
@@ -50,7 +43,7 @@
   let now = $state(Date.now());
   let refreshing = $state(false);
 
-  /** 묶음 순서 — 서버가 실은 순서를 따르되 알려진 묶음은 이 순서로(모르는 묶음은 뒤에) */
+  /** 값은 서버가 싣는 도구 묶음 이름이고 문구 키 `settings.ai.sessions.group.<g>` 가 된다 */
   const GROUP_ORDER = ["read", "plan", "db", "tile", "coordinator", "worker", "reviewer"];
   const groups = $derived.by(() => {
     const map = new Map<string, McpToolInfo[]>();
@@ -116,7 +109,6 @@
 </script>
 
 <SettingsSubView title={name} back={t("settings.ai.external.back")} backAria={t("settings.ai.external.back_aria")} {onback}>
-  <!-- ① 상태 -->
   <h4 class="subhead first" id="ai-mcp-sessions-info">{t("settings.ai.sessions.view.status")}</h4>
   <div class="slist">
     <div class="slist-row">
@@ -161,7 +153,6 @@
     </div>
   </div>
 
-  <!-- ② 연결 대상 — 고정 줄과 같은 설정 칸(초안 · [저장] 뒤 다음 실행부터) -->
   <h4 class="subhead" id="ai-mcp-sessions-targets">{t("settings.ai.sessions.view.targets")}</h4>
   <div class="slist">
     <div class="slist-row">
@@ -190,7 +181,6 @@
   </div>
   <p class="footnote">{t("settings.ai.sessions.view.targets_note")}</p>
 
-  <!-- ③ 제공 도구 — 서버의 스키마에서 -->
   <h4 class="subhead" id="ai-mcp-sessions-tools">{t("settings.ai.sessions.view.tools")}</h4>
   <p class="footnote tools-note">{t("settings.ai.sessions.view.tools_note")}</p>
   {#if toolsError}
@@ -219,7 +209,6 @@
     {/each}
   {/if}
 
-  <!-- ④ 최근 호출 — 서버 메모리 고리(인자 · 결과 없음) -->
   <div class="list-head">
     <h4 class="subhead" id="ai-mcp-sessions-calls">{t("settings.ai.sessions.view.calls")}</h4>
     <button type="button" class="btn btn-sm btn-secondary refresh" disabled={refreshing}
@@ -257,7 +246,6 @@
 </SettingsSubView>
 
 <style>
-  /* 최근 호출 줄 앞의 결과 점 */
   .dot {
     flex: 0 0 auto;
     width: 8px;
@@ -269,7 +257,6 @@
   .dot.err { background: var(--err); }
   .dot.rej { background: var(--warn); }
 
-  /* URL · 서버 이름은 고를 수 있다(복사) — 줄에 덮개 단추가 없어 그대로 닿는다 */
   .url,
   .server-name {
     font-size: var(--t-xs);
@@ -315,7 +302,6 @@
   .slist-name.tool-name {
     font-size: var(--t-xs);
   }
-  /* 설명은 한 줄로 자르지 않는다 — 첫 문장 하나라 짧다 */
   .slist-sup.tool-desc {
     white-space: normal;
     overflow-wrap: anywhere;

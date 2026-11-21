@@ -1,38 +1,20 @@
-//! **입력 상태기계**(설계 4-2 · R8) — 순수. 사람 글 · 대기열 · 깨움(단계 4)이 stdin 에 닿는 길은 **전송기 하나**이고, 그 판정이 이 파일이다.
-//! 레지스트리(`super`)는 여기서 "보낼 글" 을 받아 어댑터로 짓고 코어(`chat_proc::apply`)에 넘길 뿐이다.
+//! **입력 상태기계** — 순수. 사람 글 · 대기열 · 깨움이 stdin 에 닿는 길은 **전송기 하나**이고, 그 판정이 이 파일이다.
 //!
-//! ```text
-//! 상태:  Idle ⇄ Dispatching{src, since} → Running{src, stop?} → (턴 끝) → Idle
-//!        Idle → WakeReserved(깨움 예약 중 — 사람 글은 대기열로) → Dispatching{Wake} | Idle
-//! src = Human{clientId} | Queue{clientId} | Wake{wakeId}
-//! ```
-//!
-//! - `Dispatching` = stdin 에 썼고 턴 시작(`turnStarted`)을 아직 못 봤다 — **실행 중으로 친다**(실측 P2 · P3: 턴 중 입력은 두 CLI 모두 지금
-//!   턴에 섞이므로 그동안 쓰지 않는다).
-//! - `clientId` 는 서버 중복 제거 열쇠(최근 [`SEEN_MAX`]) — 같은 열쇠의 재전송은 같은 답 · 효과 없음 · 글이 다르면 `client-id-reused`.
-//! - 대기열 ≤ [`QUEUE_MAX`] · 사람 글은 늘 깨움보다 먼저 — 깨움은 쉬고 · 대기열이 비고 · 보류가 없을 때만 예약된다([`Input::reserve_wake`]).
-//!   깨움 글은 대기열에 넣지 않는다(못 쓰면 버리고 오케스트레이션이 재시도를 정한다 — 사람 글처럼 `failed` 로 되돌리지 않는다).
-//! - **끊기 의도는 턴에 붙는다**(`stop`) — 다음 턴 끝이 어떤 결과든(끊김이든 엇갈린 자연 종료든) 소비한다. 그래서 끊기 ↔ 자연 종료 경합이
-//!   대기열 처리를 바꾸지 않는다.
-//!
-//! 끝난 이유별 대기열(설계 4-2 표): 자연 종료(의도 없음) → 맨 앞 글을 곧바로 · 끊기 + `deliverQueued` → 맨 앞을 곧바로 · 끊기(✕) → **보류**
-//! (사람이 [보내기] · 새 글을 보낼 때까지) · 오류 끝 → 보류 · 프로세스 끝 → 보류(자동 재시작 없음 · 보내던 글은 `failed` 로 맨 앞에).
+//! - `Dispatching`(stdin 에 썼고 턴 시작을 아직 못 봤다)도 **실행 중으로 친다** — 턴 중 입력은 두 CLI 모두 지금 턴에 섞인다.
+//! - 사람 글은 늘 깨움보다 먼저 — 깨움은 쉬고 · 대기열이 비고 · 보류가 없을 때만 예약된다. 깨움 글은 대기열에 넣지 않는다.
+//! - **끊기 의도는 턴에 붙는다** — 다음 턴 끝이 어떤 결과든 소비한다. 그래서 끊기 ↔ 자연 종료 경합이 대기열 처리를 바꾸지 않는다.
+//! - 사람 글은 **자동 재전송하지 않는다**(중복 위험) — 못 보내면 `failed` 로 맨 앞에 두고 보류한다. 프로세스 끝에 자동 재시작 없음.
 
 use std::collections::VecDeque;
 
-/// 대기열 상한.
 pub(crate) const QUEUE_MAX: usize = 3;
-/// 중복 제거 기록 상한.
 pub(crate) const SEEN_MAX: usize = 64;
 
-/// 보낸 글의 출처.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Src {
-    /// 사람이 보낸 글(곧바로 전송).
     Human { client_id: String },
-    /// 대기열에서 꺼낸 사람 글.
     Queue { client_id: String },
-    /// **앱이 깨움**(단계 4) — 오케스트레이션이 장부에서 지은 고정 문장(`orchestration::wake::wake_text`). 대기열 · 중복 제거 밖.
+    /// 오케스트레이션이 장부에서 지은 고정 문장(`orchestration::wake::wake_text`). 대기열 · 중복 제거 밖.
     Wake { wake_id: String },
 }
 
@@ -49,20 +31,18 @@ impl Src {
     }
 }
 
-/// 전송기의 상태.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Phase {
-    /// 보낼 수 있다(프로세스가 없어도 — 보내기가 띄운다).
+    /// 프로세스가 없어도 보낼 수 있다 — 보내기가 띄운다.
     Idle,
-    /// stdin 에 썼고 턴 시작을 기다린다 — `since` 는 부르는 쪽의 시각(ms · 시한 판정). 글은 시한에 `failed` 로 되돌릴 때 쓴다.
+    /// `since` 는 부르는 쪽의 시각(ms · 시한 판정).
     Dispatching { src: Src, text: String, since: u64, stop: Option<bool> },
-    /// 턴이 돈다 — `stop` = 끊기 의도(`Some(deliverQueued)`).
+    /// `stop` = 끊기 의도(`Some(deliverQueued)`).
     Running { src: Src, stop: Option<bool> },
-    /// 깨움을 예약하는 중(설계 3-5 의 첫 걸음 — 오케스트레이션 판정을 기다린다). 실행 중으로 친다(사람 글은 대기열로).
+    /// 오케스트레이션 판정을 기다린다 — 실행 중으로 친다(사람 글은 대기열로).
     WakeReserved,
 }
 
-/// `clientId` 하나의 지금.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClientState {
     Queued,
@@ -91,34 +71,29 @@ struct Seen {
     state: ClientState,
 }
 
-/// 대기열의 글 하나.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Queued {
     pub client_id: String,
     pub text: String,
 }
 
-/// 보내기 판정.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Submit {
-    /// 지금 보낸다(전송기가 `Dispatching` 으로 섰다 — 부르는 쪽이 이 글을 쓴다).
+    /// 부르는 쪽이 이 글을 쓴다.
     Dispatch { src: Src, text: String },
-    /// 대기열 `position`(1부터).
+    /// 1부터.
     Queued { position: usize },
-    /// 같은 `clientId` 의 재전송 — 지금 상태를 그대로 답한다(효과 없음).
+    /// 같은 `clientId` 의 재전송 — 효과 없음.
     Duplicate(ClientState),
 }
 
-/// 턴 끝의 다음 걸음.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Next {
-    /// 이 글을 곧바로 보낸다(`Dispatching` 으로 섰다).
     Dispatch { src: Src, text: String },
-    /// 아무것도 보내지 않는다(대기열 빔 · 보류).
     Nothing,
 }
 
-/// 턴이 끝난 모양(코어의 `turnEnded.outcome`).
+/// 코어의 `turnEnded.outcome`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum End {
     Natural,
@@ -126,12 +101,11 @@ pub(crate) enum End {
     Error,
 }
 
-/// 전송기.
 #[derive(Debug, Clone)]
 pub(crate) struct Input {
     pub phase: Phase,
     pub queue: VecDeque<Queued>,
-    /// 대기열 보류(✕ · 오류 끝 · 프로세스 끝 · 시한 실패) — 사람이 [보내기] · 새 글을 보내면 풀린다.
+    /// 사람이 [보내기] · 새 글을 보내면 풀린다.
     pub held: bool,
     seen: VecDeque<Seen>,
 }
@@ -157,12 +131,10 @@ impl Input {
         self.seen.iter().find(|s| s.client_id == client_id).map(|s| s.state)
     }
 
-    /// 실행 중으로 치나(`Dispatching` · `Running`).
     pub(crate) fn busy(&self) -> bool {
         !matches!(self.phase, Phase::Idle)
     }
 
-    /// 대기열 맨 앞을 꺼내 `Dispatching` 으로 — 보류 · 실행 중이면 `None`.
     fn take_front(&mut self, now: u64) -> Option<(Src, String)> {
         if self.busy() || self.held {
             return None;
@@ -174,7 +146,7 @@ impl Input {
         Some((src, q.text))
     }
 
-    /// **사람이 보낸 글**(op `producer_chat_send`). `can_dispatch` = 프로세스가 끝나는 중(`Exiting`)이 아니다 — 아니면 대기열로.
+    /// `can_dispatch` = 프로세스가 끝나는 중(`Exiting`)이 아니다.
     pub(crate) fn submit(&mut self, client_id: &str, text: &str, now: u64, can_dispatch: bool) -> Result<Submit, &'static str> {
         let h = sha(text);
         if let Some(s) = self.seen.iter().find(|s| s.client_id == client_id) {
@@ -183,7 +155,6 @@ impl Input {
             }
             return Ok(Submit::Duplicate(s.state));
         }
-        // 새 글은 보류를 푼다(설계 4-2 — "사람이 새 글을 보낼 때까지").
         let free = !self.busy() && can_dispatch;
         if free && self.queue.is_empty() {
             self.held = false;
@@ -198,7 +169,6 @@ impl Input {
         self.remember(client_id, h, ClientState::Queued);
         self.queue.push_back(Queued { client_id: client_id.to_string(), text: text.to_string() });
         if free {
-            // 보류된 대기열 + 새 글 — 앞 것부터 보낸다.
             self.held = false;
             if let Some((src, text)) = self.take_front(now) {
                 return Ok(Submit::Dispatch { src, text });
@@ -214,7 +184,7 @@ impl Input {
         self.seen.push_back(Seen { client_id: client_id.to_string(), sha, state });
     }
 
-    /// 대기열 글 하나를 거둔다 — `queued` 면 true · 보냈거나 보내는 중이면 `already-sent` · 모르면 false. 전송과 같은 잠금에서 판정된다.
+    /// 전송과 같은 잠금에서 판정된다.
     pub(crate) fn cancel(&mut self, client_id: &str) -> Result<bool, &'static str> {
         match self.state_of(client_id) {
             Some(ClientState::Queued) => {
@@ -227,14 +197,13 @@ impl Input {
         }
     }
 
-    /// 보낸 글을 CLI 에 쓰지 못했다(쓰기 스레드가 죽었다) — `failed` 로 대기열 맨 앞에 되돌리고 보류.
     pub(crate) fn write_failed(&mut self) {
         if let Phase::Dispatching { src, text, .. } = std::mem::replace(&mut self.phase, Phase::Idle) {
             self.fail_back(src, text);
         }
     }
 
-    /// 사람 글은 `failed` 로 맨 앞에 되돌리고 보류 — 깨움 글은 버린다(오케스트레이션이 재시도를 정한다).
+    /// 깨움 글은 버린다 — 오케스트레이션이 재시도를 정한다.
     fn fail_back(&mut self, src: Src, text: String) {
         if src.is_wake() {
             return;
@@ -245,7 +214,7 @@ impl Input {
         self.held = true;
     }
 
-    /// 턴이 섰다(`turnStarted`) — `Dispatching` → `Running`. 끊기 의도가 이미 있으면 true(곧바로 끊기를 보낸다).
+    /// 끊기 의도가 이미 있으면 true(곧바로 끊기를 보낸다).
     pub(crate) fn turn_started(&mut self) -> bool {
         match std::mem::replace(&mut self.phase, Phase::Idle) {
             Phase::Dispatching { src, stop, .. } => {
@@ -260,8 +229,7 @@ impl Input {
         }
     }
 
-    /// **끊기**(op `producer_chat_interrupt{deliverQueued}`) — 도는(또는 보내는) 턴에 의도를 붙인다 → true(부르는 쪽이 CLI 에 끊기를 보낸다 —
-    /// `Dispatching` 이면 턴 시작을 본 즉시). 쉬는 중이면 false — 그때 `deliverQueued` 면 보류된 대기열을 곧바로 보낸다(`Next`).
+    /// true 면 부르는 쪽이 CLI 에 끊기를 보낸다(`Dispatching` 이면 턴 시작을 본 즉시).
     pub(crate) fn interrupt(&mut self, deliver_queued: bool, now: u64) -> (bool, Next) {
         match &mut self.phase {
             Phase::Running { stop, .. } => {
@@ -286,12 +254,11 @@ impl Input {
     }
 
 
-    /// **턴이 끝났다** — 끊기 의도를 소비하고 대기열 처리표대로(머리말). `Running` 이 아니었으면(엇갈린 끝) 의도 없이 같은 표.
     pub(crate) fn turn_ended(&mut self, end: End, now: u64) -> Next {
         let stop = match std::mem::replace(&mut self.phase, Phase::Idle) {
             Phase::Running { stop, .. } => stop,
             Phase::Dispatching { src, text, stop, .. } => {
-                // 턴 시작 없이 끝(시작 실패 — Codex `turn/start` 오류): 그 글은 받아들여지지 않았다.
+                // 턴 시작 없이 끝(Codex `turn/start` 오류) — 그 글은 받아들여지지 않았다.
                 self.fail_back(src, text);
                 stop
             }
@@ -312,7 +279,6 @@ impl Input {
         }
     }
 
-    /// 프로세스가 끝났다 — 보내던 글은 `failed` 로 맨 앞에 · 대기열은 보류(자동 재시작 없음).
     pub(crate) fn proc_exited(&mut self) {
         match std::mem::replace(&mut self.phase, Phase::Idle) {
             Phase::Dispatching { src, text, .. } => self.fail_back(src, text),
@@ -321,8 +287,7 @@ impl Input {
         self.held = !self.queue.is_empty();
     }
 
-    /// `Dispatching` 시한 — 턴 시작이 `deadline_ms` 안에 없으면 사람 글은 **자동 재전송하지 않는다**(중복 위험): `failed` 로 맨 앞 · 보류.
-    /// 깨움 글은 버린다(`Unacked` — 부르는 쪽이 오케스트레이션에 알린다). 넘긴 글의 출처.
+    /// 사람 글은 **자동 재전송하지 않는다**(중복 위험). 깨움 글은 버린다 — 부르는 쪽이 오케스트레이션에 알린다.
     pub(crate) fn dispatch_expired(&mut self, now: u64, deadline_ms: u64) -> Option<Src> {
         let src = match &self.phase {
             Phase::Dispatching { since, src, .. } if now.saturating_sub(*since) >= deadline_ms => src.clone(),
@@ -332,8 +297,7 @@ impl Input {
         Some(src)
     }
 
-    /// **깨움 예약**(설계 3-5 의 첫 걸음 — 레지스트리 L4): 쉬고(`Idle`) · 대기열이 비고 · 보류가 없을 때만 `WakeReserved` 로 — 이 순간부터
-    /// 사람 글은 대기열로 간다(사람 글이 먼저 접수됐으면 여기서 이미 `Idle` 이 아니다 — 사람 우선). 섰나.
+    /// 이 순간부터 사람 글은 대기열로 간다 — 사람 글이 먼저 접수됐으면 이미 `Idle` 이 아니다(사람 우선).
     pub(crate) fn reserve_wake(&mut self) -> bool {
         if self.phase != Phase::Idle || !self.queue.is_empty() || self.held {
             return false;
@@ -342,19 +306,16 @@ impl Input {
         true
     }
 
-    /// 예약이 그대로인가(그 사이 끝 · 닫기가 없었나).
     pub(crate) fn wake_reserved(&self) -> bool {
         self.phase == Phase::WakeReserved
     }
 
-    /// 예약 → 보냄(셋째 걸음) — `Dispatching{Wake}` 으로 세우고 그 출처를 돌려준다(부르는 쪽이 같은 전송기로 쓴다).
     pub(crate) fn start_wake(&mut self, wake_id: &str, text: &str, now: u64) -> Src {
         let src = Src::Wake { wake_id: wake_id.to_string() };
         self.phase = Phase::Dispatching { src: src.clone(), text: text.to_string(), since: now, stop: None };
         src
     }
 
-    /// 예약을 거둔다(오케스트레이션이 깨우지 않기로 했다) — 그 사이 대기열에 든 사람 글이 있으면 곧바로 보낸다.
     pub(crate) fn release_wake(&mut self, now: u64) -> Next {
         if self.phase != Phase::WakeReserved {
             return Next::Nothing;
@@ -363,7 +324,6 @@ impl Input {
         self.take_front(now).map_or(Next::Nothing, |(src, text)| Next::Dispatch { src, text })
     }
 
-    /// 지금 보내는 · 도는 턴이 깨움이면 `(wakeId, 끊기 의도가 붙었나)`.
     pub(crate) fn live_wake(&self) -> Option<(String, bool)> {
         match &self.phase {
             Phase::Dispatching { src: Src::Wake { wake_id }, stop, .. } | Phase::Running { src: Src::Wake { wake_id }, stop } => {
@@ -373,7 +333,7 @@ impl Input {
         }
     }
 
-    /// 깨움 턴 시한(설계 3-4) — 도는 깨움 턴에 끊기 의도(`deliverQueued: true` — 대기열은 곧바로)를 붙인다. 붙였나.
+    /// 깨움 턴 시한 — 시계가 붙이는 유일한 끊기다.
     pub(crate) fn stop_wake(&mut self) -> bool {
         match &mut self.phase {
             Phase::Running { src: Src::Wake { .. }, stop } => {
@@ -384,7 +344,7 @@ impl Input {
         }
     }
 
-    /// 화면용 대기열(`[{clientId, state}]` — 글은 화면이 이미 안다 · 서버는 본문을 다시 보내지 않는다).
+    /// 서버는 본문을 다시 보내지 않는다 — 글은 화면이 이미 안다.
     pub(crate) fn queue_view(&self) -> serde_json::Value {
         let rows: Vec<serde_json::Value> = self
             .queue
@@ -409,7 +369,7 @@ mod tests {
         }
     }
 
-    /// 시험 `producer_queue_table`(설계 4-2 표) — 끝난 이유별 대기열 처리.
+    /// 시험 `producer_queue_table` — 끝난 이유별 대기열 처리.
     #[test]
     fn producer_queue_table() {
         // 자연 종료 → 맨 앞 곧바로.
@@ -476,7 +436,7 @@ mod tests {
         assert_eq!(i.submit("over", "x", 0, true).unwrap_err(), "queue-full");
     }
 
-    /// 시험 `producer_wake_input`(설계 3-5 · 4-2 — 순수 몫): 깨움은 쉬고 · 대기열이 비고 · 보류가 없을 때만 예약된다(사람 우선) · 예약 중의 사람 글은
+    /// 시험 `producer_wake_input`: 깨움은 쉬고 · 대기열이 비고 · 보류가 없을 때만 예약된다(사람 우선) · 예약 중의 사람 글은
     /// 대기열로 · 예약을 거두면 그 글부터 · 깨움 글은 못 쓰거나 시작 확인이 없어도 대기열로 되돌리지 않는다 · 깨움 턴 시한의 끊기는 깨움 턴에만 ·
     /// 끊기 의도가 붙은 깨움 턴은 `live_wake` 가 알린다.
     #[test]
@@ -524,7 +484,7 @@ mod tests {
         assert!(i.queue.is_empty() && i.live_wake().is_none());
     }
 
-    /// 시험 `producer_input_races`(M15 — 순수 몫): 두 창 보내기 · 같은 clientId 재전송 · 취소 ↔ 전송 · `turnStarted` 지연 · interrupt ↔ 자연 종료.
+    /// 시험 `producer_input_races`: 두 창 보내기 · 같은 clientId 재전송 · 취소 ↔ 전송 · `turnStarted` 지연 · interrupt ↔ 자연 종료.
     #[test]
     fn producer_input_races() {
         let mut i = Input::default();

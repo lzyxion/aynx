@@ -1,7 +1,6 @@
 <script lang="ts">
-  // **[병합] 확인 창**(`album_merge.rs`) — 열 때 서버 검사를 읽고(저장소를 바꾸지 않는다) 본 값(내보낸 머리 · 대상 브랜치)을 실어 병합을 청한다.
-  // 서버가 실행 직전에 다시 검사한다 — 막히면 그때의 검사로 이 창을 다시 그린다. 앨범 판은 컨테이너 질의 상자라 고정 위치가 창이 아니라 판에
-  // 묶인다 — 그래서 본문 아래로 옮겨 그린다(`ImageMenu` 와 같은 틀). 꼴 · 키는 `ConfirmDialog` 와 같다.
+  // 서버가 실행 직전에 다시 검사한다 — 막히면 그때의 검사로 이 창을 다시 그린다.
+  // 앨범 판은 컨테이너 질의 상자라 고정 위치가 판에 묶인다 — 본문 아래로 옮겨 그린다(`ImageMenu` 와 같은 틀).
   import { onMount, tick } from "svelte";
   import { trapTab } from "$lib/focus-trap";
   import { t } from "$lib/i18n/i18n.svelte.js";

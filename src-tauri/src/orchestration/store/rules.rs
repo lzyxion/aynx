@@ -1,6 +1,4 @@
-//! 잠금 안에서 쓰는 **판정 조각** — Run 찾기 · 상태 거절 낱말 · 쓰기 가능 · 보류 · 버전 충돌 · stopping → stopped · 분당 호출 한도 ·
-//! Run 단위 요청 기록(멱등 · 진행 중) · 의존성(없는 id · 순환). 모두 부른 쪽이 쥔 잠금 하나 안에서 돈다(자기 잠금 없음).
-//! `store.rs` 에서 그대로 옮겼다.
+//! 잠금 안에서 쓰는 판정 조각 — 모두 부른 쪽이 쥔 잠금 하나 안에서 돈다(자기 잠금 없음).
 
 use std::collections::{HashMap, HashSet};
 
@@ -8,10 +6,6 @@ use serde_json::Value;
 
 use super::{reason, Inner, OrchError, Slot, MINUTE_MS};
 use crate::orchestration::model::*;
-
-// ---------------------------------------------------------------------------
-// 잠금 안에서 쓰는 작은 조각들
-// ---------------------------------------------------------------------------
 
 pub(super) fn no_randomness() -> OrchError {
     OrchError::new(reason::INTERNAL, "no randomness source")
@@ -21,7 +15,7 @@ pub(in crate::orchestration) fn not_found_run() -> OrchError {
     OrchError::new(reason::NOT_FOUND, "no such run")
 }
 
-/// 사람 명령의 Run 찾기 — orphaned 는 읽기 전용이라 바꾸는 명령은 모두 `run-orphaned`.
+/// orphaned 는 읽기 전용이라 바꾸는 사람 명령은 모두 `run-orphaned`.
 pub(in crate::orchestration) fn human_slot<'g>(g: &'g mut Inner, run_id: &str) -> Result<&'g mut Slot, OrchError> {
     let slot = g.runs.get_mut(run_id).ok_or_else(not_found_run)?;
     if slot.run.state == RunState::Orphaned {
@@ -30,7 +24,6 @@ pub(in crate::orchestration) fn human_slot<'g>(g: &'g mut Inner, run_id: &str) -
     Ok(slot)
 }
 
-/// 상태 때문에 할 수 없다 — 상태에 맞는 낱말로.
 pub(in crate::orchestration) fn state_error(s: RunState) -> OrchError {
     match s {
         RunState::Paused => OrchError::new(
@@ -48,7 +41,7 @@ pub(in crate::orchestration) fn state_error(s: RunState) -> OrchError {
     }
 }
 
-/// 조율 쓰기를 받을 수 있는가 — running 만. 보류로 멈춘 Run 은 `run-on-hold`(재개를 기다려도 풀리지 않는다 — 사람이 푼다).
+/// 보류로 멈춘 Run 은 `run-on-hold` — 재개를 기다려도 풀리지 않는다(사람이 푼다).
 pub(in crate::orchestration) fn writable(run: &Run) -> Result<(), OrchError> {
     if run.state == RunState::Running {
         Ok(())
@@ -59,7 +52,6 @@ pub(in crate::orchestration) fn writable(run: &Run) -> Result<(), OrchError> {
     }
 }
 
-/// 보류 거절(통합 설계 4-5).
 pub(in crate::orchestration) fn on_hold(h: &RunHold) -> OrchError {
     OrchError::new(
         reason::RUN_ON_HOLD,
@@ -80,10 +72,8 @@ pub(in crate::orchestration) fn conflict(task: &Task) -> OrchError {
     )
 }
 
-/// stopping 이고 살아 있을 수 있는 작업자 · 예약 · **끝나지 않은 통합 작업 · 살아 있는 검증 트리**(통합 설계 5-3 · R9)가 없으면
-/// stopped 로 — 넘어갔으면 `true`.
+/// 끝나지 않은 통합 작업 · 살아 있는 검증 트리도 stopped 를 막는다.
 pub(in crate::orchestration) fn settle_stopping(slot: &mut Slot, now: u64) -> bool {
-    // 술어 `turn_may_live`(`live_attempts` — 4-5 표 "Run stopping → stopped 판정"): stopped 는 도는 턴(프로세스)이 0 일 때만.
     if slot.run.state != RunState::Stopping
         || slot.run.live_attempts() > 0
         || slot.reserved_workers > 0
@@ -98,7 +88,6 @@ pub(in crate::orchestration) fn settle_stopping(slot: &mut Slot, now: u64) -> bo
     true
 }
 
-/// 분당 호출 한도 — 60초 창에서 예약한다(넘으면 거절 · 세지 않는다).
 pub(in crate::orchestration) fn admit_call(slot: &mut Slot, now: u64) -> Result<(), OrchError> {
     while slot.calls.front().is_some_and(|&t| t + MINUTE_MS <= now) {
         slot.calls.pop_front();
@@ -114,15 +103,8 @@ pub(in crate::orchestration) fn admit_call(slot: &mut Slot, now: u64) -> Result<
     Ok(())
 }
 
-/// **Run 단위 요청 기록의 입력 해시**(F6) — 인자를 정규화한 글자의 SHA-256(`chat_token::input_sha` 그대로 — 열쇠 순서와 무관). 해시에서 빼는 칸:
-/// - `requestId` — 기록의 열쇠 자신.
-/// - `runId` — 기록이 이미 Run 마다다(다른 Run 의 같은 id 는 애초에 다른 기록) — 넣어도 뜻이 같아 뺀다.
-/// - `gen` — 조정자 세대. `adopt_run` 으로 세대가 바뀐 뒤 새 조정자가 응답을 잃은 요청을 **같은 requestId 로 다시 보내면** gen 만 다르다 —
-///   같은 호출의 재시도이므로 처음 결과가 맞다(옛 세대의 쓰기를 두 번 하지 않는다). 세대를 넣으면 그 재시도가 `request-id-reused` 가 된다.
-/// - `version` — Task 의 낙관적 동시성 표(`update_task`). 응답을 잃은 조정자가 `get_run` 으로 다시 읽고 **새 version 으로 같은 요청을** 보내도
-///   같은 호출이다(처음 효과가 version 을 올렸으니 다시 읽으면 늘 달라진다). 뜻(제목 · 상태 · 의존 …)은 다른 칸이 말한다.
-///
-/// 나머지 칸(제목 · 지시 글 · taskId · state · 역할 …)은 모두 넣는다 — 뜻이 다른 호출은 해시가 달라 `request-id-reused` 로 거절된다.
+/// `gen` · `version` 을 해시에서 빼는 것은 의도다 — `adopt_run` 뒤 새 세대의 재시도 · 다시 읽은 새 version 의 재시도도 같은 호출이라
+/// 처음 결과를 받아야 한다(넣으면 그 재시도가 `request-id-reused` 가 되거나 쓰기를 두 번 한다).
 pub(in crate::orchestration) fn request_sha(args: Option<&Value>) -> String {
     let mut input = args.cloned().unwrap_or(Value::Null);
     if let Some(o) = input.as_object_mut() {
@@ -133,10 +115,7 @@ pub(in crate::orchestration) fn request_sha(args: Option<&Value>) -> String {
     crate::chat_token::input_sha(&input)
 }
 
-/// **Run 단위 요청 기록**(리뷰 F9) — `requestId` 하나는 Run 안에서 요청 하나다. 끝난 요청(`run.requests`)이면 처음 결과, 아직 효과를 내는
-/// 중(`pending_requests`)이면 `request-in-progress`, 다른 도구 · 다른 입력(F6 — [`request_sha`])이 쓴 id 면 `request-id-reused`(타일 단위 기록과
-/// 같은 낱말 · 같은 문장 꼴). 해시 없는 옛 기록(F6 전의 영속 파일)은 도구만 맞춘다. 처음 보는 id 면 `None`(부른 쪽이 효과 전에
-/// [`reserve_request`] 하거나 — 잠금 하나 안에서 끝나는 도구는 — 그대로 진행해 `remember` 한다).
+/// 해시 없는 옛 영속 기록은 도구만 맞춘다. 처음 보는 id 면 `None` — 잠금 밖에서 효과를 내는 도구는 효과 전에 [`reserve_request`] 해야 한다.
 pub(in crate::orchestration) fn request_seen(
     slot: &Slot,
     request_id: &str,
@@ -167,7 +146,6 @@ pub(in crate::orchestration) fn request_seen(
     Ok(None)
 }
 
-/// 효과 전 예약(잠금 안) — 끝나면 [`release_request`](결과는 `remember`).
 pub(in crate::orchestration) fn reserve_request(slot: &mut Slot, request_id: &str, tool: &'static str, input_sha: &str) {
     slot.pending_requests.insert(request_id.to_string(), (tool, input_sha.to_string()));
 }
@@ -176,8 +154,7 @@ pub(in crate::orchestration) fn release_request(slot: &mut Slot, request_id: &st
     slot.pending_requests.remove(request_id);
 }
 
-/// 의존성 검사 — 없는 id 는 `unknown-dependency`, 순환은 `dependency-cycle`. `this` 는 바꾸는 Task(새 Task 면 그 id).
-/// 같은 잠금 안에서 부른다(설계 B — DFS, Task 50 개라 충분).
+/// `this` 는 바꾸는 Task(새 Task 면 그 id).
 pub(in crate::orchestration) fn check_dependencies(run: &Run, this: &str, deps: &[String]) -> Result<(), OrchError> {
     for d in deps {
         if d == this {
@@ -187,7 +164,6 @@ pub(in crate::orchestration) fn check_dependencies(run: &Run, this: &str, deps: 
             return Err(OrchError::new(reason::UNKNOWN_DEPENDENCY, format!("no task {d} in this run")));
         }
     }
-    // 그래프 — 바꾸는 Task 의 간선만 새 것으로 갈아 끼우고 전체를 DFS(세 색).
     let mut edges: HashMap<&str, Vec<&str>> = HashMap::new();
     for t in &run.tasks {
         if t.id != this {
@@ -205,7 +181,7 @@ pub(in crate::orchestration) fn check_dependencies(run: &Run, this: &str, deps: 
             return false;
         }
         if !grey.insert(n) {
-            return true; // 돌아왔다 — 순환
+            return true;
         }
         for &m in edges.get(n).map(Vec::as_slice).unwrap_or(&[]) {
             if visit(m, edges, grey, black) {

@@ -1,20 +1,12 @@
-//! **프로듀서 실행 재료**(설계 1-2 · 4-1 · 8-2 실측 반영) — 인자 · cwd · 지침 · MCP · 환경을 짓는다(파일은 쓰지만 아무것도 띄우지 않는다 —
-//! 띄우기는 공용 코어 `chat_proc::start` 하나).
+//! 프로듀서 실행 재료 — 파일은 쓰지만 아무것도 띄우지 않는다(띄우기는 공용 코어 `chat_proc::start` 하나).
 //!
-//! | 칸 | Claude | Codex |
-//! |---|---|---|
-//! | 인자 | `claude::producer_argv` — `--tools Read,Grep,Glob` · `--setting-sources ""` · `--settings`(훅 끔) · `--strict-mcp-config` · 미리 허용 `Read(./**)` + Aynx MCP(읽기 · 타일 · 조율 · DB 구조 · 켰으면 작업안) | `codex::producer_argv` — `app-server --disable hooks/plugins/apps` · 사용자 MCP 이름별 끔(건너뛴 이름이 있으면 **띄우지 않는다** `external-mcp-unblockable`) · 웹 검색 끔 · `windows.sandbox="unelevated"` · `notify=[]` · Aynx MCP 미리 허용(+ `db_query` — [`preallowed`]) · 스레드 `approvalPolicy: never` · `sandbox: read-only` |
-//! | cwd | **스튜디오 루트**(판단 — 아래) | **서버 빈 폴더**(이 세대의 임시 자리 — 사용자 결정 10-30: 신뢰된 스튜디오의 `.codex/config.toml` 이 MCP · 훅 · 실행 정책을 들여오지 않게 · 판정형 검토자와 같은 방식) |
-//! | 지침 | 프로듀서 고정 지침 + 전역 CLAUDE.md + 스튜디오 CLAUDE.md(표지 붙은 참고 절 — 앱 계약 **뒤**) | 프로듀서 고정 지침(`developerInstructions`) — 스튜디오 경로는 이 글이 알린다 · 저장소 안내는 Codex 가 스스로 읽는 AGENTS.md 에 맡긴다 |
-//! | 환경 | `turn::headless_env` + `MCP_TOOL_TIMEOUT`(실측 P1 — 기본 60초면 `wait_run` 120초가 시한 오류) | `turn::headless_env` + 토큰 환경 변수 · Codex 실행 환경 |
-//! | 외부 MCP | 없음 | 없음 |
-//!
-//! **Claude cwd 판단**(단계 2): 스튜디오 루트로 둔다 — `--setting-sources ""` 가 사용자 · 프로젝트 설정 층(허용 규칙 · 훅 · MCP · CLAUDE.md
-//! 자동 읽기)을 이미 막고(실측 P9 PASS), `--strict-mcp-config` 가 프로젝트 `.mcp.json` 을 막는다. cwd 가 스튜디오면 미리 허용 `Read(./**)`
-//! 가 스튜디오 안 읽기를 묻지 않게 하고 상대 경로가 그대로 통한다. 빈 폴더로 바꾸면 스튜디오 읽기가 모두 "cwd 밖 Read" 카드가 된다.
-//! Codex 는 app-server 가 `--ignore-user-config` 를 받지 않고 신뢰된 프로젝트 층을 막을 길이 없어(실측 P9) cwd 로 막는다.
-//!
-//! 사용자 추가 인자는 없다. 토큰 값은 Claude 임시 자리의 `--mcp-config` · Codex 프로세스 환경에만.
+//! - **프로듀서는 파일을 바꾸거나 읽기 전용 경계를 벗어날 수 없다** — Claude 는 `--tools Read,Grep,Glob`, Codex 는 `sandbox: read-only` ·
+//!   `approvalPolicy: never`. 외부 MCP 는 없다 — Codex 의 사용자 MCP 를 이름으로 끌 수 없으면 띄우지 않는다(`external-mcp-unblockable`).
+//! - **Claude cwd = 스튜디오 루트** — `--setting-sources ""` 가 사용자 · 프로젝트 설정 층을, `--strict-mcp-config` 가 `.mcp.json` 을 막는다.
+//!   빈 폴더로 바꾸면 스튜디오 읽기가 모두 "cwd 밖 Read" 카드가 된다.
+//! - **Codex cwd = 서버 빈 폴더** — app-server 는 `--ignore-user-config` 를 받지 않아 신뢰된 스튜디오의 `.codex/config.toml` 이 MCP · 훅 ·
+//!   실행 정책을 들여오는 것을 cwd 로 막는다(사용자 결정).
+//! - 사용자 추가 인자는 없다. 토큰 값은 Claude 임시 자리의 `--mcp-config` · Codex 프로세스 환경에만.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -27,13 +19,11 @@ use crate::side_chat::event::Mode;
 use crate::side_chat::guard::ProducerGuard;
 use crate::side_chat::{claude, codex, Adapter, Cli};
 
-/// Claude HTTP MCP 의 도구 시한(ms — 실측 P1: 기본 60초 · 200000 이면 130초 `slow_wait` 통과). `wait_run` 최대 120초 위.
+/// 기본 60초면 `wait_run`(최대 120초)이 시한 오류가 된다.
 pub(crate) const MCP_TOOL_TIMEOUT_MS: &str = "200000";
-/// 사용자 문서 읽기 상한.
 const DOC_MAX: u64 = 1024 * 1024;
 
-/// **프로듀서 고정 지침**(설계 4-1 · 사용자 결정 U1) — 앱 글 · 영어 · 끼우는 것은 스튜디오 경로뿐(사람 · AI 글 없음).
-/// 새 앨범은 저장소와 Run id를 함께 알린다. 옛 화면의 시작 안내는 R1까지 둔다.
+/// **프로듀서 고정 지침** — 앱 글 · 영어 · 끼우는 것은 스튜디오 경로와 Run id 뿐(사람 · AI 글 없음).
 pub(super) fn album_instructions(studio: &str, run: Option<&str>, cli: Cli) -> String {
     let run = run.expect("앨범에 귀속된 프로듀서만 띄운다");
     let intro = format!("You are the producer (coordinator) of Aynx album {run} for the repository at {studio}. A person opened this album with their first message; they chose its artists and permissions, and only they can change them. Call get_run first (without runId and gen it returns them).");
@@ -63,7 +53,6 @@ pub(super) fn album_fork_brief(repo: &str, run: Option<&str>) -> String {
     format!("{BRIEF_OPEN}{}{BRIEF_CLOSE}", album_instructions(repo, run, Cli::Codex).trim_end())
 }
 
-/// 이 사람 글 앞에 [`album_fork_brief`] 를 붙이나 — Codex · 갈라 온 채팅 · 그 채팅 자신의 대화가 아직 서지 않음(첫 턴 전 — 띄우기가 갈라 오기다). 순수.
 pub(crate) fn needs_brief(cli: Cli, forked: bool, has_conversation: bool) -> bool {
     cli == Cli::Codex && forked && !has_conversation
 }
@@ -76,7 +65,7 @@ fn read_capped(p: &Path) -> Option<String> {
     (!s.trim().is_empty()).then_some(s)
 }
 
-/// Claude 지침 파일 — 고정 지침 + 전역 CLAUDE.md + 스튜디오 CLAUDE.md(**참고 절** — 앱 계약 뒤 · 표지 · 읽기만).
+/// 스튜디오 CLAUDE.md 는 **참고 절**로 앱 계약 **뒤**에 붙인다.
 fn claude_instructions(studio: &str, run: Option<&str>) -> String {
     let fixed = album_instructions(studio, run, Cli::Claude);
     let global = turn::global_claude_md(std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(), dirs::home_dir()).and_then(|p| read_capped(&p));
@@ -95,7 +84,6 @@ fn claude_instructions(studio: &str, run: Option<&str>) -> String {
     turn::instructions_text(&fixed, None, &docs).expect("고정 글이 있어 늘 Some")
 }
 
-/// 사용자 Codex 설정의 MCP 서버 이름(읽기만).
 fn codex_mcp_names() -> codex::McpNames {
     let home = match std::env::var_os("CODEX_HOME").filter(|v| !v.is_empty()) {
         Some(h) => PathBuf::from(h),
@@ -107,11 +95,8 @@ fn codex_mcp_names() -> codex::McpNames {
     read_capped(&home.join("config.toml")).map(|t| codex::mcp_server_names(&t)).unwrap_or_default()
 }
 
-/// 프로듀서가 묻지 않고 부르는 Aynx MCP 도구 — 읽기 일곱 · 타일 · 조율 · DB 구조 · (켰으면) 작업안. 행을 읽는 `db_query` 는 Claude 에서
-/// 카드(설계 4-3)이고 **Codex 는 미리 허용**이다(실기 a FAIL 1 — 10-30): Codex 0.165 는 `approvalPolicy: never` 에서 미리 허용 밖 MCP 도구를
-/// elicitation 없이 "requires approval, but approval policy is never" 로 실패시킨다(그 모델들은 code mode 전용이라 호출이 `exec` 안에서 나도 같다).
-/// 카드가 설 길이 없으니 거절 대신 미리 허용하고, 최종 판정은 서버의 연결 AI 권한(끔 · Schema 면 `db_query` 거절 · Read 이상만 행 — 호출마다 감사
-/// `db_read`)이 진다 — AI 타일 · 헤드리스와 같은 등급.
+/// 행을 읽는 `db_query` 는 Claude 에서 카드이고 **Codex 는 미리 허용**이다 — Codex 는 `approvalPolicy: never` 에서 미리 허용 밖 MCP 도구를
+/// elicitation 없이 실패시켜 카드가 설 길이 없다(Codex 0.165 동작). 최종 판정은 서버의 연결 AI 권한이 진다(Read 이상만 행 · 호출마다 감사).
 pub(crate) fn preallowed(plan_tools: bool, cli: Cli) -> Vec<&'static str> {
     let mut v: Vec<&'static str> = crate::chat_token::READ_TOOLS.to_vec();
     v.extend(crate::orchestration::preallowed_tools());
@@ -125,7 +110,7 @@ pub(crate) fn preallowed(plan_tools: bool, cli: Cli) -> Vec<&'static str> {
     v
 }
 
-/// 실행 재료 — `mcp` = `(서버 이름, URL, 토큰)`(없으면 띄우지 않는다 — 부르는 쪽이 이미 거절). `root` = `<데이터 루트>/producer`.
+/// `mcp` = `(서버 이름, URL, 토큰)`. `root` = `<데이터 루트>/producer`.
 pub(super) fn prepare(
     id: &str,
     st: &State,
@@ -171,7 +156,7 @@ pub(super) fn prepare(
             };
             let (mode, session_id) = match (st.conversation.as_deref(), fresh.as_deref()) {
                 (Some(c), _) => (Mode::Resume { conv: c }, c),
-                // 갈라 오기([오케스트레이션으로 이어 가기] — 단계 5) — 새 대화가 이 id 로 선다(원본 타일 대화는 그대로)
+                // 갈라 오기 — 새 대화가 이 id 로 선다(원본 타일 대화는 그대로)
                 (None, Some(n)) => match st.fork_from.as_deref() {
                     Some(from) => (Mode::Fork { from }, n),
                     None => (Mode::Fresh, n),
@@ -196,7 +181,7 @@ pub(super) fn prepare(
         Cli::Codex => {
             let names = codex_mcp_names();
             if names.skipped > 0 {
-                // 이름으로 끌 수 없는 사용자 MCP — 새어 들 수 있으니 띄우지 않는다(설계 1-2).
+                // 이름으로 끌 수 없는 사용자 MCP — 새어 들 수 있으니 띄우지 않는다.
                 return Err(fail("external-mcp-unblockable", "a Codex MCP server name in your config cannot be turned off for the producer"));
             }
             let cwd_s = dir.to_string_lossy().replace('\\', "/");

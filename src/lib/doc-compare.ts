@@ -1,26 +1,11 @@
-/**
- * **문서 편집의 [비교] — 줄 단위 diff** (순수 모듈). 편집 중 "디스크의 파일이 바뀌었습니다" 띠의 [비교]가 디스크 판(왼쪽)과
- * 편집기의 지금 글(오른쪽)을 견준다 — 그림 · 읽기 · 닫기는 `DocView` 와 `doc/DocCompareView.svelte`.
- *
- * - [`compareTexts`] — 두 글 → 같음 · 줄 끝만 다름 · 너무 큼 · 행 목록. 줄 끝은 둘 다 `\n` 으로 맞춘 뒤 견준다(편집기는 원문의
- *   우세한 줄 끝을 `lineSeparator` 로 쥐어 `getText` 가 그 줄 끝으로 돌려준다 — `doc-edit.ts` 의 `detectEol`).
- * - 계산은 **Myers O(ND)**(앞뒤 같은 줄을 먼저 떼고 가운데만). 보호 한도 둘 — 줄 수 합 [`COMPARE_MAX_LINES`] · 편집 거리
- *   [`COMPARE_MAX_EDITS`] 를 넘으면 그만두고 `too-large` 다(UI 스레드에서 돈다 — 오래 잡지 않게).
- * - 행은 나란히 그리기의 것이다: 같음 · 지움 · 더함 · 바뀜(지운 줄과 더한 줄을 차례로 짝지은 한 행). 다른 곳 앞뒤
- *   [`COMPARE_CONTEXT`] 줄 밖의 같은 줄은 접힘 한 행(`fold` — 안의 행을 들고 있어 펼칠 수 있다). 좁은 타일의 한 칸 보기는
- *   [`unifiedRows`] 가 바뀜 행을 "지움들 다음 더함들" 로 편다.
- */
+/** 문서 편집의 [비교] — 디스크 판(왼쪽)과 편집 글(오른쪽)의 줄 diff. UI 스레드에서 돌아 두 한도를 넘으면 `too-large` 로 그만둔다. */
 
 import { normalizeEol } from "$lib/doc-edit";
 
-/** 줄 수 합(디스크 + 편집) 한도 — 넘으면 견주지 않는다 */
 export const COMPARE_MAX_LINES = 40_000;
-/** 편집 거리(지운 줄 + 더한 줄) 한도 — 넘으면 계산을 그만둔다 */
 export const COMPARE_MAX_EDITS = 2_000;
-/** 다른 곳 앞뒤로 펼쳐 두는 같은 줄 수 */
 export const COMPARE_CONTEXT = 3;
 
-/** 한 칸의 줄 — `no` 는 1 기준 줄 번호 */
 export interface CompareLine {
   no: number;
   text: string;
@@ -31,17 +16,15 @@ export type CompareRow =
   | { kind: "del"; left: CompareLine }
   | { kind: "add"; right: CompareLine }
   | { kind: "change"; left: CompareLine; right: CompareLine }
-  /** 같은 줄 묶음을 접은 한 행 — `id` 는 결과 안에서 하나뿐(펼친 상태의 열쇠), `rows` 는 모두 `same` */
+  /** `id` 는 결과 안에서 하나뿐 — 펼친 상태의 열쇠 */
   | { kind: "fold"; id: number; rows: CompareRow[] };
 
 export type CompareResult =
   | { kind: "same" }
   | { kind: "eol-only" }
   | { kind: "too-large" }
-  /** `hunks` = 다른 곳(이어진 다른 줄 묶음) 수 */
   | { kind: "diff"; rows: CompareRow[]; hunks: number };
 
-/** 디스크 글(왼쪽)과 편집 글(오른쪽)을 견준다 */
 export function compareTexts(disk: string, mine: string): CompareResult {
   if (disk === mine) return { kind: "same" };
   const a = normalizeEol(disk, "\n");
@@ -56,13 +39,8 @@ export function compareTexts(disk: string, mine: string): CompareResult {
   return { kind: "diff", rows: foldSame(full, COMPARE_CONTEXT), hunks: countHunks(full) };
 }
 
-/** 편집 한 걸음 — `=` 같음(양쪽 하나씩) · `-` 왼쪽 하나 · `+` 오른쪽 하나 */
 type Op = "=" | "-" | "+";
 
-/**
- * 줄 diff — 편집 거리가 `maxEdits` 를 넘으면 `null`. 앞뒤 같은 줄을 떼고 가운데를 Myers 로 푼다. 줄은 같은 글이면 같은
- * 번호로 바꿔 견준다(긴 줄의 글자 비교를 되풀이하지 않게).
- */
 export function diffLines(a: readonly string[], b: readonly string[], maxEdits: number): Op[] | null {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -94,7 +72,6 @@ export function diffLines(a: readonly string[], b: readonly string[], maxEdits: 
   return out;
 }
 
-/** Myers O(ND) — 앞으로 훑으며 걸음마다 V 를 떠 두고(되짚기에 쓴다) 끝에서 거꾸로 짚는다 */
 function myers(x: Int32Array, y: Int32Array, maxEdits: number): Op[] | null {
   const n = x.length;
   const m = y.length;
@@ -126,7 +103,6 @@ function myers(x: Int32Array, y: Int32Array, maxEdits: number): Op[] | null {
   }
   if (end < 0) return null;
 
-  // 되짚기 — 끝(n, m)에서 걸음마다 앞 대각선으로
   const rev: Op[] = [];
   let i = n;
   let j = m;
@@ -158,7 +134,6 @@ function myers(x: Int32Array, y: Int32Array, maxEdits: number): Op[] | null {
   return rev.reverse();
 }
 
-/** 걸음들 → 나란히 행. 같음 사이의 지움 · 더함 묶음은 차례로 짝지어 바뀜, 남는 쪽은 홀로 */
 function rowsOf(ops: readonly Op[], a: readonly string[], b: readonly string[]): CompareRow[] {
   const rows: CompareRow[] = [];
   let i = 0;
@@ -192,7 +167,6 @@ function rowsOf(ops: readonly Op[], a: readonly string[], b: readonly string[]):
   return rows;
 }
 
-/** 다른 곳 수 — 이어진 다른 행 묶음 */
 function countHunks(rows: readonly CompareRow[]): number {
   let n = 0;
   let inDiff = false;
@@ -204,7 +178,6 @@ function countHunks(rows: readonly CompareRow[]): number {
   return n;
 }
 
-/** 다른 행에서 `context` 줄 넘게 떨어진 같은 행 묶음을 접는다(한 줄뿐인 묶음은 접지 않는다 — 접은 행이 더 길다) */
 export function foldSame(rows: readonly CompareRow[], context: number): CompareRow[] {
   const near = new Uint8Array(rows.length);
   rows.forEach((r, idx) => {
@@ -229,10 +202,8 @@ export function foldSame(rows: readonly CompareRow[], context: number): CompareR
   return out;
 }
 
-/** 한 칸 보기의 행 — 바뀜이 없다(지움 · 더함으로 편다) */
 export type UnifiedRow = Exclude<CompareRow, { kind: "change" }>;
 
-/** 나란히 행 → 한 칸 보기. 이어진 다른 행 묶음마다 왼쪽 줄들(`−`) 다음 오른쪽 줄들(`+`) */
 export function unifiedRows(rows: readonly CompareRow[]): UnifiedRow[] {
   const out: UnifiedRow[] = [];
   let dels: UnifiedRow[] = [];

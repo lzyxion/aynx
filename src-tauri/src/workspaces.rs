@@ -1,4 +1,4 @@
-//! 워크스페이스 v2 저장·이관. 모든 빌드와 창이 이 경로를 사용한다.
+//! 워크스페이스 v2 저장·이관.
 //!
 //! 불변식:
 //! - 구형 파일은 migrate.rs에서만 읽는다. 부팅 조회 전에 미완료 journal을 회복한다.
@@ -9,8 +9,6 @@
 //! - workspace 연산은 workspaces FILE_LOCK만 잡는다. 프로젝트 목록에는 접근하지 않는다.
 //! - 이관은 원본 전체 검사 → 원본 바이트 백업 → journal → workspace 대상 → layout 보관 → 기록 순서다.
 //! - 제목·경로·트리 본문을 로그나 Debug에 담지 않는다. 오류는 파일/위치/기계 코드만 담는다.
-//!
-//! schema.rs: 값·순수 검증/정규화, store.rs: lease·변경, migrate.rs: 계획·commit/복구.
 
 mod migrate;
 pub(crate) mod schema;
@@ -157,7 +155,6 @@ pub(crate) fn transfer_handoff(
     }) {
         return Err("handoffSourceMismatch".into());
     }
-    // 탭 전체 이관은 기존 MoveTab 계약을 그대로 사용한다.
     let arriving_key = tab.tab_key.clone();
     let mutation = if source_tab_key == tab.tab_key && merge.is_none() {
         Mutation::MoveTab {
@@ -174,7 +171,7 @@ pub(crate) fn transfer_handoff(
         }
     };
     store::apply_at(&root, &writers, label, mutation).map_err(workspace_error)?;
-    // 받는 큐가 이미 멈춰 있으므로 일반 이관은 arrival 보호가 필요 없다(즉시 탭 닫기도 삭제).
+    // 받는 큐가 이미 멈춰 있으므로 일반 이관은 arrival 보호가 필요 없다.
     writers.acknowledge_arrival(&arriving_key);
     Ok(())
 }

@@ -1,47 +1,9 @@
 <script lang="ts">
   /**
-   * **이미지 타일**(`kind:"image"` — 2026-11-14) — 그림 파일 한 장을 맞춤 · 1:1 · 확대로 보고, 같은 폴더의 그림을 이전/다음으로 훑는다.
-   *
-   * 문서 타일(`DocView`)처럼 **백엔드 하나**(`FsBackend` — 로컬 디스크 · 원본 터미널의 SFTP)만 받는다. 원격 세션 빌리기 · 같은 파일이면
-   * 포커스만 · 배치 저장/복원 · 창 이관은 "파일 한 장 타일" 공용 함수(`isFileLeafKind` · `findFilePane` · `planFileOpen` · `borrowsSession`)가
-   * 한다 — 이 화면은 그리기 · 읽기 · 보기만 쥔다.
-   *
-   * ## 읽기 (`image/read-plan.ts`)
-   *
-   * `stat` 으로 크기를 먼저 안다. 20 MB 이하는 미리 보기 패널과 같은 `readPreview` 한 번, 넘으면 `readImage`(Rust `*_read_image` — 조각 ·
-   * 진행률 채널 · `op` 취소)로 받으며 막대 · `12.4 / 38.2 MB` · [취소] 를 그린다. 500 MB 이상은 읽기 전에 한 번 묻고, 1 GB 를 넘으면 읽지 않는다.
-   * 받은 바이트는 **Blob URL** 로 `<img>` 에 그린다(자산 프로토콜 허용 범위를 넓히지 않는다 · SVG 도 `<img>` 로만 — 스크립트가 돌지 않는다).
-   * 그림이 바뀌거나 타일이 사라지면 `revokeObjectURL` 하고, 늦게 온 옛 답은 번호(`seq`)로 버린다. 받는 중에 다른 그림으로 가면 앞 읽기를 취소한다.
-   * **다른 경로**를 읽을 때(`image/picture-state`): direct 길(20 MB 이하)은 이전 그림을 둔 채 받아 화면 밖에서 풀고(`decode`) 그림 · 맞춤 ·
-   * 배율 글자를 한 번에 바꾼다(깜빡이지 않는다 — 느린 원격이면 그동안 새 이름 밑에 옛 그림이 남는다). 진행 · 묻기 길과 실패 · 취소 · 파일 없음은
-   * 그 순간 이전 그림(Blob URL · 원래 크기 · 보기)을 버린다 — 옛 그림이 비치지 않고 배율 글자는 그림 없음(`—`)이다. 같은 경로를 다시 읽을 때는
-   * 그림을 남긴 채 바꿔 끼운다.
-   *
-   * ## 다시 읽기 · 끊김
-   *
-   * 문서 타일과 같은 박자(`doc-refresh.ts` — 로컬 1.5 s · 원격 4 s, 보일 때 · 닿을 때 · 그림이 있을 때만)로 `stat` 을 견주고, 크기 · 수정 시각이
-   * 바뀌면 **조용히** 다시 읽는다(보기 · 배율은 그대로). 원격이 끊기면 마지막 그림을 흐리게 남기고 띠 한 줄 — 다시 붙으면(백엔드 키가 바뀌면)
-   * 저절로 읽는다. 원본 터미널이 사라지면 파일 타일과 같은 "원본 없음" 띠.
-   *
-   * ## 보기 (`image/view-math.ts`)
-   *
-   * 열 때마다 **맞춤**(작은 그림은 1:1 — 늘리지 않는다 · 그래도 켜지는 것은 [맞춤] 하나 — `zoomPressed`)이고, 배율 · 이동 위치는 명세에 저장하지 않는다. 휠 = 커서 자리 기준 확대/축소 · 끌기 = 이동
-   * (맞춤보다 클 때) · 더블클릭 = 맞춤 ⇄ 1:1. 타일 안 키(`image/keys.ts` — 수식키 조합은 흘려보낸다): ← → 이전/다음 · `0` 맞춤 · `1` 1:1 ·
-   * `+`/`-` · `M` 작은 지도. 작은 지도는 맞춤보다 크게 볼 때만 오른쪽 아래에 서고 켬/끔은 앱 전체에 한 번 기억한다(`image/minimap-pref`).
-   * 키는 몸(`.image`)과 도구줄 단추(Tab 으로 닿았을 때 — `onBarKey`)에서 듣고, 이 타일의 조작(도구줄 · 무대의 단추 · 작은 지도 × · 배율 목록
-   * Escape · 고르기) 뒤에는 키보드를 몸으로 돌려놓는다(`backToBody` — 누른 단추에 남거나 `<body>` 로 떨어지지 않게).
-   *
-   * ## 머리줄 · 메뉴
-   *
-   * 도구줄은 머리줄에 맡긴다(`setPaneTools` — 머리줄이 없으면 몸 위에 그린다): [‹] `3 / 12` [›] · [맞춤 | 1:1] · 배율 `42% ▾`(`image/ZoomMenu` —
-   * 포커스가 목록 밖으로 나가면 닫힌다 · 그림이 없으면 `—`) · 다시 읽기. 지금 그림이 "파일 없음"이 되면 `3 / 12` 는 비우고(사라진 그림을 세지
-   * 않는다) 이전/다음은 남은 이웃으로 간다(`withoutCurrent`). 그 그림은 캐시된 폴더 목록에서도 빠져 다른 그림으로 옮겨도 다시 세지 않는다
-   * (`withoutEntry` — 다음에 폴더를 다시 읽으면 그 목록이 대신한다). 머리줄 안에서 포커스 밖이면 이 도구줄은 통째로 접힌다(`data-head-act` — 이름만 남는다). 이름 뒤에 폴더를 두지 않는다(문서 타일과 같다 — 전체 경로는 이름 말풍선 · ⋯ [경로 복사]). 가운데 칸이 모자라면(펼친 머리줄 · 이름이 최대 폭(40%)까지 가져간 때로 센다:
-   * 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭 · 이름이 덜 가져간 폭은 빼고 센다 · `expandedSlot` — 같은 타일에서 넘겨도 판정이 바뀌지 않는다) 다시 읽기 → [맞춤 | 1:1] → 이전/다음 순서로 빠지고(`image/bar-fit`), 이전/다음이 빠지면
-   * 좁은 타일과 같은 길(그림 위 양옆 단추 · 칩 앞 `3 / 12` · 칩은 아래 가운데 — `navOut`)로 간다. 좁은 타일은 배율만 남고 이전/다음은 그림 위 양옆 단추, `3 / 12 · 해상도` 칩은 아래 가운데로 간다(이전/다음이 도구줄에 있으면 칩은 왼쪽 아래). 칩 앞 `3 / 12` 는 머리줄 도구줄과 **같은 조건**으로 포커스 밖이면 접힌다(해상도 · 크기 · 형식은 늘 — 아래 `.facts .pos`). 본문 우클릭은 그림 메뉴
-   * (`ImageMenu` — `imageMenuActions` 규칙 그대로, 앞에 맞춤 · 원래 크기, 뒤에 기본 앱 · 외부 편집기 · 폴더에서 보기)이고 메뉴 통로(`runOnMenu`)를 지난다.
-   *
-   * **하지 않는 것**: 편집 · 회전 · 저장(파일을 바꾸지 않는다) · 전용 폰 화면(원격 창은 같은 화면을 그린다).
+   * 이미지 타일(`kind:"image"`) — 그림 파일 한 장을 보고 같은 폴더의 그림을 이전/다음으로 훑는다. 세션 빌리기 · 배치 · 창 이관은 파일 한 장 타일 공용 함수가 한다.
+   * 받은 바이트는 Blob URL 로 `<img>` 에 그린다 — 자산 프로토콜 허용 범위를 넓히지 않고, SVG 도 `<img>` 로만 그린다(스크립트가 돌지 않는다).
+   * 늦게 온 옛 답은 번호(`seq`)로 버린다 · 다른 경로를 읽을 때 그림을 언제 버리는지는 `image/picture-state` 가 정한다.
+   * 하지 않는 것: 편집 · 회전 · 저장(파일을 바꾸지 않는다) · 전용 폰 화면(원격 창은 같은 화면을 그린다).
    */
   import { onDestroy, untrack } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -102,12 +64,9 @@
     onnotice,
   }: {
     paneId: string;
-    /** 보고 있는 그림의 절대 경로(`PaneSpec.path`) — 이전/다음은 [`onpath`] 로 올려 이 값이 바뀌어 내려온다 */
     path: string;
     backend: FsBackend;
-    /** 원격이면 그 별칭(띠 문구) */
     alias?: string;
-    /** 원본 터미널 타일이 아예 사라졌다(원격) */
     sourceGone?: boolean;
     onpath: (path: string) => void;
     onnotice?: (message: string) => void;
@@ -116,23 +75,18 @@
   // ── 읽기 ────────────────────────────────────────────────────────────────────
 
   let phase = $state<ImagePhase>("loading");
-  /** 그리는 그림 — Blob(메뉴의 복사 · 저장이 다시 읽지 않고 쓴다)과 그 URL. 둘은 늘 함께 바뀐다 */
+  /** 그리는 그림의 Blob 과 그 URL — 둘은 늘 함께 바뀐다 */
   let url = $state<string | null>(null);
   let blob = $state.raw<Blob | null>(null);
-  /** 지금 그린 그림의 경로 · 크기(바이트) — 칩 · 메뉴 */
   let drawnPath = $state("");
   let drawnSize = $state(0);
-  /** 그림의 원래 크기 — `<img>` 가 다 읽은 뒤에 안다 */
   let natural = $state<Size | null>(null);
   let errorText = $state("");
   let progress = $state({ done: 0, total: 0 });
-  /** 묻는 중 · 너무 큰 그림의 크기 */
   let pendingSize = $state(0);
-  /** 받는 중인 조각 읽기의 번호(`transfer_cancel`) */
   let op: number | null = null;
   /** 늦게 온 답이 새 답을 덮지 않게 — 읽기마다 오른다 */
   let seq = 0;
-  /** 마지막으로 읽은 때의 `stat` — 다시 읽기 박자가 견준다 */
   let stamp: Stamp | null = null;
   let polling = false;
   /** 날아가 있는 읽기의 번호(없으면 0) — 다시 읽기 박자가 겹쳐 보내지 않게(느린 원격 · 큰 그림) */
@@ -154,7 +108,7 @@
     drawnSize = 0;
   }
 
-  /** 같은 그림을 다시 읽었다 — 바이트만 바꿔 끼운다(원래 크기는 `<img>` 의 onload 가 다시 잰다 · 배율 · 이동은 그대로) */
+  /** 같은 그림을 다시 읽었다 — 바이트만 바꿔 끼운다(배율 · 이동은 그대로) */
   function replaceImage(b: Blob, size: number) {
     if (url) URL.revokeObjectURL(url);
     blob = b;
@@ -163,8 +117,7 @@
   }
 
   /**
-   * 다른 그림을 받았다 — 화면 밖에서 먼저 풀어(`decode`) 원래 크기를 안 뒤 그림 · 크기 · 맞춤 · 배율 글자를 **한 번에** 바꾼다. 그 사이
-   * 이전 그림(direct 길이면 남아 있다)이 그대로 서 있어 깜빡이지 않는다. 풀지 못하면 "그리지 못함"(이전 그림은 버린다).
+   * 다른 그림 — 화면 밖에서 먼저 풀어(`decode`) 그림 · 크기 · 맞춤 · 배율 글자를 한 번에 바꾼다(깜빡이지 않게). 풀지 못하면 "그리지 못함"(이전 그림은 버린다).
    */
   async function swapIn(my: number, b: Blob, p: string, size: number) {
     const next = URL.createObjectURL(b);
@@ -187,7 +140,6 @@
     blob = b;
     drawnPath = p;
     drawnSize = size;
-    // 다른 그림 — 열 때마다 맞춤(배율 · 위치는 저장하지 않는다)
     fit = true;
     natural = dims;
     phase = dims ? "ready" : "broken";
@@ -201,10 +153,6 @@
     void backend.cancel(which).catch(() => {});
   }
 
-  /**
-   * 그림 하나를 읽는다 — `stat` → 계획(`imageReadPlan`) → 바이트 → Blob URL. `silent` 면(다시 읽기 박자 · 재연결) 그리던 그림과 상태를
-   * 그대로 둔 채 읽고, 다 받으면 바꾼다.
-   */
   async function load(p: string, opts: { confirmed?: boolean; silent?: boolean } = {}) {
     const my = ++seq;
     stopTransfer();
@@ -218,8 +166,6 @@
 
   async function read(my: number, p: string, opts: { confirmed?: boolean; silent?: boolean }) {
     const be = backend;
-    // 다른 그림을 읽을 때 그리던 그림을 언제 버리나 — `image/picture-state`: direct 길은 새 그림이 그려질 때 한 번에 바꾸고(깜빡이지
-    // 않게), 진행 · 묻기 길과 실패 · 취소 · 파일 없음은 그 순간 버린다(새 이름 밑에 옛 그림 · 옛 배율이 남지 않게)
     const failed = () => {
       if (!keepsOnFailure(drawnPath, p)) dropImage();
     };
@@ -233,7 +179,6 @@
     } catch (e) {
       if (my !== seq) return;
       const m = msgOf(e);
-      // 끊김은 띠가 말한다 — 같은 그림이면 그리던 그림은 남긴다
       if (isSessionGone(m)) {
         failed();
         if (url) phase = "ready";
@@ -309,7 +254,6 @@
     void syncSiblings(true);
   }
 
-  /** [그래도 열기] */
   function openAnyway() {
     confirmedKey = keyOf(path, pendingSize);
     void load(path, { confirmed: true });
@@ -328,7 +272,6 @@
     phase = "broken";
   }
 
-  // 경로 · 원본(재연결 — 키가 바뀐다)이 바뀌면 읽는다. 같은 그림의 재연결이면 조용히
   $effect(() => {
     const p = path;
     void backend.key;
@@ -336,7 +279,6 @@
     untrack(() => void load(p, { silent: p === drawnPath && url !== null }));
   });
 
-  // 다시 읽기 박자 — 문서 타일과 같은 판정(`shouldPoll`)
   $effect(() => {
     const ms = pollIntervalOf(backend.key);
     const id = setInterval(() => void poll(), ms);
@@ -386,7 +328,7 @@
 
   // ── 같은 폴더의 그림 ──────────────────────────────────────────────────────────
 
-  /** 마지막으로 읽은 폴더 목록 — 같은 폴더 안에서 옮겨 다닐 때는 다시 읽지 않는다(없어진 그림은 `forgetGone` 이 뺀 채로) */
+  /** 마지막으로 읽은 폴더 목록 — 같은 폴더 안에서 옮겨 다닐 때는 다시 읽지 않는다(원격 `list` 왕복을 이동마다 더하지 않게) */
   let listing: { key: string; dir: string; entries: readonly SftpEntry[] } | null = null;
   let siblings = $state.raw<ImageSiblings>({ list: [], index: -1 });
   let listSeq = 0;
@@ -414,9 +356,7 @@
   }
 
   /**
-   * 지금 그림이 "파일 없음"이 됐다 — 캐시된 폴더 목록에서도 **영구히** 뺀다(`withoutEntry`). 빼지 않으면 다른 그림으로 옮기는 순간 `8 / 10` 처럼
-   * 지운 그림을 다시 세고 ← 로 그 빈 파일에 되돌아간다. 다음에 폴더를 다시 읽으면([다시 읽기] · 다른 폴더) 진짜 목록이 대신한다 —
-   * 옮길 때마다 목록을 다시 읽지 않는다(원격에서 `list` 왕복을 이동마다 더하지 않게).
+   * 지금 그림이 "파일 없음"이 됐다 — 캐시된 폴더 목록에서도 뺀다. 빼지 않으면 다른 그림으로 옮기는 순간 지운 그림을 다시 세고 ← 로 되돌아간다.
    */
   function forgetGone(p: string) {
     const be = backend;
@@ -434,12 +374,10 @@
     untrack(() => void syncSiblings());
   });
 
-  /** 이전/다음이 쓰는 목록 — 지금 그림이 없어졌으면(파일 없음) 그것을 뺀 목록과 그 빈자리(캐시에서도 이미 빠졌다 — `forgetGone`) */
   const navList = $derived(phase === "missing" ? withoutCurrent(siblings, path) : siblings);
   const counter = $derived(siblingCounter(navList));
   const prevPath = $derived(neighborPath(navList, -1));
   const nextPath = $derived(neighborPath(navList, 1));
-  /** 이전/다음 무리를 세우는가 — `3 / 12` 가 있거나(둘 이상) 지금 그림이 없어졌어도 남은 이웃이 있으면 */
   const hasNav = $derived(counter !== null || prevPath !== null || nextPath !== null);
 
   function go(dir: 1 | -1) {
@@ -451,12 +389,9 @@
 
   let rootEl = $state<HTMLDivElement | null>(null);
   let stageEl = $state<HTMLDivElement | null>(null);
-  /** 무대(그림 상자) 크기 · 타일 폭 */
   let box = $state<Size>({ w: 0, h: 0 });
   let tileW = $state(0);
-  /** 맞춤 보기인가 — 참이면 무대가 바뀔 때마다 다시 맞춘다 */
   let fit = $state(true);
-  /** 맞춤이 아닐 때의 보기 */
   let free = $state<View>({ scale: 1, x: 0, y: 0 });
 
   $effect(() => {
@@ -479,15 +414,12 @@
     return () => ro.disconnect();
   });
 
-  /** 지금 보기 — 맞춤이면 그때그때 셈한 것 */
   const view = $derived<View>(natural ? (fit ? fitView(natural, box) : free) : { scale: 1, x: 0, y: 0 });
   const fitS = $derived(natural ? fitScale(natural, box) : 1);
-  /** 좁은 타일 — 머리줄엔 배율만, 이전/다음은 그림 위 양옆, 칩은 아래 가운데 */
   const narrow = $derived(tileW > 0 && tileW < 440);
   const pannable = $derived(natural !== null && !fit && canPan(view, natural, box));
   const mapShown = $derived(minimapOn() && natural !== null && !fit && aboveFit(view.scale, natural, box));
 
-  // 맞춤이 아닐 때 무대가 바뀌면 경계로 다시 묶는다
   $effect(() => {
     const b = box;
     untrack(() => {
@@ -521,10 +453,8 @@
     return { destroy: () => node.removeEventListener("wheel", on) };
   }
 
-  /** 끌어서 이동 — 맞춤보다 클 때만 */
   let drag: { id: number; x: number; y: number } | null = $state(null);
   function onPointerDown(ev: PointerEvent) {
-    // 그림을 누르면 타일의 키보드 몸이 키를 받는다(← → · 0 · 1 · + · - · M)
     rootEl?.focus({ preventScroll: true });
     if (ev.button !== 0 || !pannable) return;
     drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
@@ -540,7 +470,6 @@
     if (drag?.id === ev.pointerId) drag = null;
   }
 
-  /** 더블클릭 — 맞춤 ⇄ 1:1(커서 자리 기준) */
   function onDblClick(ev: MouseEvent) {
     if (!natural) return;
     if (fit) zoomTo(1, stagePoint(ev));
@@ -576,24 +505,19 @@
   }
 
   /**
-   * 이 타일의 조작(도구줄 단추 · 무대의 단추 · 작은 지도 × · 배율 목록 Escape · 백드롭) 뒤 — 키보드를 타일의 몸(`.image`)으로 돌려놓는다.
-   * 그러지 않으면 누른 단추에 포커스가 남거나(키는 몸에서만 듣는다) 누른 단추가 사라지고 흐려져 포커스가 `<body>` 로 떨어져 ← → · `0` · `1` ·
-   * `+` · `-` · `M` 이 먹지 않는다. 문서 타일의 [고정]과 같은 길(`rootEl.focus`).
+   * 이 타일의 조작 뒤 키보드를 타일의 몸(`.image`)으로 돌려놓는다 — 아니면 누른 단추에 포커스가 남거나 `<body>` 로 떨어져 몸에서만 듣는 키가 먹지 않는다.
    */
   function backToBody() {
     rootEl?.focus({ preventScroll: true });
   }
 
-  /** 단추 하나의 일 + 몸으로 돌려놓기 */
   const act = (fn: () => void) => () => {
     fn();
     backToBody();
   };
 
   /**
-   * 도구줄 단추에 포커스가 있을 때(Tab 으로 닿았다)도 같은 키를 받는다 — 머리줄 도구줄은 몸 밖(`.pane-tools`)이라 몸의 `onkeydown` 에 닿지 않는다.
-   * 판정은 몸과 같은 `imageKeyAction`(수식키 조합 · Tab · Space · Enter 는 흘려보낸다 — 단추 자신의 키는 그대로 · 단추는 ← → 를 스스로 쓰지
-   * 않는다). 받은 뒤에는 몸으로 돌려놓는다(이전/다음이 끝에서 흐려지면 포커스가 떨어지지 않게).
+   * 도구줄 단추에 포커스가 있을 때도 같은 키를 받는다 — 머리줄 도구줄은 몸 밖(`.pane-tools`)이라 몸의 `onkeydown` 에 닿지 않는다.
    */
   function onBarKey(ev: KeyboardEvent) {
     if (!(ev.target instanceof HTMLButtonElement)) return;
@@ -642,22 +566,17 @@
       ? [`${natural.w} × ${natural.h}`, formatSize(drawnSize), extOf(drawnPath)].filter((s) => s !== "").join(" · ")
       : "",
   );
-  /** 배율 글자 — 그림이 없으면(묻기 · 파일 없음 · 그리지 못함 · 받는 중 · 취소됨) `—` */
   const pct = $derived(zoomLabel(natural ? view.scale : null));
-  /** [맞춤 | 1:1] 의 켬 — 하나만(작은 그림의 맞춤 = 1:1 이어도 [맞춤] 만) */
   const pressed = $derived(zoomPressed(natural !== null, fit, view.scale));
   const inHead = $derived(paneHeadShown(paneId));
   /**
-   * 도구줄 상자의 폭 — 머리줄이면 가운데 칸의 폭(이름 길이에 따라 같은 타일에서도 다르다) · 그 안에 든 것(`image/bar-fit`). **펼친 머리줄 ·
-   * 이름이 최대 폭까지 가져간 때의 폭**으로 센다(`expandedSlot` — 포커스 밖에서 `⋯ ⤢ ×` 가 접혀 넓어진 폭 · 접힘 움직임 중의 폭을 그대로 쓰면
-   * 판정이 바뀌어 이전/다음이 튄다 · 이름 길이가 다른 그림으로 넘길 때 다시 읽기 · 세그먼트가 들어갔다 빠져 이전/다음이 좌우로 움직인다)
+   * 도구줄 상자의 폭 — 판정은 펼친 머리줄 · 이름이 최대 폭까지 가져간 때의 폭으로 센다(`expandedSlot`) — 잰 폭을 그대로 쓰면 이전/다음이 튄다.
    */
   let barW = $state(0);
 
   /**
-   * 머리줄 이름 묶음(`.pane-ident`)의 지금 폭 · 최대 폭 — 판정을 "이름이 최대 폭까지 가져간 때" 로 세려고(`expandedSlot` 의 `name` — 넘길 때
-   * 이름 길이로 판정이 바뀌어 이전/다음이 움직이지 않게). 최대 폭은 CSS 의 `max-width`(도구줄이 선 머리줄은 `40%` = 머리줄 안쪽 폭의 비율)를
-   * 그대로 읽는다. 묶음이 없거나(파일 타일 `.gone`) 최대가 없으면(쿼리 타일 무리 고정 `none`) 깎지 않는다.
+   * 머리줄 이름 묶음(`.pane-ident`)의 지금 폭 · 최대 폭 — 최대 폭은 CSS `max-width`(도구줄이 선 머리줄은 `40%`)를 그대로 읽는다.
+   * 묶음이 없거나(파일 타일 `.gone`) 최대가 없으면(쿼리 타일 무리 고정 `none`) 깎지 않는다.
    */
   function nameBox(head: HTMLElement): NameBox | null {
     const ident = head.querySelector<HTMLElement>(".pane-ident");
@@ -694,8 +613,7 @@
     return { destroy: () => ro.disconnect() };
   }
   const counterText = $derived(counter ? `${counter.at} / ${counter.total}` : null);
-  /** 안쪽 여백을 뺀 폭 — 머리줄 안 `.bar.inhead` 는 왼쪽 4, 몸 위 `.bar` 는 양옆 6. 이전/다음만 남은 때(지금 그림이 없어졌다)는 가운데 글자 없이 센다 ·
-   *  `3 / 12` 는 지금 글자가 아니라 그 폴더의 가장 넓은 글자(`widestCounter`)로 센다(`9 / 12` → `10 / 12` 에 판정이 바뀌지 않게) */
+  /** 안쪽 여백을 뺀 폭 — 머리줄 안 `.bar.inhead` 는 왼쪽 4, 몸 위 `.bar` 는 양옆 6 */
   const fits = $derived(
     fitBar(
       barW > 0 ? Math.max(1, barW - (inHead ? 4 : 12)) : 0,
@@ -703,7 +621,6 @@
       pct,
     ),
   );
-  /** 이전/다음 · `3 / 12` 가 도구줄 밖(그림 위 양옆 · 아래 칩)에 서는가 — 좁은 타일이거나 도구줄에 안 들어갈 때 */
   const navOut = $derived(narrow || !fits.nav);
 
   let zoomMenu = $state<{ x: number; y: number } | null>(null);
@@ -786,7 +703,6 @@
   }
 </script>
 
-<!-- 외부 열기 단추 하나(띠 · 빈 화면) — 로컬은 기본 앱, 원격은 외부 편집기 -->
 {#snippet externalButton()}
   {#if backend.canOpenExternal}
     <button type="button" class="retry" onclick={() => void openExternally()}>{t("files.menu.openexternal")}</button>
@@ -795,8 +711,6 @@
   {/if}
 {/snippet}
 
-<!-- 도구줄 — 머리줄이 서 있으면 머리줄 가운데에, 아니면 몸 맨 위에(`pane/pane-tools.svelte.ts`). 도구줄 전체가 `data-head-act`(포커스 밖이면 접힌다 —
-     이전/다음은 `3 / 12` 까지 무리째, 배율 단추는 목록이 열린 동안 `aria-expanded` 로 남는다 · 몸 위에 그릴 때는 접지 않는다). 칸이 모자라면 다시 읽기 → [맞춤 | 1:1] → 이전/다음 순서로 뺀다(`image/bar-fit` — 배율은 늘 남는다) -->
 {#snippet imageBar(head: boolean)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="bar" class:inhead={head} use:measureBar onkeydown={onBarKey}>
@@ -811,7 +725,6 @@
           aria-label={t("files.image.prev")}
           onclick={act(() => go(-1))}><UiIcon name="chevron-left" size={14} /></button
         >
-        <!-- 지금 그림이 없어졌으면 빈 칸(사라진 그림을 세지 않는다 — 자리 폭은 그대로) -->
         <span class="count" data-image-counter style:min-width={counter ? counterMinCss(counter.total) : null}
           >{counterText ?? ""}</span
         >
@@ -878,9 +791,7 @@
   </div>
 {/snippet}
 
-<!--
-  `tabindex="-1" data-tile-focus` — 이 상자가 **타일의 키보드 몸**이다(`routeTileFocus` 가 여기 포커스를 준다). 키는 여기서 듣는다.
--->
+<!-- `data-tile-focus` — 이 상자가 타일의 키보드 몸이다(`routeTileFocus` 가 여기 포커스를 준다) -->
 <div
   class="image"
   role="presentation"
@@ -891,7 +802,6 @@
 >
   {#if !inHead}{@render imageBar(false)}{/if}
 
-  <!-- 띠 둘은 뜻이 다르다 — 기다리면 돌아온다(끊김) · 돌아오지 않는다(원본 없음). 파일 브라우저 · 문서 타일과 같은 자리 -->
   {#if sourceGone}
     <p class="banner gone">{t("files.browser.source.gone")}</p>
   {:else if offline}
@@ -977,7 +887,6 @@
     {/if}
 
     {#if navOut && hasNav && (phase === "ready" || phase === "missing")}
-      <!-- 좁은 타일(또는 도구줄에 안 들어갈 때)의 이전/다음 — 그림 위 양옆 둥근 단추(호버 · 포커스일 때만 보인다 · 파일 없음에도 남은 이웃으로) -->
       <button
         type="button"
         class="side prev"
@@ -1001,7 +910,6 @@
     {/if}
 
     {#if facts && phase === "ready"}
-      <!-- 칩 — 이전/다음이 도구줄에 있으면 왼쪽 아래(해상도 · 크기 · 형식), 그림 위로 나갔으면(`navOut` — 좁은 타일이든 이름이 길어 빠졌든) 아래 가운데(`3 / 12` 를 앞에) -->
       <!-- `3 / 12 · ` 의 끝 칸은 식(`{…}`)으로 넣는다 — 글자 그대로 쓰면 Svelte 가 요소 끝의 공백을 지운다(`8 / 11 ·1280 × 720`) -->
       <span class="facts" class:center={navOut} data-image-facts
         >{#if navOut && counterText}<span class="pos" data-image-facts-pos>{`${counterText} · `}</span>{/if}{facts}</span
@@ -1082,12 +990,11 @@
     min-height: 0;
     overflow: hidden;
     outline: none;
-    /* 다른 크롬 타일(문서 · 쿼리 · diff …)과 같은 바탕 — 빠져 있어 그림 밖이 월페이퍼로 비쳤다(2026-11-17 사용자).
-       글래스 크롬 타일이면 판(흐림 + `--glass-mid`)은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
+    /* 다른 크롬 타일과 같은 바탕 · 글래스 크롬 타일이면 판은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
     background: var(--tile-inner, var(--bg-panel));
   }
 
-  /* ── 도구줄 — 문서 타일(`doc/DocToolbar`)과 같은 결 ── */
+  /* ── 도구줄 ── */
   .bar {
     display: flex;
     align-items: center;
@@ -1170,9 +1077,7 @@
     padding: 0;
   }
 
-  /* 배율 글자 칸은 늘 `100%` 만큼 넓다 — 넘길 때 배율 글자(`42%` ↔ `100%` · `—`)로 단추 폭이 바뀌어 이전/다음이 움직이지 않게.
-     보이지 않는 `100%`(`.pct-sizer`)와 같은 격자 칸에 겹쳐 놓아 칸 폭 = 둘 중 넓은 쪽(글꼴 어림 없음 · 1000% 이상만 넓어진다).
-     (예전의 `min-width: calc(2.8em + 14px)` 는 단추가 UA 기본 border-box 라 안쪽 여백 · 테두리까지 먹어 `100%` 보다 좁았다.)
+  /* 배율 글자 칸은 보이지 않는 `100%`(`.pct-sizer`)와 같은 격자 칸에 겹쳐 늘 그만큼 넓다 — 넘길 때 단추 폭이 바뀌어 이전/다음이 움직이지 않게.
      폭을 바꾸면 `image/bar-fit` 의 `PCT_TEXT_MIN` 도 함께 */
   .btn.pct {
     padding: 0 4px 0 6px;
@@ -1202,7 +1107,7 @@
     background: var(--accent-soft);
   }
 
-  /* ── 띠 — 문서 타일과 같은 말(기다림 = 앰버 · 돌아오지 않음 = 빨강) ── */
+  /* ── 띠 ── */
   .banner {
     flex: 0 0 auto;
     margin: 0;
@@ -1373,10 +1278,7 @@
   }
 
   /*
-   * 칩 앞 `3 / 12` — 머리줄 도구줄(`data-head-act`)과 **같은 조건**으로 포커스 밖이면 접는다: 타일 상자(`.pane-box`)에 호버가 없고 그 상자의
-   * 머리줄(직계 `.pane-head`)이 `active`(포커스 · 하나뿐인 타일)도 `:focus-within` 도 아닐 때 — 셀렉터는 `pane/PaneHeader.svelte` 의 "드러냄"
-   * 규칙 그대로다. 머리줄이 없는 타일(몸 위 도구줄 — 늘 보임)은 `.pane-head` 가 없어 걸리지 않으니 `3 / 12` 도 늘 보인다. 글은 DOM 에 남는다
-   * (폭 0 + 불투명도 — 읽는 문구는 그대로), 빠르기는 머리줄 접기와 같은 120ms.
+   * 칩 앞 `3 / 12` — 머리줄 도구줄(`data-head-act`)과 같은 조건으로 포커스 밖이면 접는다 · 셀렉터는 `pane/PaneHeader.svelte` 의 "드러냄" 규칙 그대로다.
    */
   .facts {
     interpolate-size: allow-keywords;

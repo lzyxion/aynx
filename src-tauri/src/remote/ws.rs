@@ -1,15 +1,11 @@
-//! 원격 창의 **WebSocket**(R1a-3) — `GET /remote/ws?t=<부팅 표>` 업그레이드 + 연결 하나의 고리.
+//! 원격 창의 **WebSocket** — `GET /remote/ws?t=<부팅 표>` 업그레이드 + 연결 하나의 고리.
 //!
-//! 받는 조건(전부): 문지기(Host·Origin — `gateway::check_request`)를 지났고 **`Origin` 이 반드시 있다**(브라우저 ws 는 늘 싣는다) ·
-//! 쿠키가 **열림**(기기 + 살아 있는 세션) · 부팅 표가 그 기기·그 세션의 것(1회용 — `auth::take_ticket`) · 연결 상한(기기당
-//! [`MAX_PER_DEVICE`] · 전체 [`MAX_TOTAL`]). 업그레이드 뒤의 연결은 관문의 HTTP 연결 수명(2분) 밖이다 — 대신:
+//! 받는 조건(전부): 문지기(Host·Origin)를 지났고 **`Origin` 이 반드시 있다** · 쿠키가 **열림**(기기 + 살아 있는 세션) ·
+//! 부팅 표가 그 기기·그 세션의 것(1회용) · 연결 상한 안.
 //!
-//! - **세션이 끝나면 곧바로 닫는다**: 잠그기·폐기·관문 끄기는 [`sessions_changed`] 가 깨우고, 무입력·절대 시한은 [`SESSION_CHECK`]
-//!   마다 본다. invoke 마다도 세션을 다시 본다. 이렇게 닫힌 연결은 볼트 셈의 유예가 없다(`windows::conn_closed`).
-//! - 핑 [`PING_EVERY`] · 아무것도 받지 못한 지 [`IDLE_TIMEOUT`] 이면 닫는다. 메시지·프레임 상한 [`MAX_MESSAGE`].
-//! - 원격 세션의 **무입력 시계는 사람 입력만** 되감는다 — 페이지가 키·포인터 입력 때 `{t:"active"}` 를 보낸다(IPC 폴링은 아니다).
-//!
-//! 끊기면 페이지는 다시 읽는다(`polyfill.js`) — 같은 페이지가 새 연결에 다시 붙지 않는다(라벨 = 페이지 수명 · `bridge.rs`).
+//! - 업그레이드 뒤의 연결은 관문의 HTTP 연결 수명 밖이라 **세션이 끝나면 여기서 곧바로 닫는다**(받는 메시지마다도 세션을 다시 본다).
+//! - 원격 세션의 **무입력 시계는 사람 입력(`{t:"active"}`)만** 되감는다 — IPC 폴링으로 되감지 않는다.
+//! - 같은 페이지가 새 연결에 다시 붙지 않는다(라벨 = 페이지 수명) — 끊기면 페이지가 다시 읽는다.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -31,34 +27,29 @@ use super::bridge::{self, Out, Outbox};
 use super::frames::{self, ClientFrame};
 use super::windows;
 
-/// 받는 메시지·프레임 상한 — 파일 저장(원시 본문 invoke)도 이 안이어야 한다.
+/// 파일 저장(원시 본문 invoke)도 이 안이어야 한다 — 프런트 `REMOTE_RAW_MAX_BYTES` 가 이 값보다 작다(시험 `ipc.test.ts` 가 이 줄의 글자를 읽는다).
 pub(crate) const MAX_MESSAGE: usize = 16 * 1024 * 1024;
 const PING_EVERY: Duration = Duration::from_secs(20);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const SESSION_CHECK: Duration = Duration::from_secs(5);
-/// 기기 하나가 동시에 여는 원격 창 상한.
 pub(crate) const MAX_PER_DEVICE: usize = 4;
-/// 전체 원격 창 상한.
 pub(crate) const MAX_TOTAL: usize = 12;
 
-/// 세션 표가 바뀌었다(잠그기·폐기·관문 끄기 — `gate::sessions_changed`) — 모든 연결이 자기 세션을 곧바로 다시 본다.
 static SESSIONS: Notify = Notify::const_new();
 
 pub(crate) fn sessions_changed() {
     SESSIONS.notify_waiters();
 }
 
-/// 기기 → 지금 연결 수.
 static PER_DEVICE: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Mutex::default);
 static TOTAL: AtomicUsize = AtomicUsize::new(0);
 
-/// 연결 자리 하나 — 떨어지면 돌려준다.
+/// 떨어지면 자리를 돌려준다.
 pub(crate) struct Slot {
     device: String,
 }
 
 impl Slot {
-    /// 상한 안이면 자리를 잡는다.
     pub(crate) fn take(device: &str) -> Option<Slot> {
         let mut per = PER_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
         let n = per.get(device).copied().unwrap_or(0);
@@ -84,7 +75,7 @@ impl Drop for Slot {
     }
 }
 
-/// `Sec-WebSocket-Accept` — `base64(sha1(key + GUID))`(RFC 6455 4.2.2). 키는 base64 16바이트(24자)만.
+/// RFC 6455 4.2.2.
 pub(crate) fn accept_key(key: &str) -> Option<String> {
     use sha1::{Digest, Sha1};
     let key = key.trim();
@@ -98,7 +89,6 @@ pub(crate) fn accept_key(key: &str) -> Option<String> {
     Some(data_encoding::BASE64.encode(&h.finalize()))
 }
 
-/// 연결 하나에 필요한 것.
 pub(crate) struct Conn {
     pub app: AppHandle,
     pub auth: Arc<Auth>,
@@ -109,14 +99,13 @@ pub(crate) struct Conn {
     pub slot: Slot,
 }
 
-/// 닫힌 까닭 — 세션이 끝나서 닫혔는가가 볼트 셈의 유예를 가른다.
+/// 세션이 끝나서 닫혔는가가 볼트 셈의 유예를 가른다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
     SessionEnded,
     Other,
 }
 
-/// 업그레이드된 연결 하나를 끝까지 돈다.
 pub(crate) async fn serve(conn: Conn, upgraded: Upgraded, mut stop: watch::Receiver<bool>) {
     let Conn {
         app,
@@ -146,7 +135,6 @@ pub(crate) async fn serve(conn: Conn, upgraded: Upgraded, mut stop: watch::Recei
     bridge::register(&label, gen, out.clone());
     windows::conn_opened();
     eprintln!("[aynx] 원격 관문: 원격 창 열림 — {label}");
-    // 기록 · 상태바(R1a-5 — `activity.rs`).
     super::activity::conn_opened(&device);
     let name = auth.lock().device_name(&device);
     super::activity::record(super::activity::Kind::Connected, &device, &name);

@@ -1,5 +1,4 @@
-//! 세션 열기 — 로컬(`open` — 스트림 예약 · 신호/타일 토큰 · **셸 생성 `pty::spawn_shell` 의 유일한 자리** · 실패면 예약 · 토큰을
-//! 되돌림)과 SSH(`open_ssh`). 싱크는 펌프보다 먼저 `plug` 로 꽂는다. `server/sessions.rs` 에서 그대로 옮겼다.
+//! 세션 열기 — 로컬 · SSH. **셸 생성 `pty::spawn_shell` 의 유일한 자리**다(시험 `server_spawns_only_turns_and_verify`).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,10 +16,8 @@ use crate::output;
 use crate::pty::{self, SpawnSpec, Spawned};
 use crate::session_core::{core, Kind};
 
-/// `open_ssh` — 몸을 풀고(serde 문구 대신 고정 문구 — 몸에 비밀번호·암호구가 실린다) 연다. 성공하면 그 임대의 연결 싱크를
-/// 꽂고 링을 0 부터 재생한다(열기 중의 보안 알림·첫 프롬프트). 실패는 코드 `ssh-open` + `SshOpenError` JSON(GUI 가 풀어
-/// 예전 계약 그대로 프런트에 돌려준다 — 호스트 키·비밀번호·암호구 모달은 GUI 의 일).
 pub(super) async fn open_ssh(b: Value, ctx: &ConnCtx) -> Result<Value, WireError> {
+    // serde 문구 대신 고정 문구 — 몸에 비밀번호·암호구가 실린다.
     let o: crate::ssh::open::OpenSsh =
         serde_json::from_value(b).map_err(|_| WireError::new(code::BAD_BODY, "bad open_ssh body"))?;
     let (stream, window) = (o.stream.clone(), o.window.clone());
@@ -34,10 +31,9 @@ pub(super) async fn open_ssh(b: Value, ctx: &ConnCtx) -> Result<Value, WireError
             ))
         }
     };
-    // 주의 크기를 적어 둔다(R2-A — 시청자가 크기 주인이었다가 주가 다시 칠 때 돌아갈 크기).
+    // 시청자가 크기 주인이었다가 주가 다시 칠 때 돌아갈 크기.
     core().note_size(&opened.lease.stream, opened.lease.lease_epoch, open_size.0, open_size.1);
     if let Some((slot, gate, _)) = crate::ssh::attach_parts(crate::ssh::table(), opened.id) {
-        // 서버 해석기(2026-11-09) — 꽂기 전의 링(보안 알림 · 첫 프롬프트)으로 따라잡고 이어 간다.
         crate::screen_mirror::install(&slot, &opened.lease.stream, Kind::Ssh, open_size.0, open_size.1);
         let plugged = plug(&opened.lease, ctx.id, &gate, || {
             let credit = new_credit(Kind::Ssh, opened.id, Arc::clone(&gate));
@@ -54,14 +50,10 @@ pub(super) async fn open_ssh(b: Value, ctx: &ConnCtx) -> Result<Value, WireError
     Ok(serde_json::to_value(opened).unwrap_or(Value::Null))
 }
 
-/// `open_ssh` 실패 코드 — 메시지가 `SshOpenError` JSON 이다(`server::proxy::open_ssh_session` 이 푼다).
+/// 메시지가 `SshOpenError` JSON 이다(`server::proxy::open_ssh_session` 이 푼다).
 pub(crate) const SSH_OPEN: &str = "ssh-open";
 
-/// `open` 몸 — 스트림(GUI 가 늘 채운다 — 없는 타일엔 이름을 지어 준다) · 창 라벨 · 띄울 재료 · **신호를 받을 타일인가**
-/// (프런트가 스트림 id 를 준 타일 — 지어 준 이름의 타일은 훅이 가리킬 스트림이 없어 받지 않는다) · **MCP 토큰을 받을 타일인가**(`mcp` — 3차 4단계
-/// 로컬 AI 타일 · 2026-10-26 감싸개가 있는 로컬 셸 타일도:
-/// 서버가 그 타일만의 MCP 토큰을 뽑아 셸 환경에 넣는다 · 신호를 받는 타일일 때만 — 같은 주인 번호로 함께 거둔다).
-/// GUI 가 싣는 `ai`(AI 타일인가)는 받아서 버린다 — 서버는 둘을 가르지 않는다(AI 읽기 허용은 둘 다 타일별 · 모르는 칸이라 serde 가 버린다).
+/// `mcp` 는 신호를 받는 타일(`signal`)일 때만 통한다. GUI 가 싣는 `ai` 는 모르는 칸이라 버린다 — 서버는 AI 타일과 감싸개 셸 타일을 가르지 않는다.
 #[derive(Deserialize)]
 pub(super) struct Open {
     stream: String,
@@ -73,7 +65,6 @@ pub(super) struct Open {
     mcp: bool,
 }
 
-/// 진행 중인 열기의 스트림 예약 — 서지 못한 채 떨어지면(실패) 스스로 푼다.
 struct Reservation {
     stream: String,
     committed: bool,
@@ -88,15 +79,13 @@ impl Drop for Reservation {
 }
 
 pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
-    // **스트림별 예약**을 먼저 — 같은 스트림이 살아 있으면 `[session-alive]`(GUI 는 붙는다), 열기 중이면 `[session-busy]`.
     core().reserve(&o.stream).map_err(|e| serr(e.message()))?;
     let mut reservation = Reservation {
         stream: o.stream.clone(),
         committed: false,
     };
     let mut spec = o.spec;
-    // 신호 몫(주소 = **이 서버의** 신호 포트 · 스트림 · 신호 전용 토큰)은 서버가 뽑아 자식 환경에 넣는다(③-3a) — 로컬 토큰은
-    // 파이프를 타지 않는다. GUI 가 준 같은 이름은 지운다(MCP 토큰만 GUI 몫이다).
+    // 신호 토큰은 서버가 뽑아 자식 환경에 넣는다 — 파이프를 타지 않는다. GUI 가 준 같은 이름은 지운다.
     let grant = if o.signal {
         ctx.signal_port.and_then(|_| crate::agent_signal::issue(&o.stream, None))
     } else {
@@ -112,9 +101,7 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
     }
     let signal_key = grant.as_ref().map(crate::agent_signal::SignalGrant::key);
     drop(grant);
-    // **타일 MCP 토큰**(3차 4단계 — `crate::tile_token`): MCP 토큰은 이제 GUI 가 주지 않는다 — 서버가 AI 타일 · 감싸개가 있는 로컬 셸 타일
-    // (`mcp` — 2026-10-26)마다 뽑아 넣고(신호 토큰과
-    // 같은 주인 번호 · 같은 수명), 회차가 서면 그 회차에 묶는다. GUI 가 같은 이름을 실어 보냈으면 지운다(전역 토큰이 타일로 새지 않게).
+    // 타일 MCP 토큰은 GUI 가 주지 않는다 — 서버가 타일마다 뽑는다. GUI 가 같은 이름을 실어 보냈으면 지운다(전역 토큰이 타일로 새지 않게).
     spec.env.retain(|(k, _)| k != crate::tile_env::MCP_TOKEN_ENV);
     let tile_owner = match (&signal_key, o.mcp) {
         (Some((s, owner)), true) => crate::tile_token::issue(s, *owner).map(|tok| {
@@ -123,8 +110,7 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
         }),
         _ => None,
     };
-    // **권한 결정 토큰**(2026-11-01 — `crate::tile_permission`): 같은 타일(`mcp`)에 · 같은 주인 번호 · 같은 수명. 신호 토큰과 따로다(서로의 경로에서
-    // 401). GUI 가 같은 이름을 실어 보냈으면 지운다.
+    // 권한 결정 토큰은 신호 토큰과 따로다(서로의 경로에서 401). GUI 가 같은 이름을 실어 보냈으면 지운다.
     spec.env.retain(|(k, _)| k != crate::tile_env::PERMISSION_TOKEN_ENV);
     let perm_owner = match (&signal_key, o.mcp) {
         (Some((s, owner)), true) => crate::tile_permission::issue(s, *owner).map(|tok| {
@@ -152,27 +138,27 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
         }
     };
     let slot = session.output_slot();
-    // 서버 해석기(2026-11-09 — `crate::screen_mirror`) — 펌프보다 먼저 꽂아 첫 바이트부터 따라간다(창이 없을 때 거울을 잇는다).
+    // 펌프보다 먼저 꽂아야 첫 바이트부터 따라간다.
     crate::screen_mirror::install(&slot, &o.stream, Kind::Local, open_size.0, open_size.1);
     let gate = session.gate();
     let id = pty::alloc_id();
     let keys = {
         let mut core = core();
         let keys = core.commit(&o.stream, Kind::Local, id, &o.window, Instant::now());
-        // 주의 크기를 적어 둔다 — 시청자가 크기 주인이었다가 주가 다시 칠 때 돌아갈 크기(R2-A).
+        // 시청자가 크기 주인이었다가 주가 다시 칠 때 돌아갈 크기.
         core.note_size(&o.stream, keys.lease_epoch, open_size.0, open_size.1);
         core.set_lease_conn(&o.stream, ctx.id);
         keys
     };
     reservation.committed = true;
-    // 타일 MCP 토큰을 이 회차에 묶는다(코어 잠금 밖 — `tile_token` 머리말의 잠금 순서). 이 뒤로 그 토큰은 이 회차가 사는 동안만 통한다.
+    // 코어 잠금 밖에서 — `tile_token` 머리말의 잠금 순서.
     if let Some(owner) = tile_owner {
         crate::tile_token::bind_epoch(&o.stream, owner, keys.session_epoch);
     }
     if let Some(owner) = perm_owner {
         crate::tile_permission::bind_epoch(&o.stream, owner, keys.session_epoch);
     }
-    // 싱크는 펌프보다 먼저 — 첫 바이트(오프셋 0)부터 이 임대로 간다. 그 사이 연결이 끊겼으면 꽂지 않고 떨어진 채 띄운다.
+    // 싱크는 펌프보다 먼저 — 첫 바이트(오프셋 0)부터 이 임대로 간다.
     let plugged = plug(&keys, ctx.id, &gate, || {
         let credit = new_credit(Kind::Local, id, Arc::clone(&gate));
         output::swap_output(&slot, sink(ctx, &keys, credit));
@@ -183,7 +169,7 @@ pub(super) async fn open(o: Open, ctx: &ConnCtx) -> Result<Value, WireError> {
     let Some(mark) = pty::pump_output(id, reader) else {
         return Err(serr(crate::errors::session_gone_closed()));
     };
-    // 종료 감시는 **표에 오른 뒤** — 곧바로 끝나는 셸도 코어에 `Exited` 를 적을 항목이 있어야 한다.
+    // 종료 감시는 표에 오른 뒤 — 곧바로 끝나는 셸도 코어에 `Exited` 를 적을 항목이 있어야 한다.
     pty::spawn_exit_watch(id, child, mark, slot, Box::new(retire_credit));
     if !plugged {
         return Err(plugged_too_late("open local", &o.stream, ctx.id));

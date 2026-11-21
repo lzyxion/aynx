@@ -2,16 +2,16 @@
   import type { DbQueryResult } from "./query-backend";
   import type { ChartPick } from "./chart-model";
 
-  /** 고른 축 · 종류 — 결과마다 기억한다(`RunResults` 의 `chosenTab` 과 같은 꼴 · 저장하지 않는다 — 다시 실행하면 기본 축으로) */
+  /** 결과마다 기억한다 — 저장하지 않는다 */
   const chosenPick = new WeakMap<DbQueryResult, ChartPick>();
 
-  /** 부르는 쪽이 들고 있는 고른 축(데이터 탭 — 다시 읽어도 남게). 열 이름 묶음 `cols` 가 같은 결과에만 쓴다 */
+  /** 열 이름 묶음 `cols` 가 같은 결과에만 쓴다 */
   export interface KeptPick {
     cols: string;
     pick: ChartPick;
   }
 
-  /** 열 이름 묶음 — 열 번호로 기억한 축이 같은 열을 가리키는지의 근거 */
+  /** 열 번호로 기억한 축이 같은 열을 가리키는지의 근거 */
   export function columnsKey(result: DbQueryResult): string {
     return JSON.stringify(result.columns.map((c) => c.name));
   }
@@ -44,15 +44,8 @@
   } from "./chart-model";
 
   /**
-   * **결과 차트** — 결과 표의 [차트] 쪽(2026-10-15). 조절 줄(X 하나 · Y 여럿 · 종류 셋) + 범례 + uPlot 그림 + 커서 말풍선.
-   *
-   * 규칙(열 분류 · 기본 축 · 정렬 · 막대 자리 · 글자)은 전부 `chart-model`(순수)이고, 여기는 그리기만 한다. uPlot 은 처음 [차트] 때
-   * `uplot-loader` 로 받는다. 크기는 `ResizeObserver`(→ `setSize`), 색 · 글꼴 · 격자는 테마 토큰을 그 자리에서 풀어 읽고
-   * (`color-mix` 가 든 토큰도 있어 캔버스에 글자째 넘기지 않는다 — 탐침 요소의 계산된 색), `<html>` 의 속성(밝기 `data-theme` ·
-   * 프로필의 인라인 토큰 `style`)이 바뀌면 다시 그린다. 시간 축은 **UTC** 로 그린다(`chart-model.parseTemporal` 이 시간대 없는 글자를
-   * 그대로 UTC 로 읽으므로 화면의 글자가 표의 글자와 같다).
-   *
-   * 범례는 uPlot 것을 끄고 여기서 그린다(테마 · 키보드 — 단추를 누르면 그 시리즈를 숨기고 보인다). 언마운트 때 `destroy()`.
+   * 쿼리 결과 차트(uPlot). 테마 토큰은 탐침 요소의 계산된 색으로 풀어 읽는다 — `color-mix` 가 든 토큰은 캔버스에 글자째 넘기지 못한다.
+   * 범례는 uPlot 것을 끄고 여기서 그린다(테마 · 키보드).
    */
   let {
     result,
@@ -61,15 +54,14 @@
     kept = $bindable(),
   }: {
     result: DbQueryResult;
-    /** `chart-model.classifyColumns(result)` — 부르는 쪽([표 | 차트] 단추의 비활성 판정)이 이미 지었다 */
+    /** `chart-model.classifyColumns(result)` — 부르는 쪽이 이미 지었다 */
     classes: ColClass[];
-    /** 조절 줄 맨 앞(부르는 쪽의 [표 | 차트] 전환) */
     lead?: Snippet;
-    /** 묶으면 결과가 바뀌어도(데이터 탭의 조건 · 쪽 · 정렬) 고른 축 · 종류가 남는다 — 열 이름 묶음이 다르면 기본 축 */
+    /** 묶으면 결과가 바뀌어도 고른 축 · 종류가 남는다 — 열 이름 묶음이 다르면 기본 축 */
     kept?: KeptPick;
   } = $props();
 
-  // `chosenPick` 에서 꺼낸 처음 값 — 결과가 바뀌면 부르는 쪽이 `{#key}` 로 새로 만든다
+  // 처음 값만 — 결과가 바뀌면 부르는 쪽이 `{#key}` 로 새로 만든다
   // svelte-ignore state_referenced_locally
   const colsKey = columnsKey(result);
   // svelte-ignore state_referenced_locally
@@ -111,7 +103,7 @@
   ];
 
   // ── 테마 ────────────────────────────────────────────────────────────────
-  /** 시리즈 색 — 칩 색 줄(테마마다 대비를 맞춰 둔 것) + 의미색. Y 상한(8)과 같은 길이 */
+  /** Y 상한(`MAX_Y`)과 같은 길이 */
   const SERIES_TOKENS = ["--accent", "--chip-branch", "--chip-tmux", "--chip-folder", "--chip-forward", "--chip-jump", "--ok", "--err"];
 
   interface Theme {
@@ -145,13 +137,12 @@
     return out;
   }
 
-  /** `rgb(r, g, b)` · `rgba(…)` → 알파를 바꾼 `rgba` (막대 칠 · 산점도 점의 겹침이 보이게) */
   function withAlpha(c: string, a: number): string {
     const m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(c);
     return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${a})` : c;
   }
 
-  // 밝기 전환(`data-theme`) · 프로필 · 강조색(인라인 토큰 `style`)은 모두 `<html>` 의 속성으로 온다 — 한 프레임에 모아 한 번
+  // 밝기 · 프로필 · 강조색은 모두 `<html>` 의 속성(`data-theme` · 인라인 `style`)으로 온다
   $effect(() => {
     let raf = 0;
     const mo = new MutationObserver(() => {
@@ -193,7 +184,7 @@
     return () => ro.disconnect();
   });
 
-  /** 범주 X 의 눈금 — 라벨 폭으로 솎는다(다 적으면 겹친다) */
+  /** 라벨 폭으로 솎는다 — 다 적으면 겹친다 */
   function categorySplits(labels: string[], plotW: number) {
     const longest = Math.min(16, labels.reduce((m, s) => Math.max(m, s.length), 1));
     const step = Math.max(1, Math.ceil((labels.length * (longest * 7 + 16)) / Math.max(1, plotW)));
@@ -208,7 +199,6 @@
     return s.length > 16 ? s.slice(0, 15) + "…" : s;
   }
 
-  /** 커서 말풍선 — X 글자 + 보이는 시리즈의 값(값 없는 자리는 —) */
   function tooltipPlugin(s: ChartSeries, names: string[], cols: string[]): uPlotT.Plugin {
     let tip: HTMLDivElement | null = null;
     return {
@@ -251,7 +241,6 @@
             tip!.appendChild(row);
           });
           tip.style.display = "block";
-          // 커서 오른쪽 아래 — 넘치면 반대쪽으로
           const ow = u.over.clientWidth;
           const oh = u.over.clientHeight;
           const tw = tip.offsetWidth;
@@ -286,7 +275,7 @@
     }
     const yAxis: uPlotT.Axis = { ...axis(), size: 56 };
 
-    // 끝 막대 · 끝 범주가 잘리지 않게 반 칸씩 넓힌다 — 다만 끌어서 확대한 범위(데이터 끝이 아닌 것)는 그대로 둔다
+    // 끝 막대가 잘리지 않게 반 칸씩 넓힌다 — 끌어서 확대한 범위는 그대로 둔다
     const lo = s.xs[0];
     const hi = s.xs[s.xs.length - 1];
     const pad = layout ? layout.colW / 2 : 0.5;
@@ -322,7 +311,7 @@
     const opts: uPlotT.Options = {
       width: w,
       height: h,
-      // 시간 축은 UTC — `parseTemporal` 이 시간대 없는 글자를 그대로 UTC 로 읽었다
+      // UTC 여야 한다 — `parseTemporal` 이 시간대 없는 글자를 그대로 UTC 로 읽었다
       tzDate: (ts) => U.tzDate(new Date(ts * 1000), "Etc/UTC"),
       scales: {
         x: { time: s.xKind === "temporal", range: xRange },
@@ -340,7 +329,6 @@
     return new U(opts, [s.xs, ...s.ys] as uPlotT.AlignedData, el);
   }
 
-  // 데이터 · 종류 · 테마 · 크기 0 → 다시 짓는다. 크기만 바뀌면 `setSize`
   let builtFor: { s: ChartSeries; kind: ChartKind; tick: number } | null = null;
   $effect(() => {
     const U = lib;
@@ -361,7 +349,7 @@
       return;
     }
     chart?.destroy();
-    // 숨긴 시리즈 · 열 이름은 짓는 순간의 값만 — 범례 단추는 다시 짓지 않고 `setSeries` 로
+    // 숨긴 시리즈는 짓는 순간의 값만 — 범례 단추는 다시 짓지 않고 `setSeries` 로
     chart = untrack(() => build(U, el, s, kind, w, h, readTheme(wrap)));
     builtFor = { s, kind, tick };
   });
@@ -468,7 +456,6 @@
     flex-direction: column;
   }
 
-  /* 조절 줄 — 결과 탭 줄 아래 · 표의 머리와 같은 자리 */
   .ctl {
     flex: 0 0 auto;
     display: flex;
@@ -635,7 +622,6 @@
     margin: 4px 4px 2px;
   }
 
-  /* uPlot 은 자기 뿌리를 이 칸에 붙인다 — 칸 크기는 ResizeObserver 가 넘긴다 */
   .plot :global(.uplot) {
     position: absolute;
     inset: 0;

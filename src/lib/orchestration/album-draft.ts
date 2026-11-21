@@ -1,4 +1,3 @@
-// 앨범 초안의 순수 모양 · 기본값 병합 · 제출 열쇠. 서버 상태나 브라우저 저장소를 쓰지 않는다.
 import type { ArtistProfile } from "./artist-form";
 import { EFFORTS, LIMITS, modelOk, type RoleCli } from "./config";
 
@@ -10,14 +9,14 @@ export interface AlbumDefaults {
   members?: AlbumMemberInput[]; accept?: AlbumAccept; verify?: Partial<AlbumVerify> | null;
   limits?: Partial<AlbumLimits>; verifyAuto?: boolean; planTools?: boolean; wakeMax?: number;
   producer?: { cli: RoleCli; model: string; effort?: string | null } | null;
-  /** 같은 저장소의 지난 앨범에서 온 구성인가(없으면 씨앗 기본) — 옛 서버는 칸이 없다 → 거짓으로 본다 */
+  /** 옛 서버는 칸이 없다 → 거짓으로 본다 */
   fromLast?: boolean;
 }
 export interface AlbumDraft {
   repo: string; name: string; text: string; cli: RoleCli; model: string; effort: string;
   members: AlbumMemberInput[]; accept: AlbumAccept; verify: AlbumVerify; limits: AlbumLimits;
   planTools: boolean; wakeMax: number; riskConfirmed: boolean;
-  /** 완료되면 자동 병합 — 기본 꺼짐 · 지난 앨범에서 물려받지 않는다 */
+  /** 기본 꺼짐 · 지난 앨범에서 물려받지 않는다 */
   autoMerge: boolean;
 }
 export interface AlbumFork { agent: RoleCli; conv: string }
@@ -36,7 +35,6 @@ export function blankAlbumDraft(): AlbumDraft {
     limits: Object.fromEntries(ALBUM_LIMITS.map((l) => [l.key, l.default])) as AlbumLimits, planTools: false, wakeMax: 30, riskConfirmed: false, autoMerge: false };
 }
 
-/** 목록 갱신으로 지워진 멤버와 판정 규칙을 함께 뺀다. 살아 있는 편집은 보존한다. */
 export function pruneAlbumArtists(draft: AlbumDraft, artists: readonly ArtistProfile[]): AlbumDraft {
   const members = draft.members.filter((m) => artists.some((a) => a.id === m.artist)).map((m) => {
     const judge = artists.find((a) => a.id === m.artist)?.kind === "judge";
@@ -64,7 +62,6 @@ export function mergeAlbumDefaults(draft: AlbumDraft, defaults: AlbumDefaults, a
   }, artists);
 }
 
-/** 보낼 시작 입력 — 초안의 빈 강도("" = CLI 기본)는 `null` 로 바꾼다 */
 export function albumStartInput(d: AlbumDraft, chat: string, clientId: string, fork?: AlbumFork): AlbumStartInput {
   const { repo, cli, model, effort, name, text, members, accept, verify, limits, planTools, wakeMax, riskConfirmed } = d;
   const autoMerge = autoMergeOn(d);

@@ -1,95 +1,35 @@
 /**
- * 자동 승인 **묶음 프리셋**(bundle) — 순수 데이터 한 장
- * (docs/log/2026-09-16-auto-approval-bundles.md).
+ * 자동 승인 묶음 프리셋 — 순수 데이터.
  *
- * ## 묶음이란 무엇인가
- *
- * 허용 목록을 손으로 한 줄씩 적는 것은 정확하지만 느리고, 무엇보다 **사용자가 위임한 범위를
- * 이름으로 말할 수 없다**. 묶음은 그 이름이다 — "파일 읽기" 를 켜면 그 안의 규칙들이
- * 사용자의 허용 목록에 **얹힌다**(대체하지 않는다). 켜는 것도 끄는 것도 사람이고, 묶음 하나는
- * `settings.toml` 의 `[automation] bundles = ["files"]` 한 글자다. 묶음 안의 명령 하나만 끌 수도
- * 있다(`[automation.bundle_off] files = ["cat"]` — 좁히기만 한다).
- *
- * ## 불변 (바닥은 그대로다)
- *
- * 묶음은 **기본 거부를 넓히지 않는다** — 사용자가 켜야만 규칙이 생기고, 그 규칙도 여전히
- * `policy.ts`/`policy.rs` 의 같은 문(위험 배제 · 구획 분해 · 상한 · 빈도 한도)을 통과해야
- * 자동 승인된다. 여기에 적힌 것은 **allowlist 항목**일 뿐 승인이 아니다. AI 는 이 파일을
- * 바꿀 수 없고(MCP 는 읽기 전용), 묶음을 켜는 길은 앱 설정 화면 하나다.
- *
- * ## ⚠️ 묶음을 더하거나 규칙을 넓히는 것은 **보안 검토**다
- *
- * 여기 한 줄이 늘면 그 묶음을 켠 모든 사용자의 무인 실행 범위가 늘어난다. 새 항목은 아래
- * 세 질문을 전부 통과해야 한다:
- *
- * 1. **읽기·관찰 전용인가** — 상태를 바꾸는 서브커맨드는 안 된다(서비스 제어는 `status` 류까지).
- * 2. **인자로 쓰기가 되지 않는가** — `find -delete`·`-exec` 처럼 플래그 하나로 파괴가 되는
- *    실행 파일은 exec 단위 위임이 성립하지 않는다(제외한다).
- * 3. **비밀을 뱉지 않는가** — `env`·`printenv` 류는 토큰·비밀번호를 그대로 찍는다(제외한다).
- *
- * 실제로 **뺀 것들**(기록으로 남긴다): `find`(-delete·-exec 가 인자다) · `env`/`printenv`(비밀) ·
- * `top`(대화형 — 무인 경로에서 타임아웃까지 화면만 잡는다).
- *
- * ## 세분화 (2026-10-05)
- *
- * 예전 두 묶음(`diag-readonly`·`git-readonly`)을 열 개로 나눴다 — 한 명령은 한 묶음에만 있다.
- * 묶음 안 규칙은 **명령 키**([`commandKey`])로 묶이고 그 키가 `bundle_off` 에 적힌다. 옛 id 는 Rust 가
- * 읽을 때 옮긴다(`automation_presets::migrate_legacy_bundles` — 넓어지지 않게 옛 묶음에 없던 명령은 꺼
- * 둔 채로). 묶음 규칙은 서브커맨드가 있으면 그 낱말이 **exec 바로 뒤**여야 한다(`sub_first` — 앞
- * 플래그의 값이 서브커맨드로 위장하는 `git -C status push` 를 막는다). `ip` 만 `any_order` 예외.
- *
- * ## Rust 쌍둥이 (드리프트 잠금)
- *
- * `src-tauri/src/automation_presets.rs` 에 **글자 그대로 같은 표**가 있다. 백엔드가 권위이므로
- * (승인은 Rust 가 다시 판정한다) 두 표가 어긋나면 화면이 약속한 것과 실제로 열린 것이
- * 달라진다. `automation-presets.test.ts` 가 Rust 파일을 읽어 **id·이름·설명·규칙까지** 같은지
- * 확인한다 — 한쪽만 고치면 게이트가 깨진다.
+ * - 묶음은 기본 거부를 넓히지 않는다 — 사람이 켜야만 규칙이 사용자 허용 목록에 얹히고, 그 규칙도 `policy.ts`/`policy.rs` 의
+ *   같은 문(위험 배제 · 구획 분해 · 상한 · 빈도 한도)을 통과해야 한다. 여기 적힌 것은 allowlist 항목일 뿐 승인이 아니다.
+ *   AI 는 이 파일을 바꿀 수 없고 묶음을 켜는 길은 앱 설정 화면 하나다.
+ * - 묶음을 더하거나 규칙을 넓히는 것은 보안 검토다 — 읽기 · 관찰 전용인가 · 인자로 쓰기가 되지 않는가 · 비밀을 뱉지 않는가.
+ *   뺀 것: `find`(-delete · -exec 가 인자다) · `env`/`printenv`(비밀) · `top`(대화형).
+ * - 서브커맨드가 있으면 그 낱말이 exec 바로 뒤여야 한다(`sub_first` — 앞 플래그의 값이 서브커맨드로 위장하는 `git -C status push`
+ *   를 막는다). `ip` 만 `any_order` 예외.
+ * - `src-tauri/src/automation_presets.rs` 에 글자 그대로 같은 표가 있고 권위는 Rust 다. `automation-presets.test.ts` 가 둘을 대조한다.
  */
 
 import type { AllowRule } from "$lib/settings.svelte.js";
 
-/**
- * 묶음 규칙 하나 — 사용자 규칙(`AllowRule`)과 같은 칸에 표 전용 둘을 더했다.
- *
- * - `key` — 명령 키를 직접 정할 때만(없으면 [`commandKey`] 의 기본 규칙).
- * - `any_order` — 서브커맨드 앞 플래그를 받는다(허용 플래그가 값 없는 출력 모양뿐인 `ip`). 없으면
- *   서브커맨드가 있을 때 펼친 규칙에 `sub_first` 가 선다.
- */
+/** `any_order` — 서브커맨드 앞 플래그를 받는다(`ip`). 없으면 서브커맨드가 있을 때 펼친 규칙에 `sub_first` 가 선다. */
 export interface BundleRule extends AllowRule {
   key?: string;
   any_order?: boolean;
 }
 
-/**
- * 묶음 하나 — 이름으로 말하는 위임 범위.
- *
- * `rules` 는 기존 구조적 규칙(`[[automation.allow]]`)과 **같은 모양**이다: `subcommands` 가
- * 비면 서브커맨드 개념이 없다는 뜻(플래그만 붙는 `df -h` 류는 통과), 비어 있지 않으면 첫
- * 비플래그 토큰이 그 목록에 있어야 한다. 인자 제약 다섯 칸(`deny_flags`·`allow_flags`·
- * `require_flags`·`first_arg`·`max_args`)도 사용자 규칙과 같은 뜻이다.
- */
 export interface AutomationBundle {
-  /** `settings.toml` 의 `[automation] bundles` 에 적히는 키 — **바뀌면 안 된다**. */
+  /** `settings.toml` 의 `[automation] bundles` 에 적히는 키 — 바뀌면 안 된다. */
   id: string;
-  /** 설정 화면에 보이는 이름. */
   name: string;
-  /** 한 줄 설명 — 무엇을 위임하는지 사람 말로. */
   description: string;
-  /** 이 묶음이 허용 목록에 얹는 규칙들. */
   rules: BundleRule[];
 }
 
 /**
- * 내장 묶음 표 — **Rust `automation_presets.rs` 의 `BUNDLES` 와 행·순서까지 같다**.
- *
- * 보수적으로 유지한다(모듈 머리말의 세 질문). 목록을 늘리는 것은 기능 추가가 아니라 보안 검토다.
- * 2026-10-05 인자 제약으로 좁혔고(docs/log/2026-10-05-auto-approve-args.md) 같은 날 열 개로
- * 나눴다(그 문서 "세분화"). 같은 exec 이 여러 줄이면 OR 이다(서브커맨드마다 제약이 달라서).
- *
- * **`name`·`description` 의 한국어는 그대로 둔다.** 이 표는 Rust 쌍둥이와 글자까지 잠긴
- * 드리프트 테스트를 이고 있어 한쪽만 고치면 그 잠금이 깨진다. 화면(`AutomationSection`)은
- * id 로 `settings.automation.bundle.<id>.name`·`.description` 을 읽고, 사전에 없는 id 면
- * 여기 글자로 떨어진다 (docs/log/2026-09-17-i18n.md).
+ * Rust `automation_presets.rs` 의 `BUNDLES` 와 행 · 순서까지 같다. 같은 exec 이 여러 줄이면 OR 이다.
+ * `name` · `description` 의 한국어는 그대로 둔다 — Rust 쌍둥이와 글자까지 대조된다(화면 글자는 i18n 사전이 덮는다).
  */
 export const BUNDLES: readonly AutomationBundle[] = [
   {
@@ -302,10 +242,7 @@ export const BUNDLES: readonly AutomationBundle[] = [
   },
 ];
 
-/**
- * 설정 화면의 **소제목 넷** — 묶음 id 를 이 순서로 묶는다(표 순서와 같다). 화면 전용이라 Rust 쌍둥이가 없다.
- * `caution` 은 소제목 밑 주의 문구를 단다(데이터 읽기 — 비밀 파일·로그 내용이 보일 수 있다).
- */
+/** 설정 화면의 소제목 — 화면 전용이라 Rust 쌍둥이가 없다. */
 export const BUNDLE_GROUPS: readonly { id: string; bundles: readonly string[]; caution?: boolean }[] = [
   { id: "server", bundles: ["system", "services", "pkg"] },
   { id: "data", bundles: ["files", "logs"], caution: true },
@@ -313,23 +250,17 @@ export const BUNDLE_GROUPS: readonly { id: string; bundles: readonly string[]; c
   { id: "dev", bundles: ["git", "gitfetch"] },
 ];
 
-/**
- * **명령 키** — `[automation.bundle_off]` 에 적히는 안정된 이름(**바뀌면 안 된다**). Rust
- * `PresetRule::command_key` 와 같은 규칙: `key` 가 있으면 그것, 없으면 서브커맨드가 **하나**일 때
- * `exec sub`(`docker logs` · `ip addr`), 아니면 `exec`(`tail` · `systemctl` · `apt`).
- */
+/** `[automation.bundle_off]` 에 적히는 이름 — 바뀌면 안 된다. Rust `PresetRule::command_key` 와 같은 규칙. */
 export function commandKey(r: BundleRule): string {
   if (r.key) return r.key;
   return r.subcommands.length === 1 ? `${r.exec} ${r.subcommands[0]}` : r.exec;
 }
 
-/** 묶음의 명령 하나 — 같은 키의 규칙들(스위치 하나). */
 export interface BundleCommand {
   key: string;
   rules: BundleRule[];
 }
 
-/** 묶음의 명령들 — 표 순서, 같은 키는 한데 모은다. */
 export function bundleCommands(b: AutomationBundle): BundleCommand[] {
   const out: BundleCommand[] = [];
   for (const r of b.rules) {
@@ -341,7 +272,7 @@ export function bundleCommands(b: AutomationBundle): BundleCommand[] {
   return out;
 }
 
-/** 규칙 하나의 깊은 사본 — 있는 칸만 옮긴다(표를 부르는 쪽이 고쳐도 원본이 오염되지 않게). */
+/** 부르는 쪽이 고쳐도 표가 오염되지 않게 깊은 사본 */
 function cloneRule(r: AllowRule): AllowRule {
   const c: AllowRule = { exec: r.exec, subcommands: [...r.subcommands] };
   if (r.deny_flags) c.deny_flags = [...r.deny_flags];
@@ -353,38 +284,26 @@ function cloneRule(r: AllowRule): AllowRule {
   return c;
 }
 
-/**
- * 묶음 규칙 하나를 판정용 사본으로 — 표 전용 칸(`key`·`any_order`)은 떼고 `sub_first` 를 세운다.
- * `settings-codec.ts cloneAllowRule` 과 같은 일이지만, 이 데이터 모듈이 코덱(→ 키바인딩)을 끌어오지
- * 않게 여기 따로 둔다. Rust `PresetRule::to_allow_rule` 과 같다.
- */
+/** Rust `PresetRule::to_allow_rule` 과 같다. */
 function expandRule(r: BundleRule): AllowRule {
   const c = cloneRule(r);
   if (r.subcommands.length > 0 && !r.any_order) c.sub_first = true;
   return c;
 }
 
-/** id → 묶음. 모르는 id 는 `undefined`(파일에 적힌 채로 무시된다 — 아래 [`expandBundles`]). */
 export function bundleById(id: string): AutomationBundle | undefined {
   return BUNDLES.find((b) => b.id === id);
 }
 
-/** 묶음 id → 끈 명령 키들 (`[automation.bundle_off]`). */
 export type BundleOff = Readonly<Record<string, readonly string[]>>;
 
-/** 이 묶음에서 이 명령을 꺼 두었는가. */
 export function isCommandOff(off: BundleOff | undefined, bundle: string, key: string): boolean {
   return off?.[bundle]?.includes(key) ?? false;
 }
 
 /**
- * 켜진 묶음 id 들을 **규칙 목록**으로 펼친다 — 꺼 둔 명령은 뺀다 (순수).
- *
- * 모르는 id 는 **조용히 건너뛴다** — 새 버전에서 생긴 묶음을 켜 둔 `settings.toml` 을 옛
- * 버전이 읽어도 값이 지워지지 않게(설정은 보존하고 해석만 안 한다). 같은 규칙이 여러 묶음에
- * 있어도 중복을 걸러 내지 않는다: 매칭은 OR 이라 결과가 같다.
- *
- * Rust `automation_presets.rs expand_bundles` 와 같은 의미다.
+ * 모르는 id 는 조용히 건너뛴다 — 새 버전의 묶음을 켜 둔 `settings.toml` 을 옛 버전이 읽어도 값이 지워지지 않게.
+ * Rust `expand_bundles` 와 같은 의미다.
  */
 export function expandBundles(ids: readonly string[], off?: BundleOff): AllowRule[] {
   const out: AllowRule[] = [];
@@ -399,16 +318,7 @@ export function expandBundles(ids: readonly string[], off?: BundleOff): AllowRul
   return out;
 }
 
-/**
- * 자동 승인 판정이 실제로 보는 **구조적 규칙 전부** = 사용자가 직접 적은 `allow` +
- * 켜진 묶음이 펼친 규칙(끈 명령 제외) (순수).
- *
- * 순서는 **사용자 규칙이 먼저**다. 매칭은 OR 이라 결과가 달라지지 않지만, 사람이 적은 것이
- * 목록의 앞에 있는 편이 디버깅에 낫다.
- *
- * Rust `automation_presets.rs effective_allow_rules` 와 같은 의미다 — **판정의 권위는
- * 백엔드**이고, 그쪽도 같은 합집합을 본다(디스크의 `bundles`·`bundle_off` 를 읽어 스스로 펼친다).
- */
+/** Rust `effective_allow_rules` 와 같은 의미다 — 판정의 권위는 백엔드이고 그쪽도 디스크에서 스스로 펼친다. */
 export function effectiveAllowRules(prefs: {
   allow: readonly AllowRule[];
   bundles: readonly string[];

@@ -1,8 +1,5 @@
 <script lang="ts">
-  // **훅 설치 확인의 본문**(`ConfirmDialog` 가 `req.hooks` 일 때 그린다) — 쓸 것 두 줄(스크립트 · 설정 "hooks")을 카드 하나에 번호로,
-  // 더할 JSON 은 기본 접힘. 펼쳐도 칸은 고정 높이라 안에서만 스크롤한다(미리 보기가 백 줄을 넘어도 상자가 창만큼 늘지 않게).
-  // 이벤트 칩은 미리 보기 JSON 의 `hooks` 키(`hookEventNames` — 못 읽으면 칩 줄을 빼고 개수 없는 문구). 상자의 키 · 포커스 ·
-  // 닫기는 `ConfirmDialog` 몫이고 여기는 그리기와 [복사] 뿐이다.
+  // 훅 설치 확인의 본문 — 펼친 JSON 칸은 고정 높이라 미리 보기가 길어도 상자가 창만큼 늘지 않는다.
   import UiIcon from "$lib/UiIcon.svelte";
   import { writeClipboard } from "$lib/clipboard";
   import { hookEventNames } from "$lib/app/hook-preview";
@@ -14,7 +11,6 @@
 
   const events = $derived(hookEventNames(hooks.preview));
   let open = $state(false);
-  /** 복사 결과 — 1.5초 동안 단추 이름이 이것을 따른다(`CodeView` 와 같은 꼴) */
   let copied = $state<"ok" | "fail" | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => () => clearTimeout(copyTimer));
@@ -163,7 +159,7 @@
     color: var(--fg-1);
   }
 
-  /* 폰 · 태블릿(원격 웹 R5) — 손가락으로 누를 단추는 44px 높이 */
+  /* 폰 · 태블릿 — 손가락으로 누를 단추는 44px 높이 */
   @media (pointer: coarse) {
     .json-bar button {
       min-height: 44px;

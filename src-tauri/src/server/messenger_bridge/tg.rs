@@ -1,10 +1,8 @@
-//! **메신저 다리의 Telegram 전송**(2026-11-19 · 3a — 코어에서 떼어 냄). 롱폴 고리(`getUpdates`) · 요청 하나(`call`) · 보내기 · 바꿔 쓰기 ·
-//! 누름 답(`answerCallbackQuery`) · 토큰 확인(`getMe`) · 지난 글 묶음 알림 · 중립 글([`Text`]) → HTML. 받은 것은 코어의 중립 값
-//! ([`super::Incoming`] · [`super::ButtonPress`])으로 바꿔 [`super::on_message`] · [`super::on_press`] 로 넘긴다. JSON · HTML 글자는 `crate::telegram`.
+//! 메신저 다리의 Telegram 전송 — 롱폴 · 보내기 · 누름 답 · 토큰 확인. JSON · HTML 글자는 `crate::telegram`.
 //!
 //! - **PTY · 카드 결정 · 승인으로 가는 길이 없다** — 코어의 입구만 부른다(시험 `pty_writes_have_two_sites` · `bridge_has_no_approval_path` 가
 //!   이 파일도 훑는다).
-//! - 토큰은 코어의 채널 상태에서 꺼낸 [`BotToken`] 으로만 쓰고 로그에는 고정 글자 · 오류 종류([`err_kind`])만 싣는다.
+//! - 로그에는 고정 글자 · 오류 종류([`err_kind`])만 싣는다 — 토큰이 든 주소 · 받은 글은 싣지 않는다.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,11 +19,9 @@ use crate::telegram::{self, Api, ApiFail, UpdateKind};
 
 const CHAN: Channel = Channel::Telegram;
 
-/// `getUpdates` 롱폴 시한(초) · 보내기 시한.
 const POLL_TIMEOUT_SECS: u64 = 50;
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Telegram 몫의 설정 — 제품은 [`Conf::release`].
 pub(crate) struct Conf {
     pub api: Api,
     pub poll_timeout_secs: u64,
@@ -37,21 +33,20 @@ impl Conf {
     }
 }
 
-/// 단추 데이터 상한(바이트).
+/// 바이트.
 pub(crate) const DATA_MAX: usize = telegram::CALLBACK_DATA_MAX;
 
-/// 붙여 넣은 글자 → 토큰(모양만 — 확인은 [`check_token`]).
+/// 모양만 본다 — 확인은 [`check_token`].
 pub(crate) fn parse_token(raw: &str) -> Option<BotToken> {
     BotToken::parse(raw)
 }
 
-/// 이 세대가 아직 살아 있으면 보낼 손(클라이언트 · 설정 · 토큰).
 fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
     let (client, cfg, token) = super::hands(CHAN, gen)?;
     Some((client, cfg, token.telegram()?.clone()))
 }
 
-/// 보내기의 실패 — 문구 없이 종류만(토큰이 든 주소 · 설명 글을 싣지 않는다).
+/// 문구 없이 종류만 — 토큰이 든 주소 · 설명 글을 싣지 않는다.
 #[derive(Debug, PartialEq, Eq)]
 enum CallErr {
     Api(ApiFail),
@@ -82,7 +77,6 @@ fn err_kind(e: &CallErr) -> String {
     }
 }
 
-/// 롱폴 고리 — 세대가 바뀌면 끝난다.
 pub(super) async fn poll_loop(gen: u64) {
     let mut offset: Option<i64> = None;
     loop {
@@ -150,8 +144,7 @@ fn press(c: telegram::Callback) -> ButtonPress {
     ButtonPress { from_id: c.from_id, chat_id: c.chat_id, message_id: c.message_id, data: c.data, ack: super::Ack::Telegram(c.id) }
 }
 
-/// **중립 글 → Telegram HTML**(1a · 2단계의 글자 그대로). 평문은 `& < >` 를 걷고 머리 줄은 `<b>` — 나누기 · 상한은 코어가 맞췄다(답 전문은
-/// [`split_answer`]). 그려 둔 알림 글은 4096 안으로 자르고, 덧붙일 줄이 있으면 그 자리를 남긴 뒤 한 줄 아래에 단다.
+/// 평문은 `& < >` 를 걷는다(→ docs/invariants.md 전문 6). 나누기 · 상한은 코어가 맞췄다.
 pub(crate) fn render(t: &Text) -> String {
     match t {
         Text::Lines { head: None, body } => telegram::escape_html(body),
@@ -165,14 +158,12 @@ pub(crate) fn render(t: &Text) -> String {
     }
 }
 
-/// 답 전문 나누기 — 첫 통은 굵은 머리 줄 `head` 와 함께 간다(4096자씩 · 최대 4통 · 넘치면 마지막 통 끝에 `more`). 머리 줄 + 줄바꿈 + 여유
-/// = `units(head) + 5`(1a 의 `units(이름표) + 8` 과 같다 — 머리 줄은 `🟢 <이름표>`).
+/// 첫 통은 굵은 머리 줄 `head` 와 함께 간다 — 그 자리가 `units(head) + 5`(머리 줄 + 줄바꿈 + 여유).
 pub(crate) fn split_answer(head: &str, body: &str, more: &str) -> Vec<String> {
     let room = telegram::TEXT_MAX.saturating_sub(telegram::units(head) + 5);
     telegram::split_text(body, room, telegram::MAX_PARTS, more)
 }
 
-/// 한 통 보낸다 — 보낸 메시지 id(실패면 `None` — 로그 한 줄, 본문 없음).
 pub(crate) async fn send(chat: i64, t: &Text, reply_to: Option<i64>, buttons: &[Button]) -> Option<i64> {
     let (client, cfg, token) = hands(None)?;
     let body = telegram::send_message_body(chat, &render(t), reply_to, buttons);
@@ -192,17 +183,17 @@ async fn call_quiet(method: &str, body: Value) {
     }
 }
 
-/// 보낸 통을 바꿔 쓴다(단추는 걷힌다 — `editMessageText` 에 `reply_markup` 이 없다).
+/// 단추는 걷힌다 — `editMessageText` 몸에 `reply_markup` 이 없다.
 pub(crate) async fn edit(chat: i64, message_id: i64, t: &Text) {
     call_quiet("editMessageText", telegram::edit_message_text_body(chat, message_id, &render(t))).await;
 }
 
-/// 누름 답 — 알릴 글이 없어도 불러야 단추의 도는 표시가 멈춘다.
+/// 알릴 글이 없어도 불러야 단추의 도는 표시가 멈춘다(Telegram 동작).
 pub(crate) async fn finish_press(callback_id: &str, toast: Option<&str>) {
     call_quiet("answerCallbackQuery", telegram::answer_callback_body(callback_id, toast)).await;
 }
 
-/// 토큰 확인(`getMe`) → 봇 이름. 실패는 이유 코드가 붙은 문구(토큰 없음).
+/// 실패 문구에 토큰을 싣지 않는다.
 pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &BotToken) -> Result<Option<String>, String> {
     match call(client, &cfg.telegram.api, token, "getMe", json!({}), SEND_TIMEOUT).await {
         Ok(v) => Ok(telegram::parse_me(&v)),

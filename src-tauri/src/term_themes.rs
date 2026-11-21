@@ -1,20 +1,10 @@
-//! **사용자 터미널 테마** — 사람이 가져온 색 구성(Windows Terminal · iTerm2 · Ghostty · Alacritty)을 정규화한 21색 한 벌로
-//! `<설정 루트>/terminal-themes/<id>.json` 에 둔다. 형식 판별 · 해석은 프런트의 순수 모듈(`src/lib/term-theme-import.ts`)이고,
-//! 여기는 **받은 결과를 다시 검증해 쓰고 · 읽고 · 이름을 바꾸고 · 지우는** 것뿐이다.
+//! 사용자 터미널 테마 — 프런트(`src/lib/term-theme-import.ts`)가 해석한 21색 한 벌을 다시 검증해 `<설정 루트>/terminal-themes/<id>.json` 에 둔다.
 //!
-//! 불변식:
-//! - **폴더가 곧 목록이다** — 설정 파일에 목록 칸은 없고 `[terminal] theme` 에 `user:<id>` 하나만 적힌다(키 모양은 프런트
-//!   `theme.ts` 의 `isUserTermKey` 와 같은 [`is_id`]). 사람이 폴더에 직접 넣은 파일도 이름이 id 모양이고 내용이 같은 형식이면 뜬다.
-//!   **깨진 파일은 건너뛴다** — 한 장이 상해도 목록 전체가 실패하지 않는다(크기 상한 넘음 · JSON 아님 · 칸 빠짐 · 색 모양 틀림 · 모르는 판).
-//! - id 는 `[a-z0-9]` 로 시작하는 `[a-z0-9-]` 48자까지 — 구분자 · `.` · 대문자가 없어 경로 조작이 없다. 새 id 는 이름의 슬러그
-//!   (ASCII 영숫자만 남김 · 나머지는 `-` · 비면 `theme`)에 겹치면 `-2`, `-3` … 를 붙인다. 이름을 바꿔도 **id 는 그대로**다
-//!   (설정 · 테마 프로필에 적힌 키가 살아 있게).
-//! - 받은 것을 믿지 않는다 — 21칸 전부 `#rrggbb`(대문자는 소문자로 접는다) · 이름은 앞뒤 공백을 걷고 1~[`MAX_NAME`]자 · 제어 문자 없음.
-//!   파일은 우리가 다시 직렬화해 [`crate::fs_atomic::write_atomic`] 으로 원자 교체한다. 읽을 때도 [`MAX_FILE_BYTES`] 를 넘으면 읽지 않는다.
-//! - 개수 상한 [`MAX_THEMES`](드롭다운이 끝없이 길어지지 않게 — 넘으면 넣기를 거절한다).
-//! - GUI 프로세스의 명령이다(설정 파일과 같은 쪽 — 세션 서버를 지나지 않는다). 디스크라 전부 `async fn` + `spawn_blocking`.
-//! - 원격 웹 클라이언트에서도 열려 있다(`remote/deny.rs` 의 `ALLOW` — 테마 프로필 저장 · 월페이퍼와 같은 결의 설정 폴더 쓰기다.
-//!   붙여넣기로 가져오기는 원격 창에서도 된다 — 파일은 그 브라우저에서 읽어 글자만 넘긴다).
+//! - **폴더가 곧 목록이다** — 설정에는 `[terminal] theme = "user:<id>"` 하나만 적힌다(키 모양은 프런트 `theme.ts` 의 `isUserTermKey` 와 같은 [`is_id`]).
+//!   깨진 파일은 건너뛴다 — 한 장이 상해도 목록 전체가 실패하지 않는다.
+//! - id 모양에 구분자 · `.` · 대문자가 없어 경로 조작이 없다. 이름을 바꿔도 **id 는 그대로**다(설정 · 테마 프로필에 적힌 키가 살아 있게).
+//! - 받은 것을 믿지 않는다 — 다시 검증 · 직렬화해 원자 교체한다.
+//! - 원격 웹 클라이언트에서도 열려 있다(`remote/deny.rs` 의 `ALLOW` — 설정 폴더 쓰기다).
 
 use std::path::{Path, PathBuf};
 
@@ -22,21 +12,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::tr;
 
-/// 폴더 이름 — `<설정 루트>/terminal-themes`.
 const DIR_NAME: &str = "terminal-themes";
 const EXT: &str = "json";
-/// 지금 쓰는 파일 판. 없으면 1 로 본다(사람이 손으로 만든 파일). 이보다 크면 모르는 판이라 건너뛴다.
+/// 없으면 1 로 본다(손으로 만든 파일) · 이보다 크면 모르는 판이라 건너뛴다.
 const VERSION: u32 = 1;
-/// id 길이 상한(슬러그 + 접미사).
 const MAX_ID: usize = 48;
-/// 이름 글자 수 상한.
 pub(crate) const MAX_NAME: usize = 64;
-/// 한 파일의 바이트 상한 — 21색 한 벌은 1KB 남짓이다.
 const MAX_FILE_BYTES: u64 = 16 * 1024;
-/// 쌓아 둘 수 있는 테마 수.
 pub(crate) const MAX_THEMES: usize = 200;
 
-/// 21칸 — xterm `ITheme` 의 이름 그대로(camelCase). 프런트 `theme.ts` 의 `TERM_COLOR_KEYS` 와 같은 칸.
+/// xterm `ITheme` 의 이름 그대로 — 프런트 `theme.ts` 의 `TERM_COLOR_KEYS` 와 같은 칸.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Colors {
@@ -90,7 +75,6 @@ impl Colors {
         ]
     }
 
-    /// 21칸 전부 `#rrggbb` 인가 — 맞으면 소문자로 접은 사본, 아니면 `None`.
     fn normalized(&self) -> Option<Colors> {
         let mut out = self.clone();
         for c in out.fields_mut() {
@@ -100,13 +84,11 @@ impl Colors {
     }
 }
 
-/// `#rrggbb`(대소문자 무관) → 소문자. 그 밖은 `None`.
 fn hex6(s: &str) -> Option<String> {
     let b = s.as_bytes();
     (b.len() == 7 && b[0] == b'#' && b[1..].iter().all(u8::is_ascii_hexdigit)).then(|| s.to_ascii_lowercase())
 }
 
-/// 파일 한 장의 모양.
 #[derive(Debug, Serialize, Deserialize)]
 struct ThemeFile {
     #[serde(default = "default_version")]
@@ -119,7 +101,6 @@ fn default_version() -> u32 {
     VERSION
 }
 
-/// 프런트로 가는 한 줄 — id · 이름 · 21색.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TermThemeEntry {
     pub id: String,
@@ -127,7 +108,6 @@ pub struct TermThemeEntry {
     pub colors: Colors,
 }
 
-/// id 모양인가 — `[a-z0-9]` 로 시작 · `[a-z0-9-]` · 1~[`MAX_ID`]자.
 pub(crate) fn is_id(id: &str) -> bool {
     let b = id.as_bytes();
     !b.is_empty()
@@ -136,7 +116,6 @@ pub(crate) fn is_id(id: &str) -> bool {
         && b.iter().all(|&c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
 }
 
-/// 이름 다듬기 — 앞뒤 공백을 걷고 1~[`MAX_NAME`]자 · 제어 문자 없음.
 fn clean_name(raw: &str) -> Result<String, String> {
     let name = raw.trim();
     if name.is_empty() {
@@ -159,7 +138,7 @@ fn bad_colors() -> String {
     tr!(ko: "색 21칸이 모두 #rrggbb 모양이어야 합니다", en: "All 21 colors must be in #rrggbb form")
 }
 
-/// 이름 → 슬러그(ASCII 영숫자만 · 나머지는 `-` 하나로 · 앞뒤 `-` 걷기 · 비면 `theme`). 접미사 자리를 남겨 40자로 자른다.
+/// 접미사(`-2` …) 자리를 남겨 40자로 자른다.
 fn slug(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
@@ -182,20 +161,17 @@ fn file_name(id: &str) -> String {
     format!("{id}.{EXT}")
 }
 
-/// 파일 이름 → id(우리 모양일 때만).
 fn id_of_file(name: &str) -> Option<&str> {
     let id = name.strip_suffix(EXT)?.strip_suffix('.')?;
     is_id(id).then_some(id)
 }
 
-/// `<설정 루트>/terminal-themes` — 개발 빌드는 `aynx-dev` 쪽이다(`instance`).
 fn dir() -> Result<PathBuf, String> {
     crate::instance::config_root()
         .map(|root| root.join(DIR_NAME))
         .ok_or_else(|| tr!(ko: "앱 설정 폴더를 찾을 수 없습니다", en: "The app settings folder is unavailable"))
 }
 
-/// 한 장 읽기 — 크기 상한 · JSON · 판 · 이름 · 색을 모두 본다. 하나라도 틀리면 `None`(건너뛴다).
 fn read_entry(dir: &Path, id: &str) -> Option<TermThemeEntry> {
     let path = dir.join(file_name(id));
     let meta = std::fs::metadata(&path).ok()?;
@@ -212,10 +188,9 @@ fn read_entry(dir: &Path, id: &str) -> Option<TermThemeEntry> {
     Some(TermThemeEntry { id: id.to_string(), name, colors })
 }
 
-/// 폴더 안의 id 들(우리 모양의 파일 이름만 · 정렬).
 fn ids_at(dir: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new(); // 폴더 없음 = 아직 하나도 없다
+        return Vec::new();
     };
     let mut ids: Vec<String> = entries
         .flatten()
@@ -225,7 +200,6 @@ fn ids_at(dir: &Path) -> Vec<String> {
     ids
 }
 
-/// 목록 — 깨진 파일은 건너뛰고 이름순(대소문자 무시) · 같으면 id 순.
 pub(crate) fn list_at(dir: &Path) -> Vec<TermThemeEntry> {
     let mut list: Vec<TermThemeEntry> = ids_at(dir).iter().filter_map(|id| read_entry(dir, id)).collect();
     list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.id.cmp(&b.id)));
@@ -245,7 +219,6 @@ fn write_entry(dir: &Path, entry: &TermThemeEntry) -> Result<(), String> {
         .map_err(|e| tr!(ko: "{path} 를 쓰지 못했습니다: {e}", en: "Could not write {path}: {e}", path = path.display()))
 }
 
-/// 새 테마 넣기 — 검증 · 새 id(슬러그 + 겹치면 접미사) · 원자 쓰기.
 pub(crate) fn add_at(dir: &Path, name: &str, colors: &Colors) -> Result<TermThemeEntry, String> {
     let name = clean_name(name)?;
     let colors = colors.normalized().ok_or_else(bad_colors)?;
@@ -276,7 +249,6 @@ fn bad_id() -> String {
     tr!(ko: "테마 id 가 올바르지 않습니다", en: "The theme id is not valid")
 }
 
-/// 이름 바꾸기 — id 는 그대로 · 색은 읽은 그대로(검증을 지난 것) 다시 쓴다.
 pub(crate) fn rename_at(dir: &Path, id: &str, name: &str) -> Result<TermThemeEntry, String> {
     if !is_id(id) {
         return Err(bad_id());
@@ -288,7 +260,7 @@ pub(crate) fn rename_at(dir: &Path, id: &str, name: &str) -> Result<TermThemeEnt
     Ok(entry)
 }
 
-/// 지우기 — 파일 하나. 이미 없으면 그대로 성공(다른 창이 먼저 지웠다).
+/// 이미 없으면 성공 — 다른 창이 먼저 지웠다.
 pub(crate) fn remove_at(dir: &Path, id: &str) -> Result<(), String> {
     if !is_id(id) {
         return Err(bad_id());
@@ -305,31 +277,28 @@ fn blocking_err(e: impl std::fmt::Display) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 명령 — 넷 다 async + spawn_blocking (디스크)
+// 명령
 // ---------------------------------------------------------------------------
 
-/// 내 테마 목록(깨진 파일은 건너뛴다).
 #[tauri::command]
 pub async fn term_theme_list() -> Result<Vec<TermThemeEntry>, String> {
     let dir = dir()?;
     tauri::async_runtime::spawn_blocking(move || list_at(&dir)).await.map_err(blocking_err)
 }
 
-/// 가져온 테마 하나를 넣는다 — 프런트가 해석 · 채운 21색과 이름. 여기서 다시 검증한다.
 #[tauri::command]
 pub async fn term_theme_add(name: String, colors: Colors) -> Result<TermThemeEntry, String> {
     let dir = dir()?;
     tauri::async_runtime::spawn_blocking(move || add_at(&dir, &name, &colors)).await.map_err(blocking_err)?
 }
 
-/// 이름 바꾸기(id 는 그대로).
 #[tauri::command]
 pub async fn term_theme_rename(id: String, name: String) -> Result<TermThemeEntry, String> {
     let dir = dir()?;
     tauri::async_runtime::spawn_blocking(move || rename_at(&dir, &id, &name)).await.map_err(blocking_err)?
 }
 
-/// 지우기 — 그 테마를 쓰던 설정을 기본으로 돌리는 것은 프런트다(설정 저장과 한 길).
+/// 그 테마를 쓰던 설정을 기본으로 돌리는 것은 프런트다(설정 저장과 한 길).
 #[tauri::command]
 pub async fn term_theme_remove(id: String) -> Result<(), String> {
     let dir = dir()?;
@@ -441,7 +410,6 @@ mod tests {
         write("Upper.json", &format!(r#"{{"name":"x","colors":{}}}"#, serde_json::to_string(&colors()).unwrap()));
         write("notes.txt", "hello");
         write("huge.json", &" ".repeat(MAX_FILE_BYTES as usize + 1));
-        // 손으로 넣은 판 없는 파일(BOM 포함)은 뜬다.
         write("hand.json", &format!("\u{feff}{{\"name\":\"Hand\",\"colors\":{}}}", serde_json::to_string(&colors()).unwrap()));
         let names: Vec<String> = list_at(&tmp.0).into_iter().map(|e| e.id).collect();
         assert_eq!(names, vec!["good", "hand"]);

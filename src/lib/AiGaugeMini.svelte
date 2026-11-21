@@ -1,13 +1,5 @@
 <script lang="ts">
-  /**
-   * **AI 권한 미니 게이지**(2026-10-23) — 보기만 하는 작은 꼴. 고르개(`AiGauge.svelte`)와 같은 규칙(`ai-gauge.ts`): 칸 넷이 지금 자리까지
-   * 차고, 찬 칸은 지금 단계의 색(`--ai-c` — 이 상자가 `data-ai-tone` 을 단다).
-   *
-   * - `bars` — 세로 막대 넷(5×10). 타일 머리줄의 AI 권한 칩 · 설정 › 보안 표의 단계 칩. 닫혀 있어도 단계가 보인다.
-   * - `track` — '끔' 고리 + 가로 칸 넷. 모두 승인 확인 상자 머리의 미리 보기.
-   *
-   * 뜻은 옆 글자(단계 이름)가 말한다 — 그림 자체는 `aria-hidden`.
-   */
+  /** 보기만 하는 AI 권한 게이지 — 뜻은 옆 글자(단계 이름)가 말한다 */
   import { GAUGE_SEGMENTS, gaugeTone, segmentFilled, segmentShape } from "$lib/ai-gauge";
 
   let { at, shape = "bars" }: { at: number; shape?: "bars" | "track" } = $props();
@@ -38,7 +30,7 @@
     background: var(--ai-track);
   }
 
-  /* 터미널 머리줄(터미널 바탕)에서도 빈 칸이 보이게 — 칩 글자색(`--c`)을 옅게 깐다 */
+  /* 터미널 바탕에서도 빈 칸이 보이게 칩 글자색(`--c`)을 옅게 깐다 */
   :global(.hchip) .bars .seg {
     background: color-mix(in srgb, var(--c, var(--fg)) 28%, transparent);
   }

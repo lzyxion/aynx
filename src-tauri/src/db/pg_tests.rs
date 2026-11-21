@@ -1,5 +1,5 @@
-//! **PG 통합 시험**(쿼리 타일 7단계) — 실제 PostgreSQL · 임시 sshd 가 있을 때만 돈다(`#[ignore]` + 환경변수). 사용자의
-//! `~/.ssh/config`·`sessions.toml`·볼트는 건드리지 않는다(경유는 그 자리 대상 `AdhocTarget` · 비밀번호는 몸으로만).
+//! **PG 통합 시험** — 실제 PostgreSQL · 임시 sshd 가 있을 때만 돈다(`#[ignore]` + 환경변수). 사용자의
+//! `~/.ssh/config` · `sessions.toml` · 볼트는 건드리지 않는다(경유는 `AdhocTarget` · 비밀번호는 몸으로만).
 //!
 //! ```text
 //! AYNX_TEST_PG_URL=postgres://postgres:<pw>@127.0.0.1:55432/postgres      # 직결(슈퍼유저 — 준비·읽기 전용 실측)
@@ -10,11 +10,8 @@
 //! cargo test --lib db::pg_tests -- --ignored --nocapture --test-threads=1
 //! ```
 //!
-//! `MEASURE` 로 시작하는 줄은 읽기 전용 실측 기록이다(docs/log 에 옮긴다).
-//!
-//! 풀러 모드(`AYNX_TEST_PG_POOLER`): 관리 연결(준비·대조)은 `_URL` 로 직결하고, 시험하는 엔진 연결만 풀러를 지난다. 풀러는
-//! `pool_mode=transaction` · `server_round_robin=1` · `min_pool_size>=2` 로 띄우면 트랜잭션마다 백엔드가 바뀐다(10-13 사건 —
-//! pg 머리말 "풀러"). `max_prepared_statements` 0 · 200 둘 다 돌린다.
+//! 풀러 모드: 관리 연결(준비 · 대조)은 `_URL` 로 직결하고 엔진 연결만 풀러를 지난다. 풀러는 `pool_mode=transaction` ·
+//! `server_round_robin=1` · `min_pool_size>=2` 로 띄워야 트랜잭션마다 백엔드가 바뀐다(pg 머리말 "풀러"). `max_prepared_statements` 0 · 200 둘 다 돌린다.
 
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -57,7 +54,6 @@ fn direct_target(c: &Config, user: &str) -> NetTarget {
     }
 }
 
-/// 엔진이 붙을 곳 — 풀러가 있으면 그 주소, 없으면 직결.
 fn engine_target(c: &Config, user: &str) -> NetTarget {
     let mut t = direct_target(c, user);
     if let Some((h, p)) = pooler() {
@@ -112,8 +108,6 @@ fn cell(out: &QueryOut, row: usize, col: usize) -> Value {
     out.rows[row][col].clone()
 }
 
-/// 직결 — 비밀번호 관문 · 값 매핑(서버 텍스트 출력 — 출력 함수 — 과 대조) · 행 상한 · 시간 제한 · 취소 · 한 번에 하나 · 읽기 전용 실측 ·
-/// 스키마 · 쓰기 모드 · 연결 사망.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_PG_URL 이 있을 때만 — 실제 PostgreSQL"]
 async fn pg_direct_end_to_end() {
@@ -141,8 +135,7 @@ async fn pg_direct_end_to_end() {
     let pooled = pooler().is_some();
     println!("MEASURE mode: {}", if pooled { "pooler" } else { "direct" });
     if let Some((h, p)) = pooler() {
-        // 10-13 사건 재현 — 시작 옵션을 실은 연결은 풀러가 거절한다(엔진은 이제 싣지 않는다). `default_transaction_read_only`
-        // 는 PgBouncer 1.23 이 거절하고 1.26 은 받는다(실측) — 그 줄은 기록만, 모르는 옵션의 거절은 어느 판이든 단언한다.
+        // 시작 옵션을 실은 연결은 풀러가 거절한다. `default_transaction_read_only` 는 PgBouncer 1.23 이 거절하고 1.26 은 받는다 — 그 줄은 기록만.
         for (opt, must_reject) in [("-c default_transaction_read_only=on", false), ("-c statement_timeout=5", true)] {
             let mut c = Config::new();
             c.host(&h).port(p).user(&su).password(su_pw.as_bytes()).dbname(cfg.get_dbname().unwrap_or("postgres"));
@@ -204,7 +197,7 @@ async fn pg_direct_end_to_end() {
         let r = pg.query(&format!("SELECT {expr}"), 10, 5000).await.unwrap_or_else(|e| panic!("{expr}: {}", emsg(&e)));
         assert_eq!(&cell(&r, 0, 0), want, "{expr} (형 {})", r.columns[0].ty);
     }
-    // ── 서버 텍스트 출력과 같은 글자인가(TimeZone UTC 로 맞춘 관리 연결과 대조) ──
+    // ── 서버 텍스트 출력과 같은 글자인가 ──
     a.batch_execute("SET TIME ZONE 'UTC'; SET IntervalStyle = 'postgres'; SET DateStyle = 'ISO, MDY'").await.unwrap();
     let text_cases = [
         "'2024-02-29'::date",
@@ -240,7 +233,7 @@ async fn pg_direct_end_to_end() {
     ];
     for expr in text_cases {
         let r = pg.query(&format!("SELECT {expr}"), 10, 5000).await.unwrap_or_else(|e| panic!("{expr}: {}", emsg(&e)));
-        // 서버의 텍스트 출력(형의 출력 함수 — psql 이 보이는 글자). `::text` 형 변환은 inet 처럼 다른 꼴을 낼 수 있어 쓰지 않는다.
+        // `::text` 형 변환은 inet 처럼 다른 꼴을 낼 수 있어 쓰지 않는다.
         let server = a
             .simple_query(&format!("SELECT {expr}"))
             .await
@@ -262,7 +255,7 @@ async fn pg_direct_end_to_end() {
     assert_eq!((r.rows.len(), r.truncated), (5000, false));
     assert_eq!(r.columns[0].ty, "int4");
 
-    // ── 시간 제한(서버 statement_timeout) · 취소(새 TCP 의 CancelRequest) · 한 번에 하나 ──
+    // ── 시간 제한 · 취소 · 한 번에 하나 ──
     let started = Instant::now();
     let e = pg.query("SELECT pg_sleep(5)", 10, 300).await.unwrap_err();
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
@@ -354,18 +347,17 @@ async fn pg_direct_end_to_end() {
     assert_eq!(c["columns"][2]["pk"], 0);
     assert!(emsg(&pg.table_detail(Some("public"), "nope", 5000).await.unwrap_err()).contains("nope"));
 
-    // ── 쓰기 모드(타일 위 띠의 토글 — 문장마다 자동 커밋) ──
+    // ── 쓰기 모드 ──
     pg.set_write(true).await.unwrap();
     let r = pg.query("INSERT INTO pt_t(name) VALUES ('w')", 10, 5000).await.unwrap();
     assert_eq!(r.affected, Some(1));
     let r = pg.query("INSERT INTO pt_t(name) VALUES ('w2') RETURNING name", 10, 5000).await.unwrap();
     assert_eq!(cell(&r, 0, 0), json!("w2"));
-    // 사람의 트랜잭션 문장은 가드가 거절한다(다음 SELECT 의 감싸기가 그것을 조용히 커밋하므로 — guard 머리말 2).
+    // 사람의 트랜잭션 문장은 가드가 거절한다(다음 SELECT 의 감싸기가 그것을 조용히 커밋하므로).
     for sql in ["BEGIN", "START TRANSACTION", "COMMIT", "ROLLBACK", "SAVEPOINT s"] {
         let m = emsg(&pg.query(sql, 10, 5000).await.unwrap_err());
         assert!(m.contains("BEGIN"), "{sql}: {m}");
     }
-    // 쓰기 모드의 시간 제한도 서버(`SET LOCAL statement_timeout`)가 끊는다.
     let started = Instant::now();
     let e = pg.query("SELECT pg_sleep(5)", 10, 300).await.unwrap_err();
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
@@ -395,7 +387,6 @@ async fn pg_direct_end_to_end() {
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
     blocker.batch_execute("ROLLBACK").await.unwrap();
     a.batch_execute("DROP INDEX IF EXISTS pt_idx2").await.unwrap();
-    // 일반 쓰기 오류는 재시도하지 않는다(오류 그대로).
     let m = emsg(&pg.query("INSERT INTO pt_nope VALUES (1)", 10, 5000).await.unwrap_err());
     assert!(m.contains("42P01"), "{m}");
     pg.set_write(false).await.unwrap();
@@ -405,7 +396,7 @@ async fn pg_direct_end_to_end() {
     let r = pg.query("SELECT count(*) FROM pt_t", 10, 5000).await.unwrap();
     assert_eq!(cell(&r, 0, 0), json!(5));
 
-    // ── 백엔드가 바뀌어도(풀러) 문장마다 같은 결과 — 읽기 · 쓰기 모드 번갈아 ──
+    // ── 백엔드가 바뀌어도(풀러) 문장마다 같은 결과 ──
     let mut pids = std::collections::BTreeSet::new();
     for i in 0..16 {
         let write = i % 2 == 1;
@@ -417,8 +408,7 @@ async fn pg_direct_end_to_end() {
         assert_eq!(c["columns"][0]["name"], "id");
     }
     pg.set_write(false).await.unwrap();
-    // 풀러가 실제로 백엔드를 바꿨는지는 풀러 상태에 달렸다(앞 실행이 남긴 `used` 서버 연결은 돌려 쓰지 않을 수 있다) — 기록만.
-    // 전환을 보려면 풀러를 새로 띄운 직후에 돌린다(10-13 실측: 새 풀러에서 3).
+    // 풀러가 실제로 백엔드를 바꿨는지는 풀러 상태에 달렸다 — 기록만(보려면 풀러를 새로 띄운 직후에 돌린다).
     println!("MEASURE backends seen: {}{}", pids.len(), if pooled && pids.len() < 2 { " (전환 없음 — 이번 실행은 전환을 재지 못했다)" } else { "" });
     // 모르는 형(enum) — tokio-postgres 의 typeinfo 캐시(pg 머리말 "풀러" 의 남은 한계). 풀러에서는 실측만.
     for ty in ["pt_e1", "pt_e2", "pt_e3", "pt_e4"] {
@@ -435,11 +425,11 @@ async fn pg_direct_end_to_end() {
         }
     }
 
-    // ── 연결 사망(서버가 끊음) → [db-disconnected] ──
+    // ── 연결 사망 → [db-disconnected] ──
     let pid = cell(&pg.query("SELECT pg_backend_pid()", 10, 5000).await.unwrap(), 0, 0).as_i64().unwrap() as i32;
     a.execute("SELECT pg_terminate_backend($1)", &[&pid]).await.unwrap();
     if pooled {
-        // 풀러 뒤 — 백엔드가 죽어도 클라이언트 연결(풀러까지)은 산다. 다음 문장은 다른 백엔드에서 돈다.
+        // 풀러 뒤 — 백엔드가 죽어도 클라이언트 연결(풀러까지)은 산다.
         tokio::time::sleep(Duration::from_millis(300)).await;
         let r = pg.query("SELECT 1", 10, 5000).await;
         println!("MEASURE pooler-backend-killed: {}", r.as_ref().map(|_| "OK".to_string()).unwrap_or_else(|e| one_line(&emsg(e))));
@@ -463,8 +453,6 @@ async fn pg_direct_end_to_end() {
         .unwrap();
 }
 
-/// 스키마 트리(10-13) — 스키마 이름만 → 스키마를 펼치면 종류별 객체. 이상한 스키마 이름(따옴표 · 공백)은 바인드 인자로만 닿는다.
-/// 분할 표의 파티션 · 확장이 만든 함수·형 · 배열 형 · 표의 행 형은 빠진다. 풀러(`_POOLER`)면 엔진 연결이 풀러를 지난다.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_PG_URL 이 있을 때만 — 실제 PostgreSQL"]
 async fn pg_schema_tree_objects() {
@@ -507,7 +495,6 @@ async fn pg_schema_tree_objects() {
     assert_eq!(names[0], "public", "{s}");
     assert!(names.contains(&schema), "{s}");
     assert!(s["schemas"][0].get("tables").is_none(), "첫 단계는 이름만");
-    // 풀러면 트랜잭션마다 백엔드가 바뀔 수 있다 — 같은 답이 거듭 서야 한다.
     let mut first: Option<Value> = None;
     for _ in 0..6 {
         let o = pg.objects(Some(schema), 5000).await.unwrap();
@@ -542,21 +529,16 @@ async fn pg_schema_tree_objects() {
     let types: Vec<&str> = objs.iter().filter(|x| x["kind"] == "type").map(|x| x["name"].as_str().unwrap()).collect();
     assert_eq!(types, ["c1", "d1", "e1", "r1"], "배열 형(_e1) · 표의 행 형(t1 · v1) · 다중 범위는 빠진다");
     assert_eq!(o["truncated"], json!([]));
-    // 없는 스키마 → 빈 목록 · 주입 모양의 이름도 바인드 인자라 그냥 없는 이름이다.
     for bad in ["nope", "public' OR '1'='1", "x\"; DROP TABLE t1; --"] {
         let e = pg.objects(Some(bad), 5000).await.unwrap();
         assert_eq!(e["objects"], json!([]), "{bad}");
     }
-    // 이상한 스키마 이름의 표 컬럼도 바인드로.
     let c = pg.table_detail(Some(schema), "t1", 5000).await.unwrap();
     assert_eq!(c["columns"][0]["name"], "id");
     pg.shutdown();
     a.batch_execute(r#"DROP SCHEMA "pt tree""x" CASCADE; DROP SERVER IF EXISTS pt_fdw CASCADE;"#).await.unwrap();
 }
 
-/// 테이블 구조(10-13) — 인덱스(다중 열 · 식 · 부분 · 제외 제약의 gist) · 제약(기본 키 · 유니크 · 체크 · 제외) · 외래 키(복합 · 자기 참조 ·
-/// 다른 스키마에서 오는 것 · 분할 테이블이 파티션마다 복제한 것은 하나로) · 트리거(내부 것 제외 · 뷰의 INSTEAD OF) · 파티션(범위 ·
-/// DEFAULT · 하위 분할) — 따옴표 · 공백 든 이름. 한 READ ONLY 트랜잭션이라 풀러(`_POOLER`) 뒤에서도 같은 답이어야 한다.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_PG_URL 이 있을 때만 — 실제 PostgreSQL"]
 async fn pg_table_detail_folders() {
@@ -602,7 +584,6 @@ async fn pg_table_detail_folders() {
     .unwrap();
     let pg = Pg::connect("pt-detail", engine_target(&cfg, &su), secrets(Some(&su_pw))).await.expect("엔진 연결");
     let schema = "pt det\"x";
-    // 풀러면 트랜잭션마다 백엔드가 바뀔 수 있다 — 같은 답이 거듭 서야 한다.
     let mut first: Option<Value> = None;
     for _ in 0..6 {
         let d = pg.table_detail(Some(schema), "or\"ders", 5000).await.unwrap();
@@ -643,13 +624,11 @@ async fn pg_table_detail_folders() {
     assert_eq!(fk("fk_self")["refTable"], "or\"ders");
     assert_eq!(d["foreignKeys"].as_array().unwrap().len(), 3);
     assert_eq!(d["referencedBy"].as_array().unwrap().iter().map(|x| x["name"].clone()).collect::<Vec<_>>(), [json!("fk_self")]);
-    // 트리거 — 외래 키가 만든 내부 트리거는 빠진다.
     let trg = d["triggers"].as_array().unwrap();
     assert_eq!(trg.len(), 1, "{d}");
     assert_eq!((&trg[0]["name"], &trg[0]["detail"]), (&json!("o trg"), &json!("BEFORE INSERT OR UPDATE")));
     assert!(trg[0]["definition"].as_str().unwrap().starts_with("CREATE TRIGGER"));
     assert_eq!((d["partitions"].clone(), d["truncated"].clone()), (json!([]), json!([])));
-    // 가리켜지는 쪽 — 다른 스키마의 외래 키 · 분할 테이블의 외래 키는 부모 하나로.
     let c = pg.table_detail(Some(schema), "cust omer", 5000).await.unwrap();
     println!("MEASURE pg detail cust omer: {c}");
     let mut by: Vec<String> = c["referencedBy"]
@@ -667,7 +646,6 @@ async fn pg_table_detail_folders() {
     let ctypes: Vec<&str> = c["constraints"].as_array().unwrap().iter().map(|x| x["type"].as_str().unwrap()).collect();
     assert_eq!(ctypes, ["primary", "unique", "check"]);
     assert_eq!(c["constraints"][1]["columns"], json!(["region", "code"]));
-    // 분할 테이블 — 파티션(범위 식 · DEFAULT · 하위 분할) · 부모의 인덱스.
     let l = pg.table_detail(Some(schema), "logs", 5000).await.unwrap();
     println!("MEASURE pg detail logs: {l}");
     assert_eq!(
@@ -679,7 +657,6 @@ async fn pg_table_detail_folders() {
         ])
     );
     assert_eq!(l["indexes"][0]["name"], "logs_at");
-    // 뷰 — 컬럼 · INSTEAD OF 트리거 · 구체화 뷰의 인덱스.
     let v = pg.table_detail(Some(schema), "ov", 5000).await.unwrap();
     assert_eq!(v["columns"].as_array().unwrap().len(), 2);
     assert_eq!(v["triggers"][0]["detail"], "INSTEAD OF INSERT");
@@ -693,10 +670,6 @@ async fn pg_table_detail_folders() {
     a.batch_execute(r#"DROP SCHEMA "pt det""x" CASCADE; DROP SCHEMA pt_other CASCADE;"#).await.unwrap();
 }
 
-/// 정의(DDL) 읽기(10-13) — 종류마다 실제로 뽑아 본다: 테이블(재구성 — identity · 생성 열 · 콜레이션 · 제약 · 인덱스 · 분할 키 ·
-/// 파티션 · UNLOGGED · 외부 테이블) · 뷰 · 구체화 뷰 · 함수(겹지정) · 프로시저 · 집계 · 트리거 · 인덱스 · 제약 · 시퀀스(OWNED BY) ·
-/// 형(열거 · 도메인 · 범위 · 복합) — 따옴표 · 공백 든 이름 · 주입 모양 이름 · 권한 없는 계정. 재구성한 테이블은 **다른 스키마에서 다시
-/// 돌려** 같은 구조가 서는지 본다. 한 READ ONLY 트랜잭션이라 풀러(`_POOLER`) 뒤에서도 같은 답이어야 한다.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_PG_URL 이 있을 때만 — 실제 PostgreSQL"]
 async fn pg_definitions() {
@@ -753,7 +726,6 @@ async fn pg_definitions() {
         let (pg, t) = (&pg, target(kind, name, table, args));
         async move { pg.definition(&t, 5000).await }
     };
-    // 풀러면 트랜잭션마다 백엔드가 바뀔 수 있다 — 같은 답이 거듭 서야 한다.
     let mut first: Option<Value> = None;
     for _ in 0..6 {
         let d = def("table", "cust omer", None, None).await.unwrap();
@@ -800,7 +772,6 @@ async fn pg_definitions() {
     let ft = sql(&def("foreign", "ft", None, None).await.unwrap());
     println!("MEASURE pg def foreign:\n{ft}");
     assert!(ft.starts_with("CREATE FOREIGN TABLE") && ft.contains("SERVER pt_srv") && ft.contains("OPTIONS (table_name 'remote t')"), "{ft}");
-    // 재구성한 테이블을 다른 스키마에서 다시 돌려 본다 — 같은 제약 수.
     a.batch_execute("CREATE SCHEMA pt_def_copy").await.unwrap();
     let copy = c.replace("\"pt def\"\"x\".\"cust omer\"", "pt_def_copy.\"cust omer\"");
     a.batch_execute(&copy).await.unwrap_or_else(|e| panic!("재구성 글자가 돌지 않는다: {e:?}\n{copy}"));
@@ -813,14 +784,12 @@ async fn pg_definitions() {
         .unwrap()
         .get(0);
     assert_eq!(n, 3);
-    // 뷰 · 구체화 뷰 — 원문(머리만 앱).
     let v = def("view", "ov", None, None).await.unwrap();
     println!("MEASURE pg def view:\n{}", sql(&v));
     assert_eq!(v["reconstructed"], false);
     assert!(sql(&v).starts_with("CREATE OR REPLACE VIEW \"pt def\"\"x\".ov WITH (security_barrier=true) AS\n SELECT id,"), "{v}");
     let m = sql(&def("matview", "mv", None, None).await.unwrap());
     assert!(m.contains("WITH NO DATA;") && m.contains("CREATE UNIQUE INDEX mv_id"), "{m}");
-    // 함수 — 겹지정은 인자로, 인자가 없으면 첫 겹지정.
     let f1 = sql(&def("function", "f", None, Some("a integer")).await.unwrap());
     let f2 = sql(&def("function", "f", None, Some("a text, b text")).await.unwrap());
     assert!(f1.contains("f(a integer)") && f1.contains("a + 1"), "{f1}");
@@ -833,7 +802,6 @@ async fn pg_definitions() {
     println!("MEASURE pg def aggregate:\n{}", sql(&ag));
     assert_eq!(ag["reconstructed"], true);
     assert!(sql(&ag).contains("SFUNC = int4pl") && sql(&ag).contains("INITCOND = '0'"), "{ag}");
-    // 트리거 · 인덱스 · 제약.
     let tr = sql(&def("trigger", "o trg", Some("or\"ders"), None).await.unwrap());
     assert!(tr.starts_with("CREATE TRIGGER \"o trg\" BEFORE INSERT ON \"pt def\"\"x\".\"or\"\"ders\"") && tr.ends_with(';'), "{tr}");
     assert!(def("trigger", "o trg", Some("cust omer"), None).await.is_err(), "다른 테이블의 트리거 이름");
@@ -843,7 +811,6 @@ async fn pg_definitions() {
     assert_eq!(co, "ALTER TABLE \"pt def\"\"x\".\"or\"\"ders\"\n    ADD CONSTRAINT qty_pos CHECK (qty > 0);");
     let fk = sql(&def("constraint", "or\"ders_cust_fkey", Some("or\"ders"), None).await.unwrap());
     assert!(fk.contains("FOREIGN KEY (cust) REFERENCES"), "{fk}");
-    // 시퀀스 · 형.
     let sq = sql(&def("sequence", "s q", None, None).await.unwrap());
     println!("MEASURE pg def sequence:\n{sq}");
     assert!(sq.contains("START WITH 5") && sq.contains("INCREMENT BY 2") && sq.contains("OWNED BY \"pt def\"\"x\".\"or\"\"ders\".qty;"), "{sq}");
@@ -855,14 +822,13 @@ async fn pg_definitions() {
     let rg = sql(&def("type", "fr", None, None).await.unwrap());
     assert!(rg.contains("SUBTYPE = double precision") && rg.contains("SUBTYPE_DIFF = float8mi"), "{rg}");
     assert_eq!(sql(&def("type", "comp", None, None).await.unwrap()), "CREATE TYPE \"pt def\"\"x\".comp AS (\n    a integer,\n    \"b c\" text\n);");
-    // 이름은 바인드 인자 — 주입 모양도 그냥 없는 객체다.
     for (k, n) in [("table", "nope"), ("table", "x\"; DROP TABLE t; --"), ("view", "cust omer"), ("index", "' OR '1'='1")] {
         let e = emsg(&pg.definition(&target(k, n, None, None), 5000).await.unwrap_err());
         assert!(e.contains(n), "{k} {n}: {e}");
     }
     let wrong_schema = super::definition::DefTarget { schema: Some("public' OR '1'='1".into()), ..target("table", "cust omer", None, None) };
     assert!(pg.definition(&wrong_schema, 5000).await.is_err());
-    // 권한 없는 계정(직결 — 풀러의 사용자 목록에 없다) — PG 카탈로그 · pg_get_*def 는 누구에게나 열려 있다(실측 기록).
+    // 권한 없는 계정(직결 — 풀러의 사용자 목록에 없다).
     let nobody = Pg::connect("pt-def-nobody", direct_target(&cfg, "pt_nobody"), secrets(Some("nobodypw"))).await.expect("nobody");
     for (k, n, t) in [("table", "cust omer", None), ("view", "ov", None), ("function", "trg_fn", None), ("trigger", "o trg", Some("or\"ders"))] {
         let r = nobody.definition(&target(k, n, t, None), 5000).await;
@@ -893,8 +859,7 @@ fn ssh_env() -> Option<(AdhocTarget, String, String, u16)> {
     ))
 }
 
-/// 프런트 `runSshGates` 와 같은 고리 — 호스트 키는 이번만(known_hosts 를 안 건드림) · 잠긴 키는 빼고 · 비밀번호는 몸으로.
-/// `db_pw` 는 `[db-password]` 를 만나면 실을 DB 비밀번호. 돌려주는 것은 연결 + 지나간 관문 이름들.
+/// 프런트 `runSshGates` 와 같은 고리. 돌려주는 것은 연결 + 지나간 관문 이름들.
 async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_pw: Option<&str>) -> (Result<Pg, String>, Vec<String>) {
     let mut seen = Vec::new();
     let mut decision = None;
@@ -932,7 +897,6 @@ async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_p
             Err(OpenError::Msg(m)) if m.contains("[db-password]") && db_pw.is_some() && !give_db_pw => {
                 seen.push("db_password".into());
                 give_db_pw = true;
-                // 비밀번호를 묻는 동안 전송로는 세워 둔다 — 다음 시도는 SSH 관문을 다시 지나지 않아야 한다.
                 decision = None;
                 give_ssh_pw = false;
             }
@@ -943,8 +907,6 @@ async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_p
     (Err("관문 고리가 끝나지 않음".into()), seen)
 }
 
-/// SSH 경유 — 관문(호스트 키·SSH 비밀번호) → 터널 → PG 왕복 · 비밀번호를 묻는 동안 전송로 세워 두기 · 터널 위 취소 · 행 상한 ·
-/// 읽기 전용 · 닫기 · 전송로 사망 → [db-disconnected].
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_PG_SSH · _TARGET 이 있을 때만 — 임시 sshd + PostgreSQL"]
 async fn pg_over_ssh_tunnel() {
@@ -982,7 +944,6 @@ async fn pg_over_ssh_tunnel() {
     let r = pg.query("SELECT g FROM generate_series(1, 20000) g", 1000, 10_000).await.unwrap();
     assert_eq!((r.rows.len(), r.truncated), (1000, true));
 
-    // 취소 — 취소 요청이 새 TCP 로 터널(127.0.0.1:<임시>)을 다시 지난다.
     let pg = std::sync::Arc::new(pg);
     let p2 = std::sync::Arc::clone(&pg);
     let started = Instant::now();
@@ -993,22 +954,18 @@ async fn pg_over_ssh_tunnel() {
     println!("MEASURE cancel-ssh: {} ({} ms)", emsg(&e), started.elapsed().as_millis());
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
     assert!(started.elapsed() < Duration::from_secs(3));
-    // 시간 제한.
     let e = pg.query("SELECT pg_sleep(5)", 10, 300).await.unwrap_err();
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
-    // 읽기 전용.
     let m = emsg(&pg.query("WITH x AS (DELETE FROM pg_class WHERE false RETURNING *) SELECT * FROM x", 10, 5000).await.unwrap_err());
     assert!(m.contains("25006"), "{m}");
-    // 같은 호스트에 둘째 연결 — 따뜻한 전송로에 얹힌다(관문 없음).
+    // 따뜻한 전송로에 얹힌다(관문 없음).
     let (second, seen2) = connect_with_gates("pt-ssh-2", &target, &ssh_pw, Some(&su_pw)).await;
     let second = second.unwrap_or_else(|m| panic!("{m}"));
     assert!(!seen2.iter().any(|s| s == "ssh_password" || s == "host_key"), "따뜻한 길인데 관문: {seen2:?}");
-    // 첫 연결을 닫아도 둘째는 산다(전송로 자리는 하나씩).
     pg.shutdown();
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(cell(&second.query("SELECT 7", 10, 5000).await.unwrap(), 0, 0), json!(7));
 
-    // 전송로 사망 — sshd 를 다시 띄우면 전송로·터널 위 PG 연결이 끊긴다 → [db-disconnected].
     if let Some(name) = env("AYNX_TEST_PG_SSH_CONTAINER") {
         let st = std::process::Command::new("docker").args(["restart", "-t", "0", &name]).status().unwrap();
         assert!(st.success());

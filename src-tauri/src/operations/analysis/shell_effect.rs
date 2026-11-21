@@ -1,5 +1,4 @@
-//! 명령 분류 표(`READ` · `WRITE` · `DELETE` · `OPAQUE`) · 감싸개(`sudo` · `env` · `xargs` …) 해석 · 구획별 효과 판정과
-//! 줄 나누기 없는 한 명령의 분석(`analyze_flat`).
+//! 명령 분류 표 · 감싸개(`sudo` · `env` · `xargs` …) 해석 · 구획별 효과 판정 · 한 명령의 분석(`analyze_flat`).
 
 use super::shell_lex::{split_shell, texts_of};
 use super::types::{stronger, Computed, PlanAnalysis, ProgramToken, Verdict};
@@ -8,7 +7,7 @@ use super::types::{stronger, Computed, PlanAnalysis, ProgramToken, Verdict};
 // 셸 명령
 // ---------------------------------------------------------------------------
 
-/// 읽기만 하는 프로그램(인자와 무관하게 — 갈래가 있는 것은 [`classify`] 에서 따로).
+/// 인자와 무관하게 읽기만 하는 프로그램 — 갈래가 있는 것은 [`classify`] 에서 따로.
 const READ: &[&str] = &[
     "ls", "ll", "la", "dir", "cat", "tac", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ag", "zcat", "zgrep",
     "zless", "bzcat", "xzcat", "du", "df", "sort", "uniq", "wc", "cut", "tr", "column", "nl", "fold", "paste", "join", "comm", "diff",
@@ -21,7 +20,6 @@ const READ: &[&str] = &[
     "env", "seq", "yes", "timedatectl", "systemd-analyze", "lsattr", "getfacl", "namei", "cal", "tput", "clear", "whois", ":",
 ];
 
-/// 쓰는(바꾸는) 프로그램.
 const WRITE: &[&str] = &[
     "mv", "cp", "tee", "ln", "mkdir", "touch", "chmod", "chown", "chgrp", "chattr", "setfacl", "install", "rsync", "scp", "patch",
     "gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "zip", "unzip", "kill", "pkill", "killall", "reboot", "shutdown", "halt",
@@ -31,13 +29,12 @@ const WRITE: &[&str] = &[
     "update-alternatives", "certbot", "make", "logrotate",
 ];
 
-/// 지우는(되돌릴 수 없는) 프로그램.
+/// 되돌릴 수 없는 프로그램.
 const DELETE: &[&str] = &["rm", "rmdir", "shred", "unlink", "srm", "wipefs", "truncate", "dd", "userdel", "groupdel", "fstrim", "blkdiscard"];
 
 /// 셸을 하나 더 거쳐 안을 볼 수 없는 것 — 늘 확인 필요.
 const OPAQUE: &[&str] = &["sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "source", ".", "ssh", "python", "python3", "perl", "ruby", "node", "php", "lua"];
 
-/// 경로를 뗀 이름(`/usr/bin/rm` → `rm`).
 pub(super) fn base(word: &str) -> &str {
     word.rsplit('/').next().unwrap_or(word)
 }
@@ -49,35 +46,31 @@ fn is_assignment(word: &str) -> bool {
     }
 }
 
-/// 짧은 플래그 묶음(`-xvf`)이 글자 `ch` 를 품는가.
 pub(super) fn short_has(word: &str, ch: char) -> bool {
     word.starts_with('-') && !word.starts_with("--") && word.len() >= 2 && word[1..].contains(ch)
 }
 
-/// 구획 하나 → (프로그램 이름 · 근거 · sudo). 앞의 감싸개(`sudo` · `env` · `nohup` · `time` · `xargs` …)는 벗기고 그 뒤를 본다.
+/// 앞의 감싸개는 벗기고 그 뒤를 본다.
 fn segment(words: &[String]) -> (Option<String>, Verdict, bool) {
     let s = segment_at(words);
     (s.prog, s.verdict, s.sudo)
 }
 
-/// [`segment_at`] 의 결과 — 프로그램 · 근거 · sudo 와 줄 안 표시가 칠할 낱말 색인들.
 pub(super) struct SegScan {
     pub(super) prog: Option<String>,
     pub(super) verdict: Verdict,
     sudo: bool,
-    /// 프로그램 낱말의 색인(감싸개를 벗긴 뒤 — 줄 안 표시가 그 낱말을 칠한다). 프로그램이 없으면 `None`.
+    /// 감싸개를 벗긴 뒤의 프로그램 낱말 색인.
     pub(super) at: Option<usize>,
-    /// 권한 올리기 낱말(`sudo` · `doas` · `pkexec` · `su`)의 색인들 — 감싸개 사슬 안의 것만(인자 자리의 글자 `sudo` 는 아니다).
+    /// 권한 올리기 낱말의 색인들 — 감싸개 사슬 안의 것만(인자 자리의 글자 `sudo` 는 아니다).
     pub(super) sudo_at: Vec<usize>,
 }
 
-/// [`segment`] + 낱말 색인들([`SegScan`]).
 pub(super) fn segment_at(words: &[String]) -> SegScan {
     let mut i = 0usize;
     let mut sudo = false;
     let mut sudo_at: Vec<usize> = Vec::new();
     let done = |prog: Option<String>, verdict: Verdict, sudo: bool, at: Option<usize>, sudo_at: Vec<usize>| SegScan { prog, verdict, sudo, at, sudo_at };
-    // 앞의 변수 대입 · 묶음 괄호.
     while i < words.len() && (is_assignment(&words[i]) || words[i] == "{" || words[i] == "}" || words[i] == "!") {
         i += 1;
     }
@@ -91,7 +84,6 @@ pub(super) fn segment_at(words: &[String]) -> SegScan {
                 sudo = true;
                 sudo_at.push(i);
                 i += 1;
-                // 플래그 — 값을 받는 것은 다음 낱말까지.
                 while let Some(f) = words.get(i) {
                     if !f.starts_with('-') {
                         break;
@@ -149,7 +141,7 @@ pub(super) fn segment_at(words: &[String]) -> SegScan {
     }
 }
 
-/// 프로그램 하나 + 인자 → 근거. 갈래가 있는 프로그램(`find` · `git` · `sed` · `curl` …)은 인자를 본다.
+/// 갈래가 있는 프로그램(`find` · `git` · `sed` · `curl` …)은 인자를 본다.
 fn classify(prog: &str, args: &[String]) -> Verdict {
     let has = |f: &str| args.iter().any(|a| a == f);
     let first_sub = || args.iter().find(|a| !a.starts_with('-')).map(String::as_str);
@@ -193,7 +185,7 @@ fn classify(prog: &str, args: &[String]) -> Verdict {
                 "" | "status" | "log" | "diff" | "show" | "blame" | "rev-parse" | "ls-files" | "ls-tree" | "ls-remote" | "describe" | "shortlog" | "grep" | "cat-file" | "show-ref" | "rev-list" | "version" | "help" => Verdict::read(),
                 "clean" => Verdict::of(Computed::Delete, "git clean"),
                 "reset" if rest_has("--hard") => Verdict::of(Computed::Delete, "git reset --hard"),
-                // 근거는 적힌 플래그 그대로(`-D` · `-d` · `--delete`) — 줄 안 표시가 그 낱말을 찾는다.
+                // 근거는 적힌 플래그 그대로 — 줄 안 표시가 그 낱말을 찾는다.
                 "branch" if rest_has("-D") || rest_has("-d") || rest_has("--delete") => {
                     let f = rest.iter().find(|a| matches!(a.as_str(), "-D" | "-d" | "--delete")).map_or("-d", String::as_str);
                     Verdict::of(Computed::Delete, format!("git branch {f}"))
@@ -252,8 +244,7 @@ fn classify(prog: &str, args: &[String]) -> Verdict {
             let mut k = 0usize;
             while k < args.len() {
                 let a = args[k].as_str();
-                // 출력을 `/dev/null` 로 — 버리는 것이지 쓰는 것이 아니다(`-o /dev/null` · `--output /dev/null` · `--output=/dev/null` ·
-                // 끝 글자가 `o` 인 묶음 `-sSo /dev/null`). 값 낱말까지 먹는다. 묶음의 나머지 글자는 그대로 본다.
+                // 출력을 `/dev/null` 로 — 버리는 것이지 쓰는 것이 아니다(끝 글자가 `o` 인 묶음 `-sSo /dev/null` 포함). 값 낱말까지 먹는다.
                 if a == "--output=/dev/null" {
                     k += 1;
                     continue;
@@ -288,7 +279,6 @@ fn classify(prog: &str, args: &[String]) -> Verdict {
         "openssl" => {
             // 파일로 쓰는 꼴(`-out` · `-keyout`)이 먼저 — 하위 명령과 무관하게 쓰기.
             if let Some(a) = args.iter().find(|a| *a == "-out" || *a == "-keyout" || a.starts_with("-out=")) {
-                // 근거는 적힌 플래그(`-out` · `-keyout` — `-out=x` 는 `-out`).
                 let f = if a == "-keyout" { "-keyout" } else { "-out" };
                 return Verdict::of(Computed::Write, format!("openssl {f}"));
             }
@@ -385,7 +375,6 @@ fn classify(prog: &str, args: &[String]) -> Verdict {
     }
 }
 
-/// 줄 나누기 없는 분석 — [`analyze_command`] 의 몸이자 줄 하나의 분석.
 pub(super) fn analyze_flat(cmd: &str) -> PlanAnalysis {
     let split = split_shell(cmd);
     let mut programs = Vec::new();
@@ -396,7 +385,7 @@ pub(super) fn analyze_flat(cmd: &str) -> PlanAnalysis {
         let (prog, v, s) = segment(&texts_of(seg));
         sudo |= s;
         if let Some(p) = prog {
-            // 효과를 낸 꼴이 이 프로그램으로 시작하면 그 꼴을(`find -delete` · `sed -i` · `git reset --hard`), 아니면 이름만.
+            // 효과를 낸 꼴이 이 프로그램으로 시작하면 그 꼴을, 아니면 이름만.
             let text = match &v.cause {
                 Some(c) if c.starts_with(p.as_str()) => c.clone(),
                 _ => p.clone(),

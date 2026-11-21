@@ -1,4 +1,4 @@
-// v2 영속 스키마와 순수 키 변환. IO·룬·부팅 연결은 없다.
+// `workspaces.json` v2 영속 스키마와 순수 키 변환.
 // 불변식: tabKey/tileKey는 런타임 id와 독립적이다. 입력과 추가 필드를 보존한다.
 import type { SavedLeaf, SavedNode } from "$lib/tabs";
 import type { SplitDir } from "$lib/session/spec";
@@ -87,7 +87,6 @@ export type WorkspaceMutation =
 
 function uuid(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  // factory.ts::nextHistoryStreamId와 같은 난수/SSR 폴백을 UUID v4 모양으로 낸다.
   const bytes = new Uint8Array(16);
   if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
   else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
@@ -104,14 +103,12 @@ function isSplit(root: SavedNode | SavedNodeV2): root is SavedWorkspaceSplit {
   return "dir" in root && typeof root.dir === "string";
 }
 
-/** 없는 잎 키만 채우며 기존 키·이력 스트림·추가 필드와 입력 객체를 보존한다. */
 export function assignTileKeys(root: SavedNode | SavedNodeV2): SavedNodeV2 {
   if (isSplit(root)) return { ...root, a: assignTileKeys(root.a), b: assignTileKeys(root.b) };
   const existing = "tileKey" in root ? root.tileKey : undefined;
   return { ...root, tileKey: typeof existing === "string" ? existing : newTileKey() } as SavedWorkspaceLeaf;
 }
 
-/** 순서는 트리의 a → b 순서이며 중복을 숨기지 않는다. */
 export function collectTileKeys(root: SavedNode | SavedNodeV2): string[] {
   if (isSplit(root)) return [...collectTileKeys(root.a), ...collectTileKeys(root.b)];
   return "tileKey" in root && typeof root.tileKey === "string" ? [root.tileKey] : [];

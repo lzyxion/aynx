@@ -1,9 +1,5 @@
 <script lang="ts">
-  // 포워딩 추가 — 새로 걸기 폼 하나. 값·여닫기는 `app/transfer` 의 `fw` 에 있다.
-  // (2026-09-30 `+page.svelte` 에서 마크업을 그대로 옮겼다 — id·클래스·`bind:`·i18n 키·주석 불변. 스타일은 스코프라 베껴 왔다.)
-  // 2026-10-11 — **추가 전용**이 되었다. 걸려 있는 목록과 줄 동작(중지 · 브라우저에서 열기)은 머리줄 포워딩 칩의 목록
-  // 메뉴(`pane/ForwardMenu.svelte`)로 옮겼다 — 이 모달은 그 메뉴의 "포워딩 추가…" 와 ⋯ 메뉴의 "포트 포워딩…"(포워드 0개일
-  // 때)이 연다. 걸면 닫힌다(`submitForward`).
+  // 포워딩 추가 전용 — 걸려 있는 목록은 `pane/ForwardMenu.svelte`.
   import Dropdown from "$lib/Dropdown.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
@@ -14,7 +10,6 @@
     if (forwardVisible()) fw.firstField?.focus();
   });
 
-  /** 모달 뿌리 — Tab 이 모달 뒤로 새지 않게 여기서 되감는다 (`trapTab`) */
   let modalEl = $state<HTMLElement | null>(null);
 </script>
 
@@ -34,12 +29,7 @@
       <p class="lead">{t("app.forward.lead")}</p>
 
       <form onsubmit={(ev) => void submitForward(ev)}>
-        <!--
-          종류(로컬 -L · 원격 -R · 동적 -D)가 칸을 가른다 (docs/log/2026-09-23-remote-dynamic-forwarding.md).
-          원격은 **서버 쪽 포트를 먼저** 적는다 — 연결이 흘러가는 순서(서버 → 내 PC)가 칸의 순서다.
-          감춘 칸의 값은 보내지 않는다(`submitForward`). 포커스는 언제나 `fw-local` 로 간다 —
-          세 종류 모두에 있는 유일한 칸이다.
-        -->
+        <!-- 포커스는 언제나 `fw-local` 로 간다 — 세 종류 모두에 있는 유일한 칸이다 -->
         <div class="fields">
           <label for="fw-kind">{t("app.forward.field.kind")}</label>
           <Dropdown id="fw-kind" bind:value={fw.kind} options={forwardKindOptions(t)} />
@@ -129,10 +119,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    /* 모달은 언제나 최상층 — 패널 안 요소들(재연결 배너 z-5 등)이 전역 층위로 새어
-       나와 모달을 투명하게 덮으면 "보이는데 클릭·입력이 안 되는" 증상이 된다 (실기 발견).
-       패널 쪽은 pane-box 의 isolation 으로 새는 것 자체도 막지만, 모달의 최상층 보장은
-       여기서 독립적으로 지킨다. */
+    /* 모달은 언제나 최상층 — 패널 안 요소(재연결 배너 등)가 새어 나와 덮으면 보이는데 클릭·입력이 안 된다 */
     z-index: 100;
     display: flex;
     align-items: center;
@@ -144,16 +131,14 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(420px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
-    /* 호스트 폼은 칸이 10개라 작은 창에서 화면을 넘긴다 — 모달 안에서 스크롤한다
-       (overlay 의 padding 16px 을 빼 준다) */
+    max-width: calc(420px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -168,11 +153,7 @@
     color: var(--fg-1);
   }
 
-  /*
-    `display:block` 그대로 둔다 — 다른 `.lead` 들은 <code>·<strong> 이 섞인 평범한 문단이라
-    flex 로 바꾸면 그 인라인 요소 하나하나가 flex 아이템이 되어 줄바꿈이 깨진다. 접힌 안내를
-    담은 `.lead` 는 안쪽 `.note-head`(flex) 가 블록 상자라 알아서 두 줄로 쌓인다.
-  */
+  /* flex 로 바꾸지 않는다 — <code>·<strong> 이 섞인 문단의 인라인 요소가 flex 아이템이 되어 줄바꿈이 깨진다 */
   .lead {
     margin: 0 0 var(--space-4);
     font-size: var(--t-sm);
@@ -180,19 +161,13 @@
     color: var(--fg-2);
   }
 
-  /*
-    버튼 — 전역 `.btn` 세 종류 (docs/log/2026-09-25-finish-menus.md · 토큰층 "버튼 세 종류"):
-    취소 = 보조(`.btn-secondary`), 확정 = 주(`.btn-primary`, 이 상자의 하나뿐인 강조색).
-    옛 `.ghost`/`.primary` 규칙은 지웠다 — 스코프 규칙이 전역 클래스를 이긴다. 두 이름은
-    표식으로만 남는다(검증 도구가 `.actions .primary` 로 찾는다).
-  */
+  /* `.ghost`/`.primary` 는 표식으로만 남는다 — 검증 도구가 `.actions .primary` 로 찾는다 */
   .actions {
     display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
   }
 
-  /* 호스트 추가 폼 — TOFU 모달의 .fact 와 같은 2열 격자를 쓴다 */
   .fields {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -226,7 +201,6 @@
     background: var(--control-bg-hover);
   }
 
-  /* 포커스는 중성 — 강조색 선은 "강조는 셋뿐" 밖이다 (docs/log/2026-09-25-finish-menus.md) */
   .fields input:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
@@ -237,7 +211,6 @@
     color: var(--fg-3);
   }
 
-  /* 사용 예 — 폼 아래 조용한 한 문단 */
   .fw-hint {
     margin: 0 0 12px;
     font-size: var(--t-xs);
@@ -249,7 +222,6 @@
     font-family: var(--font-mono);
   }
 
-  /* 실패 한 줄 — 의미색 판(`--err-soft`), 강조색 선이 아니다 */
   .error {
     margin: 0 0 var(--space-3);
     padding: var(--space-2) var(--space-3);

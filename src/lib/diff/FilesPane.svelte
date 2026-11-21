@@ -1,9 +1,4 @@
 <script lang="ts">
-  /**
-   * **diff 타일의 왼쪽 파일 목록**(넓은 모드 — 커밋한 것 · 커밋 안 한 것 · 파일 줄 · 코멘트 배지) — `DiffView.svelte` 에서 뗀 표시 조각.
-   * 읽기 · 고른 파일 · 코멘트는 부모 `DiffView` 가 쥔다. 파일을 누르면 부모의 `select` 를 부를 뿐이다(조회 · 구독 없음).
-   * 더함/뺌 칸은 부모의 `counts` 스니펫을 그대로 받아 그린다(좁은 모드 고르개 · 파일 머리와 같은 한 벌).
-   */
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { commentEntryKey, type DiffCommentWhere } from "$lib/diff-comments";

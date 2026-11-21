@@ -1,16 +1,12 @@
 <script lang="ts">
   /**
-   * **AI 가 쓴 설명 한 줄**(승인 요약 — docs/log/2026-10-21-approval-summary.md) — 화면 아래 검토 카드(`ReviewCard`)와 작업안 타일의
-   * 카드(`console/PlanList`)가 같은 조각을 쓴다(둘이 어긋나지 않게).
-   *
-   * 앞의 `AI` 표지가 "앱이 확인한 글이 아니다" 를 말한다 — 이 글은 믿지 않는 글자라 표지 없이 그리지 않는다. 두 줄에서 말줄임, 누르면
-   * 전부. 단추지만 **승인과 무관한 보기 전환**이고, 검토 카드 안에서는 카드 상자의 `keepFocus` 가 포커스를 옮기지 않게 한다.
-   * 설명이 없는 옛 작업안이면 아무것도 그리지 않는다. 보이는 작업안이 바뀌면 다시 접힌다.
+   * AI 가 쓴 승인 요약 한 줄 — 믿지 않는 글자라 `AI` 표지 없이 그리지 않는다.
+   * 단추지만 승인과 무관한 보기 전환이다(검토 카드 안에서는 카드의 `keepFocus` 가 포커스를 옮기지 않게 한다).
    */
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   interface Props {
-    /** 작업안 id — 바뀌면 펼침을 푼다 */
+    /** 바뀌면 펼침을 푼다 */
     operationId: string;
     summary: string | null | undefined;
   }
@@ -37,7 +33,6 @@
 {/if}
 
 <style>
-  /* 글자 단추(판 없음). 두 줄에서 말줄임(`line-clamp`), 펼치면 전부 */
   .summary {
     display: block;
     width: 100%;
@@ -68,7 +63,6 @@
     -webkit-line-clamp: unset;
     line-clamp: unset;
   }
-  /* `AI` 표지 — 작은 알약 */
   .aitag {
     display: inline-block;
     margin-right: var(--space-1);

@@ -1,16 +1,8 @@
 <script lang="ts">
   /**
-   * **타일 안 찾기 띠** — 입력 칸 · "i / N" · [대소문자] · [이전] · [다음] · [닫기] 한 줄(2026-10-19 — 문서 타일의 띠를 떼어 냈다).
-   * 문서 · AI 타일의 대화 면 · diff 패치(셋 다 `DomFindBar` — 보이는 글자를 DOM 에서 훑는다)와 쿼리 결과 표(`query/ResultGrid` —
-   * 칸 글자를 데이터에서 훑는다)가 같은 띠 · 같은 키를 쓴다. 이 컴포넌트는 **그림과 키만** 갖는다 — 무엇을 어떻게 찾는지는 부르는
-   * 쪽이 정하고 `count` · `index` 를 내려 준다. 매칭 규칙(글자 그대로 · 대소문자 기본 무시 · 상한)은 `doc-find.ts` 하나다.
-   *
-   * 키: `Enter` · `F3` 다음, `Shift+Enter` · `Shift+F3` 이전(Enter 는 입력 칸에서만 — 단추의 Enter 는 단추 것), `Esc` 닫기(포커스를
-   * 어디로 돌릴지는 부르는 쪽의 `onclose`), 칸 안의 `find` 조합(`Ctrl+F` — 앱의 `find` 는 입력 칸 가드에 걸려 오지 않는다)은 질의를
-   * 다시 고른다. IME 조합 중의 키는 보지 않는다.
-   *
-   * 원격 출력 · 대화 글이 섞이는 자리라 글자는 모두 글자로 그린다(`{@html}` 없음 — `SearchOverlay` 머리말의 XSS 이유). 칠은 부르는
-   * 쪽이 CSS Custom Highlight 로 한다(`doc-find-dom.ts` 의 `paintFind` — 이름 둘을 창이 나눠 쓴다). 그 색은 이 파일의 스타일이다.
+   * 찾기 띠의 그림과 키만 갖는다 — 무엇을 찾는지는 부르는 쪽이 정하고 `count` · `index` 를 내려 준다. 매칭 규칙은 `doc-find.ts` 하나다.
+   * - `Enter` 는 입력 칸에서만 본다(단추의 Enter 는 단추 것). 앱의 `find` 조합은 입력 칸 가드에 걸려 오지 않으므로 칸 안에서 질의를 다시 고른다.
+   * - 원격 출력 · 대화 글이 섞이는 자리라 글자는 모두 글자로 그린다(`{@html}` 없음 — `SearchOverlay` 머리말의 XSS 이유).
    */
   import { tick } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -30,15 +22,11 @@
   }: {
     query?: string;
     caseSensitive?: boolean;
-    /** 일치 수(상한 `FIND_LIMIT` 에서 멈춘 값일 수 있다) */
+    /** 상한 `FIND_LIMIT` 에서 멈춘 값일 수 있다 */
     count: number;
-    /** 지금 일치 — 없으면 -1 */
     index: number;
-    /** 칸의 자리 글 · 띠의 이름("문서에서 찾기" 따위) */
     label: string;
-    /** 다음(`+1`) · 이전(`-1`) */
     onstep: (dir: 1 | -1) => void;
-    /** 닫아 달라 — 칠을 걷고 포커스를 돌리는 일은 부르는 쪽 */
     onclose: () => void;
   } = $props();
 
@@ -54,7 +42,7 @@
           : t("pane.find.count", { i: String(index + 1), n: String(count) }),
   );
 
-  /** 칸에 포커스 — 적어 둔 질의는 통째로 골라 곧바로 덮어 칠 수 있게. 띠가 막 섰을 수 있어 한 틱 뒤에 */
+  /** 띠가 막 섰을 수 있어 한 틱 뒤에 — 적어 둔 질의는 통째로 골라 곧바로 덮어 칠 수 있게 */
   export async function focus(): Promise<void> {
     await tick();
     inputEl?.focus();
@@ -90,7 +78,6 @@
   }
 </script>
 
-<!-- 찾기 띠 — 검색 랜드마크라 손잡이 경고 하나만 끈다 -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="find" role="search" aria-label={label} data-find-bar onkeydown={onKeydown}>
   <UiIcon name="search" size={13} />
@@ -140,7 +127,6 @@
 </div>
 
 <style>
-  /* 찾기 띠 — 도구줄 아래 한 줄(문서 타일의 띠 그대로). 입력 칸이 남은 폭을 갖는다 */
   .find {
     display: flex;
     align-items: center;
@@ -182,7 +168,6 @@
     color: var(--err);
   }
 
-  /* 아이콘 단추 — 문서 타일 도구줄의 `.btn.ico` 와 같은 치수 · 같은 면 */
   .btn {
     flex: 0 0 auto;
     display: inline-flex;
@@ -218,8 +203,7 @@
     background: var(--accent-soft);
   }
 
-  /* 일치 칠 — 터미널 검색(`term/search.ts`)과 같은 짝: 모든 일치는 강조 옅은 면, 지금 일치는 강조색 채움.
-     이름은 창 전체가 나눠 쓴다(`doc-find-dom.ts` — 범위는 타일별로 넣고 뺀다) */
+  /* 하이라이트 이름은 창 전체가 나눠 쓴다(`doc-find-dom.ts`) — 터미널 검색(`term/search.ts`)과 같은 색 짝 */
   :global(::highlight(doc-find)) {
     background-color: var(--accent-soft);
   }

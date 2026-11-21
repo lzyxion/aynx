@@ -8,16 +8,7 @@
   import { tipOf } from "$lib/settings/TipName.svelte";
   import { serverConfirm, type ServerAction } from "$lib/settings/session-server-confirm";
 
-  /**
-   * **세션 서버** 한 줄 (설계 internal/session-server-design-2026-10-08.md ③ — `src-tauri/src/server.rs`).
-   *
-   * 분리 프로세스 `aynx session-server` 에 붙어 있는지 · pid · 판 · 띄운 방식 · 살아 있는 세션 수를 보이고 [다시 시작] ·
-   * [모든 세션 종료] 를 둔다. ③-2 부터 **로컬 세션은 서버에 산다** — 앱을 닫아도 셸이 살고, 다시 켜면 붙는다. 두 단추는
-   * 세션을 닫으므로 살아 있는 세션이 있으면 앱의 다른 확인과 같은 확인 상자(`askConfirm()`)로 먼저 묻는다(0개면 바로 —
-   * 판정은 `session-server-confirm.ts`). 대화를 못 띄우면 실행하지 않는다. 세션을 한꺼번에 끝내는 길은 이것과 트레이 메뉴의 [모든 세션 종료](③-4 —
-   * 그쪽은 서버까지 끝내고 GUI 도 닫는다) 둘이다.
-   * 이 줄이 열려 있는 동안만 3초마다 상태를 다시 읽는다(설정값이 아니라 [저장]·[취소] 바깥이다).
-   */
+  /** 두 단추는 세션을 닫는다 — 확인 상자를 못 띄우면 실행하지 않는다. 설정값이 아니라 [저장] · [취소] 바깥이다. */
 
   type Status = {
     connected: boolean;
@@ -37,7 +28,6 @@
   let busy = $state(false);
   let failure = $state<string | null>(null);
 
-  /** 세션을 닫는 단추 — 살아 있는 세션이 있으면 먼저 묻는다. 실행해도 되면 `true` */
   async function confirmed(action: ServerAction): Promise<boolean> {
     const q = serverConfirm(action, status?.sessions);
     if (q === null) return true;
@@ -95,7 +85,6 @@
     return () => clearInterval(timer);
   });
 
-  /** 붙어 있지 않을 때의 칩 하나 — 글자 · 툴팁(긴 사유) · 나쁜가. 붙어 있으면 `null` 이고 사실 칩 줄이 대신 선다 */
   const offChip = $derived.by((): { text: string; tip?: string; bad: boolean } | null => {
     const s = status;
     if (!s) return { text: t("settings.general.server.connecting"), bad: false };
@@ -113,7 +102,6 @@
   tip={tipOf(t("settings.general.server.summary"), t("settings.general.server.note"))}
 >
   {#snippet control()}
-    <!-- 손잡이 둘이 한 줄에 선다 — 위험한 쪽([모든 세션 종료])이 오른쪽 끝. 칸이 모자라면 오른쪽 정렬로 두 줄 -->
     <span class="server-actions">
       <button
         type="button"
@@ -136,8 +124,6 @@
     </span>
   {/snippet}
 </SettingRow>
-<!-- 상태 — 원격 접속 › 상태와 같은 줄([상태] …… 알약들 — 공용 `.state-chips`, 2026-10-28). 붙어 있으면 [연결됨] [pid] [판] [띄운 방식] [세션 N개],
-     아니면 칩 하나(연결 중 · 판 불일치 · 끊김 — 긴 사유는 툴팁) -->
 <div class="srow" data-session-server-state={offChip === null ? "connected" : "disconnected"}>
   <span class="name">{t("settings.general.server.status.label")}</span>
   <span class="state-chips">
@@ -160,7 +146,6 @@
 {/if}
 
 <style>
-  /* 손잡이 둘 — 볼트 상태 줄의 `.vault-actions` 와 같은 모양. 좁으면 줄을 바꾸되 오른쪽 끝에 맞춘다 */
   .server-actions {
     display: flex;
     flex-wrap: wrap;

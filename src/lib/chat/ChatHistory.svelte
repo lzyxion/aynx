@@ -1,12 +1,4 @@
 <script lang="ts">
-  // ---------------------------------------------------------------------------
-  // **채팅 독의 채팅 목록**(머리줄 제목 ▾ — 맨 위 [새 채팅], 줄 = 로고 · 제목 · 모델 · 시각 · 점, 우클릭 = 이름 바꾸기 · 지우기) —
-  // `ChatDock.svelte` 에서 뗀 표시 조각. 목록 · 고르기 · 새 채팅 · 이름 바꾸기 저장과 열림 상태는 부모 독이 쥔다. 이름 칸의 글
-  // (`renameText`)과 우클릭 대상(`rowMenu` — 줄 메뉴 `ToolbarMenu` 는 부모가 독 안에 그리고 `runOnMenu` 로 실행)만 `bind:` 로 부모 상태에 잇는다.
-  // 로고 · 점은 부모의 스니펫을 그대로 받는다(머리줄과 같은 한 벌).
-  // 줄 오른쪽의 단추 둘(연필 = 이름 바꾸기 · 휴지통 = 지우기 — 2026-11-01)은 호버 · 키보드 포커스에서 보이고, 터치 기기(`(hover: none)`)에서는
-  // 늘 보인다(원격 · 폰에는 우클릭이 없다 — 폰 덮개 · `handheld()` 는 `always`). 하는 일은 우클릭 메뉴의 두 항목과 같다(`onrename` · `ondelete` — 부모 몸).
-  // ---------------------------------------------------------------------------
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -48,16 +40,12 @@
     commitRename: () => void;
     onrename: (c: SideChat) => void;
     ondelete: (c: SideChat) => void;
-    /** 단추를 늘 보인다 — 폰 덮개 · 폰 취급 기기(`handheld()`). 그 밖에도 `(hover: none)` 이면 CSS 가 늘 보인다 */
     always?: boolean;
     logo: Snippet<[string, number]>;
     dot: Snippet<[Dot]>;
   } = $props();
 
-  /**
-   * 이름 칸이 서면 포커스 + 글 전체 고르기. `autofocus` 는 Svelte 가 지금 포커스가 `body` 일 때만 옮겨, 단추(연필)를 누른 뒤나 입력 칸에
-   * 포커스가 있던 채로는 칸에 들어가지 않았다(그러면 Enter 가 엉뚱한 단추를 누른다)
-   */
+  /** `autofocus` 로 대신하지 않는다 — Svelte 는 포커스가 `body` 일 때만 옮겨, 연필을 누른 뒤에는 칸에 안 들어가 Enter 가 엉뚱한 단추를 누른다 */
   function focusRename(el: HTMLInputElement): void {
     el.focus();
     el.select();
@@ -134,7 +122,6 @@
 </div>
 
 <style>
-  /* 채팅 목록 — 머리줄 바로 아래, 본문 위에 덮인다 */
   .list {
     position: absolute;
     top: 52px;
@@ -180,7 +167,6 @@
     outline-offset: -2px;
   }
 
-  /* 줄 + 오른쪽 단추 둘 — 단추는 줄 위에 겹쳐 서고, 보일 때 줄 글이 그 폭만큼 비켜 선다 */
   .row-wrap {
     position: relative;
     display: flex;
@@ -236,7 +222,6 @@
     outline-offset: -2px;
   }
 
-  /* 터치 기기 — 호버가 없으니 늘 보인다 */
   @media (hover: none) {
     .acts {
       display: inline-flex;

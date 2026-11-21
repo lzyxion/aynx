@@ -7,10 +7,6 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { LaunchItem, LaunchRowHandlers } from "$lib/start/launch-item";
 
-  /**
-   * **셸 위젯** — 기본 셸이 맨 위(↵ — "지금 Enter 를 치면 이것"), 나머지는 감지 순서(`shellColumn`). 목록은 `>_` 메뉴 ·
-   * `Ctrl+Shift+N` 과 같은 캐시(`knownShellList`). 누르면 `>_` 메뉴의 셸 줄과 같은 함수(`addLocal` — 시작 타일을 대신한다).
-   */
   let {
     items,
     handlers,

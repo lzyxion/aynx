@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  /** 메뉴 한 줄 — 항목(누르면 닫고 실행 · `hint` = 오른쪽 작은 글자) · 구분선 */
+  /** `hint` = 오른쪽 작은 글자 */
   export type GridMenuEntry = { kind: "item"; id: string; label: string; hint?: string; disabled?: boolean } | { kind: "sep" };
 </script>
 
@@ -8,14 +8,9 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * **결과 표 상태 줄 [내보내기 ▾] 의 상자**(2026-11-10). 칸 우클릭 메뉴는 타일 메뉴(`PaneMenu` — 문서 편집기 우클릭과 같은 상자 · 줄은
-   * `grid-menu.ts`)로 옮겼고, 단추 아래(위)로 펼치는 이 작은 목록만 여기 남았다. 줄은 부르는 쪽(`ResultGrid`)이 `entries` 로 넘긴다.
-   *
-   * 상자 모양은 스키마 트리 메뉴(`TreeMenu`)와 같은 한 벌(`.menu-*`)이다. 결과 표는 컨테이너 질의 상자(`container: qgrid`) 안이라 그 안의
-   * `position: fixed` 는 창이 아니라 그 상자가 기준이 된다 — 그래서 `ImageMenu` 처럼 **`document.body` 로 옮겨 그린다**(`portal`).
-   * `up` 이면 `y` 가 상자의 아래 끝이다(상태 줄 단추 위로 펼친다).
-   *
-   * 항목 핸들러는 통로 하나를 지난다(`$lib/browser/menu-runner` · docs/conventions.md 의 "메뉴를 닫는 코드"): 스냅샷 → 닫기 → 실행.
+   * 결과 표 상태 줄 [내보내기 ▾] 의 상자. 결과 표는 컨테이너 질의 상자 안이라 그 안의 `position: fixed` 는 그 상자가 기준이 된다 —
+   * 그래서 `document.body` 로 옮겨 그린다(`portal`). `up` 이면 `y` 가 상자의 아래 끝이다.
+   * 항목 핸들러는 통로 하나를 지난다(docs/conventions.md 의 "메뉴를 닫는 코드"): 스냅샷 → 닫기 → 실행.
    */
   let {
     entries,
@@ -32,7 +27,7 @@
     up?: boolean;
     ariaLabel: string;
     onclose: () => void;
-    /** 고른 항목 — 메뉴가 닫힌 **뒤** 불린다. 부르는 쪽 상태를 메뉴의 파생값으로 읽지 않는 손잡이여야 한다 */
+    /** 메뉴가 닫힌 **뒤** 불린다 — 부르는 쪽 상태를 메뉴의 파생값으로 읽지 않는 손잡이여야 한다 */
     onpick: (id: string) => void;
   } = $props();
 
@@ -47,7 +42,6 @@
     (menuEl?.querySelector('[role="menuitem"]:not(:disabled)') as HTMLElement | null)?.focus();
   });
 
-  // 단추 자리에 띄우되 화면 밖으로 넘치지 않게(`TreeMenu` 와 같은 클램프)
   $effect(() => {
     if (!menuEl) return;
     void entries.length;
@@ -116,7 +110,7 @@
     display: contents;
   }
 
-  /* 바깥 클릭을 받아 닫는 투명 백드롭 — `ImageMenu` 와 같은 층(독 위) */
+  /* `ImageMenu` 와 같은 층(독 위) */
   .menu-backdrop {
     position: fixed;
     inset: 0;

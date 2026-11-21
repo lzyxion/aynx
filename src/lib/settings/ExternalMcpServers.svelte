@@ -13,16 +13,7 @@
   import Toggle from "$lib/Toggle.svelte";
 
   /**
-   * 외부 MCP 서버 — 설정 › MCP 의 **요약**(목록) ↔ **추가 · 편집 하위 화면** (docs/log/2026-10-05-mcp-subview.md).
-   *
-   * 세션 서버 고정 줄(`pinned`, `McpManager` 가 그린다)도 같은 설정 초안 · 다음 실행 주입 규칙을 따른다. 그 줄을 누르면
-   * 세션 서버 하위 화면(`pinnedView` — 상태 · 연결 대상 · 제공 도구 · 최근 호출, 2026-10-19)이 열린다 — 두 조각은 여는 ·
-   * 돌아가는 함수를 받는다. 외부 서버 줄은 이름 · 범위 · 명령/URL 을 담은 단추(덮개가 꺾쇠 `›` 까지 줄 전체)가
-   * 편집 하위 화면(`McpServerEditor`)을 열고, 줄 안의 켜기 스위치 · 에이전트 칩은 그 자리에서 초안을 바꾼다.
-   * 오른쪽 위 [MCP 서버 추가 ›] 는 추가 하위 화면. 자리 · 움직임 · Escape 는 `SubViewStack`, 머리는 `SettingsSubView` —
-   * 트리거 · 스니펫 · 자동 승인과 같은 틀이다. 돌아오면 연 줄(지웠으면 [MCP 서버 추가 ›])에 포커스가 서고, 섹션이 안
-   * 보이게 되면(`active` 꺼짐) 쓰지 않은 칸은 버리고 요약으로 간다.
-   *
+   * 외부 MCP 서버 — 설정 › MCP 의 요약 ↔ 추가 · 편집 하위 화면(docs/log/2026-10-05-mcp-subview.md).
    * 목록 · 칩은 설정 초안을 바꾸고 [저장] 뒤 다음 에이전트 실행부터 반영된다. 비밀 값은 볼트 참조만 목록에 남는다.
    */
   let {
@@ -32,9 +23,7 @@
     active = true,
   }: {
     targets: AgentArgsTarget[];
-    /** 고정 줄 — 인자는 세션 서버 하위 화면을 여는 함수 */
     pinned: Snippet<[() => void]>;
-    /** 세션 서버 하위 화면 — 인자는 요약으로 돌아가는 함수(뒤로 · Escape 와 같다) */
     pinnedView: Snippet<[() => void]>;
     active?: boolean;
   } = $props();
@@ -46,13 +35,12 @@
   const visible = $derived(sortForDisplay(list, scopeLabel));
   function scopeLabel(id: string): string { return localProjects.find((p) => p.id === id)?.name ?? t("settings.ai.external.unknown_project", { id }); }
 
-  // ── 요약 ↔ 하위 화면(추가 · 편집) — 화면 상태, 저장하지 않는다 ──
+  // ── 요약 ↔ 하위 화면 ──
   type View = { kind: "summary" } | { kind: "add" } | { kind: "edit"; index: number } | { kind: "pinned" };
   let view = $state<View>({ kind: "summary" });
   let dir = $state<"fwd" | "back" | null>(null);
   let rootEl = $state<HTMLElement | null>(null);
   let addBtn = $state<HTMLButtonElement | null>(null);
-  /** `{#key}` 의 이름 — 같은 편집 화면이라도 다른 줄이면 새로 그린다 */
   const viewKey = $derived(view.kind === "edit" ? `edit-${view.index}` : view.kind);
 
   function openSub(v: View, animate = true): void {
@@ -62,7 +50,6 @@
     if (p) p.scrollTop = 0;
   }
 
-  /** 요약으로 — `focusRow` 를 주면 그 줄(`"pinned"` = 고정 줄), `null` 이면 [MCP 서버 추가 ›] 에 포커스(돌아올 때만) */
   async function closeSub(returnFocus: boolean, focusRow: number | "pinned" | null = null): Promise<void> {
     if (view.kind === "summary") return;
     dir = returnFocus ? "back" : null;
@@ -79,17 +66,14 @@
     el?.focus({ preventScroll: true });
   }
 
-  /** 팔레트가 이 섹션의 줄(목록 머리 · 고정 줄)로 올 때 — 하위 화면이면 움직임 없이 요약으로(그 줄이 보이게) */
   export function showSummary(): void {
     void closeSub(false);
   }
 
-  /** 팔레트가 세션 서버 하위 화면의 줄로 올 때 — 움직임 없이 그 화면으로 */
   export function showPinned(): void {
     if (view.kind !== "pinned") openSub({ kind: "pinned" }, false);
   }
 
-  /** 뒤로 · 취소 · Escape — 연 쪽으로 포커스를 돌린다 */
   function back(): void {
     void closeSub(true, view.kind === "edit" ? view.index : view.kind === "pinned" ? "pinned" : null);
   }
@@ -110,7 +94,6 @@
     setAiMcpServers(list.map((value, i) => i === index ? { ...value, agents: [...agents] } : value));
   }
 
-  /** 딸린 줄의 꼬리 — 명령/URL 뒤에 ` · 환경 변수 N개 · 헤더 N개`(있는 것만) */
   function countsText(server: (typeof list)[number]): string {
     const parts: string[] = [];
     if (server.env?.length) parts.push(t("settings.ai.external.env_count", { count: server.env.length }));
@@ -118,7 +101,6 @@
     return parts.map((p) => ` · ${p}`).join("");
   }
 
-  /** 사이드 채팅 칩 — 켜고 끄기(끄면 '묻지 않기' 도 걷는다 · `toggleSideChat`) */
   function toggleSide(index: number) {
     setAiMcpServers(list.map((value, i) => i === index ? toggleSideChat(value) : value));
   }
@@ -155,14 +137,12 @@
       </button>
     </div>
 
-    <!-- 줄 모양은 설정 공용 목록(`settings.css` 의 `.slist`) — 트리거 · 스니펫 · AI 에이전트와 한 벌이다.
-         고정 줄(`pinned`)이 늘 첫 줄이고, 외부 서버가 없으면 빈 목록 카드가 그 밑에 따로 선다 -->
     <div class="slist mcp-rows">
       {@render pinned(openPinned)}
       {#each visible as { server, index } (index)}
         {@const summary = serverSummary(server)}
         <div class="slist-row mcp-row editable" class:off={!server.enabled} data-mcp-row={index}>
-          <!-- 줄 누르기 = 편집(덮개가 꺾쇠 · 빈 자리까지 덮는다). 칩 · 스위치는 이 단추 **밖**에 따로 선다(단추 안 단추는 무효 마크업) -->
+          <!-- 칩 · 스위치는 이 단추 밖에 따로 선다 — 단추 안 단추는 무효 마크업 -->
           <button type="button" class="slist-open mcp-main mcp-open" data-index={index}
             aria-label={t("settings.ai.external.edit_aria", { name: server.name })}
             onclick={() => openSub({ kind: "edit", index })}>
@@ -189,7 +169,6 @@
                   onclick={() => toggle(index, target.id, !pressed)} />
               {/each}
               <span class="mcp-divider" aria-hidden="true"></span>
-              <!-- 사이드 채팅 칩(2026-10-25) — 그 자리에서 켜고 끈다(묻지 않기는 채팅의 권한 모드 — 2026-11-20 설정 칸을 걷었다) -->
               <AgentChip agent={{ id: "side-chat", display: t("settings.ai.external.side_chat") }} pressed={!!server.side_chat}
                 title={t(!server.side_chat ? "settings.ai.external.side_chat_row_off" : "settings.ai.external.side_chat_row_ask", { name: server.name })}
                 onclick={() => toggleSide(index)}>
@@ -201,7 +180,6 @@
                 label={t("settings.ai.external.enabled_aria", { name: server.name })}
                 title={t("settings.ai.external.enabled_note")} />
             </span>
-            <!-- 꺾쇠는 그림일 뿐 — 누르면 줄 단추의 덮개가 받는다 -->
             <span class="slist-chev mcp-edit-btn" aria-hidden="true"><UiIcon name="chevron" size={16} /></span>
           </span>
         </div>
@@ -220,8 +198,6 @@
     gap: 4px;
   }
 
-  /* 목록 · 줄 · 알약 모양은 `settings.css` 의 공용 `.slist` 한 벌이다(고정 줄도 같은 클래스라 `:global` 이 필요 없다).
-     범위는 "무엇인지"(분류)라 프로젝트 범위만 제3색 — 강조색은 선택 · 주 동작에 남긴다 */
   .scope.project {
     color: var(--tertiary);
     background: var(--tertiary-soft);
@@ -233,7 +209,6 @@
     gap: var(--space-1);
   }
 
-  /* AI 타일 칩 │ 사이드 채팅 칩 */
   .mcp-divider {
     width: 1px;
     height: 16px;

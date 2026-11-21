@@ -1,9 +1,5 @@
 <script lang="ts">
-  /**
-   * **쿼리 타일의 실행 줄**(`.runline` — 쓰기 알약 · `[자동 | 수동 커밋]` · 작업 단추 · 작업 상태 · AI 에 묻기 · 경과 · [스크립트 실행] · [실행]/[취소]) —
-   * `QueryView.svelte` 에서 뗀 표시 조각. 연결 · 실행 · 트랜잭션 상태와 명령(`onPill` · `setAutoCommit` · `txCall` · `askAi` · `run` · `runScript` · `cancel`)은
-   * 부모가 쥐고, 여기는 받은 값(알약 · 접기 `fit` · 단추 판정)대로 그리기만 한다. AI 에 묻기 단추는 자리(말풍선 기준)를 부모가 재므로 `bind:askBtn`.
-   */
+  /** 쿼리 타일의 실행 줄 — 상태와 명령은 부모가 쥐고 여기는 그리기만 한다 */
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { displayCombo } from "$lib/keybindings";
@@ -72,7 +68,6 @@
 </script>
 
 <div class="runline" role="toolbar" aria-label={t("pane.query.runline")} data-query-runline>
-  <!-- 쓰기 알약 — 맨 왼쪽(10-14 — 탭 줄 오른쪽 끝에서 옮겼다). 좁으면 자물쇠만(`fit.pillLabel`) -->
   <button
     type="button"
     class="ro"
@@ -219,7 +214,7 @@
 </div>
 
 <style>
-  /* 읽기 전용 알약(실행 줄 맨 왼쪽) — 누르면 쓰기 토글. 쓰기 켬은 의미색(위험)만 쓴다(새 색 없음 — 끊김 띠 · 취소 단추와 같은 토큰) */
+  /* 쓰기 켬은 의미색(위험)만 쓴다 — 새 색 없음(끊김 띠 · 취소 단추와 같은 토큰) */
   .ro {
     flex: 0 0 auto;
     align-self: center;
@@ -269,7 +264,7 @@
     flex: 1 1 auto;
   }
 
-  /* 실행 줄 — 편집기와 결과 사이(목업의 가운데 줄). 치수는 `query/bar-fit` 의 어림과 맞춘다(고치면 같이) */
+  /* 치수는 `query/bar-fit` 의 어림과 맞춘다(고치면 같이) */
   .runline {
     flex: 0 0 auto;
     display: flex;
@@ -278,13 +273,12 @@
     min-width: 0;
     padding: 5px 10px;
     border-bottom: 1px solid var(--line);
-    /* 몸과 같은 면 — 글래스 크롬 타일이면 비운다(`--tile-inner` · `PaneHost`) */
+    /* 글래스 크롬 타일이면 비운다(`--tile-inner` · `PaneHost`) */
     background: var(--tile-inner, var(--bg-panel));
     font-size: 11px;
     color: var(--fg-2);
   }
 
-  /* [자동 | 수동 커밋] — 두 칸 전환 단추(고른 칸은 떠 있는 면 · 굵게) */
   .seg {
     flex: 0 0 auto;
     display: inline-flex;
@@ -323,7 +317,7 @@
     cursor: not-allowed;
   }
 
-  /* 작업 중(못 바꿈) — 흐리게만 하면 "꺼짐" 으로 읽히므로 덜 흐리게(까닭은 말풍선) */
+  /* 많이 흐리면 "꺼짐" 으로 읽힌다 — 덜 흐리게 */
   .seg.locked {
     opacity: 0.7;
   }
@@ -375,7 +369,6 @@
     border-color: transparent;
   }
 
-  /* AI 에 묻기 — 권한이 끔이면 흐리게(눌러도 넘기지 않고 켜는 곳을 알린다) */
   .tb.icon.ask.off {
     color: var(--fg-3);
   }
@@ -386,7 +379,6 @@
     background: var(--warn-soft);
   }
 
-  /* 실행 — 이 줄의 주 동작(강조색 판) · 취소는 의미색 */
   .tb.run {
     color: var(--on-accent);
     background: var(--accent);
@@ -414,7 +406,6 @@
     background: color-mix(in srgb, var(--err) 88%, var(--fg));
   }
 
-  /* 작업 상태 — 강조색 점(평소) · 경고색(1분 전) */
   .txstat {
     flex: 0 1 auto;
     min-width: 0;

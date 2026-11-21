@@ -12,24 +12,11 @@
   } from "$lib/browser/file-view";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
-  /**
-   * **파일 타일의 상태 줄** — 타일 맨 아래 한 줄 (docs/log/2026-10-07-file-tile-dolphin.md — Dolphin 의 상태 표시줄).
-   *
-   *     폴더 3개, 파일 12개 (4.1 MB) · 숨김 2개          128 GB 남음 / 476 GB ▬▬▬    🔍 ━━○━━
-   *
-   * - 왼쪽 글: 아무것도 안 골랐으면 **지금 폴더** 요약(뿌리 한 층 — 펼친 하위는 세지 않는다), 골랐으면 **선택** 요약
-   *   (하나면 이름 · 크기 · 날짜, 여럿이면 "N개 선택 · 크기"). 예전에 빵부스러기 줄 끝에 서던 "N개 선택" 배지가 여기로 왔다.
-   * - **남은 공간** — 백엔드가 알려 줄 때만(`FsBackend.freeSpace` — 로컬은 지금 Windows 만, 원격은 서버가
-   *   `statvfs@openssh.com` 을 알릴 때만). 모르면 칸째 없다.
-   * - **아이콘 크기** 슬라이더 — 아이콘 보기에서만 움직인다(`Ctrl+휠` 과 같은 단계).
-   *
-   * 좁은 타일(520px 아래)에서는 막대와 슬라이더를 접고 글만 남긴다.
-   */
+  /** 파일 타일의 상태 줄 (docs/log/2026-10-07-file-tile-dolphin.md). 남은 공간은 백엔드가 알려 줄 때만 선다. */
   let {
     folder,
     selection,
     space = null,
-    /** 아이콘 보기인가 — 슬라이더가 이때만 산다 */
     iconsView = false,
     zoom,
     onzoom,
@@ -42,7 +29,6 @@
     onzoom: (level: number) => void;
   } = $props();
 
-  /** 지금 폴더 요약 한 줄 — 폴더 · 파일(크기) · 숨김. 비었으면 "비어 있음" (미리 보기 패널과 같은 글) */
   const folderText = $derived(folderSummaryText(folder, t, formatSize));
 
   const used = $derived(space ? usedRatio(space) : 0);
@@ -162,7 +148,6 @@
     accent-color: var(--accent);
   }
 
-  /* 좁은 타일 — 막대·슬라이더를 접고 글만 (남은 공간 글은 말풍선으로도 읽힌다) */
   @container file-tile (max-width: 519px) {
     .free-bar,
     .zoom {

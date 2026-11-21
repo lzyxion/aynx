@@ -1,4 +1,3 @@
-// 관리 UI의 생성·편집·삭제 guard. workspace 도메인은 tabs를 되부르지 않는다.
 import { tick } from "svelte";
 import { invoke, isRemote } from "../ipc";
 import type { WorkspaceLoad } from "$lib/workspaces/schema";
@@ -40,16 +39,9 @@ export function submitWorkspaceDeletePrompt(): void {
   resolveDelete = null;
 }
 
-
 /**
- * **고른 워크스페이스로 간다** — 탭 줄의 워크스페이스 목록이 지나는 길(2026-10-07 — 함께 쓰던 하단 독의 워크스페이스 칸은 2026-10-13 에 걷었다).
- *
- * - 주 창: 그 자리에서 전환한다(`switchWorkspace` — 움직임 · 마지막 활성 타일 복원). 단 주 창에 그 워크스페이스의 탭이
- *   하나도 없고(상주도 cold 저장도 없다) 보조 창 하나가 그것을 쥐고 있으면 **그 창을 앞으로** 부른다 — 주 창에 빈 시작
- *   화면을 새로 만들지 않는다(프로젝트 위치 ↗ 를 누르면 그 창으로 가는 것과 같은 결).
- * - 원격 창: 이 창의 지금 워크스페이스만 바꾼다(거울 — 메인 PC 는 그대로).
- * - 보조 창: 보조 창은 제 워크스페이스 하나에만 묶여 전환할 수 없으므로(`switchWorkspace` 는 아무것도 안 한다) 주 창에
- *   전환을 청하고(`focus` 요청 — 프로젝트 위치로 가기와 같은 통로) 주 창을 앞으로 부른다.
+ * 주 창에 그 워크스페이스의 탭이 없고 보조 창이 쥐고 있으면 그 창을 앞으로 부른다 — 주 창에 빈 시작 화면을 만들지 않는다.
+ * 보조 창은 제 워크스페이스 하나에만 묶여 있어 주 창에 전환을 청한다.
  */
 export function openWorkspace(id: string): void {
   if (workspaceMainWindow()) {
@@ -66,7 +58,7 @@ export function openWorkspace(id: string): void {
     switchWorkspace(id);
     return;
   }
-  // 원격 창(메인 PC 거울): 이 창에서만 바꾼다 — 메인 PC 주 창에 전환을 청하지 않는다(메인 PC 화면은 움직이지 않는다 · `switchWorkspace` 의 거울 갈래)
+  // 원격 창은 이 창에서만 바꾼다 — 메인 PC 화면은 움직이지 않는다.
   if (isRemote) {
     switchWorkspace(id);
     return;
@@ -89,10 +81,6 @@ export function editWorkspacePrompt(id = currentWorkspaceId()): void {
     open: true, id: workspace.id, name: workspace.name, icon: workspace.icon ?? "", color: workspace.color ?? "", error: null,
   });
 }
-/**
- * 편집 상자를 닫은 뒤 포커스 — 타일로 돌려준다. 예전엔 하단 독의 그 워크스페이스 칸으로 돌려줬지만 칸은 2026-10-13 에
- * 걷혔고, 편집을 여는 탭 줄 목록 · 팔레트는 이미 닫혀 있다.
- */
 function focusAfterEdit(): void {
   void tick().then(() => {
     const pane = focusedPane();
@@ -114,7 +102,6 @@ export async function submitWorkspaceEdit(): Promise<void> {
   workspaceEditPrompt.busy = true;
   workspaceEditPrompt.error = null;
   try {
-    // rename과 style 모두 기존 ACK 저장 큐를 지난다. 일부만 성공해도 최신 runtime 값을 기준으로 재시도한다.
     if (name !== workspace.name && !await renameWorkspace(workspace.id, name)) {
       workspaceEditPrompt.error = t("app.workspaces.changeFailed");
       return;

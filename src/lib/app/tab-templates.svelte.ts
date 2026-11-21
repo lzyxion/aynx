@@ -51,41 +51,21 @@ import {
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { Key } from "$lib/i18n/keys";
 
-/**
- * **탭 템플릿의 창 상태와 손잡이** (2026-11-16) — 목록과 `tab-templates.json` 왕복 · 저장 상자 · 여는 길 · 이름 바꾸기 · 덮어쓰기 · 지우기.
- * 규칙(모양 · 검증 · 폴더 상대화 · 트리 변환)은 순수 층 `$lib/tab-templates` 에 있다.
- *
- * 입구: 탭 우클릭 [템플릿 저장] · 팔레트 [지금 탭을 템플릿으로 저장…](저장 상자 `TabTemplateSaveDialog.svelte` — 문 하나) /
- * 프로젝트 시작 화면의 템플릿 칸(그 자리를 템플릿 배치로) · 팔레트의 템플릿 줄(지금 워크스페이스에 새 탭 하나). 전역 단축키 · 독 줄은 없다.
- *
- * ## 쓰기는 조작 단위로 디스크 최신 위에
- *
- * 창이 여럿(주 창 · 보조 창 · 원격 창)이라 각자의 사본이 낡을 수 있다 — 고칠 때마다 파일을 다시 읽고 그 위에 얹어 쓴다([`mutate`]).
- * 파일을 못 읽으면(깨진 JSON · 모르는 버전) **쓰지 않는다** — 다른 판이 남긴 새 형식을 지우지 않게.
- *
- * ## 여는 길은 탭 복원과 같다
- *
- * 템플릿 트리 → 폴더 풀기 → 사라진 대상은 빈 타일 → `restoreNode`(복원과 같은 패널 생성자 · SFTP 짝 찾기). 다른 것은 셋 — SSH 를
- * 연결 대기로 두지 않고(사람이 방금 연 것이다) 첫 접속에 시작 폴더 · 에이전트를 싣고(`firstRun`), 그룹 열기와 같은 계단 지연을 준다.
- * 인증은 여느 타일과 같은 길(볼트 · 호스트 설정 · 비밀번호 입력)이다 — 템플릿에는 비밀이 없다.
- */
+/** 탭 템플릿의 창 상태 — 템플릿에는 비밀이 없다(인증은 여느 타일과 같은 길) */
 
 /** 최근 먼저 */
 let list = $state<TabTemplate[]>([]);
-/** 파일을 한 번이라도 읽었나 — [`ensureTabTemplates`] 는 처음 한 번만 실제로 읽는다 */
 let loaded = false;
 
-/** 지금 목록(반응형) */
 export function tabTemplates(): readonly TabTemplate[] {
   return list;
 }
 
-/** 그 프로젝트에 붙인 템플릿(최근 먼저) */
 export function projectTabTemplates(projectId: string): TabTemplate[] {
   return templatesForProject(list, projectId);
 }
 
-/** 파일 → 목록. 못 읽으면 `null`(사본은 그대로) */
+/** 못 읽으면 `null` */
 async function readFile(): Promise<TabTemplate[] | null> {
   try {
     return parseTemplates(await invoke<string | null>("load_tab_templates"));
@@ -94,7 +74,6 @@ async function readFile(): Promise<TabTemplate[] | null> {
   }
 }
 
-/** 창당 처음 한 번 읽는다(부팅) — 실패하면 빈 목록으로 산다 */
 export async function ensureTabTemplates(): Promise<void> {
   if (loaded) return;
   loaded = true;
@@ -102,7 +81,6 @@ export async function ensureTabTemplates(): Promise<void> {
   if (read) list = read;
 }
 
-/** 다시 읽는다 — 다른 창이 고쳤을 수 있다(프로젝트 시작 화면이 뜰 때) */
 export async function reloadTabTemplates(): Promise<void> {
   loaded = true;
   const read = await readFile();
@@ -110,8 +88,8 @@ export async function reloadTabTemplates(): Promise<void> {
 }
 
 /**
- * 조작 하나 — 디스크의 최신 위에 얹어 쓴다(머리말). 못 읽은 파일 위에는 쓰지 않고 안내만 한다. 쓰기 실패도 안내 한 줄(사본은 바뀐 채 —
- * 이번 실행에서는 그대로 쓴다). **디스크에 써졌을 때만 `true`** — 부르는 쪽은 그때만 "저장했습니다"를 띄운다(실패 안내와 함께 뜨지 않게).
+ * 창이 여럿이라 사본이 낡을 수 있다 — 조작마다 디스크 최신을 다시 읽고 그 위에 쓴다. 못 읽으면(깨진 JSON · 모르는 버전) 쓰지 않는다 —
+ * 다른 판이 남긴 새 형식을 지우지 않게. 디스크에 써졌을 때만 `true`.
  */
 async function mutate(fn: (cur: TabTemplate[]) => TabTemplate[]): Promise<boolean> {
   const cur = await readFile();
@@ -131,14 +109,8 @@ async function mutate(fn: (cur: TabTemplate[]) => TabTemplate[]): Promise<boolea
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// 탭 → 템플릿
-// ---------------------------------------------------------------------------
+// ── 탭 → 템플릿 ──
 
-/**
- * 그 탭이 어느 프로젝트에서 열렸나 — 탭의 프로젝트, 없으면 탭 안의 프로젝트 시작 화면 · 둘 다 없으면 `null`. 저장 상자의 기본값과
- * 덮어쓰기 옆목록(어느 템플릿이 보이나)이 같은 판정을 쓴다.
- */
 export function tabProjectOf(tab: TabSpec): Project | null {
   if (tab.projectId) {
     const p = projectById(tab.projectId);
@@ -153,7 +125,6 @@ export function tabProjectOf(tab: TabSpec): Project | null {
   return null;
 }
 
-/** 저장할 때 폴더를 상대화할 기준 — 그 탭의 폴더(로컬 프로젝트 탭 · 그 프로젝트의 시작 화면), 없으면 프로젝트 주 폴더 */
 function saveBase(tab: TabSpec, p: Project): FolderBase {
   const remote = isRemote(p) ? p.host : null;
   if (remote === null && tab.projectId === p.id && tab.projectFolder) return { folder: tab.projectFolder, remote };
@@ -163,30 +134,24 @@ function saveBase(tab: TabSpec, p: Project): FolderBase {
   return { folder: p.path, remote };
 }
 
-/** 템플릿에 넣을 타일이 있는 탭인가 — 탭 우클릭의 [템플릿 저장] 가 이 규칙으로 꺼진다 */
 export function tabTemplateSavable(tab: TabSpec): boolean {
   return templateFromTree(tab.root, null).root !== null;
 }
 
-/** 그 탭 → 템플릿 트리(프로젝트에 붙이면 그 기준으로 상대화) */
 function treeOf(tab: TabSpec, projectId: string | null): { root: SavedNode | null; skipped: number } {
   const p = projectId ? projectById(projectId) : null;
   return templateFromTree(tab.root, p ? saveBase(tab, p) : null);
 }
 
-// ---------------------------------------------------------------------------
-// 저장 상자 — 한 칸(모달은 `TabTemplateSaveDialog.svelte`)
-// ---------------------------------------------------------------------------
+// ── 저장 상자 ──
 
 const FOCUS_TEMPLATE_SAVE = "tab-template-save";
 
 export interface TabTemplateSaveForm {
   name: string;
-  /** 붙일 프로젝트 id — `""` = 붙이지 않음 */
+  /** `""` = 붙이지 않음 */
   projectId: string;
-  /** 미리보기 트리(남는 타일이 없으면 `null`) */
   root: SavedNode | null;
-  /** 넣지 않는 타일 수 */
   skipped: number;
 }
 
@@ -199,18 +164,17 @@ const save = $state<{ open: boolean; tabId: string } & TabTemplateSaveForm>({
   skipped: 0,
 });
 
-/** 상자가 떠 있는가 — `anyModalOpen()` 이 본다(전역 단축키가 쉰다) */
+/** `anyModalOpen()` 이 본다 */
 export function tabTemplateSaveOpen(): boolean {
   return save.open;
 }
 
-/** 상자가 그리는 것(`null` = 닫힘) */
 export function tabTemplateSaveForm(): TabTemplateSaveForm | null {
   if (!save.open) return null;
   return { name: save.name, projectId: save.projectId, root: save.root, skipped: save.skipped };
 }
 
-/** 칸을 고친다 — 프로젝트를 바꾸면 미리보기를 다시 짓는다(폴더 상대화가 기준을 따른다) */
+/** 프로젝트를 바꾸면 미리보기를 다시 짓는다 — 폴더 상대화가 기준을 따른다 */
 export function setTabTemplateSaveField(patch: Partial<Pick<TabTemplateSaveForm, "name" | "projectId">>): void {
   if (!save.open) return;
   if (patch.name !== undefined) save.name = patch.name;
@@ -225,10 +189,6 @@ export function setTabTemplateSaveField(patch: Partial<Pick<TabTemplateSaveForm,
   }
 }
 
-/**
- * **저장 상자를 연다** — 탭 우클릭 [템플릿 저장] · 팔레트의 저장 줄이 함께 쓰는 문 하나. 이름의 기본은 탭에 보이는 이름, 프로젝트의
- * 기본은 그 탭이 열린 프로젝트(모르면 붙이지 않음). 남는 타일이 없는 탭(시작 화면 하나 · 오케스트레이션 탭)은 상자를 열지 않고 안내만.
- */
 export function openTabTemplateSave(tabId: string | null): void {
   const tab = tabId ? residentWindowTabs().find((x) => x.id === tabId) : activeTab();
   if (!tab) return;
@@ -252,10 +212,7 @@ export function cancelTabTemplateSave(): void {
   returnFocus(FOCUS_TEMPLATE_SAVE);
 }
 
-/**
- * 저장한다. 이름이 비면 상자를 연 채 안내만 한다. **같은 이름이 있으면 덮어쓸지 묻는다**(덮어쓰면 그 템플릿의 id 를 이어 쓴다 — 붙인
- * 프로젝트 · 배치가 이번 것으로 바뀐다). 묻는 동안 상자는 그대로다.
- */
+/** 같은 이름이면 덮어쓸지 묻는다 — 덮어쓰면 그 템플릿의 id 를 이어 쓴다 */
 export async function commitTabTemplateSave(): Promise<void> {
   if (!save.open) return;
   const name = cleanTemplateName(save.name);
@@ -289,31 +246,20 @@ export async function commitTabTemplateSave(): Promise<void> {
   if (ok) showNotice(t("app.tabTemplates.notice.saved", { name }));
 }
 
-// ---------------------------------------------------------------------------
-// 고치기 — 이름 바꾸기 · 지우기(프로젝트 시작 화면의 카드 메뉴) · 덮어쓰기는 같은 이름으로 다시 저장(저장 상자가 묻는다)
-// ---------------------------------------------------------------------------
+// ── 고치기 ──
 
-/**
- * 이름을 바꾼다 — 같은 이름이 이미 있으면 던진다(문구 = 화면에 보일 것 · 이름 칸이 말풍선 · 설정 편집은 칸 아래 오류로 보인다).
- * 파일에 남았는가를 돌려준다(못 읽거나 못 쓰면 [`mutate`] 가 안내 한 줄을 띄우고 `false`).
- */
+/** 같은 이름이 있으면 던진다 — 그 문구가 화면에 그대로 보인다 */
 export async function renameTabTemplate(id: string, raw: string): Promise<boolean> {
   const name = cleanTemplateName(raw);
   if (findByName(list, name, id)) throw new Error(t("app.tabTemplates.rename.taken", { name }));
   return mutate((cur) => cur.map((x) => (x.id === id ? { ...x, name } : x)));
 }
 
-/** 프로젝트 주 폴더 기준 — 원격 프로젝트면 그 호스트 */
 function projectBase(p: Project): FolderBase {
   return { folder: p.path, remote: isRemote(p) ? p.host : null };
 }
 
-/**
- * **템플릿의 프로젝트를 바꾼다**(설정 › 템플릿 줄의 [프로젝트 ▸]) — `projectId` 가 `null` 이면 프로젝트 없음. 폴더는 옛 프로젝트의 주 폴더로
- * 풀고 새 프로젝트의 주 폴더로 다시 상대화한다(순수 [`rebaseTemplate`] — 기준 밖 · 다른 호스트의 타일은 절대 경로 그대로). 이름 · 저장한 날 ·
- * 목록 순서는 그대로다. **옛 프로젝트를 못 찾는데 상대 폴더가 있으면** 풀 기준이 없어 옮기지 않고 안내 한 줄(폴더를 잃지 않게).
- * 옮겼는가(이미 그 프로젝트면 참)를 돌려준다 — 템플릿 · 새 프로젝트가 없거나 못 옮겼으면 `false`.
- */
+/** 옛 프로젝트를 못 찾는데 상대 폴더가 있으면 풀 기준이 없어 옮기지 않는다 — 폴더를 잃지 않게 */
 export async function moveTabTemplateProject(id: string, projectId: string | null): Promise<boolean> {
   const tpl = list.find((x) => x.id === id);
   if (!tpl) return false;
@@ -335,22 +281,17 @@ export async function moveTabTemplateProject(id: string, projectId: string | nul
   );
 }
 
-/** 그 프로젝트 템플릿 수 — 파일의 최신으로 센다(프로젝트 삭제 확인 상자의 "템플릿 N개" 줄). 못 읽으면 사본으로 */
 export async function projectTemplateCount(projectId: string): Promise<number> {
   const cur = (await readFile()) ?? list;
   return templatesForProject(cur, projectId).length;
 }
 
-/**
- * 그 프로젝트 템플릿을 모두 지운다 — `project_remove` 가 **성공한 뒤에만** 부른다(`app/projects` 의 삭제 흐름). 디스크 최신 위에 쓴다.
- * 못 읽거나 못 쓰면 [`mutate`] 가 안내 한 줄을 띄운다(프로젝트 삭제는 되돌리지 않는다).
- */
+/** `project_remove` 가 성공한 뒤에만 부른다 */
 export async function dropProjectTemplates(projectId: string): Promise<void> {
   if ((await readFile())?.some((x) => x.projectId === projectId) === false) return; // 지울 것이 없으면 쓰지 않는다
   await mutate((cur) => withoutProjectTemplates(cur, projectId));
 }
 
-/** 지운다(확인 상자 · 위험) — 지웠는가를 돌려준다(확인 상자에서 물렀거나 못 썼으면 `false`) */
 export async function deleteTabTemplate(id: string): Promise<boolean> {
   const tpl = list.find((x) => x.id === id);
   if (!tpl) return false;
@@ -364,19 +305,16 @@ export async function deleteTabTemplate(id: string): Promise<boolean> {
   return mutate((cur) => withoutTemplate(cur, id));
 }
 
-// ---------------------------------------------------------------------------
-// 열기
-// ---------------------------------------------------------------------------
+// ── 열기 ──
 
-/** SSH 타일 사이의 시작 간격 — 그룹 전체 열기(`app/hosts/open.ts` 의 `OPEN_STAGGER_MS`)와 같은 값 */
+/** `app/hosts/open.ts` 의 `OPEN_STAGGER_MS` 와 같은 값 */
 const OPEN_STAGGER_MS = 120;
 
-/** 어디에 여나 — 새 탭(팔레트) · 그 시작 화면 타일 자리(프로젝트 시작 화면) */
 export type TemplateOpenWhere =
   | { kind: "newTab" }
   | { kind: "replace"; tabId: string; paneId: string; folder: string; host?: string };
 
-/** 사라진 대상의 이름 — 없으면 `null`(호스트 목록 · DB 연결 · 프로젝트를 아직 못 읽었으면 묻지 않는다) */
+/** 호스트 목록을 아직 못 읽었으면 사라졌다고 보지 않는다 */
 function missingTarget(leaf: SavedLeaf, hostsKnown: boolean): string | null {
   if ((leaf.kind === "ssh" || leaf.kind === "sftp") && !leaf.adhoc && leaf.alias && hostsKnown && !lookupHost(leaf.alias)) return leaf.alias;
   if (leaf.kind === "query" && leaf.query?.connId && !findDbConn(leaf.query.connId)) return leaf.query.connId;
@@ -385,7 +323,7 @@ function missingTarget(leaf: SavedLeaf, hostsKnown: boolean): string | null {
   return null;
 }
 
-/** 열 트리를 짓는다 — 폴더 풀기 · 사라진 대상 · 새 패널(SSH 는 곧바로 · 계단 지연 · 그 호스트의 스크롤백) */
+/** SSH 는 연결 대기로 두지 않는다 — 사람이 방금 연 것이다 */
 async function buildTree(tpl: TabTemplate, base: FolderBase | null): Promise<PaneNode> {
   if (tpl.projectId && !base && hasRelativeFolders(tpl.root)) showNotice(t("app.tabTemplates.notice.projectGone", { name: tpl.name }));
   await ensureDbConns().catch(() => undefined);
@@ -400,7 +338,7 @@ async function buildTree(tpl: TabTemplate, base: FolderBase | null): Promise<Pan
     if (pane.kind !== "ssh") continue;
     const host = pane.adhoc ? null : lookupHost(pane.alias ?? "");
     if (host) {
-      rememberTarget(host); // 비밀번호 모달이 "어디에 붙는 중인지" 를 말할 수 있게(그룹 열기와 같다)
+      rememberTarget(host); // 비밀번호 모달이 "어디에 붙는 중인지" 를 말할 수 있게
       const lines = clampScrollback(hostMeta(host).scrollback);
       if (lines !== undefined) pane.scrollback = lines;
     }
@@ -410,17 +348,7 @@ async function buildTree(tpl: TabTemplate, base: FolderBase | null): Promise<Pan
   return node;
 }
 
-/**
- * **템플릿을 연다** — 새 세션으로 찍어 낸다(머리말 "여는 길").
- *
- * - `replace` — 프로젝트 시작 화면 타일 자리가 템플릿 배치로 바뀐다(탭의 유일한 타일이면 탭 내용 전체가, 분할 안이면 그 칸이). 폴더는
- *   그 시작 화면의 폴더(워크트리면 그 워크트리)에 붙여 푼다.
- * - `newTab` — 지금 워크스페이스에 새 탭 하나(이름 = 템플릿 이름). 붙인 프로젝트가 있으면 그 주 폴더에 붙여 푼다.
- *
- * `opts.firstAi` — **첫 AI 잎의 실행 줄(· 시작 폴더)을 바꿔** 연다(프로젝트 시작 화면에서 고른 템플릿을 지난 대화의 [재개] · AI CLI
- * 단추로 열 때 — 순수 [`withFirstAi`]). 나머지 AI 잎은 저장된 그대로 새 대화다. 그 줄을 실은 타일의 id 를 돌려준다(못 열었거나 그 잎이
- * 사라진 대상이라 빈 타일이 됐으면 `null`) — 재개면 부르는 쪽이 그 타일에 대화를 미리 적는다.
- */
+/** 늘 새 세션으로 찍어 낸다. `opts.firstAi` 를 실은 타일의 id 를 돌려준다(그 잎이 빈 타일이 됐으면 `null`) */
 export async function openTabTemplate(
   id: string,
   where: TemplateOpenWhere,
@@ -438,7 +366,6 @@ export async function openTabTemplate(
   // 바꾼 줄을 실은 타일 — 그 줄은 그 잎에만 있다(재개 줄은 대화 id 를 담아 하나뿐)
   const firstAi = opts.firstAi ? (listPanes(node).find((p) => p.autorun === opts.firstAi?.autorun)?.id ?? null) : null;
   if (where.kind === "replace") {
-    // 시작 화면이 탭에 혼자였으면(탭 전체가 템플릿이 된다) 탭 이름도 템플릿 이름 — 팔레트로 연 새 탭과 같다. 분할 안의 한 칸이면 그대로.
     if (!replaceTileWithTree(where.tabId, where.paneId, node, tpl.name)) return null;
     focusTile(where.tabId, first.id);
     return firstAi;
@@ -452,11 +379,8 @@ export async function openTabTemplate(
   return firstAi;
 }
 
-// ---------------------------------------------------------------------------
-// 화면 글자 — 칩 · 요약 · 팔레트 줄
-// ---------------------------------------------------------------------------
+// ── 화면 글자 ──
 
-/** 칩 → 문구 키 */
 const CHIP_KEY: Record<TemplateChip, Key> = {
   ai: "app.tabTemplates.chip.ai",
   ssh: "app.tabTemplates.chip.ssh",
@@ -469,17 +393,15 @@ const CHIP_KEY: Record<TemplateChip, Key> = {
   empty: "app.tabTemplates.chip.empty",
 };
 
-/** 칩 하나의 낱말 */
 export function chipLabel(chip: TemplateChip): string {
   return t(CHIP_KEY[chip]);
 }
 
-/** 카드 · 팔레트의 타일 요약 — "AI 2 · SSH · DB" */
+/** "AI 2 · SSH · DB" */
 export function templateSummary(root: SavedNode): string {
   const leaves = templateLeaves(root);
   const out: string[] = [];
   for (const { chip } of chipCounts(root)) {
-    // 같은 칩 안에서도 셸은 종류 이름마다 따로 센다("PowerShell 7 2 · Git Bash") — 칩 순서는 그대로
     const counts = new Map<string, number>();
     for (const leaf of leaves) {
       if (leafChip(leaf) !== chip) continue;
@@ -491,14 +413,12 @@ export function templateSummary(root: SavedNode): string {
   return out.join(" · ");
 }
 
-/** 잎 하나의 칩 글자 — 로컬 셸은 타일 머리줄과 같은 셸 이름(`shellLabel`), 종류를 모르면 "셸" */
 export function leafChipLabel(leaf: SavedLeaf): string {
   const chip = leafChip(leaf);
   if (chip === "shell" && leaf.kind === "local" && leaf.shell) return shellLabel(leaf.shell, t);
   return chipLabel(chip);
 }
 
-/** 칸 로고가 앱 상태에서 찾는 것 — 호스트 아이콘 · 색(`PaneIcon` 과 같은 `hostMeta`), 연결의 엔진 로고(`DB_ENGINE_ICON`) */
 const LOGO_ENV: LogoEnv = {
   hostOf(alias) {
     const h = lookupHost(alias);
@@ -512,21 +432,15 @@ const LOGO_ENV: LogoEnv = {
   },
 };
 
-/**
- * 배치 그림 칸 하나의 로고(`TemplatePreview`) — 그림 규칙은 순수 층 `$lib/template-icons`. 호스트 목록 · 연결 사본이 `$state` 라
- * `$derived` 안에서 부르면 아이콘을 바꾸거나 연결을 읽어 오면 따라온다.
- */
 export function templateLeafLogo(leaf: SavedLeaf): TemplateLogo {
   return leafLogo(leaf, LOGO_ENV);
 }
 
-/** 칸 하나의 이름(툴팁) — 칸 글자의 낱말, AI 는 그 CLI 이름("Claude Code" — 로고가 이미 CLI 를 말하므로) */
 export function templateLeafLabel(leaf: SavedLeaf): string {
   if (leafChip(leaf) === "ai" && leaf.autorun) return aiDisplayName(leaf.autorun) ?? chipLabel("ai");
   return leafChipLabel(leaf);
 }
 
-/** 잎 하나의 대상 요약 — 저장 상자의 타일 목록 */
 export function leafSummary(leaf: SavedLeaf): string {
   const tg = leafTarget(leaf);
   const parts: string[] = [];
@@ -543,7 +457,6 @@ export function leafSummary(leaf: SavedLeaf): string {
   return parts.join(" · ");
 }
 
-/** 저장 상자의 타일 목록 — 칩 · 대상 */
 export function templateRows(root: SavedNode): { chip: TemplateChip; label: string; target: string }[] {
   return templateLeaves(root).map((leaf) => {
     const chip = leafChip(leaf);
@@ -551,7 +464,6 @@ export function templateRows(root: SavedNode): { chip: TemplateChip; label: stri
   });
 }
 
-/** 팔레트 한 줄 — 붙인 프로젝트 이름(없으면 타일 요약) */
 export interface TemplatePaletteEntry {
   id: string;
   name: string;
@@ -567,7 +479,6 @@ export function templatePaletteEntries(): TemplatePaletteEntry[] {
   });
 }
 
-/** 저장 상자의 프로젝트 고르기 — 붙이지 않음 + 이름순 */
 export function templateProjectOptions(): { value: string; label: string }[] {
   const sorted = [...projects()].sort((a, b) => a.name.localeCompare(b.name));
   return [{ value: "", label: t("app.tabTemplates.save.noProject") }, ...sorted.map((p) => ({ value: p.id, label: p.name }))];

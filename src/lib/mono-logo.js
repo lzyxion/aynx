@@ -1,55 +1,19 @@
 /**
- * **검정 단색 로고를 테마 색으로** — 생성기(`scripts/gen-host-icons.mjs`)가 로고 body 를 적기 전에
- * 한 번 거치는 순수 변환이다 (docs/log/2026-09-29-logos-full-icons.md 의 "검정 단색 로고" 절).
- *
- * logos 의 OpenAI(Codex) · Apple · GitHub · Vercel 같은 로고는 **검정 한 색**이다(칠 속성이 없어
- * 기본값 검정이거나 `#000`·`#161614` 같은 거의 검정). 다크 모드의 어두운 면 위에서 거의 안 보인다.
- * 이 로고들만 골라 검정을 `var(--logo-mono)`(라이트 ≈ 검정 · 다크 ≈ 흰색, `theme.css`)로 바꾼다.
- *
- * ## 무엇을 고르나
- *
- * body 에 적힌 색(`fill` · `stroke` · `stop-color` · `flood-color` · `lighting-color` · `color` —
- * 속성이든 `style` 이든)을 모아 셋으로 가른다:
- *
- * - **검정** — 밝기 낮고(가장 밝은 채널 ≤ 0x40) 무채에 가까운(채널 차 ≤ 0x18) 색. 칠 없는 도형
- *   (기본값 검정)도 여기 든다.
- * - **흰색** — 가장 어두운 채널 ≥ 0xF0, 채널 차 ≤ 0x10.
- * - **그 밖** — 하나라도 있으면 **손대지 않는다**. 테라코타 Claude, 검정 조각이 섞인 컬러 로고는 원본 그대로다.
- *
- * 그리고:
- *
- * | 적힌 색 | 처리 |
- * | --- | --- |
- * | 검정만 | 검정 → `var(--logo-mono)` (`"mono"`) |
- * | 검정 + 흰색 | 검정 → `--logo-mono`, 흰색 → `--logo-mono-inverse` (`"negative"`) — **통째 반전**이라 흰 오려낸 자리가 사라지지 않는다 |
- * | 검정 없음 · 그 밖 색 있음 | 그대로 (`null`) |
- *
- * 라이트 모드의 두 토큰은 원본(검정 · 흰색)과 같은 편이라 라이트에서는 전과 똑같이 보인다.
- *
- * **`<mask>` · `<style>` 이 있으면 건너뛴다** — 마스크 안의 흑백은 색이 아니라 투명도라 바꾸면 모양이
- * 깨지고, `<style>` 의 클래스 색은 여기서 읽지 않는다.
- * 모르는 색 표기(`hsl()` 등)도 "그 밖" 으로 본다 — 모르면 원본을 둔다.
- *
- * ## 칠 없는 도형
- *
- * 속성이 없는 도형의 기본 칠은 검정이다. 그 기본을 바꾸려고 body 전체를
- * `<g fill="var(--logo-mono)">` 로 감싼다 — 자기 칠이 있는 도형은 그 값이 이기고(위에서 바꿨다),
- * 없는 도형만 이 값을 물려받는다. SVG 표현 속성은 CSS 값으로 읽히므로 `var()` 가 그대로 풀린다.
+ * 검정 단색 로고를 테마 색(`var(--logo-mono)` — `theme.css`)으로 바꾸는 순수 변환 — 생성기(`scripts/gen-host-icons.mjs`)가 거친다.
+ * 검정 · 흰색 밖의 색이 하나라도 있으면 손대지 않는다. 검정 + 흰색이면 통째 반전이라 흰 오려낸 자리가 사라지지 않는다.
+ * 모르는 색 표기(`hsl()` 등)도 다른 색으로 본다 — 모르면 원본을 둔다.
  */
 
-/** 모으는 색 속성 — 표현 속성과 `style` 선언 둘 다 */
 const COLOR_PROPS = ["fill", "stroke", "stop-color", "flood-color", "lighting-color", "color"];
 
 const ATTR_RE = new RegExp(`(\\s)(${COLOR_PROPS.join("|")})="([^"]*)"`, "gi");
 const STYLE_RE = /(\sstyle=")([^"]*)(")/gi;
 const STYLE_DECL_RE = new RegExp(`(^|;)(\\s*)(${COLOR_PROPS.join("|")})(\\s*:\\s*)([^;]*)`, "gi");
 
-/** 칠 기본값(검정)을 받는 도형 태그 */
+/** 칠 기본값(검정)을 받는 도형 태그 — 칠 없는 도형도 검정으로 친다 */
 const SHAPE_RE = /<(path|rect|circle|ellipse|polygon|polyline|text|tspan)\b([^>]*)>/gi;
 
 /**
- * 색 값 하나를 `[r, g, b]` 로 — 모르는 표기면 `null`
- *
  * @param {string} value
  * @returns {number[] | null}
  */
@@ -73,8 +37,6 @@ function parseColor(value) {
 }
 
 /**
- * 색 값 하나의 갈래 — `"skip"` 은 색이 아닌 값(`none` · `url(#…)` · `currentColor` · `inherit` 등)
- *
  * @param {string} value
  * @returns {"black" | "white" | "other" | "skip"}
  */
@@ -100,8 +62,6 @@ export function colorKind(value) {
 }
 
 /**
- * 칠 속성이 없는 도형이 있는가 (기본값 검정을 쓰는 자리)
- *
  * @param {string} body
  */
 function hasImplicitFill(body) {
@@ -115,8 +75,6 @@ function hasImplicitFill(body) {
 }
 
 /**
- * body 에 적힌 색 값 전부
- *
  * @param {string} body
  * @returns {string[]}
  */
@@ -131,8 +89,6 @@ function colorsOf(body) {
 }
 
 /**
- * 검정 단색 로고인가 — `"mono"`(검정만) · `"negative"`(검정 + 흰색) · `null`(손대지 않는다)
- *
  * @param {string} body
  * @returns {"mono" | "negative" | null}
  */
@@ -155,8 +111,6 @@ export const MONO_VAR = "var(--logo-mono)";
 export const MONO_INVERSE_VAR = "var(--logo-mono-inverse)";
 
 /**
- * 검정 단색 로고면 색을 토큰으로 바꾼 body 를, 아니면 **받은 그대로** 돌려준다.
- *
  * @param {string} body
  * @returns {string}
  */

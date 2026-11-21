@@ -1,19 +1,14 @@
-//! **보고 · 수락**(설계 B · C-2 — G 4단계): 작업자의 `report_done` → 서버가 만드는 `Report`, 조정자 · 사람의 수락 · 반려 ·
-//! 뒤집기 → `AcceptedArtifact` · `ReviewRecord`, 보드의 "보고 뒤 변경" 확인.
+//! **보고 · 수락** — 작업자의 `report_done` → `Report`, 조정자 · 사람의 수락 · 반려 · 뒤집기, 보드의 "보고 뒤 변경".
 //!
 //! 불변식:
-//! - **git 칸은 서버가 읽는다** — `commit_oid`(그 worktree 의 `HEAD`) · `dirty`(`status --porcelain` — 추적 안 된 파일 포함 · 무시 파일 제외) ·
-//!   `changed_files`(base 이후 커밋된 변경, 상한 [`CHANGED_FILES_MAX`]). `git -C <worktree>` 를 셸 없이 낱개 인자로 부르고 훅 · fsmonitor 를
-//!   끈다(`-c core.hooksPath=<빈 폴더> -c core.fsmonitor=false` — 보고 읽기가 worktree 안의 프로그램을 돌리지 않게). git 은 오케스트레이션
-//!   잠금 **밖**에서 돌고, 잠금 안에서 관문을 **다시** 본다(그사이 보고 · 중단이 끼어들 수 있다).
-//! - `report_done` 은 **자기 Attempt · 그 Task 의 현재 Attempt** 일 때만(`stale-attempt`) · Attempt 마다 **한 번**(`already-reported`) — 같은
-//!   `requestId` 재시도는 처음 결과(작업자의 `requestId` 는 Attempt 이름표를 앞에 붙여 조정자 것과 섞이지 않는다).
-//! - Run 이 stopping 이거나 Attempt 가 중단 중 · 중단됨이거나 세대가 바뀐 뒤면 **기록만 하고 `late`** — Task · Attempt 상태는 그대로
-//!   (작업자 토큰은 종료 확인까지 살아 있으므로 이 길이 닿는다 — 사용자 결정 1).
-//! - 수락 = `AcceptedArtifact` **새로 만들기**(불변). 성공 보고만(`not-success`) · 보고 때 미커밋 변경이 없을 때만(`dirty-report`) · 커밋이
-//!   있을 때만(`no-commit`). 반려 · 뒤집기는 `ReviewRecord` 새 줄 — 수락을 뒤집으면 그 기록의 `revoked_at` 을 한 번 채운다(나머지 칸은 그대로).
-//! - 조정자는 `reported` Task 만 수락 · 반려한다(2a `not-reported`). 사람은 보드에서 뒤집을 수 있다(수락 ↔ 반려). 병합은 사람만 — 여기 없다.
-//! - 감사는 고정 칸만: `worker_reported`(결과 · 커밋 · dirty · late · 요약 **길이** · 파일 **수**) · `task_accepted` / `task_rejected`(검토자 · 뒤집기).
+//! - **보고의 git 칸은 서버가 읽는다** — 셸 없음 · 훅 · fsmonitor 끔(보고 읽기가 worktree 안의 프로그램을 돌리지 않게). git 은 잠금 **밖**,
+//!   그 뒤 잠금 안에서 관문을 **다시** 본다(그사이 보고 · 중단이 끼어들 수 있다).
+//! - `report_done` 은 그 Task 의 현재 Attempt 만(`stale-attempt`) · Attempt 마다 한 번(`already-reported`). 작업자의 `requestId` 는 Attempt 를
+//!   앞에 붙여 조정자 것과 섞이지 않는다.
+//! - 중단 · 세대 교체 뒤의 보고는 **기록만 하고 `late`** — 상태는 그대로(작업자 토큰이 종료 확인까지 살아 있어 이 길이 닿는다).
+//! - 수락 산출물은 **새로 만들기만**(불변) — 뒤집기는 `revoked_*` 를 한 번 채운다. 조정자는 `reported`(반려는 `conflict` 도)만 판정하고 뒤집기는
+//!   사람만. 병합은 사람만 — 여기 없다.
+//! - 감사는 고정 칸만 — 보고 본문 대신 길이 · 수.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -25,39 +20,33 @@ use super::store::{conflict, not_found_run, reason, state_error, OrchError, Orch
 use super::tools::{bad, coordinator_slot, opt_text, req_text, request_id};
 use crate::audit::OrchestrationAudit;
 
-/// 요약 · 메모 상한(바이트).
 const SUMMARY_MAX: usize = 8 * 1024;
 const NOTES_MAX: usize = 16 * 1024;
 
-/// "보고 뒤 변경" 확인에서 한 번에 읽는 worktree 수 상한(보드가 열려 있을 때의 가벼운 확인).
 const DRIFT_MAX: usize = 24;
 
-/// worktree 의 지금 git 상태.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WorktreeState {
-    /// `HEAD` 커밋(빈 저장소면 `None`).
     pub head: Option<String>,
-    /// 미커밋 변경(추적 안 된 파일 포함 · 무시 파일 제외).
+    /// 추적 안 된 파일 포함 · 무시 파일 제외.
     pub dirty: bool,
-    /// base 이후 커밋된 변경 파일(base 를 줬을 때만).
     pub changed: Vec<String>,
     pub truncated: bool,
-    /// 미커밋 변경 파일(추적 안 된 파일 포함 · 무시 파일 제외 — 6단계 `read_worker` 의 changedFiles). 상한 [`CHANGED_FILES_MAX`].
     pub uncommitted: Vec<String>,
-    /// 지금 체크아웃한 브랜치(`refs/heads/` 없이 — 분리된 HEAD · 못 읽으면 `None`). 10-15 불일치 판정.
+    /// `refs/heads/` 없이 — 분리된 HEAD · 못 읽으면 `None`.
     pub branch: Option<String>,
     /// HEAD 가 base 의 후손(같음 포함)인가 — base 를 줬고 판정했을 때만 `Some`.
     pub descends: Option<bool>,
 }
 
-/// worktree git 읽기 손 — `(폴더, base?)` → 상태. 기본은 [`git_probe`], 시험이 갈아 끼운다.
+/// 시험이 갈아 끼운다.
 pub(crate) type Probe = Arc<dyn Fn(&Path, Option<&str>) -> Result<WorktreeState, String> + Send + Sync>;
 
 fn hex40(s: &str) -> bool {
     s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// 진짜 git 으로 읽는다 — **블로킹**. 셸 없음 · 훅 · fsmonitor 끔 · `--no-optional-locks`(작업자의 git 과 `index.lock` 을 다투지 않게).
+/// **블로킹**. `--no-optional-locks` — 작업자의 git 과 `index.lock` 을 다투지 않게.
 pub(crate) fn git_probe(dir: &Path, base: Option<&str>) -> Result<WorktreeState, String> {
     if !dir.is_dir() {
         return Err("the worktree folder is missing".into());
@@ -118,8 +107,7 @@ pub(crate) fn git_probe(dir: &Path, base: Option<&str>) -> Result<WorktreeState,
     })
 }
 
-/// `git status --porcelain -z` → 경로들(상한 [`CHANGED_FILES_MAX`]). 줄 = `XY 경로\0`, 이름 바꾸기 · 복사(`R` · `C`)는 원래 경로가
-/// 다음 칸에 한 번 더 온다(건너뛴다). 제어 문자는 뺀다.
+/// 이름 바꾸기 · 복사(`R` · `C`)는 원래 경로가 다음 칸에 한 번 더 온다(건너뛴다).
 pub(crate) fn porcelain_z_paths(out: &str) -> Vec<String> {
     let mut paths: Vec<String> = Vec::new();
     let mut it = out.split('\0');
@@ -136,12 +124,11 @@ pub(crate) fn porcelain_z_paths(out: &str) -> Vec<String> {
     paths
 }
 
-/// 짧은 한 줄(영속 파일 · 보드) — 제어 문자 · 긴 글을 싣지 않는다.
 fn short(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).take(240).collect()
 }
 
-/// `report_done` 의 관문 — 잠금 안에서(두 번) 본다. `late` 인가를 돌려준다.
+/// 잠금 안에서 두 번(git 앞뒤) 본다. `late` 인가를 돌려준다.
 fn report_gate(run: &Run, attempt_id: &str) -> Result<bool, OrchError> {
     let a = run
         .attempts
@@ -161,13 +148,12 @@ fn report_gate(run: &Run, attempt_id: &str) -> Result<bool, OrchError> {
             "this attempt has already reported — an attempt reports once (retry with the same requestId to read the first result)",
         ));
     }
-    // 늦은 보고(4-5 — 지금 규칙 그대로): Run 중단 뒤 · 그 Attempt 를 멈추는 중 · 이 턴이 도는 동안 세대가 바뀌었다(이어지는 턴은 그때의 세대로
-    // 서므로 — `resume.rs` — 옛 세대의 Attempt 라도 새 턴의 보고는 늦지 않다).
+    // 이어지는 턴은 그때의 세대로 서므로(`resume.rs`) 옛 세대의 Attempt 라도 새 턴의 보고는 늦지 않다.
     let late = matches!(run.state, RunState::Stopping | RunState::Stopped)
         || matches!(a.state, AttemptState::Stopping | AttemptState::StopUnconfirmed | AttemptState::Stopped)
         || a.stop_requested
         || a.gen != run.gen;
-    // 보고는 **턴 안에서**만(3a — `running`). 옛 상태(2차 PTY)는 옛 파일 읽기용 — 산 Run 에는 없다.
+    // 보고는 턴 안에서만(`running`). 나머지는 옛 파일의 상태라 산 Run 에는 없다.
     let open = matches!(
         a.state,
         AttemptState::Running
@@ -186,8 +172,7 @@ fn report_gate(run: &Run, attempt_id: &str) -> Result<bool, OrchError> {
     Ok(late)
 }
 
-/// 작업자 호출의 Run(orphaned · 없는 Run 은 `not-found`). 인증(`resolve`)은 Run 이 살아 있을 때만 통하지만, 그 뒤 git 을 읽는 사이
-/// 종료 확인으로 `stopped` 가 될 수 있다(실기 — 트리 종료가 수십 ms) — 그 보고도 버리지 않고 `late` 로 적는다(stopping/stopped 규칙).
+/// `stopped` 도 받는다 — 인증 뒤 git 을 읽는 사이 종료 확인으로 `stopped` 가 될 수 있고, 그 보고도 버리지 않고 `late` 로 적는다.
 pub(super) fn worker_run<'g>(g: &'g mut super::store::Inner, run_id: &str) -> Result<&'g mut Slot, OrchError> {
     let slot = g.runs.get_mut(run_id).ok_or_else(not_found_run)?;
     if slot.run.state == RunState::Orphaned {
@@ -199,7 +184,6 @@ pub(super) fn worker_run<'g>(g: &'g mut super::store::Inner, run_id: &str) -> Re
     Ok(slot)
 }
 
-/// 검토 판정 하나(잠금 안) — 조정자 · 사람 공용. 버전 비교는 부르는 쪽이 먼저 한다.
 struct Reviewed {
     task: Task,
     artifact: Option<AcceptedArtifact>,
@@ -207,7 +191,6 @@ struct Reviewed {
     seq: u64,
 }
 
-/// 검토 대상 보고 — 그 Task 의 현재 Attempt 의 늦지 않은 보고.
 pub(super) fn review_target(run: &Run, task: &Task) -> Option<Report> {
     task.current_attempt
         .as_deref()
@@ -216,8 +199,7 @@ pub(super) fn review_target(run: &Run, task: &Task) -> Option<Report> {
         .cloned()
 }
 
-/// 수락 관문(1차 그대로 — 통합 설계 4-3 ① 의 앞부분): 현재 보고가 있고 성공 · 불일치 없음 · 미커밋 없음 · 커밋 있음. `(보고, 보고 커밋)`.
-/// 동기 수락(1차)과 통합 작업 시작(`integrate::begin_integration`)이 함께 쓴다.
+/// 통합 ref 없는 수락과 통합 작업 시작이 같은 관문을 쓴다.
 pub(super) fn acceptable(run: &Run, task: &Task) -> Result<(Report, String), OrchError> {
     let task_id = &task.id;
     let r = review_target(run, task).ok_or_else(|| {
@@ -261,28 +243,28 @@ fn review_in(
         .cloned()
         .ok_or_else(|| OrchError::new(reason::NOT_FOUND, format!("no task {task_id} in this run")))?;
     let from = task.state;
-    // 통합 중인 Task 는 판정을 받지 않는다(통합 설계 2-3 — 사람은 [취소] 로 Job 을 거둔다).
+    // 통합 중인 Task 는 판정을 받지 않는다(사람은 [취소] 로 Job 을 거둔다).
     if from == TaskState::Integrating {
         return Err(OrchError::new(
             reason::TASK_BUSY,
             format!("task {task_id} is being integrated — wait for it (wait_run) or a person cancels it"),
         ));
     }
-    // 통합 ref 에 올라간 수락은 뒤집지 않는다(통합 설계 4-7 · D11 — 되돌리기는 사람이 git 으로 직접).
+    // 통합 ref 에 올라간 수락은 뒤집지 않는다 — 되돌리기는 사람이 git 으로 직접.
     if decision == Decision::Rejected && run.valid_artifact(task_id).is_some_and(|a| a.integration_commit.is_some()) {
         return Err(OrchError::new(
             reason::ALREADY_INTEGRATED,
             format!("task {task_id} is already in the integration ref — a person reverts it with git, not by rejecting"),
         ));
     }
-    // 통합 ref 가 있는 Run 의 수락은 통합 작업만 만든다(통합 설계 2-3 — 수락 = 통합이 선 순간, `accept.rs`).
+    // 통합 ref 가 있는 Run 의 수락은 통합 작업만 만든다(`accept.rs`).
     if decision == Decision::Accepted && run.integration.is_some() {
         return Err(OrchError::new(
             reason::INTERNAL,
             "accepting in a run with an integration ref goes through the integration job",
         ));
     }
-    // 충돌한 Task(통합 설계 2-3 · 4-6)는 반려로 나가거나 해결 Attempt(3b — `spawn_worker`)로 active 가 된다.
+    // 충돌한 Task 는 반려로 나가거나 해결 Attempt(`spawn_worker`)로 active 가 된다.
     let allowed = match (reviewer, decision) {
         (Reviewer::Coordinator, Decision::Accepted) => from == TaskState::Reported,
         (Reviewer::Coordinator, Decision::Rejected) => matches!(from, TaskState::Reported | TaskState::Conflict),
@@ -304,7 +286,6 @@ fn review_in(
         });
     }
     let flipped = reviewer == Reviewer::Human && !matches!(from, TaskState::Reported | TaskState::Conflict);
-    // 검토 대상 = 그 Task 의 현재 Attempt 의 (늦지 않은) 보고.
     let report = review_target(run, &task);
     let mut artifact = None;
     match decision {
@@ -335,19 +316,18 @@ fn review_in(
         }
         Decision::Rejected => {}
     }
-    // 대상 보고가 판정됐다 — 그 보고의 활성 검토는 무효화(5단계 — 반려 · 수락). 멈춤은 부른 쪽이 잠금 밖에서(`drain_stops`).
+    // 멈춤은 부른 쪽이 잠금 밖에서(`drain_stops`).
     let actor = match reviewer {
         Reviewer::Coordinator => Actor::Coordinator,
         Reviewer::Human => Actor::Human,
     };
     super::review::invalidate(slot, task_id, now, actor, decision_word(decision));
     if decision == Decision::Rejected {
-        // 반려 — 그 Task 의 열린 작업자는 닫는다(4-5 닫는 사건 · `idle` 은 곧바로 · 도는 턴은 멈춤 — 부른 쪽이 `drain_stops`).
         super::attempts::close_task_workers(slot, task_id, now, actor);
     }
     let run = &mut slot.run;
     if decision == Decision::Rejected {
-        // 뒤집기 — 유효한 수락을 거둔다(그 칸 둘만 한 번 채운다 · 기록은 남는다).
+        // 수락 산출물은 불변 — 그 칸 둘만 한 번 채운다.
         for a in run.accepted.iter_mut().filter(|a| a.task_id == task_id && a.revoked_at.is_none()) {
             a.revoked_at = Some(now);
             a.revoked_by = Some(reviewer);
@@ -373,9 +353,9 @@ fn review_in(
         return Err(OrchError::new(reason::NOT_FOUND, format!("no task {task_id} in this run")));
     };
     t.state = new_state;
-    t.conflict = None; // 수락 · 반려 — 충돌 기록은 뜻을 잃었다(#7a).
+    t.conflict = None;
     if decision == Decision::Rejected && from == TaskState::Reported {
-        // 되돌림 셈(3-2a — `reported → rejected` 만 · 사람 뒤집기 · 충돌 반려는 세지 않는다).
+        // 되돌림 한도는 `reported → rejected` 만 센다(사람 뒤집기 · 충돌 반려는 세지 않는다).
         t.rework_count += 1;
     }
     t.version += 1;
@@ -429,7 +409,7 @@ fn review_event(d: Decision) -> &'static str {
     }
 }
 
-/// `blocked` 의 "필요한 것" 글(작업자가 쓴 글 — 정화 · 1 KiB 까지). 영속 · 보드 · 조정자에만(감사에는 길이 · 해시).
+/// 작업자가 쓴 글 — 영속 · 보드 · 조정자에만(감사에는 길이 · 해시).
 fn need_text(s: &str) -> String {
     let t = super::spawn::sanitize_text(s);
     let t = t.trim();
@@ -440,15 +420,12 @@ fn need_text(s: &str) -> String {
     t[..end].to_string()
 }
 
-/// 글의 SHA-1(hex) — 감사에 본문 대신.
 fn sha1_hex(s: &str) -> String {
     use sha1::{Digest, Sha1};
     Sha1::digest(s.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl Orchestration {
-    /// `blocked` 보고(잠금 안 — 헤드리스 설계 4-6 · D7): 보고를 만들지 않고 Attempt 에 표지 · 사건 `worker_blocked` · 감독 알림. 턴이 끝나면
-    /// `idle` + 표지(닫히지 않는다 — 같은 Attempt 를 `send_prompt` 로 resume). `(답, 감사)`.
     fn blocked_in(&self, slot: &mut Slot, attempt_id: &str, key: &str, sha: &str, need: String) -> (Value, OrchestrationAudit) {
         let now = self.now();
         let task_id = slot.run.attempts.iter().find(|a| a.id == attempt_id).map(|a| a.task_id.clone()).unwrap_or_default();
@@ -481,7 +458,6 @@ impl Orchestration {
         (result, detail)
     }
 
-    /// 작업자 `report_done` — 머리말의 관문 → (잠금 밖) git → (잠금 안) 관문 다시 · `Report` · 상태.
     pub(super) fn report_done(&self, run_id: &str, attempt_id: &str, args: Option<&Value>) -> Result<Value, OrchError> {
         let request = request_id(args)?;
         let key = format!("{attempt_id}:{request}");
@@ -489,7 +465,7 @@ impl Orchestration {
             .ok_or_else(|| bad("outcome must be success, failure or blocked"))?;
         let summary = req_text(args, "summary", SUMMARY_MAX)?;
         let notes = opt_text(args, "notes", NOTES_MAX)?.filter(|n| !n.trim().is_empty());
-        // 1. 관문 + worktree 자리(잠금 안 — 짧게). 해결 Attempt 의 성공 보고는 `resolved` 가 충돌 경로 전부를 덮어야 한다(통합 설계 3-2).
+        // 해결 Attempt 의 성공 보고는 `resolved` 가 충돌 경로 전부를 덮어야 한다.
         let (path, base, want_branch, resolve) = {
             let mut g = self.lock();
             let slot = worker_run(&mut g, run_id)?;
@@ -497,8 +473,7 @@ impl Orchestration {
                 return Ok(first);
             }
             let late = report_gate(&slot.run, attempt_id)?;
-            // `blocked` 는 **비종결**(헤드리스 설계 4-6 · D7) — 보고를 만들지 않는다(뒤의 `commit_changes` · resume 이 막히지 않게). 턴이 끝나면
-            // `idle` + 표지. 늦은 blocked 는 옛 규칙대로 늦은 보고로 적는다(Task 상태는 그대로).
+            // `blocked` 는 **비종결** — 보고를 만들지 않는다(뒤의 `commit_changes` · resume 이 막히지 않게). 늦은 blocked 는 늦은 보고로 적는다.
             if outcome == ReportOutcome::Blocked && !late {
                 let need = need_text(notes.as_deref().unwrap_or(&summary));
                 let (result, detail) = self.blocked_in(slot, attempt_id, &key, &super::store::request_sha(args), need);
@@ -518,12 +493,11 @@ impl Orchestration {
             };
             (a.worktree.clone(), a.base_commit.clone(), a.branch.clone(), resolve)
         };
-        // 2. git — 잠금 밖(블로킹).
         let probed = match path.as_deref() {
             Some(p) => (self.probe())(Path::new(p), base.as_deref()),
             None => Err("the attempt has no worktree".into()),
         };
-        // 2b. 해결 Attempt — 보고할 커밋의 충돌 경로에 표식이 남았으면 받지 않는다(작업자가 `commit_changes` 밖에서 커밋했어도).
+        // 해결 Attempt — 작업자가 `commit_changes` 밖에서 커밋했어도 표식이 남은 커밋은 받지 않는다.
         if let (Some((check, _)), Ok(state), Some(p)) = (&resolve, &probed, path.as_deref()) {
             if let Some(head) = state.head.as_deref() {
                 let env = super::git::child_env(std::env::vars_os());
@@ -538,7 +512,6 @@ impl Orchestration {
         let resolved = resolve.map(|(_, r)| r).unwrap_or_default();
         let report_id = new_id("rep").ok_or_else(|| OrchError::new(reason::INTERNAL, "no randomness source"))?;
         let now = self.now();
-        // 3. 잠금 안 — 관문 다시 · 기록 · 상태.
         let (result, detail) = {
             let mut g = self.lock();
             let slot = worker_run(&mut g, run_id)?;
@@ -557,7 +530,6 @@ impl Orchestration {
                 Ok(s) => (s, None),
                 Err(e) => (WorktreeState::default(), Some(short(&e))),
             };
-            // 자문 6절 표 — 브랜치가 바뀌었거나 HEAD 가 기준의 후손이 아니면 불일치(수락 불가), HEAD 그대로 + 깨끗하면 `no_changes`.
             let mismatch = match (&state.branch, &want_branch) {
                 (Some(now), Some(want)) if now != want => Some("branch-changed".to_string()),
                 _ if state.descends == Some(false) => Some("unexpected-head".to_string()),
@@ -589,10 +561,8 @@ impl Orchestration {
             slot.run.reports.push(report.clone());
             let mut task_state = slot.run.task(&task_id).map(|t| t.state);
             if !late {
-                // 보고가 바뀌었다 — 옛 보고의 활성 검토는 무효화(5단계 · 3-3).
                 super::review::invalidate(slot, &task_id, now, Actor::Worker, "new-report");
-                // (3a) Attempt 는 `running` 그대로 — 턴이 끝나면(트리 종료 확인) 보고가 있으니 `reported`(닫힘)가 된다. 보고 뒤 자동 종료는 없다
-                // (헤드리스는 턴이 끝나면 스스로 끝난다 — E4). `blocked` 표지는 성공 · 실패 보고가 덮는다.
+                // Attempt 는 `running` 그대로 — 턴이 끝나면(트리 종료 확인) `reported` 가 된다.
                 if let Some(a) = slot.run.attempts.iter_mut().find(|a| a.id == attempt_id) {
                     a.attention = None;
                     a.blocked = None;
@@ -672,7 +642,6 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 조정자의 수락 · 반려(`update_task{state: accepted|rejected}` — `tools.rs` 가 넘긴다). 버전 비교 · 멱등은 2a 그대로.
     pub(super) fn coordinator_review(
         &self,
         run_id: &str,
@@ -683,11 +652,10 @@ impl Orchestration {
         decision: Decision,
     ) -> Result<Value, OrchError> {
         let request = request_id(args)?;
-        // 통합 ref 가 있는 Run 의 수락은 비동기 통합 작업(통합 설계 3-1 — `accept.rs`).
         if decision == Decision::Accepted && self.has_integration(run_id) {
             return self.coordinator_accept(run_id, gen, args, task_id, version, &request);
         }
-        // 수락 규칙(E18 — 조정자 수락 순간에 지금 맡기기로). 맡기기는 잠금 밖에서 읽는다.
+        // 수락 규칙은 수락 순간의 지금 구성으로 — 잠금 밖에서 읽는다.
         let lookup = (decision == Decision::Accepted).then(|| self.run_inputs(run_id));
         let now = self.now();
         let (result, detail) = {
@@ -725,13 +693,12 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 사람의 [수락] · [반려] · [뒤집기](보드 — op `orchestration_review_task`). running · paused · stopping 에서(중단 중에도 결과를 정리할 수 있게).
+    /// stopping 에서도 받는다 — 중단 중에도 결과를 정리할 수 있게.
     pub(crate) fn human_review(&self, run_id: &str, task_id: &str, version: u64, decision: Decision) -> Result<Value, OrchError> {
-        // 통합 ref 가 있는 Run 의 [수락]은 비동기 통합 작업(통합 설계 3-1) — 답은 Job 보기.
         if decision == Decision::Accepted && self.has_integration(run_id) {
             return self.human_accept(run_id, task_id, version);
         }
-        // 사람 수락은 규칙을 넘고 면제를 기록한다(E18) — 무엇을 넘었는지 알려고 맡기기를 읽는다(잠금 밖).
+        // 사람 수락은 규칙을 넘고 면제를 기록한다 — 무엇을 넘었는지 알려고 구성을 읽는다(잠금 밖).
         let lookup = (decision == Decision::Accepted).then(|| self.run_inputs(run_id));
         let now = self.now();
         let (result, detail) = {
@@ -762,13 +729,11 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 통합 ref 가 있는 Run 인가(수락 길 가르기).
     fn has_integration(&self, run_id: &str) -> bool {
         self.lock().runs.get(run_id).is_some_and(|s| s.run.integration.is_some())
     }
 
-    /// "보고 뒤 변경"(보드 — op `orchestration_report_drift`) — 보고가 있는 Attempt 의 worktree 를 지금 읽어 보고 때와 견준다
-    /// (`HEAD` 가 보고 커밋과 다르거나 미커밋 여부가 다르면 `changedSinceReport`). **블로킹**(git) · 잠금 밖. 보드가 열려 있을 때만 부른다.
+    /// **블로킹**(git) · 잠금 밖. 보드가 열려 있을 때만 부른다.
     pub(crate) fn report_drift(&self, run_id: &str) -> Result<Value, OrchError> {
         let items: Vec<(String, String, String, Option<String>, bool)> = {
             let g = self.lock();

@@ -1,68 +1,12 @@
 <script lang="ts">
   /**
-   * **마크다운 블록 그리기** — `$lib/markdown` 이 나눈 블록·토막을 글자 보간(`{text}`)으로만 그린다. `{@html}` 없음.
-   * 예외 둘 — 둘 다 문서 글이 아니라 그리기 엔진이 짠 출력이고, 넣는 곳은 각 컴포넌트의 `innerHTML` 한 곳뿐이다:
-   * 1. `diagrams` 일 때 ```mermaid 블록은 `MermaidView` 가 mermaid 의 `securityLevel: "strict"` 출력(내장 DOMPurify 를
-   *    지난 SVG)을 그대로 넣는다 — 근거는 `MermaidView` 머리말.
-   * 2. 수식 토막 · 블록(`math` 선택으로 파싱한 글에만 생긴다 — 문서 보기 타일)은 `MathView` 가 KaTeX `renderToString`
-   *    (`trust: false` · 크기 · 매크로 상한)의 HTML 을 그대로 넣는다 — 근거는 `MathView` 머리말.
-   * ```svg 블록(`diagrams` 일 때 — `SvgView`)은 예외가 아니다: `Blob` → `blob:` 주소를 `<img>` 에만 준다(HTML 을 넣지 않는다 —
-   * `<img>` 문맥에서는 스크립트 · 바깥 자원이 돌지 않는다).
-   * 기록 보기(에이전트 말)와 문서 보기 타일(`.md`)이 같이 쓴다.
-   *
-   * - 굵게 · 기울임 · 취소선은 안쪽 토막(`inlines` — 링크 · 코드 · 중첩 강조 · 그림 · 수식)이 있으면 그것을 그 태그 안에서
-   *   같은 `inl` 로 그린다(굵은 링크 = `<strong>` 안의 여느 링크 모양) · 없으면 평문 `text`.
-   * - 코드 블록은 `CodeView`(판 있음) — 펜스의 언어로 강조, 모르면 평문. `diagrams` 를 받았으면 ```mermaid 는
-   *   다이어그램(`MermaidView`) — 문서 보기 타일 · 사이드 채팅의 대화 면(2026-10-23 — `TranscriptBody` 의 `diagrams`)이 켠다
-   *   (기록 보기 시트 · 타일 대화 면 · 명령 블록은 원문 그대로). 같은 `diagrams` 에서 ```svg 는 그림(`SvgView` — `<img>` 하나 ·
-   *   512 KB 상한 · 못 그리면 원문, 2026-10-24). `codeActions` 를 받았으면(문서 타일 · 사이드 채팅 · AI 타일 대화 면) 그림이 아닌 코드 블록은 머리 띠(언어가 있을 때만 —
-   *   없으면 떠 있는 단추) + [복사] · [터미널에 넣기](`DocCodeBlock` — 블록 하나 = 뿌리 요소 하나 그대로)다.
-   * - 링크는 글자만 — 주소는 툴팁이다(Ctrl+클릭 모드는 주소만 · 뒤에 붙이던 흐린 주소 꼬리와 툴팁의 `(Ctrl+클릭)` 은 2026-11-20 사용자 결정으로
-   *   걷었다). 배지 링크(`[![alt](img)](url)`)는 대체 글자. `onlink` 를 받았고 주소가 `http`/`https` 일 때만 **Ctrl(⌘)+클릭**
-   *   으로 연다(터미널 OSC 8 과 같은 규칙 — 그 판정은 `isWebUrl` 하나). `onlink` 가 없으면 그냥 글자다.
-   *   대화 면(`TranscriptBody` — 사이드 채팅 · 타일 대화 면 · 기록 보기, 2026-10-25 사용자 결정)은 `linkClick="plain"` 으로 **그냥 클릭**에
-   *   열고, `linkStyle="chip"` 으로 **키워드 링크 + 그 자리 출처 칩**으로 그린다(판정은 `md-source-chips.ts`): 링크 글자는
-   *   제자리에서 링크(강조색 밑줄)이고 칩을 만들지 않는다(그 링크가 여는 자리 — 2026-11-01 (나)안).
-   *   **출처 이름표**(괄호 묶음 `([공식 문서](url))` — 줄 중간이어도, 또는 문장 끝 `.` `?` `!` `。` `…` 뒤 · 블록 맨 앞에 혼자 선 링크
-   *   묶음으로 뒤가 블록 끝이나 줄바꿈인 것)는 **모델이 단 그 자리에서** 사이트 이름(`linkHost`)과 ↗ 를 단 알약 칩이 된다
-   *   (2026-11-01 — 출처 칩은 모델이 단 자리 그대로 · 블록 끝 모음은 걷었다 · `placeSourceChips`). 괄호는 지우고 칩만 — 묶음 안 같은 주소
-   *   연달음은 칩 하나 · 툴팁은 이름표 글자 + 주소. 굵게 · 기울임 · 취소선 안쪽은 괄호 묶음만 칩이 된다.
-   *   `:` 뒤(`라벨: [A](u) · [B](u)`) · 링크뿐인 블록 · 표 칸(키워드 링크만)은 바꾸지 않는다.
-   *   글자가 곧 주소나 사이트 이름이면 그 자리에 칩 하나. 칩 대상은 `onlink` 가 있고
-   *   `http`/`https` 인 여느 링크만이다 — 배지 링크 · 그림 링크(`linkImages`) · 그 밖의 주소는 예전 그대로.
-   *   글을 끌어 고르다 링크 위에서 놓은 클릭은 열지 않는다(`selecting`).
-   * - **문서 링크**(`#절` · 스킴 없는 경로 — `classifyDocHref`)는 `ondoclink` 를 받았을 때만 산다(문서 보기 타일).
-   *   같은 Ctrl+클릭이고 같은 모양이다. 주소는 적힌 그대로 올린다 — 푸는 일은 받는 쪽 몫.
-   * - **경로 링크**(`paths` — AI 타일의 대화 면 2026-11-11 · 사이드 채팅 2026-11-12):터미널 글자의 `파일:12` 와 같은 판정(`path-links.ts`)으로 인라인 코드 조각
-   *   **전체가** 경로 하나이고 구분자나 줄 꼬리가 있는 것(`codePathLink` — 맨 이름 `foo.ts` 는 아니고 `foo.ts:12` 는 그렇다) · 주소가 파일 경로인
-   *   링크(`hrefPathLink` — `#L12` 줄 포함 · 일부러 건 링크라 맨 이름도) · 평문 속 같은 기준의 경로
-   *   (`splitProsePaths`)를 누를 수 있게 한다. 코드 블록 안은 걸지 않는다. 푸는 일(그 타일 셸 · 사이드 채팅의 자리 · 폴더)은 받는 쪽 `title`(못 풀면
-   *   `null` = 걸지 않음) · `open` 몫이고, 누르는 규칙은 `linkClick` 그대로다. 모양은 여느 링크(평문 · 링크) · 밑줄 단 코드 조각이고, 요소는
-   *   `role="link"` + `tabindex` 의 글자다 — `<button>` 이 아닌 까닭: 문서 안 찾기(`doc-find-dom` 의 `SKIP`)가 단추 글자를 건너뛰고, 끌어
-   *   고르기도 단추 안에서 시작되지 않는다. Enter 가 클릭과 같다.
-   * - 제목에는 GitHub 식 앵커 이름을 `data-slug` 로 단다(`headingSlugs` — 같은 이름은 `-1` · `-2`). `id` 가 아닌
-   *   까닭: 한 창에 문서 타일이 여럿이면 id 가 겹친다. 찾는 쪽은 자기 상자 안에서 이 속성으로 찾는다.
-   * - 그림은 `images` 를 받았을 때만 불러온다(문서 보기 타일 — 문서와 같은 백엔드의 상대 · 절대 경로만 · 사이드 채팅의 에이전트 말 —
-   *   로컬의 채팅 폴더 기준(2026-10-24 — `TranscriptBody` 의 `images`), 판정은 `doc-images.ts`).
-   *   `<img>` 의 주소는 받는 쪽이 만든 `blob:` 뿐이다. 불러오는 동안 · 못 불러왔으면(바깥 주소 · 형식 · 너무 큼 · 없음 · 끊김)
-   *   `[그림: alt]` 글자이고 까닭이 툴팁이다. 없으면(기록 보기 등) 언제나 그 글자다. 배지 링크는 어느 쪽이든 대체 글자다.
-   * - 체크박스(`- [ ]`)는 `tasks` 를 받았을 때만 누를 수 있다(문서 보기 타일 — 파일 · 편집기 글에 되쓴다). 누르면 화면의
-   *   체크를 바로 바꾸지 않고(`preventDefault`) 받는 쪽에 원문 줄과 누르기 전 상태만 올린다 — 쓰기가 성공해 글이 다시
-   *   파싱되면 그때 바뀐다. 없으면 지금처럼 `disabled`(기록 보기 등).
-   * - GitHub 알림(`> [!NOTE]` …)은 머리 줄(그림 + 종류 이름) + 본문의 옅은 상자다. 왼쪽 굵은 띠는 두지 않는다 —
-   *   종류는 옅은 면 · 얇은 테두리 · 머리 줄 그림의 색이 말한다(색 짝은 아래 `.alert` 주석).
-   * - 머리말(`frontmatter` 블록 — 문서 보기 타일이 파싱할 때만 생긴다)은 본문 맨 위 작은 접힘 상자(기본 접힘 · "머리말 ·
-   *   N개 항목"). 펼치면 단순 `키: 값` 은 2열 표, 그 밖은 고정폭 원문. 접혀 있으면 안쪽을 **그리지 않는다** — 문서 안
-   *   검색이 보이지 않는 글자를 세지 않고, 펼치면 DOM 이 바뀌어 검색이 다시 찾는다.
-   * - 각주(`[^id]`)는 위첨자 번호(포인터를 얹으면 각주 글이 평문 툴팁)이고, 글 끝에 가로줄 + 번호 목록의 각주 구역이 선다.
-   *   `onjump`(받는 쪽의 스크롤 상자를 미는 손잡이)를 받았을 때만 오간다 — 위첨자를 누르면 그 각주로, 항목 끝 ↩ 를 누르면
-   *   그 참조 자리로. 링크와 달리 **그냥 클릭**이다: 링크의 Ctrl+클릭은 누르면 무엇이 열리는(바깥 브라우저 · 다른 타일)
-   *   일을 글 고르다 잘못 누른 클릭에서 지키려는 것인데, 각주 오가기는 같은 문서 안의 스크롤뿐이라 잘못 눌러도 잃는 것이
-   *   없다(GitHub 도 그냥 클릭). 찾는 것은 `id` 가 아니라 `data-fn` · `data-fn-ref` 속성이다(`data-slug` 와 같은 까닭 —
-   *   한 창에 문서 타일이 여럿이면 id 가 겹친다). `onjump` 가 없으면(기록 보기) 위첨자는 툴팁만, ↩ 는 서지 않는다.
-   * - `compact` — 제목을 본문 크기(굵게만)로. 기록 보기처럼 좁은 면에서 말 한 덩어리를 읽을 때.
-   * - 그린 그림(`md-img` · 링크 그림 · ```svg)의 **우클릭 메뉴**(`ImageMenu` — 다운로드 · 다른 이름으로 저장 · 이미지 복사 · 링크/SVG 코드
-   *   복사, 2026-10-24). 파일 그림은 `images.source` 가 원본을 알려 줄 때만 선다. 판정 · 일은 `image-menu.ts` · `image-actions.ts`.
+   * 마크다운 블록 그리기 — 글자 보간(`{text}`)으로만 그린다. `{@html}` 없음.
+   * 예외 둘 — 문서 글이 아니라 그리기 엔진이 짠 출력이고 넣는 곳은 각 컴포넌트의 `innerHTML` 한 곳뿐이다: mermaid SVG(`MermaidView` 머리말) ·
+   * KaTeX 수식(`MathView` 머리말). ```svg(`SvgView`)는 예외가 아니다 — `blob:` 주소를 `<img>` 에만 준다(스크립트 · 바깥 자원이 돌지 않는다).
+   * 웹 링크는 `onlink` 가 있고 `http`/`https` 일 때만 연다(판정은 `isWebUrl` 하나). `<img>` 의 주소는 받는 쪽이 만든 `blob:` 뿐이다.
+   * 경로 링크는 `<button>` 이 아니라 `role="link"` 글자다 — 문서 안 찾기(`doc-find-dom` 의 `SKIP`)가 단추 글자를 건너뛰고 끌어 고르기도 단추 안에서 시작되지 않는다.
+   * 제목 앵커 · 각주는 `id` 가 아니라 `data-slug` · `data-fn` 속성으로 찾는다 — 한 창에 문서 타일이 여럿이면 id 가 겹친다.
+   * 각주 오가기는 그냥 클릭이다 — 같은 문서 안 스크롤뿐이라 잘못 눌러도 잃는 것이 없다(링크의 Ctrl+클릭은 잘못 누른 클릭에서 지키려는 것).
    */
   import CodeView from "$lib/CodeView.svelte";
   import DocCodeBlock from "$lib/DocCodeBlock.svelte";
@@ -100,60 +44,40 @@
     paths,
   }: {
     blocks: MdBlock[];
-    /** 링크 열기 — 주소는 이미 `isWebUrl` 을 통과했다. 없으면 링크는 글자일 뿐이다 */
+    /** 주소는 이미 `isWebUrl` 을 통과했다 */
     onlink?: (href: string) => void;
-    /** 문서 링크(`#절` · 경로) 열기 — 주소는 적힌 그대로. 없으면 그런 링크는 글자일 뿐이다 */
+    /** 주소는 적힌 그대로 — 푸는 일은 받는 쪽 몫 */
     ondoclink?: (href: string) => void;
-    /** 제목 크기를 본문과 같게 */
     compact?: boolean;
-    /** ```mermaid 블록을 다이어그램으로 · ```svg 블록을 그림으로 그린다(문서 보기 타일 · 사이드 채팅). 끄면 다른 코드 블록과 같다 */
     diagrams?: boolean;
-    /**
-     * 체크박스를 누를 수 있게 한다(문서 보기 타일). `blocked` 가 있으면 막힌 채 그 까닭이 툴팁이고, `busy` 의 줄은 쓰는
-     * 동안 잠깐 막힌다. `ontoggle` 은 원문 줄(`MdListItem.line`)과 **누르기 전** 상태를 받는다. 없으면 체크박스는 글자 같은 그림
-     */
+    /** `ontoggle` 은 원문 줄과 누르기 전 상태를 받는다 — 화면의 체크는 쓰기가 성공해 글이 다시 파싱될 때 바뀐다 */
     tasks?: {
       title: string;
       blocked: string | null;
       busy: ReadonlySet<number>;
       ontoggle: (line: number, wasChecked: boolean) => void;
     };
-    /** 그림 불러오기(문서 보기 타일 · 사이드 채팅) — 주소마다 지금 상태 · `<img>` 가 못 그렸을 때 알림. 없으면 그림은 대체 글자뿐 */
     images?: {
       state(src: string): DocImageState;
       broken(src: string): void;
-      /** 그림 우클릭 메뉴가 쓸 원본(`DocImageCache.source`) — 없으면 그 그림에는 메뉴가 서지 않는다 */
+      /** 없으면 그 그림에는 우클릭 메뉴가 서지 않는다 */
       source?(src: string): { path: string; mime: string; read: () => Promise<ArrayBuffer> } | null;
     };
-    /** 그림 파일을 가리키는 여느 링크(`[열기](a.svg)`)도 링크 밑에 그림을 붙인다(사이드 채팅 — `images` 가 있을 때만 · 못 불러오면 링크만) */
     linkImages?: boolean;
-    /** 링크를 여는 클릭 — `ctrl`(기본 · Ctrl(⌘)+클릭 — 문서 보기 타일) · `plain`(그냥 클릭 — 대화 면) */
     linkClick?: "ctrl" | "plain";
-    /**
-     * 웹 링크의 모양 — `inline`(기본 · 강조색 밑줄 글자 + 글자와 다르면 흐린 주소 — 문서 보기 타일) ·
-     * `chip`(키워드 링크 + 블록 끝 사이트 이름 알약 칩 — 대화 면, 이 파일 머리말)
-     */
+    /** `chip` — 키워드 링크 + 그 자리 출처 칩(판정은 `md-source-chips.ts`) */
     linkStyle?: "inline" | "chip";
-    /**
-     * 같은 문서 안의 그 자리로 가기(각주 ↔ 참조) — 받는 쪽이 **자기 스크롤 상자만** 민다(`scrollIntoView` 는 조상 상자까지
-     * 밀어 타일 배치를 흔든다). 없으면 각주는 오가지 않는다
-     */
+    /** 받는 쪽이 자기 스크롤 상자만 민다 — `scrollIntoView` 는 조상 상자까지 밀어 타일 배치를 흔든다 */
     onjump?: (el: HTMLElement) => void;
-    /**
-     * 코드 블록의 머리 띠 — [복사] · (셸 계열 언어면) [터미널에 넣기](`DocCodeBlock` · 문서 타일 · 사이드 채팅 · AI 타일 대화 면). `onterm` 은 블록 글과 누른 단추를
-     * 받는다. 없으면 코드 블록은 예전 그대로(`CodeView` 판 + 떠 있는 복사 단추). 그림으로 그리는 블록(mermaid · svg · math)에는 서지 않는다
-     */
     codeActions?: { onterm: (code: string, button: HTMLElement) => void };
-    /**
-     * 경로 링크(이 파일 머리말) — `title` 은 그 토막을 풀어 툴팁 글자를(못 풀면 `null` — 링크가 아니다), `open` 은 연다. 없으면 예전 그대로
-     */
+    /** `title` 이 `null` 이면 링크가 아니다 */
     paths?: { title: (m: PathMatch) => string | null; open: (m: PathMatch) => void };
   } = $props();
 
-  /** ```math 펜스 — 수식 블록이다(파서가 `math` 로 나누지 않은 글에서도 머리 띠를 세우지 않는다) */
+  /** 파서가 `math` 로 나누지 않은 글에서도 ```math 에는 머리 띠를 세우지 않는다 */
   const isMathFence = (lang: string | undefined) => (lang ?? "").trim().toLowerCase() === "math";
 
-  /** 각주 번호 → 위첨자 툴팁(각주 글의 평문). 각주 구역은 늘 최상위 맨 끝 블록이다 */
+  /** 각주 구역은 늘 최상위 맨 끝 블록이다 */
   const fnTips = $derived.by(() => {
     const out = new Map<number, string>();
     const last = blocks[blocks.length - 1];
@@ -163,7 +87,6 @@
 
   let rootEl = $state<HTMLDivElement | null>(null);
 
-  /** 각주 오가기 — 눌린 것이 위첨자(`data-fn-ref`)나 ↩(`data-fn-back`)면 처리하고 `true` */
   function footnoteClick(ev: MouseEvent): boolean {
     const el = ev.target instanceof Element ? ev.target.closest("[data-fn-ref], [data-fn-back]") : null;
     if (!el || !onjump || !rootEl) return false;
@@ -180,10 +103,9 @@
     return true;
   }
 
-  /** 머리말 상자를 펼쳤는가 — 글이 다시 파싱돼도(자동 새로고침 · 편집 미리 보기) 그대로 */
+  /** 글이 다시 파싱돼도(자동 새로고침 · 편집 미리 보기) 그대로 */
   let fmOpen = $state(false);
 
-  /** 이 항목의 체크박스를 지금 누를 수 있는가 */
   const taskLive = (li: MdListItem) => !!tasks && tasks.blocked === null && li.line !== undefined && !tasks.busy.has(li.line);
 
   function taskClick(ev: MouseEvent, li: MdListItem) {
@@ -197,20 +119,17 @@
     const k = classifyDocHref(href).kind;
     return k === "anchor" || k === "path";
   };
-  /** 주소가 그 타일에서 풀리는 파일 경로면 그 토막(`paths` 가 있을 때만 · 웹 주소는 아니다) */
   const hrefPath = (href: string): PathMatch | null => {
     if (!paths || isWebUrl(href)) return null;
     const m = hrefPathLink(href);
     return m && paths.title(m) !== null ? m : null;
   };
-  /** 코드 조각 · 평문 토막의 경로 툴팁(걸 수 없으면 `null`) */
   const textPathTip = (text: string): string | null => {
     const m = paths ? codePathLink(text) : null;
     return m && paths ? paths.title(m) : null;
   };
   const live = (href: string) => (!!onlink && isWebUrl(href)) || (!!ondoclink && isDocLink(href)) || hrefPath(href) !== null;
 
-  /** 경로 링크 요소(`data-path-link`)의 토막 — 코드 조각 · 평문은 `data-path`, 링크는 `data-href` 에서 다시 판정한다 */
   function pathOfEl(el: Element): PathMatch | null {
     if (!paths || !el.hasAttribute("data-path-link")) return null;
     const raw = el.getAttribute("data-path");
@@ -219,7 +138,6 @@
     return href ? hrefPath(href) : null;
   }
 
-  /** 경로 링크의 Enter — 클릭과 같다(초점을 받는 것은 경로 링크뿐) */
   function onkeydown(ev: KeyboardEvent) {
     if (ev.key !== "Enter" || ev.isComposing || !paths || !(ev.target instanceof Element)) return;
     const m = pathOfEl(ev.target);
@@ -228,12 +146,9 @@
     paths.open(m);
   }
 
-  /** 제목 → 앵커 이름 (문서 순서로 겹침을 가른다) */
   const slugs = $derived(headingSlugs(blocks));
 
-  /** 한 곳에서 받는다 — 링크마다 손잡이를 달지 않는다 */
   function onclick(ev: MouseEvent) {
-    // 각주는 그냥 클릭 — 같은 문서 안 스크롤뿐이다(근거는 이 파일 머리 주석의 각주 항목)
     if (footnoteClick(ev)) return;
     if (linkClick === "ctrl" && !(ev.ctrlKey || ev.metaKey)) return;
     const pathEl = ev.target instanceof Element ? ev.target.closest("[data-path-link]") : null;
@@ -259,7 +174,7 @@
     }
   }
 
-  /** 이 링크에 걸친 글 고르기가 있는가 — 끌어 고르다 링크 위에서 놓은 클릭은 여는 클릭이 아니다(그냥 클릭 모드만) */
+  /** 끌어 고르다 링크 위에서 놓은 클릭은 여는 클릭이 아니다 */
   function selecting(el: Element): boolean {
     const sel = window.getSelection();
     return !!sel && !sel.isCollapsed && sel.containsNode(el, true);
@@ -272,21 +187,16 @@
         ? (paths?.title(hrefPath(href)!) ?? href)
         : linkClick === "plain"
         ? t("files.doc.md.link.openPlain", { href })
-        : href; // Ctrl+클릭 모드는 주소만 — 단축키 꼬리는 걷었다(2026-11-20 사용자 결정)
+        : href;
 
-  /** 출처 칩으로 그릴 링크인가 — 배지 · 그림 링크 · 열 수 없는 주소는 예전 모양 */
   const chipLink = (s: { href: string; image?: true }) =>
     linkStyle === "chip" && !s.image && !!onlink && isWebUrl(s.href) && !(linkImages && images && isImageLinkHref(s.href));
-  /** 그 자리 출처 칩의 툴팁 — 이름표 글자(들) + 주소 */
   const sourceTitle = (s: { text: string; href: string }) =>
     s.text ? t("files.doc.md.link.source", { text: s.text, href: s.href }) : linkTitle(s.href);
 
   const level = (n: number) => Math.min(6, Math.max(1, n));
 
-  /**
-   * 그림 우클릭 메뉴 — 세울 항목 · 자리 · 항목을 받는 손잡이. 손잡이는 **여는 순간 평범한 지역 값으로 묶어 둔다** — 메뉴가 닫힌 뒤
-   * 불리므로 이 상태(닫으면 `null`)를 거기서 읽으면 안 된다(docs/conventions.md 의 "메뉴를 닫는 코드")
-   */
+  /** 손잡이는 여는 순간 지역 값으로 묶어 둔다 — 메뉴가 닫힌 뒤 불리므로 이 상태(닫으면 `null`)를 읽으면 안 된다(docs/conventions.md 의 "메뉴를 닫는 코드") */
   let imgMenu = $state<{ kind: ImageTarget["kind"]; x: number; y: number; run: (a: ImageMenuAction) => void } | null>(null);
   const closeImgMenu = () => (imgMenu = null);
 
@@ -296,7 +206,7 @@
     imgMenu = { kind: target.kind, x: ev.clientX, y: ev.clientY, run: (a) => runImageAction(a, target, el) };
   }
 
-  /** 문서 그림(`md-img` · 링크 그림)의 우클릭 — 원본을 아는 그림만(`images.source`). ```svg 는 `SvgView` 가 `onmenu` 로 올린다 */
+  /** ```svg 는 `SvgView` 가 `onmenu` 로 올린다 */
   function oncontextmenu(ev: MouseEvent) {
     const el = ev.target instanceof HTMLImageElement && ev.target.matches("img.md-img[data-img-src]") ? ev.target : null;
     const src = el?.getAttribute("data-img-src");
@@ -305,7 +215,6 @@
     openImgMenu(ev, { kind: "file", ...source }, el);
   }
 
-  /** 알림 종류 → 머리 줄 그림 · 이름 */
   const ALERT_ICON: Record<MdAlertType, string> = {
     note: "info",
     tip: "alert-tip",
@@ -325,7 +234,7 @@
             : t("files.doc.md.alert.caution");
 </script>
 
-<!-- 인라인 — 한 줄로 적는다(글자 칸이 pre-wrap 이라 태그 사이 공백이 그대로 보인다) -->
+<!-- 한 줄로 적는다 — 글자 칸이 pre-wrap 이라 태그 사이 공백이 그대로 보인다 -->
 {#snippet inl(xs: MdInline[])}{#each xs as s, si (si)}{#if s.kind === "code"}{@const tip = textPathTip(s.text)}{#if tip !== null}<span role="link" tabindex="0" data-path-link data-path={s.text} title={tip}
           ><code class="ic path">{s.text}</code></span
         >{:else}<code class="ic">{s.text}</code>{/if}{:else if s.kind === "strong"}<strong>{#if s.inlines}{@render inl(s.inlines)}{:else}{s.text}{/if}</strong
@@ -385,7 +294,7 @@
             title={tip}>{g.text}</span
           >{:else}{g.text}{/if}{/each}{:else}{s.text}{/if}{/each}{/snippet}
 
-<!-- 블록 인라인 — 대화 면은 출처 이름표를 그 자리 칩으로(머리말). 표 칸은 `inl` 만 부른다. 한 줄로 적는다(pre-wrap) -->
+<!-- 표 칸은 `inl` 만 부른다. 한 줄로 적는다(pre-wrap) -->
 {#snippet blockInl(xs: MdInline[])}{#if linkStyle === "chip"}{@render inl(placeSourceChips(xs, chipLink))}{:else}{@render inl(xs)}{/if}{/snippet}
 
 {#snippet list(b: Extract<MdBlock, { kind: "list" }>)}
@@ -440,7 +349,7 @@
         {/if}
       </details>
     {:else if b.kind === "footnotes"}
-      <!-- 각주 구역 — 가로줄 + 번호 목록. ↩ 는 오갈 손잡이가 있을 때만(글자가 아니라 검색이 세지 않게 aria-hidden) -->
+      <!-- ↩ 는 검색이 세지 않게 aria-hidden -->
       <section class="fns" aria-label={t("files.doc.md.footnotes")} data-footnotes>
         <hr />
         <ol class="md-list">
@@ -496,7 +405,7 @@
   {/each}
 {/snippet}
 
-<!-- 클릭은 링크 여는 손잡이 하나뿐(Ctrl+클릭) — 키보드로 여는 길은 경로 링크의 Enter 뿐이다(그 밖의 링크는 초점을 받지 않는 글자) -->
+<!-- 키보드로 여는 길은 경로 링크의 Enter 뿐이다(그 밖의 링크는 초점을 받지 않는 글자) -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="md" class:compact {onclick} {onkeydown} {oncontextmenu} bind:this={rootEl} data-markdown>{@render blockList(blocks)}</div>
 
@@ -531,15 +440,13 @@
     overflow-wrap: anywhere;
   }
 
-  /* 표 칸은 낱말(한글 어절 포함) 안에서 끊지 않는다 — `anywhere` 는 칸의 최소 폭을 한 글자로 만들어 좁은 칸이 한 글자씩 세로로
-     감겼다(실기 10-31 프로듀서 채팅의 "검/토" 열). 넘치는 긴 낱말은 그래도 끊기고, 표가 넓으면 `.tbl` 이 가로로 굴린다 */
+  /* `anywhere` 는 칸의 최소 폭을 한 글자로 만들어 좁은 칸이 한 글자씩 세로로 감긴다 */
   td,
   th {
     overflow-wrap: break-word;
     word-break: keep-all;
   }
 
-  /* 제목 — 굵게 + 수준별 크기(글자 크기 토큰의 비율). compact 는 본문 크기 */
   .h {
     font-weight: var(--fw-semibold);
     line-height: 1.3;
@@ -580,17 +487,7 @@
     color: var(--fg-2);
   }
 
-  /*
-   * 알림 — 옅은 면 + 얇은 테두리 + 머리 줄 그림 색. 왼쪽 굵은 띠는 두지 않는다(사용자 취향 — 목차 지금 절도 같은 까닭으로
-   * 걷었다). 색은 앱 토큰만 쓴다 — 앱에 파랑 · 보라 계열 토큰이 없어 GitHub 의 다섯 빛깔을 **뜻**으로 옮겼다:
-   * - NOTE(참고) = 무채 — 가장 약한 알림이라 본문 면(`--surface-hover`)과 흐린 그림(`--fg-2`). GitHub 의 파랑은 "정보" 라는
-   *   뜻일 뿐이고, 앱의 강조색은 IMPORTANT 가 써야 둘이 갈린다.
-   * - TIP(팁) = `--ok` — 초록은 GitHub 와 같다. `--ok-soft` 가 없어 실행 기록(`ExecList`)처럼 `color-mix` 로 옅게 뽑는다.
-   * - IMPORTANT(중요) = `--accent` / `--accent-soft` — 앱이 "눈여겨볼 것" 에 쓰는 색(GitHub 의 보라 자리).
-   * - WARNING(경고) = `--warn` / `--warn-soft` — 대기 배너와 같은 앰버.
-   * - CAUTION(주의) = `--err` / `--err-soft` — 실패 배너와 같은 빨강.
-   * 테두리는 그 색을 옅게 섞어 면보다 한 단계만 진하다. 본문 글자색은 그대로(`--fg-1`) — 색은 머리 줄만 입는다.
-   */
+  /* 왼쪽 굵은 띠는 두지 않는다(사용자 취향). 앱에 파랑 · 보라 토큰이 없어 GitHub 의 빛깔을 뜻으로 옮겼다 — NOTE 는 무채, IMPORTANT 가 강조색 */
   .alert {
     --alert-tone: var(--fg-2);
     --alert-face: var(--surface-hover);
@@ -636,7 +533,6 @@
     list-style: none;
   }
 
-  /* 할 일 상자는 글자에 맞춘다(2026-11-13 목업) — 글자 크기의 0.86배 · 모서리 4px · 기준선(글자 아래로 살짝) */
   .task input {
     /* 입력 요소는 브라우저가 글자 크기를 따로 준다(≈13.3px) — 물려받아야 `em` 이 본문 글자 기준이 된다 */
     font-size: inherit;
@@ -659,7 +555,6 @@
     color: var(--fg-2);
   }
 
-  /* 각주 — 위첨자 번호는 줄 높이를 밀지 않게. 오갈 수 있으면 링크와 같은 강조색 */
   .fnref {
     margin-left: 1px;
     font-size: 0.75em;
@@ -705,7 +600,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* 경로 코드 조각(이 파일 머리말) — 코드 모양 그대로 + 여느 링크의 밑줄 · 포인터 */
   .ic.path {
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
@@ -735,11 +629,6 @@
     text-decoration-color: var(--accent);
   }
 
-  /*
-   * 출처 칩(대화 면 — 이 파일 머리말) — 글줄 안의 작은 알약. 줄 높이를 밀지 않게 글자보다 작고(0.78em) 위아래 여백을 줄였다.
-   * 면은 상태 층(`--control-ghost-hover` — 글래스에서도 비친다) + outlineVariant 테두리, 호버 · 포커스는 secondaryContainer
-   * (`--accent-soft` · 글래스면 `--glass-pick`).
-   */
   .src-chip {
     display: inline-flex;
     align-items: center;
@@ -749,7 +638,7 @@
     padding: 0 6px 0 7px;
     font: inherit;
     font-size: 0.78em;
-    /* 굵게 · 기울임 · 취소선 안에 서도(괄호 출처 — 강조 안쪽) 칩 글자는 여느 모양 */
+    /* 강조 안쪽에 서도 칩 글자는 여느 모양 */
     font-weight: 400;
     font-style: normal;
     text-decoration: none;
@@ -794,14 +683,12 @@
     color: var(--fg-3);
   }
 
-  /* 문서 속 그림 — 본문 폭을 넘지 않는다. 글줄 안에서는 가운데 맞춤 */
   .md-img {
     max-width: 100%;
     height: auto;
     vertical-align: middle;
   }
 
-  /* 링크 그림 — 링크 글자 밑에 따로 한 줄 */
   .link-img {
     display: block;
     margin-top: var(--space-1);
@@ -821,7 +708,6 @@
     white-space: pre;
   }
 
-  /* 머리말 — 본문보다 한 단계 작은 접힘 상자. 요약 줄은 흐린 글자 */
   .fm {
     font-size: 0.92em;
     border: 1px solid var(--line);
@@ -851,7 +737,6 @@
     white-space: nowrap;
   }
 
-  /* 표 — 넓으면 가로로 민다 */
   .tbl {
     max-width: 100%;
     overflow-x: auto;

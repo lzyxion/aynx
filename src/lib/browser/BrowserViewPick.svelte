@@ -8,25 +8,15 @@
   import ToolbarMenu from "$lib/browser/ToolbarMenu.svelte";
   import type { ToolbarMenuRow } from "$lib/browser/toolbar-tools";
 
-  /**
-   * **파일 타일의 보기 고르개** — 지금 보기의 그림 + ▾ 하나. 누르면 셋을 고르는 목록이 아래로 뜬다(툴팁은 이름만 — "보기").
-   *
-   * 자리는 뒤로/앞으로(`BrowserNav`) **바로 다음**이다(2026-10-20 사용자 실기 — `‹ › · ▦▾ · 위치 아이콘 · 경로 …`): 머리줄이 서 있으면
-   * 머리줄 맨 앞 조각(`pane/pane-tools.svelte.ts` 의 `lead` — 타일 아이콘 앞), 아니면 도구줄 맨 앞(`BrowserToolbar` 의 `nav`). 그래서
-   * `BrowserToolbar` 에서 꺼냈다. `Ctrl+1/2/3` 은 창 전역의 `file-keys.ts` 가 받는다(이 단추와 같은 길 — `onview`).
-   * 단추 모양은 전역 `.bar-btn`(`BrowserToolbar`).
-   */
   let {
     view = "details",
     onview,
   }: {
-    /** 지금 보기 — 고르개의 그림 */
     view?: FileView;
-    /** 보기를 골랐다 (`Ctrl+1/2/3` 과 같은 길) */
     onview?: (view: FileView) => void;
   } = $props();
 
-  /** 보기 셋 — 순서가 곧 `Ctrl+1/2/3` 이다(Dolphin 과 같은 차례) */
+  /** 순서가 곧 `Ctrl+1/2/3` 이다 */
   const VIEWS: readonly { view: FileView; icon: string; label: Key }[] = [
     { view: "icons", icon: "grid", label: "files.view.icons" },
     { view: "compact", icon: "view-compact", label: "files.view.compact" },
@@ -46,7 +36,6 @@
       key: v.view,
       icon: v.icon,
       label: t(v.label),
-      // 지금 걸린 조합(사용자 오버라이드를 지난 것)
       hint: displayCombo(effectiveCombo(VIEW_ACTION[v.view], settings.keybindings)),
       checked: view === v.view,
       radio: true,
@@ -56,13 +45,11 @@
   let open = $state(false);
   let btn = $state<HTMLButtonElement | null>(null);
 
-  /** 닫는다 — `back` 이면 단추로 포커스를 돌려준다 */
   function close(back: boolean) {
     open = false;
     if (back) btn?.focus({ preventScroll: true });
   }
 
-  /** 메뉴 줄 — 통로(`runOnMenu`)를 지난다: 대상을 뜨고 → 닫고(단추로 포커스) → 실행 */
   function pick(key: string) {
     runOnMenu(
       () => VIEWS.find((v) => v.view === key)?.view,

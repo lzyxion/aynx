@@ -14,16 +14,8 @@
   import { START_WIDGET_KINDS, type StartWidgetKind } from "$lib/start-widgets";
 
   /**
-   * **시작 화면 판의 우클릭 메뉴** (docs/log/2026-10-28-start-widgets.md) — 빈 자리나 시계 아닌 위젯 위를 우클릭하면(위젯을 더하는 길은 이것 하나)
-   *  · 평소(잠김) = `배치 편집` 한 줄
-   *  · 편집 중 = `위젯 추가 ▸`(옆목록에 네 종류 — 시계 · 최근 호스트 · 프로젝트 · 셸, 이미 놓인 것은 흐리게 "놓임" — 종류마다 하나)
-   *    · 구분선 · `편집 완료` · `되돌리기` · `레이아웃 리셋`(판 위 편집 단추 줄과 같은 동작 · 위젯 메뉴에는 없다)
-   *    (2026-11-03 — 가지런히 정리는 사용자가 걷었다)
-   *
-   * 상자 모양은 앱 메뉴 한 벌(`.menu-surface` · `.menu-row` · `.menu-sep` · `.menu-kbd`), 옆목록의 자리 · 뜸 · 키는 타일 ⋯ 메뉴와 같은
-   * `$lib/menu-flyout`. `document.body` 로 옮겨 그린다(`ImageMenu` 와 같은 까닭 — 타일 상자 안에서는 `position: fixed` 의 기준이
-   * 창이 아닐 수 있다). 항목 핸들러는 **메뉴 통로 하나**를 지난다(`$lib/browser/menu-runner` · docs/conventions.md 의 "메뉴를
-   * 닫는 코드"): 스냅샷 → 닫기 → 실행.
+   * 시작 화면 판의 우클릭 메뉴 — 위젯을 더하는 길은 이것 하나다. `document.body` 로 옮겨 그린다 — 타일 상자 안에서는 `position: fixed` 의
+   * 기준이 창이 아닐 수 있다. 항목 핸들러는 메뉴 통로(`$lib/browser/menu-runner`)를 지난다: 스냅샷 → 닫기 → 실행.
    */
   let {
     x,
@@ -37,21 +29,14 @@
     onadd,
     onreset,
   }: {
-    /** 연 자리(창 좌표 — 우클릭한 포인터) */
     x: number;
     y: number;
-    /** 이미 판에 놓인 종류 */
     placed: readonly StartWidgetKind[];
-    /** 되돌릴 배치 조작이 있는가 — 없으면 [되돌리기]가 흐리다 */
     canUndo: boolean;
-    /** 편집 모드인가 — [배치 편집] 줄이 [편집 완료]로 */
     editing: boolean;
-    /** 편집 모드 들어가기 · 나오기 — 메뉴가 닫힌 **뒤** 불린다 */
     onedit: () => void;
     onclose: () => void;
-    /** 바로 앞 배치로 — 메뉴가 닫힌 **뒤** 불린다 */
     onundo: () => void;
-    /** 고른 종류 — 메뉴가 닫힌 **뒤** 불린다 */
     onadd: (kind: StartWidgetKind) => void;
     onreset: () => void;
   } = $props();
@@ -71,7 +56,6 @@
   let hoverTimer: ReturnType<typeof setTimeout> | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** 이 노드를 `body` 끝으로 옮긴다(머리말의 까닭) — 사라질 때 함께 걷는다 */
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
     return { destroy: () => node.remove() };
@@ -84,7 +68,6 @@
   }
   $effect(() => () => clearTimers());
 
-  // 커서 자리에 띄우되 화면 밖으로 넘치지 않게(`ImageMenu` · `TreeMenu` 와 같은 클램프)
   $effect(() => {
     if (!menuEl) return;
     const r = menuEl.getBoundingClientRect();
@@ -100,7 +83,6 @@
     if (menuEl) enabledItems(menuEl)[0]?.focus();
   });
 
-  /** 옆목록을 그 줄 옆에 — 처음엔 어림 크기, 그려진 뒤 실제 크기로 고친다 */
   function placeFlyoutNow() {
     const row = menuEl?.querySelector<HTMLElement>("[data-board-menu='add']");
     if (!row || !menuEl) return;
@@ -153,14 +135,12 @@
     }, FLYOUT_CLOSE_MS);
   }
 
-  /** 누를 수 있는 줄들(흐린 줄 빼고) */
   function enabledItems(box: HTMLElement): HTMLElement[] {
     return [...box.querySelectorAll<HTMLElement>('[role="menuitem"]')].filter(
       (el) => el.getAttribute("aria-disabled") !== "true" && !(el as HTMLButtonElement).disabled,
     );
   }
 
-  /** ↑↓ 로 상자 안의 누를 수 있는 줄 사이를 돈다 · Escape 는 한 켜씩 닫는다 · →← 는 옆목록을 여닫는다 */
   function onKeydown(ev: KeyboardEvent, at: "menu" | "flyout") {
     const box = at === "menu" ? menuEl : flyoutEl;
     if (ev.key === "Escape") {
@@ -236,8 +216,7 @@
     bind:this={menuEl}
     onkeydown={(ev) => onKeydown(ev, "menu")}
   >
-    <!-- 위젯 추가 · 되돌리기 · 레이아웃 리셋은 **편집 중에만**(사용자 결정 2026-11-03 — 배치를 고치는 줄은 휴대폰 홈 화면처럼
-         편집 모드 안에만 둔다 · 잠긴 평소 메뉴는 [배치 편집] 한 줄) -->
+    <!-- 위젯 추가 · 되돌리기 · 레이아웃 리셋은 편집 중에만 둔다(사용자 결정) — 잠긴 평소 메뉴는 [배치 편집] 한 줄 -->
     {#if editing}
       <button
         type="button"
@@ -311,7 +290,7 @@
     display: contents;
   }
 
-  /* 바깥 클릭을 받아 닫는 투명 백드롭 — 독(z 100) 위(`ImageMenu` · 독 즐겨찾기 메뉴와 같은 층) */
+  /* 바깥 클릭을 받아 닫는 투명 백드롭 — 독(z 100) 위 */
   .menu-backdrop {
     position: fixed;
     inset: 0;
@@ -334,13 +313,12 @@
     z-index: 107;
   }
 
-  /* 줄 = 글자 + 오른쪽 부연(옆목록 chevron · "놓임") */
   .row {
     display: flex;
     align-items: center;
   }
 
-  /* 옆목록 표시 — 타일 메뉴(`PaneMenu`)와 같은 chevron 아이콘(글자 `▸` 는 작아 잘 안 보였다) */
+  /* 글자 `▸` 대신 chevron 아이콘 — 글자는 작아 잘 안 보였다 */
   .chev {
     display: inline-flex;
   }

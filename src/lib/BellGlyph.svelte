@@ -1,8 +1,5 @@
 <script lang="ts">
-  // ---------------------------------------------------------------------------
-  // **벨 글리프** — Material Symbols `notifications`(채움 · 경고색, 판 없음). 탭 줄의 안 본 벨과 세션 판 칸이 같은 그림을 쓴다
-  // (docs/log/2026-11-03-tab-status-glyphs.md).
-  // ---------------------------------------------------------------------------
+  // 벨 글리프 — Material Symbols `notifications`.
   import type { HTMLAttributes } from "svelte/elements";
 
   let { size = 12, ...rest }: { size?: number } & Omit<HTMLAttributes<HTMLSpanElement>, "class"> = $props();

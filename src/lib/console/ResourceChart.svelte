@@ -1,11 +1,7 @@
 <script lang="ts">
   /**
-   * **자원 시간 차트 하나**(CPU % 또는 메모리 MB — 자원 화면, 2026-10-17). uPlot 은 쿼리 결과 차트와 같은 길로
-   * 늦게 받는다(`uplot-loader` — 처음 이 칸을 열 때 한 번). 색 · 글꼴 · 격자는 테마 토큰을 탐침 요소로 풀어 읽고(`color-mix` 토큰이
-   * 있다), `<html>` 의 속성이 바뀌면(밝기 · 프로필 · 강조색) 다시 짓는다 — `query/ResultChart.svelte` 와 같은 규칙.
-   *
-   * 데이터만 바뀌면(2초마다 표본 하나) 다시 짓지 않고 `setData` 한다. 시리즈 구성(이름 열쇠)이 바뀌면 다시 짓는다. 범례는 부르는
-   * 쪽(`ResourceBoard` — 맨 위 칸의 색 표시)이 그린다 — 색은 [`SERIES_TOKENS`] 순서이고 `oncolors` 로 올린다.
+   * 자원 시간 차트 하나(CPU % 또는 메모리 MB). 색은 테마 토큰을 탐침 요소로 풀어 읽는다 — `color-mix` 토큰이 있어 변수 글자를 그대로
+   * 캔버스에 못 쓴다. 범례는 부르는 쪽이 `oncolors` 로 받은 색으로 그린다.
    */
   import { untrack } from "svelte";
   import type uPlotT from "uplot";
@@ -23,25 +19,17 @@
     oncolors,
   }: {
     data: ResourceChartData;
-    /** 시리즈 열쇠 → 사람 이름(말풍선) */
     labels: (key: string) => string;
-    /** 축 단위 — `%` · `MB` */
     unit: "%" | "MB";
-    /** y 축 위 끝 고정값(축 단위) — 메모리는 이 PC 전체 메모리(10-27 사용자). 0 이면 값에 맞춘다 */
+    /** y 축 위 끝 고정값(축 단위) — 0 이면 값에 맞춘다 */
     max?: number;
-    /** 말풍선의 값 글자 */
     format: (v: number) => string;
-    /** **이 PC 전체** 선의 색 토큰 — 상태바 호버 카드의 같은 지표 스파크라인과 같은 색(CPU `--accent` · 메모리 `--chip-branch`) */
+    /** 이 PC 전체 선의 색 — 상태바 호버 카드의 같은 지표 스파크라인과 같은 색으로 맞춘다 */
     systemToken: "--accent" | "--chip-branch";
-    /** 시리즈 색이 정해지면(테마가 바뀌면 다시) — 열쇠 순서 그대로 */
     oncolors?: (colors: string[]) => void;
   } = $props();
 
-  /**
-   * 시리즈 색 — **이 PC 전체**(`@system` — 있을 때 맨 앞)는 지표 색(`systemToken`)의 실선으로, 상태바 호버 카드의 스파크라인과
-   * 같은 선이다(10-17 사용자 — 두 그림의 색을 맞춤). 앱 · 타일 합계는 칩 색 줄(테마마다 대비를 맞춰 둔 것)이되 두 지표 색(`--accent` ·
-   * `--chip-branch`)은 뺀다 — 둘이 CPU · 메모리 차트에서 같은 색이고 이 PC 전체 선과 겹치지 않게. 앱 = 주황 · 타일 = 청록(A안 목업 색).
-   */
+  /** 지표 색 `--accent` · `--chip-branch` 는 이 PC 전체 선의 몫이라 여기에 넣지 않는다 */
   const SERIES_TOKENS = ["--chip-folder", "--chip-tmux", "--chip-jump", "--chip-forward", "--ok", "--err"];
 
   interface Theme {
@@ -60,13 +48,11 @@
   let size = $state({ w: 0, h: 0 });
   let chart: uPlotT | null = null;
 
-  /** 계산된 `rgb(…)` / `rgba(…)` 에 투명도를 씌운다 — 못 읽으면 투명 */
   function withAlpha(color: string, alpha: number): string {
     const m = color.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/);
     return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})` : "transparent";
   }
 
-  /** 선 아래 채움 — 위에서 아래로 옅어지는 같은 색(10-27 사용자). 그림 영역 높이에 맞춰 그때마다 만든다 */
   function areaFill(color: string): uPlotT.Series.Fill {
     return (u: uPlotT) => {
       const g = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
@@ -133,7 +119,6 @@
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
   }
 
-  /** 커서 말풍선 — 시각 + 보이는 시리즈의 값(빈자리는 —) */
   function tooltipPlugin(keys: string[], cols: string[]): uPlotT.Plugin {
     let tip: HTMLDivElement | null = null;
     return {
@@ -204,7 +189,6 @@
             ...axis(),
             size: 56,
             incrs: MEM_AXIS_INCRS,
-            // 위 끝이 고정이면 그 값에도 눈금(`memAxisSplits`) — 아니면 uPlot 기본 눈금
             ...(max > 0 ? { splits: (_u: uPlotT, _i: number, _min: number, top: number, incr: number) => memAxisSplits(top, incr) } : {}),
             values: (_u, splits) => splits.map(formatMemAxis),
           };
@@ -213,7 +197,6 @@
       height: h,
       scales: {
         x: { time: true },
-        // CPU 는 0 부터 — 위는 값에 맞춰(작은 값도 읽히게), 메모리도 0 부터 · 위 끝이 주어지면(`max` — 메모리 = 전체 메모리) 그 값
         y: {
           range: (_u, _min, top) => [
             0,
@@ -256,7 +239,7 @@
       builtFor = null;
       return;
     }
-    // 위 끝 고정 여부도 짓는 모양이다(눈금 함수가 달라진다) — 전체 메모리가 첫 표본보다 늦게 와도 다시 짓는다
+    // 위 끝 고정 여부도 서명에 든다 — 빼면 전체 메모리가 첫 표본보다 늦게 올 때 눈금 함수가 안 바뀐다
     const sig = `${max > 0}\u0001${d.series.map((s) => s.key).join("\u0001")}`;
     if (chart && builtFor && builtFor.sig === sig && builtFor.tick === tick) {
       if (chart.width !== w || chart.height !== h) chart.setSize({ width: w, height: h });
@@ -310,7 +293,7 @@
     pointer-events: none;
   }
 
-  /* 커서 말풍선 — 크롬 면(`--surface-raised-solid`) 위 크롬 글자(conventions — 터미널 면 금지) */
+  /* 크롬 면 위 크롬 글자 — 터미널 면 토큰 금지(conventions) */
   .plot :global(.r-chart-tip) {
     position: absolute;
     z-index: 2;

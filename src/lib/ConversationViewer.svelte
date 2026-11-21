@@ -1,25 +1,7 @@
 <script lang="ts">
   /**
-   * **기록 보기** — 지난 대화 하나를 읽기 전용으로 펼치는 시트 (docs/log/2026-09-27-conversation-viewer.md).
-   *
-   * 타일 캔버스(`+page` 의 `.pane`) **오른쪽**에 뜨는 층이다 — 대시보드 · 시작 화면 · 타일 위 어디서든 같은
-   * 자리. 독처럼 떠 있는 면(`--surface-raised-solid` · 머리카락 선 · 그림자)이고 폭은 560–720. 바깥을 누르거나
-   * Escape 면 닫히고 키보드는 연 자리로 돌아간다(`app/conversation-viewer`).
-   *
-   * 머리 — 로고 · 제목 · 폴더(`~` 줄임, 고정폭) · 브랜치 · 모델 · 마지막 활동, 그리고 줄과 **같은 두 동작**
-   * [새 대화로 계속] [재개](주 동작): 열려 있으면 [타일로 가기], aynx 밖에서 열려 있으면 재개를 그 자리에서 한 번
-   * 묻는다(줄과 같은 규칙). 그 앞에 로컬 대화만 [삭제…](줄의 ⋯ 메뉴와 같은 판정 · 같은 확인 상자 — 지워지면 시트를 닫는다). 몸 — 오래된 것이 위, 최신이 아래. 열면 맨 아래에서 시작하고 "이전 메시지 더 보기" 가
-   * 한 쪽씩 앞에 붙인다(커서 — Rust 가 끝에서 거꾸로 읽는다). 몸의 그림 · 쪽 넘기기는 `TranscriptBody`(10-17 떼어 냄 — AI 타일의
-   * 대화 면 `pane/AiFlip` 과 공용)이고, 이 시트는 머리 · 동작 · 포커스와 **어느 쪽을 받나**(`fetchPage`)만 쥔다.
-   *
-   * **본문은 글자로만 그린다** — `{@html}` 이 없다. 에이전트 말의 마크다운은 순수 층(`$lib/transcript`)이 블록과
-   * 토막으로만 나누고(그리기는 `MarkdownBlocks` — 문서 보기 타일과 공용), 링크는 글자 + 주소다(여는 손잡이를 넘기지
-   * 않는다). 생각은 싣지 않는다(Rust 가 내지 않는다), 도구는 한 줄(이름 — 요약)이고 누르면 입력 ·
-   * 출력 발췌가 펼쳐진다. 본문은 이 컴포넌트의 상태에만 있고 닫으면 버린다.
-   *
-   * **원격 대화**(docs/log/2026-09-27-remote-conversations.md "2단계") — 같은 시트 · 같은 쪽 넘기기. 쪽은 그 호스트에 붙은 이
-   * 창의 SSH 타일 세션으로 서버의 파일을 끝에서 거꾸로 읽어 온다(Rust 가 같은 리더 · 같은 줄 파서를 쓴다). 붙은 세션이 없거나
-   * 사라지면 "dev-01 연결이 끊겨 더 읽을 수 없습니다" 한 줄 — 새 접속은 열지 않는다. 재개 · 새 대화로 계속은 그 별칭의 새 SSH 타일.
+   * 기록 보기 — 지난 대화 하나를 읽기 전용으로 펼치는 시트. 본문은 글자로만 그린다(`{@html}` 없음) · 이 컴포넌트의 상태에만 있고 닫으면 버린다.
+   * 원격 대화는 붙은 SSH 타일 세션으로만 읽는다 — 새 접속은 열지 않는다.
    */
   import { tick } from "svelte";
   import AiGlyph from "$lib/AiGlyph.svelte";
@@ -57,7 +39,6 @@
   import { modelLabel } from "$lib/model-order";
   import { workerTranscript } from "$lib/orchestration/api";
 
-  /** 한 쪽의 항목 수 */
   const PAGE = 40;
 
   const view = $derived(conversationView());
@@ -65,7 +46,7 @@
   const conv = $derived.by((): AgentConversation | null => {
     const v = view;
     if (!v) return null;
-    // Run 작업자의 고정 대화 — 보드가 지은 머리 정보 그대로(목록의 같은 id 줄과 섞지 않는다).
+    // Run 작업자의 고정 대화는 목록의 같은 id 줄과 섞지 않는다
     if (v.worker) return v.conv;
     const pool = isRemoteConversation(v.conv)
       ? (remoteConversations(v.conv.host).rows ?? [])
@@ -77,18 +58,12 @@
       ? `${view.worker ? `run|${view.worker.attemptId}|` : ""}${isRemoteConversation(view.conv) ? `${view.conv.host}|` : ""}${view.conv.agent}:${view.conv.id}`
       : null,
   );
-  /** Run 작업자의 고정 대화인가(6단계) — 재개 · 새 대화로 계속을 내지 않는다 */
+  /** Run 작업자의 고정 대화면 재개 · 새 대화로 계속을 내지 않는다 */
   const worker = $derived(view?.worker ?? null);
-  /** 원격이면 그 별칭 — 머리의 호스트 칩 · "연결이 끊겨" 한 줄 */
   const remoteHost = $derived(view && isRemoteConversation(view.conv) ? view.conv.host : null);
 
-  /** 원격 세션이 없어 더 읽지 못했다는 표식 — 오류 글자 대신 그 한 줄을 세운다 */
   const GONE = "\u0000remote-gone";
 
-  /**
-   * 한 쪽을 받는다 — 로컬은 이 PC 의 파일, 원격은 그 호스트에 붙은 이 창의 SSH 타일 세션으로 서버의 파일(새 접속 없음).
-   * 붙은 세션이 없거나 그 사이 사라졌으면 [`GONE`] 을 던진다.
-   */
   async function fetchPage(v: ConversationView, before: number | null): Promise<TranscriptPage> {
     if (v.worker) return await workerTranscript(v.worker.runId, v.worker.attemptId, before, PAGE);
     const c = v.conv;
@@ -103,7 +78,6 @@
     }
   }
 
-  /** 실패 글자 — 원격 세션이 사라졌으면 그 한 줄 */
   function failureOf(e: unknown): string {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === GONE && remoteHost !== null) return t("board.viewer.remoteGone", { host: remoteHost });
@@ -113,7 +87,6 @@
   let rootEl = $state<HTMLElement | null>(null);
   let bodyEl = $state<HTMLElement | null>(null);
 
-  /** 상대 시각의 "지금" — 떠 있는 동안 30초에 한 칸 */
   let now = $state(Date.now());
   $effect(() => {
     if (!view) return;
@@ -122,10 +95,7 @@
     return () => clearInterval(id);
   });
 
-  /**
-   * 대화가 바뀌면(열림 포함) 시트에 포커스 — 몸(`TranscriptBody`)이 첫 쪽을 받아 맨 아래로 내린 뒤 몸으로 옮긴다(`onloaded`).
-   * 확인 물음은 대화마다 새로.
-   */
+  // 포커스는 먼저 시트에, 첫 쪽을 받아 맨 아래로 내린 뒤 몸으로 옮긴다(`onloaded`)
   $effect(() => {
     const key = convKey;
     confirming = false;
@@ -133,7 +103,6 @@
     void tick().then(() => rootEl?.focus({ preventScroll: true }));
   });
 
-  /** 몸이 쓰는 쪽 받기 — 지금 펼친 대화로 */
   function pageOf(before: number | null): Promise<TranscriptPage> {
     const v = view;
     if (!v) return Promise.reject(new Error("closed"));
@@ -141,11 +110,10 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 동작 — 줄과 같은 규칙(열림 → 타일로 가기 · 밖에서 열림 → 한 번 묻기)
+  // 동작 — 지난 대화 줄과 같은 규칙
   // ---------------------------------------------------------------------------
 
   let confirming = $state(false);
-  /** Aynx 의 타일(이 창 · 다른 창)에 열려 있나 — 다른 창이면 [타일로 가기]가 그 창으로 간다(`goToOpenConversation`) */
   const link = $derived(conv ? conversationOpen(conv) : false);
   const outside = $derived(conv !== null && !link && conv.cwdExists && conversationOpenElsewhere(conv, now));
 
@@ -179,10 +147,9 @@
     else void openConversation(s, "fork", v.at, v.how);
   }
 
-  /** 삭제를 흐리는 까닭 — 줄의 ⋯ 메뉴와 같은 판정(열림 · 밖에서 열림 · 갈라 나간 대화 · 지우는 중). 원격 · 작업자 대화에는 단추가 없다 */
+  /** 줄의 ⋯ 메뉴와 같은 판정 */
   const deleteBlocked = $derived(conv ? deleteBlockedReason(conv, { open: link, elsewhere: outside }) : null);
 
-  /** 삭제 — 확인 상자 · 다시 읽기는 `deleteConversation`. 목록에서 사라졌으면(지워졌으면) 시트를 닫는다 */
   async function remove(): Promise<void> {
     const s = conv;
     if (!s || worker || isRemoteConversation(s) || deleteBlocked !== null) return;
@@ -214,7 +181,6 @@
 </script>
 
 {#if view && conv}
-  <!-- 바깥 누르기 = 닫기 (투명 — 밑의 화면을 가리지 않는다) -->
   <div class="catch" role="presentation" data-viewer-catch onmousedown={() => closeConversationView()}></div>
   <div
     class="sheet"
@@ -258,7 +224,6 @@
       </div>
       <div class="acts" data-viewer-acts>
         {#if worker}
-          <!-- Run 작업자의 고정 대화(6단계) — 읽기만. 작업자는 Run 이 부리므로 재개 · 새 대화로 계속은 없다 -->
           <span class="note"><span class="ro" data-viewer-worker={worker.attemptId}>{t("orch.viewer.worker.note")}</span></span>
         {:else if confirming}
           <span class="warnq" data-viewer-confirm>{t("board.convo.elsewhere.confirm")}</span>
@@ -338,7 +303,7 @@
 {/if}
 
 <style>
-  /* 바깥 누르기를 받는 투명한 판 — 캔버스(`.pane`)만 덮는다(탭 바 · 상태바 · 독은 그대로 산다) */
+  /* 캔버스(`.pane`)만 덮는다 — 탭 바 · 상태바 · 독은 그대로 산다 */
   .catch {
     position: absolute;
     inset: 0;
@@ -346,10 +311,7 @@
     background: transparent;
   }
 
-  /*
-   * 오른쪽에 뜨는 시트 — 독과 같은 떠 있는 면(불투명 `--surface-raised-solid` — 글을 읽는 면이라 투명도를
-   * 타지 않는다). z-index 100 — 대시보드(90) 위, 팔레트·검색(110) 아래.
-   */
+  /* 글을 읽는 면이라 불투명이다. z-index 100 — 대시보드(90) 위, 팔레트·검색(110) 아래 */
   .sheet {
     position: absolute;
     top: var(--gap);
@@ -454,7 +416,6 @@
     color: var(--fg-2);
   }
 
-  /* 원격 대화의 호스트 — 시작 화면의 호스트 칩과 같은 모양 */
   .hostchip {
     display: inline-flex;
     align-items: baseline;
@@ -501,7 +462,7 @@
     text-overflow: ellipsis;
   }
 
-  /* 파괴적 동작의 글자 — `.btn-*` 호버가 글자를 본문색으로 되돌리므로 여기서 잡는다(`console/ExecList` 와 같은 말) */
+  /* `.btn-*` 호버가 글자를 본문색으로 되돌리므로 여기서 잡는다 */
   .btn.danger-text,
   .btn.danger-text:hover {
     color: var(--err);

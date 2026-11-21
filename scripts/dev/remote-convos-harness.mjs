@@ -359,8 +359,8 @@ const saved = await ev(`(() => { const c = window.__calls.filter(c => c[0] === '
 check(typeof saved === "string" && saved.includes('"host":"dev-01"') && !/nginx|Log rotation|health check|version header|Rollback|dry-run|Something else/.test(saved), `workspaces.json — 시작 화면 주소에 host · 대화 제목 없음 (${saved ? saved.length + " B" : "저장 없음"})`);
 
 // ── ⑬ 대시보드 "어디서" 칩 (2단계) ──────────────────────────────────────────────
-// 2026-11-20: 대시보드의 지난 대화 목록 · "어디서" 칩 판정은 지웠다 — 그 덩어리는 2026-09-28 에, 대시보드 자체는 2026-10-07 에 걷혔다
-// (`app/console.svelte.ts` · `app/dashboard-source.svelte.ts` 머리말). "어디서" 칩은 사용량 화면에만 남아 ⑭ 가 본다. 아래는 ⑭ 의 준비뿐이다.
+// 2026-11-20: 대시보드의 지난 대화 목록 · "어디서" 칩 판정은 지웠다 — 그 덩어리는 2026-09-28 에, 대시보드 자체는 2026-10-07 에 걷혔다.
+// "어디서" 칩은 사용량 화면에만 남아 ⑭ 가 본다. 아래는 ⑭ 의 준비뿐이다.
 // lab-02 — 붙어서 한 번 읽은 뒤 끊겼다(마지막 값이 흐리게 남는다)
 const labPane = await ev(`(async () => { const w = await ${tabsMod}; const s = await ${sessMod}; const p = s.newSshPane('lab-02'); w.openInNewTab(p, 'lab-02'); return p.id; })()`);
 await sleep(600);

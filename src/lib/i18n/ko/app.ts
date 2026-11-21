@@ -1,36 +1,17 @@
 /**
  * `app` 영역의 문구 — 한국어가 기준 사전이다 (규칙은 `ko/settings.ts` 머리말).
- *
- * 여기 사는 것은 **앱의 껍데기**다: 창 제어·탭 줄·상태 표시줄·시작 화면·독(호스트 목록·
- * 레이아웃)·가림막·스플래시·토스트, 그리고 `+page.svelte` 가 그리는 **모달 여덟 장**
- * (레이아웃 저장 · 호스트 키 · 비밀번호 · 공개키 고르기 · 호스트 폼 · 포트 포워딩 ·
- * 업로드 · 원격 파일 편집). 타일 안에서 사는 것(터미널·파일 브라우저·팔레트)은 각자의
- * 네임스페이스에 있다.
- *
- * ## 키 이름
- *
- * `<영역>.<사물>` 에 `.label`·`.title`·`.aria`·`.help` 같은 꼬리를 단다. 영역은 화면의
- * 이름이다 — `window` · `tabs` · `statusbar` · `start` · `dock` · `layouts` · `hosts` ·
- * `tile` · `tear` · `veil` · `splash` · `toast` · `sync` · `restore` · `wallpaper` ·
- * `profile` · `dynamic` · `icon` · `hostkey` · `password` · `keypick` · `hostform` ·
- * `forward` · `upload` · `remoteEdit` · `actions`(모달 공용 버튼).
- *
- * ## 마크업이 낀 문장은 **번호로 쪼갠다**
- *
- * `<strong>`·`<code>` 가 중간에 끼는 문장은 문자열에 HTML 을 넣지 않고 조각으로 나눈다
- * (`…lead.1` · `…lead.term` · `…lead.2` …). 번호는 **마크업에 끼워지는 순서**이고, 두
- * 언어가 같은 자리에 같은 개수의 조각을 낸다 — 영어가 어순을 바꿔야 하면 조각의 **글자**를
- * 바꾸지 조각의 **순서**를 바꾸지 않는다. 그래서 조각 하나가 빈 문자열이 되지 않게 문장을
- * 고른다 (빈 칸은 `i18n.test.ts` 가 막는다).
+ * 키 이름: `<영역>.<사물>` 에 `.label`·`.title`·`.aria`·`.help` 같은 꼬리를 단다 · 영역은 화면의 이름이다(`actions` = 모달 공용 버튼).
+ * 마크업(`<strong>`·`<code>`)이 끼는 문장은 번호 조각으로 쪼갠다(`…lead.1` · `…lead.term` · `…lead.2`) — 번호는 마크업에 끼워지는 순서이고,
+ * 두 언어가 같은 자리에 같은 개수의 조각을 낸다. 영어는 조각의 글자를 바꾸지 순서를 바꾸지 않는다 · 빈 조각은 `i18n.test.ts` 가 막는다.
  */
 export const app = {
-  // ── 모달 공용 버튼 (`+page.svelte` 의 여덟 장이 함께 쓴다) ────────────────
+  // ── 모달 공용 버튼 ────────────────
   "actions.cancel": "취소",
   "actions.close": "닫기",
   "actions.save": "저장",
   "error.unknown": "알 수 없는 오류",
 
-  // ── 창 제어 (커스텀 타이틀바) ────────────────────────────────────────────
+  // ── 창 제어 ────────────────────────────────────────────
   "window.minimize": "최소화",
   "window.maximize": "최대화",
   "window.restore": "이전 크기로",
@@ -40,11 +21,8 @@ export const app = {
   "splash.aria": "시작하는 중",
   "toast.dismiss": "알림 닫기",
 
-  // ── 화면 아래 가운데 검토 대기 카드 (2026-09-22 · 2026-09-27 에 제 자리로) ──
-  //
-  // 대기가 0 이 될 때까지 붙어 있고, 명령 **전문**을 보여 주므로 그 자리에서 승인·거절을
-  // 받는다 (docs/log/2026-09-27-review-popup-card.md). 위험 배지·경로·검증·경고 문장은
-  // 관제판의 `board.*` 문구를 그대로 쓴다 — 같은 작업안을 두 자리가 다른 말로 부르지 않게.
+  // ── 화면 아래 가운데 검토 대기 카드 ──
+  // 명령 전문을 보여 주는 자리라 여기서 승인·거절을 받는다 (docs/log/2026-09-27-review-popup-card.md) · 위험 배지·경로·검증·경고 문장은 `board.*` 를 그대로 쓴다(같은 작업안을 두 자리가 다른 말로 부르지 않게).
   "review.label": "검토 대기",
   "review.position": "{i} / {n}",
   "review.prev": "이전 작업안",
@@ -68,10 +46,9 @@ export const app = {
   "review.later": "나중에",
   "review.later.title": "카드 잠시 치우기",
   "review.expand": "펼치기",
-  // 자동 승인이 허용 목록을 지나고도 게이트에 걸린 이유 한 줄 — 토스트였던 것을 카드로
-  // 옮겼다 (2026-09-22 · docs/log/2026-09-22-review-card.md).
+  // 자동 승인이 허용 목록을 지나고도 게이트에 걸린 이유 한 줄 (docs/log/2026-09-22-review-card.md)
   "review.autoRefused": "자동 승인 안 됨",
-  // DB 쓰기 작업안(쿼리 타일 3b) — 연결 · 상한 · 한 트랜잭션 · 상한이 막지 못하는 문장
+  // DB 쓰기 작업안 — 연결 · 상한 · 한 트랜잭션 · 상한이 막지 못하는 문장
   "review.db.via": "SSH {host} 경유",
   "review.db.max": "영향 행 상한 {n} · 문장 {count}개",
   "review.db.tx": "한 트랜잭션으로 실행합니다 — 문장 하나라도 실패하거나 영향 행이 상한을 넘으면 커밋하지 않고 전부 되돌립니다",
@@ -98,15 +75,15 @@ export const app = {
   "review.db.where": "WHERE 있음",
   "review.db.nowhere": "WHERE 없음 — 테이블 전체에 적용",
   "review.db.limit": "상한 {n}행",
-  // 명령 · SQL 상자 두 줄 접기(10-22) — 잘린 채 [승인]을 누르면 먼저 펼친다("승인은 명령 전문이 보이는 자리에서만")
+  // 명령 · SQL 상자 두 줄 접기 — 잘린 채 [승인]을 누르면 먼저 펼친다("승인은 명령 전문이 보이는 자리에서만")
   "review.cmd.more": "전체 보기",
   "review.cmd.less": "접기",
   "review.cmd.revealHint": "전체 명령을 확인한 뒤 다시 누르세요",
   // AI 가 적은 요청 배경(작업안 `reason`) — 펼친 카드 · 기록 상세에서만 · AI 설명은 기록 상세의 이름
   "review.reason.label": "요청 배경",
   "review.summary.label": "AI 설명",
-  // 판결 띠(10-24 "A + 명령 나눠 보기") — 카드 맨 위 한 줄. 열쇠는 `review-card.ts` `verdictOf` 가 고르고, {declared} · {found} 는
-  // 아래 낱말 표로 바꾼다({found} = 낱말 + "(근거)"). 선언 낱말(읽기 · 쓰기 · 삭제)은 모두 모음으로 끝나 "라고" 가 맞는다.
+  // 판결 띠 — 열쇠는 `review-card.ts` `verdictOf` 가 고르고 {declared} · {found} 는 아래 낱말 표로 바꾼다({found} = 낱말 + "(근거)").
+  // 선언 낱말(읽기 · 쓰기 · 삭제)은 모두 모음으로 끝나 "라고" 가 맞는다.
   "review.verdict.pending": "검토 대기",
   "review.verdict.attention": "주의가 필요한 명령",
   "review.verdict.mismatchLines": "AI는 ‘{declared}’라고 했지만 {n}줄 중 {m}줄은 {found}",
@@ -138,14 +115,11 @@ export const app = {
   // 메타 줄 — 여러 대상의 첫 대상(canary — 성공해야 나머지로)
   "review.first": "(먼저)",
 
-  // 검토 요청 OS 알림 (2026-09-22 · docs/log/2026-09-22-review-notify.md) — **창이 앞에
-  // 없을 때만**. 명령문 전문은 절대 싣지 않는다(알림 센터는 지나간 알림을 이력으로 쌓는다).
+  // 검토 요청 OS 알림 — 창이 앞에 없을 때만 · 명령문 전문은 절대 싣지 않는다(알림 센터는 지나간 알림을 이력으로 쌓는다).
   "review.notify.one": "승인 대기: {headline} · 대상 {n}",
   "review.notify.many": "승인 대기 {n}건",
 
-  // 작업안 실행 결과 알림 (2026-09-28 · docs/log/2026-09-28-run-result-notify.md) — 토스트 ·
-  // 알림 센터 · OS 알림이 같은 토막을 쓴다. 첫 줄은 `headlineOf`(제목, 없으면 명령 첫 줄)이고
-  // 여기 있는 것은 둘째 줄(결과)의 토막들이다. 명령문 전문은 어디에도 싣지 않는다.
+  // 작업안 실행 결과 알림 — 토스트 · 알림 센터 · OS 알림이 같은 토막(둘째 줄)을 쓴다 · 명령문 전문은 어디에도 싣지 않는다 (docs/log/2026-09-28-run-result-notify.md).
   "opnotify.title": "작업안 실행이 끝났습니다",
   "opnotify.kind": "작업안 실행",
   "opnotify.auto": "자동 승인",
@@ -170,9 +144,9 @@ export const app = {
   "opnotify.word.partial": "일부 실패",
   "opnotify.word.failed": "실패",
   "opnotify.word.cancelled": "취소됨",
-  // 앱이 닫혀 있던 동안(GUI 없음) 세션 서버가 끝낸 실행 — 다시 켰을 때 한 줄(③-4)
+  // 앱이 닫혀 있던 동안(GUI 없음) 세션 서버가 끝낸 실행 — 다시 켰을 때 한 줄
   "opnotify.whileAway": "앱이 닫혀 있던 동안 끝난 작업안 실행 {n}건",
-  // 떨어진 세션 — 아무 창도 데려가지 않은 채 세션 서버에 살아 있는 세션(③-4 · `app/detached`)
+  // 떨어진 세션 — 아무 창도 데려가지 않은 채 세션 서버에 살아 있는 세션
   "detached.title": "떨어진 세션",
   "detached.lead": "아무 창에도 붙어 있지 않은 채 세션 서버에서 계속 실행 중입니다 — 새 탭에 붙이거나 닫으세요.",
   "detached.meta": "마지막 창 {window} · 떨어짐 {detached} · 마지막 출력 {output}",
@@ -197,13 +171,10 @@ export const app = {
   "opnotify.veiled.error": "실패 {n}건",
   "opnotify.veiled.info": "취소 {n}건",
 
-  // ── 가림막 (프라이버시 잠금) — **가림막이 곧 관문이다** (2026-09-19 밤) ───
-  //
-  // 걷는 것이 곧 볼트를 여는 것이다: 마스터가 있으면 그 암호를 치고, 없으면 Enter 한 번이다.
-  // 그래서 "아무 키나 클릭하면 해제" 라는 옛 곁말은 사라졌다 — 그 문장이 남아 있으면 카드에
-  // 적힌 "잠김" 이 거짓말이 된다 (docs/log/2026-09-19-vault.md 의 "가림막이 곧 관문").
+  // ── 가림막 — 가림막이 곧 관문이다 ───
+  // 걷는 것이 곧 볼트를 여는 것이다 — "아무 키나 누르면 해제" 같은 곁말을 두지 않는다(카드의 "잠김" 이 거짓말이 된다 · docs/log/2026-09-19-vault.md).
   "veil.title": "프라이버시 잠금",
-  // 원격 기기 페어링 확인(R1a-2 — `dialogs/RemotePairDialog.svelte`)
+  // 원격 기기 페어링 확인
   "remotePair.title": "원격 기기 연결 요청",
   "remotePair.lead": "다른 기기의 브라우저가 이 PC 에 연결하려 합니다. 그 화면의 6자리 코드가 아래와 같을 때만 허용하세요.",
   "remotePair.codeLabel": "확인 코드",
@@ -213,7 +184,7 @@ export const app = {
   "remotePair.warn": "허용한 기기는 원격 가림막을 걷으면 이 PC 의 터미널을 그대로 씁니다. 모르는 요청이면 거절하세요.",
   "remotePair.allow": "허용",
   "remotePair.deny": "거절",
-  // 원격 창의 앱 모달(R4) — 묻기(네이티브 confirm 대신) · 마스터 재확인(`dialogs/RemoteDialog.svelte`)
+  // 원격 창의 앱 모달 — 묻기(네이티브 confirm 대신) · 마스터 재확인
   "remoteDialog.yes": "예",
   "remoteDialog.no": "아니요",
   "remoteDialog.ok": "확인",
@@ -246,11 +217,8 @@ export const app = {
   "remoteReauth.what.set_session_ai_read": "이 타일의 AI 읽기 허용 켜기",
   "veil.gate.title": "잠김",
   "veil.gate.label": "마스터 암호",
-  // 셋 모두 **한 글자까지 같은 폼**이다(라벨·칸·[열기]). 칸 아래 곁말
-  // (`veil.gate.nomaster`·`veil.gate.absent`, "… — 비워 두고 Enter")은 2026-09-19 밤에
-  // 지웠다: 잠긴 화면을 들여다본 바깥 사람에게 "이건 빈 Enter 로 열린다" 를 알려 주는
-  // 줄이었다. 마스터가 있는지 없는지는 화면이 말하지 않는다(`Veil.svelte` 머리말).
-  // 그래서 틀린 줄도 세 꼴이 **같은 문장**이다.
+  // 셋 모두 한 글자까지 같은 폼이다 — 마스터가 있는지 없는지를 화면이 말하지 않는다("빈 Enter 로 열린다" 를 바깥 사람에게 알리지 않게 · `Veil.svelte` 머리말).
+  // 그래서 틀린 줄도 세 꼴이 같은 문장이다.
   "veil.gate.wrong": "마스터 암호가 맞지 않습니다.",
   "veil.gate.open": "열기",
   "veil.sessions.running": "실행 중 {n}",
@@ -259,7 +227,7 @@ export const app = {
   "veil.sessions.none": "열린 세션 없음",
 
   // ── 아이콘 고르개 ────────────────────────────────────────────────────────
-  // 아이콘 · 색 칸 한 벌 — 호스트 폼 · 폴더 편집 · 프로젝트 폼 (`IconColorFields.svelte`)
+  // 아이콘 · 색 칸 한 벌 — 호스트 폼 · 폴더 편집 · 프로젝트 폼이 함께 쓴다
   "iconcolor.icon": "아이콘",
   "iconcolor.icon.placeholder": "이름으로 찾거나 이모지 입력",
   "iconcolor.icon.reset.aria": "아이콘 지우기",
@@ -276,37 +244,33 @@ export const app = {
   "icon.seg.aria": "아이콘 종류",
   "icon.seg.logos": "로고",
   "icon.seg.basic": "기본",
-  // 고른 칸에는 없지만 다른 칸에 걸리는 것이 있을 때 — 누르면 그 칸으로 옮긴다
   "icon.other": "{seg}에서 {n}개",
 
-  // ── 태그 칩 입력 (`TagInput.svelte`) ─────────────────────────────────────
+  // ── 태그 칩 입력 ─────────────────────────────────────
   "tags.remove": "태그 {tag} 제거",
-  // 친 글자에 걸리는 로고가 없을 때의 한 줄 — **실패가 아니라 다른 길**이다
-  // (그 글자가 이미 값이 되어 있다 · `IconPicker.svelte`)
+  // 친 글자에 걸리는 로고가 없을 때 — 실패가 아니라 다른 길이다(그 글자가 이미 값이 되어 있다).
   "icon.nomatch": "일치하는 아이콘이 없습니다 — 입력한 글자를 그대로 아이콘으로 씁니다",
-  // 검색 결과가 상한(200칸)을 넘을 때 — 나머지는 그리지 않고 좁히라고 말한다
   "icon.more": "{n}개 더 있습니다 — 찾는 말을 더 적어 좁혀 보세요",
 
-  // ── 고르개·자동완성 목록 (`Dropdown.svelte` · `Combobox.svelte`) ──────────
+  // ── 고르개·자동완성 목록 ──────────
   // 바깥 클릭을 받는 투명 백드롭의 이름 하나뿐이다 — 줄의 글자는 부르는 쪽이 준다.
   "dropdown.close.aria": "목록 닫기",
 
   // ── 상태 표시줄 ──────────────────────────────────────────────────────────
-  //
-  // 선두단 칸의 이름(2026-10-18 부터 독 입구 하나 — 나머지 메뉴 칸은 독 안). 표는 `status-items.ts` 에 있고 거기에는 **키**만 산다.
+  // 선두단 칸의 이름 — 표는 `status-items.ts` 에 있고 거기에는 키만 산다.
   "statusbar.favorite.remove": "제거",
   "statusbar.aria": "상태바",
-  // 셸 목록 (독 실행 단추의 ▾ — `DockLaunch.svelte`, 옛 `>_` 칸의 셸 메뉴 · docs/log/2026-09-25-plus-vs-shell-menu.md)
+  // 셸 목록 (독 실행 단추의 ▾ · docs/log/2026-09-25-plus-vs-shell-menu.md)
   "shellmenu.here": "이 탭에 열기",
   "shellmenu.default": "기본",
   // 독 칸 — 런처 칸들을 합친 입구 (docs/log/2026-09-25-unified-dock.md)
   "statusbar.item.open-dock": "독",
-  // **세션 목록 판** — 타일 캔버스 위쪽에서 내려오는 목록(2026-10-07 — 대시보드 세션 칸을 옮겨 왔다). 무게 순서로 세 묶음.
+  // 세션 목록 판 — 타일 캔버스 위쪽에서 내려오는 목록
   "sheet.aria": "세션 목록",
   "sheet.title": "세션",
   "sheet.scope": "이 창 · 타일 {n}",
   "sheet.empty": "이 창에 세션이 없습니다",
-  // 탭 지도(2026-11-02 — 묶음 카드 격자를 걷었다) — 맨 위 요약 칩 · 범례 · 칸 말풍선. 도는 것은 이 판에서 "실행 중" 이다
+  // 탭 지도 — 맨 위 요약 칩 · 범례 · 칸 말풍선. 도는 것은 이 판에서 "실행 중" 이다
   "sheet.sum.aria": "요약",
   "sheet.sum.permission": "권한 대기 {n}",
   "sheet.sum.finished": "완료 {n}",
@@ -330,15 +294,14 @@ export const app = {
   "sheet.detail.diff.wip": "커밋 안 한 변경",
   "sheet.detail.diff.range": "{base} … {tip}",
   "sheet.detail.db.via": "SSH {host} 경유",
-  // 후미 **전역 신호**(자동 승인 · 볼트) — 켜져 있을 때만 그려진다(docs/log/2026-09-21-statusbar-signals.md ·
-  // docs/log/2026-10-05-statusbar-trim.md). 툴팁이 유일한 설명 자리다: 띠에는 글리프 하나가 설 폭밖에 없다.
+  // 후미 전역 신호(자동 승인 · 볼트) — 툴팁이 유일한 설명 자리다 (docs/log/2026-09-21-statusbar-signals.md).
   "statusbar.autoapprove": "자동 승인 켜짐",
   "statusbar.usage": "{windows} — {agent} · {measured}",
   "statusbar.usage.window": "{label} {pct} ({reset})",
   "statusbar.usage.none": "{agent} — 아직 한도 값이 없습니다",
   // 고리에 얹으면 뜨는 **막대 카드**(docs/log/2026-09-28-usage-hover-bars.md) — 위 한 줄은 접근성 이름으로 남는다.
   "statusbar.usage.card.none": "아직 한도 값이 없습니다",
-  // 가운데 묶음의 **자원 고리**(2026-10-17 — 이 PC 전체 CPU · 메모리). 위 둘은 고리의 접근성 이름, 아래는 호버 카드
+  // 가운데 묶음의 자원 고리(이 PC 전체 CPU · 메모리) — 위 둘은 고리의 접근성 이름, 아래는 호버 카드
   "statusbar.resources.cpu": "CPU {pct} — 이 PC 전체 · 누르면 자원 화면",
   "statusbar.resources.mem": "메모리 {pct} ({pair}) — 이 PC 전체 · 누르면 자원 화면",
   "statusbar.resources.card.cpu": "CPU · 이 PC 전체",
@@ -350,19 +313,15 @@ export const app = {
   "statusbar.resources.card.app": "앱 (화면 · 세션 서버)",
   "statusbar.resources.card.open": "누르면 자원 화면",
   "statusbar.resources.card.every": "{n}초마다",
-  // 열린 볼트의 글리프는 **누르면 잠그는 단추**다. 잠긴 쪽은 눌러도 아무 일이 없다 —
-  // 여는 문은 가림막 하나뿐이라(`app/veil`) 띠가 두 번째 문을 내지 않는다.
+  // 열린 볼트의 글리프는 누르면 잠그는 단추다 — 여는 문은 가림막 하나뿐이라(`app/veil`) 띠가 두 번째 문을 내지 않는다.
   "statusbar.lock": "화면 잠금",
-  // 맨 끝의 **알림 배지**(옛 알림 센터 종 — 2026-10-18 부터 수만 서고 누르면 독의 알림 칸 ·
-  // docs/log/2026-09-25-notification-center.md). 툴팁이 두 수를 함께 말한다.
+  // 맨 끝의 알림 배지 — 툴팁이 두 수를 함께 말한다 (docs/log/2026-09-25-notification-center.md).
   "statusbar.notify": "알림",
   "statusbar.notify.counts": "승인 대기 {pending} · 새 알림 {agents}",
   "statusbar.notify.none": "새 알림 없음",
   "statusbar.notify.unread": "새 알림 있음",
 
-  // ── 알림 (`DockAlerts.svelte` — 독의 알림 칸, 2026-10-18 전에는 상태바 종의 팝오버 `NotificationCenter`) ──────────────────────────────────
-  // 종을 누르면 뜨는 상자. 위 칸은 승인 대기(메인 창에서만), 아래는 지난 알림(이 창에서 뜬 것 ·
-  // 메모리에만 — 앱을 끄면 사라진다).
+  // ── 알림 ──────────────────────────────────
   "notify.aria": "알림",
   "notify.pending": "승인 대기 {n}건",
   "notify.history": "지난 알림",
@@ -385,13 +344,13 @@ export const app = {
   "notify.ago.days": "{n}일 전",
 
   // ── 독 ───────────────────────────────────────────────────────────────────
-  // ── 통합 독 (2026-10-18) — 머리 아이콘 줄 · 실행 단추 · 알림 칸 · 바닥 줄 ──────────────
+  // ── 통합 독 ──────────────
   "dock.title.alerts": "알림",
   "dock.tools.aria": "앱 단추",
   "dock.tool.reload": "새로고침",
   "dock.tool.settings": "설정",
   "dock.tool.quit": "끝내기",
-  // 끝내기 모달(2026-10-28 — `dialogs/QuitDialog`). 판의 설명은 툴팁뿐이다.
+  // 끝내기 모달 — 판의 설명은 툴팁뿐이다.
   "quit.aria": "앱 끝내기",
   "quit.window": "이 창 닫기",
   "quit.tray": "트레이로 숨기기",
@@ -399,7 +358,7 @@ export const app = {
   "quit.all": "모두 종료",
   "quit.sessions": "열린 세션 {n}개",
   "quit.detached": "떨어진 세션 {n}개",
-  // ── 앱 안 업데이트(2026-11-12 — `app/updater` · `UpdateChip` · `dialogs/UpdateDialog`) ──
+  // ── 앱 안 업데이트 ──
   "update.chip.available.tip": "Aynx {version} 이 나왔습니다 — 눌러서 새 소식 보기",
   "update.chip.downloading.tip": "{version} 내려받는 중 · {received} / {total} MB",
   "update.chip.downloading.tip.unknown": "{version} 내려받는 중 · {received} MB",
@@ -469,14 +428,14 @@ export const app = {
   "dock.close.title": "닫기 (Esc)",
   "chatDock.aria": "채팅 독",
   "chatDock.title": "채팅",
-  // 독 맨 위 갈래 [채팅 | 작업안](2026-10-25 — 아이콘뿐이라 이름은 title · aria-label)
+  // 독 맨 위 갈래 [채팅 | 작업안] — 아이콘뿐이라 이름은 title · aria-label
   "chatDock.section.aria": "독 갈래",
   "chatDock.section.chat": "사이드 채팅",
   "chatDock.section.plans": "작업안",
   "chatDock.section.plansPending": "작업안 · 승인 대기 {n}",
   "chatDock.pin": "고정",
   "chatDock.unpin": "고정 풀기",
-  // 사이드 채팅(2026-10-23 — 구현 순서 2 · ChatDock.svelte)
+  // 사이드 채팅
   "chatDock.untitled": "새 채팅",
   "chatDock.notify.finished": "‘{title}’ 답변이 끝났습니다",
   "chatDock.notify.failed": "‘{title}’ 답변이 실패했습니다",
@@ -497,7 +456,7 @@ export const app = {
   "chatDock.unseen": "새 답",
   "chatDock.permission": "권한을 묻는 중",
   "chatDock.cliDefault": "Default",
-  // 입력 칸 한 줄의 [+](2026-11-13 — 목업 D안 · 파일 업로드 · 타일 연결 · MCP — 11-14 이름 바꿈) · 모델 메뉴
+  // 입력 칸의 [+] · 모델 메뉴
   "chatDock.plus": "파일 업로드 · 타일 연결 · MCP",
   "chatDock.plus.link": "타일 연결",
   "chatDock.plus.mcp": "MCP",
@@ -515,11 +474,11 @@ export const app = {
   "chatDock.noCli": "쓸 수 있는 AI CLI 가 없습니다. Claude Code 나 Codex 를 설치했는지, 설정 › AI 에이전트에서 켰는지 확인해 주세요.",
   "chatDock.noCli.action": "AI 에이전트 설정 열기",
   "chatDock.empty": "아직 채팅이 없습니다.",
-  // 입력 칸의 문(2026-10-23 — 시작 묻기 · 시작 중 · CLI 나감)
+  // 입력 칸의 문 — 시작 묻기 · 시작 중 · CLI 나감
   "chatDock.gate.starting": "{cli} 시작 중…",
   "chatDock.gate.ended": "CLI가 종료됐습니다",
   "chatDock.gate.restart": "다시 시작",
-  // 사이드 채팅 v2(2026-10-23 — 구조화 모드 · SideChatFace.svelte · app/side-chat-live)
+  // 사이드 채팅 구조화 모드
   "chatDock.convo.aria": "채팅 대화",
   "chatDock.convo.empty": "무엇이든 물어보세요.",
   "chatDock.chip.untested": "확인하지 않은 CLI 버전({v}) — 동작이 다를 수 있습니다",
@@ -611,8 +570,7 @@ export const app = {
   "chatDock.exit.code": "끝남(코드 {code})",
   "chatDock.exit.tip": "다음 메시지를 보내면 다시 띄웁니다.",
   "dock.resize.aria": "독 폭 조절",
-  // 런처 독의 칸 막대와 바닥 줄 키 안내 (docs/log/2026-09-25-unified-dock.md).
-  // 안내의 키 글자(`↵` · `F2` …)는 `dock.ts` 의 표에 있고 여기는 그 뜻만 산다.
+  // 런처 독의 칸 막대와 바닥 줄 키 안내 — 키 글자(`↵` · `F2` …)는 `dock.ts` 의 표에 있고 여기는 그 뜻만 산다.
   "dock.segments.aria": "독 칸",
   "dock.foot.aria": "키 안내",
   "dock.hint.connect": "접속",
@@ -623,7 +581,7 @@ export const app = {
   "dock.hint.worktree": "워크트리",
   "dock.hint.close": "닫기",
   "dock.hint.newTile": "새 타일",
-  // 독의 DB 칸 (2026-10-12 — 쿼리 타일의 연결 목록. 데이터는 db-connections.json 하나 — 10-13)
+  // 독의 DB 칸
   "db.dock.search.placeholder": "DB 연결 찾기",
   "db.dock.search.aria": "DB 연결 찾기",
   "db.dock.list.aria": "DB 연결 목록",
@@ -651,10 +609,8 @@ export const app = {
   "db.dock.remove.confirm": "{what}를 지웁니다. {tail} 계속할까요?",
 
   // ── 탭 줄 ────────────────────────────────────────────────────────────────
-  // 자동 탭 제목. 저장되는 값(`TabSpec.title`)은 **언제나 한국어 기준형**(`탭 N`)이고,
-  // 그리는 자리에서만 이 키로 옮긴다 — `session.ts` 의 `defaultTabNumber` 가 그 번호를
-  // 뽑아 준다 (옛 `워크스페이스 N` · 영어로 저장된 `Tab N` 도 같이 읽는다).
-  // 화면에는 번호를 쓰지 않는다 — 자동 제목은 모두 "새 탭" (사용자 결정 2026-10-03, {n} 은 받기만 한다).
+  // 자동 탭 제목 — 저장되는 값(`TabSpec.title`)은 언제나 한국어 기준형(`탭 N`)이고 그리는 자리에서만 이 키로 옮긴다(옛 `워크스페이스 N` · `Tab N` 도 읽는다).
+  // 화면에는 번호를 쓰지 않는다 — 자동 제목은 모두 "새 탭" (사용자 결정, {n} 은 받기만 한다).
   "tabs.default": "새 탭",
   "tabs.rename.aria": "탭 이름",
   "tabs.sync.on": "동시 입력 켜짐",
@@ -675,7 +631,7 @@ export const app = {
   "dock.dot.place": "{place} — {fact}",
   "dock.dot.entrance.hosts": "호스트: 에이전트 권한 대기 · 완료",
   "dock.dot.entrance.projects": "프로젝트: 에이전트 권한 대기 · 완료",
-  // 에이전트 턴 끝 알림 (agent-notify.ts · app/agent-notify.ts — docs/log/2026-09-25-agent-stop-notify.md)
+  // 에이전트 턴 끝 알림 (docs/log/2026-09-25-agent-stop-notify.md)
   // `{agent}` = 그 타일의 에이전트 이름(Claude Code · Codex), 모르면 아래 일반 이름
   "agent.name.generic": "AI 에이전트",
   // 진행 중 서브 에이전트 수 — 점 옆 작은 수의 말풍선 (docs/log/2026-10-04-subagent-signals.md)
@@ -686,8 +642,7 @@ export const app = {
   // 권한 물음 알림 (docs/log/2026-09-25-shell-claude-signals.md)
   "agent.permission.body": "{agent} 가 권한을 묻고 있습니다",
   "agent.permission.toast": "{name} — {agent} 가 권한을 묻고 있습니다",
-  // 메신저 알림의 사건 문구(평문 — 서식은 Rust 가 채널마다 입힌다) (messenger-notify.ts — docs/log/2026-09-27-discord-notify.md).
-  // 한 줄의 머리(`**aynx · 이름** — `)는 코드가 붙인다. `{outcome}` = `pane.block.toast.*`
+  // 메신저 알림의 사건 문구 — 평문이다(서식은 Rust 가 채널마다 입힌다) · 머리(`**aynx · 이름** — `)는 코드가 붙인다 · `{outcome}` = `pane.block.toast.*`
   "messenger.command": "명령 {outcome}",
   "messenger.osc": "프로그램 알림 — {text}",
   "messenger.tools": "도구 {n}회",
@@ -699,7 +654,7 @@ export const app = {
   "messenger.plan.none": "작업안",
   "messenger.album": "앨범 «{name}»",
   "messenger.album.none": "앨범",
-  // 에이전트 알림 배너 (AgentNotifyBanners.svelte — docs/log/2026-09-27-agent-banners.md)
+  // 에이전트 알림 배너 (docs/log/2026-09-27-agent-banners.md)
   "agent.banner.aria": "에이전트 알림",
   "agent.banner.stop": "작업이 끝났습니다",
   "agent.banner.permission": "권한을 묻고 있습니다",
@@ -709,7 +664,7 @@ export const app = {
   "agent.banner.later": "나중에",
   "agent.banner.pill.stop": "{name} · 끝남",
   "agent.banner.pill.permission": "{name} · 권한 요청",
-  // 사이드 채팅 배너 (2026-11-13 — 타일 대신 채팅 칩 · 끝남 · 실패)
+  // 사이드 채팅 배너 — 타일 대신 채팅 칩 · 끝남 · 실패
   "agent.banner.chat": "채팅",
   "agent.banner.chat.stop": "답변이 끝났습니다",
   "agent.banner.failed": "답변이 실패했습니다",
@@ -841,7 +796,7 @@ export const app = {
   "ai.noneEnabled": "사용 중인 AI 에이전트가 없습니다 — 설정 › AI 에이전트에서 켭니다.",
   "ai.noneInstalled": "설치된 AI CLI 가 없습니다 — Claude Code 나 Codex 를 설치하면 여기서 열 수 있습니다.",
   "ai.noneInstalled.open": "설치 방법 보기",
-  // AI CLI 고르기 상자 — Ctrl+Shift+A (`ai-panel` · AiLaunchPicker.svelte · app/ai-launch.svelte.ts)
+  // AI CLI 고르기 상자
   "ai.launch.aria": "열 AI CLI 고르기",
   "ai.launch.notInstalled": "설치 안 됨",
 
@@ -877,7 +832,7 @@ export const app = {
   "unsaved.tearChanged": "옮기는 사이 문서가 바뀌어 옮기지 않았습니다.",
   "unsaved.tearKept": "옮기는 사이 문서가 바뀌어 원래 창에도 남겼습니다.",
   "unsaved.tear": "저장하지 않은 문서를 옮길 수 없습니다 — 저장한 뒤 옮기세요.",
-  // 문서 타일의 파일 곁 패널에서 다른 파일로 바꿀 때(2026-11-19 — `confirmUnsavedClose` 의 `verb: "switch"`)
+  // 문서 타일의 파일 곁 패널에서 다른 파일로 바꿀 때 (`confirmUnsavedClose` 의 `verb: "switch"`)
   "unsaved.switch.save": "저장하고 열기",
   "unsaved.switch.discard": "버리고 열기",
   "unsaved.switch.saveFailed": "저장하지 못해 바꾸지 않았습니다 — {name}",
@@ -915,7 +870,7 @@ export const app = {
   "hosts.load.failed": "설정을 읽지 못했습니다: {reason}",
   "hosts.paste.selfcopy": "'{name}' 폴더는 자기 안으로 복사할 수 없습니다",
 
-  // ── 월페이퍼 · 동적 색 · 테마 프로필 (설정 화면이 열지만 문구는 이 모듈들의 것) ──
+  // ── 월페이퍼 · 동적 색 · 테마 프로필 ──
   "wallpaper.pick.title": "월페이퍼 이미지 선택",
   "wallpaper.pick.filter": "이미지",
   "wallpaper.pick.failed": "파일 탐색기를 열지 못했습니다: {error}",
@@ -934,7 +889,7 @@ export const app = {
   "profile.apply.missingIcon": "프로필의 앱 아이콘이 지워져 기본(GPT)으로 둡니다.",
   "profile.remove.confirm": '테마 프로필 "{name}" 을(를) 지울까요?',
   "profile.remove.title": "테마 프로필 삭제",
-  // 설정 저장이 고른 프로필에도 지금 모양을 반영했을 때(SettingsModal · settings/settings-close.ts)
+  // 설정 저장이 고른 프로필에도 지금 모양을 반영했을 때
   "profile.reflect.done": '테마 프로필 "{name}" 에도 반영했습니다',
   // 테마 프로필 전환 — 위에서 내려오는 카드 줄 (docs/log/2026-09-28-profile-switcher.md)
   "profileSwitcher.aria": "테마 프로필 전환",
@@ -969,7 +924,7 @@ export const app = {
 
   // ── 비밀번호 인증 ────────────────────────────────────────────────────────
   "password.title": "비밀번호 인증",
-  // DB 접속 모달(쿼리 타일 7단계) — 같은 모달 · 같은 저장 규칙, 문구만 DB 의 것
+  // DB 접속 모달 — 같은 모달 · 같은 저장 규칙, 문구만 DB 의 것
   "password.db.title": "DB 비밀번호",
   "password.db.lead.1": "DB 연결 ",
   "password.db.lead.2": " 에 접속하려면 비밀번호가 필요합니다. 입력한 값은 아래에서 저장을 켜지 않으면 ",
@@ -987,8 +942,7 @@ export const app = {
   "password.stored_rejected": "저장된 비밀번호가 더 이상 맞지 않습니다 — 새로 입력하면 갱신됩니다.",
 
   // ── "이 앱에 저장" 체크 (두 모달이 함께 쓴다 · docs/log/2026-09-19-vault.md) ──
-  // 곁말은 금고의 **등급을 정직하게** 적는 자리다: 마스터가 없는 금고는 브라우저가 저장한
-  // 비밀번호와 같은 등급이고, 그 사실을 감추면 사용자가 잘못된 안심을 산다.
+  // 곁말은 금고의 등급을 정직하게 적는다 — 마스터가 없는 금고는 브라우저가 저장한 비밀번호와 같은 등급이다(감추면 사용자가 잘못된 안심을 산다).
   "save.label": "이 앱에 저장 (볼트)",
   "save.note.nomaster":
     "마스터 암호가 없어 이 PC 의 내 계정으로 로그인한 사람은 볼 수 있습니다 — 설정 › 보안에서 마스터 암호를 둘 수 있습니다.",
@@ -1011,10 +965,7 @@ export const app = {
 
   // ── 금고 잠금 해제 (docs/log/2026-09-19-vault.md) ─────────────────────────
   "vault.unlock.title": "볼트 잠금 해제",
-  // **머리말도 칸도 한 벌이다** (2026-09-19 밤 — 가림막 관문과 같은 결정). 저녁 판의
-  // `vault.unlock.lead.nomaster`("마스터 암호가 없어 이 창은 보호가 아니라 확인 관문입니다")
-  // 와 `vault.unlock.nomaster`("… Enter 로 엽니다")는 **마스터의 있고 없음을 그대로 말해
-  // 준다** — 가림막에서 지운 바로 그 누설이라 여기서도 지웠다.
+  // 머리말도 칸도 한 벌이다 — 마스터의 있고 없음을 말하는 문구를 두지 않는다(가림막 관문에서 지운 것과 같은 누설).
   "vault.unlock.lead":
     "저장해 둔 비밀번호·암호구를 쓰려면 마스터 암호가 필요합니다. 건너뛰면 이번 접속만 볼트 없이 진행합니다.",
   "vault.unlock.label": "마스터 암호",
@@ -1024,7 +975,7 @@ export const app = {
   "vault.unlock.open": "열기",
   "vault.unlock.skip": "이번엔 건너뛰기",
 
-  // ── 마스터 암호 걸기·바꾸기·풀기 (설정 › 보안, 단계 ③) ──────────────────
+  // ── 마스터 암호 걸기·바꾸기·풀기 (설정 › 보안) ──────────────────
   // 제목·머리말이 뜻 셋으로 갈리고 나머지 칸 이름은 공용이다 — 같은 폼이기 때문이다.
   "vault.master.title.set": "마스터 암호 설정",
   "vault.master.title.change": "마스터 암호 변경",
@@ -1036,8 +987,7 @@ export const app = {
   "vault.master.lead.remove.1": "해제하면 볼트의 열쇠가 다시 이 계정에 묶인 파일로 돌아갑니다 — ",
   "vault.master.lead.remove.term": "이 PC 의 내 계정으로 로그인한 사람은 담아 둔 값을 볼 수 있습니다",
   "vault.master.lead.remove.2": " (브라우저가 저장한 비밀번호와 같은 등급). 담긴 항목은 그대로 남습니다.",
-  // 머리말과 **같은 말을 한 줄 더** 세운다 — 문단은 읽히지 않고 넘어간다(사용자 보고).
-  // 경고 줄은 경고처럼 생겨야 읽힌다 (아이콘 + `--warn`).
+  // 머리말과 같은 말을 경고 줄로 한 줄 더 세운다 — 문단은 읽히지 않고 넘어간다(경고 줄은 아이콘 + `--warn`).
   "vault.master.remove.warn":
     "해제하면 이 PC 의 내 계정으로 로그인한 사람은 담아 둔 값을 볼 수 있습니다. 담긴 항목은 그대로 남습니다.",
   "vault.master.current": "현재 마스터 암호",
@@ -1049,7 +999,7 @@ export const app = {
   "vault.master.submit.set": "설정",
   "vault.master.submit.change": "변경",
   "vault.master.submit.remove": "해제",
-  // 설정 › 보안 들어가기 관문(2026-10-21) — 열린 볼트의 마스터를 확인만 한다(상태를 바꾸지 않는다)
+  // 설정 › 보안 들어가기 관문 — 열린 볼트의 마스터를 확인만 한다(상태를 바꾸지 않는다)
   "vault.master.title.verify": "마스터 암호 확인",
   "vault.master.lead.verify": "보안 설정은 들어갈 때마다 마스터 암호를 다시 확인합니다. 볼트는 그대로 열려 있습니다.",
   "vault.master.submit.verify": "확인",
@@ -1069,14 +1019,11 @@ export const app = {
   "keypick.group.new": "새로 만들기",
   "keypick.new": "새 키 만들기…",
   "keypick.new.title": "~/.ssh 에 키 쌍을 새로 만들고 그 키로 이어서 설치합니다",
-  // (2026-09-19 ② 에 `keypick.notinagent` 와 `keygen.agent.*` 셋이 없어졌다 —
-  //  "다시 묻지 않게 하는 길" 이 ssh-agent 에서 볼트로 옮겨 갔다.)
 
   // ── 호스트 추가·설정 폼 ──────────────────────────────────────────────────
   "hostform.title.edit": "호스트 편집",
   "hostform.title.add": "호스트 추가",
-  // 왼쪽 내비의 세 칸 (docs/log/2026-09-20-host-form-tabs.md) — 가르는 선은 "어느 파일에
-  // 적히는가" 다: 접속 = `~/.ssh/config`, 표시·세션 = `~/.ssh/sessions.toml`.
+  // 왼쪽 내비의 세 칸 — 가르는 선은 적히는 파일이다: 접속 = `~/.ssh/config`, 표시·세션 = `~/.ssh/sessions.toml` (docs/log/2026-09-20-host-form-tabs.md).
   "hostform.tab.connect": "접속",
   "hostform.tab.display": "표시",
   "hostform.tab.session": "세션",
@@ -1140,8 +1087,7 @@ export const app = {
   "hostform.field.proxyjump.none": "(없음 — 직접 접속)",
   "hostform.proxyjump.help": "이 호스트를 거쳐 접속합니다 (ProxyJump · 한 단계만)",
   "hostform.section.note": "앱 전용 · ",
-  // 빈 아이콘·색 칸의 상속 곁말 — 출처(sessions.toml 의 [presets.<이름>] · [defaults])와 읽히는 값.
-  // 저장 형식(svg:…)은 내보내지 않는다 (host-meta-hint.ts · docs/log/2026-09-29-hostform-display-tidy.md)
+  // 빈 아이콘·색 칸의 상속 곁말 — 출처(sessions.toml 의 [presets.<이름>] · [defaults])와 읽히는 값 · 저장 형식(svg:…)은 내보내지 않는다.
   "hostform.inherit.icon.preset": "프리셋 {name} 의 아이콘 · {value}",
   "hostform.inherit.icon.defaults": "기본값의 아이콘 · {value}",
   "hostform.inherit.icon.unknown": "상속된 아이콘 · {value}",
@@ -1176,7 +1122,7 @@ export const app = {
   "hostform.forwards.info.aria": "포트 포워딩 설명 자세히",
   "hostform.forwards.full":
     "로컬은 내 PC 포트 → 서버에서 본 호스트:포트, 원격은 서버 포트 → 내 PC 포트, 동적은 내 PC 포트가 SOCKS5 프록시입니다. 양쪽 끝은 모두 127.0.0.1 입니다.",
-  // 쿼리 타일 — DB 연결 고르기 모달 · '경유 없음' 직접 연결 폼 (2026-10-12 — 6단계)
+  // 쿼리 타일 — DB 연결 고르기 모달 · '경유 없음' 직접 연결 폼
   "query.engine.sqlite": "SQLite",
   "query.engine.postgres": "PostgreSQL",
   "query.engine.mysql": "MySQL",
@@ -1268,8 +1214,7 @@ export const app = {
   "query.local.error.port": "포트는 1~65535 사이여야 합니다",
   "query.local.error.duplicate": "같은 경유에 같은 이름의 DB 연결이 이미 있습니다",
   "query.local.error.ca": "CA 검증은 CA 파일이 필요합니다. 공개 인증서를 쓰는 서버라면 CA+이름 검증을 고르세요.",
-  // AI 권한 (2026-10-07 — 원격 세션의 권한 = 호스트 하나의 단계 · docs/user/hosts.md "AI access").
-  // 단계 이름·설명 줄은 `app.ai.stage.*` 이 쥐고(머리줄 팝오버와 함께 쓴다), 여기는 폼의 틀만.
+  // AI 권한 — 원격 세션의 권한 = 호스트 하나의 단계 (docs/user/hosts.md "AI access") · 단계 이름·설명 줄은 `app.ai.stage.*` 이 쥐고 여기는 폼의 틀만.
   "hostform.tab.ai": "AI 권한",
   "hostform.ai.title": "AI 권한",
   "hostform.ai.note":
@@ -1281,7 +1226,7 @@ export const app = {
   "hostform.ai.sum.all": "제안한 명령을 가리지 않고 사람 없이 실행(YOLO)",
   "hostform.ai.sum.yes": "됨",
   "hostform.ai.sum.no": "안 됨",
-  // 에이전트 활성화 (2026-10-26 — 옛 "원격 AI 훅 자동 설치" · 손으로 친 claude · codex 도 앱이 띄운 것과 같게)
+  // 에이전트 활성화 — 손으로 친 claude · codex 도 앱이 띄운 것과 같게
   "hostform.tab.agent": "에이전트",
   "hostform.field.agent": "에이전트 활성화",
   "hostform.agent.summary": "손으로 친 claude · codex 도 앱이 띄운 것과 같게 — 접속할 때 서버에 심습니다",
@@ -1324,11 +1269,8 @@ export const app = {
   "hostform.inherited.on": "상속: 켬",
   "hostform.inherited.off": "상속: 끔",
 
-  // ── 저장된 자격증명 (수정 모드에서만 · docs/log/2026-09-19-vault.md ③) ─────
-  //
-  // 이 줄은 **설정이 아니라 사실의 보고**다: 볼트에 이 호스트의 값이 들어 있는지 말하고,
-  // 지우는 길을 그 자리에 둔다. 담는 길은 여기 없다 — 담는 것은 접속 모달의 체크 하나뿐이고
-  // (값을 아는 자리가 거기뿐이다), 그 사실을 빈 상태의 문구가 가리킨다.
+  // ── 저장된 자격증명 (수정 모드에서만 · docs/log/2026-09-19-vault.md) ─────
+  // 설정이 아니라 사실의 보고다 — 담는 길은 여기 없다(값을 아는 자리인 접속 모달의 체크 하나뿐이고, 빈 상태의 문구가 그것을 가리킨다).
   "hostform.field.vault": "저장된 자격증명",
   "hostform.vault.password": "비밀번호 저장됨",
   "hostform.vault.passphrase": "키 암호구 저장됨",
@@ -1788,10 +1730,10 @@ export const app = {
   "workspaces.mainWindow": "주 창",
   "workspaces.auxWindow": "보조 창 · {name}",
   "workspaces.anotherWindow": "다른 창",
-  // 탭 줄 맨 앞의 지금 워크스페이스 단추와 그 목록(2026-10-07 — 자리마다 할 일 나누기)
+  // 탭 줄 맨 앞의 지금 워크스페이스 단추와 그 목록
   "workspaces.button": "워크스페이스 바꾸기",
   "workspaces.othersWaiting": "다른 워크스페이스에서 대기 중인 세션 {n}",
-  // 탭 줄 워크스페이스 목록의 줄 — 툴팁 · 스크린 리더(배지의 뜻, 2026-10-13 에 하단 독 칸에서 옮겨 왔다)
+  // 탭 줄 워크스페이스 목록의 줄 — 툴팁 · 스크린 리더(배지의 뜻)
   "workspaces.cell.waiting": "{name} · 대기 중인 세션 {n}",
   "workspaces.cell.fail": "{name} · 실패한 세션 {n}",
   "workspaces.cell.running": "{name} · 도는 세션 {n}",
@@ -1804,11 +1746,9 @@ export const app = {
   "workspaces.migration.retry": "다시 시도",
   "workspaces.migration.fresh": "새로 시작 (원본은 백업 폴더로 옮김)",
 
-  // ── AI 권한 단계 (2026-10-07 — 원격 세션의 권한 = 호스트 하나) ─────────────────
-  // 머리줄 칩 · 권한 팝오버 · 호스트 폼 AI 칸 · 설정 › 보안의 목록이 함께 쓴다. 단계 id(`off`·`read`·
-  // `approve`·`auto`)는 코드 식별자이고 이름만 여기 있다. "작업안"(대시보드의 계획서)은 그대로다.
-  // **이름은 모든 언어에서 같은 영어 낱말**(2026-10-23 사용자 결정 — '자동' · '모두' 가 헷갈렸다): Off · Read · Ask · Auto · YOLO.
-  // 넓은 자리 · 좁은 자리(칩 · 눈금)가 같은 글자이고, 뜻은 아래 설명 줄(번역)이 말한다.
+  // ── AI 권한 단계 — 원격 세션의 권한 = 호스트 하나 ─────────────────
+  // 머리줄 칩 · 권한 팝오버 · 호스트 폼 AI 칸 · 설정 › 보안의 목록이 함께 쓴다 · 단계 id(`off`·`read`·`approve`·`auto`)는 코드 식별자이고 이름만 여기 있다.
+  // 이름은 모든 언어에서 같은 영어 낱말이다(Off · Read · Ask · Auto · YOLO — 사용자 결정) · 넓은 자리 · 좁은 자리가 같은 글자이고 뜻은 아래 설명 줄(번역)이 말한다.
   "ai.stage.off": "Off",
   "ai.stage.read": "Read",
   "ai.stage.approve": "Ask",
@@ -1821,7 +1761,7 @@ export const app = {
   "ai.stage.all.desc":
     "허용 목록 없이 AI 가 올린 작업안을 무엇이든 사람 없이 바로 실행합니다 — 삭제 · sudo · 리다이렉트 포함. 전체 자동 승인 스위치를 끄면 멈춥니다.",
   "ai.stage.all.title": "YOLO — 허용 목록 · 위험 판정 없이 AI 가 제안한 것을 곧바로 실행",
-  // YOLO 확인 상자(2026-10-23 게이지 목업) — 머리 · 한 줄 · 목록 넷 · 이해했습니다 칸 · 원격 웹 꼬리말
+  // YOLO 확인 상자 — 머리 · 한 줄 · 목록 넷 · 이해했습니다 칸 · 원격 웹 꼬리말
   "ai.all.confirm.title": "{name} 을(를) YOLO 로 올릴까요?",
   "ai.all.confirm.host": "AI 가 올린 작업안을 사람에게 묻지 않고 무엇이든 바로 실행합니다.",
   "ai.all.confirm.host.p1": "허용 목록 · 위험 명령 판정 · 파이프 · 리다이렉트 제한을 보지 않습니다 — rm -rf · sudo · 서비스 재시작 포함",
@@ -1836,8 +1776,7 @@ export const app = {
   "ai.all.confirm.remote": "원격 웹에서는 이어서 마스터 암호를 다시 묻습니다(마스터가 있을 때)",
   "ai.all.confirm.ok": "YOLO 로 올리기",
   "ai.gauge.none": "고르지 않음",
-  // DB 연결의 AI 권한 (쿼리 타일 3단계 3a — docs/user/query-tile.md "Showing a database to the AI"). Off · Read · Ask · YOLO 이름은
-  // `ai.stage.*` 를 그대로 쓰고, "Schema" 와 DB 뜻의 설명 줄만 여기.
+  // DB 연결의 AI 권한 (docs/user/query-tile.md "Showing a database to the AI") — 단계 이름은 `ai.stage.*` 를 그대로 쓰고 "Schema" 와 DB 뜻의 설명 줄만 여기.
   "dbai.title": "AI 권한",
   "dbai.note":
     "이 연결에서 AI(Aynx 가 띄운 로컬 AI 타일)가 할 수 있는 일입니다. AI 는 쿼리 타일과 따로 연 읽기 전용 연결만 쓰고, 경유 호스트의 AI 권한과는 별개입니다.",
@@ -1860,7 +1799,7 @@ export const app = {
   "dbai.approve.short": "쓰기 작업안은 사람이 승인해야 실행됩니다(한 트랜잭션)",
   "dbai.approve.aria": "작업안 승인 자세히",
   "dbai.approve.restart": "붙은 세션 서버가 이전 판이라 쓰기 작업안이 아직 서지 않습니다(그때까지는 Read 와 같습니다) — 설정 › 일반 › 세션 서버에서 다시 시작하세요.",
-  // 독 DB 우클릭 › AI 권한(3b) — 단계를 바로 바꾼다. 행이 나가는 단계로 올릴 때 한 번 묻는다(폼의 경고 줄과 같은 문구)
+  // 독 DB 우클릭 › AI 권한 — 행이 나가는 단계로 올릴 때 한 번 묻는다(폼의 경고 줄과 같은 문구)
   "dbai.menu.broken": "대상이 바뀌어 풀림 — 다시 고르세요",
   "dbai.account": "최종 방어선은 DB 계정 권한입니다 — AI 에는 읽기 전용 계정으로 연결을 따로 만들어 주기를 권합니다.",
   "dbai.target.changed": "연결 대상이 바뀌어 AI 권한을 껐습니다 — 이 대상에 줄 단계를 다시 고르세요.",
@@ -1882,7 +1821,7 @@ export const app = {
   "ai.headless.desc": "작업안이 승인되면 앱이 타일 없이 이 호스트에 접속합니다 · Ask 이상에서 켤 수 있음",
   "ai.vault": "볼트 암호구",
   "ai.adhoc": "호스트로 저장하면 AI 권한을 줄 수 있습니다",
-  // 원격 접속(R1a-5 — 원격 웹 클라이언트)
+  // 원격 접속
   "statusbar.remote.active": "원격 접속 중 ({n})",
   "statusbar.remote.active.short": "원격 {n}",
   "statusbar.remote.tip": "원격 접속 중: {names}",
@@ -1895,7 +1834,7 @@ export const app = {
   "statusbar.remote.panel.settings": "원격 접속 설정…",
   "statusbar.remote.panel.log": "최근 기록",
   "statusbar.remote.disconnected": "원격 세션 {n}개를 끊었습니다",
-  // 원격 창의 메인 PC 화면 거울(원격 웹 R2-B) · 배치 바꾸기 요청(R3)
+  // 원격 창의 메인 PC 화면 거울 · 배치 바꾸기 요청
   "mirror.locked": "이 배치 조작은 원격 창에서 할 수 없습니다 — 메인 PC 에서 해 주세요.",
   "mirror.refuse.no-home": "메인 PC 창이 열려 있을 때만 배치를 바꿀 수 있습니다 — 지금은 저장된 배치를 보여 주는 중입니다.",
   "mirror.refuse.missing": "그 탭 · 타일이 메인 PC 화면에 더는 없습니다.",
@@ -1917,7 +1856,7 @@ export const app = {
   "mirror.someDevice": "기기",
   "mirror.coldWorkspace": "메인 PC 에서 아직 열지 않은 워크스페이스입니다 — 메인 PC 에서 한 번 열면 여기서 볼 수 있습니다.",
   "mirror.fromFile": "메인 PC 창이 닫혀 있어 저장된 배치를 보여 줍니다 — 메인 PC 창이 열리면 그 화면을 따라갑니다.",
-  // ── 원격 창의 모바일 배치 (원격 웹 R5 — docs/user/remote-web.md "Using it from a phone") ─────────────
+  // ── 원격 창의 모바일 배치 (docs/user/remote-web.md "Using it from a phone") ─────────────
   "mobile.picker.open": "탭 · 타일 고르기",
   "mobile.picker.close": "닫기",
   "mobile.picker.tabs": "탭 {n}개",
@@ -2030,7 +1969,7 @@ export const app = {
   "mobile.settings.unpair.body": "「{name}」 기기의 페어링을 지웁니다. 다시 쓰려면 메인 PC 에서 새로 허용해야 합니다.",
   "mobile.settings.unpair.ok": "해제",
   "mobile.settings.full": "전체 설정 열기",
-  // ── 탭 템플릿(2026-11-16 — 탭 하나를 여는 법 · 열 때마다 새 세션) ──
+  // ── 탭 템플릿 ──
   "tabs.ctx.saveTemplate": "템플릿 저장",
   "tabTemplates.save.title": "템플릿 저장",
   "tabTemplates.save.lead": "이 탭을 여는 법(배치와 타일마다 연결 대상)을 이름 붙여 남깁니다. 열 때마다 새 세션으로 찍어 냅니다.",

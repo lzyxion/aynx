@@ -1,6 +1,4 @@
 <script lang="ts">
-  // 파일 올리기·복사 — 대상 폴더와 파일 목록. 값·진행은 `app/transfer` 의 `up` 에 있다.
-  // (2026-09-30 `+page.svelte` 에서 마크업을 그대로 옮겼다 — id·클래스·`bind:`·i18n 키·주석 불변. 스타일은 스코프라 베껴 왔다.)
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import { humanSize } from "$lib/sftp";
@@ -23,7 +21,6 @@
     if (uploadVisible()) up.dirField?.focus();
   });
 
-  /** 모달 뿌리 — Tab 이 모달 뒤로 새지 않게 여기서 되감는다 (`trapTab`) */
   let modalEl = $state<HTMLElement | null>(null);
 </script>
 
@@ -41,8 +38,7 @@
       <div class="glass-scroll">
       <h2 id="up-title">{t(uploadWords.title)}</h2>
       <p class="lead">
-        <!-- 원격 창이면 로컬 타일이라도 파일이 이 기기에서 ws 로 올라간다 — "복사" 가 아니다.
-             `uploadVerb` 가 이미 원격 창을 "uploading" 으로 갈라 두었으니 그 값으로 가른다 -->
+        <!-- 원격 창이면 로컬 타일이라도 파일이 이 기기에서 올라간다 — `uploadVerb` 가 그것을 "uploading" 으로 갈라 둔다 -->
         {#if uploadTarget()?.kind === "local" && uploadWords.ing === "uploading"}
           <strong>{up.pane}</strong
           >{t("app.upload.lead.device.1")}
@@ -131,10 +127,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    /* 모달은 언제나 최상층 — 패널 안 요소들(재연결 배너 z-5 등)이 전역 층위로 새어
-       나와 모달을 투명하게 덮으면 "보이는데 클릭·입력이 안 되는" 증상이 된다 (실기 발견).
-       패널 쪽은 pane-box 의 isolation 으로 새는 것 자체도 막지만, 모달의 최상층 보장은
-       여기서 독립적으로 지킨다. */
+    /* 모달은 언제나 최상층 — 패널 안 요소(재연결 배너 등)가 새어 나와 덮으면 보이는데 클릭·입력이 안 된다 */
     z-index: 100;
     display: flex;
     align-items: center;
@@ -146,16 +139,14 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(420px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
-    /* 호스트 폼은 칸이 10개라 작은 창에서 화면을 넘긴다 — 모달 안에서 스크롤한다
-       (overlay 의 padding 16px 을 빼 준다) */
+    max-width: calc(420px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -170,18 +161,13 @@
     color: var(--fg-1);
   }
 
-  /*
-    `display:block` 그대로 둔다 — 다른 `.lead` 들은 <code>·<strong> 이 섞인 평범한 문단이라
-    flex 로 바꾸면 그 인라인 요소 하나하나가 flex 아이템이 되어 줄바꿈이 깨진다. 접힌 안내를
-    담은 `.lead` 는 안쪽 `.note-head`(flex) 가 블록 상자라 알아서 두 줄로 쌓인다.
-  */
+  /* flex 로 바꾸지 않는다 — <code>·<strong> 이 섞인 문단의 인라인 요소가 flex 아이템이 되어 줄바꿈이 깨진다 */
   .lead {
     margin: 0 0 var(--space-4);
     font-size: var(--t-sm);
     line-height: 1.55;
     color: var(--fg-2);
-    /* 대상 폴더 경로(`<strong>{up.pane}</strong>`)는 공백 없는 긴 토큰일 수 있다 — 꺾이지 않으면 모달 밖으로 나가고
-       스크롤 칸에 가로 막대가 선다(2026-11-19 실기) */
+    /* 대상 폴더 경로는 공백 없는 긴 토큰일 수 있다 — 꺾이지 않으면 가로 막대가 선다 */
     overflow-wrap: anywhere;
   }
 
@@ -192,19 +178,13 @@
     color: var(--fg-3);
   }
 
-  /*
-    버튼 — 전역 `.btn` 세 종류 (docs/log/2026-09-25-finish-menus.md · 토큰층 "버튼 세 종류"):
-    취소 = 보조(`.btn-secondary`), 확정 = 주(`.btn-primary`, 이 상자의 하나뿐인 강조색).
-    옛 `.ghost`/`.primary` 규칙은 지웠다 — 스코프 규칙이 전역 클래스를 이긴다. 두 이름은
-    표식으로만 남는다(검증 도구가 `.actions .primary` 로 찾는다).
-  */
+  /* `.ghost`/`.primary` 는 표식으로만 남는다 — 검증 도구가 `.actions .primary` 로 찾는다 */
   .actions {
     display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
   }
 
-  /* 호스트 추가 폼 — TOFU 모달의 .fact 와 같은 2열 격자를 쓴다 */
   .fields {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -238,7 +218,6 @@
     background: var(--control-bg-hover);
   }
 
-  /* 포커스는 중성 — 강조색 선은 "강조는 셋뿐" 밖이다 (docs/log/2026-09-25-finish-menus.md) */
   .fields input:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
@@ -249,13 +228,11 @@
     color: var(--fg-3);
   }
 
-  /* 줄 안의 작은 단추(포워드 [브라우저에서 열기]·[중지] · 업로드 [덮어쓰기]) — 모양은 `.btn .btn-secondary .btn-sm`,
-     `browse` 는 표식으로만 남는다 */
+  /* `browse` 는 표식으로만 남는다 — 모양은 `.btn .btn-secondary .btn-sm` */
   .browse {
     flex: 0 0 auto;
   }
 
-  /* 파일 목록 — 포워드 목록과 같은 상자 (같은 성격의 "지금 이것들" 이라 모양도 같다) */
   .up-list {
     margin: 0 0 var(--space-3);
     padding: var(--space-1);
@@ -306,14 +283,13 @@
     color: var(--warn);
   }
 
-  /* 실패 사유는 그 파일 바로 아래 줄에 (어느 파일의 오류인지 헷갈릴 자리가 없게) */
   .up-error {
     padding: 0 4px 6px 4px;
     font-size: var(--t-xs);
     line-height: 1.5;
     color: var(--warn);
     word-break: keep-all;
-    /* 사유에 긴 파일 이름이 들어가도 목록에 가로 막대가 서지 않게 — 다른 끊을 자리가 없을 때만 꺾는다 */
+    /* 긴 파일 이름이 들어가도 가로 막대가 서지 않게 */
     overflow-wrap: anywhere;
     user-select: text;
   }

@@ -8,19 +8,11 @@
   } from "$lib/settings/model/auto-approval-test";
   import { t, type Key } from "$lib/i18n/i18n.svelte.js";
 
-  /**
-   * 자동 승인 **시험 칸** — 묶음 편집과 허용 패턴 편집, 두 하위 화면이 같은 것을 맨 위에 둔다
-   * (docs/log/2026-10-05-auto-approve-args.md "시험 칸").
-   *
-   * 판정을 **Rust 에 묻는다**(`test_auto_approval` — 실행하지 않는다). 보내는 설정은 화면의 **초안 전체**(저장 전 —
-   * 묶음 · 끈 명령 · 사용자 규칙 · 간단 패턴)라, 어느 화면에서 무엇을 바꾸든 결과가 그 자리에서 바뀐다. 200ms
-   * 디바운스, 늦게 온 옛 답은 버린다.
-   */
+  /** 자동 승인 시험 칸 — 판정을 Rust 에 묻는다(`test_auto_approval` — 실행하지 않는다). 보내는 설정은 저장 전 초안 전체다 */
   let { examples = DEFAULT_EXAMPLES }: { examples?: readonly string[] } = $props();
 
   const uid = $props.id();
 
-  // 묶음 이름 — 이유 문구가 id 대신 화면 이름을 끼운다(없으면 표의 한국어, 모르는 id 면 id 그대로).
   function nameOf(id: string): string {
     const b = bundleById(id);
     if (!b) return id;
@@ -36,7 +28,7 @@
 
   $effect(() => {
     const cmd = command.trim();
-    // 초안 설정을 읽어 의존성으로 건다 — 스위치·규칙을 바꾸면 다시 묻는다.
+    // 초안 설정을 읽어 의존성으로 건다 — 스위치 · 규칙을 바꾸면 다시 묻는다
     const draft = $state.snapshot(settings.current.automation);
     if (cmd === "") {
       reqSeq++;
@@ -78,7 +70,6 @@
   ];
 </script>
 
-<!-- 입력 · 결과 한 줄 · 예시 칩. 결과는 Rust 판정 그대로(명령은 실행하지 않는다). -->
 <div class="tester">
   <label class="tester-label" for="{uid}-test">{t("settings.automation.test.label")}</label>
   <input
@@ -109,7 +100,6 @@
 </div>
 
 <style>
-  /* 시험 칸 — 필드 우물 판 하나 */
   .tester {
     display: flex;
     flex-direction: column;

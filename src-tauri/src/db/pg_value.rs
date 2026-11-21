@@ -1,22 +1,6 @@
-//! **PostgreSQL 결과 칸 → [`Cell`]** — tokio-postgres 는 결과를 늘 **바이너리 형식**으로 받는다. 형마다 크레이트 기능(chrono·
-//! uuid·serde_json …)을 켜는 대신 바이너리 표현을 여기서 직접 푼다(쿼리 타일 7단계 — 새 의존 없음). 모두 **순수 함수**이고
-//! **패닉하지 않는다** — 모양이 어긋난 바이트·모르는 형은 `‹형 이름›` 글자로 떨어진다.
-//!
-//! | 형 | 칸 |
-//! | --- | --- |
-//! | bool | 참/거짓 |
-//! | int2 · int4 · int8 · oid · xid · cid | 정수(±2^53 밖이면 `value::to_json` 이 문자열로) |
-//! | float4 · float8 | 실수(NaN · ±무한은 문자열) — float4 는 짧은 표기를 거쳐 f64 로(0.1 → 0.1) |
-//! | numeric | **문자열**(정밀도 보존 — base-10000 자리를 직접 펼친다 · NaN · ±Infinity) |
-//! | text · varchar · bpchar · name · unknown · xml · json · citext · 열거형 | 글자 |
-//! | jsonb · jsonpath | 글자(판 바이트 1 을 뗀다) |
-//! | uuid | `8-4-4-4-12` 글자 |
-//! | date · time · timetz · timestamp · timestamptz · interval | ISO 꼴 글자(PG 기본 출력과 같은 모양 · `infinity` · BC) — timestamptz 는 **UTC**(`+00`) |
-//! | bytea | 바이트(`$bytes`) |
-//! | inet · cidr · macaddr · macaddr8 · money · pg_lsn · tid · "char" · bit · varbit · point | PG 텍스트 꼴 글자 |
-//! | 배열 | PG 텍스트 꼴 `{…}`(요소를 같은 규칙으로 — 풀 수 없는 요소가 있으면 `‹int4[]›` 처럼) |
-//! | 도메인 | 바탕 형의 규칙 |
-//! | 그 밖(범위 · 복합 · 기하 대부분 · 확장 형) | `‹형 이름›` |
+//! **PostgreSQL 결과 칸 → [`Cell`]** — tokio-postgres 는 결과를 늘 **바이너리 형식**으로 받는다. 크레이트 기능(chrono · uuid ·
+//! serde_json …)을 켜는 대신 여기서 직접 푼다. **순수**이고 **패닉하지 않는다** — 모양이 어긋난 바이트 · 모르는 형은 `‹형 이름›`.
+//! 글자 꼴은 PG 기본 출력과 같은 모양이고 timestamptz 는 **UTC**(`+00`)다.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -25,7 +9,7 @@ use tokio_postgres::types::{FromSql, Kind, Type};
 
 use super::value::Cell;
 
-/// 아무 형이나 받는 날 바이트 — 형별 해석은 [`decode`] 가 한다(`FromSql` 의 형 검사를 지나기 위한 껍데기).
+/// `FromSql` 의 형 검사를 지나기 위한 껍데기 — 형별 해석은 [`decode`] 가 한다.
 pub(crate) struct Raw<'a>(pub Option<&'a [u8]>);
 
 impl<'a> FromSql<'a> for Raw<'a> {
@@ -89,7 +73,7 @@ const REGROLE: u32 = 4096;
 const JSONPATH: u32 = 4072;
 const XID8: u32 = 5069;
 
-/// 컬럼 형 이름 — 배열은 `int4[]`(PG 내부 이름 `_int4` 대신).
+/// 배열은 `int4[]`(PG 내부 이름 `_int4` 대신).
 pub(crate) fn type_label(ty: &Type) -> String {
     match ty.kind() {
         Kind::Array(elem) => format!("{}[]", elem.name()),
@@ -101,7 +85,6 @@ fn unsupported(ty: &Type) -> Cell<'static> {
     Cell::Text(Cow::Owned(format!("‹{}›", type_label(ty))))
 }
 
-/// 칸 하나를 푼다 — NULL 은 `raw = None`.
 pub(crate) fn decode<'a>(ty: &Type, raw: Option<&'a [u8]>) -> Cell<'a> {
     let Some(b) = raw else {
         return Cell::Null;
@@ -130,7 +113,6 @@ pub(crate) fn decode<'a>(ty: &Type, raw: Option<&'a [u8]>) -> Cell<'a> {
     }
 }
 
-/// 바이트·참거짓 밖의 값 — 배열 요소의 글자 꼴도 같은 자리에서 만든다.
 enum Scalar<'a> {
     Int(i64),
     Float(f64),
@@ -297,7 +279,7 @@ fn uuid(b: [u8; 16]) -> String {
     format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
 }
 
-/// PG 기원(2000-01-01) 에서 센 날 → (년, 월, 일) — 하워드 히넌트의 `civil_from_days`.
+/// PG 기원(2000-01-01)에서 센 날 → (년, 월, 일) — 하워드 히넌트의 `civil_from_days`.
 fn civil(days_since_2000: i64) -> (i64, u32, u32) {
     let z = days_since_2000 + 10_957 + 719_468; // 1970 기원 → 0000-03-01 기원
     let era = z.div_euclid(146_097);
@@ -386,7 +368,7 @@ pub(crate) fn timestamp(us: i64, tz: bool) -> String {
     s
 }
 
-/// PG 기본(`postgres`) 꼴 — `1 year 2 mons 3 days 04:05:06.5` · 모두 0 이면 `00:00:00` · 단수는 정확히 1 일 때만(`-1 days` — PG 와 같다).
+/// PG 기본(`postgres`) 꼴 — 단수는 정확히 1 일 때만(`-1 days` — PG 와 같다).
 pub(crate) fn interval(months: i32, days: i32, us: i64) -> String {
     let mut parts: Vec<String> = Vec::new();
     let (y, mo) = (months / 12, months % 12);
@@ -456,7 +438,7 @@ fn bits(b: &[u8]) -> Option<String> {
     Some((0..n as usize).map(|i| if data[i / 8] & (0x80 >> (i % 8)) != 0 { '1' } else { '0' }).collect())
 }
 
-/// 배열 요소 하나의 글자 꼴 — 풀 수 없으면 `None`(배열 전체가 `‹…[]›` 로).
+/// 풀 수 없으면 `None`(배열 전체가 `‹…[]›` 로).
 fn element_text(ty: &Type, b: &[u8]) -> Option<(String, bool)> {
     let base = match ty.kind() {
         Kind::Domain(base) => base,
@@ -489,7 +471,7 @@ fn float_text(f: f64) -> String {
     }
 }
 
-/// 배열 요소를 PG 텍스트 꼴로 감싼다 — 비었거나 특수 글자·공백이 있거나 `NULL` 이면 큰따옴표(안의 `"`·`\` 는 백슬래시).
+/// 비었거나 특수 글자 · 공백이 있거나 `NULL` 이면 큰따옴표(안의 `"` · `\` 는 백슬래시).
 fn quote_element(s: &str) -> String {
     let needs = s.is_empty()
         || s.eq_ignore_ascii_case("NULL")

@@ -7,9 +7,7 @@
     closeWorkspaceEditPrompt, submitWorkspaceEdit, workspaceEditPrompt as prompt,
   } from "$lib/app/workspace-actions.svelte.js";
 
-  // 폴더 편집처럼 칸 셋을 한 면에 둔다. 생성은 기존 이름 상자, 편집은 이 상자 하나다.
   let input = $state<HTMLInputElement | null>(null);
-  // 모달 뿌리 — Tab 이 모달 뒤로 새지 않게 되감는다 (`trapTab`)
   let modalEl = $state<HTMLElement | null>(null);
   $effect(() => { if (prompt.open && input) void tick().then(() => { input?.focus(); input?.select(); }); });
   function keydown(ev: KeyboardEvent): void {
@@ -50,7 +48,6 @@
 {/if}
 
 <style>
-  /* 폴더 편집과 같은 한 면 — 이름 → 아이콘 → 색. */
   .overlay {
     position: fixed;
     inset: 0;
@@ -69,10 +66,10 @@
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 

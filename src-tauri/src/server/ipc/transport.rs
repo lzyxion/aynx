@@ -1,21 +1,17 @@
-//! 전송 — Windows 명명 파이프(사용자 SID 전용 DACL · `FIRST_PIPE_INSTANCE` 선점 · 원격 거부 · 바이트 스트림) 와
-//! **상대 프로세스 확인**. 유닉스(`$XDG_RUNTIME_DIR/aynx[-dev]/server.sock` 0700 + `flock`)는 명시적 스텁이다.
+//! 전송 — Windows 명명 파이프(사용자 SID 전용 DACL · 선점 · 원격 거부)와 **상대 프로세스 확인**. 유닉스는 명시적 스텁이다.
 //!
-//! - 이름 `\\.\pipe\aynx[-dev]-<FNV64(사용자 SID)>` — 인스턴스(dev/release) 접미사는 `instance::app_dir_name` 하나를 따른다.
-//! - **선점이 인스턴스 잠금의 실체**다: 첫 인스턴스는 `FIRST_PIPE_INSTANCE` 로 만들고, 이미 있으면 err 5 → [`BindError::Taken`].
-//!   `server.json` 은 안내일 뿐이다(설계 4.1).
-//! - **양방향 확인**(설계 4.6 · 스파이크 4): 같은 사용자는 FIRST 깃발 없이 같은 이름에 인스턴스를 **덧붙일 수 있다** — 그래서
-//!   서버는 클라이언트의 exe 를, 클라이언트(GUI)는 서버의 exe 를 `QueryFullProcessImageNameW` 로 확인한다([`peer_image`]).
-//!   비교 규칙(무엇을 같은 exe 로 치나)은 부르는 쪽(`server::serve` · `server::client`)이 정한다 — 여기는 pid·경로만 준다.
+//! - 인스턴스(dev/release) 접미사는 `instance::app_dir_name` 하나를 따른다.
+//! - **선점이 인스턴스 잠금의 실체**다(`FIRST_PIPE_INSTANCE` — 이미 있으면 [`BindError::Taken`]). `server.json` 은 안내일 뿐이다.
+//! - **양방향 확인**: 같은 사용자는 FIRST 깃발 없이 같은 이름에 인스턴스를 **덧붙일 수 있다** — 그래서 양쪽이 상대 exe 를 확인한다.
+//!   비교 규칙은 부르는 쪽(`server::serve` · `server::client`)이 정한다 — 여기는 pid·경로만 준다.
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-/// 파이프·소켓 위의 바이트 스트림 하나(서버·클라이언트 공용 상자).
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Stream for T {}
 pub(crate) type BoxStream = Box<dyn Stream>;
 
-/// 상대 프로세스 — pid 와 그 이미지 경로(못 읽으면 `None` = 거부 대상).
+/// 이미지를 못 읽으면 `None` = 거부 대상.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Peer {
     pub pid: Option<u32>,
@@ -32,13 +28,12 @@ pub(crate) fn endpoint() -> Option<String> {
     #[cfg(not(windows))]
     {
         // 유닉스: `$XDG_RUNTIME_DIR/aynx[-dev]/server.sock`(없으면 `instance::data_root()` 아래), 디렉터리 0700 ·
-        // 소유 uid 확인 · 같은 폴더 `server.lock` 에 `flock(LOCK_EX|LOCK_NB)` 을 쥔 뒤에만 낡은 소켓을 지우고 bind —
-        // 스파이크 `unix_sketch::socket_path`. ③ 의 유닉스 조각에서.
+        // 소유 uid 확인 · 같은 폴더 `server.lock` 에 `flock(LOCK_EX|LOCK_NB)` 을 쥔 뒤에만 낡은 소켓을 지우고 bind.
         None
     }
 }
 
-/// FNV-1a 64 — 이름이 SID 를 그대로 드러내지 않게(결정적, 비밀 아님).
+/// 이름이 SID 를 그대로 드러내지 않게(결정적, 비밀 아님).
 pub(crate) fn fnv1a64(s: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in s.as_bytes() {
@@ -48,7 +43,6 @@ pub(crate) fn fnv1a64(s: &str) -> u64 {
     h
 }
 
-/// `\\.\pipe\<prefix>-<FNV64(sid) 16자리>`.
 pub(crate) fn pipe_name(prefix: &str, sid: &str) -> String {
     format!(r"\\.\pipe\{prefix}-{:016x}", fnv1a64(sid))
 }
@@ -60,12 +54,12 @@ pub(crate) fn sddl_for(sid: &str) -> String {
 
 #[derive(Debug)]
 pub(crate) enum BindError {
-    /// 같은 이름의 첫 인스턴스가 이미 있다(err 5) — 다른 서버가 돈다.
+    /// 다른 서버가 돈다.
     Taken,
     Other(String),
 }
 
-/// 서버 쪽 듣기 — 첫 인스턴스는 선점으로 만들고, 붙을 때마다 다음 인스턴스를 미리 세운다.
+/// 붙을 때마다 다음 인스턴스를 미리 세운다.
 pub(crate) struct Listener {
     #[cfg(windows)]
     name: String,
@@ -101,7 +95,6 @@ impl Listener {
         }
     }
 
-    /// 다음 클라이언트를 기다린다 — 상대 정보와 함께.
     pub(crate) async fn accept(&mut self) -> std::io::Result<(BoxStream, Peer)> {
         #[cfg(windows)]
         {
@@ -118,7 +111,7 @@ impl Listener {
     }
 }
 
-/// 클라이언트 쪽 — 이름에 붙는다(바쁘면 잠깐 기다린다). 서버 상대 정보와 함께. 서버가 없으면 `NotFound`.
+/// 바쁘면 잠깐 기다린다. 서버가 없으면 `NotFound`.
 pub(crate) async fn connect(name: &str) -> std::io::Result<(BoxStream, Peer)> {
     #[cfg(windows)]
     {
@@ -144,7 +137,7 @@ pub(crate) async fn connect(name: &str) -> std::io::Result<(BoxStream, Peer)> {
     }
 }
 
-/// 열린 파이프 손잡이의 **상대** pid·exe — 서버 쪽이면 클라이언트를, 클라이언트 쪽이면 서버를 본다.
+/// 서버 쪽이면 클라이언트를, 클라이언트 쪽이면 서버를 본다.
 /// 유닉스: `SO_PEERCRED`→`/proc/<pid>/exe`(Linux) · `LOCAL_PEERPID`→`proc_pidpath`(macOS) — 스텁.
 #[cfg(windows)]
 pub(crate) fn peer_image(conn: &impl std::os::windows::io::AsRawHandle, server_side: bool) -> Peer {
@@ -188,7 +181,6 @@ mod win {
         }
     }
 
-    /// 현재 프로세스 토큰의 사용자 SID 문자열(S-1-5-21-…).
     pub(super) fn user_sid_string() -> Result<String, u32> {
         unsafe {
             let mut tok: HANDLE = null_mut();
@@ -215,7 +207,7 @@ mod win {
         }
     }
 
-    /// 사용자 SID 전용 DACL 을 단 파이프 인스턴스 하나. `first` 면 선점(`FIRST_PIPE_INSTANCE`).
+    /// `first` 면 선점(`FIRST_PIPE_INSTANCE`).
     pub(super) fn create_instance(name: &str, sid: &str, first: bool) -> std::io::Result<NamedPipeServer> {
         unsafe {
             let mut psd: PSECURITY_DESCRIPTOR = null_mut();

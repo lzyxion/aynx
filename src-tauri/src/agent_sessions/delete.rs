@@ -1,22 +1,7 @@
-//! **지난 대화 지우기** — 사람이 지난 대화 줄에서 고른 대화를 **그 CLI 의 기록에서 영구히** 지운다(보관함 · 휴지통 없음 — 10-24
-//! 사용자 결정 · docs/log/2026-10-24-convo-rename.md "지우기"). 로컬 대화만이다(원격 대화에는 항목이 없다).
-//!
-//! 이름 바꾸기와 같은 모양 — 공용(이 파일의 [`delete_in`])과 에이전트 칸 하나([`SessionTarget::delete`]):
-//!
-//! - **공용** — [`edit::locate_idle`](id 모양 · 목록과 같은 색인 — 화면이 넘긴 경로는 받지 않는다 · 방금 쓰인 대화 거절) → 어댑터 →
-//!   목록 · 사용량 캐시에서 그 파일들을 뺀다(목록 · 합계는 있는 파일만 세지만 메모리에 묵히지 않는다).
-//! - **Claude** ([`claude_delete`]) — 공식 길이 없다. 대화 파일 `<프로젝트 폴더>/<id>.jsonl` 과 같은 이름의 딸린 폴더 `<id>/`(서브에이전트 ·
-//!   큰 도구 출력 `tool-results`)를 지운다. **링크를 따라가지 않는다**(정션을 따라 다른 저장소를 지운 사고 — 메모리 "노트 정션 삭제"):
-//!   딸린 폴더나 그 안에 링크(Windows 재분석 지점 · 심볼릭 링크)가 하나라도 있으면 **아무것도 지우지 않고 거절**하고, 지우는 걸음도
-//!   제 손으로 걸으며 걸음 사이에 생긴 링크는 링크만 걷는다([`remove_tree`]). 대화 파일을 먼저 지운다 — 도는 CLI 가 쥐고 있으면
-//!   여기서 실패해 아무것도 바뀌지 않는다. 설정 폴더의 같은 id 짝 중 **그 대화만의 것**은 빈 `session-env/<id>/` 하나뿐이라 그것만 걷는다
-//!   (`file-history/<id>/` 는 남긴다 — 그 대화에서 갈라 나간 대화가 옛 체크포인트로 그 폴더의 백업을 가리킨다 · 10-24 실측).
-//! - **Codex** ([`codex_delete`]) — 파일을 직접 지우지 않는다. 공식 app-server RPC `thread/delete {threadId}`(답 `{}` — 0.164 실측: 롤아웃 ·
-//!   `state_5.sqlite` 의 줄 · `session_index.jsonl` 의 줄 · `thread_history_1.sqlite` 항목을 지운다 · 보관함 · 휴지통 없음)를
-//!   [`codex_rpc`] 로 부른다. **갈라 나간 대화가 있는 대화는 Codex 가 거절한다**(`forked history still references it` — 포크는 부모 줄을
-//!   복사하지 않고 `history_base` 로 가리킨다) → 그 문구는 우리 말로 옮긴다.
-//!
-//! 오류 문구에는 제목을 싣지 않는다(모듈 머리말 "개인정보") — 경로 · id · OS 문구만.
+//! 지난 대화 지우기 — 그 CLI 의 기록에서 영구히 지운다(보관함 · 휴지통 없음). 로컬 대화만이다 (docs/log/2026-10-24-convo-rename.md "지우기").
+//! Claude: 링크를 따라가지 않는다 — 딸린 폴더나 그 안에 링크가 하나라도 있으면 아무것도 지우지 않고 거절한다(정션을 따라 다른 저장소를 지운 사고).
+//! 대화 파일을 먼저 지운다 — 도는 CLI 가 쥐고 있으면 여기서 실패해 아무것도 바뀌지 않는다. `file-history/<id>/` 는 남긴다 — 갈라 나간 대화가 옛 체크포인트로 그 백업을 가리킨다.
+//! Codex: 파일을 직접 지우지 않고 app-server `thread/delete` 를 부른다. 오류 문구에는 제목을 싣지 않는다 — 경로 · id · OS 문구만.
 
 use serde_json::json;
 
@@ -24,10 +9,8 @@ use super::edit::{self, now_ms, Located};
 use crate::agent_state::convo::ConvoLinkRow;
 use super::*;
 
-/// 에이전트의 지우기 — [`SessionTarget::delete`].
 pub(crate) type Delete = fn(&Located) -> Result<(), String>;
 
-/// 지우기의 몸통 — 루트와 지금 시각을 받는다(시험이 임시 폴더 · 시각을 넘긴다). 앱은 [`agent_session_delete`].
 pub(crate) fn delete_in(
     t: &'static SessionTarget,
     roots: &[PathBuf],
@@ -51,21 +34,17 @@ pub(crate) fn delete_in(
     out
 }
 
-/// 대화 파일 옆 같은 이름의 폴더(`<프로젝트 폴더>/<id>` — Claude 의 딸린 폴더). Codex 롤아웃 옆에는 없다(없는 경로).
 fn companion_dir(at: &Located) -> PathBuf {
     at.path.with_extension("")
 }
 
-// ---------------------------------------------------------------------------
-// 링크를 따라가지 않는 걸음 — OS 를 타는 것은 [`is_link`] 하나다
-// ---------------------------------------------------------------------------
+// ── 링크를 따라가지 않는 걸음 — OS 를 타는 것은 [`is_link`] 하나다 ──
 
-/// 링크인가 — 심볼릭 링크 · (Windows) 정션을 포함한 모든 재분석 지점. `symlink_metadata` 로 읽은 것이어야 한다.
+/// 정션을 포함한 모든 재분석 지점이 링크다. `symlink_metadata` 로 읽은 것이어야 한다.
 pub(crate) fn is_link(md: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        /// `FILE_ATTRIBUTE_REPARSE_POINT`
         const REPARSE_POINT: u32 = 0x400;
         md.file_type().is_symlink() || md.file_attributes() & REPARSE_POINT != 0
     }
@@ -75,7 +54,7 @@ pub(crate) fn is_link(md: &std::fs::Metadata) -> bool {
     }
 }
 
-/// `dir` 아래(자기 자신 포함)의 첫 링크 — 링크 안으로는 들어가지 않는다. 없으면 `None`.
+/// 링크 안으로는 들어가지 않는다.
 pub(crate) fn find_link(dir: &Path) -> std::io::Result<Option<PathBuf>> {
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -93,12 +72,12 @@ pub(crate) fn find_link(dir: &Path) -> std::io::Result<Option<PathBuf>> {
     Ok(None)
 }
 
-/// 링크 하나를 **링크만** 걷는다 — 폴더 링크(정션 · 폴더 심볼릭 링크)는 `remove_dir`, 아니면 `remove_file`. 가리키는 곳은 건드리지 않는다.
+/// 링크만 걷는다 — 가리키는 곳은 건드리지 않는다.
 fn remove_link(p: &Path) -> std::io::Result<()> {
     std::fs::remove_dir(p).or_else(|_| std::fs::remove_file(p))
 }
 
-/// 폴더 하나를 아래에서부터 지운다 — 제 손으로 걷고 **링크 안으로 들어가지 않는다**(걸음 사이에 생긴 링크는 링크만 걷는다).
+/// 제 손으로 걷고 링크 안으로 들어가지 않는다(걸음 사이에 생긴 링크는 링크만 걷는다).
 /// `std::fs::remove_dir_all` 도 요즘은 링크를 따라가지 않지만(CVE-2022-21658 뒤) 그 약속에 기대지 않는다.
 pub(crate) fn remove_tree(dir: &Path) -> std::io::Result<()> {
     let md = std::fs::symlink_metadata(dir)?;
@@ -114,9 +93,7 @@ pub(crate) fn remove_tree(dir: &Path) -> std::io::Result<()> {
     std::fs::remove_dir(dir)
 }
 
-// ---------------------------------------------------------------------------
-// Claude — 대화 파일 + 딸린 폴더
-// ---------------------------------------------------------------------------
+// ── Claude ──
 
 pub(crate) fn claude_delete(at: &Located) -> Result<(), String> {
     let companion = companion_dir(at);
@@ -172,14 +149,11 @@ fn folder_err(p: &Path, e: std::io::Error) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Codex — app-server `thread/delete`
-// ---------------------------------------------------------------------------
+// ── Codex ──
 
-/// Codex 가 갈라 나간 대화가 있는 대화를 거절할 때의 문구(0.164 실측 — `cannot delete thread <id>: forked history still references it`).
+/// Codex(0.164)가 갈라 나간 대화가 있는 대화를 거절할 때의 문구.
 const CODEX_FORK_REFUSAL: &str = "forked history still references";
 
-/// Codex 의 서버 오류 → 화면 문구. 포크 거절만 우리 말로 옮기고, 나머지는 Codex 가 지은 문구를 그대로 붙인다.
 pub(crate) fn codex_delete_error(msg: &str) -> String {
     if msg.contains(CODEX_FORK_REFUSAL) {
         tr!(
@@ -205,16 +179,11 @@ pub(crate) fn codex_delete(at: &Located) -> Result<(), String> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// 명령
-// ---------------------------------------------------------------------------
+// ── 명령 ──
 
-/// 지난 대화 지우기 — 사람이 확인 상자에서 고른 대화를 그 CLI 의 기록에서 영구히 지운다. 파일 지우기 · 프로세스 실행이라 async +
-/// 블로킹 풀(docs/conventions.md "Tauri 명령은 기본 async"). 화면은 성공 뒤 목록을 다시 읽는다.
 #[tauri::command]
 pub async fn agent_session_delete(agent: String, id: String) -> Result<(), String> {
     let t = target(&agent)?;
-    // 열림 판정의 장부 — 세션 서버에서(못 읽으면 빈 장부 = 예전 mtime 규칙)
     let links = crate::server::proxy::conversation_links_now().await;
     tauri::async_runtime::spawn_blocking(move || delete_in(t, &(t.roots)(), &id, now_ms(), &links))
         .await

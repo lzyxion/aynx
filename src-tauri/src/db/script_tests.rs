@@ -1,11 +1,4 @@
-//! **스크립트 실행기 시험**(쿼리 타일 2단계 — `db::script`).
-//!
-//! - 순수(늘 돈다): 문장 나누기(달러 인용 · 주석 · 문자열 · 세미콜론 · 해석마다 다른 경계) · 사전 검증(하나라도 거절이면 실행 0) · 상한 ·
-//!   UTF-16 자리 · 결과 예산 · 시계.
-//! - SQLite(늘 돈다 — 임시 파일): 실행기를 엔진 연결에 바로 — 커밋 · 첫 오류에서 전부 되돌림 · 사전 거절 · 읽기 전용 · 작업 안 ·
-//!   시한 · 취소 · `RETURNING` 영향 행 수.
-//! - 실제 서버(`#[ignore]` + 환경변수 — `tx_tests` 와 같은 변수): 표(`table::script`)를 그대로 — PG 직결 · PgBouncer transaction ·
-//!   MySQL 8.4 · MariaDB 11.
+//! **스크립트 실행기 시험**(`db::script`) — 순수 · SQLite 는 늘 돌고, 실제 서버는 `#[ignore]` + 환경변수(`tx_tests` 와 같은 변수)일 때만.
 //!
 //! ```text
 //! AYNX_TEST_PG_URL=postgres://postgres:<pw>@127.0.0.1:55432/postgres
@@ -34,9 +27,7 @@ use super::table::{self, ConnRef, Engine};
 use super::{Dialect, QueryOut};
 use crate::ssh::open::SharedCreds;
 
-// ---------------------------------------------------------------------------
-// 순수 — 나누기 · 계획 · 예산
-// ---------------------------------------------------------------------------
+// ── 순수 — 나누기 · 계획 · 예산 ──
 
 fn pieces(sql: &str, d: Dialect) -> Vec<&str> {
     split_script(sql, d).unwrap_or_else(|e| panic!("{sql:?}: {e:?}")).into_iter().map(|(s, e)| &sql[s..e]).collect()
@@ -45,43 +36,32 @@ fn pieces(sql: &str, d: Dialect) -> Vec<&str> {
 #[test]
 fn split_script_follows_quotes_comments_dollar_quotes_and_semicolons() {
     let pg = Dialect::Postgres;
-    // 끝 세미콜론 · 빈 문장 · 앞뒤 주석은 범위 밖.
     assert_eq!(pieces("  SELECT 1; ;; -- 끝\n SELECT 2;  /* 꼬리 */ ", pg), vec!["SELECT 1", "SELECT 2"]);
-    // 문자열 · 인용 식별자 · 주석 안의 `;` 는 가르지 않는다.
     assert_eq!(
         pieces("SELECT 'a;b', \"c;d\" /* ; */ -- ;\n; SELECT E'x\\';y'", pg),
         vec!["SELECT 'a;b', \"c;d\"", "SELECT E'x\\';y'"]
     );
-    // PG 달러 인용 함수 본문 — 본문 안의 `;` 는 문장 하나.
     let f = "CREATE FUNCTION f() RETURNS int LANGUAGE plpgsql AS $body$ BEGIN PERFORM 1; RETURN 2; END $body$;\nSELECT f()";
     assert_eq!(pieces(f, pg).len(), 2);
     assert!(pieces(f, pg)[0].ends_with("$body$"));
     assert_eq!(pieces("DO $$ BEGIN RAISE NOTICE 'x;y'; END $$; SELECT 1", pg).len(), 2);
-    // 중첩 블록 주석(PG).
     assert_eq!(pieces("SELECT 1 /* a /* ; */ ; */ ; SELECT 2", pg), vec!["SELECT 1", "SELECT 2"]);
-    // MySQL — `#` 주석 · 백틱 · `--` 는 공백이 있어야 주석.
     let my = Dialect::Mysql;
     assert_eq!(pieces("SELECT 1 # ;\n; SELECT `a;b` FROM t; SELECT 5 --1\n", my), vec!["SELECT 1", "SELECT `a;b` FROM t", "SELECT 5 --1"]);
-    // SQLite — `[식별자]`.
     assert_eq!(pieces("SELECT [a;b] FROM t; SELECT 2", Dialect::Sqlite), vec!["SELECT [a;b] FROM t", "SELECT 2"]);
 }
 
 #[test]
 fn split_script_refuses_ambiguous_boundaries_delimiter_and_empty() {
-    // MySQL 백슬래시 — `NO_BACKSLASH_ESCAPES` 이면 둘째 문장이 따로 선다(DELETE) → 해석마다 경계가 달라 거절.
+    // MySQL 백슬래시 — `NO_BACKSLASH_ESCAPES` 이면 둘째 문장이 따로 선다 → 해석마다 경계가 달라 거절.
     assert_eq!(split_script("SELECT 'a\\'; DELETE FROM t; -- '", Dialect::Mysql), Err(GuardError::Ambiguous));
-    // PG 표준 문자열의 `\'` 도 같은 꼴(백슬래시 해석에서는 끝나지 않는다).
     assert_eq!(split_script("SELECT 'C:\\'; SELECT 2", Dialect::Postgres), Err(GuardError::Ambiguous));
-    // 모든 해석에서 끝나지 않음.
     assert_eq!(split_script("SELECT 1; SELECT 'x", Dialect::Postgres), Err(GuardError::Unterminated));
-    // DELIMITER(클라이언트 명령).
     assert_eq!(
         split_script("DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; END$$\nDELIMITER ;", Dialect::Mysql),
         Err(GuardError::Delimiter)
     );
-    // 빈 글 · 주석뿐.
     assert_eq!(split_script(" ;; -- x\n", Dialect::Sqlite), Err(GuardError::Empty));
-    // MySQL 실행 주석.
     assert_eq!(split_script("SELECT 1; /*!50000 DROP TABLE t */", Dialect::Mysql), Err(GuardError::ExecutableComment));
     for e in [GuardError::Ambiguous, GuardError::Delimiter] {
         assert!(!e.message().is_empty());
@@ -91,7 +71,6 @@ fn split_script_refuses_ambiguous_boundaries_delimiter_and_empty() {
 #[test]
 fn plan_refuses_the_whole_script_when_one_statement_is_refused() {
     let pg = Dialect::Postgres;
-    // 쓰기 — 사람의 트랜잭션 문장 · 트랜잭션 밖 전용 문장이 하나라도 있으면 아무것도 실행하지 않는다.
     for (sql, at) in [
         ("INSERT INTO t VALUES (1); COMMIT; INSERT INTO t VALUES (2)", 1),
         ("BEGIN; INSERT INTO t VALUES (1)", 0),
@@ -105,12 +84,11 @@ fn plan_refuses_the_whole_script_when_one_statement_is_refused() {
     }
     // PG DDL 은 트랜잭션 안에서 되돌려지므로 받는다.
     assert_eq!(script::plan("CREATE TABLE z(a int); INSERT INTO z VALUES (1); DROP TABLE z", pg, ScriptMode::Write).unwrap().len(), 3);
-    // MySQL — 암묵 커밋(DDL) · 세션 잠금 · autocommit 거절, TEMPORARY 는 받는다.
     let my = Dialect::Mysql;
     for sql in ["INSERT INTO t VALUES (1); CREATE TABLE z(a int)", "TRUNCATE t", "SET autocommit = 0; SELECT 1", "LOCK TABLES t WRITE"] {
         assert!(matches!(script::plan(sql, my, ScriptMode::Write), Err(PlanError::Statement { .. })), "{sql}");
     }
-    // 원자성을 증명할 수 없는 문장 — CALL · TEMPORARY · completion_type 도 거절(Codex 검토 반영 1).
+    // 원자성을 증명할 수 없는 문장 — CALL · TEMPORARY · completion_type 도 거절.
     for (sql, at) in [
         ("CREATE TEMPORARY TABLE tt(a int); INSERT INTO tt VALUES (1)", 0),
         ("INSERT INTO t VALUES (1); CALL p()", 1),
@@ -123,9 +101,7 @@ fn plan_refuses_the_whole_script_when_one_statement_is_refused() {
         }
         assert!(matches!(script::plan(sql, my, ScriptMode::InWork), Err(PlanError::Statement { .. })), "{sql}");
     }
-    // 작업 안도 같은 규칙.
     assert!(matches!(script::plan("SELECT 1; ROLLBACK", my, ScriptMode::InWork), Err(PlanError::Statement { index: 1, .. })));
-    // 읽기 전용 — 조회 첫 낱말만.
     assert!(matches!(
         script::plan("SELECT 1; INSERT INTO t VALUES (1)", Dialect::Sqlite, ScriptMode::ReadOnly),
         Err(PlanError::Statement { index: 1, err: GuardError::ReadOnly { .. }, .. })
@@ -133,14 +109,12 @@ fn plan_refuses_the_whole_script_when_one_statement_is_refused() {
     assert_eq!(script::plan("SELECT 1; WITH x AS (SELECT 2) SELECT * FROM x; PRAGMA table_info(t)", Dialect::Sqlite, ScriptMode::ReadOnly)
         .unwrap()
         .len(), 3);
-    // 거절 답 — 실행 0, 자리 · 문구.
     let e = script::plan("SELECT 1;\nCOMMIT", pg, ScriptMode::Write).unwrap_err();
     let out = script::refused(&e);
     assert_eq!((out.outcome, out.results.len(), out.total), ("refused", 0, 2));
     let f = out.failed.unwrap();
     assert_eq!((f.index, f.start, f.end), (1, 10, 16));
     assert!(f.message.contains("COMMIT"), "{}", f.message);
-    // 나누기부터 거절이면 자리 없이 문구.
     let out = script::refused(&script::plan("  ", pg, ScriptMode::Write).unwrap_err());
     assert!(out.failed.is_none() && out.message.is_some());
 }
@@ -156,7 +130,7 @@ fn plan_limits_statements_and_size_and_reports_utf16_positions() {
     for e in [PlanError::TooMany(101), PlanError::TooLarge] {
         assert!(!e.message().is_empty());
     }
-    // 한글 · 이모지(UTF-16 둘) 뒤의 자리 — 화면 편집기의 글자 위치와 같다.
+    // 이모지는 UTF-16 둘 — 화면 편집기의 글자 위치와 같다.
     let sql = "SELECT '가😀'; SELECT 2";
     let p = script::plan(sql, Dialect::Sqlite, ScriptMode::ReadOnly).unwrap();
     assert_eq!(p[0].text(), "SELECT '가😀'");
@@ -196,7 +170,6 @@ fn ctl_keeps_results_within_the_budget_and_stops_on_cancel_or_deadline() {
     assert!(d.truncated && d.rows.is_empty(), "예산이 다 했으면 행 없이");
     let d = ctl.keep(row_out(0, ""));
     assert!(!d.truncated, "행이 없는 결과는 그대로");
-    // 시계 — 문장 시한은 남은 전체 시간을 넘지 않는다 · 취소면 다음 문장을 시작하지 않는다.
     assert_eq!(ctl.begin_stmt(), Some(1000));
     ctl.end_stmt();
     assert_eq!(ctl.stopped(), None);
@@ -211,9 +184,7 @@ fn ctl_keeps_results_within_the_budget_and_stops_on_cancel_or_deadline() {
     assert_eq!(short.stopped(), Some(script::Stop::TimedOut));
 }
 
-// ---------------------------------------------------------------------------
-// SQLite — 실행기를 엔진 연결에 바로
-// ---------------------------------------------------------------------------
+// ── SQLite — 실행기를 엔진 연결에 바로 ──
 
 fn sqlite_file(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!(
@@ -232,7 +203,6 @@ fn count(file: &std::path::Path, sql: &str) -> i64 {
     rusqlite::Connection::open(file).unwrap().query_row(sql, [], |r| r.get(0)).unwrap()
 }
 
-/// 계획 → 실행 → 화면 꼴(거절이면 거절 답).
 async fn go_ctl(db: &Arc<Sqlite>, sql: &str, mode: ScriptMode, stmt_ms: u64, flag: Arc<AtomicBool>) -> ScriptOut {
     let plan = match script::plan(sql, Dialect::Sqlite, mode) {
         Ok(p) => p,
@@ -252,7 +222,7 @@ async fn sqlite_script_commits_rolls_back_whole_and_refuses_before_running() {
     let (dir, file) = sqlite_file("commit");
     let db = Arc::new(Sqlite::open(&file, false).unwrap());
     db.set_write(true).unwrap();
-    // ── 3문장 성공 → 커밋(다른 연결에 보인다) · 문장별 영향 행 수 ──
+    // ── 3문장 성공 → 커밋 ──
     let r = go(&db, "INSERT INTO t VALUES (10, 10); UPDATE t SET v = v + 100 WHERE id <= 2; SELECT count(*) FROM t", ScriptMode::Write).await;
     assert_eq!((r.outcome, r.reason, r.total, r.results.len()), ("committed", None, 3, 3), "{r:?}");
     assert_eq!(r.results[0].out.affected, Some(1));
@@ -261,7 +231,7 @@ async fn sqlite_script_commits_rolls_back_whole_and_refuses_before_running() {
     assert_eq!((r.results[1].index, r.results[1].keyword.as_str()), (1, "UPDATE"));
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE v > 100"), 2);
     assert!(db.is_autocommit() && !db.in_tx(), "트랜잭션을 열어 두지 않는다");
-    // ── 2번째 오류 → 전부 되돌림(다른 연결에 1번째 변경이 없다) ──
+    // ── 2번째 오류 → 전부 되돌림 ──
     let r = go(&db, "INSERT INTO t VALUES (20, 20); INSERT INTO t VALUES (1, 1); INSERT INTO t VALUES (21, 21)", ScriptMode::Write).await;
     assert_eq!((r.outcome, r.reason, r.results.len()), ("rolledBack", Some("error"), 1), "{r:?}");
     let f = r.failed.as_ref().unwrap();
@@ -269,15 +239,15 @@ async fn sqlite_script_commits_rolls_back_whole_and_refuses_before_running() {
     assert!(f.message.contains("UNIQUE"), "{}", f.message);
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id IN (20, 21)"), 0);
     assert!(db.is_autocommit());
-    // ── 사전 거절 → 아무것도 안 바뀐다 ──
+    // ── 사전 거절 ──
     let r = go(&db, "INSERT INTO t VALUES (30, 30); BEGIN; INSERT INTO t VALUES (31, 31)", ScriptMode::Write).await;
     assert_eq!((r.outcome, r.failed.as_ref().map(|f| f.index)), ("refused", Some(1)));
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id >= 30"), 0);
-    // ── DDL 도 트랜잭션 안에서 되돌려진다(SQLite) ──
+    // ── DDL 도 트랜잭션 안에서 되돌려진다 ──
     let r = go(&db, "CREATE TABLE made(a); INSERT INTO made VALUES (1); INSERT INTO nope VALUES (1)", ScriptMode::Write).await;
     assert_eq!(r.outcome, "rolledBack");
     assert_eq!(count(&file, "SELECT count(*) FROM sqlite_schema WHERE name = 'made'"), 0);
-    // ── RETURNING — 행 상한(100) 너머까지 영향 행 수 ──
+    // ── RETURNING — 행 상한 너머까지 영향 행 수 ──
     let r = go(
         &db,
         "INSERT INTO t(id, v) WITH RECURSIVE n(i) AS (SELECT 1000 UNION ALL SELECT i + 1 FROM n WHERE i < 1249) SELECT i, i FROM n RETURNING id",
@@ -295,40 +265,34 @@ async fn sqlite_script_commits_rolls_back_whole_and_refuses_before_running() {
 async fn sqlite_script_read_only_and_inside_a_transaction() {
     let (dir, file) = sqlite_file("ro-work");
     let db = Arc::new(Sqlite::open(&file, false).unwrap());
-    // ── 읽기 전용 — 여러 SELECT 를 한 READ ONLY 트랜잭션으로, 결과는 문장별 ──
+    // ── 읽기 전용 ──
     let r = go(&db, "SELECT count(*) FROM t; SELECT max(id) FROM t; SELECT 'x'", ScriptMode::ReadOnly).await;
     assert_eq!((r.outcome, r.results.len()), ("readOnly", 3), "{r:?}");
     assert_eq!(r.results[1].out.rows, vec![vec![json!(3)]]);
     let r = go(&db, "SELECT 1; SELECT * FROM nope; SELECT 3", ScriptMode::ReadOnly).await;
     assert_eq!((r.outcome, r.reason, r.results.len(), r.failed.as_ref().map(|f| f.index)), ("readOnly", Some("error"), 1, Some(1)));
-    // 쓰기 모드가 아닌데 쓰기 모드로 부르면(상태가 바뀜) 실행 전 거절.
     let plan = script::plan("SELECT 1", Dialect::Sqlite, ScriptMode::Write).unwrap();
     let ctl = Arc::new(Ctl::new(Arc::new(AtomicBool::new(false)), 1000, script::SCRIPT_TIMEOUT));
     assert!(script::execute(Engine::Sqlite(Arc::clone(&db)), plan, ScriptMode::Write, 10, ctl).await.is_err());
-    // ── 작업 안 — 커밋하지 않는다 · 실행 한 번이 세이브포인트 하나(10-14 결정) ──
+    // ── 작업 안 — 실행 한 번이 세이브포인트 하나 ──
     db.set_write(true).unwrap();
     db.tx_begin().unwrap();
-    // 실행 A — 성공(작업에 남는다).
     let r = go(&db, "INSERT INTO t VALUES (40, 40); INSERT INTO t VALUES (41, 41)", ScriptMode::InWork).await;
     assert_eq!((r.outcome, r.results.len()), ("work", 2), "{r:?}");
     assert!(db.in_tx());
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id >= 40"), 0, "커밋 전 — 다른 연결엔 안 보인다");
-    // 실행 B — 3문장 중 2번째 오류 → B 만 되돌림(42 도 사라진다) · 작업은 산다.
     let r = go(&db, "INSERT INTO t VALUES (42, 42); INSERT INTO t VALUES (40, 40); INSERT INTO t VALUES (43, 43)", ScriptMode::InWork).await;
     assert_eq!((r.outcome, r.reason, r.results.len(), r.failed.as_ref().map(|f| f.index)), ("workUndone", Some("error"), 1, Some(1)), "{r:?}");
     assert!(db.in_tx(), "이번 실행만 되돌림 — 작업은 산다");
-    // 단문 실패도 그 실행만(세이브포인트) — 작업은 그대로.
     assert!(db.query("INSERT INTO t VALUES (41, 41)", 10).is_err());
     assert!(db.in_tx());
-    // 작업 안 같은 연결에서는 A 만 보인다.
     let r = go(&db, "SELECT count(*) FROM t WHERE id >= 40", ScriptMode::InWork).await;
     assert_eq!(r.results[0].out.rows, vec![vec![json!(2)]], "{r:?}");
     db.tx_end(true).unwrap();
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id >= 40"), 2, "40 · 41(A) 만 — B 의 42 · 43 은 없다");
-    // 세이브포인트가 남지 않았다(커밋으로 끝났고 다음 작업이 깨끗이 열린다).
     db.tx_begin().unwrap();
     db.tx_end(false).unwrap();
-    // ── 자동 커밋을 끈 타일의 조회만 든 스크립트 — 쓰기 모드에서도 읽기 전용으로, 숨은 쓰기는 엔진이 거절 ──
+    // ── 자동 커밋을 끈 타일의 조회만 든 스크립트 ──
     let r = go(&db, "SELECT count(*) FROM t; SELECT 2", ScriptMode::ReadOnly).await;
     assert_eq!((r.outcome, r.results.len()), ("readOnly", 2), "{r:?}");
     let plan = script::plan("SELECT 1; WITH a(v) AS (SELECT 9) INSERT INTO t(v) SELECT v FROM a", Dialect::Sqlite, ScriptMode::ReadOnly).unwrap();
@@ -347,13 +311,13 @@ async fn sqlite_script_time_limit_and_cancel_roll_everything_back() {
     let db = Arc::new(Sqlite::open(&file, false).unwrap());
     db.set_write(true).unwrap();
     let forever = "INSERT INTO t(v) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT i FROM n";
-    // ── 문장 시한(300ms) — 시계가 끊고 전부 되돌린다 ──
+    // ── 문장 시한 ──
     let r = go_ctl(&db, &format!("INSERT INTO t VALUES (50, 50); {forever}"), ScriptMode::Write, 300, Arc::new(AtomicBool::new(false))).await;
     assert_eq!((r.outcome, r.reason), ("rolledBack", Some("timedOut")), "{r:?}");
     assert!(r.failed.as_ref().unwrap().message.contains('1'), "시한 문구: {:?}", r.failed);
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id = 50"), 0);
     assert!(db.is_autocommit());
-    // ── 취소 — 도는 문장을 끊고 전부 되돌린다 ──
+    // ── 취소 ──
     let flag = Arc::new(AtomicBool::new(false));
     let (d2, f2) = (Arc::clone(&db), Arc::clone(&flag));
     let h = tokio::spawn(async move { go_ctl(&d2, &format!("INSERT INTO t VALUES (51, 51); {forever}; INSERT INTO t VALUES (52, 52)"), ScriptMode::Write, 30_000, f2).await });
@@ -363,7 +327,7 @@ async fn sqlite_script_time_limit_and_cancel_roll_everything_back() {
     let r = h.await.unwrap();
     assert_eq!((r.outcome, r.reason), ("rolledBack", Some("cancelled")), "{r:?}");
     assert_eq!(count(&file, "SELECT count(*) FROM t WHERE id IN (51, 52)"), 0);
-    // ── 문장 사이의 취소 — 다음 문장을 시작하지 않고 되돌린다 ──
+    // ── 문장 사이의 취소 ──
     let flag = Arc::new(AtomicBool::new(true));
     let r = go_ctl(&db, "INSERT INTO t VALUES (53, 53)", ScriptMode::Write, 1000, flag).await;
     assert_eq!((r.outcome, r.reason, r.results.len()), ("rolledBack", Some("cancelled"), 0), "{r:?}");
@@ -372,11 +336,9 @@ async fn sqlite_script_time_limit_and_cancel_roll_everything_back() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-// ---------------------------------------------------------------------------
-// 실제 서버 — 표(`table::script`)를 그대로 (`#[ignore]`)
-// ---------------------------------------------------------------------------
+// ── 실제 서버 — 표(`table::script`)를 그대로 ──
 
-/// 시험의 서버 연결 번호(표의 `conns` — 없으면 열자마자 떼어 둔다). 끊김 시험은 따로 둔다.
+/// 표의 `conns` — 없으면 열자마자 떼어 둔다.
 const CONN: u64 = 7_700_101;
 const CONN_DROP: u64 = 7_700_102;
 
@@ -430,7 +392,7 @@ async fn open_on(conn: u64, stream: &str, id: &str, pw: &str) -> table::Opened {
     }
 }
 
-/// 스크립트 — 화면처럼 작업 id 를 싣는다(행 상한 100 · 문장 시한 5초).
+/// 화면처럼 작업 id 를 싣는다.
 async fn s(o: &table::Opened, sql: &str, tx: u64) -> ScriptOut {
     table::script(o.handle, o.lease, sql.into(), "s".into(), 100, 5_000, Some(tx)).await.expect("스크립트")
 }
@@ -460,7 +422,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
         .await
         .unwrap();
     let o = open_on(CONN, &format!("txs2-pg-{label}"), id, pw).await;
-    // ── 읽기 전용 스크립트 — 여러 SELECT 를 READ ONLY 트랜잭션 하나로 · 쓰기는 사전 거절 ──
+    // ── 읽기 전용 스크립트 ──
     let r = s(&o, "SELECT 1; SELECT count(*)::int FROM txs2_t; SELECT 'x'", 0).await;
     assert_eq!((r.outcome, r.results.len()), ("readOnly", 3), "{r:?}");
     let r = s(&o, "SELECT 1; INSERT INTO txs2_t VALUES (1, 1)", 0).await;
@@ -471,12 +433,12 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     let r = s(&o, "INSERT INTO txs2_t VALUES (1, 1); INSERT INTO txs2_t VALUES (2, 2); UPDATE txs2_t SET v = v + 10", 0).await;
     assert_eq!((r.outcome, affected(&r)), ("committed", vec![Some(1), Some(1), Some(2)]), "{r:?}");
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE v > 10").await, 2);
-    // ── ② 2번째 오류 → 전부 되돌림(다른 연결에 1번째 변경 없음) ──
+    // ── ② 2번째 오류 → 전부 되돌림 ──
     let r = s(&o, "INSERT INTO txs2_t VALUES (3, 3); INSERT INTO txs2_t VALUES (1, 1); INSERT INTO txs2_t VALUES (4, 4)", 0).await;
     assert_eq!((r.outcome, r.reason, r.results.len()), ("rolledBack", Some("error"), 1), "{r:?}");
     assert!(r.failed.as_ref().unwrap().message.contains("23505"), "{:?}", r.failed);
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE id IN (3, 4)").await, 0);
-    // ── ③ 사전 거절 — 아무것도 안 바뀐다 ──
+    // ── ③ 사전 거절 ──
     for sql in ["INSERT INTO txs2_t VALUES (5, 5); COMMIT; INSERT INTO txs2_t VALUES (6, 6)", "INSERT INTO txs2_t VALUES (5, 5); VACUUM txs2_t"] {
         let r = s(&o, sql, 0).await;
         assert_eq!((r.outcome, r.failed.as_ref().map(|f| f.index)), ("refused", Some(1)), "{sql}");
@@ -486,7 +448,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     let r = s(&o, "CREATE TABLE txs2_made(a int); INSERT INTO txs2_made VALUES (1); SELECT 1/0", 0).await;
     assert_eq!(r.outcome, "rolledBack");
     assert_eq!(pg_count(a, "SELECT count(*) FROM pg_class WHERE relname = 'txs2_made'").await, 0);
-    // ── ⑤ RETURNING — 행 상한(100) 너머까지 정확한 영향 행 수(스크립트 · 단문 모두) ──
+    // ── ⑤ RETURNING — 행 상한 너머까지 정확한 영향 행 수 ──
     let r = s(&o, "INSERT INTO txs2_t SELECT g, g FROM generate_series(100, 349) g RETURNING id", 0).await;
     let x = &r.results[0].out;
     assert_eq!((r.outcome, x.rows.len(), x.truncated, x.affected), ("committed", 100, true, Some(250)), "{r:?}");
@@ -500,7 +462,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     let r = s(&o, "SELECT pg_backend_pid(); SELECT pg_backend_pid(); SELECT pg_backend_pid()", 0).await;
     let pids: Vec<&Value> = r.results.iter().map(|x| &x.out.rows[0][0]).collect();
     assert!(pids.windows(2).all(|w| w[0] == w[1]), "{pids:?}");
-    // ── ⑦ 작업 중 스크립트 — 그 작업 안 · 커밋 안 함 · 오류면 그 실행만 되돌림(세이브포인트 — 10-14 결정) ──
+    // ── ⑦ 작업 중 스크립트 ──
     let tid = table::tx_begin(o.handle, o.lease).await.unwrap().id;
     let r = s(&o, "INSERT INTO txs2_t VALUES (6, 6); INSERT INTO txs2_t VALUES (7, 7)", tid).await;
     assert_eq!((r.outcome, tx_state(&r)["state"].as_str(), tx_state(&r)["statements"].as_u64()), ("work", Some("open"), Some(2)), "{r:?}");
@@ -511,7 +473,7 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE id IN (6, 7)").await, 2, "앞 실행(6 · 7)은 커밋됐다");
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE id = 8").await, 0, "되돌린 실행(8)은 없다");
     a.batch_execute("DELETE FROM txs2_t WHERE id = 7").await.unwrap();
-    // ── ⑧ 취소 → 전부 되돌림 ──
+    // ── ⑧ 취소 ──
     let (h, l) = (o.handle, o.lease);
     let job = tokio::spawn(async move {
         table::script(h, l, "INSERT INTO txs2_t VALUES (9, 9); SELECT pg_sleep(10); INSERT INTO txs2_t VALUES (10, 10)".into(), "s9".into(), 100, 30_000, Some(0)).await
@@ -521,11 +483,11 @@ async fn pg_suite(a: &tokio_postgres::Client, id: &str, pw: &str, label: &str) {
     let r = job.await.unwrap().unwrap();
     assert_eq!((r.outcome, r.reason), ("rolledBack", Some("cancelled")), "{r:?}");
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE id IN (9, 10)").await, 0);
-    // ── ⑨ 문장 시한 → 전부 되돌림 ──
+    // ── ⑨ 문장 시한 ──
     let r = table::script(h, l, "INSERT INTO txs2_t VALUES (11, 11); SELECT pg_sleep(5)".into(), "s".into(), 100, 300, Some(0)).await.unwrap();
     assert_eq!((r.outcome, r.reason), ("rolledBack", Some("timedOut")), "{r:?}");
     assert_eq!(pg_count(a, "SELECT count(*) FROM txs2_t WHERE id = 11").await, 0);
-    // ── ⑩ 실행 중 GUI 연결이 끊김 → 서버가 끝까지(커밋) · 트랜잭션을 열어 두지 않음 · 다시 붙으면 요약 ──
+    // ── ⑩ 실행 중 GUI 연결이 끊김 ──
     let stream = format!("txs2-pg-drop-{label}");
     let d = open_on(CONN_DROP, &stream, id, pw).await;
     table::set_write(d.handle, d.lease, true).await.unwrap();
@@ -607,7 +569,7 @@ async fn my_suite(url: &str, id: &str, label: &str) {
     assert_eq!((r.outcome, r.reason, r.results.len()), ("rolledBack", Some("error"), 1), "{r:?}");
     assert!(r.failed.as_ref().unwrap().message.contains("1062"), "{:?}", r.failed);
     assert_eq!(my_count(&mut a, "SELECT COUNT(*) FROM txs2.t WHERE id IN (3, 4)").await, 0);
-    // ── ③ 사전 거절 — DDL(암묵 커밋) · DELIMITER · autocommit → 아무것도 안 바뀐다 ──
+    // ── ③ 사전 거절 ──
     let r = s(&o, "INSERT INTO t VALUES (5, 5); CREATE TABLE z(a INT); INSERT INTO t VALUES (6, 6)", 0).await;
     assert_eq!((r.outcome, r.failed.as_ref().map(|f| f.index)), ("refused", Some(1)), "{r:?}");
     let r = s(&o, "DELIMITER $$\nINSERT INTO t VALUES (5, 5)$$", 0).await;
@@ -615,7 +577,7 @@ async fn my_suite(url: &str, id: &str, label: &str) {
     let r = s(&o, "INSERT INTO t VALUES (5, 5); SET autocommit = 0", 0).await;
     assert_eq!(r.outcome, "refused");
     assert_eq!(my_count(&mut a, "SELECT COUNT(*) FROM txs2.t WHERE id >= 5").await, 0);
-    // ── ④ MariaDB RETURNING — 영향 행 수 = 돌려준 행 수(상한 너머까지) ──
+    // ── ④ MariaDB RETURNING ──
     if maria {
         let values: Vec<String> = (100..250).map(|i| format!("({i}, {i})")).collect();
         let r = s(&o, &format!("INSERT INTO t VALUES {} RETURNING id", values.join(", ")), 0).await;
@@ -623,7 +585,7 @@ async fn my_suite(url: &str, id: &str, label: &str) {
         assert_eq!((r.outcome, x.rows.len(), x.affected), ("committed", 100, Some(150)), "{r:?}");
         a.query_drop("DELETE FROM txs2.t WHERE id >= 100").await.unwrap();
     }
-    // ── ⑤ 작업 중 스크립트 — 그 작업 안 · 오류면 그 실행만 세이브포인트로 되돌리고 작업은 계속(10-14 결정) ──
+    // ── ⑤ 작업 중 스크립트 ──
     let tid = table::tx_begin(o.handle, o.lease).await.unwrap().id;
     let r = s(&o, "INSERT INTO t VALUES (6, 6)", tid).await;
     assert_eq!(r.outcome, "work", "{r:?}");
@@ -633,7 +595,7 @@ async fn my_suite(url: &str, id: &str, label: &str) {
     table::tx_end(o.handle, o.lease, tid, true).await.unwrap();
     assert_eq!(my_count(&mut a, "SELECT COUNT(*) FROM txs2.t WHERE id IN (6, 7, 8)").await, 1, "6(앞 실행)만 — 7 은 되돌린 실행분");
     a.query_drop("DELETE FROM txs2.t WHERE id = 6; INSERT INTO txs2.t VALUES (7, 7)").await.unwrap();
-    // ── ⑥ 취소 → 전부 되돌림(SLEEP 은 끊겨도 1 을 돌려준다 — 다음 문장 전에 멈춘다) ──
+    // ── ⑥ 취소(SLEEP 은 끊겨도 1 을 돌려준다 — 다음 문장 전에 멈춘다) ──
     let (h, l) = (o.handle, o.lease);
     let job = tokio::spawn(async move {
         table::script(h, l, "INSERT INTO t VALUES (9, 9); SELECT SLEEP(10); INSERT INTO t VALUES (10, 10)".into(), "s9".into(), 100, 30_000, Some(0)).await
@@ -643,7 +605,7 @@ async fn my_suite(url: &str, id: &str, label: &str) {
     let r = job.await.unwrap().unwrap();
     assert_eq!((r.outcome, r.reason), ("rolledBack", Some("cancelled")), "{r:?}");
     assert_eq!(my_count(&mut a, "SELECT COUNT(*) FROM txs2.t WHERE id IN (9, 10)").await, 0);
-    // ── ⑦ 실행 중 GUI 연결이 끊김 → 서버가 끝까지(커밋) · 열린 트랜잭션 없음 ──
+    // ── ⑦ 실행 중 GUI 연결이 끊김 ──
     let stream = format!("txs2-{label}-drop");
     let d = open_on(CONN_DROP, &stream, id, &pw).await;
     table::set_write(d.handle, d.lease, true).await.unwrap();

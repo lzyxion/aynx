@@ -35,28 +35,15 @@
   import { isRemote } from "$lib/ipc";
 
   /**
-   * **허용 패턴 편집** — 설정 › 자동 승인의 하위 화면 (docs/log/2026-10-05-auto-approve-args.md "허용 패턴 편집").
-   *
-   * 요약(`AutomationSection`)의 [편집 ›] 이 연다. 틀(`SettingsSubView`)과 시험 칸(`AutomationTester`)은 묶음 편집과
-   * 공용이고, 움직임·Escape·돌아온 뒤 포커스는 요약이 맡는다. 위에서부터: 시험 칸 · 규칙 목록 · 고른 줄의 폼.
-   *
-   * - 목록은 사용자 구조적 규칙(`[[automation.allow]]`)과 간단 패턴(`allow_patterns` — 문자열 접두)을 '규칙'/'간단'
-   *   표시로 한 줄씩 보인다. "승인하면서 배우기"(`addAllowRules`)가 더한 규칙도 같은 목록에 그대로 선다.
-   * - **있는 줄의 편집은 다른 설정처럼 그 자리에서 초안에 쓴다**(미리보기 → [저장]/[취소]). 검증에 걸린 동안은 쓰지
-   *   않고 칸 아래에 이유 한 줄을 단다. **새 줄은 [추가] 를 눌러야 들어간다** — 칸을 채우는 도중의 반쪽 규칙
-   *   (`git` 만 적은 순간 = git 전부)이 초안에 서지 않게.
-   * - 손대지 않은 칸은 불러온 규칙의 값을 글자 그대로 남긴다(`formToRule` 의 `base`) — 옛 모양 규칙(`sub_first` 없음)은
-   *   꺼진 채로 보이고, 고친 칸만 바뀐다.
-   * - 다른 곳에서 초안이 바뀌면([취소] · 배우기) 고른 줄의 폼을 다시 읽는다.
+   * 허용 패턴 편집 — 설정 › 자동 승인의 하위 화면(docs/log/2026-10-05-auto-approve-args.md).
+   * 새 줄은 [추가] 를 눌러야 초안에 들어간다 — 칸을 채우는 도중의 반쪽 규칙(`git` 만 적은 순간 = git 전부)이 서지 않게.
+   * 손대지 않은 칸은 불러온 규칙의 값을 글자 그대로 남긴다(`formToRule` 의 `base`).
    */
   let { onback }: { onback: () => void } = $props();
 
   const uid = $props.id();
   const auto = $derived(settings.current.automation);
-  /**
-   * 원격 창 — 볼 수만 있다. 목록의 줄을 골라 폼으로 내용을 보는 것과 시험 칸은 그대로, 더하기 · 지우기 · 칸 · 스위치는 잠긴다
-   * (요약 `AutomationSection` 의 `lockTip` 과 같은 말 — 정책은 메인 PC 전용이다).
-   */
+  /** 원격 창은 볼 수만 있다 — 정책은 메인 PC 전용이다 */
   const lockTip = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
 
   type Sel =
@@ -69,9 +56,8 @@
   let sel = $state<Sel>(null);
   let form = $state<AllowRuleForm>(emptyForm());
   let patternText = $state("");
-  /** 편집을 시작할 때 불러온 규칙 — 손대지 않은 칸은 이 값을 그대로 남긴다. 새 규칙이면 없음. */
   let base = $state.raw<AllowRule | null>(null);
-  /** 마지막으로 불러오거나 쓴 값 — 초안이 이것과 달라지면 바깥에서 바뀐 것이라 폼을 다시 읽는다. */
+  /** 초안이 이것과 달라지면 바깥에서 바뀐 것이라 폼을 다시 읽는다 */
   let lastRule: AllowRule | null = null;
   let lastPattern: string | null = null;
 
@@ -81,7 +67,6 @@
   const isRuleSel = $derived(sel?.kind === "rule" || sel?.kind === "new-rule");
   const isPatternSel = $derived(sel?.kind === "pattern" || sel?.kind === "new-pattern");
   const errors = $derived(isRuleSel ? validateForm(form) : {});
-  /** 폼이 지금 뜻하는 규칙 — 검증을 통과했을 때만(미리보기·경고가 쓴다). */
   const formRule = $derived(isRuleSel && !hasErrors(errors) ? formToRule(form, base) : null);
   const patternErr = $derived.by(() => {
     if (!isPatternSel) return null;
@@ -139,7 +124,7 @@
     void focusFirstField();
   }
 
-  // ── 쓰기 — 있는 줄은 그 자리에서, 새 줄은 [추가] 로 ──
+  // ── 쓰기 ──
   function applyRule(): void {
     if (sel?.kind !== "rule") return;
     if (hasErrors(validateForm(form))) return;
@@ -203,7 +188,6 @@
     addRuleBtn?.focus();
   }
 
-  // 바깥에서 초안이 바뀌면([취소] · 배우기 · 다른 창) 고른 줄의 폼을 다시 읽는다. 줄이 사라졌으면 고름을 푼다.
   $effect(() => {
     const s = sel;
     if (s?.kind === "rule") {
@@ -230,7 +214,6 @@
   });
 
   // ── 문구 ──
-  /** 규칙 줄의 흐린 요약 — 제약 칩 문구 + (옛 규칙이면) 하위 명령 앞 플래그 허용. 아무것도 없으면 '인자 제한 없음'. */
   function ruleSummary(r: AllowRule, full: boolean): string {
     const parts: string[] = [];
     const c = ruleConstraintText(r, full);
@@ -331,7 +314,6 @@
   </div>
 
   {#if listEmpty && sel === null}
-    <!-- 원격 창에서는 더하는 단추가 잠겨 있어 "추가하세요"를 빼고 말한다 -->
     <p class="list-empty">{t(isRemote ? "settings.automation.allow.list.empty.locked" : "settings.automation.allow.list.empty")}</p>
   {:else}
     <ul class="allow-rows" aria-label={t("settings.automation.allow.list")}>
@@ -543,7 +525,6 @@
     color: var(--fg-2);
   }
 
-  /* 규칙 목록 — 묶음 편집과 같은 1px 선의 둥근 판, 줄 사이도 1px 선 */
   .allow-rows {
     list-style: none;
     margin: 0;
@@ -603,7 +584,6 @@
     background: var(--surface-hover);
   }
 
-  /* 종류 배지 — "무엇인지" 라 제3색 */
   .kind.k-rule {
     color: var(--tertiary);
     background: color-mix(in srgb, var(--tertiary) 14%, transparent);
@@ -631,7 +611,6 @@
     text-overflow: ellipsis;
   }
 
-  /* 폼 — 필드 우물 판 하나. 좁으면(컨테이너) 이름이 칸 위로 올라간다. */
   .rule-form {
     container-type: inline-size;
     margin-top: var(--space-3);

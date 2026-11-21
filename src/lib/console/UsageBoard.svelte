@@ -1,24 +1,7 @@
 <script lang="ts">
   /**
-   * **사용량 화면의 본문** — 에이전트의 토큰과 요금제 한도 (docs/log/2026-09-26-agent-usage.md "사용량 칸" ·
-   * 2026-10-04 에 대시보드의 칸에서 제 화면 `UsageView.svelte` 로 옮겼다).
-   *
-   * 위에서 아래로: 사용 한도 카드(`UsageLimits`) → 거르개(에이전트 · 기간 7일/30일 — 기본 30일, 아래
-   * 전부에 걸린다(잔디는 늘 다섯 주), 기억한다) → 요약 띠 다섯 칸 → 사용 잔디 + 고른 날의 풀이 → 최근 7일 모델별 막대 + 토큰 구성 → 모델 표.
-   * 모양은 사용자의 앞선 앱 token-chan 을 본떴고 **요금은 어디에도 없다**(구독제 — 환산하지 않는다).
-   *
-   * 숫자는 Rust `agent_usage_summary` 가 캐시에서 모으고(대화별 토큰과 같은 캐시), 접는 규칙은 순수 층
-   * `$lib/usage-board`, 저장소는 `app/agent-usage.svelte.ts`. 이 칸이 **보일 때마다** 다시 읽는다.
-   *
-   * 조용하게: 회색이 기본이고, 강조색은 이 칸에서 쓰지 않는다(고른 칸 단추는 대시보드 머리의 몫). 잔디는 `--ok`,
-   * 모델 조각은 에이전트 빛깔(`--agent-*`).
-   *
-   * ## 어디서 (docs/log/2026-09-27-remote-conversations.md "2단계")
-   *
-   * 원격 대화를 읽은 호스트가 있으면 맨 위에 출처 칩. 호스트를 고르면 잔디 · 모델 표가 그
-   * 서버의 것, "모두" 면 이 PC 와 서버들의 합이다(Rust 가 같은 셈으로 더한다). 원격 몫은 **센 대화만** 든다 — 머리 한 번에 다 온
-   * 작은 대화는 목록을 읽을 때 세고, 큰 대화는 사람이 [전체 사용량 읽기] 를 누르면 조각씩 센다(붙은 SSH 타일로 · 진행 · 멈춤).
-   * 남은 것은 호스트마다 한 줄로 밝힌다. 한도는 호스트면 그 서버의 Codex 만(Claude 한도는 이 PC 의 상태줄에서만 온다).
+   * 사용량 화면의 본문 — 에이전트의 토큰과 요금제 한도. 요금은 어디에도 없다(구독제 — 환산하지 않는다).
+   * 원격 몫은 센 대화만 든다 — 큰 대화는 사람이 [전체 사용량 읽기] 를 눌러야 센다. 호스트의 한도는 Codex 만(Claude 한도는 이 PC 의 상태줄에서만 온다).
    */
   import { untrack } from "svelte";
   import { usageViewOpen } from "$lib/app/usage-view.svelte.js";
@@ -76,7 +59,6 @@
 
   const visible = $derived(usageViewOpen());
 
-  /** 상대 시각의 "지금" — 칩의 "N분 전 읽음" */
   let now = $state(Date.now());
   $effect(() => {
     if (!visible) return;
@@ -85,18 +67,17 @@
     return () => clearInterval(id);
   });
 
-  // 칩의 "이 PC · N" 은 대화 목록의 수다 — 아직 읽은 적이 없으면 목록을 한 번 읽는다
+  // 칩의 "이 PC · N" 은 대화 목록의 수다
   $effect(() => {
     if (visible && conversationList() === null) void loadConversations();
   });
 
   const sources = $derived(dashboardSources());
   const scope = $derived(sourceScope(sources.key, sources.chips));
-  /** 고른 출처에 든 호스트 칩들 */
   const hostChips = $derived(
     sources.chips.filter((c) => c.kind === "host" && (sources.key === "all" || c.key === sources.key)),
   );
-  /** 원격 캐시가 바뀐 표식 — 호스트 목록을 다시 읽었거나 전체 읽기가 나아가면 요약을 다시 읽는다 */
+  /** 바뀌면 요약을 다시 읽는다 */
   const remoteStamp = $derived(
     hostChips
       .map((c) => {
@@ -105,9 +86,8 @@
       })
       .join("|"),
   );
-  /** 출처의 글자 — 같은 출처면 같은 글자(탭이 바뀌어 칩이 다시 지어져도 요약을 다시 읽지 않게) */
+  /** 글자로 비교한다 — 탭이 바뀌어 칩이 다시 지어져도 요약을 다시 읽지 않게 */
   const scopeSig = $derived(JSON.stringify(scope));
-  /** 보일 때 · 출처가 바뀔 때 · 원격 캐시가 바뀔 때 — 요약을 (다시) 읽는다 */
   $effect(() => {
     if (!visible) return;
     const sc = JSON.parse(scopeSig) as { local: boolean; hosts: string[] };
@@ -118,7 +98,6 @@
     if (visible) untrack(() => refreshDashboardSource());
   });
 
-  /** 원격 호스트마다 한 줄 — 아직 세지 못한 큰 대화 · 전체 읽기의 진행 */
   const coverage = $derived(
     (usageSummary()?.remote ?? [])
       .map((cov) => coverageLine(cov, remoteUsageRead(cov.host), liveSessionFor(cov.host) !== null))
@@ -153,7 +132,6 @@
 
   let refreshing = $state(false);
 
-  /** 새로고침 — 고른 출처를 다시 읽은 뒤 한도와 기간 요약을 갱신한다 */
   async function refreshUsage(): Promise<void> {
     if (refreshing) return;
     const current = { local: scope.local, hosts: [...scope.hosts] };
@@ -175,7 +153,6 @@
   const heat = $derived(s ? buildHeatmap(s, locale()) : null);
   const selected = $derived(pickedUsageDay() ?? s?.today ?? "");
   const detail = $derived(s && selected ? dayDetail(s, selected) : null);
-  /** 빛깔은 요약 한 벌에 하나 — 7일 막대 · 하루 구성 · 모델 표가 같은 모델에 같은 빛깔 */
   const detailColors = $derived(s ? usageColors(s) : new Map<string, string>());
   const week = $derived(s ? weekChart(s) : null);
   const comp = $derived(s ? composition(periodTokens(s)) : null);
@@ -279,7 +256,6 @@
       <p class="quiet" data-usage-loading>{t("board.usage.loading")}</p>
     {/if}
   {:else if strip}
-    <!-- ── 요약 띠 ── -->
     <ul class="strip" data-usage-strip>
       <li data-cell="today">
         <span class="k">{t("board.usage.strip.today")}</span>
@@ -316,7 +292,6 @@
       <p class="quiet" data-usage-nodata>{t("board.usage.nodata")}</p>
     {/if}
 
-    <!-- ── 잔디 + 고른 날 ── -->
     <div class="pair">
       <section class="card" aria-labelledby="usage-heat-h">
         <h2 class="c-head" id="usage-heat-h">
@@ -365,7 +340,6 @@
       </section>
     </div>
 
-    <!-- ── 최근 7일 + 토큰 구성 ── -->
     <div class="pair">
       <section class="card" aria-labelledby="usage-week-h">
         <h2 class="c-head" id="usage-week-h">{t("board.usage.week.heading")}</h2>
@@ -403,7 +377,6 @@
       </section>
     </div>
 
-    <!-- ── 모델 표 ── -->
     <section class="card" aria-labelledby="usage-table-h">
       <h2 class="c-head" id="usage-table-h">{t("board.usage.table.heading", { period: periodLabel(filter.period, t) })}</h2>
       {#if table.length === 0}
@@ -448,7 +421,6 @@
       {/if}
     </section>
 
-    <!-- 보존 기간 안내 — Claude 기록이 있을 때만(그 기록이 30일 뒤 지워진다) -->
     {#if s.agents.includes("claude")}
       <p class="quiet foot" data-usage-retention>{t("board.usage.retention")}</p>
     {/if}
@@ -471,7 +443,6 @@
     color: var(--fg-3);
   }
 
-  /* 원격 호스트 한 줄 — 남은 큰 대화 · 전체 읽기 (docs/log/2026-09-27-remote-conversations.md "2단계") */
   .remote-line {
     display: flex;
     align-items: center;
@@ -575,7 +546,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ── 카드 두 장 줄 — 좁으면 한 장씩 ── */
+  /* ── 카드 두 장 줄 ── */
   .pair {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -659,7 +630,7 @@
     height: 8px;
     border-radius: 4px;
     overflow: hidden;
-    background: var(--control-track); /* 게이지 트랙 = secondaryContainer(10-18 MD3) — 채움은 에이전트 빛깔 그대로 */
+    background: var(--control-track);
   }
 
   .mix span {
@@ -691,7 +662,7 @@
     text-align: right;
   }
 
-  /* MD3 막대 게이지(2026-10-18): 8px · 채움 primary · 나머지 트랙 secondaryContainer · 사이 2px 틈(트랙은 `::after` 가 남는 폭을 채운다) */
+  /* 트랙은 `::after` 가 채움 뒤 남는 폭을 채운다 */
   .bar {
     display: flex;
     gap: 2px;

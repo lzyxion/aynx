@@ -1,15 +1,13 @@
 <script lang="ts" module>
-  /** 다른 화면(라이브러리 아티스트 칸)이 "이 아티스트를 골라 열어 달라" 고 남기는 자리 — 화면이 목록을 받으면 한 번 고르고 걷는다 */
+  /** 다른 화면이 "이 아티스트를 골라 열어 달라" 고 남기는 자리 — 화면이 목록을 받으면 한 번 고르고 걷는다 */
   let pendingPick = $state<string | null>(null);
   export function requestArtistPick(id: string) { pendingPick = id; }
-  /** 새 아티스트 폼을 연 채로 열어 달라(라이브러리 칸의 [+ 새 아티스트]) */
   export function requestArtistNew() { pendingPick = NEW_ARTIST; }
   /** 아티스트 id(`a-` + 8hex)와 겹치지 않는 표지 */
   const NEW_ARTIST = "+new";
 </script>
 
 <script lang="ts">
-  // 아티스트 화면(목업 V3Artists): 왼쪽 격자 카드 + 점선 [새 아티스트] · 오른쪽 편집 판(아바타 연필 → 내장 캐릭터 고르기).
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -24,7 +22,6 @@
   import { effortLabel, modelLabel, orderModels } from "$lib/model-order";
   import ArtistAvatar from "./ArtistAvatar.svelte";
 
-  /** `crumb` — 판의 경로 줄(원형 ← · 라이브러리 › 아티스트). 목업대로 판 안 맨 위 한 줄(두 칸 위) */
   let { visible, crumb }: { visible: boolean; crumb?: Snippet } = $props();
   const artists = createArtistLoader();
   let form = $state<ArtistInput>(blankArtist());
@@ -35,7 +32,6 @@
   let blockedAlbums = $state<string[] | null>(null);
   let iconOpen = $state(false);
   const validation = $derived(artistFormError(form, original));
-  /** 바뀐 것이 있을 때만 [저장] — 고르기만 한 기존 아티스트는 꺼 둔다 */
   const dirty = $derived(artistDirty(form, original));
   const efforts = $derived(EFFORTS[form.cli].map((value) => ({ value, label: value || t("orch.config.role.cliDefault") })));
 
@@ -56,7 +52,7 @@
     error = null; saved = false; blockedAlbums = null; iconOpen = false;
   }
   let pencil = $state<HTMLButtonElement | null>(null);
-  /** 팝오버를 닫고 포커스를 연필로 돌려준다(팝오버 안의 포커스가 사라져 body 로 떨어지지 않게) */
+  /** 팝오버 안의 포커스가 사라져 body 로 떨어지지 않게 */
   function closeIcons() { iconOpen = false; pencil?.focus(); }
   function focusFirstIcon(node: HTMLElement) { (node.querySelector<HTMLButtonElement>("button.icon.chosen") ?? node.querySelector<HTMLButtonElement>("button.icon"))?.focus(); }
   function changeCli(cli: RoleCli) {
@@ -121,16 +117,13 @@
     <form class="editor" data-artist-editor aria-label={original ? original.name : t("orch.artists.new")} onsubmit={(e) => { e.preventDefault(); void save(); }}>
       <div class="body">
       <div class="ident">
-        <!-- 팝오버가 열린 동안의 Esc 는 포커스가 연필에 남았어도(마우스로 연 뒤) 여기서 먹는다 — 창의 Esc 사슬(handleOrchEscape)로 새지 않게 -->
+        <!-- 팝오버가 열린 동안의 Esc 는 포커스가 연필에 남았어도 여기서 먹는다 — 창의 Esc 사슬(handleOrchEscape)로 새지 않게 -->
         <span class="face" role="presentation" onkeydown={(e) => { if (iconOpen && e.key === "Escape" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); closeIcons(); } }}>
           <ArtistAvatar cli={form.icon === "gpt" ? "codex" : form.icon} profile={{ name: form.name || form.icon, icon: form.icon }} size={56} />
           <button type="button" class="pencil" bind:this={pencil} aria-label={t("orch.artists.changeIcon")} title={t("orch.artists.changeIcon")} aria-expanded={iconOpen} data-artist-icon-toggle disabled={busy} onclick={() => { iconOpen = !iconOpen; if (iconOpen) void refreshAvatars(); }}><UiIcon name="edit" size={13} /></button>
           {#if iconOpen}
-            <!-- 아바타 고르기 — 내장 낱말 뒤에 아바타 라이브러리의 사용자 그림(`user:<12hex>` — 10-31). 열리면 첫 아이콘에 포커스.
-                 Esc 는 탭의 한 단계 위로가 아니라 이 팝오버만 닫는다(.face 의 keydown) -->
             <div class="icon-pop" role="dialog" aria-label={t("orch.artists.icon")} tabindex="-1" use:focusFirstIcon>
               {#each artistIconChoices() as icon (icon)}
-                <!-- 사용자 그림은 설정 › 테마 › 아바타에서 붙인 이름(없으면 "사용자 N") -->
                 {@const label = isBuiltinArtistIcon(icon) ? icon : (avatarLabel(icon) ?? icon)}
                 <button type="button" class="icon" class:chosen={form.icon === icon} aria-label={label} title={label} aria-pressed={form.icon === icon} data-artist-icon={icon} disabled={busy} onclick={() => { form.icon = icon; closeIcons(); }}><ArtistAvatar cli={icon === "gpt" ? "codex" : icon} profile={{ name: label, icon }} size={40} /></button>
               {/each}
@@ -194,8 +187,7 @@
   .plus { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--control-bg); color: var(--fg-1); }
 
   /* 편집 판 */
-  /* 편집 칸은 안쪽 몸만 스크롤하고 [지우기] · [취소] · [저장] 줄은 늘 판 아래에 보인다.
-     높이 배분: 낮은 창(제목줄 · 재생 막대를 뺀 판 ≈ 480px)에서도 지침 칸까지는 스크롤 없이 보이게 간격을 줄이고, 남는 높이는 지침 칸이 먹는다(아래 안내는 넘치면 몸 안에서 스크롤) */
+  /* 편집 칸은 안쪽 몸만 스크롤하고 [지우기] · [취소] · [저장] 줄은 늘 판 아래에 보인다 */
   .editor { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; border-radius: 16px; background: var(--control-tile-bg); }
   .body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; margin: -4px; padding: 4px; }
   .body > * { flex-shrink: 0; }
@@ -205,7 +197,6 @@
   .face { position: relative; flex: 0 0 auto; }
   .face > :global(.avatar) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
   .pencil { position: absolute; right: -4px; bottom: -4px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--surface-raised-solid, var(--bg-panel)); background: var(--control-sel-bg); color: var(--control-sel-fg); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
-  /* 사용자 아바타가 붙으면 줄을 넘긴다(한 줄이면 알약 · 여러 줄이면 둥근 판) */
   .icon-pop { position: absolute; left: 0; top: calc(100% + 10px); z-index: 5; display: flex; flex-wrap: wrap; width: max-content; max-width: min(300px, 80vw); gap: 6px; padding: 8px; border-radius: 28px; background: var(--glass-float, var(--surface-raised-solid)); backdrop-filter: var(--glass-filter-raised, none); box-shadow: var(--shadow-raised); }
   .icon { padding: 3px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; display: flex; }
   .icon.chosen { box-shadow: 0 0 0 2px var(--accent); }
@@ -217,7 +208,6 @@
   .value:hover:not(:disabled, :focus), .editor :global(input.value:hover:not(:disabled, :focus)) { background: var(--control-bg-hover); }
   .value:focus-visible, .editor :global(input.value:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
   textarea.value { height: auto; min-height: 60px; padding: 10px 12px; border-radius: var(--field-radius-multi); resize: vertical; line-height: 1.5; }
-  /* 알약 세그먼트(목업) — 판 우물 위 고른 칸 = secondaryContainer */
   .seg { display: inline-flex; align-self: flex-start; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 999px; background: var(--field-bg, var(--surface-field)); }
   .opt { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--control-fg); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap; }
   .opt.with-face { padding: 0 12px 0 3px; }

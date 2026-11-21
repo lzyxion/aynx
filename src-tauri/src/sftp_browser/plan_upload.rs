@@ -13,11 +13,7 @@ use super::*;
 
 // ── 로컬 → 원격 (업로드) ───────────────────────────────────────────────────
 
-/// 올릴 로컬 항목 하나 — **디렉터리와 보통 파일만**이다.
-///
-/// 심링크는 **가리키는 것이 파일일 때만** 그 내용을 올린다. 디렉터리 링크를 따라가면
-/// 순환으로 트리가 끝나지 않을 수 있고, 원격에 링크를 다시 만드는 길은 [`copyable`] 이
-/// 설명한 이유로 닫혀 있다.
+/// 디렉터리와 보통 파일만 — 심링크는 가리키는 것이 파일일 때만 내용을 올린다(디렉터리 링크는 순환 · 원격에 링크를 만드는 길은 [`copyable`] 의 이유로 닫혀 있다).
 pub(super) fn uploadable(path: &Path) -> Option<(Kind, u64)> {
     let meta = std::fs::metadata(path).ok()?; // 링크를 따라간 뒤의 정보
     if meta.is_dir() {
@@ -27,7 +23,7 @@ pub(super) fn uploadable(path: &Path) -> Option<(Kind, u64)> {
     meta.is_file().then_some((Kind::File, meta.len()))
 }
 
-/// 유닉스 권한 비트 (윈도우에는 그런 값이 없으므로 `None`).
+/// 유닉스 권한 비트(윈도우에는 없어 `None`).
 #[cfg(unix)]
 pub(super) fn local_mode(path: &Path) -> Option<u32> {
     use std::os::unix::fs::PermissionsExt;
@@ -41,7 +37,6 @@ pub(super) fn local_mode(_path: &Path) -> Option<u32> {
     None
 }
 
-/// 로컬 트리를 훑어 업로드 계획을 세운다.
 pub(super) async fn plan_upload(
     sftp: &SftpSession,
     sources: &[PathBuf],
@@ -119,7 +114,6 @@ pub(super) async fn plan_upload(
     Ok(plan)
 }
 
-/// 계획의 **걸음 한 토막**을 실행한다 (로컬 → 원격).
 pub(super) async fn run_upload(
     session: u32,
     sftp: &SftpSession,

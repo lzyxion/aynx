@@ -1,25 +1,10 @@
-//! GUI 쪽 **메신저 다리 껍데기**(2026-11-18 · 판 34 · Discord 는 판 35 · Slack 은 판 36 — 상태 · 고리 · 짝짓기 · 넣기는 세션 서버 `server::messenger_bridge`).
+//! GUI 쪽 **메신저 다리 껍데기** — 상태 · 고리 · 짝짓기 · 넣기는 세션 서버 `server::messenger_bridge` 에 있다.
 //!
-//! | Tauri 명령 | 서버 op | 등급 | 원격 창 | 인자 → 답 |
-//! | --- | --- | --- | --- | --- |
-//! | [`messenger_bot_status`] | 같은 이름 | 읽기 | ALLOW | `channel?` → `{configured, bot, paired, pairName, pending: {code, name} \| null, link: ok \| conflict \| error \| off}` |
-//! | [`messenger_bot_set_token`] | 같은 이름 | 쓰기 | HOME_ONLY | `token?, channel?`(빈 값 · 없음 = 해제 — 짝도 지운다 · Discord · Slack 등록이면 그 채널의 웹훅을 지운다 · Slack 은 봇 토큰과 앱 수준 토큰을 줄바꿈으로 이은 글자) → 상태 |
-//! | [`messenger_bot_pair`] | 같은 이름 | 쓰기 | HOME_ONLY | `code, allow, channel?` → 상태 |
-//! | [`messenger_bot_unpair`] | 같은 이름 | 쓰기 | HOME_ONLY | `channel?` → 상태 |
-//! | [`messenger_bot_test`] | 같은 이름 | 쓰기 | ALLOW | `channel?` → — |
-//! | [`messenger_bot_label`] | 같은 이름 | 쓰기 | ALLOW | `stream, label` → —(서버가 이름표를 적기만 한다 · 채널과 상관없다 · 판 34 미만이면 조용히 건너뜀) |
-//! | (없음 — `messenger::messenger_send` 안) | `messenger_bot_notify` | 쓰기 | — | `{text, stream?, kind?, label?, channel?}` → — |
-//!
-//! - Discord · Slack 봇 → 웹훅 바꾸기(`messenger::messenger_replace_bot_with_webhook` · HOME_ONLY)는 주소를 검사한 뒤 [`messenger_bot_set_token`] 의 해제 길을
-//!   그대로 부른다(새 op 없음).
-//! - `channel` 은 `"telegram"`(없으면 이것 — 지금 프런트 그대로) · `"discord"`(3b) · `"slack"`(4단계). Telegram 이면 와이어에 싣지 않는다(판 34 의 몸 그대로).
-//! - **이 파일은 봇 토큰 파일을 읽지 않는다** — 토큰은 등록 때 사람이 붙여 넣은 글자를 서버 op 몸으로 넘길 뿐이고(로그에 남기지 않는다), 상태에는
-//!   토큰이 없다(`configured` 하나 — 볼트의 `has_*` 와 같은 선 · docs/conventions.md "볼트 값은 프런트로 돌려주지 않는다").
-//! - 판 34 미만 서버면 명령은 `[server-outdated]` · 알림의 봇 몫은 조용히 건너뛴다(웹훅 채널은 그대로 간다). **Discord 채널은 판 35 미만이면 같은
-//!   규칙**이다 — 판 34 서버는 몸의 `channel` 을 모른 채 받아 Telegram 으로 다룰 수 있어 보내지 않는다. **Slack 채널은 판 36 미만이면** 같은 규칙
-//!   (판 35 서버는 Slack 전송이 없어 `[unsupported]` 로 거절한다).
-//! - 사건 `messenger-bot-event{changed, channel}` 은 몸이 낱말 둘이라 `client::RELAYED` 로 창에 그대로 중계한다.
-//! - 승인 등급 프레임을 쓰지 않는다(시험 `commands_mirror_the_server_ops`).
+//! - **이 파일은 봇 토큰 파일을 읽지 않는다** — 등록 때 사람이 붙여 넣은 글자를 서버 op 몸으로 넘길 뿐이고(로그에 남기지 않는다), 상태에는
+//!   토큰이 없다(`configured` 하나 — docs/conventions.md "볼트 값은 프런트로 돌려주지 않는다" 와 같은 선). → docs/invariants.md 전문 6
+//! - 그 채널의 판보다 낮은 서버면 명령은 `[server-outdated]` · 알림의 봇 몫은 조용히 건너뛴다 — 판 34 서버는 몸의 `channel` 을 모른 채
+//!   Telegram 으로 다룰 수 있어 보내지 않는다.
+//! - 승인 등급 프레임 · 방송 · 토큰 파일 읽기가 없다(시험 `commands_mirror_the_server_ops` 가 이 파일의 글자를 훑는다).
 
 use serde_json::{json, Value};
 
@@ -31,7 +16,6 @@ use crate::errors::{with_reason, SERVER_OUTDATED};
 use crate::i18n::tr;
 use crate::messenger::Channel;
 
-/// 그 채널의 op 가 서는 판.
 fn needs(chan: Channel) -> u32 {
     match chan {
         Channel::Discord => DISCORD_BOT_PROTOCOL,
@@ -58,7 +42,7 @@ fn check_protocol(chan: Channel) -> Result<(), String> {
     Ok(())
 }
 
-/// 서버 오류 → 사람 문구(이유 코드는 앞에 남긴다 — 프런트가 가른다). 서버 문구에는 토큰 · 본문이 없다.
+/// 이유 코드는 앞에 남긴다 — 프런트가 가른다.
 fn human(e: WireError, chan: Channel) -> String {
     let m = e.message.clone();
     let reason = |r: &str| m.starts_with(&format!("[{r}]"));
@@ -69,7 +53,7 @@ fn human(e: WireError, chan: Channel) -> String {
                 ko: "봇 토큰이 아니거나 Discord 가 거절했습니다 — Developer Portal › Bot 에서 받은 토큰을 그대로 붙여 넣으세요",
                 en: "Not a bot token, or Discord rejected it — paste the token from Developer Portal › Bot as is"
             ),
-            // Slack 은 토큰이 둘 — 서버 문구가 어느 쪽인지 가른다(`sl::check_token` · 모양이 틀리면 둘 다 아님)
+            // Slack 은 토큰이 둘 — 서버 문구가 어느 쪽인지 가른다(`sl::check_token`)
             Channel::Slack if m.contains("rejected the app-level token") => tr!(
                 ko: "앱 토큰(xapp-…)을 Slack 이 거절했습니다 — 앱 설정 › Basic Information › App-Level Tokens 에서 connections:write 범위로 만든 토큰인지, Socket Mode 가 켜져 있는지 확인하세요",
                 en: "Slack rejected the app token (xapp-…) — check it was made under Basic Information › App-Level Tokens with the connections:write scope, and that Socket Mode is on"
@@ -108,7 +92,7 @@ fn human(e: WireError, chan: Channel) -> String {
     }
 }
 
-/// 몸에 채널을 싣는다 — Telegram 은 싣지 않는다(판 34 의 몸 그대로).
+/// Telegram 은 싣지 않는다 — 판 34 서버의 몸 그대로.
 fn with_channel(mut body: Value, chan: Channel) -> Value {
     if chan != Channel::Telegram {
         if !body.is_object() {
@@ -124,15 +108,14 @@ async fn call(kind: Grade, op: &str, body: Value, chan: Channel) -> Result<Value
     client::request(kind, op, with_channel(body, chan)).await.map_err(|e| human(e, chan))
 }
 
-/// 봇 상태(토큰 없음).
+/// 토큰 없음.
 #[tauri::command]
 pub async fn messenger_bot_status(channel: Option<Channel>) -> Result<Value, String> {
     call(Grade::Read, "messenger_bot_status", Value::Null, channel.unwrap_or(Channel::Telegram)).await
 }
 
-/// 토큰 등록(Telegram `getMe` · Discord `users/@me` · Slack `auth.test` + `apps.connections.open` 으로 확인) · 해제(`token` 없음 · 빈 값 — 짝도 함께
-/// 지운다). 웹훅이 있는 채널(Discord · Slack)은 등록이 되면 그 채널의 웹훅을 지운다(방법은 한 번에 하나 — 3b · 4단계). Slack 의 `token` 은 봇
-/// 토큰과 앱 수준 토큰을 줄바꿈(또는 공백)으로 이은 글자다.
+/// `token` 없음 · 빈 값 = 해제(짝도 지운다). 등록이 되면 그 채널의 웹훅을 지운다(방법은 한 번에 하나).
+/// Slack 의 `token` 은 봇 토큰과 앱 수준 토큰을 줄바꿈(또는 공백)으로 이은 글자다.
 #[tauri::command]
 pub async fn messenger_bot_set_token(token: Option<String>, channel: Option<Channel>) -> Result<Value, String> {
     let chan = channel.unwrap_or(Channel::Telegram);
@@ -144,26 +127,23 @@ pub async fn messenger_bot_set_token(token: Option<String>, channel: Option<Chan
     Ok(st)
 }
 
-/// 대기 중인 짝짓기에 사람이 답한다(메인 PC 에서만 — `remote/deny.rs`).
+/// 메인 PC 에서만(`remote/deny.rs`).
 #[tauri::command]
 pub async fn messenger_bot_pair(code: String, allow: bool, channel: Option<Channel>) -> Result<Value, String> {
     call(Grade::Write, "messenger_bot_pair", json!({ "code": code, "allow": allow }), channel.unwrap_or(Channel::Telegram)).await
 }
 
-/// 짝을 지운다.
 #[tauri::command]
 pub async fn messenger_bot_unpair(channel: Option<Channel>) -> Result<Value, String> {
     call(Grade::Write, "messenger_bot_unpair", Value::Null, channel.unwrap_or(Channel::Telegram)).await
 }
 
-/// 짝지은 대화방에 시험 한 통.
 #[tauri::command]
 pub async fn messenger_bot_test(channel: Option<Channel>) -> Result<(), String> {
     call(Grade::Write, "messenger_bot_test", Value::Null, channel.unwrap_or(Channel::Telegram)).await.map(|_| ())
 }
 
-/// 그 타일의 이름표를 서버에 미리 알린다(실기 후속 2026-11-19) — 알림이 나간 적 없는 타일도 고르기 단추 · `→` 줄이 알림과 같은 이름을 쓰게.
-/// 서버는 적기만 한다(아무것도 보내지 않는다 · 채널과 상관없다). 옛 서버면 조용히 건너뛴다(알림의 봇 몫과 같다).
+/// 서버는 적기만 한다(아무것도 보내지 않는다 · 채널과 상관없다). 옛 서버면 조용히 건너뛴다.
 #[tauri::command]
 pub async fn messenger_bot_label(stream: String, label: String) -> Result<(), String> {
     if outdated(Channel::Telegram) {
@@ -175,7 +155,7 @@ pub async fn messenger_bot_label(stream: String, label: String) -> Result<(), St
         .map_err(|e| human(e, Channel::Telegram))
 }
 
-/// `messenger_status(telegram · discord · slack)` — 그 채널의 봇이 등록돼 있는가(서버가 옛 판 · 닿지 않으면 거짓).
+/// 서버가 옛 판이거나 닿지 않으면 거짓.
 pub(crate) async fn configured(chan: Channel) -> bool {
     match call(Grade::Read, "messenger_bot_status", Value::Null, chan).await {
         Ok(v) => v.get("configured").and_then(Value::as_bool).unwrap_or(false),
@@ -183,7 +163,7 @@ pub(crate) async fn configured(chan: Channel) -> bool {
     }
 }
 
-/// 알림의 봇 몫을 서버로(`messenger::messenger_send` · 트레이의 `send_plain`). 옛 서버면 조용히 건너뛴다(Discord 는 판 35 미만 · Slack 은 판 36 미만도).
+/// 봇 토큰을 읽는 서버가 보낸다. 옛 서버면 조용히 건너뛴다.
 pub(crate) async fn notify(notice: super::messenger_bridge::Notice) -> Result<(), String> {
     let chan = notice.channel.unwrap_or(Channel::Telegram);
     if outdated(chan) {
@@ -197,7 +177,6 @@ pub(crate) async fn notify(notice: super::messenger_bridge::Notice) -> Result<()
 mod tests {
     use super::*;
 
-    /// 명령은 `async fn` · 등급은 서버 표와 같다 · 승인 등급 없음 · 방송 없음 · 토큰 파일 없음(소스 훑기).
     #[test]
     fn commands_mirror_the_server_ops() {
         use super::super::ipc::frame;
@@ -215,7 +194,6 @@ mod tests {
             assert_eq!(frame::required_grade(op), Some(grade), "{op}");
             assert!(super::super::messenger_bridge::is_op(op), "{op}");
         }
-        // 3b — 채널을 받는 명령 다섯(없으면 Telegram) · 이름표는 채널과 상관없다
         for op in ["messenger_bot_status", "messenger_bot_set_token", "messenger_bot_pair", "messenger_bot_unpair", "messenger_bot_test"] {
             let sig = &src[src.find(&format!("pub async fn {op}(")).unwrap()..];
             let sig = &sig[..sig.find('{').unwrap()];
@@ -233,7 +211,6 @@ mod tests {
         assert!(relayed.contains("messenger_bridge::EVENT"), "사건은 몸이 낱말뿐이라 중계한다");
     }
 
-    /// 3b — 판 가르기: Discord 는 판 35 · Telegram 은 판 34 · Telegram 몸에는 채널을 싣지 않는다.
     #[test]
     fn discord_needs_protocol_35() {
         assert_eq!(needs(Channel::Telegram), 34);
@@ -243,7 +220,6 @@ mod tests {
         assert_eq!(with_channel(json!({ "token": "x" }), Channel::Discord), json!({ "token": "x", "channel": "discord" }));
     }
 
-    /// 4단계 — Slack 은 판 36 · 몸에 `channel: "slack"` · 토큰 거절 문구는 어느 토큰인지 가른다(이유 코드는 그대로 `bad-token`).
     #[test]
     fn slack_needs_protocol_36() {
         assert_eq!(needs(Channel::Slack), 36);

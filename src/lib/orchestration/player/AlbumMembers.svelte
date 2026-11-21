@@ -1,6 +1,4 @@
 <script lang="ts">
-  // 앨범 멤버 행 묶음 — [새 앨범] 2절과 [앨범 권한] 패널이 함께 쓴다(목업 V3NewAlbum 2절 · V3Album 오른쪽 패널). 행 하나 = 아바타 · 이름과
-  // "CLI · 모델 · 종류" · 허용 명령 칩 · 등급 세그먼트(판정형은 수락 규칙) · 빼기. 넓으면 한 줄, 좁으면(패널) 세그먼트가 아래로 내려간다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { ArtistProfile } from "../artist-form";
   import type { AlbumAccept, AlbumMemberInput } from "../album-draft";
@@ -11,7 +9,7 @@
   let { members = $bindable(), accept = $bindable(), adding = $bindable(false), artists, original = null, tag = "new", rework = true, onchange = () => {}, status = () => "" }: {
     members: AlbumMemberInput[]; accept: AlbumAccept; adding?: boolean; artists: ArtistProfile[];
     original?: AlbumConfigView | null; tag?: string;
-    /** 되돌림 한도 칸을 여기서 그린다(새 앨범은 4절 '한도 · 기타' 로 옮긴다). */
+    /** 되돌림 한도 칸을 여기서 그린다 */
     rework?: boolean; onchange?: () => void; status?: (id: string) => string;
   } = $props();
   let commandDrafts = $state<Record<string, string>>({});
@@ -103,7 +101,6 @@
 
 <style>
   .members { container-type: inline-size; display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: var(--t-sm); }
-  /* 넓을 때 = 목업 V3NewAlbum 2절: 아바타 | 이름·명령 | 세그먼트 | ✕ 한 줄 */
   .member { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 28px; grid-template-areas: "av main ctl x"; align-items: center; gap: 12px; padding: 10px; border-radius: var(--radius-surface-inner); background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-hover)); }
   .av { grid-area: av; display: flex; }
   .judge .av :global(.avatar) { box-shadow: 0 0 0 2px var(--tertiary); }
@@ -122,7 +119,6 @@
   .cmd:hover { background: var(--control-bg-hover); }
   .cmd.add { background: transparent; border: 1px dashed var(--line-strong); color: var(--fg-2); font-family: var(--font-ui); }
   .cmd-input { width: 180px; max-width: 100%; height: 22px; padding: 0 10px; border: 1px solid var(--focus-border); border-radius: 999px; background: var(--surface-field); color: var(--fg-1); font-family: var(--font-mono); font-size: 11px; outline: none; }
-  /* 등급 = 한 알약 묶음 세그먼트, 고른 칸만 채운다 */
   .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-field); }
   .seg button { padding: 4px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--fg-2); font: inherit; font-size: var(--t-xs); white-space: nowrap; cursor: pointer; }
   .seg button:hover { background: var(--control-ghost-hover); }
@@ -131,7 +127,6 @@
   .passes { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--fg-2); white-space: nowrap; }
   .passes input, .rework input { width: 46px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-field); color: var(--fg-1); font: inherit; font-weight: 700; text-align: center; outline: none; }
   .passes input:focus, .rework input:focus, .cmd-input:focus { border-color: var(--focus-border); }
-  /* 바뀐 행(앨범 권한) — 따뜻한 판 · 고른 칸도 따뜻한 색 */
   .changed { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn); }
   .member.changed .seg button[aria-pressed="true"] { background: var(--warn); color: var(--bg-base); font-weight: 700; }
   .removed { margin: 0; padding: 8px 12px; border-radius: var(--radius-md); font-size: var(--t-xs); color: var(--fg-2); }
@@ -143,7 +138,6 @@
   .pick-chip:hover:not(:disabled) { background: var(--control-ghost-hover); }
   .pick-chip:disabled { opacity: .5; cursor: default; }
   .rework { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; padding: 4px 8px; border-radius: var(--radius-md); font-size: var(--t-xs); color: var(--fg-2); }
-  /* 좁을 때(앨범 권한 패널 · 폰) = 목업 V3Album 패널: 이름 줄 위, 세그먼트 아래 */
   @container (max-width: 520px) {
     .member { grid-template-columns: 32px minmax(0, 1fr) 28px; grid-template-areas: "av main x" "ctl ctl ctl"; gap: 8px 10px; }
     .av :global(.avatar) { width: 32px !important; height: 32px !important; }

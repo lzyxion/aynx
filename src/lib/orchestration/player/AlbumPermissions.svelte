@@ -63,7 +63,6 @@
   const gradeStatus = (id: string) => base.attempts?.some((a) => a.roleId === id && a.state === "running") ? t("orch.perm.working") : t("orch.perm.waiting");
 </script>
 
-<!-- 앨범 판 오른쪽에 붙는 세 번째 칸(목업 V3Album) — 방패 제목 · 원형 ✕ · 한 줄 안내 · 아티스트 행(B 의 공용 조각) · 검증 한 줄 · 기타(늘 보임) · 고정 한도 칩 · 아래 [취소][적용] -->
 <form class="panel" data-album-permissions aria-label={t("orch.perm.title")} onsubmit={(e) => { e.preventDefault(); void apply(); }}>
   <header>
     <span class="shield"><UiIcon name="shield-check" size={18} /></span>
@@ -74,13 +73,13 @@
     <p class="lead">{t("orch.perm.lead")}</p>
     <fieldset disabled={busy || stale || ended}>
       <AlbumMembers bind:members={draft.members} bind:accept={draft.accept} artists={artists.list} original={base.album} tag="perm" onchange={changed} status={gradeStatus} />
-      <!-- 검증 — 명령 글자는 시작 때 고정(한 줄), 방식(사람 확인 ↔ 자동 실행)만 바꾼다 -->
+      <!-- 검증 명령 글자는 시작 때 고정 — 방식(사람 확인 ↔ 자동 실행)만 바꾼다 -->
       <div class="verify" class:changed={draft.verifyAuto !== base.album?.verifyAuto} title={t("orch.perm.verifyFixed")}>
         <span>{t("orch.new.verify")} <code data-perm-verify-command>{base.verify?.command || t("orch.perm.noVerify")}</code> · {t(draft.verifyAuto ? "orch.new.auto" : "orch.new.confirm")} — {t("orch.perm.fixedAtStart")}</span>
         {#if base.verify?.command}<label class="toggle"><Toggle data-perm-verify-auto bind:checked={draft.verifyAuto} onchange={changed} />{t("orch.new.auto")}</label>{/if}
       </div>
       <div class:changed={!!draft.autoMerge !== !!base.album?.autoMerge} class="auto-merge"><AutoMergeField tag="perm" enabled={!!base.verify?.command} bind:checked={draft.autoMerge} onchange={changed} /></div>
-      <!-- 기타(작업안 도구 · 깨움 상한)는 늘 보이는 칸, 시작 때 고정된 한도는 늘 보이는 작은 칩(목업 V3FoldA — ▶ 펼침 없음) -->
+      <!-- 기타는 늘 보이는 칸 · 시작 때 고정된 한도는 늘 보이는 칩 — ▶ 펼침으로 접지 않는다 -->
       <div class="more" data-perm-more>
         <span class="group">{t("orch.new.other")}</span>
         <label class="row" class:changed={draft.planTools !== base.album?.planTools}><Toggle data-perm-plan-tools bind:checked={draft.planTools} onchange={changed} />{t("orch.new.planTools")}</label>
@@ -122,7 +121,7 @@
   header h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 700; }
   .close { width: 30px; height: 30px; flex: 0 0 auto; border: 0; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-1); background: var(--control-bg, var(--surface-hover)); cursor: pointer; }
   .close:hover:not(:disabled) { background: var(--control-bg-hover, var(--surface-hover)); }
-  /* 안내 줄을 머리에 붙이는 -6px 은 스크롤 칸 바깥(이 칸)이 진다 — 안쪽 음수 여백은 글자 윗부분이 잘렸다(실기 10-31) */
+  /* 안내 줄을 머리에 붙이는 -6px 은 스크롤 칸 바깥(이 칸)이 진다 — 안쪽 음수 여백은 글자 윗부분이 잘린다 */
   .body { flex: 1; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: 14px; margin: -6px -4px 0; padding: 0 4px; }
   .lead { margin: 0; font-size: var(--t-xs); color: var(--fg-3); line-height: 1.5; }
   fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; }

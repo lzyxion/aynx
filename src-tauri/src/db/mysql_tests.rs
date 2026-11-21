@@ -1,5 +1,5 @@
-//! **MySQL · MariaDB 통합 시험**(쿼리 타일 8단계) — 실제 서버 · 임시 sshd 가 있을 때만 돈다(`#[ignore]` + 환경변수). 사용자의
-//! `~/.ssh/config`·`sessions.toml`·볼트는 건드리지 않는다(경유는 그 자리 대상 `AdhocTarget` · 비밀번호는 몸으로만).
+//! **MySQL · MariaDB 통합 시험** — 실제 서버 · 임시 sshd 가 있을 때만 돈다(`#[ignore]` + 환경변수). 사용자의
+//! `~/.ssh/config` · `sessions.toml` · 볼트는 건드리지 않는다(경유는 `AdhocTarget` · 비밀번호는 몸으로만).
 //!
 //! ```text
 //! AYNX_TEST_MY_URL=mysql://root:<pw>@127.0.0.1:53306/          # MySQL 8.4 직결(root — 준비·읽기 전용 실측)
@@ -10,8 +10,7 @@
 //! cargo test --lib db::mysql_tests -- --ignored --nocapture --test-threads=1
 //! ```
 //!
-//! `MEASURE` 로 시작하는 줄은 실측 기록이다(docs/log 에 옮긴다). 긴 쿼리는 `SLEEP`/`BENCHMARK` 를 쓰지 않는다 — 끊겨도 오류 없이
-//! 값을 돌려준다(스파이크 함정 4). 대신 큰 교차 조인을 센다.
+//! 긴 쿼리는 `SLEEP`/`BENCHMARK` 를 쓰지 않는다 — 끊겨도 오류 없이 값을 돌려준다. 대신 큰 교차 조인을 센다.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -99,7 +98,7 @@ async fn admin(o: &Opts) -> Conn {
     Conn::new(o.clone()).await.expect("관리 연결")
 }
 
-/// 긴 SELECT — 백만 행 표 × 천 행 교차 조인을 더한다(`COUNT(*)` 는 최적화로 곧바로 끝난다)(SLEEP·BENCHMARK 는 끊겨도 값을 돌려주므로 쓰지 않는다).
+/// `COUNT(*)` 는 최적화로 곧바로 끝나서 교차 조인을 더한다.
 const HEAVY: &str = "SELECT SUM(a.n + b.d * c.d - d.d) FROM pt8.pt_big a, pt8.pt_d b, pt8.pt_d c, pt8.pt_d d";
 
 async fn prepare(a: &mut Conn) {
@@ -130,8 +129,6 @@ async fn prepare(a: &mut Conn) {
     .expect("준비");
 }
 
-/// 직결 한 벌 — 비밀번호 관문 · 값 매핑 · 행 상한(함정 3 회귀) · 시간 제한(SELECT · 비SELECT) · 취소 · 한 번에 하나 · 읽기 전용
-/// 실측(root · 읽기 전용 계정) · 스키마 · 서버가 끊음.
 async fn direct(var: &str, want_mariadb: bool) {
     let Some(o) = opts(var) else {
         eprintln!("{var} 없음 — 건너뜀");
@@ -153,7 +150,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     let my = Mysql::connect("my-1", t.clone(), secrets(Some(&su_pw))).await.unwrap_or_else(|e| panic!("{}", open_msg(Err(e))));
     println!("MEASURE[{tag}] version: {}", my.server_version());
     assert_eq!(my.server_version().starts_with("MariaDB"), want_mariadb, "{}", my.server_version());
-    // 읽기 전용 계정 — MySQL 8 은 caching_sha2_password 새 사용자(캐시 없음) = TLS 없이 RSA 공개키 교환 경로.
+    // MySQL 8 의 caching_sha2_password 새 사용자(캐시 없음) = TLS 없이 RSA 공개키 교환 경로.
     let reader = Mysql::connect("my-2", direct_target(&o, "pt_reader", Some("pt8")), secrets(Some("readerpw")))
         .await
         .unwrap_or_else(|e| panic!("reader: {}", open_msg(Err(e))));
@@ -208,12 +205,11 @@ async fn direct(var: &str, want_mariadb: bool) {
     for (i, w) in want.iter().enumerate() {
         assert_eq!(&r.rows[0][i], w, "{}", got[i].0);
     }
-    // JSON — MySQL 은 JSON 형(문자셋 binary 로 온다), MariaDB 는 글자. 서버 글자 출력과 같다.
+    // MySQL 은 JSON 형(문자셋 binary 로 온다), MariaDB 는 글자.
     let r = my.query("SELECT JSON_OBJECT('a', 1)", 10, 5000).await.unwrap();
     let server: Option<String> = a.query_first("SELECT JSON_OBJECT('a', 1)").await.unwrap();
     println!("MEASURE[{tag}] json → {} ({})", cell(&r, 0, 0), r.columns[0].ty);
     assert_eq!(cell(&r, 0, 0), json!(server.unwrap()));
-    // 날짜·시간 — 서버 글자 출력과 대조(글자 프로토콜).
     for expr in ["NOW(6)", "CURDATE()", "CAST('2024-02-29 13:45:01' AS DATETIME)", "TIMESTAMP '2000-01-01 00:00:00.123'", "SEC_TO_TIME(-3723.5)"] {
         let r = my.query(&format!("SELECT {expr}"), 10, 5000).await.unwrap();
         let server: Option<String> = a.query_first(format!("SELECT {expr}")).await.unwrap();
@@ -224,7 +220,7 @@ async fn direct(var: &str, want_mariadb: bool) {
         }
     }
 
-    // ── 행 상한 — 서버 쪽(sql_select_limit). 함정 3: 버린 나머지를 다음 질의가 비우지 않는다 ──
+    // ── 행 상한 — 버린 나머지를 다음 질의가 비우지 않는다 ──
     let started = Instant::now();
     let r = my.query("SELECT n FROM pt_big", 100, 30_000).await.unwrap();
     let first_ms = started.elapsed().as_millis();
@@ -236,13 +232,13 @@ async fn direct(var: &str, want_mariadb: bool) {
     assert!(next_ms < 300, "상한 뒤 다음 질의가 늦다 — 나머지 행을 비우고 있다 ({next_ms} ms)");
     let r = my.query("SELECT n FROM pt_big WHERE n < 5000", 5000, 30_000).await.unwrap();
     assert_eq!((r.rows.len(), r.truncated), (5000, false));
-    // 상한은 끝나면 DEFAULT 로 — 메타 조회(최상위 SELECT)가 잘리지 않는다.
+    // 상한은 끝나면 DEFAULT 로 — 메타 조회가 잘리지 않는다.
     let c = my.table_detail(None, "pt_types", 5000).await.unwrap();
     assert_eq!(c["columns"].as_array().unwrap().len(), 15);
     let r = my.query("SELECT @@SESSION.sql_select_limit = 2", 1, 5000).await.unwrap();
     assert_eq!(cell(&r, 0, 0), json!(1), "문장 동안은 상한+1");
 
-    // ── 시간 제한 — SELECT 는 서버(MySQL max_execution_time · MariaDB max_statement_time) ──
+    // ── 시간 제한 ──
     let started = Instant::now();
     let e = my.query(HEAVY, 10, 500).await.unwrap_err();
     let ms = started.elapsed().as_millis();
@@ -251,7 +247,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     assert!(ms < 3000);
     assert_eq!(cell(&my.query("SELECT 2", 10, 5000).await.unwrap(), 0, 0), json!(2), "시간 초과 뒤 재사용");
 
-    // ── 취소(제어 연결 KILL QUERY) · 한 번에 하나 · 취소 뒤 재사용 ──
+    // ── 취소 · 한 번에 하나 · 취소 뒤 재사용 ──
     let my = Arc::new(my);
     let m2 = Arc::clone(&my);
     let started = Instant::now();
@@ -270,7 +266,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(cell(&my.query("SELECT 43", 10, 1000).await.unwrap(), 0, 0), json!(43), "빈 KILL 뒤");
 
-    // ── 비SELECT 시간 제한 — 쓰기 모드의 큰 INSERT … SELECT(MySQL = 앱 타이머 KILL · MariaDB = max_statement_time) ──
+    // ── 비SELECT 시간 제한(MySQL = 앱 타이머 KILL · MariaDB = max_statement_time) ──
     my.set_write(true).await.unwrap();
     let started = Instant::now();
     let e = my.query("INSERT INTO pt_sink SELECT a.n FROM pt_big a, pt_d b, pt_d c", 10, 700).await.unwrap_err();
@@ -284,8 +280,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     let r = my.query("INSERT INTO pt_t(name) VALUES ('w')", 10, 5000).await.unwrap();
     assert_eq!(r.affected, Some(1));
     my.query("DELETE FROM pt_t WHERE name = 'w'", 10, 5000).await.unwrap();
-    // 쓰기 모드도 사람의 트랜잭션 · autocommit 끄기 · 세션 잠금은 가드가 거절한다(10-13 결정 0단계) — 거절 뒤 연결은 트랜잭션 밖
-    // (IN_TRANS = 0 · AUTOCOMMIT = 1)이고 다음 쓰기는 바로 커밋된다.
+    // 쓰기 모드의 사람 트랜잭션 · autocommit 끄기 · 세션 잠금은 가드가 거절 — 거절 뒤 연결은 트랜잭션 밖이다.
     for sql in [
         "BEGIN",
         "START TRANSACTION",
@@ -306,16 +301,14 @@ async fn direct(var: &str, want_mariadb: bool) {
     let n: Option<i64> = a.query_first("SELECT COUNT(*) FROM pt8.pt_t WHERE name = 'tx'").await.unwrap();
     assert_eq!(n, Some(1), "다른 연결에서 바로 보인다(커밋됨)");
     my.query("DELETE FROM pt_t WHERE name = 'tx'", 10, 5000).await.unwrap();
-    // 가드가 글자를 못 보는 동적 SQL(`PREPARE … FROM` · MariaDB `EXECUTE IMMEDIATE`)은 엔진의 바이너리 프로토콜(prepare)이 막는다
-    // (10-13 실측: MySQL 8.4 · MariaDB 11 모두 1295 — MySQL 의 `EXECUTE IMMEDIATE` 는 1064).
+    // 가드가 못 보는 동적 SQL 은 엔진의 prepare 가 막는다(1295 — MySQL 의 `EXECUTE IMMEDIATE` 는 1064).
     for sql in ["PREPARE pt8s FROM 'SET autocommit = 0'", "EXECUTE pt8s", "EXECUTE IMMEDIATE 'SET autocommit = 0'"] {
         let r = my.query(sql, 10, 5000).await;
         println!("MEASURE[{tag}] dynamic {sql}: {}", show(&r));
         assert!(r.is_err(), "{sql}");
         assert_eq!(my.tx_flags().await, (false, true), "{sql}");
     }
-    // 프로시저 안의 autocommit 끄기는 가드가 못 본다(가드 머리말 "못 보는 것") — 쓰기 끄기가 되감고 자동 커밋으로 되돌린다
-    // (다음 READ ONLY 시작이 암묵 커밋하지 않게 · 다시 켠 쓰기가 몰래 커밋 대기에 남지 않게).
+    // 프로시저 안의 autocommit 끄기는 가드가 못 본다 — 쓰기 끄기가 되감고 자동 커밋으로 되돌린다.
     a.query_drop("DROP PROCEDURE IF EXISTS pt8.pt_ac_off; CREATE PROCEDURE pt8.pt_ac_off() SET autocommit = 0").await.unwrap();
     my.query("CALL pt_ac_off()", 10, 5000).await.unwrap();
     my.query("INSERT INTO pt_t(name) VALUES ('tx')", 10, 5000).await.unwrap();
@@ -333,7 +326,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     my.query("DELETE FROM pt_t WHERE name = 'ac'", 10, 5000).await.unwrap();
     my.set_write(false).await.unwrap();
 
-    // ── 읽기 전용 실측 — 가드(guarded) · 엔진 겹만(unguarded) · root / 읽기 전용 계정 ──
+    // ── 읽기 전용 실측 — 가드(guarded) · 엔진 겹만(unguarded) ──
     let probes: &[&str] = &[
         "SELECT 1; INSERT INTO pt_t(name) VALUES ('evil')",
         "INSERT INTO pt_t(name) VALUES ('evil')",
@@ -371,7 +364,6 @@ async fn direct(var: &str, want_mariadb: bool) {
             let u = p.query_unguarded(sql, 5, 5000).await;
             println!("MEASURE[{tag}] ro[{who}] {sql}\n    guarded:   {}\n    unguarded: {}", show(&g), show(&u));
         }
-        // 세션에 남는 것 — GET_LOCK 은 ROLLBACK 뒤에도 남는가 · 사용자 변수는 남는가.
         let held: Option<Option<u64>> = a.query_first("SELECT IS_USED_LOCK('pt8_lock')").await.unwrap();
         println!("MEASURE[{tag}] ro[{who}] GET_LOCK 뒤 IS_USED_LOCK: {held:?}");
         let r = p.query("SELECT @pt8_v, @pt8_w", 5, 5000).await;
@@ -399,14 +391,13 @@ async fn direct(var: &str, want_mariadb: bool) {
     for sys in ["\"mysql\"", "information_schema", "performance_schema", "\"sys\""] {
         assert!(!s.to_string().contains(sys), "{sys}: {s}");
     }
-    // 스키마 트리 — 데이터베이스를 펼치면 종류별 객체(이름은 바인드 인자 · 없으면 기본 데이터베이스).
     if want_mariadb {
         a.query_drop("CREATE SEQUENCE pt8.pt_seq").await.unwrap();
     }
     let o = my.objects(Some("pt8"), 5000).await.unwrap();
     println!("MEASURE[{tag}] objects pt8: {o}");
     assert_eq!(my.objects(None, 5000).await.unwrap(), o, "기본 데이터베이스");
-    // MariaDB 는 정수 형에 표시 폭을 붙인다(`int(11)`) — 견주기 전에 걷는다.
+    // MariaDB 는 정수 형에 표시 폭을 붙인다(`int(11)`).
     let objs: Vec<Value> = serde_json::from_str(&o["objects"].to_string().replace("(11)", "")).unwrap();
     let has = |want: Value| assert!(objs.contains(&want), "{want}: {o}");
     for (n, k) in [("pt_t", "table"), ("pt_v", "view"), ("pt_big", "table")] {
@@ -438,7 +429,7 @@ async fn direct(var: &str, want_mariadb: bool) {
     assert!(emsg(&my.table_detail(Some("pt8"), "nope", 5000).await.unwrap_err()).contains("nope"));
     detail_folders(&mut a, &my, &reader, tag, want_mariadb).await;
 
-    // ── 서버가 끊음(KILL CONNECTION) → [db-disconnected] ──
+    // ── 서버가 끊음 → [db-disconnected] ──
     let id = cell(&my.query("SELECT CONNECTION_ID()", 10, 5000).await.unwrap(), 0, 0).as_u64().unwrap();
     a.query_drop(format!("KILL {id}")).await.unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -449,7 +440,7 @@ async fn direct(var: &str, want_mariadb: bool) {
 
     my.shutdown();
     reader.shutdown();
-    // 연결을 놓아야 DROP 이 선다 — 실측의 `HANDLER … OPEN`(MariaDB 는 prepare 로도 선다)이 표의 메타데이터 잠금을 쥐고 있다.
+    // 연결을 놓아야 DROP 이 선다 — `HANDLER … OPEN` 이 표의 메타데이터 잠금을 쥐고 있다.
     drop(my);
     drop(reader);
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -457,8 +448,6 @@ async fn direct(var: &str, want_mariadb: bool) {
     let _ = a.disconnect().await;
 }
 
-/// 테이블 구조(10-13) — 인덱스(다중 열 · 앞 길이 · 함수 인덱스(MySQL) · 외래 키가 만든 것) · 제약(기본 키 · 유니크 · 체크) · 외래 키
-/// (복합 · 자기 참조 · 다른 데이터베이스에서 오는 것) · 참조됨 · 트리거 — 따옴표 · 공백 든 이름. 읽기 전용 계정에도 같은 모양.
 async fn detail_folders(a: &mut Conn, my: &Mysql, reader: &Mysql, tag: &str, want_mariadb: bool) {
     a.query_drop(
         "DROP DATABASE IF EXISTS pt8b;
@@ -512,7 +501,6 @@ async fn detail_folders(a: &mut Conn, my: &Mysql, reader: &Mysql, tag: &str, wan
     assert_eq!((&d["triggers"][0]["name"], &d["triggers"][0]["detail"]), (&json!("o trg"), &json!("AFTER UPDATE")));
     assert!(d["triggers"][0]["definition"].as_str().unwrap().starts_with("SET @x = 1"), "{d}");
     assert_eq!((d["partitions"].clone(), d["truncated"].clone()), (json!([]), json!([])));
-    // 가리켜지는 쪽 — 다른 데이터베이스의 외래 키도 선다.
     let c = my.table_detail(Some("pt8"), "cust omer", 5000).await.unwrap();
     println!("MEASURE[{tag}] detail cust omer: {c}");
     let by: Vec<(String, String, String)> = c["referencedBy"]
@@ -530,10 +518,8 @@ async fn detail_folders(a: &mut Conn, my: &Mysql, reader: &Mysql, tag: &str, wan
         [("primary", "PRIMARY"), ("unique", "uq_rc"), ("check", "chk_code")].iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
     assert_eq!(ctypes, want);
     assert_eq!(c["constraints"][1]["columns"], json!(["region", "code"]));
-    // 뷰 — 컬럼만.
     let v = my.table_detail(Some("pt8"), "pt_v", 5000).await.unwrap();
     assert_eq!((v["columns"][0]["name"].clone(), v["indexes"].clone()), (json!("id"), json!([])));
-    // 읽기 전용 계정(SELECT 권한만)에도 같은 모양.
     let r = reader.table_detail(None, "or`ders", 5000).await.unwrap();
     println!(
         "MEASURE[{tag}] reader detail or`ders: fks {} · indexes {} · triggers {}",
@@ -549,8 +535,6 @@ async fn detail_folders(a: &mut Conn, my: &Mysql, reader: &Mysql, tag: &str, wan
     a.query_drop("DROP DATABASE pt8b").await.unwrap();
 }
 
-/// 정의(DDL) 읽기(10-13) — `SHOW CREATE` 테이블 · 뷰 · 함수 · 프로시저 · 트리거 · 시퀀스(MariaDB) — 따옴표 · 공백 · 백틱 든 이름 ·
-/// 주입 모양 이름(존재 확인에서 걸러진다) · 권한 부족 계정(본문 숨김 · 목록에 없음). 인덱스 · 제약은 따로 볼 정의가 없다.
 async fn definitions(var: &str, want_mariadb: bool) {
     let Some(o) = opts(var) else {
         eprintln!("{var} 없음 — 건너뜀");
@@ -604,7 +588,6 @@ async fn definitions(var: &str, want_mariadb: bool) {
         println!("MEASURE[{tag}] def sequence:\n{s}");
         assert!(s.starts_with("CREATE SEQUENCE `s q`") && s.contains("start with 5") && s.contains("increment by 2"), "{s}");
     }
-    // 따로 볼 정의가 없는 종류 · 종류가 다른 이름 · 주입 모양 이름.
     for (k, n) in [("index", "k_note"), ("constraint", "PRIMARY")] {
         let e = emsg(&my.definition(&target(k, n), 5000).await.unwrap_err());
         assert!(e.contains(k), "{k}: {e}");
@@ -613,10 +596,8 @@ async fn definitions(var: &str, want_mariadb: bool) {
         let e = emsg(&my.definition(&target(k, n), 5000).await.unwrap_err());
         assert!(e.contains(n), "{k} {n}: {e}");
     }
-    // 연결의 기본 데이터베이스(스키마 없음).
     let bare = super::definition::DefTarget { schema: None, ..target("table", "or`ders") };
     assert!(my.definition(&bare, 5000).await.is_err(), "기본 데이터베이스가 없는 연결");
-    // 권한 부족 계정 — SELECT · EXECUTE 만. 본문을 숨기는지 실측.
     let reader = Mysql::connect("pt-def-r", direct_target(&o, "pt_def_reader", Some("pt def")), secrets(Some("readerpw")))
         .await
         .expect("reader");
@@ -633,7 +614,7 @@ async fn definitions(var: &str, want_mariadb: bool) {
             assert!(m.contains("권한") || m.contains("privilege") || m.contains("찾지") || m.contains("find"), "{m}");
         }
     }
-    // 같은 연결이 계속 쓸 만하다(정리 문장이 세션 값을 되돌렸다).
+    // 정리 문장이 세션 값을 되돌렸다.
     assert_eq!(cell(&reader.query("SELECT 1", 10, 5000).await.unwrap(), 0, 0), json!(1));
     my.shutdown();
     reader.shutdown();
@@ -686,7 +667,7 @@ fn ssh_env() -> Option<(AdhocTarget, String, String, u16)> {
     ))
 }
 
-/// 프런트 `runSshGates` 와 같은 고리(PG 시험과 같다) — 호스트 키는 이번만 · 잠긴 키는 빼고 · 비밀번호는 몸으로.
+/// 프런트 `runSshGates` 와 같은 고리.
 async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_pw: Option<&str>) -> (Result<Mysql, String>, Vec<String>) {
     let mut seen = Vec::new();
     let mut decision = None;
@@ -734,8 +715,6 @@ async fn connect_with_gates(stream: &str, target: &NetTarget, ssh_pw: &str, db_p
     (Err("관문 고리가 끝나지 않음".into()), seen)
 }
 
-/// SSH 경유 — 관문 → 터널 → MySQL 왕복 · 비밀번호를 묻는 동안 전송로 세워 두기 · 상한(함정 3) · 터널 위 KILL(제어 연결) ·
-/// 시간 제한 · 읽기 전용 · 따뜻한 전송로 공유 · 전송로 사망 → [db-disconnected].
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_MY_SSH · _TARGET · _URL 이 있을 때만 — 임시 sshd + MySQL"]
 async fn mysql_over_ssh_tunnel() {
@@ -780,7 +759,6 @@ async fn mysql_over_ssh_tunnel() {
     println!("MEASURE[ssh] limit 1M→1000: {first_ms} ms · 다음 SELECT 1: {next_ms} ms");
     assert!(next_ms < 500, "{next_ms}");
 
-    // 취소 — 제어 연결(같은 터널)로 KILL QUERY.
     let my = Arc::new(my);
     let m2 = Arc::clone(&my);
     let started = Instant::now();
@@ -795,7 +773,7 @@ async fn mysql_over_ssh_tunnel() {
     assert!(matches!(e, EngineError::Interrupted), "{}", emsg(&e));
     let m = emsg(&my.query_unguarded("INSERT INTO pt_t(name) VALUES ('evil')", 10, 5000).await.unwrap_err());
     assert!(m.contains("1792"), "{m}");
-    // 같은 호스트에 둘째 연결 — 따뜻한 전송로에 얹힌다(관문 없음).
+    // 따뜻한 전송로에 얹힌다(관문 없음).
     let (second, seen2) = connect_with_gates("my-ssh-2", &target, &ssh_pw, Some(&su_pw)).await;
     let second = second.unwrap_or_else(|m| panic!("{m}"));
     assert!(!seen2.iter().any(|s| s == "ssh_password" || s == "host_key"), "따뜻한 길인데 관문: {seen2:?}");

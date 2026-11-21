@@ -1,12 +1,6 @@
 <!--
-  **폰 작업안 화면**(원격 웹 R5 · 2026-10-25) — 전체 화면 덮개. 작업안은 메인 PC 주 창의 채팅 독 갈래에 살고(독은 원격에 없다), 폰은 메인 PC
-  레이아웃을 바꾸지 않고 이 덮개로 본다(`app/plans.svelte.ts` 의 `openPlans` 원격 · 폰 갈래). 들어오는 길: 시트(`MobileSheet`)의 작업안 줄 ·
-  알림 화면(`MobileAlerts`)의 [작업안 기록] · 승인 대기 줄(`openPlansAt`).
-
-  - 머리: ← 닫기(뒤로) + "작업안". 휴대폰 '뒤로' 도 닫는다 — 다른 폰 덮개와 같은 기록 칸(`MobileBar` 의 SvelteKit `pushState`).
-  - 몸: `PlansView` 의 폰 꼴(`phone`) — 보기 탭 넓은 두 칸 · 감사 알약 · 거절/승인 터치 크기(44). 승인은 원격 재확인 규칙 그대로다
-    (`remote/deny.rs` — 마스터가 있으면 그 순간 다시 묻는다 · 새 명령 없음).
-  - 오른쪽에서 밀려 들어오고 밀려 나간다(다른 전체 화면 덮개와 같은 `pushOut`).
+  폰 작업안 화면 — 전체 화면 덮개(메인 PC 레이아웃을 바꾸지 않는다). 승인은 원격 재확인 규칙 그대로다(`remote/deny.rs` — 마스터가 있으면
+  그 순간 다시 묻는다 · 새 명령 없음).
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
@@ -16,7 +10,7 @@
   import { closeMobileOverlay } from "$lib/app/mobile-sheets.svelte.js";
 
   let backBtn = $state<HTMLButtonElement | null>(null);
-  // 열리면 뒤로 단추에 포커스 — 입력 칸이 아니라 화면 키보드가 뜨지 않고, Esc 가 이 덮개에서 받힌다
+  // 뒤로 단추에 포커스 — 입력 칸이면 화면 키보드가 뜬다 · Esc 가 이 덮개에서 받힌다
   $effect(() => {
     backBtn?.focus({ preventScroll: true });
   });
@@ -54,7 +48,7 @@
     left: 0;
     right: 0;
     height: var(--app-h, 100dvh);
-    /* 다른 폰 덮개와 같은 층 — 확인 상자(114) · 가림막 · 모달(100) 아래 */
+    /* 확인 상자(114) · 가림막 · 모달(100) 아래 */
     z-index: 90;
     display: flex;
     flex-direction: column;
@@ -70,7 +64,6 @@
   }
   @keyframes mplans-in {
     from {
-      /* 화면 폭 전체가 오른쪽에서 밀려 들어온다(밀어 넣는 화면 — 알림 · 설정 덮개와 같은 말) */
       transform: translateX(100%);
     }
   }

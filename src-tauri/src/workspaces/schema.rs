@@ -262,7 +262,7 @@ pub fn normalize(file: &mut WorkspaceFile) {
     }
 }
 
-/// 재시작 때 보조 창을 다시 열지 않는다(설계 결정 3). IO 없는 순수 변환.
+/// 재시작 때 보조 창을 다시 열지 않는다.
 pub fn return_aux_tabs_to_main(file: &mut WorkspaceFile) {
     for workspace in &mut file.workspaces {
         for tab in &mut workspace.tabs {

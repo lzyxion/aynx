@@ -1,65 +1,23 @@
-//! 살아 있는 자식 프로세스의 **현재 작업 디렉터리**를 밖에서 읽는다.
+//! 살아 있는 자식 프로세스의 현재 작업 디렉터리를 밖에서 읽는다 — 셸이 OSC 7 로 말해 주지 않을 때의 폴백(로컬 터미널 타일의 📂).
 //!
-//! 쓰는 곳은 하나다 — 로컬 터미널 타일의 📂(`pty::local_cwd`). SSH 타일이 자기 세션으로
-//! SFTP 브라우저를 여는 것과 **대칭**을 맞추려면 "이 셸이 지금 어디에 있는가" 를 알아야
-//! 한다. 셸이 스스로 말해 주면(OSC 7) 그것이 ①단계이고, 이 파일은 **말해 주지 않는 셸을
-//! 위한 ②단계**다 — OS 에게 직접 묻는다.
+//! PowerShell 에서는 원리적으로 틀린다 — `Set-Location` 은 프로세스 cwd(PEB `CurrentDirectory`)를 바꾸지 않아 이 길은 언제나 시작
+//! 폴더를 준다(실패가 아니라 틀린 값이라 더 위험하다). 그래서 PowerShell 에는 프롬프트 훅으로 OSC 7 을 심는다(`crate::shell_integration`
+//! 의 `PS_SNIPPET` · docs/log/2026-09-08-local-shell-hook-osc7.md). 이 파일은 지우지 않는다 — `cmd.exe` · Git Bash 는 `cd` 로 프로세스
+//! cwd 를 진짜로 바꿔 여기가 답이고, 훅을 못 심었을 때의 폴백이기도 하다. WSL 은 늘 `None` 이다.
 //!
-//! ## 이 길은 PowerShell 에서 **원리적으로 틀린다** (2026-09-08 확인)
+//! OS 분기는 [`child_cwd`] 한 함수 안에서만 `#[cfg]` 로 가르고, 구현하지 않은 OS 는 명시적인 `None` 스텁으로 남긴다(그 스텁이 곧 문서다).
+//! 프런트는 이 분기를 모른다(`Option<String>` 하나만 본다).
 //!
-//! PowerShell 은 `Set-Location` 으로 **프로세스의 cwd 를 바꾸지 않는다**:
-//!
-//! ```text
-//!   pwsh -NoProfile -Command 'Set-Location C:\Windows;
-//!       "$((Get-Location).Path)  $([Environment]::CurrentDirectory)"'
-//!     → C:\Windows  C:\Users\<you>\projects\aynx
-//! ```
-//!
-//! 위치는 **공급자(provider) 스택 위의 세션 상태**이고 PEB 의 `CurrentDirectory` 는 셸이
-//! 시작한 폴더에 그대로 멈춰 있다. 즉 아래 코드는 PowerShell 세션에서 언제나 **시작
-//! 폴더**를 준다 — 실패가 아니라 정답이 아닌 값이라 더 위험하다.
-//!
-//! 그래서 PowerShell 에는 프롬프트 훅으로 OSC 7 을 심는다
-//! (`crate::shell_integration` 의 `PS_SNIPPET` · docs/log/2026-09-08-local-shell-hook-osc7.md).
-//! **이 파일은 지워지지 않는다** — `cmd.exe` 와 Git Bash 는 `cd` 로 프로세스 cwd 를 진짜로
-//! 바꾸므로(`cd /c/Windows && cmd //c cd` → `C:\Windows`) 그 둘에게는 여기가 답이고,
-//! 훅을 못 심었을 때(파일 쓰기 실패)의 폴백이기도 하다. WSL 은 아래 절대로 `None` 이다.
-//!
-//! ## OS 분기는 이 파일의 함수 **하나** 안에서만 갈린다
-//!
-//! aynx 은 지금 Windows 에서만 빌드되지만 목표는 세 OS 전부다. 그래서 OS 를 타는 코드는
-//! [`child_cwd`] 한 함수 안에 모으고 `#[cfg(...)]` 로 몸통만 가른다. 아직 구현하지 않은
-//! OS 는 **명시적인 `None` 스텁**으로 남긴다 — 그 스텁이 곧 "여기가 비어 있다" 는 문서다.
-//! 프런트는 이 분기를 전혀 모른다 (`Option<String>` 하나만 본다).
-//!
-//! ## Windows: PEB 를 읽는다
-//!
-//! Win32 에는 "남의 프로세스의 cwd" 를 주는 API 가 없다. 있는 것은 프로세스 자신의
-//! `GetCurrentDirectory` 뿐이다. 그래서 커널이 프로세스마다 들고 있는 PEB(Process
-//! Environment Block)를 따라간다:
-//!
-//! ```text
-//!   NtQueryInformationProcess(ProcessBasicInformation) → PebBaseAddress
-//!   PEB + 0x20                → RTL_USER_PROCESS_PARAMETERS *
-//!   ProcessParameters + 0x38  → CurrentDirectory.DosPath (UNICODE_STRING)
-//!   UNICODE_STRING.Buffer     → UTF-16 경로 (Length 바이트)
-//! ```
-//!
-//! 오프셋은 **x64 배치**다 (32비트 프로세스는 지원하지 않는다 — 이 앱은 64비트로만
-//! 배포한다). 이 경로는 문서화되지 않은 배치를 밟으므로 규칙이 셋이다:
-//! **패닉하지 않는다 · 길이를 반드시 검사한다 · 실패는 조용히 `None` 이다.**
-//! 최악이라도 "폴더가 홈으로 열린다" 이고, 그것은 이 기능이 없던 때와 같다.
+//! Windows 는 PEB 를 따라간다(남의 프로세스 cwd 를 주는 Win32 API 가 없다). 오프셋은 x64 배치뿐이고 문서화되지 않은 배치를 밟으므로
+//! 패닉하지 않는다 · 길이를 반드시 검사한다 · 실패는 조용히 `None` 이다.
 
 use std::path::PathBuf;
 
-/// 프로세스 하나의 현재 작업 디렉터리. 못 읽으면 `None`(오류가 아니다 — 호출부는 폴백한다).
-///
-/// **OS 분기는 여기 한 곳뿐이다** (모듈 머리말 참고).
+/// 못 읽으면 `None` — 오류가 아니다(호출부는 폴백한다).
 pub fn child_cwd(pid: u32) -> Option<PathBuf> {
     #[cfg(windows)]
     let found = windows_cwd(pid).map(PathBuf::from);
 
-    // `/proc/<pid>/cwd` 는 커널이 유지하는 심볼릭 링크다 — 읽기만 하면 끝이고,
     // 권한이 없거나(다른 사용자) 프로세스가 이미 죽었으면 실패가 곧 `None` 이다.
     #[cfg(target_os = "linux")]
     let found = std::fs::read_link(format!("/proc/{pid}/cwd")).ok();
@@ -83,15 +41,8 @@ pub fn child_cwd(pid: u32) -> Option<PathBuf> {
     found
 }
 
-/// PEB 에서 읽어 온 `DosPath` 를 화면·브라우저가 쓸 경로로 다듬는다 — **순수 함수**.
-///
-/// 다듬는 것은 둘이다.
-/// - UNICODE_STRING 은 NUL 로 끝나지 않지만 `Length` 가 NUL 을 포함하는 구현이 있어
-///   꼬리의 NUL 과 공백을 걷어 낸다.
-/// - Windows 의 cwd 는 **언제나 역슬래시로 끝난다**(`C:\work\`). 그대로 두면 브라우저의
-///   빵부스러기와 타일 이름이 빈 마지막 조각을 얻는다. 단 **드라이브 루트만 남긴다** —
-///   `C:\` 에서 역슬래시를 지우면 `C:` 가 되고, 그것은 "C 드라이브의 *현재* 폴더" 라는
-///   전혀 다른 뜻이다.
+/// UNICODE_STRING 의 `Length` 가 NUL 을 포함하는 구현이 있어 꼬리 NUL · 공백을 걷는다. 끝 역슬래시는 떼되 드라이브 루트(`C:\`)는
+/// 남긴다 — `C:` 는 "C 드라이브의 현재 폴더" 라는 다른 뜻이다.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn trim_dos_path(raw: &str) -> Option<String> {
     let s = raw.trim_end_matches('\0').trim();
@@ -125,15 +76,13 @@ const PEB_PROCESS_PARAMETERS: usize = 0x20;
 #[cfg(windows)]
 const PARAMS_CURRENT_DIRECTORY: usize = 0x38;
 
-/// 받아들일 경로 바이트 수의 상한 — 손상된 길이로 수 MB 를 읽지 않게 하는 그물.
-/// (`UNICODE_STRING.Length` 는 u16 이라 이론상 64KB 까지 온다.)
+/// 손상된 길이로 수 MB 를 읽지 않게 하는 그물(`UNICODE_STRING.Length` 는 u16 이라 64KB 까지 온다).
 #[cfg(windows)]
 const MAX_PATH_BYTES: usize = 0x8000;
 
 #[cfg(windows)]
 fn windows_cwd(pid: u32) -> Option<String> {
     use std::ffi::c_void;
-    // `NtQueryInformationProcess` 는 ntdll 이라 windows-sys 에서도 Wdk 쪽에 있다.
     use windows_sys::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
@@ -146,15 +95,13 @@ fn windows_cwd(pid: u32) -> Option<String> {
         return None;
     }
 
-    // 필요한 권한만 연다 — 읽기 두 가지뿐이고 쓰기·종료 권한은 요구하지 않는다.
-    // (자식 프로세스이므로 대개 성공한다. 상승 권한 셸이면 실패하고 그때는 `None` 이다.)
+    // 읽기 권한 두 가지만 연다 — 상승 권한 셸이면 실패하고 그때는 `None` 이다.
     let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid) };
     if handle.is_null() {
         return None;
     }
 
-    // 핸들은 어느 갈래로 나가든 반드시 닫는다 — `?` 로 일찍 나가는 자리가 없도록
-    // 몸통을 클로저 하나에 담고 결과만 받는다.
+    // 핸들은 어느 갈래로 나가든 닫는다 — 몸통을 클로저 하나에 담아 `?` 로 일찍 나가는 자리가 없게 한다.
     let read = || -> Option<String> {
         let mut basic = unsafe { std::mem::zeroed::<PROCESS_BASIC_INFORMATION>() };
         let mut written: u32 = 0;
@@ -167,7 +114,6 @@ fn windows_cwd(pid: u32) -> Option<String> {
                 &mut written,
             )
         };
-        // NTSTATUS 는 음수가 실패다.
         if status < 0 || basic.PebBaseAddress.is_null() {
             return None;
         }
@@ -192,14 +138,12 @@ fn windows_cwd(pid: u32) -> Option<String> {
 
         let peb = basic.PebBaseAddress as usize;
 
-        // ① PEB → ProcessParameters 포인터
         let mut ptr = [0u8; 8];
         if !read_mem(handle, peb + PEB_PROCESS_PARAMETERS, &mut ptr) {
             return None;
         }
         let params = u64::from_le_bytes(ptr) as usize;
 
-        // ② ProcessParameters → CurrentDirectory.DosPath (UNICODE_STRING 16바이트)
         let mut us = [0u8; 16];
         if !read_mem(handle, params + PARAMS_CURRENT_DIRECTORY, &mut us) {
             return None;
@@ -213,7 +157,7 @@ fn windows_cwd(pid: u32) -> Option<String> {
             return None;
         }
 
-        // ③ 문자열 본문 (UTF-16LE, NUL 로 끝나지 않는다)
+        // UTF-16LE · NUL 로 끝나지 않는다.
         let mut raw = vec![0u8; length];
         if !read_mem(handle, buffer, &mut raw) {
             return None;
@@ -269,11 +213,8 @@ mod tests {
         assert_eq!(trim_dos_path("\\"), Some("\\".into()));
     }
 
-    /// 진짜 프로세스 하나를 세워 두고 그 cwd 를 밖에서 읽어 본다.
-    ///
-    /// PTY 를 쓰지 않는다 — 여기서 재는 것은 PEB 걷기뿐이고, ConPTY 를 끼우면 실패했을 때
-    /// 원인이 둘로 갈린다. 프로세스가 뜨자마자 죽었거나(환경 문제) PEB 가 아직 안 채워졌으면
-    /// **조용히 건너뛴다** — 이 테스트는 CI 를 흔들 자격이 없다.
+    /// 진짜 프로세스 하나의 cwd 를 밖에서 읽어 본다. PTY 를 쓰지 않는다 — 실패했을 때 원인이 둘로 갈리지 않게. 프로세스가 먼저 죽었거나
+    /// PEB 가 아직 비었으면 조용히 건너뛴다(이 테스트는 CI 를 흔들 자격이 없다).
     #[cfg(windows)]
     #[test]
     fn reads_a_child_process_cwd() {

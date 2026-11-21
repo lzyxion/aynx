@@ -1,6 +1,4 @@
 <script lang="ts">
-  // **[정리] 창의 앨범 그래프** — 브랜치 타일과 같은 그림(`buildRows` · `BranchRowCells`)을 이 앨범의 브랜치만으로(`albumGraph`). 읽기만 한다 —
-  // 줄은 누르지 않고 포커스도 받지 않는다. 재료는 창을 열 때 한 번 읽는 `git_commit_graph`. 못 읽어도 고르기 · 지우기는 그대로 된다(한 줄 안내뿐).
   import { onMount } from "svelte";
   import BranchRowCells from "$lib/BranchRowCells.svelte";
   import { buildRows, rowIsMerge, rowMessage, type GraphRow } from "$lib/branch-graph";
@@ -18,13 +16,11 @@
   }: {
     repo: string;
     clean: CleanupPreview;
-    /** 지금 고른 작업 폴더 경로 */
     picked: string[];
     onclose: () => void;
   } = $props();
 
   let read = $state<GraphRead | { state: "loading" }>({ state: "loading" });
-  /** 그 저장소의 프로젝트 — 없으면 [전체 그래프 열기] 를 숨긴다 */
   let project = $state<Project | null>(null);
 
   const graph = $derived(
@@ -41,7 +37,6 @@
   const hasBranches = $derived(rows.some((r) => r.lane === 1));
   const scope = $derived(pickedScope(clean.worktrees, picked));
 
-  /** 덩어리 첫 줄의 곁글 — 그 트랙 제목 · 내보낸 브랜치 */
   function subOf(r: GraphRow): string | null {
     if (r.branch && r.branch === clean.exportBranch) return t("orch.cleanup.graph.exported");
     return clean.worktrees.find((w) => w.branch === r.branch)?.taskTitle || null;
@@ -127,7 +122,6 @@
     overflow-y: auto;
   }
 
-  /* 한 줄 — [줄기 칸 | 이름 칸 | 커밋 글]. 타일에서 뺀 칸: 변경 수 · 시각 */
   .row {
     display: grid;
     grid-template-columns: 46px minmax(0, min(190px, 40%)) minmax(0, 1fr);
@@ -137,7 +131,6 @@
     cursor: default;
   }
 
-  /* 건너뛴 main 커밋 줄 — 이름 칸 자리를 그리지 않는다 */
   .row.skip :global(.name) {
     visibility: hidden;
   }
@@ -154,7 +147,6 @@
     color: var(--fg-3);
   }
 
-  /* 고른 작업 폴더의 줄 — 브랜치 선만 점선(main 줄기는 그대로) · 글자에 취소선 */
   .row.picked :global(.ln:not(.main)) {
     stroke-dasharray: 3 3;
     stroke-linecap: butt;

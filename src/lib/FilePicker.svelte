@@ -15,14 +15,8 @@
   } from "$lib/app/file-picker.svelte.js";
 
   /**
-   * **팔레트 "파일 열기…" — 고르는 목록** (docs/log/2026-09-27-doc-tile.md "A — 여는 길").
-   *
-   * 팔레트와 **같은 자리 · 같은 모양**으로 뜬다(`placeDefaultPalette` · 불투명한 뜬 면) — "이 폴더의 지난 대화"
-   * (`FolderConversations.svelte`)와 같은 까닭으로 팔레트 안의 한 모드가 아니다: 팔레트는 아무것도 읽지 않는 화면이고
-   * 이쪽은 디스크를 훑고(`list_text_files` · SFTP) 연 타일이라는 자리를 쥔다. 거르기는 팔레트와 같은 부분수열
-   * (`filterFiles` — `fuzzyMatch`).
-   *
-   * 키: ↑↓ 고르기 · Enter 열기(미리 보기 규칙 — 연 타일 곁) · Esc 닫기 · 같은 단축키로 닫기.
+   * 팔레트 "파일 열기…" 의 고르는 목록 (docs/log/2026-09-27-doc-tile.md "A — 여는 길"). 팔레트와 같은 자리 · 모양이지만 팔레트 안의
+   * 모드가 아니다 — 팔레트는 아무것도 읽지 않는 화면이고 이쪽은 디스크를 훑는다.
    */
   let {
     measureCanvas,
@@ -253,7 +247,7 @@
     color: var(--fg-3);
   }
 
-  /* 뿌리 — 넘치면 앞을 자른다(이름 쪽 끝이 남는다 · 문서 툴바의 경로와 같은 모양) */
+  /* 넘치면 앞을 자른다 — 이름 쪽 끝이 남는다 */
   .where {
     flex: 0 0 auto;
     padding: var(--space-2) var(--space-4) 0;

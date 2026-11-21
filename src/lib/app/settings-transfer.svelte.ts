@@ -1,9 +1,5 @@
-// **설정 옮기기 — 상태와 명령** (docs/log/2026-11-17-settings-transfer.md).
-//
-// 설정 › 일반 › 설정 옮기기의 [내보내기…] · [가져오기…] 와 팔레트 「설정 내보내기」 · 「설정 가져오기」 가 여기를 부른다. 모달은
-// `dialogs/SettingsTransferDialog.svelte`(+page 에 하나), 개수 · 선택 같은 순수 규칙은 `$lib/settings-transfer`.
-// 파일을 읽고 쓰는 것은 Rust `settings_transfer` 네 명령이다 — 프런트는 경로와 사람의 선택만 넘긴다(가져오기 적용은 Rust 가 파일을
-// **다시 읽어** 다시 판정한다). 원격 창에서는 네 명령이 막혀 있고(`remote/deny.rs` HOME_ONLY) 단추도 그리지 않는다.
+// 설정 옮기기 — 프런트는 경로와 사람의 선택만 넘기고, 가져오기 적용은 Rust 가 파일을 다시 읽어 다시 판정한다.
+// 원격 창에서는 네 명령이 막혀 있다(`remote/deny.rs` HOME_ONLY).
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { invoke, isRemote } from "../ipc";
 import { t } from "$lib/i18n/i18n.svelte.js";
@@ -42,7 +38,6 @@ interface ImportDone {
   touched: string[];
 }
 
-/** 모달 하나의 상태 — 내보내기 · 가져오기 두 얼굴 */
 export const transferDialog = $state<{
   mode: "export" | "import" | null;
   busy: boolean;
@@ -84,7 +79,6 @@ function message(e: unknown): string {
   return stripReason(e instanceof Error ? e.message : String(e));
 }
 
-/** [내보내기…] — 범주 요약을 읽어 모달을 연다 */
 export async function openSettingsExport(): Promise<void> {
   if (isRemote) return;
   transferDialog.mode = "export";
@@ -108,7 +102,6 @@ export function toggleExportCategory(id: string, on: boolean): void {
   transferDialog.picked = on ? TRANSFER_CATEGORIES.filter((c) => c === id || rest.includes(c)) : rest;
 }
 
-/** 내보내기 모달의 [내보내기] — 저장 대화상자 → zip 한 장 */
 export async function runSettingsExport(): Promise<void> {
   if (transferDialog.busy || transferDialog.picked.length === 0) return;
   let path: string | null = null;
@@ -132,7 +125,7 @@ export async function runSettingsExport(): Promise<void> {
   }
 }
 
-/** [가져오기…] — 파일 고르기 → 미리 보기(아직 아무것도 바꾸지 않는다) */
+/** 미리 보기까지 — 아직 아무것도 바꾸지 않는다 */
 export async function openSettingsImport(): Promise<void> {
   if (isRemote) return;
   let picked: string | string[] | null = null;
@@ -161,7 +154,6 @@ export async function openSettingsImport(): Promise<void> {
   }
 }
 
-/** [폴더 고르기…] — 프로젝트 하나의 폴더를 이 PC 에서 고른다 */
 export async function repickProjectFolder(id: string): Promise<void> {
   let picked: string | string[] | null = null;
   try {
@@ -173,7 +165,7 @@ export async function repickProjectFolder(id: string): Promise<void> {
   if (path) transferDialog.remap = { ...transferDialog.remap, [id]: path };
 }
 
-/** 가져온 뒤 이 창의 상태를 다시 읽는다 — 다른 창은 각자의 바뀜 이벤트(위임 · 프로젝트 · 테마 프로필 · 아티스트 · 설정 저장)로 따라온다 */
+/** 이 창만 다시 읽는다 — 다른 창은 각자의 바뀜 이벤트로 따라온다 */
 async function reloadAfterImport(touched: readonly string[]): Promise<void> {
   const has = (prefix: string) => touched.some((p) => p.startsWith(prefix));
   const jobs: Promise<unknown>[] = [];
@@ -191,7 +183,6 @@ async function reloadAfterImport(touched: readonly string[]): Promise<void> {
   await Promise.allSettled(jobs);
 }
 
-/** 미리 보기의 [가져오기] — 백업을 남기고 들인다 */
 export async function applySettingsImport(): Promise<void> {
   const preview = transferDialog.preview;
   if (!preview || transferDialog.busy) return;

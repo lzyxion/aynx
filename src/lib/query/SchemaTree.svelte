@@ -49,28 +49,12 @@
   import type { CatalogNote } from "./sql-completer";
 
   /**
-   * **스키마 트리**(DBeaver 식 — 규칙은 `schema-tree.ts`). 스키마(이름만 · `db_schema`) → 펼치면 그 스키마의 객체를 한 번에
-   * (`db_objects`) 읽어 종류별 폴더(테이블 · 뷰 · 함수 …, 빈 폴더 숨김 · 머리에 개수) → 관계(테이블 · 뷰 · 구체화 뷰 · 외부 테이블)를
-   * 펼치면 구조를 한 번에(`db_table_detail`) 읽어 구조 폴더(컬럼 · 인덱스 · 제약 조건 · 외래 키 · 참조됨 · 트리거 · 파티션 — 빈 폴더
-   * 숨김). 모두 기본 접힘이고, 펼친 열쇠 목록(`expanded`)은 타일이 쥔다 — 트리를 숨겼다 펴도 · 다시 연결해도 남는다. [새로 고침]은
-   * 펼친 것을 그대로 두고 다시 읽는다.
+   * 스키마 트리(규칙은 `schema-tree.ts`).
    *
-   * 누르기(2026-11-10 Beekeeper 식): 관계 · 파티션 = **한 번은 고르기만**(초점 · 관계는 펼치기/접기 — 편집기 글은 건드리지 않는다),
-   * **두 번 누르기 · Enter = 그 객체의 데이터 탭**(`onopen` — 객체 하나에 탭 하나는 부르는 쪽) · 외래 키 · 참조됨 = 다른 쪽 테이블로 트리 이동(조상을 펴고
-   * 고른다 — 그 스키마를 아직 안 읽었으면 읽는다) · 그 밖의 잎 = 편집기 커서 자리에 인용된 이름(`oninsert` — 함수는 여는 괄호까지).
-   * **만들기 · 고치기 · 지우기 동작은 없다**(읽고 이해하는 창 — docs/user/query-tile.md "What is not built").
-   * 키보드(트리 묶음이 받는다): ↑↓ · →(펼치기 / 첫 자식) · ←(접기 / 부모) · Home · End · Enter · `F4` = DDL 보기.
-   * 정의가 있는 줄(`query/definition` 의 `definitionTarget`)은 우클릭하면 메뉴(`oncontext` — 그림은 부르는 쪽의 `TreeMenu`)가 뜬다.
-   *
-   * **이름 필터**(10-13 — 규칙은 `schema-tree` 머리말): 머리 아래 칸 · 트리에서 `Ctrl+I`(파일 타일 필터와 같은 키) · 칸에서 `Esc` 로
-   * 지움(빈 칸이면 트리로) · `↓` 로 트리로. **이미 읽어 온 것만** 거른다 — 안 읽은 스키마는 맨 위 "읽지 않은 스키마 N개 · [모두 읽기]".
-   * 서버 검색 op 를 두지 않은 까닭: 스키마 하나를 펴는 왕복(`db_objects`)이 이미 그 스키마의 이름을 다 가져오므로 [모두 읽기]는 스키마
-   * 수만큼의 왕복이면 끝나고(그 뒤로는 타자마다 왕복 없이 거른다), 새 op 는 엔진 셋에 문장 · 상한 · 시험을 하나씩 더 늘린다. 테이블
-   * 아래(컬럼 · 인덱스 …)도 그 테이블을 펼쳐 읽은 뒤에만 걸린다. 필터는 펼친 목록을 바꾸지 않는다 — 지우면 원래 펼침으로.
-   *
-   * 서버는 연결당 작업 하나만 받는다(Busy) — 트리의 읽기는 **줄 세워** 하나씩 보내고, 쿼리가 도는 동안(`busy`)은 읽어야 하는
-   * 펼치기와 새로 고침을 막는다(이미 읽은 것을 펴고 접는 것은 된다). 실패는 트리 안 한 줄(`[stale-lease]`·`[session-gone]` 이면
-   * 부르는 쪽이 [다시 열기] 로 — `onfail`).
+   * - **만들기 · 고치기 · 지우기 동작은 없다**(읽고 이해하는 창 — docs/user/query-tile.md "What is not built").
+   * - 서버는 연결당 작업 하나만 받는다(Busy) — 트리의 읽기는 줄 세워 하나씩 보내고, 쿼리가 도는 동안(`busy`)은 읽어야 하는 펼치기 · 새로 고침을 막는다.
+   * - 서버 검색 op 를 두지 않은 까닭: 스키마 하나를 펴는 왕복이 그 스키마의 이름을 다 가져오므로 [모두 읽기]는 스키마 수만큼의
+   *   왕복이면 끝나고, 새 op 는 엔진 셋에 문장 · 상한 · 시험을 하나씩 더 늘린다.
    */
   let {
     handle,
@@ -90,27 +74,23 @@
     lease: number;
     dialect: DbDialect;
     busy: boolean;
-    /** 펼친 열쇠(스키마 · 폴더 · 관계 · 구조 폴더) — 타일 상태 */
+    /** 타일 상태 — 트리를 숨겼다 펴도 · 다시 연결해도 남는다 */
     expanded?: string[];
-    /** 트리가 서버에서 읽는 중인가(줄 세운 읽기가 남았나) — 데이터 탭이 그 사이에 조회를 보내지 않게(서버는 연결당 작업 하나) */
+    /** 데이터 탭이 그 사이에 조회를 보내지 않게(서버는 연결당 작업 하나) */
     reading?: boolean;
-    /** 데이터 탭 열기(두 번 누르기 · Enter) */
     onopen: (obj: TreeRelation) => void;
-    /** 편집기 커서 자리에 넣을 글자 */
     oninsert: (text: string) => void;
-    /** 오류 원문(접두어 그대로) — 다시 열기 갈래는 부르는 쪽이 가른다 */
+    /** 접두어 그대로 — 다시 열기 갈래는 부르는 쪽이 가른다 */
     onfail: (message: string) => void;
-    /** DDL 보기(`F4` · 메뉴) — 읽기는 부르는 쪽이 한다(아래 칸의 [DDL]) */
     ondefinition: (target: DbDefinitionTarget) => void;
-    /** 정의가 있는 줄의 우클릭 — 메뉴는 부르는 쪽이 타일 컨테이너 밖에 그린다 */
+    /** 메뉴는 부르는 쪽이 타일 컨테이너 밖에 그린다 */
     oncontext: (ev: MouseEvent, target: DbDefinitionTarget, title: string, rel: TreeRelation | null) => void;
-    /** 읽어 온 스키마 · 객체 · 구조 — 편집기 자동완성이 받아 둔다(`sql-completer`) */
     oncatalog?: (n: CatalogNote) => void;
   } = $props();
 
   let schemas = $state<string[] | null>(null);
   let loading = $state(false);
-  /** [새로 고침] 아이콘이 도는가 — 읽는 동안 돌고, 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다(브랜치 타일과 같은 규칙) */
+  /** 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다(브랜치 타일과 같은 규칙) */
   let spinning = $state(false);
   let error = $state<string | null>(null);
   let objects = $state<Record<string, Load<DbObjects>>>({});
@@ -134,10 +114,10 @@
         })
       : [],
   );
-  /** 키보드가 들어올 줄 — 초점 줄이 사라졌으면 첫 줄 */
+  /** 초점 줄이 사라졌으면 첫 줄 */
   const tabKey = $derived(rows.some((r) => r.key === focusKey) ? focusKey : (rows.find((r) => r.type !== "note")?.key ?? null));
 
-  // 서버는 연결당 작업 하나 — 트리의 읽기는 하나씩.
+  // 서버는 연결당 작업 하나 — 트리의 읽기는 하나씩
   let chain: Promise<unknown> = Promise.resolve();
   let inflight = 0;
   function serial<T>(f: () => Promise<T>): Promise<T> {
@@ -159,7 +139,7 @@
     return stripReason(m);
   }
 
-  // 겹침 — 연결이 열릴 때 데이터 탭 조회와 트리 읽기가 같은 순간에 출발하면 늦은 쪽이 서버의 Busy 로 실패한다(2026-11-10 실측).
+  // 겹침 — 데이터 탭 조회와 트리 읽기가 같은 순간에 출발하면 늦은 쪽이 서버의 Busy 로 실패한다.
   // 트리 읽기 중에 연결이 다른 일을 했으면(`busy`) 그 실패는 오류로 보이지 않고, 그 일이 끝나면 처음부터 다시 읽는다.
   let busyHit = false;
   let pendingLoad = $state(false);
@@ -209,11 +189,11 @@
     }
   }
 
-  /** 스키마 목록을 읽고, 펼쳐 둔 스키마의 객체 · 펼쳐 둔 관계의 구조를 다시 읽는다(펼침은 그대로) */
+  /** 펼침은 그대로 두고 다시 읽는다 */
   async function load() {
     if (loading) return;
     if (busy) {
-      // 연결이 다른 일을 하는 중 — 끝나면 읽는다(예전에는 여기서 그냥 돌아가 트리가 빈 채로 남았다)
+      // 그냥 돌아가면 트리가 빈 채로 남는다 — 끝나면 읽는다
       pendingLoad = true;
       return;
     }
@@ -243,7 +223,6 @@
     loading = false;
   }
 
-  // 연결(핸들 · 임대)이 바뀌면 다시 읽는다 — 다시 열기 · 재부착(펼침은 그대로)
   let lastConn = "";
   $effect(() => {
     const c = `${handle}:${lease}`;
@@ -256,29 +235,24 @@
     });
   });
 
-  /** 필터 중 안내 — 아직 안 읽은(또는 실패한) 스키마를 모두 읽는다(줄 세워 하나씩) */
   async function loadUnread() {
     if (busy || !schemas) return;
     for (const n of schemas) if (objects[n]?.state !== "ok" && objects[n]?.state !== "loading") await loadObjects(n);
   }
 
-  /**
-   * 필터 칸으로(`Ctrl+I` · 결과 칸 밖에서 누른 앱의 `find` 키 — `QueryView` 의 찾기 문) — 적어 둔 글자는 통째로 골라 곧바로 덮어 칠
-   * 수 있게
-   */
   export function focusFilter() {
     filterEl?.focus();
     filterEl?.select();
   }
 
-  /** ↻ 단추 · DB 타일의 F5(SQL 탭 — `QueryView`) — 읽는 중이면 아무것도 하지 않는다 */
+  /** DB 타일의 F5(`QueryView`)도 부른다 */
   export function refresh() {
     if (busy || loading) return;
     spinning = true;
     void load();
   }
 
-  /** 앱의 `find` 조합인가(사용자가 다시 묶었을 수 있다 · 끈 조합은 아무것과도 같지 않다) */
+  /** 사용자가 다시 묶었을 수 있다 */
   function isFindCombo(ev: KeyboardEvent): boolean {
     const combo = comboFromEvent(ev);
     return combo !== null && combo === effectiveCombo("find", settings.current.keybindings);
@@ -299,20 +273,18 @@
       ev.stopPropagation();
       filterEl?.select();
     } else if (isFindCombo(ev)) {
-      // 칸 안의 앱 `find` 키 — 전역 처리기의 입력 칸 가드에 걸려 오지 않는다. `Ctrl+I` 와 같은 몸짓(다시 고르기)
+      // 칸 안의 앱 `find` 키는 전역 처리기의 입력 칸 가드에 걸려 오지 않는다 — 여기서 받는다
       ev.preventDefault();
       filterEl?.select();
     }
   }
 
-  /** 트리로 — 초점 줄(없으면 첫 줄) */
   function focusTree() {
     const key = tabKey;
     if (key) focusRow(key);
     else bodyEl?.focus();
   }
 
-  /** 이 줄을 펴려면 서버에서 읽어야 하나 */
   function needsLoad(r: TreeRow): boolean {
     if (r.type === "schema") return objects[r.schema]?.state !== "ok";
     if (r.type === "object") return details[r.key]?.state !== "ok";
@@ -353,10 +325,7 @@
     }
   }
 
-  /**
-   * 외래 키를 따라 테이블 하나로 간다 — 그 스키마의 객체를 아직 안 읽었으면 읽고, 조상(스키마 · 폴더)을 펴고, 그 줄을 고른다.
-   * 트리에 없는 테이블(목록에 안 서는 스키마 · 파티션 · 권한 밖)이면 편집기에 이름을 넣는 것으로 대신한다.
-   */
+  /** 트리에 없는 테이블(목록에 안 서는 스키마 · 파티션 · 권한 밖)이면 편집기에 이름을 넣는 것으로 대신한다 */
   async function reveal(schema: string, table: string) {
     const fallback = () => oninsert(qualifiedName(dialect, schema, table));
     if (!schemas?.includes(schema)) return fallback();
@@ -379,7 +348,6 @@
     rowEls[i]?.scrollIntoView({ block: "nearest" });
   }
 
-  /** 이 줄의 정의 대상(없으면 `null`) */
   const defOf = (r: TreeRow): DbDefinitionTarget | null => definitionTarget(dialect, r);
 
   function openContext(ev: MouseEvent, r: TreeRow) {
@@ -420,7 +388,7 @@
     else if (r && a.kind === "activate") activate(r);
   }
 
-  /** 종류별 아이콘 — 앱이 이미 싣는 UI 아이콘 묶음(`ui-icons.generated.ts`) 안에서 고른다 */
+  /** 앱이 이미 싣는 UI 아이콘 묶음(`ui-icons.generated.ts`) 안에서 고른다 */
   const ICON: Record<DbObjectKind, string> = {
     table: "grid",
     view: "view-compact",
@@ -432,7 +400,6 @@
     type: "case-sensitive",
   };
 
-  /** 구조 폴더 잎의 아이콘 */
   const LEAF_ICON: Record<Exclude<DetailPart, "columns">, string> = {
     indexes: "sort-name",
     constraints: "shield-check",
@@ -448,14 +415,13 @@
   const conLabel = (c: string) => t(`pane.query.schema.con.${c}` as "pane.query.schema.con.primary");
   const cols = (c: readonly (string | null)[]) => columnList(c, t("pane.query.schema.expr"));
 
-  /** 잎 옆의 흐린 글자 — 갈래 */
   function aside(o: DbObject): string | null {
     return o.sub ? subLabel(o.sub) : null;
   }
 
   function objectTitle(r: Extract<TreeRow, { type: "object" }>): string {
     const o = r.object;
-    // 관계 줄(두 번 누르기 = 데이터 탭)은 설명 말풍선을 두지 않는다 — 이름은 줄에 보인다(2026-11-10 사용자 결정)
+    // 관계 줄은 설명 말풍선을 두지 않는다 — 이름은 줄에 보인다(사용자 결정)
     if (r.expandable) return "";
     const lines = [t("pane.query.schema.insert", { name: signature(o) })];
     if (o.sub) lines.push(subLabel(o.sub));
@@ -463,7 +429,6 @@
     return lines.join("\n");
   }
 
-  /** 구조 폴더 잎 하나의 글자 — 이름 · 옆 글자(흐림) · 말풍선 */
   function leafView(l: DetailLeaf, here: string): { name: string; side: string; title: string } {
     const insert = (name: string) => t("pane.query.schema.insert", { name });
     const lines = (xs: string[]) => xs.filter(Boolean).join("\n");
@@ -508,7 +473,6 @@
   }
 </script>
 
-<!-- 필터와 맞는 자리를 강조한다(대소문자 무시 — `matchSpan`) -->
 {#snippet hl(text: string)}
   {@const m = matchSpan(text, filter)}
   {#if m}{text.slice(0, m[0])}<mark class="hit">{text.slice(m[0], m[1])}</mark>{text.slice(m[1])}{:else}{text}{/if}
@@ -734,7 +698,7 @@
     font-weight: var(--fw-semibold);
   }
 
-  /* 이름 필터 — 머리 아래 한 줄(파일 타일의 필터 줄과 같은 칸 모양) */
+  /* 파일 타일의 필터 줄과 같은 칸 모양 */
   .filter {
     flex: 0 0 auto;
     display: flex;
@@ -810,7 +774,6 @@
     cursor: default;
   }
 
-  /* 필터와 맞는 자리 */
   .hit {
     color: inherit;
     background: var(--warn-soft);
@@ -922,7 +885,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* 구조 잎의 옆 글자 — 열 목록 · 화살표 · 때. 길면 줄인다(전체는 말풍선) */
   .side {
     flex: 0 1 auto;
     min-width: 0;
@@ -987,8 +949,7 @@
     }
   }
 
-  /* 움직임을 줄여 달라고 했으면 돌리지 않고 읽는 동안 흐리게만(브랜치 타일과 같은 처방) — 바퀴 끝 이벤트가 없으니
-     흐림은 `spinning` 이 아니라 `aria-busy` 를 따른다 */
+  /* 움직임 줄임이면 돌리지 않고 흐리게만 — 바퀴 끝 이벤트가 없으니 흐림은 `aria-busy` 를 따른다 */
   @media (prefers-reduced-motion: reduce) {
     .tbtn.refresh.spinning :global(svg) {
       animation: none;

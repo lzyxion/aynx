@@ -4,50 +4,27 @@ import type { SftpEntry } from "$lib/sftp-browser";
 import type { PaneSpec, TabSpec } from "$lib/session";
 import { startDirFor } from "$lib/start-dir";
 
-/**
- * **팔레트 "파일 열기…"** — 순수 층 (docs/log/2026-09-27-doc-tile.md "A — 여는 길").
- *
- * - [`filePickerRoot`] — 포커스된 타일에서 **어느 폴더를(로컬/원격) 뿌리로** 훑을까.
- * - [`textEntries`] — 훑은 파일 중 문서 보기로 열 것만([`isTextLike`] — 파일 타일의 더블클릭과 같은 판정 하나).
- * - [`filterFiles`] — 팔레트와 같은 부분수열 매칭([`fuzzyMatch`]) + 이름에 맞은 줄을 위로.
- * - [`listRemoteShallow`] — 원격은 **뿌리 한 층 + 하위 폴더 한 층**까지만(느린 링크 보호 — 재귀 훑기는 SFTP
- *   왕복이 폴더 수만큼이다).
- *
- * - [`scanTextFiles`] — 로컬은 재귀 목록(`FsBackend.listTextFiles`), 원격은 [`listRemoteShallow`] — 문서 타일 파일 칸의
- *   찾기도 같이 쓴다(2026-11-19). [`splitRel`] — 줄 그림의 (폴더, 이름) 나누기.
- *
- * 화면(`FilePicker.svelte`)과 저장소(`app/file-picker.svelte.ts`)가 이것을 쓴다.
- */
+/** 팔레트 "파일 열기…" 와 문서 타일 파일 칸의 찾기가 쓰는 순수 층 (docs/log/2026-09-27-doc-tile.md "A — 여는 길") */
 
-/** 원격 문서가 빌릴 세션의 주인 (`app/panes.svelte.ts` 의 `DocSource` 와 같은 모양) */
+/** `app/panes.svelte.ts` 의 `DocSource` 와 같은 모양 */
 export interface PickerSource {
   paneId: string;
   alias: string;
 }
 
-/**
- * 훑을 뿌리 — `root` 가 `null` 이면 **홈**(여는 자리가 백엔드의 `home()` 을 묻는다).
- * 원격이면 `source` 가 세션을 가진 ssh 터미널이다.
- */
+/** `root` 가 `null` 이면 홈(여는 자리가 백엔드의 `home()` 을 묻는다) */
 export type FilePickerRoot =
   | { where: "local"; root: string | null }
   | { where: "remote"; root: string | null; source: PickerSource };
 
 export interface FilePickerRootInput {
-  /** 지금 탭의 포커스된 타일 (없으면 `null`) */
   focused: Pick<PaneSpec, "id" | "kind" | "path" | "alias" | "sourcePaneId"> | null;
-  /**
-   * 포커스된 **터미널**의 지금 폴더 — 로컬 셸이면 여는 자리가 풀어 둔 값(OSC 7 → `local_cwd` · WSL 은 이 컴퓨터의
-   * 경로로 옮긴 것), ssh 셸이면 OSC 7 그대로. 모르면 `null`.
-   */
+  /** 로컬 셸이면 여는 자리가 풀어 둔 값(OSC 7 → `local_cwd` · WSL 은 이 컴퓨터의 경로로 옮긴 것), ssh 셸이면 OSC 7 그대로 */
   focusedCwd?: string | null;
-  /** 포커스된 **SFTP 타일**이 지금 보는 폴더(`sftpDirOf`) — 없으면 `path` 로 떨어진다 */
   sftpDir?: string | null;
-  /** 지금 탭 — 로컬 쪽 규칙(프로젝트 폴더)에 쓴다 */
   tab: Pick<TabSpec, "projectFolder" | "root"> | null;
 }
 
-/** 경로의 부모 폴더(구분자 둘 다 본다). 뿌리(`C:\` · `/`)의 파일이면 그 뿌리. 모르면 `null` */
 export function parentDir(path: string): string | null {
   const trimmed = path.trim();
   const i = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
@@ -60,17 +37,7 @@ export function parentDir(path: string): string | null {
 
 const trimmedOrNull = (v: string | null | undefined): string | null => v?.trim() || null;
 
-/**
- * 포커스된 타일 → 훑을 뿌리 (`null` = 열 곳이 없다 — 원본을 잃은 SFTP · 원격 문서).
- *
- * | 타일 | 뿌리 |
- * | --- | --- |
- * | ssh 터미널 | 원격 · 셸의 지금 폴더(OSC 7), 모르면 홈 |
- * | SFTP 파일 타일 | 원격(빌리던 터미널) · 보고 있는 폴더 |
- * | 원격 문서 | 원격(빌리던 터미널) · 그 파일의 폴더 |
- * | 로컬 문서 | 로컬 · 그 파일의 폴더 |
- * | 그 밖(로컬 셸 · AI · 로컬 파일 · 시작 화면 …) | 로컬 · 새 터미널의 시작 폴더 규칙 그대로([`startDirFor`] — 포커스된 타일의 폴더 → 프로젝트 탭의 폴더 → 홈) |
- */
+/** `null` = 열 곳이 없다(원본을 잃은 SFTP · 원격 문서). 그 밖의 타일은 새 터미널의 시작 폴더 규칙 그대로([`startDirFor`]) */
 export function filePickerRoot(i: FilePickerRootInput): FilePickerRoot | null {
   const f = i.focused;
   if (f?.kind === "ssh") {
@@ -96,27 +63,22 @@ export function filePickerRoot(i: FilePickerRootInput): FilePickerRoot | null {
   return { where: "local", root: root ?? null };
 }
 
-/** 고르는 목록의 한 줄 — `rel` 은 뿌리에서의 상대 경로(`/` 로 잇는다), `path` 는 여는 데 쓰는 절대 경로 */
+/** `rel` 은 뿌리에서의 상대 경로(`/` 로 잇는다), `path` 는 여는 데 쓰는 절대 경로 */
 export interface PickerFile {
   rel: string;
   path: string;
 }
 
-/** 문서 보기로 열 것만 — 판정은 `doc-lang.ts` 의 [`isTextLike`] 하나 */
+/** 판정은 `doc-lang.ts` 의 [`isTextLike`] 하나 — 파일 타일의 더블클릭과 같다 */
 export function textEntries(files: readonly PickerFile[]): PickerFile[] {
   return files.filter((f) => isTextLike(f.rel));
 }
 
-/** 마지막 조각 */
 function nameOf(rel: string): string {
   return rel.slice(rel.lastIndexOf("/") + 1);
 }
 
-/**
- * 질의로 좁히고 줄을 세운다 — 부분수열 매칭은 **상대 경로 전체**에(`docs/a` 로 폴더까지 좁힌다), 순위는 이름이
- * 먼저다: ① 이름이 질의로 시작 ② 이름에 질의가 이어져 있음 ③ 이름에 부분수열 ④ 경로에만 부분수열. 같은 등급 안은
- * 들어온 순서(얕은 것 먼저 — 로컬 목록은 넓이 우선이다). 빈 질의는 그대로. 많아야 `max` 줄.
- */
+/** 매칭은 상대 경로 전체에(`docs/a` 로 폴더까지 좁힌다), 순위는 이름이 먼저 — 같은 등급 안은 들어온 순서 */
 export function filterFiles(files: readonly PickerFile[], query: string, max = 200): PickerFile[] {
   const q = query.trim().toLowerCase().replace(/\s+/g, "");
   if (q === "") return files.slice(0, max);
@@ -131,20 +93,16 @@ export function filterFiles(files: readonly PickerFile[], query: string, max = 2
   return ranked.slice(0, max).map((r) => r.f);
 }
 
-/** 원격 얕은 목록에서 들어가지 않는 폴더 — 로컬 목록(`file_index.rs` 의 `SKIP_DIRS`)과 같은 뜻의 짧은 사본 */
+/** 로컬 목록(`file_index.rs` 의 `SKIP_DIRS`)과 같은 뜻의 짧은 사본 */
 const REMOTE_SKIP = new Set([".git", ".hg", ".svn", "node_modules", "target", "dist", ".svelte-kit", ".cache", ".venv", "venv", "__pycache__"]);
 
-/** 원격 얕은 목록의 결과. 두 층보다 깊은 것은 원래 보지 않는다(화면이 늘 한 줄로 말한다) — `truncated` 는 그 밖의 잘림 */
 export interface ShallowList {
   files: PickerFile[];
-  /** 한 층 아래 폴더를 다 보지 못했다(폴더 수 상한 · 읽기 실패) */
+  /** 한 층 아래 폴더를 다 보지 못했다(폴더 수 상한 · 읽기 실패) — 두 층보다 깊은 것은 원래 보지 않는다 */
   truncated: boolean;
 }
 
-/**
- * **원격: 뿌리 한 층 + 하위 폴더 한 층** — `list` 는 그 백엔드의 목록 함수(SFTP). 폴더는 이름순으로 많아야
- * `maxDirs` 개까지 들어간다. 하위 폴더 하나를 못 읽어도 전체는 실패하지 않는다(뿌리만 예외 — 던진다).
- */
+/** 원격은 뿌리 한 층 + 하위 폴더 한 층까지만 — 재귀 훑기는 SFTP 왕복이 폴더 수만큼이라 느린 링크를 막는다. 뿌리를 못 읽으면만 던진다 */
 export async function listRemoteShallow(
   list: (path: string) => Promise<SftpEntry[]>,
   root: string,
@@ -170,10 +128,9 @@ export async function listRemoteShallow(
   return { files, truncated };
 }
 
-/** 로컬 훑기 상한 — Rust `list_text_files` 의 `limit` (팔레트가 처음부터 쓰던 값) */
+/** Rust `list_text_files` 의 `limit` */
 const LOCAL_SCAN_LIMIT = 20000;
 
-/** [`scanTextFiles`] 가 백엔드에서 쓰는 것만 — `FsBackend` 의 부분 구조 */
 export interface TextScanBackend {
   list(path: string): Promise<SftpEntry[]>;
   listTextFiles?(
@@ -182,7 +139,7 @@ export interface TextScanBackend {
   ): Promise<{ root: string; files: PickerFile[]; truncated: boolean }>;
 }
 
-/** 훑은 결과 — `root` 는 실제로 훑은 뿌리(로컬은 Rust 가 푼 값), `shallow` 는 두 층까지만 본 원격 갈래 */
+/** `root` 는 실제로 훑은 뿌리(로컬은 Rust 가 푼 값) */
 export interface TextScan {
   root: string;
   files: PickerFile[];
@@ -190,11 +147,6 @@ export interface TextScan {
   shallow: boolean;
 }
 
-/**
- * **하위 폴더까지의 글 파일** (2026-11-19 — 팔레트 "파일 열기…" 와 문서 타일 파일 칸의 찾기가 같이 쓴다). 로컬처럼
- * `listTextFiles` 가 있으면 그것(재귀 · 상한 [`LOCAL_SCAN_LIMIT`]), 없으면 [`listRemoteShallow`](두 층). 끝에
- * [`textEntries`]. 실패는 그대로 던진다(문구 다듬기는 부르는 쪽).
- */
 export async function scanTextFiles(b: TextScanBackend, root: string): Promise<TextScan> {
   if (b.listTextFiles) {
     const idx = await b.listTextFiles(root, LOCAL_SCAN_LIMIT);
@@ -204,7 +156,6 @@ export async function scanTextFiles(b: TextScanBackend, root: string): Promise<T
   return { root, files: textEntries(got.files), truncated: got.truncated, shallow: true };
 }
 
-/** 상대 경로 → (폴더 부분, 이름) — 이름을 앞세워 그리는 목록(`FilePicker.svelte` · 문서 타일 파일 칸의 찾기 결과)이 쓴다 */
 export function splitRel(rel: string): { dir: string; name: string } {
   const i = rel.lastIndexOf("/");
   return i < 0 ? { dir: "", name: rel } : { dir: rel.slice(0, i), name: rel.slice(i + 1) };

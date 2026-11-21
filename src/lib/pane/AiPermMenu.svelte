@@ -7,41 +7,20 @@
   import { t as tr } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * **머리줄 AI 권한 팝오버** — 원격 타일(2026-10-07 — 원격 세션의 AI 권한 = 호스트 하나의 단계)과
-   * 쿼리 타일(10-14 — DB 연결 하나의 단계)이 **같은 상자**를 쓴다. 로컬 타일은 이 상자가 없다(11-18 — ⋯ 메뉴의 체크 줄 "AI 읽기 허용").
-   *
-   * 머리줄의 권한 칩과 ⋯ 메뉴의 "AI 권한…" 이 연다. 안에 드는 것은 제목("{이름} 의 AI 권한") · 부제 ·
-   * (있으면) 안내 줄 · 단계 게이지(`AiGauge` 좁은 꼴 — 10-23, 예전 단계 라디오 줄) · 구분선 · (원격만) 헤드리스 접속 토글(단계 < 승인 후
-   * 실행이면 잠김) · 설정 링크("호스트 설정 › AI" · "DB 연결 설정").
-   *
-   * 상자·좌표·몸짓(바깥 클릭·Escape·↑↓)은 `TmuxMenu` · `PaneMenu` 와 **같은 규칙**이고 전역 메뉴 한 벌
-   * (`theme.css` 의 `.menu-*`)을 쓴다.
-   *
-   * ## 이 컴포넌트가 모르는 것
-   *
-   * 저장이 어떻게 되는지, 어느 타일이 대상인지, 단계가 몇 개인지는 모른다. 단계 줄은 부르는 쪽이 넘기고(`stages`),
-   * 고른 결과를 `onpick(stage)` · `headless.onchange(on)` · `onsettings()` 로 올린다. 저장(원격 `delegation_set_target` ·
-   * DB `db_ai_set`)과 통로(`runOnMenu` — 상자를 닫는 줄만)는 `pane/ai-perm-menu.svelte.ts` · `pane/db-ai-menu.svelte.ts`
-   * 가 든다 (docs/conventions.md "메뉴를 닫는 코드").
+   * 머리줄 AI 권한 팝오버 — 원격 타일(호스트 하나의 단계)과 쿼리 타일(DB 연결 하나의 단계)이 같은 상자를 쓴다.
+   * 저장 · 대상은 모른다 — 고른 결과를 올리기만 하고, 저장과 `runOnMenu` 통로는 `ai-perm-menu.svelte.ts` · `db-ai-menu.svelte.ts` 가 든다.
    */
   let {
     title,
     sub,
-    /**
-     * 이 팝오버를 연 타일의 코드(`p3`) — 제목 줄 끝에 흐리게(이름 카드 `SessionInfoCard` 의 `.s-code` 와 같은 모양).
-     * 원격 타일 머리줄에는 코드 칩이 없어서(2026-10-11) 권한을 만지는 자리에서 "AI 가 이 코드로 본다" 를 맞춘다.
-     */
+    /** 원격 타일 머리줄에는 코드 칩이 없어 권한을 만지는 자리에서 "AI 가 이 코드로 본다" 를 맞춘다 */
     code,
-    /** 고를 단계들(낮은 것부터) */
+    /** 낮은 것부터 */
     stages,
-    /**
-     * 지금 단계 (권한 표 사본에서 온다 — 고르면 곧 바뀐다). `null` 이면 어느 줄도 고른 표시가 없다
-     * (DB 연결의 대상이 바뀌어 권한이 풀렸을 때 — 다시 고르게 한다).
-     */
+    /** `null` 이면 고른 표시가 없다(DB 연결의 대상이 바뀌어 권한이 풀렸을 때 — 다시 고르게 한다) */
     stage,
-    /** 부제 아래 안내 줄(경고색) — 풀림 · 이전 판 서버 등 */
     notes = [],
-    /** 헤드리스 접속 토글 — 원격만(없으면 그 줄과 구분선을 그리지 않는다) */
+    /** 원격만 */
     headless = null,
     settingsLabel = null,
     left,
@@ -57,7 +36,6 @@
     stage: S | null;
     notes?: readonly string[];
     headless?: { on: boolean; allowed: boolean; onchange: (on: boolean) => void } | null;
-    /** 상자를 닫고 설정 화면을 여는 줄 — 없으면 그 줄과 구분선을 그리지 않는다 */
     settingsLabel?: string | null;
     left: number;
     top: number;
@@ -68,12 +46,10 @@
 
   const stageIds = $derived(stages.map((s) => s.id));
   const rowOf = (id: S): PermStageRow<S> => stages.find((s) => s.id === id)!;
-  /** 맨 위 단계(모두 승인)면 상자 테두리가 따뜻해진다(게이지 카드와 같은 말 — 목업) */
   const yolo = $derived(stage !== null && stages.length > 0 && stages[stages.length - 1].id === stage);
 
   let el = $state<HTMLElement | null>(null);
 
-  /** 넘침 잡기 + 뜨면 자신에 포커스 — `TmuxMenu` 와 같은 처방 */
   let clamped = $state<number | null>(null);
   const shownTop = $derived(clamped ?? top);
   $effect(() => {
@@ -86,18 +62,16 @@
       return;
     }
     if (!node.contains(document.activeElement)) {
-      // 게이지의 고른 단추에 포커스 — ←→ 가 곧바로 돈다(고른 것이 없으면 게이지의 첫 자리 — `data-gauge-stop`)
+      // 게이지의 고른 단추에 포커스 — ←→ 가 곧바로 돈다
       const cur = node.querySelector<HTMLButtonElement>("[data-gauge-stop]") ?? node.querySelector<HTMLButtonElement>("[data-ai-item]");
       (cur ?? node).focus({ preventScroll: true });
     }
   });
 
-  /** 바깥을 누르면 닫는다 — 머리줄의 권한 칩만 비켜 간다(`data-ai-menu-btn` — tmux 칩과 같은 이유) */
+  /** 권한 칩만 비켜 간다 — 누름이 먼저 닫고 뒤따르는 click 이 다시 열지 않게 */
   $effect(() => closeOnOutside(() => el, "[data-ai-menu-btn]", onclose));
 
-  /** ↑↓·Home/End 로 돌고 Escape 로 닫는다 — Escape 는 여기서 끊는다(뒤 화면까지 닫지 않게) */
   function onKey(ev: KeyboardEvent) {
-    // 게이지(고른 단추 하나) · 헤드리스 스위치(잠기지 않았을 때) · 링크 — 문서 순서 그대로 돈다
     menuKeydown(ev, el, "[data-gauge-stop], [data-ai-item]:not(:disabled), .headless input:not(:disabled)", onclose);
   }
 </script>
@@ -125,10 +99,6 @@
     {/each}
   </div>
 
-  <!--
-    단계 — 게이지 좁은 꼴(10-23 — `AiGauge.svelte`). 예전 단계 줄 다섯(라디오 · 그림 · 이름 + 설명)을 대신한다. ←→ 로 고르고(게이지가 받는다),
-    ↑↓ 는 이 상자의 줄 사이를 돈다 — 게이지는 고른 단추 하나(`data-gauge-stop`)가 한 줄이다.
-  -->
   <div class="gauge-row">
     <AiGauge
       levels={stageIds}
@@ -145,10 +115,7 @@
     {@const h = headless}
     <hr class="menu-sep" />
 
-    <!--
-      헤드리스 접속 — 단계가 승인 후 실행 아래면 잠긴다(켤 수 없다). 줄 전체가 하나의 스위치다:
-      `Toggle` 의 칸이 `label` 안에 들어 줄 어디를 눌러도 뒤집히고, ↑↓ 는 그 칸에 멈춘다(Space 로 뒤집는다).
-    -->
+    <!-- 헤드리스 접속 — 단계가 승인 후 실행 아래면 잠긴다(켤 수 없다) -->
     <label class="headless" class:locked={!h.allowed} title={tr("app.ai.headless.desc")}>
       <span class="text">
         <span class="name">{tr("app.ai.headless")}</span>
@@ -176,7 +143,6 @@
 </div>
 
 <style>
-  /* 상자·구분선은 전역 메뉴 한 벌(`theme.css` 의 `.menu-*`) — 자리와 폭만 여기 */
   .aimenu {
     position: fixed;
     z-index: 20;
@@ -190,7 +156,6 @@
     padding: var(--space-1) var(--space-2) var(--space-2);
   }
 
-  /* 제목 + 타일 코드 — 이름 카드의 머리 줄(`.s-title`)과 같은 배치: 제목이 먼저 줄고 코드는 줄지 않는다 */
   .title-row {
     display: flex;
     align-items: baseline;
@@ -198,7 +163,6 @@
     min-width: 0;
   }
 
-  /* 이름 카드의 `.s-code` 와 같은 모양 — mono · 흐린 글자 · 판 없음 */
   .code {
     flex: 0 0 auto;
     font-family: var(--font-mono);
@@ -225,7 +189,6 @@
     color: var(--fg-3);
   }
 
-  /* 안내 줄 — 풀림 · 이전 판 서버(DB 연결 폼의 `.ai-desc.warn` 과 같은 말) */
   .note {
     margin: var(--space-1) 0 0;
     font-size: var(--t-xs);
@@ -234,12 +197,11 @@
     word-break: keep-all;
   }
 
-  /* 게이지 자리 — 머리 글자와 같은 안쪽 여백 */
   .gauge-row {
     padding: 0 var(--space-2) var(--space-2);
   }
 
-  /* 모두 승인 — 상자 테두리가 따뜻해진다(게이지 카드의 `.yolo` 와 같은 말). 전역 `.menu-surface` 보다 특이도가 높다 */
+  /* 전역 `.menu-surface` 보다 특이도가 높아야 한다 */
   .aimenu.yolo {
     border-color: var(--ai-all-line);
   }
@@ -263,7 +225,6 @@
     word-break: keep-all;
   }
 
-  /* 헤드리스 접속 — 이름 + 설명 · 오른쪽 끝 스위치 */
   .headless {
     display: flex;
     align-items: flex-start;
@@ -290,7 +251,6 @@
     margin-top: 2px;
   }
 
-  /* "호스트 설정 › AI" — 메뉴 줄 한 벌 + 오른쪽 `›` */
   .link {
     display: flex;
     align-items: center;

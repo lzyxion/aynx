@@ -1,14 +1,6 @@
-//! **설정 묶음의 zip 한 장** — 쓰기(deflate) · 읽기(검증)만 하는 작은 구현.
-//!
-//! zip 크레이트를 들이지 않고 이미 의존 그래프에 있는 `flate2`(deflate · CRC-32) 위에 직접 짰다 — 우리가 쓰는 꼴은
-//! 파일 몇십 장 · 수 MB 라 zip64 · 암호화 · 분할 · 데이터 서술자가 필요 없고, 읽는 쪽은 **받은 파일을 믿지 않는 것**이 전부다:
-//!
-//! - 경로 탈출 거절 — 빈 이름 · 절대 경로(`/` · 드라이브 `C:`) · `\` · `.`/`..`/빈 조각 · 제어 글자 · 같은 이름 둘([`safe_entry_path`]).
-//! - 크기 상한 — 파일 [`MAX_ARCHIVE_BYTES`] · 항목 수 [`MAX_ENTRIES`] · 한 장 [`MAX_ENTRY_BYTES`] · 합 [`MAX_TOTAL_BYTES`]
-//!   (압축 폭탄은 풀면서 상한 + 1 바이트에서 멈춘다).
-//! - 암호화 · zip64 · 모르는 압축 방식(저장 0 · deflate 8 밖)은 거절. CRC 가 틀리면 거절.
-//!
-//! 이 파일은 **경로를 디스크에 풀지 않는다** — 이름과 바이트만 돌려주고, 어디에 쓸지는 허용 목록(`catalog`)이 정한다.
+//! **설정 묶음의 zip 한 장** — `flate2` 위의 작은 구현(zip 크레이트를 들이지 않는다). 받은 파일은 믿지 않는다:
+//! 경로 탈출 · 크기 상한(압축 폭탄은 풀면서 상한 + 1 바이트에서 멈춘다) · 암호화 · zip64 · 모르는 압축 방식 · CRC 오류는 거절.
+//! 경로를 디스크에 풀지 않는다 — 이름과 바이트만 돌려주고 어디에 쓸지는 허용 목록(`catalog`)이 정한다.
 
 use std::io::{Read, Write};
 
@@ -18,13 +10,10 @@ use flate2::{Compression, Crc};
 
 use crate::i18n::tr;
 
-/// 받아들이는 zip 파일 하나의 크기 상한.
 pub(crate) const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
-/// 항목 수 상한.
 pub(crate) const MAX_ENTRIES: usize = 4096;
-/// 항목 한 장의 풀린 크기 상한(월페이퍼 한 장이 이 안이다 — `wallpaper.rs` 의 상한보다 넉넉하다).
+/// 풀린 크기 — `wallpaper.rs` 의 월페이퍼 상한보다 넉넉해야 한다.
 pub(crate) const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
-/// 풀린 크기 합 상한.
 pub(crate) const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 
 const LOCAL_SIG: u32 = 0x0403_4b50;
@@ -33,14 +22,12 @@ const END_SIG: u32 = 0x0605_4b50;
 /// 일반 목적 비트 11 — 이름이 UTF-8.
 const FLAG_UTF8: u16 = 0x0800;
 
-/// zip 안의 파일 한 장.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Entry {
     pub name: String,
     pub bytes: Vec<u8>,
 }
 
-/// 항목 이름이 안전한 상대 경로인가 — 안전하면 그대로, 아니면 이유.
 pub(crate) fn safe_entry_path(name: &str) -> Result<&str, String> {
     let bad = || tr!(ko: "묶음 안의 경로가 올바르지 않습니다: {name}", en: "The bundle has an unsafe path: {name}");
     if name.is_empty() || name.len() > 512 || name.contains('\\') || name.contains(':') || name.starts_with('/') {

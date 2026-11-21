@@ -1,45 +1,11 @@
-//! 세션 서버 안의 **볼트 평면 op**(③-3b1) — 금고(`crate::vault::Vault`)·외부 MCP 실행 브로커·HTTP 헤더 프록시
-//! (`crate::mcp_launch::Broker`)의 주인이 서버라서, GUI 는 이 op 들로만 닿는다(`server::vault_proxy` 가 같은 이름의
-//! Tauri 명령으로 감싼다 — 프런트 변경 최소).
+//! 세션 서버 안의 볼트 평면 op — 금고 · 외부 MCP 실행 브로커 · HTTP 헤더 프록시의 주인이 서버라 GUI 는 이 op 들로만 닿는다.
 //!
-//! ## op 표 — **값을 돌려주는 op 는 없다**
-//!
-//! | op | 등급 | 몸 → 답 |
-//! | --- | --- | --- |
-//! | `vault_status` | 읽기 | — → `{state, hasMaster, entryCount, lockReason?, relock}` |
-//! | `vault_list` | 읽기 | — → `[{kind, target}]` |
-//! | `vault_has` | 읽기 | `{kind, target}` → bool |
-//! | `vault_create` | 쓰기 | `{master?}` → — (마스터는 GUI → 서버 한 방향) |
-//! | `vault_unlock` | 쓰기 | `{master?}` → — (같음) |
-//! | `vault_verify_master` | 쓰기 | `{master}` → `{result: ok\|bad\|no-master\|no-vault\|limited, retryAfterMs?}` — **상태를 바꾸지 않는다**(판 16 · 원격 웹 R1a-2) |
-//! | `vault_lock` | 쓰기 | `{reason: shade\|user\|windows_zero}` → `{reason, revoked}` |
-//! | `vault_set_master` | 쓰기 | `{new?, current?}` → — |
-//! | `vault_store` | 쓰기 | `{kind, target, value}` → `mcp_env` 면 새 참조(`<label>:<무작위>` — 값 아님), 아니면 — |
-//! | `vault_delete` · `vault_delete_all` | 쓰기 | `{kind, target}` / — → — |
-//! | `vault_prune` | 쓰기 | `{saved: [참조]}` → — (설정 저장 뒤 — 살아 있는 티켓의 참조는 서버가 직접 모은다) |
-//! | `mcp_prepare` | 쓰기 | `{server, cwd?}` → 티켓이 박힌 실행 모양(도우미 인자 · 프록시 URL — 값·변수 이름·헤더 이름 없음) |
-//! | `mcp_retain` | 쓰기 | `{servers}` → — (설정 저장 뒤 — 구성이 바뀐 서버의 티켓 회수) |
-//!
-//! 모든 몸에 `lang`(`"ko"`·`"en"`)이 붙을 수 있다 — 서버가 만드는 사람 문구(`[vault-locked]` 등 이유 코드 포함)의 언어.
-//!
-//! **값이 실리는 방향은 GUI → 서버 하나**(사람이 친 마스터·비밀번호·암호구·MCP 값). 응답에 값이 없다는 것을 시험이
-//! 못 박는다(`tests::vault_ops_never_answer_with_a_secret` — 아는 비밀을 담고 모든 op 의 응답 JSON 을 훑는다).
-//! 몸을 못 풀면 serde 오류 문구 대신 고정 문구 하나다(serde 의 "invalid type: string \"…\"" 가 값을 되풀이하지 않게).
-//! 로그에는 op·까닭·개수만 남는다.
-//!
-//! ## SSH 는 금고를 **같은 프로세스에서** 읽는다 (③-3b2)
-//!
-//! SSH 대화형 접속(`ssh/auth.rs` 의 `vault_secrets`)·헤드리스 위임(`headless.rs` — `vault_passphrase` 위임 호스트)은 세션
-//! 서버에서 돌고 `server::hub::vault` 로 이 금고를 직접 본다. ③-3b1 의 과도기 op `vault_credential_transitional` 은 지웠다 —
-//! 값이 응답으로 나가는 op 는 이제 하나도 없다.
-//!
-//! ## 잠금 정책 (2026-10-09 결정 4)
-//!
-//! - `shade`·`user` → 볼트 잠금 + **HTTP 헤더 프록시 티켓 폐기**(예전 그대로 — 해제해도 되살지 않는다).
-//! - `windows_zero` → 볼트 잠금 + 티켓 **정지**(지우지 않는다 — 잠긴 동안 프록시는 503 + 짧은 이유, 브로커는 값을 안 내준다,
-//!   해제하면 같은 티켓이 되산다). GUI 가 마지막 창을 파괴할 때 보내고, **서버도 클라이언트가 0 이 되는 순간 스스로 건다**
-//!   (`serve::serve_conn` — GUI kill 대비). 이미 창 0개로 잠긴 금고에 가림막이 와도 정지는 폐기로 바뀌지 않는다(`Vault::lock`).
-//! - 이미 넘긴 환경변수·진행 중 요청의 비밀은 회수되지 않는다(설계 4.4 — 정직한 한계).
+//! - 값을 돌려주는 op 는 없다 — 값은 GUI → 서버 한 방향이다(시험 `server::tests::vault_plane_lives_in_the_server_with_reason_based_ticket_policy`). SSH · 헤드리스는
+//!   같은 프로세스에서 금고를 직접 읽는다(→ docs/invariants.md 전문 2).
+//! - 몸을 못 풀면 고정 문구 하나다 — serde 오류 문구는 값을 되풀이할 수 있다. 로그에는 op · 까닭 · 개수만.
+//! - 잠금: `shade`·`user` 는 HTTP 헤더 프록시 티켓을 폐기한다(해제해도 되살지 않는다). `windows_zero` 는 티켓을 정지만 해 해제하면 되살고,
+//!   서버도 클라이언트가 0 이 되는 순간 스스로 건다(GUI kill 대비).
+//! - 알고 받은 한계: 이미 넘긴 환경변수 · 진행 중 요청의 비밀은 회수되지 않는다.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -57,16 +23,13 @@ use crate::fail_limit::FailLimiter;
 use crate::mcp_launch::Broker;
 use crate::vault::{self, Kind, LockReason, Vault};
 
-/// 볼트 평면 한 벌 — 서버가 시작할 때 만든다(`serve::run`).
 pub(crate) struct VaultPlane {
     pub vault: Arc<Vault>,
-    /// 실행 브로커(못 띄웠으면 `None` — `mcp_prepare` 가 실패하고 AI 타일은 외부 MCP 없이 뜬다).
     pub broker: Option<Arc<Broker>>,
-    /// `vault_verify_master` 의 실패 빈도 제한(서버 전역 하나 — 원격 관문의 기기별·전역 제한과 별개의 둘째 겹).
+    /// 서버 전역 하나 — 원격 관문의 기기별 · 전역 제한과 별개의 둘째 겹.
     verify_limit: Mutex<FailLimiter>,
 }
 
-/// `vault_verify_master` — 잇단 5번 틀리면 60초, 그 뒤 두 배씩(상한 1시간).
 const VERIFY_LIMIT: FailLimiter = FailLimiter::new(5, Duration::from_secs(60), Duration::from_secs(60 * 60));
 
 impl VaultPlane {
@@ -83,7 +46,6 @@ impl VaultPlane {
         }
     }
 
-    /// 상태 줄(`status`)에 싣는 것 — 포트·티켓 수뿐(값·티켓 없음).
     pub(crate) fn status(&self) -> Value {
         match &self.broker {
             Some(b) => {
@@ -95,7 +57,6 @@ impl VaultPlane {
     }
 }
 
-/// 이 파일이 받는 op 인가(`serve::serve_conn` 이 가른다 — 디스크·Argon2 를 쓰므로 블로킹 풀에서 돈다).
 pub(crate) fn is_vault_op(op: &str) -> bool {
     matches!(
         op,
@@ -116,14 +77,12 @@ pub(crate) fn is_vault_op(op: &str) -> bool {
     )
 }
 
-/// 볼트 op 실패 코드 — `message` 는 사람 문구(이유 코드 `[vault-locked]` 등을 그대로 싣는다 — 값은 없다).
 pub(crate) const VAULT: &str = "vault";
 
 fn verr(message: String) -> WireError {
     WireError::new(VAULT, message)
 }
 
-/// 몸 풀기 — serde 오류 문구를 싣지 않는다(값을 되풀이할 수 있다 — 머리말).
 fn body<T: for<'de> Deserialize<'de>>(v: Value) -> Result<T, WireError> {
     serde_json::from_value(v).map_err(|_| WireError::new(code::BAD_BODY, "bad vault request body"))
 }
@@ -194,7 +153,6 @@ fn broker(plane: &VaultPlane) -> Result<&Broker, WireError> {
         .ok_or_else(|| verr("Could not start the MCP launcher".into()))
 }
 
-/// 잠근다 — 까닭에 따라 HTTP 티켓을 폐기하거나(가림막·사람) 그대로 둔다(창 0개 = 정지). `{reason, revoked}`.
 pub(crate) fn lock(plane: &VaultPlane, reason: LockReason, why: &str) -> Value {
     let effective = plane.vault.lock(reason);
     let revoked = match (&plane.broker, effective) {
@@ -210,8 +168,7 @@ pub(crate) fn lock(plane: &VaultPlane, reason: LockReason, why: &str) -> Value {
     json!({ "reason": effective.wire(), "revoked": revoked })
 }
 
-/// 마스터 확인 — 상태를 바꾸지 않는다(`Vault::verify_master`). 막혀 있으면 Argon2 를 돌리지도 않는다. 확인이 오류로 끝나면
-/// (디스크 등) 빈도 제한에 세지 않고 `{result: "error"}` 다(문구에 값은 없다 — 그래도 싣지 않는다). 로그엔 갈래·누계만.
+/// 상태를 바꾸지 않는다. 막혀 있으면 Argon2 를 돌리지도 않는다.
 pub(crate) fn verify_master(plane: &VaultPlane, master: &str, now: Instant) -> Value {
     let blocked = plane.verify_limit.lock().unwrap_or_else(|e| e.into_inner()).blocked(now);
     if let Some(left) = blocked {
@@ -245,7 +202,7 @@ pub(crate) fn verify_master(plane: &VaultPlane, master: &str, now: Instant) -> V
     }
 }
 
-/// op 하나 — **블로킹**(디스크·Argon2). `serve` 가 `spawn_blocking` 으로 부른다.
+/// 블로킹(디스크 · Argon2) — 블로킹 풀에서만 부른다.
 pub(crate) fn handle(op: &str, mut b: Value, plane: &VaultPlane) -> Result<Value, WireError> {
     if let Some(l) = b.get("lang").and_then(Value::as_str).and_then(crate::i18n::parse) {
         crate::i18n::set_lang(l);
@@ -313,7 +270,7 @@ pub(crate) fn handle(op: &str, mut b: Value, plane: &VaultPlane) -> Result<Value
         "vault_delete_all" => v.delete_all().map(|()| Value::Null).map_err(verr),
         "vault_prune" => {
             let a: Prune = body(b)?;
-            // 티켓 표 → 볼트 순서(락을 겹쳐 쥐지 않는다 — 참조를 모으면 티켓 락은 놓였다).
+            // 티켓 표 → 볼트 순서 — 두 락을 겹쳐 쥐지 않는다
             let active = match &plane.broker {
                 Some(br) => br.active_secret_refs().map_err(|()| verr("ticket table poisoned".into()))?,
                 None => HashSet::new(),
@@ -358,8 +315,6 @@ mod tests {
         (plane, dir)
     }
 
-    /// `vault_verify_master` — 맞음·틀림·없음을 가르고 상태를 바꾸지 않으며, 5번 틀리면 막혀 Argon2 를 돌리지 않는다(맞는 암호도
-    /// 막힌 동안은 `limited`). 응답에 암호가 없다.
     #[test]
     fn verify_master_op_rate_limits_and_never_echoes() {
         const MASTER: &str = "m-SECRET-verify";

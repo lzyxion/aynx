@@ -1,54 +1,12 @@
 <script lang="ts">
   /**
-   * **사이드 채팅 하나의 대화 면**(v2 4단계 — docs/log/2026-10-23-side-chat-v2-design.md 5절) — 채팅 독(`ChatDock`)이 지금 고른 채팅마다
-   * 하나 세운다. 터미널 · PTY 가 없다(v1 의 `<AiFlip><Terminal/></AiFlip>` · 화면 읽기 · 신뢰 묻기 판정을 걷었다) — 속은 세션 서버의
-   * 채팅 프로세스이고 상태는 `app/side-chat-live.svelte.ts` 가 쥔다(이 컴포넌트가 사라져도 남는다 — 채팅을 바꿔도 지금 턴을 잃지 않는다).
-   *
-   * - **기록 + 꼬리**: 지난 턴은 기록 파일(`agent_conversation_transcript` — 대화 id 로 · 시트 · 타일 대화 면과 같은 `TranscriptBody`),
-   *   지금 턴은 사건에서 접은 꼬리(`live`). 따라가기 폴링은 쓰지 않는다 — 턴이 끝나면(`ended` 가 늘면) 최신 쪽을 한 번 받고, 받은 뒤에
-   *   그 턴의 꼬리를 걷는다(`clearEndedSideChat`). 턴이 도는 동안 받은 쪽은 `hold` 로 겹치는 자리에서 자른다.
-   * - **권한 카드**: 꼬리 안의 카드 — 제목 · 도구 · 상세(명령 · 경로 · 파일 바꾸기의 diff) + **[허용 한 번] [이 채팅에서 허용] [거절]**
-   *   (`side_chat_decide` — 사람만 · [이 채팅에서 허용] = 허용 + 그 종류를 이 채팅의 허용 목록에 · 종류는 서버가 그 요청에서 읽는다 · 2026-11-20).
-   *   끝난 요청은 그 결과(내가 허용 · 거절 / CLI 가 거둠 / 프로세스가 끝나 닫힘)를 보인다. Codex 는 읽기 전용 명령을 묻지 않고 돌리고 샌드박스
-   *   밖(권한 상승)만 묻는다는 한 줄을 붙인다(설계 spike3 규칙 4).
-   * - **권한 모드**(2026-11-20 — 권한 모드 목업): 입력 칸 아래 줄 모델 키워드 바로 왼쪽의 칩
-   *   (`chat/ChatPermChip` — `Manual` · `Auto` · 메뉴 `chat/ChatPermMenu`). 서버가 모드 · 허용 목록으로 대신 허용한 요청은 카드 대신
-   *   **끝난 한 줄**(`perm-auto` — 그림 · 제목 · "Auto 로 허용했습니다" / "이 채팅에서 허용한 종류라 허용했습니다" · 상세 · 단추 없음)로 남는다.
-   * - **입력 칸**: `FlipComposer` 의 두 줄 상자(Enter 보내기 · Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 접힌 줄까지 6줄로 자람).
-   *   위 줄 = 글(상자 폭 전부), 아래 줄 = `[+] … [로고 모델 게이지 ⌄] [보내기]`(2026-11-13 — 목업 D안 · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩을 걷었다 →
-   *   2026-11-20 — 두 줄 상자 목업 · 사용자 결정: 한 줄 알약을 두 줄 상자로 · 폰도 키워드를 다 보임): 왼쪽 `[+]` =
-   *   파일 업로드 · 타일 연결(여러 개 체크 · 모두 끊기 — 최대 8) · MCP(실린 서버 이름 · 설정), 오른쪽 모델 키워드 = CLI 스위치 · 모델 · Effort 게이지 한 메뉴
-   *   (`chat/ChatModelPopover` — 고른 뒤에도 열려 있다), 연결한 타일은 칸 안 위쪽에 타일마다 칩 하나(`chat/ChatLinkChip` · × = 그 타일만 끊기). 상태 · 바꾸기는
-   *   `chat/side-chat-controls`(메뉴 통로 `runOnMenu`) — 메인 PC 독 · 원격 웹 독 · 폰 덮개가 같은 몸이다. 첫 보내기는
-   *   서버가 CLI 를 띄운다 — 그동안 "{cli} 시작 중…". 턴이 도는 동안 보내기 자리는 **[중단]**(치기는 늘 된다). Esc 는 칸이 쓰지 않으니 독까지
-   *   올라가 독을 닫는다(`ChatDock` 의 `onKeydown`).
-   * - **알림**: 끊김("중단함" — 실패가 아니다) · 오류 · CLI 알림 · 종료("CLI가 종료됐습니다 [다시 시작]" — 다음 보내기도 다시 띄운다).
-   * - 에이전트 말은 마크다운(코드 블록 = 머리 띠 + [복사] · 셸 언어면 [터미널에 넣기] — 문서 타일과 같은 `DocCodeBlock` · 아래 항목) + ```mermaid 다이어그램(`TranscriptBody` 의 `diagrams` — 자라는 글의
-   *   닫히지 않은 울타리는 코드 블록으로 두었다가 닫히면 그린다) · ```svg 그림(`SvgView` — `<img>` 하나).
-   * - **그림**(2026-10-24): 에이전트 말의 `![alt](경로)` 는 이 면이 쥔 `DocImageCache` 하나(로컬 백엔드 — 문서 보기 타일과 같은 규칙 ·
-   *   `readPreview` → `blob:` → `<img>` · 새 Tauri 명령 없음)가 읽는다. 상대 경로의 기준은 CLI 의 cwd — 갈라 온 채팅은 `cwd`(서버가 알린
-   *   그 대화의 폴더), 아니면 채팅 폴더(`sideChatDir` — 기존 `side_chat_dir`). 그 폴더를 알기 전에는 그림 자리가 "불러오는 중" 이다.
-   *   Codex 가 만든 그림(`imageGeneration`)은 서버가 `![지시문](savedPath)` 글로 바꿔 보낸다(절대 경로 — 그림 바이트는 오지 않는다).
-   * - 찾기(`find` 단축키)는 이 면의 글자를 찾는다(`DomFindBar` — 다이어그램 SVG 는 훑지 않는다).
-   * - **사진 · 파일 첨부**(2026-10-24 그림 · 2026-11-14 아무 파일): 입력 칸에 놓은 OS 파일 · 파일 타일 짐(로컬은 복사 · 원격은 내려받기) ·
-   *   붙여 넣은 그림은 로컬 첨부 자리(`<data_root>/attachments/<hex>/` — AI 타일 첨부와 같은 자리 · 30일 정리)의 사본이 되어 칸 위 칩으로
-   *   선다(하나 10 MB · 합쳐 8개 — 그림은 미리보기 · 그 밖은 파일 아이콘 + 이름). 보내면 그림은 `side_chat_send` 의 `images`(Claude 블록 ·
-   *   Codex `localImage`), 그 밖은 `files`(판 32 — 서버가 그 채팅 CLI 의 cwd 안 `attachments/` 에 옮겨 적고 글 끝에 경로를 붙인다 · cwd 안이라
-   *   권한 카드 없이 읽힌다)로 간다 — 서버가 그 자리 안의 실제 파일인지 다시 본다. 꼬리의 말풍선은 이름 칩, 기록에 들면 `pictures`
-   *   (`ConvImageCache` — 타일 대화 면과 같은 명령)가 그림을 그린다.
-   * - **고르기**: `[+]` › 파일 업로드(AI 타일 대화 면 `[+]` 와 같은 이름) = 숨은 `<input type=file multiple>` → 같은 `attachFiles`(원격은
-   *   `stage_agent_attachment` 가 메인 PC 첨부 자리에 사본을 둔다). 끌어 놓기 · 붙여 넣기도 같은 길.
-   * - **폰**(`phone` — 원격 폰 덮개 `mobile/MobileChat` · 2026-11-01): Enter 는 줄바꿈 · 보내기는 단추(화면 키보드). 메뉴 줄 · 손잡이는 누르는
-   *   자리가 44px 근처다(`touch`).
-   * - **코드 블록 → 셸 타일**(2026-11-12 사용자 결정 — 메인 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 닫힌 코드 블록에 [터미널에 넣기]
-   *   (`TranscriptBody` 의 `codeActions` → `app/code-to-term` 의 `codeToTerminal` — 문서 타일과 같은 상자 · 같은 규칙, 입력 줄에 넣기만 ·
-   *   Enter 는 사람). 이 면은 타일이 아니라 `sourcePaneId` 가 없다 — 상자의 새 터미널 줄은 **새 탭**에 열고, Esc 는 누른 단추로만 돌아간다.
-   *   폰은 넣은 뒤 덮개를 걷는다(받은 타일이 덮개 밑에 가려 있다 — `closeMobileOverlay`).
-   * - **경로 링크**(2026-11-12 사용자 결정 — 메인 PC 독 · 원격 웹 독 · 폰 모두): 에이전트 말의 파일 경로(`:12` · `:12-20` · `#L12` 줄 꼬리 포함)를
-   *   그냥 클릭에 문서 타일로 연다 — AI 타일 대화 면과 같은 판정 · 같은 풀기(`TranscriptBody` 의 `paths` → `MarkdownBlocks`, `resolvePathLink`).
-   *   채팅 프로세스는 늘 이 PC 라 자리는 `local`, 상대 경로의 기준은 그림과 같은 `baseDir`(모르면 절대 · `~/` 경로만). 여는 일은
-   *   `app/panes` 의 `openPathFromChat`(파일일 때만 · 지금 탭의 포커스 타일 곁 — 팔레트 "파일 열기…" 와 같은 자리 · 탭이 없으면 새 탭 · 꼬리 줄로).
-   *   원격 창(웹 · 폰)에서도 경로는 메인 PC 경로이고 여는 것은 메인 PC 에 요청이다. 폰은 연 뒤 덮개를 걷는다.
+   * 사이드 채팅 하나의 대화 면 — 상태는 `app/side-chat-live.svelte.ts` 가 쥐어 이 컴포넌트가 사라져도 지금 턴을 잃지 않는다.
+   * - 턴이 끝나면(`ended` 가 늘면) 기록을 한 번 받고, 받은 뒤에야 그 턴의 꼬리를 걷는다(`clearEndedSideChat`) — 따라가기 폴링은 쓰지 않는다.
+   * - 권한 카드의 답은 사람만 낸다(`side_chat_decide`) — [이 채팅에서 허용] = 허용 + 그 종류를 이 채팅의 허용 목록에(종류는 서버가 그 요청에서 읽는다).
+   * - 서버가 모드(Manual · Auto) · 허용 목록으로 대신 허용한 요청은 카드 대신 단추 없는 끝난 한 줄(`perm-auto`)로 남는다.
+   * - 첨부는 로컬 첨부 자리의 사본만 보낸다 — 서버가 그 자리 안의 실제 파일인지 다시 본다.
+   * - [터미널에 넣기]는 입력 줄에 넣기만 하고 Enter 는 사람이 친다. 이 면은 타일이 아니라 `sourcePaneId` 가 없어 새 터미널 줄은 새 탭에 연다.
+   * - 그림 · 경로 링크의 상대 경로 기준은 CLI 의 cwd(`baseDir`) — 원격 창(웹 · 폰)에서도 경로는 메인 PC 경로다.
    */
   import { onDestroy, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
@@ -128,25 +86,17 @@
     inputEl = $bindable(null),
   }: {
     chatId: string;
-    /** 이 채팅(목록의 그 객체 — 모델 · 강도 · 연결) */
     chat: SideChat;
-    /** 이 채팅의 지금 CLI(`claude` · `codex`) — 기록을 읽는 갈래 */
     cli: string;
-    /** 화면에 쓸 CLI 이름 */
     cliName: string;
-    /** 고를 수 있는 CLI(모델 메뉴의 CLI 스위치) — 감지 전엔 `null` */
     offered: readonly Pick<AiCli, "id" | "name">[] | null;
-    /** 연결 칩들(`linkChipStates` — 연결 순서) — 칸 안 칩 · `[+]` 의 타일 연결 줄 · 보낼 때 실을 이름(`linkSendNames` — 머리글이 같은 이름이 되게) */
+    /** 보낼 이름은 `linkSendNames` 로 만든다 — 칩과 머리글이 같은 이름이 되게 */
     chipLinks: readonly LinkChip[];
-    /** 입력 칸 위 한 줄(연결 칩의 안내 — 읽기 허용이 꺼진 타일 · 닫힌 타일 · 5단계) */
     linkNote?: Snippet;
-    /** 보냈다(제목 · 시각 — `app/side-chats`) */
     onsent?: (text: string) => void;
-    /** [다시 시작] */
     onrestart: () => void;
-    /** CLI 가 도는 폴더(갈라 온 채팅 — 서버가 알린 절대 경로). 비면 채팅 폴더 — 그림의 상대 경로 기준 */
+    /** 갈라 온 채팅의 CLI 폴더(서버가 알린 절대 경로) — 비면 채팅 폴더가 상대 경로의 기준이다 */
     cwd?: string;
-    /** 폰 덮개 — Enter 줄바꿈 · 누르는 자리 44px(머리말) */
     phone?: boolean;
     inputEl?: HTMLTextAreaElement | null;
   } = $props();
@@ -154,7 +104,6 @@
   let pickEl = $state<HTMLInputElement | null>(null);
   const linkNames = $derived(linkSendNames(chipLinks));
 
-  /** 입력 칸 손잡이(`[+]` · 모델 키워드)의 상태 · 바꾸기 — 머리말 */
   const ctl = new SideChatControls({
     chat: () => chat,
     offered: () => offered,
@@ -163,12 +112,10 @@
     pickFiles: () => pickEl?.click(),
   });
 
-  /** 떠 있는 메뉴를 모두 닫는다(독이 닫힐 때 — `ChatDock`) */
   export function closeMenus(): void {
     ctl.closeAll();
   }
 
-  /** 에이전트 말 코드 블록의 [터미널에 넣기] — 상자는 단추 아래 · 오른쪽 맞춤(문서 타일과 같다 · 머리말) */
   const codeActions = {
     onterm: (code: string, button: HTMLElement) => {
       const r = button.getBoundingClientRect();
@@ -176,10 +123,7 @@
     },
   };
 
-  /**
-   * 에이전트 말의 파일 경로 링크 — 늘 로컬 자리 · 채팅 폴더 기준(`baseDir` — 모르면 절대 · `~/` 경로만), 여는 일은 `openPathFromChat`(머리말).
-   * 폴더를 알기 전(`null`)에도 절대 경로는 건다.
-   */
+  /** 폴더를 알기 전(`null`)에도 절대 경로는 건다 */
   const pathLinks = $derived.by(() => {
     const place: PathLinkPlace = { kind: "local", cwd: baseDir };
     const label = (r: NonNullable<ResolvedPath>, m: PathMatch) =>
@@ -199,7 +143,7 @@
     };
   });
 
-  /** 사진 · 파일 고르기 — 고른 파일을 같은 첨부 길로(같은 파일을 다시 고를 수 있게 값을 비운다) */
+  /** 같은 파일을 다시 고를 수 있게 값을 비운다 */
   function onPicked(ev: Event): void {
     const input = ev.currentTarget as HTMLInputElement;
     const files = Array.from(input.files ?? []);
@@ -207,7 +151,6 @@
     if (files.length > 0) attachFiles(files);
   }
 
-  /** 한 쪽의 항목 수 — 시트 · 타일 대화 면과 같다 */
   const PAGE = 40;
 
   const live = $derived(sideChatLiveOf(chatId));
@@ -237,7 +180,6 @@
       () => (baseDir = ""),
     );
   }
-  /** 마지막으로 받은 그림 주소들 — 폴더를 알게 되면 그때 맞춘다 */
   let imageSrcs: readonly string[] = [];
   const syncImages = () => {
     const dir = baseDir;
@@ -261,7 +203,7 @@
     },
   };
 
-  // 사람 말에 바로 실린 그림(입력 칸 칩으로 보낸 그림 — Claude base64 · Codex 데이터 URL) — 타일 대화 면과 같은 캐시 · 같은 명령(로컬)
+  // 사람 말에 바로 실린 그림 — 타일 대화 면과 같은 캐시 · 같은 명령(로컬)
   const picCache = new ConvImageCache();
   onDestroy(() => picCache.dispose());
   function fetchPicture(p: TranscriptPicture): Promise<ArrayBuffer> {
@@ -284,16 +226,13 @@
     },
   };
 
-  // ── 첨부 칩 — 사진 · 파일 · 로컬 첨부 자리의 사본(서버가 그 자리 안의 실제 파일만 받는다) ─────────────────
+  // ── 첨부 칩 ──
 
   const attachKey = $derived(`side:${chatId}`);
   const attachments = $derived(composerAttachmentsOf(attachKey));
   onDestroy(() => clearComposerAttachments(untrack(() => attachKey)));
 
-  /**
-   * **막 보낸 그림**(2026-11-14) — 이 창에서 보낸 말의 그림 칩 미리보기를 그 말풍선(꼬리)이 그림으로 이어 쓴다. 열쇠 = `<채팅 id>:<clientId>`.
-   * 그 말이 꼬리에서 걷히면(기록이 받아 `pictures` 로 그린다) · 면이 사라지면 거둔다. 다른 창이 보낸 말 · 그림 밖 파일은 이름 칩 그대로.
-   */
+  /** 막 보낸 그림의 미리보기(열쇠 `<채팅 id>:<clientId>`) — 그 말이 꼬리에서 걷히거나 면이 사라지면 거둔다 */
   let sentPics = $state<Record<string, SentPic[]>>({});
   const sentKey = (cid: string) => `${chatId}:${cid}`;
   $effect(() => {
@@ -314,7 +253,7 @@
     for (const pics of Object.values(untrack(() => sentPics))) revokeSentPics(pics);
   });
 
-  /** 너무 크면(10 MB — 서버 판정과 같다) 알리고 뺀다. 크기를 모르는 것(파일 타일 짐)은 서버가 본다 */
+  /** 10 MB — 서버 판정과 같다. 크기를 모르는 것(파일 타일 짐)은 서버가 본다 */
   function withinSize<T>(items: readonly T[], name: (x: T) => string, size: (x: T) => number | null): T[] {
     const out: T[] = [];
     for (const x of items) {
@@ -324,7 +263,6 @@
     return out;
   }
 
-  /** OS 파일 · 붙여 넣은 그림 — 로컬 첨부 자리로 사본(`stage_agent_attachment`) */
   function attachFiles(files: File[]): void {
     const ok = withinSize(files, (f) => f.name, (f) => f.size);
     if (ok.length === 0) return;
@@ -335,7 +273,6 @@
     );
   }
 
-  /** 이 면에 놓았다 — OS 파일 또는 파일 타일 짐(로컬은 복사 · 원격은 내려받기 — 둘 다 로컬 첨부 자리로) */
   function onDropData(dt: DataTransfer): void {
     const files = Array.from(dt.files ?? []);
     if (files.length > 0) {
@@ -372,7 +309,6 @@
         key: keyOf(e),
         item,
         spinning: e.kind === "tool" && !e.finished,
-        // 아직 자라는 모델 글 — 닫히지 않은 ```mermaid 는 그림으로 그리지 않는다(`TranscriptBody` 의 `diagrams`)
         streaming: e.kind === "text" && !e.done && st.status === "running",
       };
     });
@@ -387,7 +323,6 @@
     return busy ? "running" : "idle";
   });
 
-  /** 첫 보내기 — 서버가 CLI 를 띄우고 준비를 기다리는 동안 보내기를 막고 한 줄 */
   const gate = $derived.by((): ComposerGate | null => {
     if (!live?.sending || busy) return null;
     return { text: t("app.chatDock.gate.starting", { cli: cliName }) };
@@ -406,7 +341,6 @@
 
   // ── 권한 결정 ─────────────────────────────────────────────────────────────────
 
-  /** 답을 보내는 중인 요청 — 두 번 누르지 않게 */
   let deciding = $state<Record<string, true>>({});
 
   async function decide(requestId: string, decision: Decision, remember = false): Promise<void> {
@@ -668,7 +602,6 @@
 </div>
 
 <style>
-  /* `[+]` — 입력 칸 아래 줄 왼쪽 끝(보내기 원과 같은 32 원 · 낮은 면). 열려 있으면 고른 면 + 45° 돌아 × 모양(목업 D3) */
   .plus {
     position: relative;
     width: 32px;
@@ -745,7 +678,6 @@
     color: var(--fg-1);
     background: color-mix(in srgb, var(--err) 12%, var(--surface-field));
     border: 1px solid color-mix(in srgb, var(--err) 40%, var(--line-strong));
-    /* 입력 칸 위 안내 말풍선(`ChatDock` 의 `.link-note`)과 같은 모서리 — 색은 오류 톤 그대로 */
     border-radius: var(--radius-surface-inner);
   }
 
@@ -775,7 +707,6 @@
     background: var(--control-ghost-hover);
   }
 
-  /* 권한 카드 — 대화 줄 안의 얇은 판(기다리는 동안은 경고색 테두리) */
   .perm {
     display: flex;
     flex-direction: column;
@@ -805,7 +736,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* 외부 MCP 도구의 카드 — 작은 알약 하나(설명 줄 없음) */
   .perm-badge {
     flex: none;
     padding: 1px 8px;
@@ -847,7 +777,7 @@
     gap: var(--space-2);
   }
 
-  /* 단추 셋 — 좁은 독(320px)에서는 줄을 바꾼다([이 채팅에서 허용] 이 길다) */
+  /* 좁은 독(320px)에서는 단추 줄을 바꾼다 */
   .perm-actions {
     flex-wrap: wrap;
   }
@@ -858,7 +788,6 @@
     white-space: nowrap;
   }
 
-  /* 서버가 대신 허용한 요청 — 끝난 한 줄(대화 줄 안의 흐린 글 · 카드 테두리 없음) */
   .perm-auto {
     display: flex;
     align-items: center;
@@ -903,7 +832,6 @@
     color: var(--fg-2);
   }
 
-  /* 알림 한 줄 — 끊김 · CLI 알림은 흐리게, 오류는 오류색 */
   .note {
     font-size: var(--t-xs);
     color: var(--fg-3);
@@ -923,7 +851,6 @@
     font-size: var(--t-sm);
     background: var(--surface-field);
     border: 1px solid var(--line-strong);
-    /* 오류 줄(`.error`) · 입력 칸 위 안내 말풍선과 같은 모서리 */
     border-radius: var(--radius-surface-inner);
   }
 

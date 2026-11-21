@@ -1,15 +1,10 @@
 //! 에이전트 지침 라이브러리와 실제 파일의 관리 블록 (docs/log/2026-10-06-agent-instructions.md).
 //!
-//! 라이브러리는 instance::config_root()/instructions 에만 산다. rulesync 머리말의 필요한 부분만 읽고,
-//! 모르는 최상위 칸과 그 아래 줄은 원문 그대로 돌려놓는다. 깨진 항목 하나가 나머지 목록을 가리지 않는다.
-//! 본문은 사람이 쓴 글이며 Debug·오류에는 싣지 않는다. 저장과 반영은 서로 다른 명령이다.
-//!
-//! 파일 하나에 이 인스턴스의 관리 블록 하나만 둔다. 표시가 깨졌으면 추측해서 고치지 않고 Error 로 남긴다.
-//! 블록 밖 바이트는 그대로이고, 제거 때 바로 앞 빈 줄 하나만 걷는다. 개발/릴리스 표시는 instance 가 정한다.
-//! 미리 보기는 읽기만 하고 반영은 계획을 다시 계산한다. 쓰기는 같은 폴더의 임시 파일 + rename 이다.
-//!
-//! MCP 도구는 없다 — 다음 실행의 지침을 바꾸는 문은 사람의 Tauri 명령뿐이다. SSH 는 이미 열린 대화형 타일 연결만 빌리고, WSL 은 건너뛴다.
-//! git 은 모른다(커밋·무시 정책 없음). 워크트리 자리만 crate::worktree 의 목록을 빌려 쓴다.
+//! 라이브러리는 instance::config_root()/instructions 에만 산다. rulesync 머리말의 모르는 최상위 칸과 그 아래 줄은 원문 그대로 돌려놓는다.
+//! 본문은 사람이 쓴 글이며 Debug·오류에는 싣지 않는다.
+//! 파일 하나에 이 인스턴스의 관리 블록 하나만 둔다. 표시가 깨졌으면 추측해서 고치지 않고 Error 로 남긴다. 블록 밖 바이트는 그대로다.
+//! MCP 도구는 없다 — 다음 실행의 지침을 바꾸는 문은 사람의 Tauri 명령뿐이다. SSH 는 이미 열린 대화형 타일 연결만 빌린다.
+//! git 은 모른다(커밋·무시 정책 없음).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -89,7 +84,7 @@ fn validate_name(name: &str) -> Result<(), String> {
     }
 }
 
-/// 저장·파싱이 같은 정규화를 쓴다. 정규화한 경로가 비면 루트를 뜻한다.
+/// 정규화한 경로가 비면 루트를 뜻한다.
 fn normalize_subpath(value: Option<&str>) -> Result<Option<String>, String> {
     let Some(value) = value.filter(|value| !value.is_empty()) else { return Ok(None); };
     let path = value.replace('\\', "/");
@@ -275,7 +270,6 @@ fn rulesync_id(id: &str) -> &str {
     }
 }
 
-/// 본문과 모르는 최상위 블록은 해석하지 않는다. 닫는 --- 뒤부터가 본문이다.
 fn parse(name: &str, text: &str) -> Result<Instruction, String> {
     parse_with_scope(name, text, Scope::Global)
 }
@@ -387,7 +381,7 @@ fn flow(values: &[String]) -> String {
     format!("[{}]", values.iter().map(|s| quoted(s)).collect::<Vec<_>>().join(", "))
 }
 
-/// 아는 칸의 순서는 고정한다. extra 는 줄 끝을 포함한 원문이므로 그대로 끼운다.
+/// extra 는 줄 끝을 포함한 원문이므로 그대로 끼운다.
 fn serialize(item: &Instruction, newline: &str) -> String {
     let targets: Vec<String> = item.targets.iter().map(|s| rulesync_id(s).to_owned()).collect();
     let mut out = format!("---{newline}targets: {}{newline}", flow(&targets));
@@ -460,9 +454,7 @@ fn list_at(root: &Path) -> Result<InstructionList, String> {
     Ok(out)
 }
 
-// ---------------------------------------------------------------------------
-// 관리 블록 — 파일 I/O 를 모르는 순수 조작
-// ---------------------------------------------------------------------------
+// ── 관리 블록 — 파일 I/O 를 모르는 순수 조작 ──
 
 #[derive(Clone, PartialEq, Eq)]
 enum Edit {
@@ -498,7 +490,7 @@ fn marker(line: &str, name: &str, kind: &str) -> bool {
     })
 }
 
-/// 표시 줄의 바이트 구간. 다른 인스턴스의 표시는 이 함수에 보이지 않는다.
+/// 다른 인스턴스의 표시는 이 함수에 보이지 않는다.
 fn block_range(text: &str, dev: bool) -> Result<Option<std::ops::Range<usize>>, BlockError> {
     let name = crate::instance::instruction_marker_name(dev);
     let mut begins = Vec::new();
@@ -520,7 +512,6 @@ fn block_range(text: &str, dev: bool) -> Result<Option<std::ops::Range<usize>>, 
     }
 }
 
-/// 항목 순서는 이름순이다. 프로젝트와 전역 모두 같은 합성 규칙을 쓴다.
 fn compose(items: &[Instruction]) -> Option<String> {
     if items.is_empty() {
         return None;
@@ -543,7 +534,7 @@ fn managed_block(body: &str, dev: bool, newline: &str, terminated: bool) -> Stri
         normalize_newlines(body.trim(), newline), if terminated { newline } else { "" })
 }
 
-/// 추가 때 필요한 빈 줄만 보탠다. prefix 의 공백·개행은 지우지 않는다.
+/// prefix 의 공백·개행은 지우지 않는다.
 fn append_separator(text: &str, newline: &str) -> String {
     if text.is_empty() {
         return String::new();
@@ -553,7 +544,6 @@ fn append_separator(text: &str, newline: &str) -> String {
         separator.push_str(newline);
     }
     let last = text.trim_end_matches(['\r', '\n']).rsplit('\n').next().unwrap_or("");
-    // 이미 마지막 줄이 비어 있으면 추가 빈 줄은 필요 없다.
     if !text.ends_with(&format!("{newline}{newline}")) && !last.trim().is_empty() {
         separator.push_str(newline);
     }
@@ -605,15 +595,12 @@ fn apply_block(existing: Option<&str>, body: Option<&str>, dev: bool) -> Result<
     }
 }
 
-// ---------------------------------------------------------------------------
-// 파일 자리 — 환경과 목록만 받는 계획. 디스크는 읽기만 한다.
-// ---------------------------------------------------------------------------
+// ── 파일 자리 — 디스크는 읽기만 한다 ──
 
 struct PlanEnv<'a> {
     dev: bool,
     claude_global: Option<PathBuf>,
     codex_global: Option<PathBuf>,
-    /// 실제 어댑터가 bare 를 뺀다. 테스트는 임시 폴더 목록을 그대로 준다.
     worktrees: &'a dyn Fn(&Path) -> Vec<PathBuf>,
 }
 
@@ -686,7 +673,6 @@ fn failed(mut row: FileChange, reason: String) -> FileChange {
     row
 }
 
-/// 로컬·원격 모두 파일 글자 스냅숏으로 같은 판정을 한다. I/O·본문 Debug 없음.
 fn plan_file_snapshot(mut row: FileChange, existing: Result<Option<String>, String>, body: Option<&str>, dev: bool) -> FileChange {
     row.block = body.map(str::to_owned);
     let existing = match existing {
@@ -746,7 +732,6 @@ fn skipped(path: &Path, project: &str, reason: String) -> FileChange {
     row
 }
 
-/// 두 인스턴스의 유효 블록을 빼고 사람의 가져오기 한 줄을 본다.
 /// 현재 표시가 깨졌으면 Error, 다른 인스턴스의 깨진 표시는 해석하거나 고치지 않는다.
 fn outside_import(text: &str, dev: bool) -> Result<bool, BlockError> {
     let mut ranges = Vec::new();
@@ -789,7 +774,6 @@ fn claude_project_snapshot(row: FileChange, existing: Result<Option<String>, Str
     plan_file_snapshot(row, Ok(existing), body, dev)
 }
 
-/// 로컬·SFTP 어댑터는 존재·본문 스냅숏만 모으고 판정은 이 함수가 한다.
 struct ProjectSnapshot {
     directory: Result<bool, String>,
     agents: Result<Option<String>, String>,
@@ -828,7 +812,7 @@ fn project_snapshot(row: FileChange, body: Option<&str>, snapshot: ProjectSnapsh
     ]
 }
 
-/// 상위 CLAUDE 파일은 워크트리 경계까지만 본다. 루트도 같은 목록을 쓴다.
+/// 상위 CLAUDE 파일은 워크트리 경계까지만 본다.
 fn claude_directories(subpath: Option<&str>) -> Vec<String> {
     let mut paths = vec![String::new()];
     if let Some(subpath) = subpath {
@@ -861,7 +845,6 @@ fn local_snapshot(wt: &Path, subpath: Option<&str>, has_body: bool) -> ProjectSn
     ProjectSnapshot { directory, agents: read_text(&path.join("AGENTS.md")), claude: read_text(&path.join("CLAUDE.md")), other_claude }
 }
 
-/// 같은 경로·subpath에 걸린 프로젝트 지침을 이름별로 한 번만 합성한다.
 fn projects_subpath_body(library: &[Instruction], projects: &[&Project], subpath: Option<&str>) -> Option<String> {
     let mut items: Vec<Instruction> = library.iter().filter(|item| {
         item.enabled && item.scope == Scope::Project && item.subpath.as_deref() == subpath
@@ -954,7 +937,7 @@ fn plan_with_written(env: &PlanEnv<'_>, library: &[Instruction], projects: &[Pro
         }
     }
     for (wt, projects) in groups {
-        let project = projects[0]; // 이 경로를 처음 낸 프로젝트가 표시용 id를 갖는다.
+        let project = projects[0];
         for subpath in project_subpaths(library, &projects, written) {
             let body = projects_subpath_body(library, &projects, subpath.as_deref());
             let path = subpath.as_deref().map_or_else(|| wt.clone(), |subpath| wt.join(subpath));
@@ -966,9 +949,7 @@ fn plan_with_written(env: &PlanEnv<'_>, library: &[Instruction], projects: &[Pro
 }
 
 
-// ---------------------------------------------------------------------------
-// 가져오기 — 원본은 읽기만 하고 라이브러리에 복사할 후보를 만든다.
-// ---------------------------------------------------------------------------
+// ── 가져오기 — 원본은 읽기만 한다 ──
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -995,7 +976,6 @@ struct ImportSource {
 }
 
 /// 둘 중 어느 표시라도 깨졌거나 두 인스턴스의 블록이 겹치면 가져오지 않는다.
-/// 블록 밖 글자는 여기서 그대로 보존하고, 후보 본문을 만들 때만 줄 끝과 trim 을 정리한다.
 fn strip_import_blocks(text: &str) -> Result<String, BlockError> {
     let mut ranges = Vec::new();
     for dev in [false, true] {
@@ -1063,7 +1043,6 @@ fn import_file(source: ImportSource, project: Option<&Project>, used: &mut HashS
         match strip_import_blocks(&text) {
             Ok(outside) => {
                 if source.rulesync {
-                    // 이름은 파일 이름의 슬러그다. 실패한 머리말도 원문을 잃지 않는다.
                     if let Ok(parsed) = parse_with_scope("imported", &outside, candidate.scope) {
                         candidate.subpath = parsed.subpath;
                         candidate.description = parsed.description;
@@ -1144,7 +1123,6 @@ fn import_candidates_at(root: &Path, env: &PlanEnv<'_>, project: Option<&Project
     Ok(sources.into_iter().filter_map(|source| import_file(source, project, &mut used)).collect())
 }
 
-/// 새 워크트리 단일 반영은 지정한 프로젝트 하나의 지침만 합성한다.
 #[cfg(test)]
 fn plan_worktree(env: &PlanEnv<'_>, library: &[Instruction], project: Option<&Project>, path: &Path) -> Vec<FileChange> {
     plan_worktree_with_written(env, library, project, path, &written::Written::new())
@@ -1176,12 +1154,9 @@ fn plan_worktree_with_written(env: &PlanEnv<'_>, library: &[Instruction], projec
     rows
 }
 
-// ---------------------------------------------------------------------------
-// 쓰기와 Tauri 명령 — 디스크·목록 실행은 전부 블로킹 풀 안이다.
-// ---------------------------------------------------------------------------
+// ── 쓰기와 Tauri 명령 — 디스크 · 목록 실행은 전부 블로킹 풀 안이다 ──
 
-/// 창이 여럿이어도 읽기-계산-쓰기 한 벌을 직렬화한다. 느린 일의 잠금도 풀 안에서 잡는다.
-// 로컬·원격을 기다리는 동안 다른 반영이 기록의 제거 판정을 낡게 만들지 않도록 전체 작업도 직렬화한다.
+/// 창이 여럿이어도 읽기-계산-쓰기 한 벌을 직렬화한다 — 원격을 기다리는 동안 다른 반영이 기록의 제거 판정을 낡게 만들지 않게.
 static PLAN_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -1233,7 +1208,6 @@ fn save_at(root: &Path, mut item: Instruction, previous_name: Option<&str>) -> R
     let text = serialize(&item, newline);
     // IPC 로 온 글자도 파일과 같은 파서를 거친다 — 쓰고 난 뒤 못 읽는 항목은 만들지 않는다.
     let saved = parse(&item.name, &text)?;
-    // 앱 소유 라이브러리 저장은 프로젝트 범위 반영과 별개다.
     std::fs::create_dir_all(root).map_err(io_error)?;
     write_atomic(&path, &text, false)?;
     if let Some(previous) = previous_path.filter(|previous| *previous != path) {
@@ -1247,7 +1221,7 @@ fn delete_at(root: &Path, name: &str) -> Result<(), String> {
     remove_file(&root.join(format!("{name}.md")))
 }
 
-/// 파일 하나 실패해도 다음 줄을 쓴다. 미리 보기의 Error·Skipped·Unchanged 는 쓰기가 없다.
+/// 파일 하나 실패해도 다음 줄을 쓴다.
 fn apply_changes(rows: &mut [FileChange]) {
     for row in rows {
         row.attempted_write = matches!(row.edit, Edit::Write(_));
@@ -1344,7 +1318,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
     }).await.map_err(|e| tr!(ko: "지침 작업이 실패했습니다: {e}", en: "The instruction task failed: {e}"))?
 }
 
-/// 없는 라이브러리는 빈 목록이다. 폴더 읽기 실패는 빈 목록인 척하지 않는다.
+/// 폴더 읽기 실패는 빈 목록인 척하지 않는다.
 #[tauri::command]
 pub async fn instructions_list() -> Result<InstructionList, String> {
     blocking(|| list_at(&library_root()?)).await

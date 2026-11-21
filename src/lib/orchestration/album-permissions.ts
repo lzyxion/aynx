@@ -33,7 +33,7 @@ export function albumWidens(old: AlbumPermissions, next: AlbumPermissions): bool
     || old.accept.require.some((o) => !next.accept.require.some((n) => n.role === o.role && n.passes >= o.passes));
 }
 
-/** 이미 확인한 위험을 유지하는 좁힘에는 재확인을 요구하지 않는다(S4). */
+/** 이미 확인한 위험을 유지하는 좁힘에는 재확인을 요구하지 않는다. */
 export function albumPermissionRisk(old: AlbumConfigView, next: AlbumPermissions): boolean {
   const risky = next.verifyAuto || next.planTools || !!next.autoMerge || next.members.some((m) => m.grade === "full");
   return risky && (old.riskConfirmedAt == null || (!old.verifyAuto && next.verifyAuto) || (!old.planTools && next.planTools) || (!old.autoMerge && !!next.autoMerge)

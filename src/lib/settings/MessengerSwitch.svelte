@@ -7,15 +7,9 @@
   import MessengerTokenForm from "$lib/settings/MessengerTokenForm.svelte";
 
   /**
-   * **두 방식 채널(Discord · Slack)의 방식 바꾸기 칸**(2026-11-19 목업 "Discord 채널 줄" ②③ · ⑤⑥ · "Slack 채널 줄" ④) — 한 방식이 연결된 채로
-   * "연결 방식" 에서 다른 방식을 골랐을 때 그 방식의 칸(Slack 봇은 두 칸). [연결] 은 곧바로 등록하지 않고 칸 자리에 바꾸기 확인을 세운다 —
-   * [바꾸기] 만 바꾸고(`run`), [취소] 는 칸으로 돌아간다.
-   *
-   * - **친 비밀(토큰 · 주소)은 화면에 남기지 않는다** — 확인이 서는 순간 칸을 비우고 값은 이 몸통의 메모리(룬 아닌 변수)에만 둔다. 확인 · 취소 ·
-   *   거절 어느 쪽이든 끝나면 버린다. 칸이 둘이면 `joinTokens`(`"<봇>\n<앱>"`)로 이어 한 값으로 둔다.
-   * - 거절(틀린 토큰 · 주소 · 닿지 않음)이면 아무것도 바뀌지 않는다(백엔드 순서 — `messenger_bot_set_token` · `messenger_replace_bot_with_webhook`) —
-   *   칸으로 돌아가 그 밑에 문구를 세운다(연결 전 몸통과 같은 자리).
-   * - 원격 창에서는 칸 · [연결] · [바꾸기] 가 잠긴다(`locked` — 어느 방향이든 봇 토큰을 넣거나 지운다 · "메인 PC 에서만" 툴팁).
+   * 두 방식 채널의 방식 바꾸기 칸 — [연결] 은 곧바로 등록하지 않고 바꾸기 확인을 세운다.
+   * - 친 비밀(토큰 · 주소)은 화면에 남기지 않는다 — 확인이 서는 순간 칸을 비우고 값은 룬 아닌 변수에만 둔다. 끝나면 어느 쪽이든 버린다.
+   * - 원격 창에서는 칸 · [연결] · [바꾸기] 가 잠긴다(`locked` — 어느 방향이든 봇 토큰을 넣거나 지운다).
    */
   let {
     fields,
@@ -28,28 +22,23 @@
     locked,
     run,
   }: {
-    /** 칸들 — 연결 전 몸통의 칸과 같은 id(`messenger-<채널>-token` · `messenger-slack-app-token` · `messenger-<채널>-webhook`) */
+    /** 연결 전 몸통의 칸과 같은 id 다 */
     fields: readonly { id: string; label: string; placeholder: string }[];
-    /** 줄 이름 — 칸이 둘일 때와 확인이 섰을 때 */
     name: string;
-    /** 그 방식의 등록 요령(연결 전 몸통과 같은 글 — 번호 줄이면 빈 글자) */
     howto: string;
-    /** 번호 줄 요령(Slack 봇 — `MessengerSlackSteps`) — 글 밑에 */
     steps?: Snippet;
-    /** 지금 연결된 방식과 바꾸면 무엇이 지워지는가 한 줄 */
     note: string;
-    /** 확인 상자의 제목 · 본문 */
     title: string;
     body: string;
     locked: boolean;
-    /** [바꾸기] — 거절이면 던진다(문구 = 칸 밑 한 줄) */
+    /** 거절이면 던진다 — 그 문구가 칸 밑에 선다 */
     run: (secret: string) => Promise<void>;
   } = $props();
 
   let confirming = $state(false);
   let busy = $state(false);
   let rejection = $state<string | null>(null);
-  /** 확인을 기다리는 값 — 화면 상태가 아니다(그리지 않는다) */
+  /** 룬이 아니다 — 비밀을 그리지 않는다 */
   let held: string | null = null;
 
   const homeOnly = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
@@ -132,7 +121,6 @@
     color: var(--err);
   }
 
-  /* 바꾸기 확인 — 칸 자리에 서는 경고 면(이름 밑 줄을 다 쓴다) */
   .confirm {
     flex: 1 1 100%;
     display: flex;

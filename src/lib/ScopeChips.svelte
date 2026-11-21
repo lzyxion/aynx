@@ -2,13 +2,7 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { FolderScope, ScopeChip } from "$lib/folder-conversations";
 
-  /**
-   * **범위 칩** — "이 워크트리 · N" / "이 프로젝트 전체 · M" / "모든 대화 · N"
-   * (docs/log/2026-09-27-folder-conversations.md). 이 폴더의 지난 대화(`FolderConversations`)와 프로젝트 시작 화면
-   * (`ProjectStart`)이 **같은 칩**을 쓴다 — 두 화면의 범위가 같은 말로 읽히게. 칩을 고르는 키(`Tab`)는 각 화면이
-   * 듣는다(여기는 누르기만). 칩은 포커스를 받지 않는다(`tabindex="-1"`) — `Tab` 이 칩 사이를 도는 것이 아니라 범위를
-   * 바꾸는 키이기 때문이다.
-   */
+  /** 칩은 포커스를 받지 않는다 — `Tab` 은 칩 사이를 도는 키가 아니라 각 화면이 듣는 범위 바꾸기 키다 */
   let {
     chips,
     current,
@@ -20,7 +14,7 @@
     current: FolderScope;
     /** 기준 폴더가 등록된 워크트리(주 폴더 포함)인가 — "이 워크트리" 냐 "이 폴더" 냐 */
     registered: boolean;
-    /** 원격이면 그 별칭 — "<호스트> 전체 · N" 칩의 이름(docs/log/2026-09-27-remote-conversations.md) */
+    /** 원격이면 그 별칭 */
     host?: string | null;
     onpick: (scope: FolderScope) => void;
   } = $props();
@@ -79,7 +73,6 @@
     background: var(--surface-hover);
   }
 
-  /* 고른 범위 — 이 화면의 선택 판과 같은 `--accent-soft` */
   .chip.on {
     color: var(--fg-1);
     background: var(--accent-soft);

@@ -1,5 +1,4 @@
 <script lang="ts">
-  // 트랙 플레이어 오른쪽의 상태·보고·사람 관문. 확인 대상은 부모의 고정 묶음만 돌려준다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import {
     TASK_STATE_KEY,
@@ -52,7 +51,6 @@
   import InfoNote from "$lib/settings/InfoNote.svelte";
   import { modelLabel } from "$lib/model-order";
 
-  /** 판정 이력에 늘 보이는 줄 수 — 나머지는 "n개 더" ⓘ 팝오버 */
   const JUDGED_SHOWN = 4;
 
   let {
@@ -101,16 +99,14 @@
     askOverride: (task: TaskView) => void;
     cancelOverride: () => void;
     confirmOverride: (pin: OverridePin, task: TaskView) => void;
-    /** Task 취소 · 다시 열기를 이 줄에 그릴지 — 트랙 화면은 오른쪽 칸 맨 아래(시도 세부 정보 줄)에 따로 둔다 */
     taskState?: boolean;
-    /** 사람 확인 카드 안인가 — 관문의 주 단추가 호박(아니면 강조색) */
     attention?: boolean;
   } = $props();
 
   const ta = $derived(taskActions(task, detail.state));
   const rep = $derived(reviewReport(detail, task));
   const acc = $derived(validAccepted(detail, task.id));
-  // 통합 ref 에 쌓인 수락은 [반려로 뒤집기] 를 숨긴다(트랙 줄 "통합 a3f9c21" 과 같은 값)
+  // 통합 ref 에 쌓인 수락은 [반려로 뒤집기] 를 숨긴다
   const ra = $derived(reviewActions(task, rep, detail.state, !!acc?.integrationCommit));
   const rev = $derived(acc ? null : lastRevoked(detail, task.id));
   const lates = $derived(lateReports(detail, task.id));
@@ -128,10 +124,9 @@
   const rework = $derived(reworkText(task, t));
 
   const verifyOn = $derived(!!askArgs && detail.state !== "orphaned");
-  /** 지금 이 트랙에 고정된 [검증 실행] 확인 묶음(있으면 관문 칸이 확인 모양 — 주 단추가 [이 후보로 검증 실행]) */
   const pinned = $derived(verifyOn && verifyAsk && verifyAsk.taskId === task.id ? verifyAsk : null);
 
-  /** 확인이 고정되면 관문 칸을 화면 안으로(좁은 창은 오른쪽 칸이 가운데 판 아래로 쌓인다 — 이미 보이면 움직이지 않는다) */
+  /** 좁은 창은 오른쪽 칸이 가운데 판 아래로 쌓인다 — 이미 보이면 움직이지 않는다 */
   function reveal(el: HTMLElement, on: boolean) {
     const go = (v: boolean) => {
       if (v) requestAnimationFrame(() => el.scrollIntoView({ block: "nearest" }));
@@ -145,17 +140,14 @@
   }
 </script>
 
-<!-- 트랙 상태 낱말 · 판 버전은 오른쪽 칸 머리가 쥔다(같은 말 두 번 없음 — 버전은 툴팁) -->
 <div class="task" data-task-id={task.id} data-task-state={task.state} title={`${keyText(TASK_STATE_KEY, task.state, t)} · ${t("orch.task.version", { n: task.version })}`}>
-  <!-- 사람 관문(목업 V3TrackSideGate) — 검증 후보 · 명령 상자 · [검증 실행](넓게) · [반려](빨간 테두리) · 한 줄 안내. 확인이 고정되면 같은 칸이
-       확인 모양이 된다(주 단추 = 이 후보로 검증 실행 · 경고 문구 · 만료 · [diff] [닫기]) — 칸이 오른쪽 맨 위 카드라 화면 밖으로 밀리지 않는다 -->
+  <!-- 확인이 고정되면 같은 칸이 확인 모양이 된다 — 칸이 오른쪽 맨 위 카드라 화면 밖으로 밀리지 않는다 -->
   {#if verifyOn || ra.accept || ra.reject}
     <div class="gate-box" class:amber={attention} data-track-gate-box={task.id} data-verify-ask={pinned ? task.id : undefined} role={pinned ? "dialog" : undefined}
       aria-label={pinned ? t("orch.verify.ask.title") : undefined} use:reveal={!!pinned}>
       {#if verifyOn && askArgs}
         {@const cand = t("orch.verify.ask.candidate", { oid: "\u0000", n: rep?.changedFiles.length ?? 0 }).split("\u0000")}
         <div class="verify-box">
-          <!-- 한글 문장은 UI 글꼴 · 후보 OID 만 고정폭(실기 10-31) -->
           <p class="meta">{cand[0]}<span class="mono oid">{shortOid(pinned?.candidate ?? askArgs.candidate)}</span>{cand[1] ?? ""}</p>
           <p class="mono cmd">{detail.verify?.command}</p>
         </div>
@@ -224,7 +216,6 @@
   {#if taskState && ta.reopen}
     <button type="button" class="btn btn-sm btn-ghost" disabled={busy} onclick={() => setTask(task, "todo")}>{t("orch.task.reopen")}</button>
   {/if}
-  <!-- 거친 역할 · 판정 이력(3b — 설계 3-2a: roleHistory · reviewReports) -->
   {#if steps.length > 0}
     <p class="review-line roles-line" data-task-roles={task.id}>
       <span class="meta">{t("orch.roles.history")}</span>
@@ -235,7 +226,6 @@
     </p>
   {/if}
   {#if judged.length > 0}
-    <!-- 판정 이력 — 늘 보이는 목록(최근 JUDGED_SHOWN 줄 · 나머지는 "n개 더" ⓘ 팝오버) -->
     {#snippet judgmentRow(j: (typeof judged)[number])}
       <li data-judgment={j.reviewId} data-verdict={j.verdict} data-judgment-state={j.state}>
         <span class="file-path">{j.roleName}</span>
@@ -260,7 +250,6 @@
       {/if}
     </div>
   {/if}
-  <!-- 수락 규칙 충족(3b — acceptReadiness · 보고된 Task 만) -->
   {#if ready}
     <div class="readiness" data-task-readiness={ready.ok ? "ok" : ready.delegationOff ? "no-delegation" : "unmet"}>
       {#if ready.ok}
@@ -307,7 +296,7 @@
             onclick={() => viewDiff(rep)}>{t("orch.report.diff")}</button>
         {/if}
       </div>
-      <!-- [파일 목록] — 조정자 get_diff 와 같은 고정 OID 의 목록(패치는 [diff 보기]) -->
+      <!-- 조정자 get_diff 와 같은 고정 OID 의 목록 -->
       {#if filesOpen.has(rep.reportId)}
         {@const fv = files[rep.reportId]}
         <div class="files" data-report-file-list={rep.reportId}>
@@ -351,7 +340,6 @@
         </div>
       {/if}
       {#if rep.notes}
-        <!-- 보고 메모 — 짧은 글이라 ⓘ 팝오버(판 뿌리의 `NotePopover`) -->
         <div class="notes" data-report-notes>
           <InfoNote id="report-notes-{rep.reportId}" label={t("orch.report.notes")} plain>
             {#snippet summary()}<span class="meta">{t("orch.report.notes")}</span>{/snippet}
@@ -363,7 +351,7 @@
       {#if ra.blocked}<p class="meta blocked" data-review-blocked>{t(ra.blocked)}</p>{/if}
     </div>
   {/if}
-  <!-- 검토(통합 설계 5단계) — 보고 커밋의 역할 기반 보조 검토(통합 후보 검토 아님) -->
+  <!-- 보고 커밋의 역할 기반 보조 검토(통합 후보 검토 아님) -->
   {#if rvw || rturn}
     <div class="report" data-task-review={task.id} data-review-state={rvw?.state ?? "none"}>
       {#if rvw}
@@ -374,7 +362,6 @@
           <span class="meta faint-text">{t("orch.reviewer.scope")}</span>
         </div>
       {/if}
-      <!-- 3차 2단계 — 헤드리스 검토자의 턴(도는 중 · 끝 · 실패 사유 낱말 · 실효 모델) -->
       {#if rturn}
         <p class={rturn.phase === "failed" ? "meta blocked" : "meta"} data-review-turn={rturn.phase} title={t("orch.reviewer.turn.title")}>
           {keyText(REVIEW_TURN_KEY, rturn.phase, t, { reason: rturn.reason ?? "" })}
@@ -408,7 +395,7 @@
     <p class="review-line" data-task-accepted={acc.commitOid}>
       {t("orch.review.accepted", { who: reviewer(acc.reviewer), when: clock(acc.acceptedAt), oid: shortOid(acc.commitOid) })}
     </p>
-    <!-- 면제(3b — 사람 수락이 넘은 규칙: Task 보기의 `waived`, 없으면 산출물의 `waived` · 옛 `reviewWaivedBy`) -->
+    <!-- Task 보기의 `waived`, 없으면 산출물의 `waived` · 옛 `reviewWaivedBy` -->
     {@const waivers = waiverTexts(acceptedWaivers(task, acc), t)}
     {#each waivers as w, i (i)}
       <p class="review-line faint" data-task-review-waived data-task-waived={w}>{w}</p>
@@ -516,7 +503,6 @@
     color: var(--fg-1);
   }
 
-  /* 펼친 트랙 안쪽 — 줄 머리 아래에 붙는다(테두리는 줄 카드가 쥔다) */
   .task {
     display: flex;
     align-items: center;
@@ -526,12 +512,10 @@
     font-size: var(--t-sm);
   }
 
-  /* 보일 것이 없으면(빈 자리 채움만) 칸을 접는다 — 상태 카드 아래에 빈 간격이 남지 않게 */
   .task:not(:has(> :not(.grow))) {
     display: none;
   }
 
-  /* 사람 관문 — 행 맨 위 한 줄 전체(목업 V3TrackSideGate: 후보 · 명령 상자 · 넓은 주 단추 + 빨간 테두리 [반려] · 한 줄 안내) */
   .gate-box {
     flex-basis: 100%;
     display: flex;
@@ -649,7 +633,6 @@
     color: var(--fg-1);
   }
 
-  /* 보고 블록 — Task 행 아래 한 줄 전체(행은 flex wrap) */
   .report,
   .review-line {
     flex-basis: 100%;
@@ -694,7 +677,6 @@
     color: var(--fg-2);
   }
 
-  /* 접지 않는 부가 묶음(판정 이력 · 해결한 파일 · 충돌 경로 · 출력 꼬리) — 작은 머리 한 줄 + 목록 */
   .notes {
     display: flex;
     flex-direction: column;
@@ -707,7 +689,7 @@
     margin: 2px 0 0;
   }
 
-  /* ⓘ 팝오버 안(판 뿌리의 `NotePopover` 가 그린다 — 조각은 이 파일의 범위 이름을 가진다) */
+  /* 판 뿌리의 `NotePopover` 가 그린다 — 조각은 이 파일의 범위 이름을 가진다 */
   .pop-text {
     margin: 0;
     white-space: pre-wrap;
@@ -754,7 +736,7 @@
     font-family: var(--font-mono);
   }
 
-  /* 3b — Task 의 거친 역할 · 수락 규칙 충족 */
+  /* 거친 역할 · 수락 규칙 충족 */
   .roles-line,
   .readiness {
     display: flex;
@@ -777,7 +759,7 @@
     color: var(--fg-1);
   }
 
-  /* 통합 설계 1단계 — 보고 파일 목록 */
+  /* 보고 파일 목록 */
   .files {
     display: flex;
     flex-direction: column;

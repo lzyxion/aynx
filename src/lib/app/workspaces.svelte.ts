@@ -1,6 +1,4 @@
-// 워크스페이스의 도메인 상태. 효과는 +page/tabs가 건다.
-// 아래 층은 app/tabs를 되부르지 않는다: 창 탭·선택 어댑터를 bootTabs에서 한 번 주입한다.
-// cold 트리는 읽기만 하고 방문할 때만 materialize한다. resident 탭은 전환으로 제거하지 않는다.
+// 워크스페이스의 도메인 상태. cold 트리는 읽기만 하고 방문할 때만 materialize한다. resident 탭은 전환으로 제거하지 않는다.
 import { emit, invoke } from "../ipc";
 import { tick } from "svelte";
 import { deserialize, serialize } from "$lib/tabs";
@@ -45,7 +43,6 @@ let host: WorkspaceWindow | null = null;
 let queue: WorkspaceSaveQueue | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let mainWindow = true;
-/** 원격 창(메인 PC 거울) — [`setMirrorWorkspaces`] 가 켠다 */
 let mirrorMode = false;
 let scope: WriterScope = { kind: "main" };
 let paused = $state(false);
@@ -61,7 +58,6 @@ export function currentWorkspace(): RuntimeWorkspace | null {
   return list.find((w) => w.id === currentId) ?? null;
 }
 
-/** 없는 키만 UUID로 채운다. */
 export function ensureWorkspaceKeys(tab: TabSpec, workspaceId = currentId): void {
   if (workspaceId === null) return;
   tab.workspaceId = workspaceId;
@@ -73,7 +69,6 @@ function materialize(workspace: RuntimeWorkspace): void {
   if (workspace.materialized || !host) return;
   const saved = workspace.savedTabs.filter((tab) => tab.placement.kind === "main");
   const restored = deserialize({ version: 1, activeIndex: 0, workspaces: saved });
-  // 빈 저장 workspace는 기존 새 탭과 같은 시작 화면으로 연다.
   if (restored.tabs.length === 0) restored.tabs.push(newTab());
   for (const tab of restored.tabs) ensureWorkspaceKeys(tab, workspace.id);
   host.append(restored.tabs);
@@ -93,16 +88,10 @@ function rememberCurrent(): void {
   workspace.lastActive = { ...workspace.lastActive, tabKey: tab.tabKey, tileKey: pane?.tileKey, at: Date.now() };
 }
 
-/**
- * 기록 → cold 복원 → current → 선택. 출력/Gate/channel에는 접근하지 않는다.
- * 원격 창(거울)에서는 이 창의 지금 워크스페이스만 바꾼다(`switchMirrorWorkspace` — 고르는 탭은 부르는 쪽 · 거울 환원이 정한다).
- */
+/** 출력/Gate/channel에는 접근하지 않는다. */
 export function switchWorkspace(id: string, selection?: { tabId: string; paneId?: string }, select = true): void {
   if (mirrorMode) return switchMirrorWorkspace(id);
   if (!mainWindow || !host) return;
-  // 전환 움직임(`pane/workspace-slide.ts`) — 방향은 목록 순서. 고르지 않는 전환(`select` 거짓)과 캔버스를 덮은
-  // 판(사용량 · 자원 화면)이 떠 있을 때는 걸지 않는다(탭 슬라이드 규칙과 같다). 새 탭 줄·캔버스가 그려진
-  // 뒤(같은 프레임 — 마이크로태스크)에 건다.
   const dir = select && !coverViewOpen()
     ? workspaceSlideDir(list.findIndex((w) => w.id === currentId), list.findIndex((w) => w.id === id))
     : 0;
@@ -248,7 +237,6 @@ export async function createWorkspace(name: string, tab: TabSpec): Promise<boole
   return true;
 }
 
-/** 그 워크스페이스의 마지막 활성 탭 · 타일을 적는다(지금 보지 않는 워크스페이스에 원격이 새 탭을 넣었을 때 — `openTabInWorkspace`) */
 export function noteWorkspaceLastTab(id: string, tabKey: string | undefined, tileKey: string | undefined): void {
   const workspace = list.find((w) => w.id === id);
   if (workspace) workspace.lastActive = { ...workspace.lastActive, tabKey, tileKey, at: Date.now() };
@@ -303,11 +291,6 @@ export function workspaceSwitcherVisible(): boolean {
 }
 export function workspaceMainWindow(): boolean { return mainWindow && currentId !== null; }
 export function openWorkspaceSwitcher(): void { if (mainWindow && currentId) switcher = true; }
-/**
- * 이전·다음 워크스페이스로 곧장 옮긴다(`prev-workspace` · `next-workspace`) — 목록 순서 · 끝에서 처음으로 순환.
- * 전환기에서 고를 때와 같은 `switchWorkspace` 길(움직임 · 마지막 활성 타일 복원). 보조 창(워크스페이스 없음)에서는
- * 전환기처럼 아무것도 안 한다.
- */
 export function stepWorkspace(step: 1 | -1): void {
   if (!mainWindow || !currentId) return;
   const id = stepWorkspaceId(list.map((w) => w.id), currentId, step);
@@ -356,10 +339,8 @@ export async function bootAuxWorkspace(id?: string, restoreSaved = false): Promi
 export function workspacePlacement(): WriterScope { return scope; }
 
 /**
- * **원격 창의 워크스페이스**(원격 웹 R2-B · 10-20 워크스페이스 칩 — `app/mirror.svelte.ts`) — 메인 PC 주 창의 워크스페이스 목록을 그대로
- * 비추되 **지금 볼 것은 원격 창 몫**이다(`current` — 거울 환원의 `pickMirrorWorkspace` 가 정한다 · 메인 PC 화면은 움직이지 않는다).
- * 쓰기 범위 · 창 바인딩 · 저장 큐를 잡지 않는다(`queue` 없음 = 저장이 돌지 않는다 · 주 창이 아니라 관리 · 전환기도 없다).
- * cold(메인 PC 가 아직 열지 않음)는 `materialized` 거짓 — [`switchWorkspace`] 가 그리로 가지 않는다.
+ * 원격 창의 워크스페이스 — 메인 PC 의 목록을 비추되 지금 볼 것은 원격 창 몫이다(메인 PC 화면은 움직이지 않는다).
+ * 쓰기 범위 · 창 바인딩 · 저장 큐를 잡지 않는다(`queue` 없음 = 저장이 돌지 않는다).
  */
 export function setMirrorWorkspaces(items: readonly { id: string; name: string; icon?: string; color?: string; cold?: boolean }[], current: string): void {
   mirrorMode = true;
@@ -376,11 +357,10 @@ export function setMirrorWorkspaces(items: readonly { id: string; name: string; 
   if (currentId !== current) currentId = current;
 }
 
-/** 원격 창 — 워크스페이스를 바꾼 뒤 거울을 다시 환원하는 몸통(`app/mirror` 가 건다 — 이 모듈이 그쪽을 부르면 순환이라) */
 let mirrorRepaint: (() => void) | null = null;
 export function setMirrorRepaint(fn: (() => void) | null): void { mirrorRepaint = fn; }
 
-/** 원격 창의 워크스페이스 바꾸기 — 이 창에서만(메인 PC 에 요청하지 않는다). cold 는 안내만. */
+/** 이 창에서만 — 메인 PC 에 요청하지 않는다. */
 function switchMirrorWorkspace(id: string): void {
   const target = list.find((w) => w.id === id);
   if (!target || id === currentId) return;

@@ -1,8 +1,5 @@
 <script lang="ts">
-  /**
-   * **AI 가 쓴 글 한 덩이**(승인 요약 10-22) — `AI` 표지 + 이름(예: "요청 배경") + 글. AI 설명 줄(`AiSummaryLine`)과 같은 표지라
-   * 앱이 쓴 글로 읽히지 않는다. 검토 카드 · 작업안 카드의 **펼친 꼴**과 기록 상세(`console/RunHistory`)가 쓴다. 글이 비면 아무것도 없다.
-   */
+  /** AI 가 쓴 글 한 덩이 — `AI` 표지 없이 그리지 않는다(앱이 쓴 글로 읽히면 안 된다) */
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   interface Props {
@@ -27,7 +24,6 @@
     color: var(--fg-2);
     overflow-wrap: anywhere;
   }
-  /* `AI` 표지 — AI 설명 줄과 같은 작은 알약 */
   .aitag {
     display: inline-block;
     margin-right: var(--space-1);

@@ -1,5 +1,4 @@
-// 터미널 하나에 셸 통합을 **거는 곳** — 상태를 만들고, 핸들러를 순서대로 걸고, 창구(`ShellIntegration`)를 조립한다.
-// 거는 순서(`CSI J` 엿보기 → OSC 133 → 7 → 9)와 `dispose` 의 정리 순서는 나누기 전과 같다 — 몸통은 형제 파일들에 있다.
+// 터미널 하나에 셸 통합을 거는 곳 — 거는 순서(`CSI J` 엿보기 → OSC 133 → 7 → 9)와 `dispose` 의 정리 순서가 곧 동작이다.
 
 import type { Terminal } from "@xterm/xterm";
 import { bandBlock, disposeBand } from "./band";
@@ -13,14 +12,7 @@ import { current } from "./records";
 import { createState } from "./state";
 import type { BlockSink, PaneStatus, ShellIntegration } from "./types";
 
-/**
- * 터미널 하나에 OSC 133 핸들러를 건다.
- *
- * `onstatus` 는 상태가 **바뀔 때만** 부른다 — 대량 출력 중에 매 시퀀스마다 상위 `$state`
- * 를 건드리면 프레임마다 재렌더가 돈다 (활동 점이 500ms 스로틀을 두는 것과 같은 이유).
- * OSC 133 은 명령당 네 번뿐이라 스로틀 없이도 충분하지만, 그래도 같은 값을 두 번
- * 올리지는 않는다.
- */
+/** `onstatus` 는 상태가 바뀔 때만 부른다 — 매 시퀀스마다 올리면 대량 출력 중 프레임마다 재렌더가 돈다. */
 export function attachShellIntegration(
   term: Terminal,
   onstatus: (status: PaneStatus | null) => void,
@@ -28,7 +20,7 @@ export function attachShellIntegration(
 ): ShellIntegration {
   const s = createState(term, onstatus, sink);
 
-  // 거는 순서가 곧 동작이다 — 나누기 전과 같다 (`CSI J` 는 기본 처리 앞에서 엿보고 `false` 를 준다).
+  // `CSI J` 는 기본 처리 앞에서 엿보고 `false` 를 준다.
   const ed = registerEraseHandler(s);
   const osc = registerOsc133(s);
   const osc7 = registerOsc7(s);
@@ -49,10 +41,7 @@ export function attachShellIntegration(
     copyOutput: () => copyOutput(s),
     canCopyOutput: () => canCopyOutput(s),
 
-    /**
-     * 줄은 **마커에게 묻고** 열만 `B` 시점의 값을 쓴다 (머리말). 마커가 스크롤백 밖으로
-     * 밀려 죽었으면 앵커도 없다 — 그 자리는 이미 화면에 없으므로 제안이 가리킬 칸도 없다.
-     */
+    /** 줄은 마커에게 묻고 열만 `B` 시점의 값을 쓴다 — 마커는 스크롤해도 자기 줄을 따라간다. */
     inputAnchor() {
       if (!s.inputMode) return null;
       const rec = current(s);

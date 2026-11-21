@@ -1,12 +1,5 @@
 <script lang="ts">
-  /**
-   * **문서 타일의 도구줄**(`.bar` — 파일 단추 자리(몸 위 줄만) · 편집 중 보기 고르기 · 스크롤 맞추기 · 글자 크기 · 고정 · 저장 표시 · [저장] · [되돌리기]/[편집 종료] ·
-   * 원문/보기 · [편집] · 외부 열기(몸 위 줄만 — 머리줄 안에서는 타일 ⋯ 의 [경로 복사] 위 줄) · 새로고침 · 목차 단추) — `DocView.svelte` 에서 뗀 표시 조각. 읽기 · 편집 · 저장 · 충돌 · 고정 · 외부 열기와 그 상태는 부모가 쥐고
-   * 여기는 받은 값대로 그리기만 하며 동작은 콜백이다. 머리줄 등록(`setPaneTools` 의 `docBar` 스니펫)은 부모에 있고 이것은 그 스니펫의 내용이다.
-   * 곁 패널 단추는 부모의 스니펫(`filesToggle` · `filesDropButton` · `outlineToggle` · `outlineDropButton` — 토글 · 드롭다운 단추 손잡이가 부모에 있다)을
-   * 받아 그린다. 자리는 고정이다(2026-11-19): 파일은 머리줄이면 이름 뒤(부모의 `docTail`) · 몸 위 줄이면 이 줄 맨 앞, 목차는 늘 이 줄 맨 끝(새로고침 뒤).
-   * 좁은 타일(`narrow`)이면 같은 자리의 드롭다운 단추가 선다. 스크롤 맞추기 켬 · 툴팁 시각은 `bind:syncScroll` · `bind:infoNow`.
-   */
+  /** 문서 타일의 도구줄 — 그림만이고 상태 · 동작은 `DocView` 가 쥔다. 머리줄 안이면 `setPaneTools` 의 `docBar` 스니펫 내용이다. */
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -64,12 +57,10 @@
     load,
   }: {
     head: boolean;
-    /** 파일 단추 자리가 서는가 — 경로가 있으면 늘(어떤 문서든) */
     filesSlot: boolean;
     filesToggle: Snippet<[boolean]>;
     filesDropButton: Snippet<[boolean]>;
     outlineSlot: boolean;
-    /** 좁은 타일 — 곁 패널 대신 드롭다운 단추(`docPanelLayout` 의 `narrow`) */
     narrow: boolean;
     hasOutline: boolean;
     outlineToggle: Snippet;
@@ -115,13 +106,11 @@
 
 <div class="bar" class:inhead={head}>
   {#if filesSlot && !head}
-    <!-- 몸 위 줄의 앞자리 = 파일 — 넓은 타일은 왼쪽 곁 패널 토글, 좁은 타일은 같은 자리의 드롭다운 단추.
-         머리줄 안이면 둘 다 이름 뒤 `docTail` 이 같은 자리에 그린다 -->
+    <!-- 머리줄 안이면 이름 뒤 `docTail`(DocView)이 그린다 -->
     {#if narrow}{@render filesDropButton(false)}{:else}{@render filesToggle(false)}{/if}
   {/if}
   {#if mdEdit}
     {#if wideEdit}
-      <!-- 넓은 타일 — 편집 중 보기 세 칸 묶음(고른 값은 타일의 것) · 나란히일 때만 스크롤 맞추기 -->
       <div class="seg" data-head-act role="group" aria-label={t("files.doc.editview")}>
         <button
           type="button"
@@ -164,7 +153,7 @@
         >
       {/if}
     {:else}
-      <!-- 좁은 타일 — 나란히 자리가 없다. 두 칸 탭(저장하지 않는다 — 넓어지면 고른 보기가 돌아온다) -->
+      <!-- 좁은 타일의 탭은 저장하지 않는다 — 넓어지면 고른 보기가 돌아온다 -->
       <div class="seg" data-head-act role="tablist" aria-label={t("files.doc.editview")} tabindex="-1" onkeydown={narrowTabKey}>
         <button
           type="button"
@@ -193,10 +182,8 @@
       </div>
     {/if}
   {/if}
-  <!-- 빈 칸 — 뒤의 상태 · 단추를 줄 오른쪽 끝으로 민다(예전에는 경로 글자가 이 자리를 채웠다 — 10-20 걷음) -->
   <span class="grow" aria-hidden="true"></span>
   {#if zoom !== DOC_ZOOM_DEFAULT}
-    <!-- 글자 크기 — 100% 가 아닐 때만 선다. 글자가 지금 배율이고, 누르면 100% (툴팁은 이름만) -->
     <button
       type="button"
       class="btn pct"
@@ -206,8 +193,6 @@
     >
   {/if}
   {#if preview}
-    <!-- 미리 보기 ↔ 붙박이. 타일링이라 되돌리는 길도 둔다 — 고정을 풀면 다음에 여는 문서가 이 칸을 갈아 끼운다.
-         미리 보기는 강조 없는 핀이다(임시임은 머리줄 이름의 기울임이 말한다) -->
     <button
       type="button"
       class="btn ico"
@@ -218,8 +203,7 @@
       onclick={keep}><UiIcon name="pin" size={13} /></button
     >
   {:else if !editing && onunkeep}
-    <!-- 고정됨 — 켜진 토글처럼 강조 면(`.on`)이고 그림은 같은 핀이다(하단 독 핀과 같은 관례). 누르면 고정을 푼다.
-         편집 중에는 서지 않는다 — 편집하는 동안은 고정이어야 다음 파일이 이 칸을 갈아 끼우지 않는다 -->
+    <!-- 편집 중에는 서지 않는다 — 편집하는 동안 고정을 풀면 다음 파일이 이 칸을 갈아 끼운다 -->
     <button
       type="button"
       class="btn ico on"
@@ -231,13 +215,11 @@
     >
   {/if}
   {#if editing}
-    <!-- 편집 모드 — 저장 안 됨(●) · 방금 저장됨 · [저장] · [되돌리기]/[편집 종료]. 원문/보기 전환은 편집 중 쉰다 -->
     {#if dirty}
       <span class="dirty" title={t("files.doc.dirty")} role="img" aria-label={t("files.doc.dirty")}>●</span>
     {:else if savedFlash}
       <span class="saved">{t("files.doc.saved")}</span>
     {/if}
-    <!-- [저장] — 저장하지 않은 변경이 있을 때만 강조색으로 채운다(없으면 흐린 평범한 단추). 저장 중에는 툴팁이 말한다 -->
     <button
       type="button"
       class="btn ico"
@@ -249,7 +231,6 @@
       disabled={saving || !dirty || offline}
       onclick={() => void save()}><UiIcon name="save" size={13} /></button
     >
-    <!-- 한 자리 — 변경이 있으면 [되돌리기], 없으면 [편집 종료] -->
     <button
       type="button"
       class="btn ico"
@@ -261,8 +242,7 @@
     >
   {:else}
     {#if markdown}
-      <!-- 그림 · 이름은 **누르면 갈 보기**다 — 글자 시절에도 이 단추는 갈 곳([원문]/[보기])을 적었고, 툴팁이
-           동작 이름("원문 보기")이라 그림도 동작과 맞춘다. 지금 원문이라는 것은 눌린 색(`on`)이 말한다 -->
+      <!-- 그림 · 이름은 지금 보기가 아니라 누르면 갈 보기다 — 지금 원문인지는 `on` 이 말한다 -->
       <button
         type="button"
         class="btn ico"
@@ -286,11 +266,7 @@
       >
     {/if}
   {/if}
-  <!-- 외부 열기 자리 하나 — 로컬은 기본 앱으로 열기, 원격은 외부 편집기로 편집(받아서 열고 저장하면 올린다).
-       `fs-backend` 에서 둘(`canOpenExternal` · `canEdit`)은 동시에 서지 않는다(원격 창에서는 둘 다 서지 않는다 —
-       `localShellCaps` · `remoteEditCap`).
-       머리줄 안(`head`)에서는 그리지 않는다 — 타일 ⋯ 의 [경로 복사] 위 줄이 쥔다(`DocView` 의 `setPaneTools` `fileMenu` · 2026-11-19 사용자).
-       머리줄이 없어 몸 위에 그릴 때(설정 `tile_header` 끔 · 폰)는 ⋯ 에 도구 줄이 얹히지 않으므로 예전 단추를 그대로 둔다 -->
+  <!-- 머리줄 안에서는 타일 ⋯ 의 줄(`DocView` 의 `fileMenu`)이 쥔다 — 머리줄이 없으면(`tile_header` 끔 · 폰) ⋯ 에 그 줄이 없어 여기 둔다 -->
   {#if !head && backend.canOpenExternal}
     <button
       type="button"
@@ -324,8 +300,6 @@
     onclick={() => void load()}><UiIcon name="refresh" size={13} /></button
   >
   {#if outlineSlot}
-    <!-- 목차 — 늘 이 줄 맨 끝(새로고침 뒤 · 머리줄 안이든 몸 위 줄이든). 넓은 타일은 오른쪽 곁 패널 토글(제목이 없으면 흐린 채 툴팁이 까닭을
-         말한다), 좁은 타일은 같은 자리의 드롭다운 단추 -->
     {#if narrow && hasOutline}{@render outlineDropButton()}{:else}{@render outlineToggle()}{/if}
   {/if}
 </div>
@@ -341,19 +315,17 @@
     border-bottom: 1px solid var(--border);
   }
 
-  /* 머리줄 안(2026-10-20) — 머리줄 가운데 칸을 채우고 선 · 여백이 없다(머리줄과 몸 사이에 선을 긋지 않는다) */
   .bar.inhead {
     flex: 1 1 0;
     min-width: 0;
     padding: 0 0 0 4px;
     border-bottom: none;
-    /* 줄의 gap — 포커스 밖에서 접히는 조작 단추(`data-head-act`)의 앞 간격을 지운다(`pane/pane-tools.svelte.ts`) */
+    /* 줄의 gap 과 같은 값 — `pane/pane-tools.svelte.ts` 가 접힌 단추의 앞 간격을 지운다 */
     --head-act-gap: 4px;
-    /* 폭 담기를 걷는다 — 머리줄이 이 줄의 내용 폭을 재야 좁을 때 이름이 먼저 준다(`PaneTools.keepBar` — 담긴 상자는 내용 폭이 0 으로 잡힌다) */
+    /* 담긴 상자는 내용 폭이 0 으로 잡혀 `PaneTools.keepBar` 가 좁을 때 이름을 먼저 줄이지 못한다 */
     container-type: normal;
   }
 
-  /* 빈 칸 — 남는 폭을 먹어 뒤의 상태 · 단추를 오른쪽 끝으로(예전 경로 글자의 자리) */
   .grow {
     flex: 1 1 auto;
     min-width: 0;
@@ -392,21 +364,18 @@
     cursor: default;
   }
 
-  /* 아이콘만 선 단추 — 정사각 한 크기(목차 드롭다운처럼 글자가 내용인 단추만 이 밖이다) */
   .btn.ico {
     width: 24px;
     height: 24px;
     padding: 0;
   }
 
-  /* 글자 크기 단추 — 아이콘 단추 줄과 같은 높이의 글자 단추. 숫자 폭이 흔들리지 않게 */
   .btn.pct {
     height: 24px;
     padding: 0 5px;
     font-variant-numeric: tabular-nums;
   }
 
-  /* [저장] — 도구줄에서 하나뿐인 강조. 저장하지 않은 변경이 있을 때만 붙는다(강조색 채움) */
   .btn.primary:not(:disabled) {
     color: var(--on-accent);
     background: var(--accent);
@@ -417,7 +386,6 @@
     background: var(--accent-hover);
   }
 
-  /* 저장 안 됨 ● · 방금 저장됨 — 작은 글자, 토스트 없음 */
   .dirty {
     flex: 0 0 auto;
     font-size: 10px;
@@ -430,13 +398,11 @@
     color: var(--fg-3);
   }
 
-  /* 켜진 토글(목차 · 원문 보기 · 편집 보기 · 스크롤 맞추기) — 파일 타일 도구줄(`.bar-btn.on`)과 같은 말: 강조 면 하나 */
   .btn.on {
     color: var(--fg);
     background: var(--accent-soft);
   }
 
-  /* 편집 중 보기 묶음 · 두 칸 탭 — 단추 사이를 붙인다 */
   .seg {
     display: inline-flex;
     flex: 0 0 auto;

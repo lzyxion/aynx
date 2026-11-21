@@ -2,13 +2,8 @@ import type { settings as koSettings } from "$lib/i18n/ko/settings";
 
 /**
  * Settings screen — English.
- *
- * The Korean dictionary is the source of truth: this object is typed as
- * `Record<keyof typeof koSettings, string>`, so a missing or extra key fails
- * `npm run check`.
- *
- * ## Glossary (keep these words — later phases reuse them)
- *
+ * Korean is the source of truth — this object is `Record<keyof typeof koSettings, string>`, so a missing or extra key fails `npm run check`.
+ * Glossary (keep these words):
  * | 한국어 | English |
  * | --- | --- |
  * | 창 | window |
@@ -22,20 +17,16 @@ import type { settings as koSettings } from "$lib/i18n/ko/settings";
  * | 자동 승인 | auto-approval |
  * | 트리거 | trigger |
  * | 작업안 | task plan |
- * | 대시보드 (앞선 이름 관제판·관리뷰) | dashboard |
+ * | 대시보드 | dashboard |
  * | 즐겨찾기 | favorites |
  * | 독 | dock |
  * | 상태 표시줄 | status bar |
  * | 명령 팔레트 | command palette |
  * | 셸 통합 | shell integration |
  * | 잠금 (privacy veil) | privacy lock |
- *
- * Tone: concise product English, sentence case. Do not introduce jargon the
- * Korean avoided — e.g. the Korean says "종료 코드" only in tooltips, so
- * "exit code" appears only where the Korean does.
+ * Tone: concise product English, sentence case. Do not introduce jargon the Korean avoided ("exit code" appears only where the Korean says 종료 코드).
  */
 export const settings: Record<keyof typeof koSettings, string> = {
-  // Agent instructions — library saves and file application are separate.
   "nav.instructions": "Instructions",
   "instructions.list": "Instruction list",
   "instructions.import": "Import",
@@ -128,7 +119,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "instructions.unchanged.count": "{count} unchanged",
   "instructions.block.empty": "No new block.",
 
-  // ── Settings shell (SettingsModal · SectionNav · SettingRow · InfoNote) ────
+  // ── Settings shell ────────────────────────────────────────────────────────
   "title": "Settings",
   "nav.aria": "Settings categories",
   "nav.marked": "has a field to fix",
@@ -150,7 +141,6 @@ export const settings: Record<keyof typeof koSettings, string> = {
     "Reads the values back from the file — unsaved changes in this window are lost.",
   "actions.cancel": "Cancel",
   "actions.save": "Save",
-  // Closing settings = Cancel — ask first when there are unsaved changes.
   "close.ask.title": "Unsaved changes",
   "close.ask.body": "You have unsaved changes. Save them? \"Don't save\" returns to the last saved settings.",
   "close.ask.save": "Save",
@@ -161,8 +151,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "row.note": "About {label}",
   "info.more": "Show details",
 
-  // ── General (app-wide values — display, startup, file tiles, session server) ────────────────
-  // The four General subheadings — Display · Startup & connections · File tiles · Session server (`general.server.heading`)
+  // ── General ───────────────────────────────────────────────────────────────
   "general.display.heading": "Display",
   "general.startup.heading": "Startup & connections",
   "general.files.heading": "File tiles",
@@ -180,7 +169,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "general.ui_font.summary": "Text outside the terminal — leave empty for the default",
   "general.ui_font.note": "CSS font-family format. Example: ",
 
-  // Auto-reconnect SSH on startup (was `workspace.*`)
+  // Auto-reconnect SSH on startup
   "general.reconnect.label": "Auto-reconnect SSH on startup",
   "general.reconnect.summary": "Reconnects last session's SSH tiles right at startup — ",
   "general.reconnect.summary.term": "off by default",
@@ -207,7 +196,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "general.project_start.option.auto": "Auto",
   "general.project_start.option.off": "Off",
 
-  // Privacy — auto-lock when idle (was `lock.*`)
+  // Privacy — auto-lock when idle
   "notifications.app.subhead": "In-app · OS",
   "messenger.heading": "Messenger",
   "messenger.channels.subhead": "Channels",
@@ -312,7 +301,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "messenger.operation_pending.note": "When an AI asks to approve a remote command or a database write · auto-approved plans are not sent · approve only in the app (or its remote web)",
   "messenger.include_summary.label": "Include the AI summary",
   "messenger.include_summary.note": "When off, sends only the app's analysis line, targets and expiry",
-  // Idle auto-lock — drawn by Settings › Security (the keys keep their old `general.` names)
+  // Idle auto-lock — drawn by Settings › Security; the keys keep their `general.` names
   "general.idle.label": "Auto-lock when idle",
   "general.idle.summary": "Covers the screen and locks the vault when there is no input — ",
   "general.idle.summary.term": "off by default",
@@ -320,7 +309,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   // Auto-lock slider — only `0` reads differently; the rest take the number.
   "general.idle.off": "Off",
   "general.idle.minutes": "{min} min",
-  // Session server (③-2 — src-tauri/src/server.rs) — one status line + [Close all sessions] · [Restart]. Local sessions live in the server (SSH still in the app).
+  // Session server
   "general.server.heading": "Session server",
   "general.updates.heading": "Updates",
   "general.updates.auto.label": "Check for updates automatically",
@@ -334,7 +323,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "general.updates.skipped": "Skipped version {version}",
   "general.updates.skipped.tip": "You won't be told about this version again. A newer version still shows.",
   "general.updates.undo": "Undo skip",
-  // Settings transfer (2026-11-17)
+  // Settings transfer
   "general.transfer.heading": "Move settings",
   "general.transfer.export.label": "Export settings",
   "general.transfer.export.tip": "Saves the picked categories as a .zip. Vault, tokens, webhook URLs and remote devices are left out.",
@@ -462,16 +451,9 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "general.server.restarting": "Restarting…",
   "general.server.restart.failed": "Could not restart the session server: {error}",
 
-  // ── Security (the vault — docs/log/2026-09-19-vault.md) ───────────────────
-  //
-  // Its own section since 2026-09-19 (it used to be the last subhead of General,
-  // hence the old `general.vault.*` names). On screen it is named **Security**
-  // (보안) since 2026-09-19; the section id and key prefix stay `credentials`
-  // (stable ids — only the label changes). The nav draws the section name, so
-  // there is no `heading` key.
-  //
-  // These rows live outside [Save]/[Cancel] — like "Clear restore data", they change
-  // the disk the moment you press them. The lead says so first.
+  // ── Security (docs/log/2026-09-19-vault.md) ───────────────────────────────
+  // The section id and key prefix stay `credentials` (stable ids — only the label changes); the nav draws the name, so there is no `heading` key.
+  // These rows live outside [Save]/[Cancel] — they change the disk at once, and the lead says so first.
   "credentials.lead":
     "Vault, master password, stored credentials — keep passwords and key passphrases in this app and the next connection stops asking. These rows do not wait for [Save]; they apply right away.",
   "credentials.lead.veil.before": "The vault locks with the privacy veil and opens when you lift it — the veil is {combo}, and the idle auto-lock time is set by ",
@@ -535,7 +517,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "credentials.gate.unlock": "Unlock…",
   "credentials.gate.open": "Open",
 
-  // ── AI-delegated hosts (`~/.aynx/delegation.toml`) ──────────────────────────────
+  // ── AI-delegated hosts ────────────────────────────────────────────────────
   "credentials.delegation.label": "Hosts with AI access",
   "credentials.delegation.note":
     "Hosts you gave AI access — it applies to the tiles you open and to headless sessions alike. You change it in the AI tab of the host settings or from the tile header; here you can see what is written down and delete it (~/.aynx/delegation.toml).",
@@ -782,7 +764,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "theme.avatars.back": "Theme",
   "theme.avatars.back.aria": "Back to Theme",
   "theme.avatars.current": "Current avatars",
-  // ── Avatars (docs/log/2026-10-31-avatars.md) — Settings › Theme › Avatars sub-view (`AvatarsSection`) · crop dialog ────────
+  // ── Avatars (docs/log/2026-10-31-avatars.md) ────────
   "avatars.lead":
     "One picture you add is shared by the app icon, AI CLIs, orchestration artists, tabs and alerts. Only the app icon is drawn as a rounded square; everything else is a circle.",
   "avatars.show.heading": "Display",
@@ -870,8 +852,8 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "theme.tile.header.note": "When hidden, the tile menu and dragging the header (tear out to a new window) are unavailable.",
 
   // ── terminal ──────────────────────────────────────────────────────
-  // ── Terminal (TerminalSection) ────────────────────────────────────────────
-  // Default shell — the first row of this section (was `shell.*`)
+  // ── Terminal ──────────────────────────────────────────────────────────────
+  // Default shell
   "terminal.shell.label": "Default shell",
   "terminal.shell.missing.before": "The saved shell (",
   "terminal.shell.missing.after": ") is not on this PC, so {shell} is used instead",
@@ -1012,7 +994,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "terminal.logs_folder.note": "Logging is turned on per host (Edit host › Session logging).",
 
   // ── keys ──────────────────────────────────────────────────────
-  // ── Shortcuts (KeybindingsSection) ─────────────────────────────────────────
+  // ── Shortcuts ─────────────────────────────────────────────────────────────
   "keys.lead.p1": "Click a combination and press the keys you want — ",
   "keys.lead.term": "it applies immediately.",
   "keys.lead.p2": " Keys are matched by physical key (",
@@ -1029,7 +1011,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "keys.conflict.short": "Conflict",
 
   // ── triggers ──────────────────────────────────────────────────────
-  // ── Triggers (TriggersSection) ────────────────────────────────────────────
+  // ── Triggers ──────────────────────────────────────────────────────────────
   // One row of the list
   "triggers.subhead": "Triggers",
   "triggers.list.subhead": "My triggers",
@@ -1043,7 +1025,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "triggers.kind.highlight": "Highlight",
   "triggers.kind.highlight.title": "Colors the matched text\nApplies to new output only.",
   "triggers.kind.link": "Link",
-  // The link switch's tooltip also carries the old footnote (display-only boundary)
+  // The link switch's tooltip also carries the display-only boundary note
   "triggers.kind.link.title": "Ctrl+click opens the URL\nCaptures fill $1 in the address (URL-encoded), and only http · https · mailto are opened. Triggers only display — a match never runs a command or sends a string.",
   "triggers.kind.tooltip": "Tooltip",
   "triggers.kind.tooltip.title": "Hovering shows the text",
@@ -1068,13 +1050,13 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "triggers.error.item": "The regular expression is invalid, so this trigger is ignored — {message}",
   "triggers.error.draft": "The regular expression is invalid — {message}",
   "triggers.error.full": "You can have at most {max} triggers.",
-  // Summary — my trigger list + [Add trigger ›]. Clicking a row (except the switch) opens the edit sub-view
+  // Summary — my trigger list + [Add trigger ›]
   "triggers.list.aria": "Triggers",
   "triggers.add.open": "Add trigger",
   "triggers.row.edit": "Edit",
   "triggers.row.edit.aria": "Edit {pattern}",
   "triggers.row.inert": "Does nothing",
-  // Add / edit sub-view (`TriggerEditor`) — the back label is the summary's name
+  // Add / edit sub-view — the back label is the summary's name
   "triggers.back": "Triggers",
   "triggers.back.aria": "Back to triggers",
   "triggers.title.add": "Add trigger",
@@ -1091,7 +1073,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "triggers.commit.add": "Add",
   "triggers.commit.save": "Save",
   "triggers.delete": "Delete",
-  // Test box — results come from the same engine as the terminal (`$lib/triggers`)
+  // Test box
   "triggers.test.head": "Try it",
   "triggers.test.aria": "Output lines to test",
   "triggers.test.placeholder": "Paste output lines (several lines are fine)",
@@ -1100,8 +1082,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "triggers.test.invalid": "Fix the pattern to see results",
   "triggers.test.truncated": "Only the first {max} lines are checked",
   "triggers.test.blocked": "Not opened — only http · https · mailto are",
-  // Example cards ("Start from an example" in `TriggerEditor`). Names and descriptions are screen text only;
-  // the trigger values they fill in (tooltip text etc.) are the English literals in `example-triggers.ts`.
+  // Example cards — names and descriptions are screen text only; the trigger values they fill in are the English literals in `example-triggers.ts`.
   "triggers.examples.added": "Added",
   "triggers.examples.added.title": "The same pattern is already in the list — you can still pick it",
   "triggers.examples.fatal.name": "Fatal errors (FATAL, PANIC, CRITICAL)",
@@ -1132,14 +1113,12 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "triggers.examples.ipv4.desc": "Text color — muted blue-gray (informational)",
   "triggers.examples.jira.name": "Jira issue keys (ABC-123)",
   "triggers.examples.jira.desc": "Link + tooltip — a template: replace jira.example.com",
-  // ── Snippets (SnippetsSection) ────────────────────────────────────────────
-  //
-  // `{{name}}` / `{{service}}` are markers the snippet parser (`snippets.ts`)
-  // reads, so the double braces stay verbatim — only the word inside changes.
+  // ── Snippets ──────────────────────────────────────────────────────────────
+  // `{{name}}` / `{{service}}` are markers the snippet parser (`snippets.ts`) reads — keep the double braces verbatim, only the word inside changes.
   "snippets.note.syntax.example": "{{name=default|help text}}",
   "snippets.note.syntax.after": " in a command asks for the value when it is inserted.",
   // Summary (one row of the list)
-  // Templates (TemplatesSection — 2026-11-17)
+  // Templates
   "templates.subhead": "Templates",
   "templates.list.subhead": "My templates",
   "templates.summary": "A saved, named way to open one tab: its layout and what each tile connects to.",
@@ -1175,7 +1154,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "snippets.insert": "Insert",
   "snippets.insert.title": "Sends this snippet to the focused terminal",
   "snippets.insert.aria": "Insert {name}",
-  // Add / edit sub-view (SnippetEditor)
+  // Add / edit sub-view
   "snippets.back": "Snippets",
   "snippets.back.aria": "Back to snippets",
   "snippets.title.add": "Add snippet",
@@ -1198,7 +1177,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "snippets.delete": "Delete",
   "snippets.delete.aria": "Delete {name}",
   "snippets.error.full": "You can have at most {max} snippets.",
-  // Preview (SnippetPreview — where triggers have the test box)
+  // Preview
   "snippets.preview.head": "Preview",
   "snippets.preview.empty": "Type a command to see what will be sent to the terminal.",
   "snippets.placeholders.label": "Asked for on insert — try some values:",
@@ -1207,14 +1186,12 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "snippets.preview.value.aria": "Test value for {name}",
   "snippets.preview.enter": "Enter is appended after inserting, so it runs right away.",
   "snippets.preview.no_enter": "Only placed on the command line — you press Enter yourself.",
-  // Old footnote — now the second line of the "Command" field label's tooltip
+  // Second line of the "Command" field label's tooltip
   "snippets.footnote.strong": "The app does not make up strings.",
   "snippets.footnote.body": " What goes out is only the text written here plus the placeholders a person filled in — there is no place for an AI-written command to enter through this path.",
 
   // ── ai ──────────────────────────────────────────────────────
-  // ── AI agents (McpSection) — section id and key prefix stay `ai` ─────────────
-  //
-  // Notes once split around `<strong>` (`.before` / `.term` / `.after`) are joined as plain text in tooltips.
+  // ── AI agents — section id and key prefix stay `ai` ─────────────
   "ai.server.label": "Server status",
   "ai.checking": "Checking…",
   "ai.server.running": "Running",
@@ -1366,8 +1343,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "ai.start_dir.note.before": "The ",
   "ai.start_dir.note.term": "current folder",
   "ai.start_dir.note.after": " of the focused local terminal wins when there is one; this value is used when there is not (from the start screen, or from an SSH tile). A folder that does not exist falls back to home.",
-  // Agent hooks — precise signal for the agent status dot (docs/log/2026-09-24-agent-hook-signals.md).
-  // Rows come from the Rust agent table — `{agent}` = product name.
+  // Agent hooks (docs/log/2026-09-24-agent-hook-signals.md) — rows come from the Rust agent table, `{agent}` = product name.
   "ai.hooks.label": "Agent hooks",
   "ai.hooks.partial.tip": "Hooks from an earlier version remain — updating rewrites them in the current format",
   "ai.hooks.update": "Update…",
@@ -1411,7 +1387,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "ai.args.invalid": "Not applied — {reason}",
   "ai.args.danger": "This option skips permission checks — it applies to every {agent} Aynx starts",
   "ai.args.note": "Added only to agents Aynx starts (AI tiles · shell menu · project start screen · resume · continue in a new conversation) — commands you type in a shell stay as typed. Split on spaces, grouped by quotes. No shell syntax (; & | < > ` $) or variables; each argument is re-quoted for the tile's shell.",
-  // ── Auto-approval (AutomationSection) ─────────────────────────────────────
+  // ── Auto-approval ─────────────────────────────────────────────────────────
   // 늘 보이는 위험 경고 한 줄 — `middle` 과 `middle2` 사이에 `<code>&&</code>` 가 들어간다.
   "automation.pipes.label": "Allow pipes (|)",
   "automation.pipes.note": "Only when every stage is allowed · redirects (> <), substitution ($ `) and subshells still need a person",
@@ -1425,16 +1401,14 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "automation.approve.enabled": "Enabled",
   "automation.approve.note": "Among the plans an AI submits over MCP, only those that meet every condition below (enabled bundles · allowed patterns · target limit) run without a person pressing approve. Anything outside them waits for approval as before. An AI can never approve its own plan.",
   "automation.approve.summary": "When on, the app approves task plans that meet every condition below for you",
-  // 'bundle' inside a sentence — kept apart from the list heading
-  // (`automation.bundles.label`): Korean uses the same word, but English needs
-  // a plural heading (Bundles) and a singular mid-sentence term (bundle).
+  // 'bundle' mid-sentence — kept apart from the plural heading `automation.bundles.label` (Korean uses the same word).
   "automation.bundle.term": "bundle",
   "automation.bundles.label": "Bundles",
   "automation.bundles.tip": "Name the scope you delegate — when a bundle is on, its rules are added to the allow list. Bundles delegate reads only — each command matches only its allowed subcommands and arguments, and changing forms (ip link set, git branch -D, date -s …) wait for a person. In Edit you turn bundles and the commands inside them on and off one by one, and try commands to see the verdict.",
   // Summary row — "3 of 10 on · 41 rules"
   "automation.bundles.summary": "{on} of {total} on · {rules} rules",
   "automation.bundles.adjust": "Edit",
-  // Adjust-bundles sub-view — back (‹ Auto-approval) · title · four subheads · data-reads caution
+  // Adjust-bundles sub-view
   "automation.bundles.back": "Auto-approval",
   "automation.bundles.back.aria": "Back to auto-approval",
   "automation.bundles.title": "Edit bundles",
@@ -1477,7 +1451,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "automation.rule.allow": "flags {items} only",
   "automation.rule.deny": "except {items}",
   "automation.rule.more": "{items} +{n} more",
-  // Test box — the Rust verdict as is (nothing runs). Reasons arrive as code + args and are drawn here.
+  // Test box — the Rust verdict as is (nothing runs); reasons arrive as code + args and are drawn here.
   "automation.test.label": "Try a command",
   "automation.test.placeholder": "Type a command to see the verdict (nothing runs)",
   "automation.test.examples": "Examples",
@@ -1526,7 +1500,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "automation.allow.empty.bundles.before": "There are no allow patterns, but a ",
   "automation.allow.empty.bundles.after": " above is on, so commands matching that bundle's rules are auto-approval candidates.",
   "automation.allow.empty.none": "With no allow patterns and no bundles, nothing is auto-approved — turn on a bundle or add at least one pattern to use auto-approval.",
-  // Edit-allow-patterns sub-view — list (rule/simple) · [+ Rule] [+ Simple pattern] · form
+  // Edit-allow-patterns sub-view
   "automation.allow.title": "Edit allow patterns",
   "automation.allow.list": "Rules",
   "automation.allow.add.rule": "Rule",
@@ -1613,8 +1587,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "automation.notifyResults.note": "When the window is not in front and a task plan finishes running, report the result through the OS. The toast and the dock's notification entry are always kept, whatever this is set to.",
 
   // ── extra ──────────────────────────────────────────────────────
-  // The two virtual entries at the bottom of the preset list — the palette generated from the app color theme, custom color
-  // or wallpaper, with a fixed brightness (kept when the app mode changes)
+  // The two virtual entries at the bottom of the preset list (palette from the app color theme, custom color or wallpaper)
   "preset.dynamicDark": "Match color theme · Dark",
   "preset.dynamicLight": "Match color theme · Light",
   // An action with no combination bound
@@ -1633,7 +1606,7 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "keybinding.switch-workspace": "Switch workspace",
   "keybinding.next-workspace": "Next workspace",
   "keybinding.prev-workspace": "Previous workspace",
-  // 원격 접속(R1a-5 — 원격 웹 클라이언트)
+  // 원격 접속
   "nav.remote": "Remote access",
   "remote.lead": "Open this app from another PC or phone browser over Tailscale (your tailnet). The app only accepts connections on 127.0.0.1, and tailscale serve on this PC is what exposes it to the tailnet.",
   "remote.connect.label": "Tailscale connection",

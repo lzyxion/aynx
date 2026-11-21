@@ -1,15 +1,7 @@
 <script lang="ts">
   /**
-   * **자원 화면의 몸통**(2026-10-17 — 로컬 자원 모니터. 처음에는 사용량 화면의 자원 칸이었고 같은 날 제 판 `ResourceView.svelte` 로
-   * 나왔다). 위에서 아래로: 지금 값 띠(이 PC 전체 · 앱 · 로컬 타일 합계 — 칸마다 차트 선의 색 표시가 범례다 · 상태바 호버 카드와 같은
-   * 셋 · 같은 차례) → CPU · 메모리 차트 한 줄에 반씩(같은 세 줄뿐, 지난 30분 — 10-27 사용자 A안: 타일마다의 선을 걷었다 · 같은 날 "앱 전체"
-   * 칸 · 선을 더해 봤다가 걷었다 · 이 PC 전체 선은 호버 카드와 같은 지표 색 실선) → 줄 목록(앱의 두 몫 · 타일마다 — 지난 10분 메모리
-   * 추이 선 · 상위 프로세스 이름).
-   * 띠의 설명 글은 걷었다(10-27 사용자).
-   *
-   * 이 칸이 **보이는 동안만** 표본을 당긴다(`watchResources` — 세션 서버의 관찰 임대). 값의 뜻(기계 전체 대비 CPU · 전용 작업 집합 합)은
-   * `$lib/resources` · `src-tauri/src/server/resources.rs` 머리말. 타일 이름은 이 창의 탭에서 스트림으로 찾고(`resource-tiles.ts`), 없으면(다른 창 ·
-   * 떨어진 세션) "다른 창의 타일" 로 적는다. 타일 줄을 누르면 그 타일로 간다(타일로 가는 길이 이 화면을 걷는다).
+   * 자원 화면의 몸통. 차트는 이 PC 전체 · 앱 · 타일 합계 세 줄뿐이다 — 타일마다의 선은 걷었다(사용자 결정).
+   * 보이는 동안만 표본을 당긴다(`watchResources` — 세션 서버의 관찰 임대).
    */
   import { resourceViewOpen } from "$lib/app/usage-view.svelte.js";
   import {
@@ -54,9 +46,8 @@
   const last = $derived(ring.length > 0 ? ring[ring.length - 1] : null);
   const top = $derived(resourceTop());
 
-  /** 이 창의 타일 — 스트림 → (탭 id · 타일 id · 이름) */
   const tileInfo = $derived(localTileInfo());
-  /** 이 PC 전체 — `system` 이 있는 가장 새 표본(옛 서버면 없음) */
+  /** 옛 서버면 `system` 이 없다 */
   const sys = $derived(lastSystemSample(ring)?.system ?? null);
 
   function labelOf(key: string): string {
@@ -77,7 +68,6 @@
     usage: ResourceUsage;
     tops: TopProc[];
     jump: { tabId: string; paneId: string } | null;
-    /** 줄 앞 로고 — 타일이면 그 타일(`PaneIcon`), 앱의 몫이면 UI 아이콘 이름, 다른 창의 타일이면 둘 다 없어 일반 터미널 */
     pane: PaneSpec | null;
     ui: string | null;
   }
@@ -114,16 +104,13 @@
     tileRows.reduce((acc, r) => ({ cpu: Math.min(100, acc.cpu + r.usage.cpu), mem: acc.mem + r.usage.mem }), { cpu: 0, mem: 0 }),
   );
 
-  /** 그 시리즈의 차트 선 색 — 맨 위 칸의 색 표시 · 표 줄 추이 선이 같은 색을 쓴다(앱 · 타일 합계는 두 차트에서 같은 색) */
   function colorOf(key: string, d: ResourceChartData, colors: string[]): string {
     return colors[d.series.findIndex((x) => x.key === key)] ?? "currentColor";
   }
 
-  /** 표 줄 추이 선의 그림 크기 */
   const SPARK = { w: 88, h: 18 } as const;
 </script>
 
-<!-- 줄 이름 칸 — 로고(타일 머리줄 · 탭과 같은 `PaneIcon`) + 이름 글자. 로고는 장식(이름이 읽어 준다) -->
 {#snippet nameCell(r: Row)}
   <span class="name">
     <span class="logo">
@@ -133,7 +120,6 @@
   </span>
 {/snippet}
 
-<!-- 표 한 줄의 칸 — 이름 · CPU · 메모리 · 지난 10분 메모리 추이(`color` = 그 묶음의 차트 선 색) · 상위 프로세스 -->
 {#snippet rowCells(r: Row, color: string)}
   {@render nameCell(r)}
   <span class="num">{formatCpu(r.usage.cpu)}</span>
@@ -152,7 +138,6 @@
       {#if sys}
         {@const memPct = systemPct(sys, "mem")}
         <div class="cell" data-resource-system>
-          <!-- 이 PC 전체는 CPU · 메모리 차트에서 색이 다르다(지표 색) — 표시를 반씩 -->
           <span class="k"
             ><span
               class="mark"
@@ -250,8 +235,7 @@
 </div>
 
 <style>
-  /* 위아래 여백 · 덩어리 사이 간격은 사용량 화면(`.usage`)과 같다. 열 때 덩어리가 시차를 두고 떠오르는 것은
-     `dashboard-motion.ts` 의 `RISE_SELECTOR`(CoverPanel 이 연다) */
+  /* `data-resource-board` · `.charts` 는 `dashboard-motion.ts` 의 `RISE_SELECTOR` 가 고른다 */
   .res-board {
     display: flex;
     flex-direction: column;
@@ -269,7 +253,6 @@
     border-radius: var(--radius-sm);
   }
 
-  /* 띠 · 카드의 면 · 글자 급은 사용량 화면(`UsageBoard`)과 같다 — 불투명 면 · 칸막이 있는 상자 하나(10-27 사용자: 다크에서 더 검게 보였다) */
   .strip {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -308,7 +291,6 @@
     color: var(--fg-3);
   }
 
-  /* 차트 선의 색 표시 — 칸이 곧 범례 */
   .mark {
     flex: none;
     width: 10px;
@@ -317,7 +299,6 @@
     background: var(--mark);
   }
 
-  /* CPU · 메모리 차트를 한 줄에 반씩(10-27 사용자 — 아래 "지금" 표가 스크롤 없이 보이게). 좁으면 위아래로 */
   .charts {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));

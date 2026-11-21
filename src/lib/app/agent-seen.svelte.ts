@@ -21,34 +21,16 @@ import { veilVisible } from "$lib/app/veil.svelte.js";
 import { findPaneByStream, listPanes } from "$lib/session";
 
 /**
- * **완료 확인 공유**(2026-11-04 — docs/log/2026-11-04-agent-seen-sync.md). "안 봄" 표식(`app/agent-unseen`)은 창마다 살아, 폰에서 턴 끝을 봐도 메인 PC 창의 완료가 남았다
- * (거꾸로도). 그래서 사람이 본 창이 서버 op `agent_state_seen{stream, seq}` 로 알리고, 서버가 낡지 않았으면 방송(`agent-seen`)한다 — 서버 표는 바뀌지 않는다(표시 전용 · 토큰 · 본문 없음).
- *
- * - **보내기** — `$effect` 하나가 이 창의 타일을 지켜본다(`tabs` ↔ `agent-status` 순환을 피해 `clearSeenStatus` 안에서 보내지 않는다). 무엇이 "봤다" 인지는 `$lib/agent-seen` 의 표.
- *   보이는 타일 = 활성 탭의 타일 전부 · 폰 배치면 그 탭의 포커스 타일 하나(`hostBoxes` 의 `solo` 와 같다). 타일당 턴 하나에 한 번.
- * - **받기** — 이 창의 그 스트림 타일의 표식을 거두고 끝남 배너를 푼다. 권한 물음은 풀지 않는다(답해야 풀린다). 이 창이 더 새 신호를 받았으면 지난 턴의 확인이라 버린다.
- *   자기가 보낸 것이 돌아오면 표식만 거둔다 — 배너의 "그 타일에 있던 채로 선 항목"(`bornFocused`)은 자기 창의 규칙이 푼다.
- * - **벨 · 안 본 명령 결과는 창마다 그대로다** — 터미널의 사건이라 서버 표에 없다.
- *
- * ## 사이드 채팅(2026-11-13 — 판 31)
- *
- * 사이드 채팅 배너(`app/agent-banners` 의 `{sideChatId}` 대상)도 창마다 산다 — 메인 PC 에서 그 채팅을 봐도 원격 창의 배너가 남았다(거꾸로도). 같은 결로 나눈다:
- * - **번호** — 채팅 사건의 `turnEnded` 가 실은 세대(`epoch`) · 사건 번호(`seq` — 채팅마다 서버가 1씩)다(`app/side-chat-live` 의 `sideChatTurnEnd`). 새 서버 표는 없다.
- * - **보내기** — 같은 `$effect` 가 이 창에 **보이는 채팅**(채팅 독의 채팅 갈래 · 폰 덮개 — `shownSideChat`)의 턴 끝을 타일과 같은 표(`shouldSend` — 넓은 창은 턴 끝 뒤
- *   입력)로 보고 서버 op `side_chat_seen{chat, epoch, seq}` 를 보낸다. 서버는 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 방송(`side-chat-seen`)한다 —
- *   표는 그대로이고 몸은 id · 번호뿐(본문 · 토큰 없음 — 사건 `side-chat-event` 와 달리 모든 창에 중계된다 · 원격은 `remote/deny.rs` ALLOW).
- * - **받기** — 그 채팅의 **끝남 · 실패** 배너를 "확인함" 으로 풀고(`seenSideChatBanner`) 목록 점 "새 답" 을 거둔다. 권한 물음은 답해야 풀린다. 이 창의 마지막 턴 끝과
- *   세대가 다르거나 이 창이 더 늦은 턴 끝을 받았으면(그 뒤 다음 턴이 섰다) 낡은 확인이라 버린다(`sideChatSeenApplies`). 자기가 보낸 것은 배너를 건드리지 않는다
- *   (보이는 채팅의 배너는 이 창의 `resolveVisitedSideChat` 이 푼다). 타일 표식과 열쇠가 겹치지 않게 `chat:<id>` 로 적는다.
+ * 완료 확인 공유 — 서버 op `agent_state_seen` · `side_chat_seen` 은 서버 표를 바꾸지 않고 방송만 한다. 몸은 id · 번호뿐(본문 · 토큰 없음)이라
+ * 모든 창에 중계된다(원격은 `remote/deny.rs` ALLOW). 보내기는 `$effect` 에서 한다 — `clearSeenStatus` 안에서 보내면 `tabs` ↔ `agent-status` 가 돈다.
+ * 벨 · 안 본 명령 결과는 창마다 그대로다 — 터미널의 사건이라 서버 표에 없다.
  */
 
-/** 타일 → 그 턴 끝을 처음 안 때 */
 const marks = new Map<string, SeenMark>();
-/** 타일 → 알렸거나 받은 seq — 턴 하나에 한 번 */
+/** 턴 하나에 한 번 */
 const sent = new Map<string, number>();
-/** 사람의 입력 번호 — 값이 아니라 "그 턴이 끝난 뒤 입력이 있었나" 만 묻는다 */
 let gen = $state(0);
-/** 가장 늦게 적은 표시의 번호 — 그 뒤 첫 입력만 번호를 올린다(키마다 효과가 다시 돌지 않게) */
+/** 그 뒤 첫 입력만 번호를 올린다 — 키마다 효과가 다시 돌지 않게 */
 let newestMark = 0;
 let focused = $state(true);
 
@@ -89,7 +71,7 @@ function sendSeen(): void {
       void invoke("agent_state_seen", { stream: pane.historyStreamId ?? pane.id, seq }).catch(() => {});
     }
   }
-  // 사이드 채팅 — 턴 끝을 안 때는 채팅마다 적고(보이지 않아도 — 그 뒤 입력을 센다), 알리는 것은 보이는 채팅 하나
+  // 턴 끝을 안 때는 보이지 않는 채팅도 적는다 — 그 뒤 입력을 센다
   const shownChat = shownSideChat();
   for (const [chat, end] of Object.entries(sideChatTurnEnds())) {
     const key = chatKey(chat);
@@ -104,7 +86,7 @@ function sendSeen(): void {
   }
 }
 
-/** 사이드 채팅의 열쇠 — 타일 id 와 겹치지 않게 */
+/** 타일 id 와 겹치지 않게 */
 const chatKey = (chat: string): string => `chat:${chat}`;
 
 function onSideChatSeen(payload: unknown): void {
@@ -132,7 +114,6 @@ function onSeen(payload: unknown): void {
   }
 }
 
-/** 창마다 한 번 — `mountAppListeners` 가 걸고 돌려받은 함수로 거둔다 */
 export function mountAgentSeen(): () => void {
   focused = document.hasFocus();
   window.addEventListener("focus", onFocus);

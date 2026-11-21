@@ -2,11 +2,7 @@
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
 
-  /**
-   * 설정의 **상태 줄 한 벌** — 왼쪽 상태 타일(그림만 · aria-hidden) + 오른쪽 두 단(위: 제목 · 한 마디, 아래: 사실 칩 줄). 보안 · 원격 접속이 쓴다.
-   * 글자 전부가 `role="status"` 로 읽힌다. 톤은 `data-tone`(`ok` · `warn` · `bad` · `neutral`) — 줄 판의 옅은 틴트는 `::before` 가 깐다
-   * (묶음 카드 규칙이 `background` 를 쥐고 있어서). 칩은 부르는 쪽이 `.vstate-chips` 안에 그린다(칩 모양은 화면마다 다르다).
-   */
+  /** `tone` = `ok` · `warn` · `bad` · `neutral`. 칩은 부르는 쪽이 `.vstate-chips` 안에 그린다. */
   let {
     tone,
     icon,
@@ -21,9 +17,8 @@
     icon: string;
     note: string;
     id?: string;
-    /** 줄 글자 칸의 덧붙이는 클래스 */
     bodyClass?: string;
-    /** 제목 — `.name` 하나 */
+    /** `.name` 하나 */
     title: Snippet;
     chips?: Snippet;
   } & Record<`data-${string}`, unknown> = $props();
@@ -41,7 +36,6 @@
 </div>
 
 <style>
-  /* 타일 + 두 단. 묶음 카드(`.srow` 판)는 그대로 쓰고 격자만 flex 로 바꾼다 */
   .srow.vstate {
     display: flex;
     align-items: flex-start;
@@ -50,7 +44,7 @@
     isolation: isolate;
   }
 
-  /* 톤의 옅은 틴트 — 카드 판 위 한 겹(카드 규칙이 `background` 를 쥐어 판 자체는 못 바꾼다) */
+  /* 틴트는 판 위 한 겹 — 묶음 카드 규칙이 `background` 를 쥐어 판 자체는 못 바꾼다 */
   .srow.vstate::before {
     content: "";
     position: absolute;
@@ -133,7 +127,6 @@
     color: var(--fg-1);
   }
 
-  /* 사실 칩 — 좁으면 줄바꿈 */
   .vstate-body :global(.vstate-chips) {
     display: flex;
     flex-wrap: wrap;

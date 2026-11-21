@@ -38,45 +38,30 @@
   import UiIcon from "$lib/UiIcon.svelte";
 
   /**
-   * **설정 › 테마 › 아바타 하위 화면**의 본문(2026-10-31 — docs/log/2026-10-31-avatars.md · 목업 avatar-mock Main · Interactions).
-   * 처음엔 왼쪽 메뉴의 한 칸이었다가(1~3절) 테마 요약의 "아바타" 줄 → [설정 ›] 로 여는 하위 화면이 됐다(4절 — 틀 · 뒤로 · 제목은
-   * `AppThemeSection` 의 `SubViewStack` · `SettingsSubView`). 위에서부터:
-   *
-   * - **표시** — AI 아이콘 모양(로고 / 아바타 — `[ai] icon_style`) + 작은 미리보기(탭 칩 · 알림 줄 · 로딩 덮개 원 — 진짜 `AiGlyph` 로 그린다).
-   * - **라이브러리** — 44px 동그라미 나열(내장 넷 + 사용자 그림 · 끝에 점선 [＋] — 목업 avatar-mock Library). 어딘가에 지정되어
-   *   쓰는 그림은 강조색 이중 고리, 아니면 살짝 흐리게. 호버 · 키보드 포커스 = 말풍선(이름 · 내장/사용자 · 날짜 · 쓰는 곳), **좌클릭 =
-   *   같은 말풍선 고정**(Escape 로만 닫힘 — 다른 동그라미를 누르면 그리로 옮김 · 같은 것을 다시 누르면 닫힘 · 바깥 클릭엔 안 닫힘).
-   *   관리 메뉴는 **우클릭 · 메뉴 키 · Shift+F10 으로만** — 사용자 그림은 이름 바꾸기(F2 — 고정한 말풍선 안 칸) · 다시 자르기 ·
-   *   …에 쓰기 · 지우기(Delete), 내장은 "…에 쓰기" 만. 쓰는 곳은 지금 **그려지는** 그림 기준이다(지운 그림을 가리키는 값은 기본에 센다).
-   * - **아바타 지정** — 앱 아이콘(둥근 사각) · Claude Code · Codex 줄의 [바꾸기] → 고르기 팝오버(`AvatarPicker` — 추가는 라이브러리의 [＋] 하나),
-   *   오케스트레이션 아티스트 줄은 겹친 얼굴 · 이름들 · [아티스트에서 편집 →](설정을 닫고 오케스트레이션 탭의 아티스트 화면).
-   *
-   * 규칙: **지정 고르기는 미저장 변경**(곧바로 미리 보이고 [저장] / [취소]), **넣기 · 지우기 · 이름 · 다시 자르기는 곧바로 파일 작업**
-   * (`app/app-icons.svelte.ts` 머리말). 원격 웹 창에서는 관리(넣기 · 이름 · 다시 자르기 · 지우기)를 숨긴다 — 그 명령은 원격 미지원 표다.
-   * 관리 메뉴는 메뉴 통로(`runOnMenu`) 하나를 지나고 `document.body` 로 옮겨 그린다(`ImageMenu` 와 같은 까닭 — 설정 모달 위 z 106).
-   * 말풍선도 `body` 로 옮겨 그린다(z 104 — 설정 본문 overflow 에 잘리지 않게 · 메뉴 아래 층).
-   * 제목은 하위 화면 머리(`SettingsSubView`)가 말하고, 한 줄 설명은 테마 요약 줄 이름의 툴팁으로 갔다.
+   * 설정 › 테마 › 아바타 하위 화면의 본문(docs/log/2026-10-31-avatars.md).
+   * 지정 고르기는 미저장 변경([저장] / [취소]), 넣기 · 지우기 · 이름 · 다시 자르기는 곧바로 파일 작업이다(`app/app-icons.svelte.ts` 머리말).
+   * 원격 웹 창에서는 관리를 숨긴다 — 그 명령은 원격 미지원 표다. 관리 메뉴는 메뉴 통로(`runOnMenu`) 하나를 지난다.
+   * 메뉴(z 106) · 말풍선(z 104)은 `body` 로 옮겨 그린다 — 설정 본문 overflow 에 잘리지 않게.
    */
   let {
     active = false,
     onescape = null,
   }: {
     active?: boolean;
-    /** 겹(메뉴 · 이름 칸 · 팝오버 · 고정 말풍선)이 하나도 없을 때의 Escape — 테마 요약으로 돌아간다(아래 Escape 효과) */
+    /** 겹(메뉴 · 이름 칸 · 팝오버 · 고정 말풍선)이 하나도 없을 때의 Escape */
     onescape?: (() => void) | null;
   } = $props();
 
   const AI_ICON_STYLE_ENTRIES = optionEntries(AI_ICON_STYLES);
   const AI_ICON_STYLE_ICONS: ChoiceIcons = { logo: "ai", avatar: "user" };
 
-  /** 지정 줄 셋 — `domId` 는 설정 색인 anchor(`settings-index.ts`)이자 [바꾸기] 단추 id */
+  /** `domId` 는 설정 색인 anchor 이자 [바꾸기] 단추 id */
   const SLOTS = [
     { slot: "app", domId: "app-icon", name: "settings.avatars.slot.app", where: "settings.avatars.slot.app.where" },
     { slot: "claude", domId: "avatar-claude", name: "settings.avatars.slot.claude", where: "settings.avatars.slot.cli.where" },
     { slot: "codex", domId: "avatar-codex", name: "settings.avatars.slot.codex", where: "settings.avatars.slot.cli.where" },
   ] as const;
 
-  /** 이 화면이 읽은 아티스트(지정 칩 · 아티스트 줄 · 지우기 확인은 따로 다시 읽는다). 실패면 빈 목록 */
   let artists = $state<ArtistProfile[]>([]);
 
   $effect(() => {
@@ -91,12 +76,12 @@
   const full = $derived(avatarLibrary.list.length >= MAX_USER_APP_ICONS);
   const used = $derived({ app: slotAvatarId("app"), claude: slotAvatarId("claude"), codex: slotAvatarId("codex") });
 
-  /** 아티스트 얼굴이 실제로 그리는 라이브러리 id — 지운 그림 · 모르는 값이면 `null`(그 CLI 의 얼굴로 접힌다 — 칩에 세지 않는다) */
+  /** 지운 그림 · 모르는 값이면 `null` — 칩에 세지 않는다 */
   function artistAvatar(a: ArtistProfile): string | null {
     return avatarSrc(a.icon) !== null ? avatarId(a.icon) : null;
   }
 
-  /** 쓰는 곳 — 이 그림이 지금 **그려지는** 자리(말풍선 목록 · 비어 있지 않으면 동그라미에 강조색 테두리) */
+  /** 지금 그려지는 자리 기준이다 — 지운 그림을 가리키는 값은 기본에 센다 */
   function placesOf(id: string): string[] {
     const out: string[] = [];
     if (used.app === id) out.push(t("settings.avatars.slot.app"));
@@ -107,7 +92,6 @@
     return out;
   }
 
-  /** 말풍선 머리의 곁말 — "내장" · "사용자 · MM-DD" · "사용자" */
   function metaOf(id: string): string {
     if (!isUser(id)) return t("settings.avatars.card.builtin");
     const date = dateOf(avatarLibrary.list.find((a) => a.id === id)?.added);
@@ -118,14 +102,13 @@
     return (BUILTIN_AVATARS as readonly string[]).includes(id) ? builtinAvatarThumb(id as BuiltinAvatar) : avatarSrc(id);
   }
 
-  /** 넣은 날 — `MM-DD`(지역 시각) */
   function dateOf(ms: number | null | undefined): string | null {
     if (!ms) return null;
     const d = new Date(ms);
     return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
-  // ── 아바타 추가 — 숨은 파일 칸 하나(라이브러리의 [＋] 만 누른다 — [바꾸기] 팝오버에는 추가가 없다, 2026-10-31 사용자) ──
+  // ── 아바타 추가 ──
 
   let fileInput = $state<HTMLInputElement | null>(null);
 
@@ -141,7 +124,7 @@
     if (file) void startAppIconCrop(file, null);
   }
 
-  // ── 지정 줄의 [바꾸기] 팝오버 ─────────────────────────────────────────────
+  // ── [바꾸기] 팝오버 ──
 
   let popFor = $state<AvatarSlot | null>(null);
 
@@ -149,7 +132,7 @@
     popFor = popFor === slot ? null : slot;
   }
 
-  /** 팝오버 바깥을 누르면 닫는다([바꾸기] 단추는 스스로 토글한다) */
+  /** [바꾸기] 단추는 스스로 토글한다 */
   function onWindowPointerDown(ev: PointerEvent): void {
     if (popFor === null) return;
     const el = ev.target instanceof Element ? ev.target : null;
@@ -187,7 +170,6 @@
     menu = null;
   }
 
-  /** 이 노드를 `body` 끝으로 옮긴다(머리말) — 사라질 때 함께 걷는다 */
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
     return { destroy: () => node.remove() };
@@ -203,7 +185,6 @@
     (menuEl.querySelector('[role="menuitem"]') as HTMLElement | null)?.focus();
   });
 
-  /** 메뉴의 위 · 아래 화살표 — 항목 사이를 돈다. Escape 는 메뉴만 닫는다 */
   function menuKeydown(ev: KeyboardEvent): void {
     if (ev.key === "Escape" || ev.code === "Escape") {
       ev.preventDefault();
@@ -228,15 +209,14 @@
     return document.querySelector<HTMLElement>(`[data-avatar-card="${CSS.escape(id)}"]`);
   }
 
-  // ── 말풍선 — 호버 · 포커스는 떠 있는 동안만, 클릭은 고정(Esc 로만 닫힘) ─────────────────────
+  // ── 말풍선 ──
 
-  /** 고정한 동그라미 — 같은 동그라미를 다시 누르거나 Escape 로만 풀린다(바깥 클릭으로는 안 닫힌다 — 2026-10-31 사용자) */
+  /** 같은 동그라미를 다시 누르거나 Escape 로만 풀린다 — 바깥 클릭으로는 안 닫힌다 */
   let pin = $state<string | null>(null);
-  /** 마우스가 올라간 동그라미 */
   let hover = $state<string | null>(null);
-  /** 키보드로 포커스한 동그라미(`:focus-visible` 일 때만 — 마우스 클릭 뒤 남는 포커스는 말풍선을 세우지 않는다) */
+  /** `:focus-visible` 일 때만 — 마우스 클릭 뒤 남는 포커스는 말풍선을 세우지 않는다 */
   let focused = $state<string | null>(null);
-  /** 방금 닫은 동그라미 — 마우스 · 포커스가 떠날 때까지 미리보기로 다시 세우지 않는다(닫자마자 호버 말풍선이 되살지 않게) */
+  /** 닫자마자 호버 말풍선이 되살지 않게 — 마우스 · 포커스가 떠날 때까지 미리보기로 세우지 않는다 */
   let suppress = $state<string | null>(null);
   let tipEl = $state<HTMLElement | null>(null);
 
@@ -245,7 +225,6 @@
     const h = hover ?? focused;
     return h !== null && h !== suppress && h !== pin ? h : null;
   });
-  /** 지금 말풍선이 가리키는 동그라미 — 이름을 고치는 중이면 그것, 아니면 미리보기, 아니면 고정 */
   const tipId = $derived.by(() => {
     const id = renaming ?? preview ?? pin;
     return id !== null && allIds.includes(id) ? id : null;
@@ -272,7 +251,6 @@
     if (suppress === id) suppress = null;
   }
 
-  /** 말풍선 자리 — 동그라미 아래(모자라면 위), 화살표는 동그라미 가운데. `body` 로 옮겨 그려 설정 본문 overflow 에 잘리지 않는다 */
   function placeTip(): void {
     if (!tipEl || tipId === null) return;
     const a = cardEl(tipId)?.getBoundingClientRect();
@@ -305,12 +283,8 @@
   });
 
   /**
-   * **이 화면의 Escape 한 곳** — 창에 **캡처**로 받아 거기서 끊는다(설정 모달의 Escape(닫기)보다 먼저 · `SubViewStack` 과 같은 관례).
-   * 한 겹씩 벗는다: 카드 메뉴 · 이름 칸 · [바꾸기] 팝오버가 떠 있으면 그쪽 요소의 Escape 다(여기서는 물러난다) → 고정한 말풍선을
-   * 닫는다 → 아무 겹도 없으면 `onescape`(테마 하위 화면 → 요약). 요약에서의 Escape 는 늘 그렇듯 설정 모달 몫이다.
-   * `SubViewStack` 의 Escape 를 쓰지 않는 까닭은 `AppThemeSection` 머리말(등록 순서상 그쪽이 먼저 돌아 말풍선을 건너뛴다).
-   * 한국어 IME 가 켜져 있으면 Escape 가 `key: "Process"` 로 올 수 있어 물리 키 `code` 도 본다(`tabbar/tab-menu.ts` 의 `menuEscape`) —
-   * 조합 중(`isComposing`)이면 IME 몫이다. 설정 모달 밖(위에 뜬 확인 상자 · 자르기 모달)의 Escape 는 그쪽 것.
+   * 이 화면의 Escape 한 곳 — 창에 캡처로 받아 설정 모달의 Escape 보다 먼저 끊는다. 메뉴 · 이름 칸 · 팝오버가 떠 있으면 그쪽 몫이다.
+   * IME 가 켜져 있으면 Escape 가 `key: "Process"` 로 올 수 있어 물리 키 `code` 도 본다 — 조합 중(`isComposing`)이면 IME 몫이다.
    */
   $effect(() => {
     if (pin === null && !onescape) return;
@@ -335,7 +309,7 @@
 
   let libEl = $state<HTMLElement | null>(null);
 
-  // ── 이름 바꾸기 — 고정한 말풍선 안의 칸 ─────────────────────────────────────
+  // ── 이름 바꾸기 ──
 
   let renaming = $state<string | null>(null);
   let draft = $state("");
@@ -361,7 +335,7 @@
   }
 
   function cardKeydown(ev: KeyboardEvent, id: string): void {
-    // 메뉴는 우클릭으로만 연다(좌클릭은 아무것도 안 함 — 2026-10-31 사용자). 키보드는 메뉴 키 · Shift+F10.
+    // 메뉴는 우클릭 · 메뉴 키 · Shift+F10 으로만 연다(좌클릭은 말풍선 고정이다)
     if (ev.code === "ContextMenu" || (ev.shiftKey && ev.code === "F10")) {
       ev.preventDefault();
       openMenuAt(id, ev.currentTarget as HTMLElement);
@@ -406,7 +380,6 @@
       value={settings.aiIconStyle}
       onpick={setAiIconStyle}
     />
-    <!-- 미리보기 — 진짜 그리는 자리(`AiGlyph`)를 작게 세운다: 탭 칩 둘 · 알림 줄 · 로딩 덮개 원 -->
     <div class="preview" role="group" aria-label={t("settings.avatars.preview.aria")}>
       <span class="pv-tab"><AiGlyph name="claude" size={14} />Claude Code</span>
       <span class="pv-tab"><AiGlyph name="codex" size={14} />Codex</span>
@@ -424,7 +397,6 @@
 <div class="dots" id="avatar-library" role="list" aria-label={t("settings.avatars.library.heading")} bind:this={libEl}>
   {#each allIds as id (id)}
     {@const label = avatarLabel(id) ?? id}
-    <!-- 44px 동그라미 — 쓰는 중이면 강조색 이중 테두리, 아니면 살짝 흐리게. 좌클릭 = 말풍선 고정 토글 · 우클릭 = 관리 메뉴 -->
     <div class="dot-item" role="listitem">
       <button
         type="button"
@@ -467,7 +439,7 @@
     >
       <UiIcon name="plus" size={18} />
     </button>
-    <!-- 화면에 없는 파일 칸 — 그림은 이 창에서만 읽는다(경로를 Rust 에 넘기지 않는다) -->
+    <!-- 그림은 이 창에서만 읽는다 — 경로를 Rust 에 넘기지 않는다 -->
     <input
       class="hidden-input"
       type="file"
@@ -666,7 +638,6 @@
 {/if}
 
 <style>
-  /* 소제목 줄 — 제목 · 개수 · 오른쪽 안내 */
   .sub-line {
     display: flex;
     align-items: baseline;
@@ -694,7 +665,7 @@
     color: var(--fg-2);
   }
 
-  /* ── 표시 줄 — 이름 · 칩 · 미리보기, 좁으면 미리보기가 다음 줄로 ── */
+  /* ── 표시 줄 ── */
   .srow.show-row {
     display: flex;
     flex-wrap: wrap;
@@ -749,7 +720,7 @@
     background: var(--control-tile-bg);
   }
 
-  /* ── 라이브러리 — 44px 동그라미 나열(간격 12 · 목업 Library ①) ── */
+  /* ── 라이브러리 ── */
   .dots {
     display: flex;
     flex-wrap: wrap;
@@ -785,7 +756,6 @@
     border-radius: 50%;
     object-fit: cover;
     user-select: none;
-    /* 쓰지 않는 그림은 살짝 흐리게 — 올리면 또렷하게 */
     opacity: 0.85;
     transition: opacity 120ms ease-out;
   }
@@ -800,13 +770,11 @@
     transform: scale(1.08);
   }
 
-  /* 쓰는 중 — 2px 띄운(투명 — 유리 판 위에서도 바탕이 그대로 보인다) 강조색 2px 고리 */
   .dot.used {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
-  /* 고정(또는 관리 메뉴가 열린) 동그라미 — 고리 바깥에 옅은 강조색 한 겹(목업 ③) */
   .dot::after {
     position: absolute;
     inset: -7px;
@@ -833,7 +801,6 @@
     border-color: var(--focus-ring);
   }
 
-  /* [＋] — 점선 동그라미 */
   .dot.add {
     border: 1.5px dashed var(--line-strong);
   }
@@ -848,7 +815,7 @@
     cursor: default;
   }
 
-  /* ── 말풍선 — `body` 로 옮겨 그린다(설정 본문 overflow 밖 · 카드 메뉴 바로 아래 층) ── */
+  /* ── 말풍선 ── */
   .av-tip {
     position: fixed;
     z-index: 104;
@@ -889,7 +856,6 @@
     transform: rotate(45deg);
   }
 
-  /* `data-side` 는 자리 잴 때(`placeTip`) 스크립트가 단다 */
   .av-tip:global([data-side="above"]) .tip-arrow {
     top: auto;
     bottom: -7px;
@@ -948,7 +914,6 @@
     color: var(--fg-3);
   }
 
-  /* 이름 칸 — 고정한 말풍선의 이름 자리 */
   .name-input {
     flex: 1 1 auto;
     min-width: 0;
@@ -987,7 +952,7 @@
     border-radius: var(--radius-sm);
   }
 
-  /* ── 지정 줄 — [그림 | 이름 · 설명 | 단추], 팝오버는 줄 아래 오른쪽 ── */
+  /* ── 지정 줄 ── */
   .srow.arow {
     position: relative;
     display: flex;
@@ -1032,7 +997,6 @@
     background: var(--accent);
   }
 
-  /* 겹친 얼굴(최대 셋) — 폭은 얼굴 수만큼(최소 40 — 위 줄들의 그림 칸과 맞춘다) */
   .faces {
     display: flex;
     flex: 0 0 auto;
@@ -1099,7 +1063,7 @@
     color: var(--fg-1);
   }
 
-  /* ── 카드 메뉴 — `ImageMenu` 와 같은 층(독 z 100 위) ── */
+  /* ── 카드 메뉴 ── */
   .portal {
     display: contents;
   }
@@ -1121,7 +1085,7 @@
     max-width: 280px;
   }
 
-  /* `.menu-row` 는 `display: block` 이라 꼬리표(`.menu-kbd` — F2 · Delete)를 끝으로 밀려면 플렉스여야 한다(목업 ④) */
+  /* `.menu-row` 는 `display: block` 이라 꼬리표(`.menu-kbd`)를 끝으로 밀려면 플렉스여야 한다 */
   .av-menu .menu-row {
     display: flex;
     align-items: center;

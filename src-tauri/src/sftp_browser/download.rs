@@ -15,10 +15,7 @@ use super::*;
 // 명령 — 다운로드
 // ---------------------------------------------------------------------------
 
-/// 원격 파일을 `<local>.part` 로 흘려 담는다. 돌려주는 값은 받은 바이트 수.
-///
-/// 통째로 읽지 않는 이유는 두 가지다: 100MB 를 메모리에 올리지 않기 위해서, 그리고
-/// **받는 도중에 진행률을 낼 수 있어야** 해서다 (읽기가 순차라 큰 파일은 오래 걸린다).
+/// 통째로 읽지 않는다 — 큰 파일을 메모리에 올리지 않고, 받는 도중에 진행률을 내야 한다(읽기가 순차다).
 pub(super) async fn stream_to_part(
     file: &mut File,
     part: &str,
@@ -55,8 +52,7 @@ pub(super) async fn stream_to_part(
         total += read as u64;
 
         if should_report(total - reported, last.elapsed()) {
-            // 보내는 값은 **누적 총합**이다 (증분이 아니다) — 한 건이 유실돼도 다음
-            // 한 건이 상태를 되돌려 놓는다.
+            // 누적 총합을 보낸다 — 한 건이 유실돼도 다음 한 건이 상태를 되돌린다.
             let _ = on_progress.send(total);
             reported = total;
             last = Instant::now();
@@ -72,17 +68,7 @@ pub(super) async fn stream_to_part(
     Ok(total)
 }
 
-/// 원격 파일 하나를 로컬 경로로 내려받는다.
-///
-/// `local` 은 프런트가 저장 대화상자로 받은 **완성된 로컬 파일 경로**다. 받는 동안에는
-/// `<local>.part` 에 쓰고 다 받은 뒤에만 `rename` 하므로, 중간에 끊겨도 반쯤 받은 파일이
-/// 최종 이름으로 남지 않는다.
-///
-/// `onProgress` 로는 **받은 누적 바이트**가 흐른다 (최소 100ms 간격, 마지막에 총합 한 번).
-/// 전체 크기는 프런트가 `sftp_list`/`sftp_stat` 의 `size` 로 이미 알고 있다.
-///
-/// 폴더 다운로드는 아직 없다 — 트리를 훑으며 파일마다 왕복이 붙어 진행률·취소 설계가
-/// 따로 필요하고, v1 의 범위가 아니다.
+/// `<local>.part` 에 쓰고 다 받은 뒤에만 rename — 끊겨도 반쯤 받은 파일이 최종 이름으로 남지 않는다. `onProgress` 는 누적 바이트(최소 100ms 간격 · 마지막에 총합).
 #[tauri::command]
 pub async fn sftp_download(
     app: tauri::AppHandle,
@@ -147,9 +133,7 @@ pub async fn sftp_download(
     let total = match transferred {
         Ok(total) => total,
         Err(message) => {
-            // 읽기 실패는 io::Error 로 올라와 원인을 가릴 수 없다 (러시가 감싼다). 전송이
-            // 죽은 경우가 대부분이라 캐시된 채널을 버린다 — 헛되게 버려도 다음 요청이
-            // 새로 열 뿐이라 손해가 없다.
+            // 읽기 실패는 io::Error 로 감싸 와 원인을 가릴 수 없어 채널을 버린다 — 헛되면 다음 요청이 새로 열 뿐이다.
             forget(session).await;
             let _ = tokio::fs::remove_file(&part).await;
             return Err(message);

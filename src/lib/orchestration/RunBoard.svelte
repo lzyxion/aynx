@@ -111,10 +111,8 @@
   });
   const runId = $derived(path.runId ?? null);
   let permissionsOpen = $state(false);
-  /** [병합] 확인 창 — 앨범을 떠나거나 탭이 가려지면 닫는다 */
   let mergeOpen = $state(false);
   $effect(() => { void runId; void path.view; void path.taskId; void visible; permissionsOpen = false; mergeOpen = false; infoOpen = false; });
-  /** [앨범 보관]을 눌렀는데 worktree 가 남았다 — 안내 띠(정리하면 저절로 걷힌다) */
   let archiveBlocked = $state(false);
   $effect(() => { void runId; archiveBlocked = false; });
   // 같은 앨범도 거울 → 이 창의 경로로 바뀌면 다시 붙는다. 부팅 첫 조회에는 아직 앨범이 없을 수 있다.
@@ -125,8 +123,7 @@
     if (visible && id && tab) untrack(() => void reattachAlbumProducer(tab.id, id));
   });
 
-  // 조회 상태 — `board/board-loader.svelte.ts`. 읽기는 아래 별칭(`$derived` — 로더의 게터를 그대로 따른다), 쓰기는 `loader.*`.
-  /** 아티스트 목록(트랙 줄 · 트랙 화면의 이름 · 아이콘) — 보일 때만 읽고 듣는다 */
+  // 조회 상태는 `board/board-loader.svelte.ts` — 쓰기는 `loader.*`.
   const profiles = createArtistLoader();
   $effect(() => {
     if (visible) return profiles.subscribe();
@@ -149,7 +146,6 @@
   const detail = $derived(loader.detail);
   const selectedTask = $derived(path.view === "track" ? detail?.tasks.find((task) => task.id === path.taskId) ?? null : null);
   const artistId = $derived(detail && selectedTask ? currentTrackAttempt(detail, selectedTask.id, path.attemptId)?.id ?? null : null);
-  // 막대·알림·기본 시도 변경도 선택한 작업 중 파일을 바로 읽는다.
   $effect(() => {
     const selected = artistId;
     if (visible && selected) untrack(() => void loader.checkActivity(true));
@@ -164,39 +160,31 @@
 
   let busy = $state(false);
   let confirmStop = $state(false);
-  /** [앨범 완료] 확인 중(되돌릴 수 없다) */
   let confirmDone = $state(false);
-  /** [조정] 패널(통합 설계 4-5) — 열 때 서버에서 두 머리 · 통합된 Task 표를 읽는다 */
   let recOpen = $state(false);
-  /**
-   * [검증 실행] 확인 대화 · [검증 실패인데 수락] 확인(통합 설계 5-1 · 5-4) — **연 순간의 묶음을 고정**해 든다(리뷰 F3). 확인 단추는
-   * 이 고정 값만 보내고, 갱신에서 그 Task 의 지금 값이 달라지면(Job 교체 · 새 후보 · 만료) 대화를 닫는다(다시 열어 새 값을 보게).
-   */
+  /** 연 순간의 묶음을 고정한다(리뷰 F3) — 확인 단추는 이 값만 보내고, 그 Task 의 지금 값이 달라지면 대화를 닫는다 */
   let verifyAsk = $state<VerifyPin | null>(null);
   let overrideAsk = $state<OverridePin | null>(null);
   let rec = $state<ReconcilePreview | null>(null);
   let recConfirm = $state(false);
   let recReject = $state<string[]>([]);
-  /** [worktree 지우기] 확인 중인 Attempt */
   let confirmWt = $state<string | null>(null);
-  /** [정리] 대화(통합 설계 6-3) — 열 때 서버에서 작업자 worktree · ref · 남긴 서버 임시 폴더를 읽는다 */
   let cleanOpen = $state(false);
   let clean = $state<CleanupPreview | null>(null);
   let cleanWt = $state<string[]>([]);
   let cleanRefs = $state<string[]>([]);
   let cleanBranches = $state(false);
   let now = $state(Date.now());
-  /** 앨범 머리 [⋯] 메뉴의 [앨범 정보] — 머리의 보조 줄 */
   let infoOpen = $state(false);
   let scrollEl = $state<HTMLDivElement | null>(null);
 
-  // 주소가 바뀌면(목록 ↔ 상세) 판을 비우고 다시 읽는다. 보일 때만 — 숨은 탭이 다시 보이게 될 때도 이 효과가 한 번 읽는다(`visible` 을 읽는다).
+  // 숨은 탭이 다시 보이게 될 때도 이 효과가 한 번 읽는다(`visible` 을 읽는다).
   $effect(() => {
     void runId;
     if (!visible) return;
     untrack(() => {
       loader.forgetSeq();
-      // 숨은 동안 주소가 바뀌었다(이어받기 · 다른 앨범 — 실기 10-29) — 옛 앨범을 잠시라도 보이지 않게 먼저 비운다.
+      // 숨은 동안 주소가 바뀌었다(이어받기 · 다른 앨범) — 옛 앨범을 잠시라도 보이지 않게 먼저 비운다.
       if (loader.detail && loader.detail.runId !== runId) loader.detail = null;
       confirmStop = false;
       confirmDone = false;
@@ -209,7 +197,7 @@
     });
   });
 
-  // 목록 화면 — 창으로 돌아올 때 · 30초마다 요약을 다시 읽는다(앱 밖에서 지운 worktree 는 사건이 없다 · 간격은 `refreshList` 가 지킨다).
+  // 앱 밖에서 지운 worktree 는 사건이 없다 — 창으로 돌아올 때 · 30초마다 요약을 다시 읽는다.
   $effect(() => {
     if (!visible || runId !== null) return;
     const refresh = () => {
@@ -225,7 +213,6 @@
     };
   });
 
-  // 앨범이 바뀌면 펼침 · [앨범 정보] 를 접는다.
   $effect(() => {
     void runId;
     untrack(() => {
@@ -233,7 +220,6 @@
     });
   });
 
-  // 확인 대화 무효화 — 판이 갱신될 때 고정 묶음과 지금 값을 맞춘다.
   $effect(() => {
     const d = detail;
     const va = verifyAsk;
@@ -242,13 +228,11 @@
     if (oa && !overridePinValid(oa, d, d?.tasks.find((x) => x.id === oa.taskId) ?? null)) overrideAsk = null;
   });
 
-  // 변화 이벤트 — 보일 때만 듣는다(구독 · 세션 서버 재연결은 `loader.subscribe` — 정리는 그 해제 함수).
   $effect(() => {
     if (!visible) return;
     return loader.subscribe();
   });
 
-  // 사건 때 한 번(새 판을 읽은 뒤) — 보일 때만.
   $effect(() => {
     if (!visible || !detail) return;
     void detail.latestSeq;
@@ -258,7 +242,7 @@
     });
   });
 
-  // 열려 있는 동안 15초마다 — 사건 없이 바뀐 worktree · 기록 지연을 잡는다. 산 작업자가 있을 때만.
+  // 사건 없이 바뀐 worktree · 기록 지연을 잡는다.
   $effect(() => {
     if (!visible || !detail || !wantsActivity(detail)) return;
     const id = setInterval(() => void loader.checkActivity(true), 15_000);
@@ -268,7 +252,6 @@
     };
   });
 
-  /** [기록 보기](6단계) — 기존 대화 기록 화면을 그 작업자의 고정 대화로(머리 정보는 보드가 짓는다) */
   function viewTranscript(a: AttemptView): void {
     if (!detail || !a.conversationId) return;
     viewWorkerConversation(
@@ -289,14 +272,14 @@
     );
   }
 
-  // 열려 있는 동안 30초마다 한 번 — 사건 없이 작업자가 worktree 를 바꾼 것(보고 뒤 커밋 · 편집)을 잡는다.
+  // 사건 없이 작업자가 worktree 를 바꾼 것(보고 뒤 커밋 · 편집)을 잡는다.
   $effect(() => {
     if (!visible || !detail || !wantsDrift(detail)) return;
     const id = setInterval(() => void loader.checkDrift(true), 30_000);
     return () => clearInterval(id);
   });
 
-  // 경과 시계 — 보일 때 · 살아 있는 Run 일 때만 1초마다. 그물(F8 — 30초에 한 번 seq 확인)도 이 틱에 얹는다(타이머를 늘리지 않는다).
+  // 30초에 한 번 seq 확인하는 그물(F8)도 이 틱에 얹는다(타이머를 늘리지 않는다).
   $effect(() => {
     if (!visible || !detail || detail.endedAt || detail.state === "orphaned") return;
     now = Date.now();
@@ -307,7 +290,6 @@
     return () => clearInterval(id);
   });
 
-  // 라이브러리의 [정리] 요청만 받는다. 트랙 진입은 경로가 쥔다.
   let focusSeen = 0;
   $effect(() => {
     const r = albumCleanupRequest();
@@ -319,7 +301,7 @@
   });
 
   const actions = $derived(detail ? runActions(detail.state, detail.coordinatorAttached) : null);
-  /** 조율 멈춤 띠(10-30 — 재생 막대 바로 위 한 줄). 멈춤이면 앨범 머리의 상태 문장 띠는 걷는다(같은 말 두 번 없음) */
+  /** 멈춤이면 앨범 머리의 상태 문장 띠는 걷는다(같은 말 두 번 없음) */
   const pause = $derived(detail ? pauseBand(detail, t) : null);
   const pauseTrack = $derived(detail ? needsHuman(detail).find((need) => need.taskId !== null)?.taskId ?? null : null);
   const phrase = $derived(detail && !pause ? runStatePhrase(detail, t) : null);
@@ -334,11 +316,7 @@
   const timeline = $derived([...(detail?.log ?? [])].reverse());
   const rows = $derived(detail ? trackRows(detail, now) : []);
   const strays = $derived(detail ? strayAttempts(detail) : []);
-  /**
-   * 남은 한도 · 타임라인의 두 배치(목업 V3AlbumSide*) — 넓으면 오른쪽 세부 칸의 카드 둘, 좁으면 트랙 표 아래 한도 칩 + [타임라인 | 한도] 탭.
-   * 둘 다 그려 두고 앨범 칸 폭의 컨테이너 쿼리(`album-body`)가 하나만 보인다 — 칸 내용은 아래 조각 · `RunTimeline` 을 같이 쓴다.
-   * 트랙 표 아래 탭(목업 V3FoldA · 사용자 배치 — [타임라인 | 한도], 트랙 표는 탭 밖 위에 늘 보임). 고른 탭은 그 앨범에 창 메모리로 남는다
-   */
+  /** 넓은 배치 · 좁은 배치를 둘 다 그려 두고 앨범 칸 폭의 컨테이너 쿼리(`album-body`)가 하나만 보인다. 고른 탭은 그 앨범에 창 메모리로 남는다 */
   const limitsShown = $derived(!!detail && detail.state !== "orphaned");
   const albumTab = $derived.by((): AlbumTab => {
     const tab = albumTabOf(runId);
@@ -348,7 +326,6 @@
     { id: "timeline", label: t("orch.board.tab.timeline", { n: timeline.length }) },
     ...(limitsShown ? [{ id: "limits", label: t("orch.board.tab.limits") }] : []),
   ]);
-  /** 트랙 표 아래 늘 보이는 한도 칩 셋 — 쓴 수 / 한도 · 조율 시간 남음 */
   const limitChips = $derived.by(() => {
     if (!detail) return null;
     const l = detail.limits, r = detail.remaining;
@@ -358,26 +335,23 @@
       coordLeft: formatDuration(Math.max(0, detail.coordinationDeadlineAt - (detail.endedAt ?? now))),
     };
   });
-  /** 이 플레이어가 든 탭(프로듀서 찾기) */
   const homeTab = $derived(residentWindowTabs().find((x) => listPanes(x.root).some((p) => p.id === pane.id)) ?? null);
-  /** 이 탭의 프로듀서 채팅이 돌리는 CLI — 앨범 머리 "프로듀서 ‹캐릭터›"(연 채팅 잎이 없으면 `null` — 프로듀서 없음) */
+  /** 연 채팅 잎이 없으면 `null` — 프로듀서 없음 */
   const producerCli = $derived.by(() => {
     if (remoteProducer) return remoteProducer.cli || null;
     const leaf = homeTab ? producerLeafOf(homeTab) : null;
     return leaf?.producer?.opened ? leaf.producer.cli || null : null;
   });
-  /** 왼쪽에 프로듀서 채팅(또는 대화 기록) 칸이 섰다 — 앨범 판 오른쪽 세부 칸의 폭만 가른다(있으면 360 · 없으면 트랙 화면과 같은 400) */
   const hasChat = $derived(!!remoteProducer || !!(homeTab && producerLeafOf(homeTab)));
 
-  /** 끝난 앨범(서버 이어받기 판정 — 중단 중 · 중단 · 완료): 머리 단추가 [프로듀서 대화 기록] + [⋯] 메뉴 · 머리 아래 프로듀서 마무리 카드(목업 V3AlbumDone) */
   const ended = $derived(albumEnded(runSummaryOf(runId)));
-  /** 그 앨범 프로듀서의 대화(이 기기에서 아는 것만 — `albumProducerLog`) */
+  /** 이 기기에서 아는 것만 */
   const producerLog = $derived(ended && detail ? albumProducerLog(runId, detail.repo) : null);
   function openLog(): void {
     if (ownerTab && runId) openProducerLog(ownerTab.id, runId, detail?.repo ?? "");
   }
 
-  /** 앨범 머리 [⋯] 메뉴 — 옛 보드 머리의 사람 동작 전부(일시정지 · 재개 · 완료 · 병합 명령 · 정리 · 닫기 · 중단). 위험한 줄은 맨 끝 */
+  /** 위험한 줄은 맨 끝 */
   const menuItems = $derived.by<AlbumMenuItem[]>(() => {
     const d = detail;
     if (!d) return [];
@@ -420,18 +394,17 @@
     }
     items.push({ key: "info", icon: "info", label: t("orch.album.menu.info"), sep: items.length > 0, run: () => (infoOpen = true) });
     if (cleanupAvailable(d)) items.push({ key: "cleanup", icon: "cleanup", label: t("orch.album.menu.cleanup"), title: t("orch.cleanup.open.title"), disabled: busy, run: () => void openCleanup() });
-    // 끝난 앨범만. worktree 가 남았으면 눌렀을 때 안내 + [정리](목업 AlbumMenu) — 최종 판정은 서버.
+    // 끝난 앨범만 — 최종 판정은 서버.
     if (actions?.archive) items.push({ key: "archive", icon: "archive", label: t("orch.archive.menu"), title: t("orch.archive.menu.title"), disabled: busy, run: () => { if (archiveGate(d) === "blocked") archiveBlocked = true; else archiveAlbum(d.runId); } });
     if (actions?.stop) items.push({ key: "stop", icon: "stop", label: t("orch.bar.stop"), danger: true, sep: true, disabled: busy, run: () => (confirmStop = true) });
     return items;
   });
 
-  /** 멈춤 띠의 [새 프로듀서로 이어받기] — 프로듀서 없음(재개 막힘) · 이 탭에 프로듀서 잎이 없음 · 서버 판정이 되찾을 수 있다고 할 때만(막대의 [프로듀서 열기] 와 같은 조건) */
+  /** 막대의 [프로듀서 열기] 와 같은 조건 */
   const pauseAdopt = $derived(
     !!pause && !!actions?.resumeBlocked && !remoteProducer && !(homeTab && producerLeafOf(homeTab)) && (runSummaryOf(runId)?.adoptable.restore ?? true),
   );
 
-  /** 시도 선택은 별도 화면이 아니라 같은 트랙 경로의 칸이다. */
   function openArtist(id: string): void {
     const taskId = detail?.attempts?.find((a) => a.id === id)?.taskId;
     if (taskId) openTrack(taskId, id);
@@ -467,22 +440,20 @@
     void act(() => setTaskState(id, task.id, task.version, state));
   }
 
-  // 사람이 필요한 작업자 알림(권한 대기 · 첫 화면 · 복구 필요 …)은 **서버가 사건 id 와 함께** 만들고 주 창 한 곳이 보인다
-  // (`app/orchestration-notify` — 리뷰 F11). 판은 따로 알리지 않는다(창이 여럿이어도 · 창이 없던 동안의 사건도 한 번).
+  // 사람이 필요한 작업자 알림은 서버가 사건 id 와 함께 만들고 주 창 한 곳이 보인다(`app/orchestration-notify`) — 판은 따로 알리지 않는다.
 
-  /** [수락] · [반려] · 뒤집기(사람) — 버전은 지금 읽은 판의 것(그사이 바뀌면 서버가 `conflict`) */
+  /** 버전은 지금 읽은 판의 것 — 그사이 바뀌면 서버가 `conflict` */
   function review(task: TaskView, decision: "accept" | "reject"): void {
     if (!detail) return;
     const id = detail.runId;
     void act(() => reviewTask(id, task.id, task.version, decision));
   }
 
-  /** [통합 취소](커밋 단계 전만 — 서버가 다시 판정) */
   function cancelTaskIntegration(task: TaskView): void {
     void act(() => cancelIntegration(detail!.runId, task.id));
   }
 
-  /** [검증 실행] 확인 열기 — 연 순간의 묶음을 고정(리뷰 F3). 줄 머리의 단추에서 오면 그 트랙을 펼친다(확인 상자가 펼침 안에 있다) */
+  /** 줄 머리의 단추에서 오면 그 트랙을 펼친다 — 확인 상자가 펼침 안에 있다 */
   function askVerify(taskId: string): void {
     verifyAsk = pinVerify(detail!, taskId);
     openTrack(taskId);
@@ -500,7 +471,6 @@
     void act(() => approveVerify(p.runId, { jobId: p.jobId, candidate: p.candidate, commandSha: p.commandSha, old: p.old }));
   }
 
-  /** [검증 실패인데 수락] 확인 열기 — 연 순간의 묶음을 고정(리뷰 F3) */
   function askOverride(task: TaskView): void {
     overrideAsk = pinOverride(detail!, task);
   }
@@ -510,14 +480,13 @@
   }
 
   function confirmOverride(pin: OverridePin, task: TaskView): void {
-    // 고정 묶음만 보낸다(리뷰 F3).
     const p = pin;
     overrideAsk = null;
     if (!overridePinValid(p, detail, task)) return;
     void act(() => overrideVerify(p.runId, p.jobId, p.verifyId, p.candidate));
   }
 
-  /** [파일 목록](통합 설계 3-1) — 보고 id → 목록 · 읽는 중 · 오류. 고정 OID 라 한 번 읽으면 그대로 */
+  /** 고정 OID 라 한 번 읽으면 그대로 */
   let files = $state<Record<string, ReportFilesView | "loading" | { error: string }>>({});
   let filesOpen = $state<Set<string>>(new Set());
 
@@ -540,7 +509,6 @@
       .catch((e) => (files = { ...files, [r.reportId]: { error: orchReasonText(String(e), t) } }));
   }
 
-  /** 보고 파일 목록을 한 번 읽어 둔다(작업자 상세의 곁 카드 — [파일 목록] 과 같은 캐시 · 펼침 상태는 건드리지 않는다) */
   function ensureFiles(taskId: string, reportId: string): void {
     if (!detail) return;
     const have = files[reportId];
@@ -552,19 +520,17 @@
       .catch((e) => (files = { ...files, [reportId]: { error: orchReasonText(String(e), t) } }));
   }
 
-  /** [diff 보기](작업자 상세 — 보고 전) — 그 worktree 의 아직 커밋하지 않은 것 */
   function viewWipDiff(a: AttemptView): void {
     if (!detail || !a.worktree) return;
     void openWorktreeDiff(detail.repo, { worktree: a.worktree, branch: a.branch ?? null });
   }
 
-  /** 권한은 앨범 패널에서만 바꾼다. 트랙에서 열어도 같은 앨범 구성을 편집한다. */
+  /** 권한은 앨범 패널에서만 바꾼다 — 트랙에서 열어도 같은 앨범 구성을 편집한다 */
   function editDelegation(_role: string | null = null): void {
     if (!detail?.album) return;
     permissionsOpen = true;
   }
 
-  /** [diff 보기] — 그 Attempt 의 worktree · 브랜치로, 기준 … 보고 커밋 */
   function viewDiff(r: ReportView): void {
     if (!detail) return;
     const range = reportDiffRange(r);
@@ -573,7 +539,6 @@
     void openReportDiff(detail.repo, { ...range, branch: a?.branch ?? null, worktree: a?.worktree ?? null });
   }
 
-  /** [조정] 패널 열기 — 두 머리 · 통합된 Task 표를 읽는다(보류일 때만) */
   async function openReconcile(): Promise<void> {
     if (!detail) return;
     recOpen = true;
@@ -601,7 +566,7 @@
     recReject = on ? [...recReject.filter((x) => x !== taskId), taskId] : recReject.filter((x) => x !== taskId);
   }
 
-  /** 내보낸 브랜치의 병합 명령 복사 — 앱이 병합하지 못할 때(⋯ 메뉴 · 확인 창) */
+  /** 앱이 병합하지 못할 때 */
   async function copyMerge(branch: string): Promise<void> {
     if (await writeClipboard(mergeCommand(branch))) showNotice(t("orch.integration.merge.hint", { branch }));
   }
@@ -623,13 +588,12 @@
     });
   }
 
-  // 주소는 명세(탭 상태)에 상태 모듈이 적는다 — 프롭 `pane` 을 직접 고치지 않는다(`noteRunBoard` 머리말)
+  // 프롭 `pane` 을 직접 고치지 않는다 — 주소는 상태 모듈이 명세에 적는다(`noteRunBoard`)
   function backToList(): void {
     noteRunBoard(pane.id, null);
     loader.detail = null;
   }
 
-  /** [정리] 대화 열기 — 재료를 읽고 기본 고름(통합된 Task 의 worktree · 남은 서버 임시 ref)을 세운다 */
   async function openCleanup(): Promise<void> {
     if (!detail) return;
     cleanOpen = true;
@@ -664,14 +628,12 @@
     });
   }
 
-  /** 남긴 서버 임시 폴더 [그래도 지우기](통합 설계 6-2 — 사람) */
   function discard(path: string): void {
     if (!detail) return;
     const id = detail.runId;
     void act(() => discardTemp(id, path));
   }
 
-  /** 끝난 앨범 [보관] — 보던 앨범이면 그 위 화면(출발 스튜디오 또는 라이브러리)으로 돌아간다(오케스트레이션 탭은 경로로 · 원격 창도 같은 길) */
   function archiveAlbum(id: string): void {
     void act(async () => {
       await archiveRun(id);
@@ -682,7 +644,6 @@
   }
 </script>
 
-<!-- 조율 멈춤 띠 — 판 아래(= 재생 막대 바로 위) 한 줄 · 호박 · 짧은 문구 + 그 자리의 단추 · 긴 설명은 툴팁(10-30 실기) -->
 {#snippet pauseStrip()}
   {#if pause && detail}
     <div class="pause-band" role="status" aria-label={t("orch.pauseBand.aria")} title={pause.title} data-run-pause-band={pause.reason}>
@@ -701,13 +662,11 @@
   {/if}
 {/snippet}
 
-<!-- 판 맨 위 경로 줄(원형 ← 하나 · 오른쪽 끝 = 화면별 단추). 네 화면 모두 든 판의 왼쪽 위 같은 자리 — 여백 있는 판 안이면 `host` 로 그 여백을 걷는다 -->
 {#snippet crumb(end?: Snippet)}
   {#if ownerTab?.orch}<OrchBreadcrumb {path} {detail} {end} host={path.view === "track" ? "[data-track-player]" : path.view === "artists" ? "[data-orch-artists] .panel" : path.view === "studio" ? "[data-orch-library]" : undefined}
       onnavigate={(next) => navigateOrchTab(ownerTab!.id, next)} />{/if}
 {/snippet}
 
-<!-- 남은 한도 칸 격자(이름 위 · 큰 숫자 아래) — 좁은 판의 [한도] 탭과 넓은 판의 오른쪽 "남은 한도" 카드가 같이 쓴다 -->
 {#snippet limitsGrid()}
   {#if detail}
     {@const r = detail.remaining}
@@ -732,14 +691,12 @@
   {#if remoteProducer}<aside data-producer-leaf={remoteProducer.chat}><ProducerChat target={remoteProducer} {runId} onalbum={() => {}}
     onclose={ended && ownerTab ? () => closeProducerLog(ownerTab!.id) : undefined} /></aside>{/if}
 <div class="board" data-run-board data-run-id={runId ?? ""}>
-  <!-- 경로 줄 — 앨범 · 트랙은 제 칸 맨 위(오른쪽 패널 · 곁 칸이 판 높이 전체를 쓰게) · 새 앨범은 오른쪽 구성 카드 맨 위 · 아티스트 · 스튜디오는 판 안 맨 위(목업), 라이브러리 루트는 없음(제목과 겹친다) -->
   {#if ownerTab?.orch && path.view !== "library" && path.view !== "studio" && path.view !== "new" && path.view !== "artists" && !(detail && runId && !missing && (path.view === "album" || (path.view === "track" && selectedTask)))}{@render crumb()}{/if}
   {#if path.view === "artists"}
     <Artists {visible} crumb={ownerTab?.orch ? crumb : undefined} />
   {:else if path.view === "new" && ownerTab}
     {#key albumScreens[ownerTab.id]?.draftId ?? ownerTab.id}<NewAlbum tabId={ownerTab.id} {visible} crumb={ownerTab.orch ? crumb : undefined} />{/key}
   {:else if runId === null}
-    <!-- (④) 홈 · 라이브러리 — 홈 모양이면 왼쪽에 새 앨범(프로듀서 · 저장소 · 첫 지시), 준비 중이면 라이브러리만(왼쪽은 프로듀서 타일) -->
     <Home {list} {loading} {error} {busy} {visible} archive={archiveAlbum} refresh={() => loader.refreshList()} studio={path.view === "studio" ? path.repo ?? null : null} crumb={ownerTab?.orch ? crumb : undefined} />
   {:else if missing}
     <div class="head-bare">
@@ -761,8 +718,6 @@
     {#if error}<p class="error artist-error" role="alert">{error}</p>{/if}
     {@render pauseStrip()}
   {:else}
-    <!-- 넓으면(앨범 칸 폭 — 아래 `album-body` 컨테이너 쿼리) 경로 줄 아래 가운데 트랙 판 + 오른쪽 세부 칸(트랙 화면과 같은 결 — 판 12 여백 · 칸 사이 12),
-         좁으면 트랙 판 하나(세부는 트랙 표 아래 칩 · 탭). 권한 패널이 열리면 세부 칸 자리를 패널이 대신 차지한다 -->
     <div class="album-body" class:chat={hasChat}>
     <div class="album-main">
     {@render crumb(newTabPill)}
@@ -779,14 +734,11 @@
           <p class="phrase" data-run-phrase>{phrase}</p>
         {/if}
 
-        <!-- 저장 실패 띠(F7): 서버가 Run 상태를 디스크에 쓰지 못하는 중 — 다음 저장이 되면 사라진다(보류 막대와 같은 꼴 · 단추 없음) -->
         {#if persistWarn}
           <div class="hold" role="alert" data-run-persist-failing={persistWarn.reason}>
             <p class="hold-text">{persistWarn.text}</p>
           </div>
         {/if}
-
-        <!-- 맡기기 띠(3b — 설계 2-4): 이 앨범의 지금 권한 상태. 문제가 있을 때만 띠로(정상이면 머리의 [앨범 권한]) -->
 
         {#if hold && detail.hold}
           <div class="hold" role="status" data-run-hold={detail.hold.reason}>
@@ -811,7 +763,6 @@
           <ReconcilePanel {rec} {recReject} bind:recConfirm {busy} {toggleRecReject} {doReconcile} oncancel={() => (recOpen = false)} />
         {/if}
 
-        <!-- 내보낸 브랜치(통합 칩의 나머지 — 머리 메타가 통합 머리를 보인다): 내보낸 · 뒤처진 브랜치 + [병합] · 병합한 뒤엔 결과(복사는 ⋯ 메뉴) -->
         {#if merge && merge.kind === "merged"}
           <div class="integration" data-run-integration data-merge-row="merged">
             <span class="chip ok" data-merge-done>{t(merge.auto ? "orch.merge.done.autoChip" : "orch.merge.done.chip", { branch: merge.target })}</span>
@@ -873,7 +824,7 @@
                   <span class="chip faint">{t(tempRoleKey(p.role))}</span>
                   <span class="meta mono" title={p.path}>{shortPath(p.path)}</span>
                   <span class="chip warn">{t(tempWhyKey(p.why))}</span>
-                  <!-- [열기] 는 메인 PC 의 탐색기라 원격 창에는 없다(경로 글자 · [지우기]는 남는다) -->
+                  <!-- [열기] 는 메인 PC 의 탐색기라 원격 창에는 없다 -->
                   {#if !isRemote}
                     <button type="button" class="btn btn-sm btn-ghost" data-temp-open onclick={() => void revealItemInDir(p.path).catch(() => {})}
                       >{t("orch.temp.open")}</button>
@@ -904,12 +855,10 @@
         {#if error}<p class="error" role="alert">{error}</p>{/if}
       </div>
 
-      <!-- 프로듀서 마무리 카드(끝난 앨범 — 마지막 어시스턴트 말 앞부분 · [전체 대화 →] = 왼쪽 대화 기록 잎) -->
       {#if producerLog?.conv}
         <ProducerFinale chat={producerLog.chat} cli={producerLog.cli} conv={producerLog.conv} runState={detail.state} byHuman={endedByHuman(detail.log)} onopen={openLog} />
       {/if}
 
-      <!-- 트랙 목록 — Task 순서 고정 · 번호 = 화면 순번 -->
       <div class="cols" aria-hidden="true">
         <span class="c-no">#</span><span>{t("orch.track.col.track")}</span><span>{t("orch.track.col.status")}</span><span class="c-prog"
           >{t("orch.track.col.progress")}</span
@@ -927,7 +876,7 @@
       {/if}
 
       <div class="tail">
-        <!-- 그 밖의 아티스트 — Task 표에 없는 Attempt(옛 파일 · 지운 Task). 사람 동작을 잃지 않게 칸 그대로 -->
+        <!-- Task 표에 없는 Attempt(옛 파일 · 지운 Task) — 사람 동작을 잃지 않게 칸 그대로 -->
         {#if strays.length > 0}
           <section data-run-stray-workers>
             <h4>{t("orch.track.stray")}</h4>
@@ -956,12 +905,8 @@
         {/if}
       </div>
 
-      <!-- 트랙 표 아래 — 남은 한도 칩 셋(늘 보임) · [타임라인 | 한도] 탭(목업 V3FoldA 를 사용자가 고친 배치: 트랙 표는 위에 늘 보이고,
-           그 아래 한 자리를 탭으로 바꿔 보여 준다 — ▶ 펼침 없음 · 패널은 둘 다 그려 두고 `hidden` 으로 고른다) -->
-      <!-- 좁을 때만 — 칩 · 탭 · 두 패널을 카드 한 장으로 감싸 트랙 표와 가른다(사용자 10-31) -->
       <section class="fold-card fold" data-album-fold-card>
       <div class="album-tabs">
-        <!-- 남은 한도 요약 — 트랙 표 바로 아래 늘 보이는 칩 셋 + [한도] 탭(한도 탭으로) -->
         {#if limitsShown && limitChips}
           <div class="limit-chips" data-run-limit-chips>
             <span class="lchip" data-run-limit-chip="concurrent">{t("orch.remaining.chip.concurrent")} <b>{limitChips.concurrent.used} / {limitChips.concurrent.max}</b></span>
@@ -974,13 +919,11 @@
           onpick={(id) => setAlbumTab(detail!.runId, id as AlbumTab)} />
       </div>
 
-      <!-- 타임라인 탭 — 메타만(시각 · 주체 · 사건 · 대상 · 결과), 새것이 위 -->
       <div class="tab-panel tail" role="tabpanel" id="album-{detail.runId}-timeline" aria-labelledby="album-{detail.runId}-timeline-tab" hidden={albumTab !== "timeline"}
         data-album-panel="timeline" data-run-timeline>
         <RunTimeline {timeline} {titles} />
       </div>
 
-      <!-- 한도 탭 — 남은 한도 전부(칸 격자) -->
       {#if limitsShown}
         <div class="tab-panel tail" role="tabpanel" id="album-{detail.runId}-limits" aria-labelledby="album-{detail.runId}-limits-tab" hidden={albumTab !== "limits"}
           data-album-panel="limits" data-run-remaining>
@@ -991,7 +934,6 @@
       {/if}
       </section>
     </div>
-    <!-- 오른쪽 세부 칸(넓을 때만 보임 · 바탕 없이 카드 둘 — 남은 한도 · 타임라인(남은 높이를 차지하고 안쪽만 구른다)) -->
     {#if !(permissionsOpen && detail.album)}
       <aside class="album-side" data-album-side aria-label={t("orch.board.tabs.aria")}>
         {#if limitsShown}
@@ -1021,24 +963,20 @@
   {#if cleanOpen && detail}
     <CleanupPanel repo={detail.repo} {clean} bind:cleanWt bind:cleanRefs bind:cleanBranches {busy} {doCleanup} oncancel={() => (cleanOpen = false)} />
   {/if}
-  <!-- ⓘ 설명 팝오버 한 벌(설정 · 호스트 폼과 같은 `InfoNote` 짝) — 이 판 안의 ⓘ(위험 자세히 · 메모 · 막힘 전문 …)가 연 것만 그린다 -->
   <NotePopover active={visible} />
 </div>
 </div>
 
 <style>
   .album-body { display: flex; flex: 1; min-height: 0; overflow: hidden; container: album-body / inline-size; --album-side: 400px; }
-  /* 왼쪽에 채팅이 서 있으면 세부 칸 360(목업 V3AlbumSideLive), 없으면 트랙 화면과 같은 400(V3AlbumSideDone) */
   .album-body.chat { --album-side: 360px; }
   .album-main { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   .album-cols { flex: 1; min-height: 0; display: flex; }
   .album-cols > .album-content { min-width: 0; }
-  /* 오른쪽 세부 칸 — 넓을 때만(아래 쿼리). 바탕 없이 카드 둘(카드 사이 10) · 타임라인 카드가 남은 높이를 차지하고 안쪽만 구른다 */
   .album-side { display: none; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; overflow: hidden; font-size: var(--t-sm); box-sizing: border-box; }
   .side-card { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 14px 16px; box-sizing: border-box;
     border-radius: var(--radius-surface, 16px); background: var(--m3-surface-container-low, var(--bg-panel)); }
   .side-card.fill { flex: 1 1 auto; min-height: 0; }
-  /* 좁을 때 트랙 표 아래 칩 · 탭 · 패널을 감싸는 카드 — 오른쪽 세부 칸 카드와 같은 면 */
   .fold-card { margin: var(--space-3, 12px) 16px var(--space-4, 16px); border-radius: var(--radius-surface, 16px); background: var(--m3-surface-container-low, var(--bg-panel)); }
   .fold-card .album-tabs { padding: 14px 16px 0; }
   .fold-card .tail { padding: var(--space-2) 16px 14px; }
@@ -1049,34 +987,27 @@
   .side-card .remaining > div { padding: 7px 10px; border-radius: 10px; background: var(--m3-surface-container, var(--surface-hover)); }
   .side-card .remaining dt { font-size: 11px; line-height: 1.3; word-break: keep-all; }
   .side-card .remaining dd { font-size: 14px; }
-  /*
-   * 넓은 앨범 칸 = 가운데 트랙 판 + 오른쪽 세부 칸. 문턱 996 = 트랙 판 560 + 세부 칸 400 + 여백 12 × 2 + 칸 사이 12 — 트랙 판이 약 560 아래로
-   * 줄기 전에 세부 칸이 트랙 표 아래 칩 · 탭으로 내려간다(채팅이 있으면 세부 칸이 360 이라 문턱에서 트랙 판은 600). 기준은 권한 패널까지 든 앨범 칸
-   * 전체 폭이다 — 패널을 여닫아도 배치가 바뀌지 않는다(열리면 패널이 세부 칸 자리를 대신 차지한다).
-   */
+  /* 기준은 권한 패널까지 든 앨범 칸 전체 폭이다 — 패널을 여닫아도 배치가 바뀌지 않는다 */
   @container album-body (min-width: 996px) {
     .album-cols { gap: 12px; padding: 12px; }
     .album-cols > .album-content { border-radius: var(--radius-lg, 16px); background: color-mix(in srgb, var(--accent) 5%, var(--m3-surface-container, var(--bg-panel))); }
     .album-side { display: flex; flex: 0 0 var(--album-side); width: var(--album-side); }
     .album-body .fold { display: none; }
   }
-  /* 경로 줄 오른쪽 끝의 [새 탭으로 열기] — 작은 알약(목업) */
   .crumb-pill { font: inherit; font-size: var(--t-xs); color: var(--fg-1); background: var(--control-bg, var(--surface-hover)); border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
   .crumb-pill:hover:not(:disabled) { background: var(--control-bg-hover, var(--surface-hover)); }
   .crumb-pill:disabled { opacity: 0.5; cursor: default; }
   .crumb-pill:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
-  /* 권한 패널이 차지한 폭을 뺀 실제 앨범 칸이 머리의 크기 기준이다. */
   .album-content { container: album-content / inline-size; }
   .album-body > :global(.panel) { flex: 0 0 min(380px, 46%); }
   @container (max-width: 560px) { .album-body { flex-direction: column; overflow: auto; } .album-body > :global(.panel) { width: 100%; flex: 1 0 65%; border-left: 0; border-top: 1px solid var(--line); } }
   .screen { display: flex; width: 100%; height: 100%; min-height: 0; }
   .screen > aside { flex: 0 0 35%; min-width: 220px; min-height: 0; display: flex; flex-direction: column; }
   @media (max-width: 620px) { .screen { flex-direction: column; } .screen > aside { min-width: 0; flex-basis: 42%; } }
-  /* 플레이어 카드 — 크롬 타일은 판을 비워 두므로 바탕은 여기서 한 번. 판 너비가 좁으면 머리 · 트랙이 접힌다(크기 컨테이너) */
   .board {
     position: relative;
     min-width: 0;
-    /* 글래스 크롬 타일이면 판(흐림 + `--glass-mid`)은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
+    /* 글래스 크롬 타일이면 판은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
     background: var(--tile-inner, var(--bg-panel));
     display: flex;
     flex-direction: column;
@@ -1094,10 +1025,8 @@
     min-height: 0;
     overflow: auto;
   }
-  /* 트랙 화면 위에 뜨는 앨범 권한 · 조정 패널 — 오른쪽 칸 자리를 덮는다 */
   .track-panel { position: absolute; z-index: 5; inset: 12px 12px 12px auto; width: 380px; max-width: calc(100% - 24px); overflow: auto; background: var(--bg-panel); border-radius: var(--radius-lg, 16px); box-shadow: -8px 0 24px #0003; }
 
-  /* 조율 멈춤 띠 — 판 맨 아래(재생 막대 바로 위) 한 줄. 판이 좁아도 줄 하나(문구는 줄임표 · 단추는 줄지 않는다) */
   .pause-band {
     flex: 0 0 auto;
     display: flex;
@@ -1277,7 +1206,7 @@
     user-select: text;
   }
 
-  /* 트랙 목록의 열 머리 — `TrackRow` 의 격자와 같은 열 */
+  /* `TrackRow` 의 격자와 같은 열 */
   .cols {
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr) 150px 160px 60px;
@@ -1307,12 +1236,10 @@
     gap: 2px;
   }
 
-
   .tail {
     padding: var(--space-2) 28px var(--space-4);
   }
 
-  /* 트랙 표 위 탭 줄(목업 V3FoldA — [트랙 | 타임라인 | 한도]) */
   .album-tabs {
     display: flex;
     flex-direction: column;
@@ -1321,7 +1248,6 @@
     padding: var(--space-3, 12px) 28px 0;
   }
 
-  /* 그 밖의 아티스트 · 남은 자원이 없으면 빈 꼬리의 여백도 없다 */
   .tail:not(.tab-panel):not(:has(section)) {
     display: none;
   }
@@ -1330,7 +1256,6 @@
     display: none;
   }
 
-  /* 트랙 표 아래 늘 보이는 한도 칩 셋 + [한도] 탭 */
   .limit-chips {
     display: flex;
     flex-wrap: wrap;
@@ -1408,7 +1333,6 @@
     font-size: var(--t-sm);
   }
 
-  /* 사람 필요(남은 프로세스) — 의미색 판(새 색 없음): 경고 바탕 띠 */
   .worker.alert {
     padding-left: var(--space-2);
     border-left: 3px solid var(--warn);
@@ -1425,7 +1349,6 @@
     font-family: var(--font-mono);
   }
 
-  /* 한도 탭 — 남은 한도 칸 격자(이름 위 · 큰 숫자 아래) */
   .remaining {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1460,7 +1383,7 @@
     color: var(--fg-3);
   }
 
-  /* 좁은 판 — 열 머리 · 띠의 옆 여백을 줄이고 진행 열을 걷는다(`TrackRow` 와 같은 문턱) */
+  /* `TrackRow` 와 같은 문턱 */
   @container (max-width: 640px) {
     .bands,
     .album-tabs,

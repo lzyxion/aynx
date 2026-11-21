@@ -209,7 +209,7 @@ check("기둥에서 신호 묶음은 호스트 칩 **아래**에 선다", await 
 await shot(`${outdir}-status-signals-vertical.png`);
 
 // ── 2b. (걷음) 대시보드는 옆 기둥을 덮지 않는다 — 2026-11-21: 전체 화면 대시보드(`.console`)와 상태바의 대시보드 칸
-// (`open-console`)은 2026-10-07 에 없어졌다(`app/console.svelte.ts` 머리말 — 세션 판 · 작업안으로 나뉨). 판정 셋을 걷었다.
+// (`open-console`)은 2026-10-07 에 없어졌다(세션 판 · 작업안으로 나뉨). 판정 셋을 걷었다.
 
 // ── 2c. 세로 기둥 + 둥근 패널 — 창 안에 들어온다 (docs/log/2026-09-29-statusbar-panel-vertical.md) ──
 // 예전엔 `height:100%` 에 panel 의 위·아래 여백이 더해져 기둥 아래 모서리·설정 톱니가 창 밖으로 잘렸다.

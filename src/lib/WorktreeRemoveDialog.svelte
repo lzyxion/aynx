@@ -1,23 +1,6 @@
 <script lang="ts">
-  /**
-   * **워크트리 제거 확인** (docs/log/2026-09-24-worktrees.md "브랜치는 같이 지운다").
-   *
-   * 네이티브 확인을 대신한다 — "브랜치 <이름> 도 삭제" **칸**이 있어야 해서다. 칸은 셋 중 하나다
-   * (순수 층 `branchDeleteOption`): 켜진 채(기본 — 앱이 `-b` 로 만든 브랜치) · 꺼지고 흐린 채 +
-   * 까닭 한 줄(워크트리보다 먼저 있던 브랜치) · 꺼진 채 살아 있는 칸 + 까닭 한 줄(먼저 있던 브랜치인데 main 에
-   * 병합됨 — 2026-10-05, docs/log/2026-10-05-worktree-one-to-one.md) · 없음(분리된 HEAD · 저장소의 지금 브랜치) ·
-   * 원격(꺼진 채 살아 있는 칸 + 까닭 한 줄 — 원격에선 누가 브랜치를 만들었는지 모른다).
-   * 켜 둬도 `-d` 뿐이다 — 병합되지 않은 커밋이 있으면 git 이 거절하고 브랜치는 남는다.
-   *
-   * 상태와 실행은 전부 `app/projects.svelte.ts` 에 있고 이 상자는 그리기만 한다(`ProjectForm` 과
-   * 같은 분담). 상자 모양(`.overlay`/`.modal`)은 스니펫 저장 상자와 같은 값이다.
-   *
-   * "이 워크트리에 열린 탭 N개도 닫기" 칸(기본 켬 · 닫을 탭이 있을 때만)과 "다른 폴더 타일이 섞인 탭 M개는 남깁니다"
-   * 한 줄(있을 때만) — docs/log/2026-10-05-worktree-cleanup-tabs-refresh.md. 수는 그리는 동안 다시 센다(반응형).
-   *
-   * Escape 는 **여기서 끊는다**(`stopPropagation`) — 창의 Escape 사슬로 새면 뒤에 깔린 독까지
-   * 함께 닫는다. 열리면 [제거] 에 커서가 있어 Enter 한 번이면 된다(네이티브 확인과 같은 손).
-   */
+  // 브랜치 삭제 칸은 켜 둬도 `-d` 뿐이다 — 병합되지 않은 커밋이 있으면 git 이 거절하고 브랜치는 남는다.
+  // Escape 는 여기서 끊는다(`stopPropagation`) — 창의 Escape 사슬로 새면 뒤에 깔린 독까지 함께 닫는다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import { branchDeleteToggleable } from "$lib/projects";
@@ -39,7 +22,6 @@
     if (d) submitEl?.focus();
   });
 
-  /** 모달 뿌리 — Tab 이 모달 뒤로 새지 않게 여기서 되감는다 (`trapTab`) */
   let modalEl = $state<HTMLElement | null>(null);
 
   function onKeydown(ev: KeyboardEvent) {
@@ -145,14 +127,14 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(440px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
+    max-width: calc(440px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -190,24 +172,17 @@
   }
 
   .hint {
-    /* 앱 체크박스(18px) + 간격 만큼 들여 라벨 글자와 맞춘다 */
     margin: var(--space-1) 0 var(--space-4) calc(18px + var(--space-2));
     font-size: var(--t-xs);
     line-height: 1.5;
     color: var(--fg-2);
   }
 
-  /* 섞인 탭 한 줄 — 칸이 없을 수도 있어(닫을 탭 0) 들여쓰기 없이 선다 */
+  /* 칸이 없을 수도 있어(닫을 탭 0) 들여쓰기 없이 선다 */
   .hint.mixed {
     margin-left: 0;
   }
 
-  /*
-    버튼 — 전역 `.btn` 세 종류 (docs/log/2026-09-25-finish-menus.md · 토큰층 "버튼 세 종류"):
-    취소 = 보조(`.btn-secondary`), 제거 = 되돌릴 수 없는 확정이라 강조색이 아니라 채운 `--err`
-    (메뉴 안 인라인 대화의 해제·제거와 같은 처방 — docs/log/2026-09-25-unified-dock.md).
-    옛 선 두른 규칙은 지웠다 — 스코프 규칙이 전역 클래스를 이긴다.
-  */
   .actions {
     display: flex;
     justify-content: flex-end;

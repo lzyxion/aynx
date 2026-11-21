@@ -1,21 +1,11 @@
-//! 작업 표시줄 아이콘 — **사용자 시작 메뉴 바로 가기**로 고른 캐릭터를 작업 표시줄에 싣는다 (Windows 전용,
-//! docs/log/2026-10-06-taskbar-app-id.md).
+//! 작업 표시줄 아이콘 — 사용자 시작 메뉴 바로 가기로 고른 캐릭터를 작업 표시줄에 싣는다(Windows 전용, docs/log/2026-10-06-taskbar-app-id.md).
 //!
-//! Windows 11 작업 표시줄은 창의 앱 ID 와 **같은 앱 ID 의 바로 가기**가 있으면 단추에 창 아이콘이 아니라
-//! 그 바로 가기 아이콘을 그린다(실측 — 창에 `ICON_BIG` 이 걸려 있어도). 그래서 Chromium 의 프로필 아이콘과 같은 길을 간다:
+//! Windows 11 작업 표시줄은 창과 **같은 앱 ID 의 바로 가기**가 있으면 창 아이콘(`ICON_BIG` 포함)이 아니라 그 바로 가기 아이콘을 그린다(Chromium 프로필 아이콘과 같은 길).
+//! - 아이콘 파일은 경로 하나로 고정하고 **내용만** 바꾼다 — 셸이 따로 만든 고정 · 암시적 바로 가기도 같은 경로를 계속 가리키게.
+//! - 전역 알림만으로는 작업 표시줄이 갱신되지 않는다 — 바로 가기마다 `SHCNE_UPDATEITEM` 도 보낸다(Chromium `profile_shortcut_manager_win.cc`).
+//! - MSI 의 바로 가기(모든 사용자)는 건드리지 않는다.
 //!
-//! - 아이콘 파일은 **경로 하나로 고정**(`<데이터 루트>/app-icons/current.ico`)하고, 고를 때는 그 **내용만** 바꾼다 —
-//!   고정한 단추·암시적 바로 가기처럼 셸이 따로 만든 `.lnk` 도 같은 경로를 계속 가리키게 하려는 것이다.
-//! - 사용자 시작 메뉴(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\<이름>.lnk`)에 우리 앱 ID
-//!   (`app_icon::set_process_app_id` 가 건 `<identifier>.window`)와 그 아이콘을 가진 바로 가기를 둔다.
-//!   MSI 의 바로 가기(모든 사용자, 관리자 전용)는 건드리지 않는다.
-//! - 시작 메뉴·`User Pinned`(고정·`ImplicitAppShortcuts`) 아래에서 우리 앱 ID 를 가진 `.lnk` 를 모두 찾아 아이콘이
-//!   다른 곳을 가리키면 `current.ico` 로 고치고, `SHCNE_ASSOCCHANGED` + 바로 가기마다 `SHCNE_UPDATEITEM` 을 보낸다 —
-//!   Windows 11 은 전역 알림만으로는 작업 표시줄이 갱신되지 않는다(Chromium `profile_shortcut_manager_win.cc`).
-//!   실측: 실행 중인 단추가 이것으로 곧바로 바뀐다.
-//!
-//! 대가(알고 받음): 시작 메뉴에 Aynx 가 둘(MSI 것 + 이것) 보이고, 앱을 제거해도 이 `.lnk` 와 `.ico` 는 남는다.
-//! 블로킹(파일·COM)이라 `spawn_blocking` 에서 부른다. 실패는 삼킨다 — 작업 표시줄 그림만 빌드 아이콘으로 남을 뿐이다.
+//! 알고 받은 대가: 시작 메뉴에 Aynx 가 둘 보이고, 앱을 제거해도 이 `.lnk` 와 `.ico` 는 남는다. 실패는 삼킨다(그림만 빌드 아이콘으로 남는다).
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -34,24 +24,20 @@ use windows::Win32::UI::Shell::{
     SHCNF_PATHW,
 };
 
-/// 맞출 것 한 벌 — `app_icon` 이 채운다.
 pub struct Spec {
-    /// 작업 표시줄 앱 ID (`<identifier>.window`)
+    /// `app_icon::set_process_app_id` 가 창에 건 앱 ID 와 같아야 한다.
     pub app_id: String,
-    /// 바로 가기 이름·설명 (`Aynx` · 개발 빌드 `Aynx (dev)`)
     pub name: String,
-    /// 바로 가기가 띄울 exe (지금 실행 중인 것)
     pub exe: PathBuf,
-    /// 고정 경로 `.ico` — 이 파일의 **내용**만 바뀐다
+    /// 고정 경로 — 이 파일의 **내용**만 바뀐다.
     pub ico: PathBuf,
-    /// 그 `.ico` 에 쓸 바이트 (고른 캐릭터)
     pub ico_bytes: Vec<u8>,
 }
 
-/// 겹친 고르기(빠른 연타)가 같은 파일·바로 가기를 동시에 쓰지 않게 한 줄로 세운다.
+/// 겹친 고르기(빠른 연타)가 같은 파일 · 바로 가기를 동시에 쓰지 않게.
 static LOCK: Mutex<()> = Mutex::new(());
 
-/// 아이콘 파일·바로 가기를 맞추고, 무엇이든 바뀌었으면 셸에 알린다. **블로킹** — `spawn_blocking` 에서.
+/// **블로킹**(파일 · COM) — `spawn_blocking` 에서.
 pub fn sync(spec: &Spec) {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let ico_changed = match write_if_changed(&spec.ico, &spec.ico_bytes) {
@@ -97,7 +83,7 @@ fn sync_links(spec: &Spec, ico_changed: bool) -> windows::core::Result<()> {
         touched = true;
     }
 
-    // 우리 앱 ID 의 바로 가기 전부 — 고정·암시적 바로 가기는 셸이 만든 것이라 아이콘 경로가 옛것일 수 있다.
+    // 고정 · 암시적 바로 가기는 셸이 만든 것이라 아이콘 경로가 옛것일 수 있다.
     let mut links = Vec::new();
     for root in [&programs, &pinned] {
         collect_links(root, &mut links);
@@ -125,7 +111,6 @@ fn sync_links(spec: &Spec, ico_changed: bool) -> windows::core::Result<()> {
     Ok(())
 }
 
-/// 내 바로 가기가 지금 exe·아이콘·앱 ID 를 그대로 갖고 있는가.
 fn own_link_ok(path: &Path, spec: &Spec) -> bool {
     path.exists()
         && read_target(path).as_deref() == Some(spec.exe.as_path())
@@ -214,7 +199,7 @@ fn create_link(path: &Path, spec: &Spec) -> windows::core::Result<()> {
     }
 }
 
-/// `VT_LPWSTR` 문자열 PROPVARIANT — `From<&str>` 은 BSTR 이라 앱 ID 칸에 맞지 않는다(셸은 LPWSTR 을 기대한다).
+/// `From<&str>` 은 BSTR 이라 앱 ID 칸에 맞지 않는다 — 셸은 `VT_LPWSTR` 을 기대한다.
 unsafe fn string_propvariant(s: &str) -> windows::core::Result<PROPVARIANT> {
     // SAFETY: 셸 할당자로 복사한 문자열을 넣는다. 소유권은 PROPVARIANT 로 넘어간다.
     unsafe {

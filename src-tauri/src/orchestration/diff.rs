@@ -1,15 +1,10 @@
-//! **조정자 `get_diff`**(통합 설계 2026-10-15-orchestration-integration-design 3-1 · D13 — 1단계): 보고 하나의 **고정 OID**
-//! (`Report.base_commit_oid` … `Report.commit_oid`)로 바뀐 파일 목록 + 파일별 패치 한 쪽. 보드의 [파일 목록](op
-//! `orchestration_report_files`)이 같은 목록을 쓴다.
+//! `get_diff` — 보고 하나의 고정 OID 쌍으로 바뀐 파일 목록 + 파일별 패치 한 쪽. 보드의 [파일 목록]도 같은 목록을 쓴다.
 //!
 //! 불변식:
-//! - **읽기 전용** · **자기 Run 만**(조정자 — `coordinator_slot`). 대상은 보고 기록의 두 OID 다 — worktree 의 지금 상태 · 브랜치 이름이
-//!   아니다(보고 뒤 작업자가 더 커밋해도 같은 답). 응답에 늘 `reportId · base · commit` 을 싣는다.
-//! - git 은 서버 집행 실행기(`git.rs` — 신뢰된 git · 셸 없음 · `GIT_*` 걷기 · 훅 끔)로 Run 저장소에서, `diff --no-ext-diff --no-textconv
-//!   --no-color -M`(외부 diff · textconv 프로그램을 돌리지 않는다 — 시스템 설정의 `diff.astextplain.textconv` 도) + `--attr-source=<보고
-//!   커밋>`(주 작업 폴더의 `.gitattributes` 가 아니라 그 커밋의 속성 — git 2.42+). 잠금 **밖**.
-//! - **잘림을 숨기지 않는다** — 파일 [`FILES_MAX`] 개 넘음 · git 출력 상한 · 패치 [`PATCH_MAX`] 넘음은 모두 `truncated: true`. 패치는
-//!   [`PAGE_BYTES`] 쪽(줄 경계 — 아주 긴 줄만 글자 경계)으로 나눠 `page/pages` 를 싣는다.
+//! - **읽기 전용** · **자기 Run 만**. 대상은 보고 기록의 두 OID 다 — worktree 의 지금 상태 · 브랜치 이름이 아니다(보고 뒤 더 커밋해도 같은 답).
+//! - git 은 서버 집행 실행기로 잠금 **밖**에서, `--no-ext-diff --no-textconv`(외부 diff · textconv 프로그램을 돌리지 않는다 —
+//!   시스템 설정의 `diff.astextplain.textconv` 도) + `--attr-source=<보고 커밋>`(주 작업 폴더의 `.gitattributes` 가 아니라 그 커밋의 속성).
+//! - **잘림을 숨기지 않는다** — 파일 수 · git 출력 · 패치 상한을 넘으면 모두 `truncated: true`.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -21,16 +16,13 @@ use super::model::*;
 use super::store::{not_found_run, reason, OrchError, Orchestration, Slot};
 use super::tools::{bad, coordinator_slot, opt_text, req_text};
 
-/// 목록에 싣는 파일 상한.
 pub(crate) const FILES_MAX: usize = 500;
-/// 패치 한 쪽(바이트).
+/// 바이트.
 pub(crate) const PAGE_BYTES: usize = 32 * 1024;
-/// 파일 하나의 패치를 읽는 상한(바이트) — 넘으면 거기까지만 쪽으로 나누고 `truncated`.
+/// 바이트 — 넘으면 거기까지만 쪽으로 나누고 `truncated`.
 pub(crate) const PATCH_MAX: usize = 1024 * 1024;
-/// 목록 git(numstat · name-status) 출력 상한.
 const LIST_OUT_MAX: usize = 8 * 1024 * 1024;
 
-/// 고정된 대상 — 보고 하나의 두 OID.
 #[derive(Debug, Clone)]
 pub(crate) struct Target {
     pub repo: String,
@@ -41,7 +33,6 @@ pub(crate) struct Target {
     pub commit: String,
 }
 
-/// 바뀐 파일 한 줄.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileEntry {
     pub path: String,
@@ -82,7 +73,7 @@ fn status_word(letter: char) -> &'static str {
     }
 }
 
-/// `diff --name-status -z` → `(상태 글자, 옛 경로?, 경로)` 들(순수). 이름 바꿈 · 복사는 `R100\0옛\0새\0`.
+/// 이름 바꿈 · 복사는 `R100\0옛\0새\0`.
 pub(crate) fn parse_name_status(out: &str) -> Vec<(char, Option<String>, String)> {
     let mut v = Vec::new();
     let mut it = out.split('\0');
@@ -99,7 +90,7 @@ pub(crate) fn parse_name_status(out: &str) -> Vec<(char, Option<String>, String)
     v
 }
 
-/// `diff --numstat -z` → `(새 경로, 더한 줄, 지운 줄)` 들(순수 — 바이너리는 `None`). 이름 바꿈은 `더\t지\t\0옛\0새\0`.
+/// 바이너리는 `None`. 이름 바꿈은 `더\t지\t\0옛\0새\0`.
 pub(crate) fn parse_numstat(out: &str) -> Vec<(String, Option<u64>, Option<u64>)> {
     let mut v = Vec::new();
     let mut it = out.split('\0');
@@ -110,7 +101,6 @@ pub(crate) fn parse_numstat(out: &str) -> Vec<(String, Option<u64>, Option<u64>)
         let mut f = rec.splitn(3, '\t');
         let (Some(a), Some(d), Some(p)) = (f.next(), f.next(), f.next()) else { continue };
         let path = if p.is_empty() {
-            // 이름 바꿈 — 다음 두 칸이 옛 · 새.
             let (Some(_old), Some(new)) = (it.next(), it.next()) else { break };
             new.to_string()
         } else {
@@ -121,7 +111,7 @@ pub(crate) fn parse_numstat(out: &str) -> Vec<(String, Option<u64>, Option<u64>)
     v
 }
 
-/// 패치를 쪽으로 나눈다(순수) — 쪽마다 [`PAGE_BYTES`] 이하, 줄 경계에서. 쪽보다 긴 줄은 글자 경계에서 자른다. 빈 패치는 빈 쪽 하나.
+/// 줄 경계에서 — 쪽보다 긴 줄은 글자 경계에서 자른다. 빈 패치는 빈 쪽 하나.
 pub(crate) fn paginate(patch: &str, page_bytes: usize) -> Vec<String> {
     let mut pages: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -133,7 +123,6 @@ pub(crate) fn paginate(patch: &str, page_bytes: usize) -> Vec<String> {
             cur.push_str(line);
             continue;
         }
-        // 한 줄이 한 쪽보다 길다 — 글자 경계에서.
         for ch in line.chars() {
             if cur.len() + ch.len_utf8() > page_bytes {
                 pages.push(std::mem::take(&mut cur));
@@ -147,8 +136,7 @@ pub(crate) fn paginate(patch: &str, page_bytes: usize) -> Vec<String> {
     pages
 }
 
-/// 보고 고르기(잠금 안) — `reportId` 가 있으면 그 Task 의 그 보고, 없으면 현재 Attempt 의 늦지 않은 보고(없으면 그 Task 의 마지막 보고).
-/// 두 OID 가 다 있어야 한다(`no-commit`).
+/// 잠금 안. `reportId` 가 없으면 현재 Attempt 의 늦지 않은 보고(없으면 그 Task 의 마지막 보고). 두 OID 가 다 있어야 한다(`no-commit`).
 pub(super) fn target(slot: &Slot, task_id: &str, report_id: Option<&str>) -> Result<Target, OrchError> {
     let run = &slot.run;
     let task = run
@@ -201,14 +189,13 @@ fn head(t: &Target) -> serde_json::Map<String, Value> {
     m
 }
 
-/// 서버 집행 git 하나(Run 저장소 · 그 커밋의 속성).
 fn git_in<'a>(repo: &'a Path, env: &'a [(OsString, OsString)], hooks: &Path, limit: usize) -> Result<Git<'a>, OrchError> {
     let mut g = Git::new(repo, hooks, env, reason::GIT_FAILED)?;
     g.limit = limit;
     Ok(g)
 }
 
-/// 바뀐 파일 목록 — **블로킹**(git 둘). `(목록 — 상한까지, 전체 수, 잘림)`.
+/// 블로킹(git 둘). `(목록 — 상한까지, 전체 수, 잘림)`.
 pub(crate) fn list_blocking(t: &Target, env: &[(OsString, OsString)], hooks: &Path) -> Result<(Vec<FileEntry>, usize, bool), OrchError> {
     let repo = Path::new(&t.repo);
     let g = git_in(repo, env, hooks, LIST_OUT_MAX)?;
@@ -235,7 +222,7 @@ pub(crate) fn list_blocking(t: &Target, env: &[(OsString, OsString)], hooks: &Pa
     for (letter, old, path) in names.into_iter().take(FILES_MAX) {
         let s = stats.iter().find(|(p, _, _)| *p == path);
         let (adds, dels) = s.map(|(_, a, d)| (*a, *d)).unwrap_or((None, None));
-        // numstat 의 `-\t-` = 바이너리(줄 수 없음). 목록에 없으면(잘린 출력) 모른다 — 바이너리로 치지 않는다.
+        // 목록에 없으면(잘린 출력) 모른다 — 바이너리로 치지 않는다.
         let binary = s.is_some() && adds.is_none() && dels.is_none();
         out.push(FileEntry {
             path,
@@ -250,7 +237,7 @@ pub(crate) fn list_blocking(t: &Target, env: &[(OsString, OsString)], hooks: &Pa
     Ok((out, total, truncated))
 }
 
-/// 파일 하나의 패치 — **블로킹**. 그 경로가 목록에 있어야 한다(이름 바꿈이면 옛 경로도 pathspec 에 — 짝을 잃지 않게).
+/// 블로킹. 이름 바꿈이면 옛 경로도 pathspec 에 — 짝을 잃지 않게.
 pub(crate) fn patch_blocking(
     t: &Target,
     entry: &FileEntry,
@@ -288,7 +275,6 @@ fn server_env() -> Vec<(OsString, OsString)> {
     child_env(std::env::vars_os())
 }
 
-/// 목록 응답(조정자 · 보드 공용).
 fn list_value(t: &Target) -> Result<Value, OrchError> {
     let env = server_env();
     let hooks = super::worktree::empty_hooks_dir();
@@ -307,7 +293,7 @@ fn list_value(t: &Target) -> Result<Value, OrchError> {
 }
 
 impl Orchestration {
-    /// 조정자 `get_diff` — `{taskId, reportId?}` → 파일 목록, `{…, path, page?}` → 그 파일 패치 한 쪽. 잠금은 대상 고르기에만.
+    /// 잠금은 대상 고르기에만.
     pub(super) fn get_diff(&self, run_id: &str, gen: u32, args: Option<&Value>) -> Result<Value, OrchError> {
         let task_id = req_text(args, "taskId", 64)?;
         let report_id = opt_text(args, "reportId", 64)?;
@@ -322,8 +308,7 @@ impl Orchestration {
         answer(&t, path, page)
     }
 
-    /// 검토자 `get_diff`(통합 설계 3-3 — 5단계) — **자기 Task 의 고정 대상 보고만**(`Attempt.review_of` — 검토자는 대상을 고르지 못한다).
-    /// 답 모양은 조정자의 것과 같다. 읽기 전용.
+    /// 검토자는 대상을 고르지 못한다 — 자기 Task 의 고정 대상 보고(`Attempt.review_of`)만.
     pub(super) fn reviewer_diff(&self, run_id: &str, attempt_id: &str, args: Option<&Value>) -> Result<Value, OrchError> {
         let path = opt_text(args, "path", 4096)?;
         let page = page_arg(args)?;
@@ -343,7 +328,7 @@ impl Orchestration {
     }
 }
 
-/// `page` 인자(1 부터 — 없으면 1).
+/// 1 부터 — 없으면 1.
 fn page_arg(args: Option<&Value>) -> Result<usize, OrchError> {
     match super::tools::arg(args, "page") {
         None => Ok(1),
@@ -354,7 +339,7 @@ fn page_arg(args: Option<&Value>) -> Result<usize, OrchError> {
     }
 }
 
-/// 목록(경로 없음) 또는 파일 하나의 패치 한 쪽 — 조정자 · 검토자 공용. **블로킹**(git) · 잠금 밖.
+/// 블로킹(git) · 잠금 밖.
 fn answer(t: &Target, path: Option<String>, page: usize) -> Result<Value, OrchError> {
     let Some(path) = path else {
         return list_value(t);
@@ -390,7 +375,7 @@ fn answer(t: &Target, path: Option<String>, page: usize) -> Result<Value, OrchEr
 }
 
 impl Orchestration {
-    /// 보드의 [파일 목록](op `orchestration_report_files`) — 조정자 `get_diff` 의 목록과 같다. orphaned Run 도 읽는다(읽기 전용).
+    /// orphaned Run 도 읽는다(읽기 전용).
     pub(crate) fn report_files(&self, run_id: &str, task_id: &str, report_id: Option<&str>) -> Result<Value, OrchError> {
         let t = {
             let g = self.lock();
@@ -402,19 +387,18 @@ impl Orchestration {
 }
 
 // ---------------------------------------------------------------------------
-// 작업 중 파일(오케스트레이션 탭 ③ 작업자 상세 — 노트 2026-10-29-orchestration-player-tab 0-3 Q4)
+// 작업 중 파일
 // ---------------------------------------------------------------------------
 
-/// 작업 중 파일 목록에 싣는 상한.
 pub(crate) const WIP_FILES_MAX: usize = 200;
-/// 작업 중 목록 git 한 번의 시한 — 화면이 기다리는 읽기라 큰 저장소에서 오래 막지 않게.
+/// 화면이 기다리는 읽기라 큰 저장소에서 오래 막지 않게.
 const WIP_GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-/// 작업 중 목록 git 출력 상한(바이트).
+/// 바이트.
 const WIP_OUT_MAX: usize = 2 * 1024 * 1024;
-/// 추적 안 된 새 파일의 줄을 세는 크기 상한(바이트) — 넘으면 줄 수 없이 "새 파일".
+/// 바이트 — 넘으면 줄 수 없이 "새 파일".
 const UNTRACKED_COUNT_MAX: u64 = 512 * 1024;
 
-/// `status --porcelain -z` → `(XY, 경로)` 들(순수). 이름 바꿈 · 복사(`R` · `C`)는 원래 경로가 다음 칸에 한 번 더 온다(건너뛴다).
+/// 이름 바꿈 · 복사는 원래 경로가 다음 칸에 한 번 더 온다(건너뛴다).
 pub(crate) fn parse_porcelain_z(out: &str) -> Vec<(String, String)> {
     let mut v = Vec::new();
     let mut it = out.split('\0');
@@ -431,7 +415,7 @@ pub(crate) fn parse_porcelain_z(out: &str) -> Vec<(String, String)> {
     v
 }
 
-/// 바이트의 줄 수(순수) — NUL 이 있으면 바이너리(`None`). 마지막 줄에 줄바꿈이 없어도 한 줄로 센다(빈 파일은 0).
+/// NUL 이 있으면 바이너리(`None`). 마지막 줄에 줄바꿈이 없어도 한 줄로 센다.
 pub(crate) fn text_lines(bytes: &[u8]) -> Option<u64> {
     if bytes.contains(&0) {
         return None;
@@ -440,8 +424,7 @@ pub(crate) fn text_lines(bytes: &[u8]) -> Option<u64> {
     Some(if bytes.last().is_some_and(|&b| b != b'\n') { n + 1 } else { n })
 }
 
-/// 추적 안 된 새 파일의 줄 수 — `(줄 수, 바이너리)`. 경로는 worktree 안의 평범한 마디만(`..` · 절대 경로 거절) · 링크는 따라가지
-/// 않는다 · 크기 상한을 넘으면 세지 않는다(줄 수 없음).
+/// worktree 안의 평범한 마디만(`..` · 절대 경로 거절) · 링크는 따라가지 않는다 · 크기 상한을 넘으면 세지 않는다.
 fn untracked_lines(root: &Path, rel: &str) -> (Option<u64>, bool) {
     let p = Path::new(rel);
     if !p.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
@@ -467,15 +450,8 @@ fn clean_path(p: &str) -> String {
     p.chars().filter(|c| !c.is_control()).collect()
 }
 
-/// **작업 중 파일 목록**(작업자 상세의 곁 카드 — 사람 화면 전용 · 읽기 전용) — 그 worktree 의 지금 작업 트리를 기준 커밋(없으면 `HEAD`)과
-/// 비교한 파일마다 `{path, status, adds, dels, binary, uncommitted, untracked?}`(커밋된 것 + 미커밋 + 추적 안 된 새 파일).
-/// **블로킹** — git 셋(`diff --name-status` · `diff --numstat` · `status --porcelain`) · 잠금 밖.
-///
-/// - 서버 집행 실행기(`git.rs` — 신뢰된 git · 셸 없음 · `GIT_*` 걷기 · 훅 · fsmonitor 끔) · `--no-ext-diff --no-textconv`(외부 diff ·
-///   textconv 프로그램을 돌리지 않는다). 작업 트리를 읽는 diff · status 는 그 저장소 설정의 clean 필터를 탈 수 있다 — 보고 · 보고 뒤
-///   변경의 `status` 읽기(`report::git_probe`)와 같은 등급이다.
-/// - 경로는 부르는 쪽이 Attempt 기록에서 꺼낸 worktree 하나뿐(화면이 경로를 주지 않는다). 상한: 파일 [`WIP_FILES_MAX`] · git 한 번
-///   [`WIP_GIT_TIMEOUT`] · 출력 [`WIP_OUT_MAX`] — 넘으면 `truncated`(숨기지 않는다).
+/// 사람 화면 전용 · 읽기 전용 · 블로킹 · 잠금 밖. 경로는 Attempt 기록의 worktree 하나뿐(화면이 경로를 주지 않는다).
+/// 작업 트리를 읽는 diff · status 는 그 저장소 설정의 clean 필터를 탈 수 있다 — 보고 뒤 변경의 `status` 읽기와 같은 등급(알고 받은 한계).
 pub(crate) fn wip_blocking(worktree: &Path, base: Option<&str>, env: &[(OsString, OsString)], hooks: &Path) -> Result<Value, OrchError> {
     if !worktree.is_dir() {
         return Err(OrchError::new(reason::GIT_FAILED, "the worktree folder is missing"));
@@ -550,7 +526,7 @@ pub(crate) fn wip_blocking(worktree: &Path, base: Option<&str>, env: &[(OsString
     Ok(json!({ "files": files, "fileCount": total, "truncated": truncated, "base": base }))
 }
 
-/// [`wip_blocking`] 을 서버 환경으로 — 실패는 `{files: [], error}` 한 칸(화면은 목록 대신 그 한 줄).
+/// 실패는 `{files: [], error}` 한 칸.
 pub(crate) fn wip_value(worktree: Option<&str>, base: Option<&str>) -> Value {
     let Some(w) = worktree else {
         return json!({ "files": [], "fileCount": 0, "truncated": false, "error": "no worktree" });

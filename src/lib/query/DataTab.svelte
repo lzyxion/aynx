@@ -1,26 +1,10 @@
 <script lang="ts">
   /**
-   * **쿼리 타일의 데이터 탭 하나**(2026-11-10 — Beekeeper Studio 식, 목업 "제안 A"). 스키마 트리의 테이블 · 뷰를 두 번 눌러 연 객체 하나를
-   * 하위 탭 **[데이터 | 구조 | DDL]** 로 보인다. 규칙은 순수 `query/data-tab`, 탭 줄 · 저장은 `query/script-tabs` · `session/spec` 의 `canonDataTab`.
+   * 쿼리 타일의 데이터 탭 하나 — 하위 탭 [데이터 | 구조 | DDL].
    *
-   * - **데이터**: 도구줄(WHERE 조건 칸 — Enter 로 적용 · Esc 로 되돌림 · 새로 고침 · 쪽 ‹ › · 쪽 크기 · [SQL 로 열기]) + 결과 표(`ResultGrid` —
-   *   복사 · CSV · 표/차트 · 찾기 그대로, 열 머리글 = `ORDER BY` 로 다시 조회). 조회는 늘 **읽기 전용**이다 — `runData`(부모 세션의 실행 칸
-   *   하나를 함께 쓴다 → `db_query{readOnly}` · 서버가 가드 · 엔진 모두 읽기 전용, 열린 트랜잭션이면 거절). 트랜잭션 작업이 열려 있으면
-   *   보내지 않고 까닭을 띠로 보인다. 연결이 다른 일을 하는 동안(`waiting` — 실행 · 작업 단추 · 트리 읽기)은 기다렸다 저절로 읽는다.
-   * - **구조**: `db_table_detail`(트리와 같은 재료)을 표로 — 컬럼 · 인덱스 · 제약 조건 · 외래 키 · 참조됨 · 트리거 · 파티션(빈 칸은 숨김).
-   * - **DDL**: `DefinitionView` 그대로(그 방언이 그 종류의 DDL 을 주지 않으면 하위 탭이 없다 — `dataDefTarget`). [편집기에 넣기] = 새 쿼리 탭.
-   *
-   * **칸으로 거르기 · 외래 키 따라가기**(2026-11-10): 결과 표의 칸 우클릭 [이 값으로 거르기] · [이 값 빼고 거르기]는 WHERE 칸을 그 조건으로
-   * **바꾸고**, [조건에 더하기]는 적용된 조건에 `AND` 로 붙인 뒤 1쪽부터 다시 읽는다(조건 글은 `data-tab` 의 `cellCondition` · `andCondition`).
-   * 외래 키는 데이터를 처음 읽은 **뒤에** 한 번 `db_table_detail` 로 조용히 읽어 둔다(구조 하위 탭과 같은 재료 — 그대로 함께 쓴다 · 실패하면
-   * ↗ 만 없다). 서버는 연결당 작업 하나라 데이터 읽기 · 트리 읽기 · 실행이 없을 때(`waiting` 아님)만 보내고, 읽는 동안은 `onmeta` 로 부모에
-   * 알려 트리와 다른 데이터 탭이 기다리게 한다. ↗ 는 참조 표의 데이터 탭을 `참조열 = 값` 으로 연다(`onfollow` — 이미 열린 탭이면 그 탭의
-   * 조건을 덮고 다시 읽는다: 부모가 `poke` 를 올린다). **역방향**은 같은 재료의 `referencedBy` 로 — 칸 메뉴의 "이 행을 가리키는 행" 이 그 표를
-   * `참조하는 열 = 이 행의 피참조 값` 으로 같은 길(`onfollow`)에 연다. 구조 하위 탭의 외래 키 · 참조됨의 저편 표 이름은 링크 — 그 표의 데이터 탭을
-   * 조건 없이 연다(`onopendata` — 이미 열렸으면 그 탭으로만).
-   *
-   * 행 값 · 쪽 번호는 저장하지 않는다(탭을 다시 열면 첫 쪽부터 다시 조회) — WHERE · 정렬 · 쪽 크기는 `onchange` 로 명세에 남는다.
-   * 처음 보일 때(그리고 연결이 바뀌면) 읽는다 — 숨은 데이터 탭은 조회를 보내지 않는다.
+   * - 조회는 늘 **읽기 전용**이다(`runData` → `db_query{readOnly}`) — 트랜잭션 작업이 열려 있으면 보내지 않는다.
+   * - 서버는 연결당 작업 하나라 다른 일이 없을 때(`waiting` 아님)만 보내고, 구조를 읽는 동안은 `onmeta` 로 알려 트리 · 다른 데이터 탭이 기다리게 한다.
+   * - 행 값 · 쪽 번호는 저장하지 않는다 — WHERE · 정렬 · 쪽 크기만 `onchange` 로 명세에 남는다. 숨은 탭은 조회를 보내지 않는다.
    */
   import { untrack } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -88,33 +72,25 @@
     onopendata,
     poke = 0,
   }: {
-    /** 탭 번호 */
     n: number;
     data: QueryDataTab;
     dialect: DbDialect;
     opened: DbOpened | null;
-    /** 지금 보이는 탭인가 — 숨은 탭은 읽지 않는다 */
     visible: boolean;
-    /** 연결이 다른 일을 하는 중(실행 · 작업 단추 · 모드 바꾸기 · 트리 읽기) — 끝나면 저절로 읽는다 */
+    /** 연결이 다른 일을 하는 중 — 끝나면 저절로 읽는다 */
     waiting: boolean;
-    /** 스키마 트리가 읽는 중 — 이 탭의 조회와 같은 순간에 출발해 겹쳤으면(서버 Busy) 오류 대신 다시 읽는다 */
+    /** 이 탭의 조회와 같은 순간에 출발해 겹쳤으면(서버 Busy) 오류 대신 다시 읽는다 */
     treeReading?: boolean;
-    /** 트랜잭션 작업이 열려 있다 — 데이터 조회를 보내지 않는다(서버도 거절) */
     inWork: boolean;
-    /** 이 탭의 조회가 도는 중(부모 세션의 실행 칸) */
     running: boolean;
     runData: RunData;
     oncancel: () => void;
     onchange: (d: QueryDataTab) => void;
-    /** 새 쿼리 탭에 글을 넣는다(실행 안 함) */
     onopensql: (sql: string) => void;
-    /** 메타 읽기 실패 — 연결을 잃은 갈래면 부모가 [다시 열기] 띠로(참이면 여기서는 보이지 않는다) */
+    /** 참이면 부모가 [다시 열기] 띠로 보였다 — 여기서는 보이지 않는다 */
     onlost: (message: string) => boolean;
-    /** 표 구조(`db_table_detail`)를 읽는 중 · 끝 — 부모가 트리 · 다른 데이터 탭을 기다리게 한다(서버는 연결당 작업 하나) */
     onmeta?: (reading: boolean) => void;
-    /** ↗ — 참조 표의 데이터 탭을 이 조건으로 연다(이미 있으면 그 탭의 조건을 덮고 다시 읽는다) */
     onfollow?: (target: { schema: string | null; name: string; where: string }) => void;
-    /** 구조 하위 탭의 외래 키 · 참조됨 표 이름 — 그 표의 데이터 탭을 조건 없이 연다(이미 있으면 그 탭으로만) */
     onopendata?: (target: { schema: string | null; name: string }) => void;
     /** 바깥이 이 탭의 조건(`data.where`)을 덮었다 — 값이 바뀌면 WHERE 칸을 맞추고 1쪽부터 다시 읽는다 */
     poke?: number;
@@ -131,14 +107,12 @@
   let whereText = $state(data.where ?? "");
   let page = $state(0);
   let shown = $state<{ result: DbQueryResult; hasNext: boolean; page: number } | null>(null);
-  /** 사람이 끌어 바꾼 열 폭 — 쪽 · 정렬 · 조건을 바꿔도 남는다(탭이 사는 동안만 · 저장 안 함) */
+  /** 다시 읽어도 남는다(탭이 사는 동안만 · 저장 안 함) */
   let colWidths = $state<Record<string, number>>({});
-  /** [표 | 차트] — 쪽 · 정렬 · 조건(WHERE)을 바꿔 다시 읽어도 남는다(탭이 사는 동안만 · 저장 안 함) */
   let gridView = $state<"grid" | "chart">("grid");
   let chartPick = $state<KeptPick | undefined>(undefined);
   let error = $state<string | null>(null);
   let loading = $state(false);
-  /** 읽어야 한다(처음 · 조건 · 쪽 · 연결이 바뀜 · 새로 고침) */
   let needLoad = $state(true);
   let seq = 0;
   let disposed = false;
@@ -146,7 +120,6 @@
     disposed = true;
   });
 
-  // 연결이 바뀌면(다시 열기 · 재부착) 다시 읽는다 — 구조 · DDL 도
   let lastConn = "";
   $effect(() => {
     const c = opened ? `${opened.handle}:${opened.lease}` : "";
@@ -166,8 +139,7 @@
     if (visible && sub === "data" && opened && needLoad && !waiting && !inWork && !loading) untrack(() => void load());
   });
 
-  // 겹침 — 트리 읽기와 같은 순간에 출발하면 늦은 쪽이 서버의 Busy 로 실패한다(SchemaTree 의 같은 절). 조회 중에 트리가 읽었으면
-  // 그 실패는 오류로 보이지 않고, 트리가 끝나면(`waiting` 이 풀리면) 저절로 다시 읽는다.
+  // 트리 읽기와 같은 순간에 출발하면 늦은 쪽이 서버의 Busy 로 실패한다(`SchemaTree` 의 같은 절) — 그 실패는 오류로 보이지 않고 다시 읽는다
   let treeHit = false;
   $effect(() => {
     if (treeReading && loading) treeHit = true;
@@ -187,7 +159,7 @@
     if (disposed || my !== seq) return;
     loading = false;
     if (r === null) {
-      // 보내지 못했다(그 사이 연결이 다른 일을 시작) — 풀리면 저절로 다시
+      // 그 사이 연결이 다른 일을 시작했다 — 풀리면 저절로 다시
       needLoad = true;
       return;
     }
@@ -215,7 +187,6 @@
 
   let whereEl = $state<HTMLInputElement | null>(null);
 
-  /** ✕ — 조건을 비우고 곧바로 조건 없이 1쪽부터(지우고 Enter 와 같다) */
   function clearWhere() {
     whereText = "";
     applyWhere();
@@ -234,7 +205,6 @@
     }
   }
 
-  // 바깥이 조건을 덮었다(↗ 로 이미 열린 이 탭에 왔다) — 칸을 맞추고 1쪽부터
   // svelte-ignore state_referenced_locally
   let lastPoke = poke;
   $effect(() => {
@@ -247,7 +217,6 @@
     });
   });
 
-  /** 칸 우클릭의 거르기 — `eq` · `ne` 는 조건을 바꾸고, `and` 는 적용된 조건에 더한다 */
   function filterBy(col: string, cell: Cell, op: "eq" | "ne" | "and") {
     const cond = cellCondition(dialect, col, cell, op === "ne" ? "ne" : "eq");
     if (cond === null) return;
@@ -255,17 +224,13 @@
     applyWhere();
   }
 
-  /**
-   * 외래 키 저편의 스키마 — 비면 이 탭의 스키마. SQLite 는 이 탭이 스키마 없이(`main` 하나) 열렸으면 `main` 도 없이 — 트리가 여는 탭과
-   * 같은 열쇠여야 이미 열린 탭을 찾는다(`findDataTab`)
-   */
+  /** SQLite 는 이 탭이 스키마 없이 열렸으면 `main` 도 없이 — 트리가 여는 탭과 같은 열쇠여야 이미 열린 탭을 찾는다(`findDataTab`) */
   function otherSchema(s: string | null | undefined): string | null {
     if (!s) return data.schema ?? null;
     if (dialect === "sqlite" && s === "main" && !data.schema) return null;
     return s;
   }
 
-  /** ↗ — 그 행의 외래 키 값으로 참조 표를 연다 */
   function follow(fk: number, values: Cell[]) {
     const f = fks[fk];
     if (!f || !onfollow) return;
@@ -274,7 +239,6 @@
     onfollow({ schema: otherSchema(f.refSchema), name: f.refTable, where });
   }
 
-  /** 역방향 — 이 행을 가리키는 표를 `참조하는 열 = 이 행의 피참조 값` 으로 연다 */
   function followRef(i: number, values: Cell[]) {
     const x = refs[i];
     if (!x || !onfollow) return;
@@ -324,18 +288,15 @@
     if (sub === "ddl" && ddl === null && defTarget) untrack(() => void loadDdl());
   });
 
-  /** 이 표의 외래 키(구조를 읽었을 때만 — 못 읽었으면 빈 목록) */
   const fks = $derived<GridForeignKey[]>(
     detail?.state === "ok"
       ? detail.value.foreignKeys.map((f) => ({ columns: f.columns, refSchema: f.refSchema || null, refTable: f.refTable, refColumns: f.refColumns }))
       : [],
   );
-  /** 기본 키 열(같은 재료 — 머리글 열쇠 표시) */
   const pks = $derived<string[]>(detail?.state === "ok" ? detail.value.columns.filter((c) => c.pk > 0).map((c) => c.name) : []);
-  /** 이 표를 가리키는 외래 키(같은 재료 — 추가 조회 없음) */
   const refs = $derived<DbForeignKey[]>(detail?.state === "ok" ? detail.value.referencedBy : []);
 
-  /** 표 구조 읽기 하나 — 읽는 동안 부모에 알린다(`onmeta`) */
+  /** 읽는 동안 부모에 알린다 — 서버는 연결당 작업 하나 */
   async function readDetail(o: DbOpened): Promise<DbTableDetail> {
     onmeta?.(true);
     try {
@@ -345,8 +306,7 @@
     }
   }
 
-  // 외래 키(↗) — 데이터를 처음 읽은 뒤 한 번, 연결이 한가할 때 조용히(실패하면 ↗ 만 없다 — 구조 하위 탭은 열 때 다시 읽는다).
-  // 연결이 바뀌면(다시 열기 — `detail` 이 걷힌다) 한 번 더.
+  // 외래 키(↗) — 데이터를 처음 읽은 뒤 연결이 한가할 때 조용히 한 번(실패하면 ↗ 만 없다)
   let fkConn = "";
   $effect(() => {
     if (!visible || !opened || !shown || loading || needLoad || waiting || detail !== null) return;
@@ -401,10 +361,7 @@
     else if (sub === "ddl") ddl = null;
   }
 
-  /**
-   * 지금 보이는 하위 탭의 ↻ 와 같다 — DB 타일의 F5(`QueryView`)도 이것을 부른다. 데이터는 걸린 조건 · 쪽 그대로 다시 읽고(WHERE 칸을
-   * 고쳐 두었으면 그 조건으로 1쪽부터 — 단추와 같다), 단추가 꺼져 있을 때(읽는 중 · 트랜잭션 작업 · 연결 없음)는 아무것도 하지 않는다.
-   */
+  /** 지금 보이는 하위 탭의 ↻ 와 같다 — DB 타일의 F5(`QueryView`)도 이것을 부른다 */
   export function refresh() {
     if (sub !== "data") {
       if (!waiting) refreshSub();
@@ -415,13 +372,13 @@
     else reload();
   }
 
-  // ── WHERE 칸 자동완성 — 이 표의 열(구조를 읽었으면 그 형 · 아니면 결과 열) + 조건 키워드. 추가 조회 없음 ──────────────
+  // ── WHERE 칸 자동완성 ──────────────
 
   const whereCols = $derived<DbColumn[]>(
     detail?.state === "ok" ? detail.value.columns.map((c) => ({ name: c.name, type: c.type })) : (shown?.result.columns ?? []),
   );
 
-  /** 칸 글을 `SELECT * FROM <이 표> WHERE …` 안에 놓고 같은 규칙(`sql-complete`)으로 — `이표.` 뒤도 열만 */
+  /** 칸 글을 `SELECT * FROM <이 표> WHERE …` 안에 놓고 같은 규칙(`sql-complete`)으로 */
   function whereSource(text: string, pos: number, explicit: boolean) {
     const head = `SELECT * FROM ${qualifiedName(dialect, data.schema ?? null, data.name)} WHERE `;
     const cols = whereCols;
@@ -446,7 +403,6 @@
   const conLabel = (c: string) => t(`pane.query.schema.con.${c}` as "pane.query.schema.con.primary");
 </script>
 
-<!-- 쪽 넘기기 · 쪽 크기 — 결과 표의 아래 상태 줄 오른쪽(목업 "제안 A" 처럼 표 아래에) -->
 {#snippet pager()}
   <span class="pager">
     <button
@@ -499,7 +455,7 @@
   </div>
 
   {#if sub === "data"}
-    <!-- 도구줄 — [SQL 로 열기] · WHERE 칸(✕) · ↻(조회 중이면 [취소]) 순서(2026-11-10 사용자 결정) -->
+    <!-- 도구줄 순서([SQL 로 열기] · WHERE 칸 · ↻)는 사용자 결정 -->
     <div class="tools">
       <button type="button" class="tbtn" onclick={openSql} data-query-data-sql
         ><UiIcon name="snippet" size={12} /><span class="label">{t("pane.query.data.openSql")}</span></button
@@ -795,7 +751,7 @@
     color: var(--fg-3);
   }
 
-  /* 조건 지우기 ✕ — 스키마 트리 찾기 칸의 ✕(`.fclear`)와 같은 모양 */
+  /* 스키마 트리 찾기 칸의 ✕(`.fclear`)와 같은 모양 */
   .wclear {
     flex: 0 0 auto;
     display: inline-flex;
@@ -905,7 +861,6 @@
     margin-top: 12px;
   }
 
-  /* 구조 하위 탭의 저편 표 이름 — 그 표의 데이터 탭으로 */
   .tlink {
     padding: 0;
     font: inherit;

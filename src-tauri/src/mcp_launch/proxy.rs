@@ -1,6 +1,5 @@
 //! 티켓의 HTTP URL 하나로만 전달한다. 비밀 값과 URL은 오류·Debug에 싣지 않는다.
-//! ③-3b1 부터 세션 서버 프로세스에 산다(브로커와 같은 [`Vault`] 를 읽는다). 볼트가 잠기면 503 + 짧은 이유 — 창 0개
-//! 잠금은 티켓을 지우지 않으므로 해제하면 같은 URL 이 다시 200 이다(가림막 잠금은 티켓을 지운다 → 404).
+//! 볼트가 잠기면 503 + 짧은 이유 — 창 0개 잠금은 티켓을 지우지 않아 해제하면 같은 URL 이 다시 200 이다(가림막 잠금은 티켓을 지운다 → 404).
 use super::Tickets;
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -31,8 +30,7 @@ fn client() -> Result<reqwest::Client, ()> {
         .map_err(|_| ())
 }
 
-/// 프록시를 띄운다 — 127.0.0.1 의 자기 포트(신호 평면과 합치지 않는다 — 합치기는 ③-3c). 브로커가 처음 HTTP 티켓을
-/// 만들 때 한 번 부른다(`Broker::proxy_port`).
+/// 프록시를 띄운다 — 127.0.0.1 의 자기 포트. 브로커가 처음 HTTP 티켓을 만들 때 한 번 부른다.
 pub(super) fn start(tickets: &Tickets, vault: Arc<Vault>) -> Result<u16, ()> {
     let server = Server::http(("127.0.0.1", 0)).map_err(|_| ())?;
     let port = server.server_addr().to_ip().ok_or(())?.port();
@@ -85,7 +83,7 @@ fn fail(request: Request, status: u16) {
         .with_status_code(status));
 }
 
-/// 요청 때마다 비밀을 읽는다. 테스트는 같은 관문에 해석 함수만 바꿔 넣는다.
+/// 요청 때마다 비밀을 읽는다.
 fn serve_with(
     mut request: Request,
     tickets: &Tickets,

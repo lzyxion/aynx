@@ -1,5 +1,4 @@
-//! op 표 — `inline_op`(서버 고리 안에서 곧바로 처리하는 op — 요청 처리 순서를 정하는 분류) · `handle`(op 하나 + 끝의 노트 비우기) ·
-//! `handle_op`(갈래) · 쓰기의 문 `input_target` · op 몸 타입. `server/sessions.rs` 에서 그대로 옮겼다.
+//! 세션 op 표 · 쓰기의 문 `input_target`.
 
 use std::collections::HashSet;
 use std::time::Instant;
@@ -22,7 +21,7 @@ use crate::session_core::{core, Checkpoint, Holder, Kind};
 // op
 // ---------------------------------------------------------------------------
 
-/// 서버 고리 안에서 곧바로(기다리지 않고 순서대로) 처리하는 op — 맵 조작뿐이다. 나머지는 태스크로 돈다(블로킹 풀을 쓴다).
+/// 서버 고리 안에서 순서대로 곧바로 처리하는 op — 맵 조작뿐이어야 한다(요청 처리 순서를 정한다).
 pub(crate) fn inline_op(op: &str) -> bool {
     matches!(
         op,
@@ -42,8 +41,7 @@ pub(crate) fn inline_op(op: &str) -> bool {
     )
 }
 
-/// 몸의 `lang`(`"ko"`·`"en"`)을 꺼내 서버가 만드는 사람 문구의 언어로 건다(서버에는 언어 설정이 없다 — `vault_ops` 와 같은
-/// 규칙). SSH 열기·포워드의 오류 문구가 이 언어로 나간다.
+/// 서버에는 언어 설정이 없다 — 몸의 `lang` 이 서버가 만드는 사람 문구의 언어다(`vault_ops` 와 같은 규칙).
 fn take_lang(b: &mut Value) {
     if let Some(l) = b.get("lang").and_then(Value::as_str).and_then(crate::i18n::parse) {
         crate::i18n::set_lang(l);
@@ -53,7 +51,6 @@ fn take_lang(b: &mut Value) {
     }
 }
 
-/// 세션 op 하나 — 끝에서 코어의 노트를 비운다([`settle`]).
 pub(crate) async fn handle(op: &str, b: Value, ctx: &ConnCtx) -> Result<Value, WireError> {
     let r = handle_op(op, b, ctx).await;
     settle();
@@ -67,7 +64,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         "open_ssh" => open_ssh(b, ctx).await,
         "write" => {
             let w: Write = body(b)?;
-            // 주·시청자 모두(R2-A). 입력 출처는 원격 웹 크기 주인 판정에만 쓴다(3a — 작업자 타일 · 개입 잠금은 없다).
+            // 입력 출처는 원격 웹 크기 주인 판정에만 쓴다.
             let Holder { kind, id, .. } = input_target(&w.lease.stream, w.lease.session_epoch, w.lease.lease_epoch, w.source.as_deref())?;
             // 이 입력으로 크기 주인이 바뀌었으면 그 쪽이 적어 둔 크기를 **먼저** 건다(tmux `latest`).
             settle_now().await;
@@ -81,7 +78,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         }
         "resize" => {
             let r: Resize = body(b)?;
-            // 크기 주인의 것만 적용한다 — 나머지는 적어 두기만(R2-A · `Core::resize_request`). 오류가 아니다.
+            // 크기 주인이 아니면 적어 두기만 한다 — 오류가 아니다.
             let applied = core()
                 .resize_request(&r.lease.stream, r.lease.session_epoch, r.lease.lease_epoch, r.cols, r.rows)
                 .map_err(|e| core_err("resize", &r.lease.stream, e))?;
@@ -94,21 +91,19 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
                     .map_err(serr)?,
                 Kind::Ssh => crate::ssh::resize(id, r.cols, r.rows).await.map_err(serr)?,
             }
-            // 주인의 새 크기를 다른 쪽(시청자 · 주인이 아닌 주)에 알린다(R2-B).
             notify_owner_size(&r.lease.stream, r.cols, r.rows);
             Ok(Value::Null)
         }
         "claim_size" => {
             let r: Resize = body(b)?;
-            // **입력 없이 크기 주인 되찾기**(10-20 — `Core::claim_size_owner`): 자격 규칙은 사람 입력과 같고 셸에는 아무것도 쓰지 않는다.
+            // 셸에는 아무것도 쓰지 않는다.
             let c = core()
                 .claim_size_owner(&r.lease.stream, r.lease.session_epoch, r.lease.lease_epoch, r.cols, r.rows)
                 .map_err(|e| core_err("claim_size", &r.lease.stream, e))?;
             if c.changed {
-                // 노트가 새 주인의 크기를 싣는다 — 건 뒤에 답한다(이벤트 `session-size-owner` 도 여기서 나간다).
+                // 크기를 건 뒤에 답한다.
                 settle_now().await;
             } else if c.owner {
-                // 이미 주인 — resize 와 같다(같은 크기면 로컬은 건너뛴다).
                 let Holder { kind, id, .. } = c.holder;
                 match kind {
                     Kind::Local => blocking(move || resize_local_if_changed(id, r.cols, r.rows))
@@ -122,7 +117,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         }
         "close" => {
             let k: LeaseArgs = body(b)?;
-            // 표에 없으면(이미 닫힘 — 종료 마감이 먼저 거뒀다) 성공이다(멱등).
+            // 표에 없으면(종료 마감이 먼저 거뒀다) 성공이다 — 멱등.
             let Some(kind) = core().kind_of(&k.stream) else {
                 return Ok(Value::Null);
             };
@@ -163,8 +158,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             Ok(Value::Null)
         }
         "restore_done" => {
-            // ③-4 — 복원이 데려가지 않은 떨어진 세션은 **닫지 않는다**(떨어진 세션 목록에 남긴다 — 옛 `release_unclaimed` 의 임시
-            // 정책을 걷었다). 창 없이 끝나 닫기를 못 받은 끝난 잔해만 거둔다.
+            // 복원이 데려가지 않은 떨어진 세션은 **닫지 않는다**(떨어진 세션 목록에 남긴다). 끝난 잔해만 거둔다.
             let r: Release = body(b)?;
             let keep: HashSet<String> = r.keep.into_iter().collect();
             let (ended, marked) = core().restore_done(&r.window, &keep);
@@ -172,7 +166,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
                 core().remove_id(*kind, *id);
                 close_resource(*kind, *id).await?;
             }
-            // 쿼리 타일의 DB 연결도 같은 규칙(② — `keep` 에 타일의 `query:<tileKey>` 가 실린다).
+            // `keep` 에 쿼리 타일의 `query:<tileKey>` 도 실린다.
             let dbs = crate::db::table::restore_done(&r.window, &keep);
             if !marked.is_empty() || !ended.is_empty() || dbs > 0 {
                 log::line(format!(
@@ -190,7 +184,6 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             let a: StreamArg = body(b)?;
             let taken = core().take_detached(&a.stream);
             let Some((kind, id)) = taken else {
-                // 떨어진 쿼리 타일의 DB 연결(②) — 지금 떼어 둔 것만 닫는다(빌린 비밀번호도 마지막 타일이면 지운다 · `db::table::retire`).
                 if crate::db::table::close_detached(&a.stream) {
                     log::line(format!("closed detached db connection (stream {}) from the detached list", a.stream));
                     detached_changed();
@@ -210,16 +203,14 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         "detach_window" => {
             let d: WindowIds = body(b)?;
             if d.db_only {
-                // 그 창의 시청자는 뗀다(창이 사라졌다 — 세션은 quitAll 이 이미 떼어 뒀다).
+                // 세션은 quitAll 이 이미 떼어 뒀다.
                 core().remove_window_viewers(&d.window);
-                // 쿼리 타일의 DB 연결은 떨어진 세션으로 남긴다(TTL 없음 — ② · 다시 켠 GUI 의 복원 · 떨어진 세션 목록).
                 let db_skip: HashSet<String> = d.db_streams.into_iter().collect();
                 let dbs = crate::db::table::keep_window(&d.window, &db_skip);
                 if dbs > 0 {
                     log::line(format!("window {} gone while quitting — {dbs} db connection(s) kept as detached", d.window));
                     detached_changed();
                 }
-                // 트레이로 가는 창의 사이드 채팅도 떼어 둔다(다시 연 창이 attach 하거나 TTL). 프로듀서 채팅은 그 창의 구독만 지운다.
                 super::side_chat::detach_window(&d.window);
                 super::producer::detach_window(&d.window, &d.producer_subs);
                 return Ok(json!([]));
@@ -237,22 +228,17 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             if !detached.is_empty() {
                 detached_changed();
             }
-            // 쿼리 타일의 DB 연결도 떼어 둔다(TTL — `db::table` 머리말 · 창은 살아 곧 다시 붙는다). 떨어진 세션 목록에는 오르지 않는다
-            // (새 페이지의 복원이 데려가지 않으면 `restore_done` 이 목록에 올린다).
             let db_skip: HashSet<String> = d.db_streams.into_iter().collect();
             let dbs = crate::db::table::detach_window(&d.window, &db_skip);
             if dbs > 0 {
                 log::line(format!("window {} reloaded — {dbs} db connection(s) detached", d.window));
             }
-            // 사이드 채팅도 떼어 둔다 — 프로세스는 산다(새 페이지가 `side_chat_attach` · 설계 1절).
             let chats = super::side_chat::detach_window(&d.window);
             if chats > 0 {
                 log::line(format!("window {} reloaded — {chats} side chat(s) detached", d.window));
             }
-            // 프로듀서 채팅 — 그 창의 구독만 지운다(프로세스는 산다 · 새 페이지가 다시 구독 — `server::producer`).
             super::producer::detach_window(&d.window, &d.producer_subs);
-            // 그 창의 원격 새 워크트리 준비(첫 커밋 질문 대기)도 멈춘다 — 사건 **뒤에** 새 페이지가 연 접속(번호가 지금
-            // 이상)은 건드리지 않는다. 이 op 는 같은 연결 위에서 새 페이지의 열기보다 먼저 처리된다.
+            // 지금 번호 이상(새 페이지가 연 접속)은 건드리지 않는다 — 이 op 는 같은 연결 위에서 새 페이지의 열기보다 먼저 처리된다.
             crate::remote_worktree::cancel_for_window(&d.window, crate::ssh::next_id());
             Ok(json!(detached.into_iter().map(|(_, _, s)| s).collect::<Vec<_>>()))
         }
@@ -262,21 +248,18 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             if prepping > 0 {
                 log::line(format!("window {} gone — stopped {prepping} remote worktree preparation(s)", d.window));
             }
-            // 그 창이 **시청하던** 세션은 닫지 않는다 — 시청만 끝낸다(R2-A · 원격 창의 ws 가 닫혀 숨은 창이 부서질 때도 이 길이다).
+            // 그 창이 **시청하던** 세션은 닫지 않는다 — 시청만 끝낸다.
             core().remove_window_viewers(&d.window);
-            // 그 창의 프로듀서 채팅 구독도 지운다(프로세스는 산다 — 묶이기 전이면 TTL 이 시작된다 · `server::producer`).
             super::producer::detach_window(&d.window, &d.producer_subs);
-            // 그 창을 사이드 채팅의 보는 창에서 뗀다(다른 창은 계속 받는다 · 남은 창이 없으면 TTL — `server::side_chat` "보는 창 여럿").
             super::side_chat::detach_window(&d.window);
             let held_local: HashSet<u32> = d.ids.into_iter().collect();
             let held_ssh: HashSet<u32> = d.ssh_ids.into_iter().collect();
-            // 선별은 `reap::doomed` 의 규칙(그 창 · 이관 중 아님) — 창 파괴라 새 페이지가 없어 기준선은 없다.
+            // 창 파괴라 새 페이지가 없어 기준선은 없다.
             let pick = |kind: Kind, held: &HashSet<u32>| -> Vec<u32> {
                 crate::reap::doomed(&core().homes(kind), &d.window, u32::MAX, held)
             };
             let local = pick(Kind::Local, &held_local);
             let ssh = pick(Kind::Ssh, &held_ssh);
-            // 그 창의 DB 연결도 닫는다(떼어 둔 것까지 · 이관 중인 것은 빼고 — `db::table`).
             let held_db: HashSet<String> = d.db_streams.into_iter().collect();
             let dbs = crate::db::table::close_window(&d.window, &held_db);
             if dbs > 0 {
@@ -329,9 +312,8 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
         "close_all" => {
             let n = blocking(close_everything_blocking).await?;
             let m = close_all_ssh().await;
-            // DB 연결도(떼어 둔 것 · 비밀번호를 묻는 동안 세워 둔 전송로까지) — 세션이 아니라 수에는 넣지 않는다.
+            // DB 연결 · 채팅은 세션이 아니라 수에는 넣지 않는다.
             let d = crate::db::table::close_all();
-            // 사이드 채팅 프로세스도(설계 1절 — db 와 같은 줄 · 세션 수에는 넣지 않는다).
             let c = super::side_chat::close_all();
             let p = super::producer::close_all();
             log::line(format!(
@@ -374,8 +356,8 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
     }
 }
 
-/// **쓰기의 문**(kind 무관) — 주 또는 지금 붙은 시청자의 열쇠면 `Holder`. 사람 입력(출처가 터미널 응답 `protocol` 이 아님 — 프런트
-/// `src/lib/term/input-source.ts` 가 분류한다 · 모르는 값 · 없음은 사람으로 친다)이면 그 쪽이 크기 주인이 된다(`Core::input` — 원격 웹 R2).
+/// **쓰기의 문** — 주 또는 지금 붙은 시청자의 열쇠만. 출처가 `protocol` 이 아니면(모르는 값 · 없음 포함) 사람 입력이라 그 쪽이
+/// 크기 주인이 된다 — 출처는 프런트 `src/lib/term/input-source.ts` 가 분류한다.
 pub(crate) fn input_target(stream: &str, session_epoch: u64, lease_epoch: u64, source: Option<&str>) -> Result<Holder, WireError> {
     let human = source != Some("protocol");
     core()
@@ -388,7 +370,7 @@ struct Write {
     #[serde(flatten)]
     lease: LeaseArgs,
     data: String,
-    /// 입력 출처(5단계 — `keyboard` · `paste` · `protocol`). 프런트가 분류하고, 없으면 키보드(사람)로 친다.
+    /// `keyboard` · `paste` · `protocol`.
     #[serde(default)]
     source: Option<String>,
 }
@@ -423,7 +405,7 @@ struct IdArg {
     id: u32,
 }
 
-/// `{kind?, id}` — 종류가 없으면 로컬(③-2 의 몸 모양).
+/// 종류가 없으면 로컬(옛 몸 모양).
 #[derive(Deserialize)]
 struct KindId {
     #[serde(default)]
@@ -479,8 +461,7 @@ struct AiRead {
     on: bool,
 }
 
-/// 창 라벨 + 손잡이 목록 — `ids` 는 로컬, `sshIds` 는 SSH, `dbStreams` 는 쿼리 타일의 DB 연결 열쇠(이관 중인 것 · 책임 창을 옮길
-/// 것 — DB 연결은 세션 코어 밖 `db::table` 에 산다).
+/// 손잡이 목록은 이관 중인 것 · 책임 창을 옮길 것이다. `dbStreams` 는 세션 코어 밖 `db::table` 의 열쇠.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WindowIds {
@@ -491,12 +472,10 @@ struct WindowIds {
     ssh_ids: Vec<u32>,
     #[serde(default)]
     db_streams: Vec<String>,
-    /// `detach_window` 만 — DB 연결만 떨어진 세션으로 남긴다(앱 전체 종료 · 트레이로 가는 중의 창 파괴 — 세션은 quitAll · 앞의 리로드 몸이
-    /// 이미 떼어 뒀다 · `proxy::keep_window_dbs` · `reap::Event::Leaving`).
+    /// `detach_window` 만 — 앱 종료 · 트레이로 가는 중의 창 파괴(세션은 이미 떼어 뒀다).
     #[serde(default)]
     db_only: bool,
-    /// 그 창에서 GUI 가 쥐었던 프로듀서 채팅 구독 세대(`subGen`) — 그 세대만 지운다(같은 라벨의 새 페이지가 건 구독은 그대로 ·
-    /// `server::producer::detach_window`). 비면 지울 구독이 없다.
+    /// 그 세대(`subGen`)만 지운다 — 같은 라벨의 새 페이지가 건 구독은 그대로다.
     #[serde(default)]
     producer_subs: Vec<u64>,
 }

@@ -1,5 +1,4 @@
-// 설정 › 지침의 폼 변환·검증·파일 변경 묶기 — 순수 함수만.
-// Rust agent_instructions::name_ok 와 같은 ASCII 이름 규칙. 본문은 손대지 않는다.
+// 이름 규칙은 Rust `agent_instructions::name_ok` 와 같다. 본문은 손대지 않는다.
 import type { FileChange, ImportCandidate, Instruction } from "$lib/context";
 
 export interface InstructionForm {
@@ -62,7 +61,6 @@ export function instructionFormProblems(form: InstructionForm): InstructionFormP
   return problems;
 }
 
-/** 검증 실패는 null — 화면은 문제 키를 t() 로 설명하고 초안을 유지한다. */
 export function formToInstruction(form: InstructionForm): Instruction | null {
   if (instructionFormProblems(form).length > 0) return null;
   const agents = ["claude", "codex"].filter((id) => form.agents.includes(id));
@@ -84,7 +82,7 @@ export interface InstructionImportSelection {
   selected: boolean;
 }
 
-/** 고른 정상 후보만 복사한다. 이름 외의 출처 메타와 본문은 가져온 그대로 보존한다. */
+/** 이름 외의 출처 메타와 본문은 가져온 그대로 보존한다 */
 export function importSelectionToInstruction(selection: InstructionImportSelection): Instruction | null {
   const { candidate, selected } = selection;
   const name = selection.name.trim();
@@ -95,7 +93,6 @@ export function importSelectionToInstruction(selection: InstructionImportSelecti
   };
 }
 
-/** 저장 순서는 화면 순서다. 선택 안 한 줄과 건너뛴 줄은 저장 대상에서 뺀다. */
 export function selectedImportInstructions(selections: readonly InstructionImportSelection[]): Instruction[] {
   return selections.flatMap((selection) => {
     const item = importSelectionToInstruction(selection);
@@ -140,7 +137,6 @@ export interface InstructionChangeGroup {
   unchangedCount: number;
 }
 
-/** 전역 → 프로젝트별. 각 묶음에서 실제 변경 먼저, 변경 없음은 별도 접힌 목록으로. */
 export function groupInstructionChanges(changes: readonly FileChange[]): InstructionChangeGroup[] {
   const groups = new Map<string, InstructionChangeGroup>();
   for (const change of changes) {

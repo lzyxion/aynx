@@ -1,57 +1,27 @@
-//! **프로듀서 채팅 레지스트리**(오케스트레이션 2단계 "구조화 프로듀서" 단계 2 — 설계 aynx-notes docs/log/2026-10-30-orchestration-structured-producer.md
-//! 1-2 · 1-3 · 2절 · 4절) — 세션 서버 프로세스에 한 벌. 사이드 채팅 표(`server::side_chat`)와 **따로** 산다(표를 합치지 않는다 — R1): 프로세스
-//! 몸(띄우기 · 세 스레드 · 걸음 · 끝)은 공용 코어 `server::chat_proc` 이고, 이 파일은 그 주인([`chat_proc::Host`] `for ProducerChat`)이다.
+//! 프로듀서 채팅 레지스트리 — 세션 서버에 한 벌(설계 docs/log/2026-10-30-orchestration-structured-producer.md). 사이드 채팅 표와 **따로** 산다(표를
+//! 합치지 않는다) — 프로세스 몸은 공용 코어 `server::chat_proc` 이고 이 파일은 그 주인이다.
 //!
-//! 열쇠는 **논리적 채팅** id(`pc-` + 영숫자 · `-` — 사이드 채팅 id 와 섞이지 않는다 · `side_chat_*` 는 `pc-` 를 `[wrong-chat-kind]` 로 거절).
-//! 칸: 앨범 저장소 경로 · cli/모델/강도 · 대화 id · 입력 상태기계
-//! ([`input`]) · 끝난 이유 · 구독. 앨범 귀속은 여기 없다 — 오케스트레이션 장부(Run 파일 `producers`)가 권위다(설계 2-3).
-//!
-//! ## op(`serve` 가 블로킹 풀 태스크로 — 판 20)
-//!
-//! | op | 등급 | 몸 → 답 |
-//! | --- | --- | --- |
-//! | `producer_album_start` | 쓰기 | 첫 말 · 저장소 · 앨범 구성 → `{runId, gen, chat, sent, state, epoch}`(ref → 프로세스 → Run과 묶음 → 단일 전송기) |
-//! | `orchestration_album_widen` · `_set` | 쓰기 | `{runId, expectRev, next, riskConfirmed?}` → `{runId, rev, widened, latestSeq}`(원격은 넓힘 REAUTH · 좁힘 ALLOW) |
-//! | `orchestration_rename_album` | 쓰기 | `{runId, name}` → `{runId, name, latestSeq}`(사람만 · ALLOW) |
-//! | `producer_fork_probe` · `orchestration_album_defaults` | 읽기 | `{agent, conv}` → `{repo}` · `{repo}` → 지난 구성 초안 |
-//! | `producer_chat_open` | 쓰기 | `{chat, cli, model, effort?, mode: {kind: resume, conv} \| {kind: adopt, run}}` → 스냅숏 · 이미 열린 앨범의 재개와 이어받기만 · **띄우지 않는다** · 귀속 앨범이 orphaned 면 `readOnly` |
-//! | `producer_chat_send` | 쓰기 | `{chat, clientId, text}` → `{state, position?, epoch}` — 전송기([`input`]): 쉬면 곧바로(프로세스가 없으면 여기서 띄운다) · 아니면 대기열 |
-//! | `producer_chat_interrupt` | 쓰기 | `{chat, deliverQueued}` → bool(끊기를 보냈나) — 그 자리의 `wait_run` 을 **먼저** 취소한다 |
-//! | `producer_chat_set_model` · `_set_effort` | 쓰기 | `{chat, model}` · `{chat, effort?}` → bool |
-//! | `producer_chat_decide` | 쓰기 | `{chat, epoch, requestId, decision, message?}` → true — **카드로 선 요청만**(허용 목록 둘 — `side_chat::guard`) |
-//! | `producer_chat_queue_cancel` | 쓰기 | `{chat, clientId}` → bool · 보냈으면 `[already-sent]` |
-//! | `producer_chat_close` | 쓰기 | `{chat}` → bool — 레지스트리에서 지운다(대기열 버림 · 재시작 없음) |
-//! | `producer_chat_subscribe` · `_unsubscribe` | 쓰기 | `{chat, window}` → `{subGen, snapshot}` · `{chat, window, subGen}` → bool(같은 `subGen` 만 지운다) |
-//! | `producer_chat_attach` · `_status` · `_list` | 읽기 | 스냅숏 · `{open, …}` 또는 `{gone: closed \| server-restarted, album?}` · 목록 |
-//!
-//! 사건 `producer-chat-event{chat, epoch, seq, ev, subs: [{conn, window, subGen}]}` — 받을 구독을 몸에 싣는다(GUI 라우터가 그 Channel 에만 —
-//! 단계 3). 본문이 있어 `client::RELAYED` 에 넣지 않는다.
+//! - 열쇠는 `pc-` 로 시작한다 — 사이드 채팅 id 와 섞이지 않는다(`side_chat_*` 는 `pc-` 를 `[wrong-chat-kind]` 로 거절). 앨범 귀속은 여기 없다 —
+//!   오케스트레이션 장부(Run 파일 `producers`)가 권위다.
+//! - Run 을 여는 길은 사람 op `producer_album_start` 하나다. `producer_chat_open` 은 이미 열린 앨범의 재개 · 이어받기만이고 **띄우지 않는다**.
+//! - 사건 `producer-chat-event` 는 본문이 있어 `client::RELAYED` 에 넣지 않는다 — 받을 구독을 몸에 싣는다.
 //!
 //! ## stdin — 사람의 입력과 앱이 깨움뿐
 //!
-//! 새 사용자 턴의 본문을 짓는 곳은 [`dispatch`] 하나(`encode_user` — 시험 `producer_stdin_only_human_or_wake`). 부르는 곳은 사람 op 둘(보내기 ·
-//! 쉬는 중의 [끊고 전달]) · 턴 끝의 대기열 처리(사람이 이미 보낸 글) · **깨움 하나**([`wake`] 의 `fire` — 글은 오케스트레이션이 Run 장부에서
-//! 제한된 타입으로 지은 문장 `orchestration::wake::wake_text` 하나 · 단계 4)뿐이다. 제어 프레임(끊기 · 모델 · 강도 · 결정)은 사람 op 에서만
-//! (깨움 턴 시한의 끊기 하나는 예외 — 시계가 붙이는 끊기 의도). MCP 결과 · 작업자 대화 · 보고 · 판정 본문이 여기로 오는 길은 없다.
+//! 새 사용자 턴의 본문을 짓는 곳은 [`dispatch`] 하나(시험 `producer_stdin_only_human_or_wake`). 들어가는 것은 사람이 보낸 글과 **깨움 하나**
+//! (오케스트레이션이 Run 장부에서 제한된 타입으로 지은 `orchestration::wake::wake_text`)뿐이다. 제어 프레임(끊기 · 모델 · 강도 · 결정)은 사람
+//! op 에서만(예외 — 깨움 턴 시한의 끊기). MCP 결과 · 작업자 대화 · 보고 · 판정 본문이 여기로 오는 길은 없다(→ docs/invariants.md 전문 4).
 //!
-//! ## 잠금 순서(설계 2-6)
+//! ## 잠금 순서
 //!
-//! L3 이 표 → L4 채팅 항목(코어 잠금 포함) → L2 토큰 표(`chat_token::revoke`)만. **L4 를 쥔 채 오케스트레이션(L1)을 부르지 않는다** —
-//! 턴 끝의 커서 확정은 [`later`](순서 보장 일꾼 하나)로, 끝의 묶음 해제는 코어의 `on_exit`(잠금 밖)에서, 끊기의 대기 취소는 잠금을 잡기 전에.
-//! 시험 `producer_lock_order`.
+//! L3 이 표 → L4 채팅 항목(코어 잠금 포함) → L2 토큰 표만. **L4 를 쥔 채 오케스트레이션(L1)을 부르지 않는다** — 늦은 일은 [`later`] 로
+//! (시험 `producer_lock_order`).
 //!
-//! ## 종료 순서(설계 2-5)
+//! ## 종료 순서
 //!
-//! 닫기 시작(우리가 끊음)과 끝 감지(`on_ending`) 모두에서 **토큰을 먼저** 거두고(`chat_token::revoke(chat, proc)` — 그 순간부터 그 세대의 MCP 는
-//! 401) → `on_exit`(잠금 밖)에서 `coordinator_exited_seat(Seat{chat, proc})`(그 자리 묶음만 · 대기 취소 · 잠정 커서 되돌림) → 그 뒤에야
-//! 끝 사건(`exited{reason, why, restartable}`)을 구독에 낸다(코어가 잠금 안에서 낸 끝 사건은 내보내지 않고 쥐었다가). 시험 `producer_end_order`.
+//! **토큰을 먼저** 거두고(그 순간부터 그 세대의 MCP 는 401) → 잠금 밖에서 그 자리의 묶음 해제 → 그 뒤에야 끝 사건을 구독에 낸다(시험 `producer_end_order`).
 //!
-//! ## 수명(설계 1-3)
-//!
-//! | 사건 | 묶이기 전(귀속 앨범 없음) | 귀속 앨범 있음 |
-//! |---|---|---|
-//! | 앨범 끝(done · stopped · 보관) | — | 쉬는 순간 닫음(`album-ended` — 대기열이 남았으면 그것부터) · [`ALBUM_END_GRACE`] 뒤 끊고 닫음 |
-//! | 서버 재시작 | 사라짐(`status` = `server-restarted`) | orphaned 앨범의 채팅은 `readOnly`(`send` = `[album-orphaned]`) |
+//! 프로듀서 채팅은 고아 자진 종료의 바쁜 이유(`serve::Busy`)에 세지 않는다 — Run 은 `Busy.runs` 가 센다. 서버가 다시 뜨면 orphaned 앨범의 채팅은 `readOnly` 다.
 //!
 //! **로그**: 채팅 id · 세대 · pid · 끝 코드 · 버린 줄 수만. 글 · 답 · 도구 출력 · 경로 · 토큰은 남기지 않는다.
 
@@ -83,22 +53,15 @@ use crate::side_chat::{Cli, Decision, Ev};
 use crate::orchestration::wake::WakeEnd;
 use input::{End, Input, Next, Src, Submit};
 
-/// 사건 이벤트 이름(서버 → GUI).
 pub(crate) const EVENT: &str = "producer-chat-event";
-/// op 실패 코드.
 pub(crate) const PRODUCER: &str = "producer-chat";
-/// 프로듀서 채팅 id 머리.
 pub(crate) const ID_PREFIX: &str = "pc-";
-/// 묶이기 전(귀속 앨범 없음) · 구독 0 의 살려 두기(설계 1-3 [잠정]).
-/// 그 TTL 에 턴이 돌면 더 기다리는 시간([잠정]) — 그 뒤 끊고 닫는다.
-/// 앨범이 끝난 뒤 쉬기를 기다리는 시간([잠정]).
+/// 앨범이 끝난 뒤 쉬기를 기다리는 시간 — 그 뒤 끊고 닫는다.
 pub(crate) const ALBUM_END_GRACE: Duration = Duration::from_secs(600);
-/// 산 미귀속 프로세스 상한([잠정]).
-/// `Dispatching` 시한(ms · [잠정] — 실측 P2 · P3: 턴 시작 신호는 0.5초 안).
+/// ms — 턴 시작 신호는 실측 0.5초 안.
 pub(crate) const DISPATCH_MS: u64 = 30_000;
-/// 보낸 글 하나의 상한(바이트).
+/// 바이트.
 const TEXT_MAX: usize = 256 * 1024;
-/// 닫힌 채팅의 까닭 기억 수(`status` 의 `gone`).
 const GONE_MAX: usize = 256;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -113,7 +76,6 @@ fn now_ms() -> u64 {
     crate::operations::now_ms()
 }
 
-/// 이 파일이 받는 op 인가.
 pub(crate) fn is_producer_op(op: &str) -> bool {
     matches!(
         op,
@@ -140,7 +102,7 @@ pub(crate) fn is_producer_op(op: &str) -> bool {
     )
 }
 
-/// 프로듀서 채팅 id 모양 — `pc-` + 사이드 채팅 id 규칙(폴더 이름 하나 · 토큰 표가 같은 판정).
+/// `pc-` + 사이드 채팅 id 규칙(폴더 이름 하나 · 토큰 표가 같은 판정).
 pub(crate) fn id_ok(id: &str) -> bool {
     id.starts_with(ID_PREFIX) && id.len() > ID_PREFIX.len() && crate::side_chat::store::id_ok(id)
 }
@@ -149,7 +111,6 @@ pub(crate) fn id_ok(id: &str) -> bool {
 // 표
 // ---------------------------------------------------------------------------
 
-/// 끝난 이유(설계 1-3 표 — 다음 보내기의 재시작 허용).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EndWhy {
     Exited,
@@ -174,24 +135,23 @@ impl EndWhy {
         }
     }
 
-    /// 다음 사람 보내기가 resume 으로 다시 띄우나(닫기 · 모두 닫기는 레지스트리에 항목이 없다).
+    /// 다음 사람 보내기가 resume 으로 다시 띄우나.
     fn restartable(self) -> bool {
         !matches!(self, EndWhy::Closed | EndWhy::CloseAll)
     }
 }
 
-/// 프로세스 수명의 단계.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Life {
     /// 프로세스 없음(아직 안 띄움) · 산 프로세스.
     Live,
-    /// 끝을 알았다(토큰 거둠) — 묶음 해제를 기다린다. 이 동안 들어온 글은 대기열로 · 다시 띄우지 않는다.
+    /// 토큰은 거뒀고 묶음 해제를 기다린다 — 이 동안 다시 띄우지 않는다.
     Exiting,
     /// 끝났다(묶음 해제 끝 · 끝 사건 냄).
     Ended(EndWhy),
 }
 
-/// 구독 — `(conn, window, subGen)`(설계 7 R11). 같은 `subGen` 만 지운다.
+/// 같은 `subGen` 만 지운다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Sub {
     conn: u64,
@@ -203,7 +163,7 @@ pub(super) struct State {
     pub(super) cli: Cli,
     pub(super) model: String,
     pub(super) effort: Option<String>,
-    /// 스튜디오(맡긴 저장소 `block.path` — 서버가 다시 읽은 값).
+    /// 앨범 저장소 경로 — 서버가 앨범에서 다시 읽은 값(몸의 경로를 믿지 않는다).
     pub(super) repo: String,
     /// 새 길의 앨범 id는 준비한 Run 또는 이어받기 대상에서만 온다.
     pub(super) album: Option<String>,
@@ -211,32 +171,26 @@ pub(super) struct State {
     album_starting: bool,
     /// 이어 갈 대화(턴이 한 번 선 것만).
     pub(super) conversation: Option<String>,
-    /// 갈라 올 원본 대화(그 CLI 의 대화 id — [오케스트레이션으로 이어 가기] · 단계 5). 이 채팅 자신의 대화가 서기 전의 띄우기만 갈라 오기다.
+    /// 갈라 올 원본 대화 — 이 채팅 자신의 대화가 서기 전의 띄우기만 갈라 오기다.
     pub(super) fork_from: Option<String>,
     conv_seen: Option<String>,
     core: Core,
     input: Input,
     life: Life,
-    /// 우리가 닫는 까닭(끝 사건의 `why` — 없으면 끝 코드로).
     closing: Option<EndWhy>,
-    /// 코어가 잠금 안에서 낸 끝 사건(내보내지 않고 쥐었다가 묶음 해제 뒤에 — 머리말 "종료 순서").
+    /// 코어가 잠금 안에서 낸 끝 사건 — 묶음 해제 뒤에 낸다(머리말 "종료 순서").
     held_exit: Option<(ProcId, u64, Ev)>,
     subs: Vec<Sub>,
-    /// 구독이 0 이 된 때(묶이기 전 TTL 의 시작).
-    /// 귀속 앨범이 끝난 것을 처음 본 때.
     album_end_seen: Option<Instant>,
-    /// 귀속 앨범이 orphaned(서버 재시작) — 기록만 · 보내기 거절.
     read_only: bool,
-    /// 마지막 턴이 끝난 때(ms — 깨움의 "턴 끝 + 2초").
     last_turn_end: Option<u64>,
-    /// 지금 보내는 · 도는 깨움의 화면 몸(`woken` 사건 · 스냅숏 `wake` — id · 낱말 · 수만).
+    /// 화면 몸 — id · 낱말 · 수만(장부 본문을 싣지 않는다).
     wake_view: Option<Value>,
 }
 
 pub(super) struct ProducerChat {
     id: String,
     st: Mutex<State>,
-    /// 준비 · 끝(보내기의 준비 기다리기).
     cv: Condvar,
 }
 
@@ -268,7 +222,6 @@ fn remember_gone(t: &mut Table, id: &str, why: &'static str) {
     t.gone.push_back((id.to_string(), why));
 }
 
-/// 오케스트레이션(세션 서버의 AI 평면 — 시험은 끼운 것).
 pub(super) fn orch() -> Option<Arc<Orchestration>> {
     #[cfg(test)]
     if let Some(o) = lock(&TEST_ORCH).clone() {
@@ -277,7 +230,7 @@ pub(super) fn orch() -> Option<Arc<Orchestration>> {
     hub::ai().map(|p| p.orch.clone())
 }
 
-/// **채팅 → 오케스트레이션 방향의 늦은 일**(턴 끝의 커서 확정) — 채팅 잠금 안에서는 부르지 않고 순서 보장 일꾼 하나에 넘긴다(설계 2-6).
+/// 채팅 잠금 안에서는 오케스트레이션을 부르지 않고 순서 보장 일꾼 하나에 넘긴다.
 type Job = Box<dyn FnOnce() + Send>;
 
 fn later(f: impl FnOnce() + Send + 'static) {
@@ -293,7 +246,6 @@ fn later(f: impl FnOnce() + Send + 'static) {
     let _ = lock(&TX).send(Box::new(f));
 }
 
-/// 채팅 잠금 밖의 오케스트레이션 일 — 순서 보장 일꾼([`later`])에게.
 fn orch_later(f: impl FnOnce(&Orchestration) + Send + 'static) {
     later(move || {
         if let Some(o) = orch() {
@@ -318,7 +270,7 @@ fn emit(chat: &ProducerChat, st: &State, proc: ProcId, seq: u64, ev: &Value) {
     hub::emit(EVENT, body);
 }
 
-/// 레지스트리 자신의 알림(대기열 · 정책 · 끝) — 코어 `seq` 를 올리지 않는다(화면은 상태를 다시 묻는다).
+/// 코어 `seq` 를 올리지 않는다(화면은 상태를 다시 묻는다).
 fn notice(chat: &ProducerChat, st: &State, code: &'static str, detail: Option<String>) {
     let ev = serde_json::to_value(Ev::Notice { code, detail }).unwrap_or(Value::Null);
     emit(chat, st, st.core.id(), st.core.seq(), &ev);
@@ -353,7 +305,7 @@ impl chat_proc::Host for ProducerChat {
                     st.conversation = st.conv_seen.clone();
                 }
                 woke = st.input.live_wake().map(|(w, _)| w);
-                // 끊기 의도가 `Dispatching` 에 붙어 있었으면 턴이 선 즉시 끊는다(설계 4-2).
+                // 끊기 의도가 `Dispatching` 에 붙어 있었으면 턴이 선 즉시 끊는다.
                 if st.input.turn_started() {
                     send_interrupt(self, st);
                 }
@@ -374,7 +326,7 @@ impl chat_proc::Host for ProducerChat {
         }
         let v = serde_json::to_value(ev).unwrap_or(Value::Null);
         emit(self, st, proc, seq, &v);
-        // 깨움 턴이 섰다 — "앱이 깨움" 표지(턴 시작 **뒤** — 화면의 접기가 턴 시작에 알림을 걷으므로) · 받아들여짐.
+        // 표지는 턴 시작 **뒤** — 화면의 접기가 턴 시작에 알림을 걷는다.
         if let Some(w) = woke {
             if let Some(view) = st.wake_view.clone() {
                 let ev = json!({ "t": "woken", "wake": view });
@@ -394,8 +346,7 @@ impl chat_proc::Host for ProducerChat {
             if wake.is_some() {
                 st.wake_view = None;
             }
-            // 잠정 커서 확정 · 되돌림(설계 3-3) → (깨움 턴이었으면) 그 깨움의 끝 판정(3-4 — 확정 커서를 본다) — 오케스트레이션 잠금이라 채팅
-            // 잠금 밖의 일꾼에게(순서 그대로).
+            // 깨움의 끝 판정은 확정 커서를 본다 — 순서 그대로 일꾼에게.
             let s = seat(&self.id, proc);
             orch_later(move |o| {
                 o.seat_turn_ended(&s, end == End::Natural);
@@ -415,7 +366,7 @@ impl chat_proc::Host for ProducerChat {
         }
     }
 
-    /// 끝 사건 전(잠금 안) — **그 세대의 토큰을 먼저** 거둔다(설계 2-5 — 이미 닫기 시작에서 거뒀으면 할 일 없음) · `Exiting`.
+    /// **그 세대의 토큰을 먼저** 거둔다(머리말 "종료 순서").
     fn on_ending(&self, st: &mut State, proc: ProcId) {
         crate::chat_token::revoke(&self.id, proc);
         st.life = Life::Exiting;
@@ -429,7 +380,7 @@ impl chat_proc::Host for ProducerChat {
         }
     }
 
-    /// 잠금 밖 — 묶음 해제(그 자리만 · 대기 취소 · 커서 되돌림) → 끝 상태 → 쥐었던 끝 사건을 구독에.
+    /// 잠금 밖 — 묶음 해제 뒤에 쥐었던 끝 사건을 낸다.
     fn on_exit(&self, e: ProcExit) {
         log::line(format!(
             "producer chat {} — process {} ended ({}, code {:?}, dropped {} bad · {} unknown line(s))",
@@ -457,7 +408,7 @@ impl chat_proc::Host for ProducerChat {
     }
 }
 
-/// 우리가 닫는다 — **토큰을 먼저** 거두고(설계 2-5) 잡째 끝낸다(끝 사건은 감시 스레드가).
+/// **토큰을 먼저** 거두고 잡째 끝낸다.
 fn close_proc(chat: &ProducerChat, st: &mut State, why: EndWhy) {
     if let Some(p) = st.core.live() {
         crate::chat_token::revoke(&chat.id, p);
@@ -467,7 +418,6 @@ fn close_proc(chat: &ProducerChat, st: &mut State, why: EndWhy) {
     }
 }
 
-/// 끊기를 CLI 에 보낸다(제어 프레임 — 사람 op · 턴 시작 즉시 끊기).
 fn send_interrupt(chat: &ProducerChat, st: &mut State) -> bool {
     let Some(a) = st.core.adapter() else { return false };
     match a.encode_interrupt() {
@@ -476,12 +426,11 @@ fn send_interrupt(chat: &ProducerChat, st: &mut State) -> bool {
     }
 }
 
-/// **전송기 — 새 사용자 턴의 본문을 stdin 에 쓰는 유일한 곳**(머리말 "stdin"). 입력 상태기계가 `Dispatching` 으로 세운 글을 짓고 코어에
-/// 넘긴다 — 쓰기 결과를 버리지 않는다(실패면 `failed` 로 대기열 맨 앞 · 보류 · 알림).
+/// **전송기 — 새 사용자 턴의 본문을 stdin 에 쓰는 유일한 곳**(머리말 "stdin"). 쓰기 결과를 버리지 않는다.
 fn dispatch(chat: &ProducerChat, st: &mut State, src: Src, text: String) -> bool {
     let id = src.client_id().to_string();
     let wake = matches!(src, Src::Wake { .. });
-    // 갈라 온 Codex 프로듀서의 첫 사람 글 — 앞에 앱 고정 지침 머리글(단계 5 · 실측 P6 — `launch::album_fork_brief` 하나 · 사람 · AI 글 없음)
+    // 갈라 온 Codex 프로듀서의 첫 사람 글 — 앞에 앱 고정 지침 머리글(`launch::album_fork_brief` 하나 · 사람 · AI 글 없음)
     let text = if !wake && launch::needs_brief(st.cli, st.fork_from.is_some(), st.conversation.is_some()) {
         format!("{}{text}", launch::album_fork_brief(&st.repo, st.album.as_deref()))
     } else {
@@ -500,7 +449,7 @@ fn dispatch(chat: &ProducerChat, st: &mut State, src: Src, text: String) -> bool
             notice(chat, st, "queue-failed", Some(id));
         }
     } else if !wake {
-        // 전송된 사람 글 — 사람 말 사이 깨움 셈 · 무반응 · 실패를 처음으로(설계 3-4 · O6).
+        // 사람 말 사이 깨움 셈을 처음으로.
         let c = chat.id.clone();
         orch_later(move |o| o.wake_human_spoke(&c));
     }
@@ -511,7 +460,6 @@ fn dispatch(chat: &ProducerChat, st: &mut State, src: Src, text: String) -> bool
 // 띄우기
 // ---------------------------------------------------------------------------
 
-/// `<데이터 루트>/producer` — 시험은 임시 폴더.
 fn producer_root() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(f) = fake().as_ref() {
@@ -528,7 +476,7 @@ fn mcp_port() -> Option<u16> {
     hub::signal_port()
 }
 
-/// 띄우기 전의 판정(잠금 밖 — 파일 · git · 오케스트레이션): 지금 맡기기(스튜디오 · 작업안 칸) · 미귀속 상한.
+/// 잠금 밖 — 귀속 앨범의 지금 정책(저장소 · 작업안 칸)을 다시 읽는다.
 struct PreSpawn {
     plan_tools: bool,
 }
@@ -546,8 +494,7 @@ fn pre_spawn(chat: &ProducerChat) -> Result<Option<PreSpawn>, WireError> {
     Ok(Some(PreSpawn { plan_tools }))
 }
 
-/// **프로세스를 띄운다** — [`ensure_ready`] 에서만(사람 op 의 전송 길). 토큰은 그 세대로 먼저 뽑고(MCP 없이 띄우지 않는다 —
-/// `[producer-mcp-unavailable]`), 실패하면 곧바로 거둔다.
+/// **프로세스를 띄운다** — [`ensure_ready`] 에서만(사람 op 의 전송 길 — 시험 `producer_spawns_only_from_dispatch`). MCP 없이 띄우지 않는다.
 fn spawn(chat: &Arc<ProducerChat>, st: &mut State, pre: &PreSpawn) -> Result<(), WireError> {
     let proc = ProcId::next();
     let root = producer_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
@@ -569,10 +516,10 @@ fn spawn(chat: &Arc<ProducerChat>, st: &mut State, pre: &PreSpawn) -> Result<(),
     Ok(())
 }
 
-/// 프로세스가 없으면 띄우고 준비를 기다린다(사람 op 의 전송 길 — 보내기 · 쉬는 중의 끊고 전달).
+/// 사람 op 의 전송 길에서만 부른다.
 fn ensure_ready<'a>(chat: &'a Arc<ProducerChat>, mut st: MutexGuard<'a, State>, pre: Option<&PreSpawn>) -> Result<MutexGuard<'a, State>, WireError> {
     if st.life == Life::Exiting {
-        // 끝을 알았지만 묶음 해제 전 — 다시 띄우지 않는다(설계 2-5 · 그 글은 보류된 대기열로).
+        // 끝을 알았지만 묶음 해제 전 — 다시 띄우지 않는다(그 글은 보류된 대기열로).
         st.input.write_failed();
         return Err(fail("exiting", "the producer process is ending — send again in a moment"));
     }
@@ -690,7 +637,7 @@ fn body<T: for<'de> Deserialize<'de>>(v: Value) -> Result<T, WireError> {
     serde_json::from_value(v).map_err(|_| WireError::new(super::ipc::frame::code::BAD_BODY, "bad producer chat request body"))
 }
 
-/// op 하나(블로킹 — `serve` 가 블로킹 풀에서). `conn` 은 부른 서버 연결.
+/// 블로킹 — `serve` 가 블로킹 풀에서 부른다.
 pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> {
     match op {
         "orchestration_album_widen" | "orchestration_album_set" | "orchestration_rename_album" => {
@@ -725,7 +672,7 @@ pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> 
     }
 }
 
-/// 그 채팅의 귀속 앨범 보기(잠금 밖에서 — 오케스트레이션).
+/// 잠금 밖에서.
 fn album_view(id: &str) -> Value {
     match orch().and_then(|o| o.producer_album(id)) {
         Some((run, state, verdict)) => json!({ "runId": run, "state": state, "adoptable": verdict.view() }),
@@ -761,7 +708,7 @@ fn snapshot(chat: &ProducerChat, st: &State, album: Value) -> Value {
         "liveTurn": st.core.live_turn(),
         "pending": st.core.pending(),
         "album": album,
-        // 지금 도는 깨움(F5 · 다시 붙기 — 꼬리에는 사람 말풍선이 없어 화면이 표지를 다시 세운다).
+        // 꼬리에는 사람 말풍선이 없어 화면이 이것으로 표지를 다시 세운다.
         "wake": st.input.live_wake().and(st.wake_view.clone()),
     })
 }
@@ -772,7 +719,7 @@ fn snapshot_of(chat: &ProducerChat) -> Value {
     snapshot(chat, &st, album)
 }
 
-/// 빈 강도는 칸 없음(CLI 기본)으로 — 프런트의 "기본" 이 `""` 로 와도 `word_ok("")` 거절 · 빈 인자가 나지 않게.
+/// 빈 강도는 칸 없음(CLI 기본)으로 — 프런트의 "기본" 이 `""` 로 온다.
 pub(super) fn blank_none(e: Option<String>) -> Option<String> {
     e.filter(|e| !e.is_empty())
 }
@@ -796,8 +743,7 @@ fn op_open(mut b: OpenBody) -> Result<Value, WireError> {
         ModeBody::Resume { conv } if uuid_ok(&conv) => Some(conv),
         ModeBody::Resume { .. } => return Err(fail("bad-conversation", "invalid conversation id")),
     };
-    // 스튜디오 — 몸의 경로가 아니라 지금 맡기기의 `block.path`(잠금 밖 · 파일 · git). 갈라 오기는 그 대화의 **기록된 cwd 의 git toplevel**
-    // 이 맡긴 스튜디오일 때만(몸의 `repo` 는 읽지 않는다 — 단계 5).
+    // 저장소는 몸의 경로가 아니라 서버가 정한다 — 이어받기는 그 Run, 재개는 귀속 앨범(몸의 `repo` 는 읽지 않는다).
     let scope = orch().and_then(|o| o.producer_scope(&b.chat));
     if adopt.is_some() && scope.is_none() && lock(&TABLE).chats.contains_key(&b.chat) {
         return Err(fail("chat-in-use", "이어받기는 새 프로듀서 채팅에서 열어야 합니다"));
@@ -809,7 +755,7 @@ fn op_open(mut b: OpenBody) -> Result<Value, WireError> {
     } else {
         return Err(fail("repo-changed", "사람이 연 앨범 또는 이어받기 대상이 필요합니다"));
     };
-    // 귀속 앨범이 orphaned(서버 재시작)면 기록만(설계 1-3 · 리뷰 F12 — 프런트 문구가 아니라 서버 판정).
+    // 귀속 앨범이 orphaned(서버 재시작)면 기록만 — 서버가 판정한다.
     let album = orch().and_then(|o| o.producer_album(&b.chat));
     let read_only = matches!(album, Some((_, crate::orchestration::RunState::Orphaned, _)));
     let (chat, old) = {
@@ -875,7 +821,6 @@ fn op_open(mut b: OpenBody) -> Result<Value, WireError> {
     Ok(snapshot_of(&chat))
 }
 
-/// 그 에이전트의 대화 루트(시험은 가짜 색인).
 fn conv_roots(t: &'static crate::agent_sessions::SessionTarget) -> Vec<PathBuf> {
     #[cfg(test)]
     if let Some(f) = fake().as_ref() {
@@ -884,7 +829,6 @@ fn conv_roots(t: &'static crate::agent_sessions::SessionTarget) -> Vec<PathBuf> 
     (t.roots)()
 }
 
-/// **사람이 보낸 글** — 전송기(설계 4-2). 쉬면 곧바로(프로세스가 없으면 여기서 띄운다), 아니면 대기열.
 fn op_send(b: SendBody) -> Result<Value, WireError> {
     if b.text.trim().is_empty() || b.text.len() > TEXT_MAX {
         return Err(fail("bad-text", "the message is empty or too long"));
@@ -919,8 +863,7 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
     }
 }
 
-/// **끊기**(✕ = `deliverQueued: false` · [끊고 전달] = true) — 그 자리의 `wait_run` 을 **먼저** 취소하고(설계 3-3 — 채팅 잠금 밖) 의도를 턴에
-/// 붙인 뒤 CLI 에 끊기를 보낸다. 쉬는 중이면 끊을 턴이 없다(false) — 그때 `deliverQueued` 면 보류된 대기열을 곧바로 보낸다.
+/// 그 자리의 `wait_run` 을 **먼저**(채팅 잠금 밖에서) 취소한다.
 fn op_interrupt(b: InterruptBody) -> Result<Value, WireError> {
     let chat = find(&b.chat)?;
     let live = lock(&chat.st).core.live();
@@ -968,7 +911,7 @@ fn op_set_effort(mut b: EffortBody) -> Result<Value, WireError> {
     Ok(json!(chat_proc::apply(&*chat, &mut st, step)))
 }
 
-/// **사람의 권한 결정** — 카드로 선 요청만(허용 목록 둘 — 정책으로 거절한 요청은 표에 없다 · 설계 4-3).
+/// 사람의 권한 결정 — 카드로 선 요청만(정책으로 거절한 요청은 표에 없다).
 fn op_decide(b: DecideBody) -> Result<Value, WireError> {
     let decision = match b.decision.as_str() {
         "allow" => Decision::Allow,
@@ -1023,7 +966,7 @@ fn op_unsubscribe(b: SubBody, conn: u64) -> Result<Value, WireError> {
     Ok(json!(removed))
 }
 
-/// 끝난 이유를 답한다 — 화면은 `session-gone` 에 스스로 열지 않고 이것을 묻는다(설계 5-2).
+/// 화면은 `session-gone` 에 스스로 열지 않고 이것을 묻는다.
 fn op_status(b: ChatBody) -> Result<Value, WireError> {
     if !id_ok(&b.chat) {
         return Err(fail("wrong-chat-kind", "that id is not a producer chat"));
@@ -1041,7 +984,6 @@ fn op_status(b: ChatBody) -> Result<Value, WireError> {
     }
 }
 
-/// 닫는다(레지스트리에서 지우고 프로세스를 잡째 끝낸다 — 토큰 먼저). 표에 있었나.
 fn close(id: &str, why: EndWhy) -> bool {
     let chat = {
         let mut t = lock(&TABLE);
@@ -1084,13 +1026,11 @@ fn list() -> Value {
 // 수명 — 구독 · TTL · 앨범 끝 · 모두 닫기
 // ---------------------------------------------------------------------------
 
-/// 서버 연결이 끊겼다 — 그 연결의 구독을 지운다(묶이기 전이면 TTL 이 시작된다).
 pub(crate) fn conn_gone(conn: u64) -> usize {
     drop_subs(|s| s.conn == conn)
 }
 
-/// 창이 사라졌다(F5 · 크래시 · 파괴) — 그 창의 구독을 지운다(새 페이지가 다시 구독한다). `gens`(GUI 가 그 순간 쥔 그 창의 `subGen` 들 — 단계 5)
-/// **그 세대만** 지운다: 같은 라벨의 새 페이지가 그 사이 건 새 구독을 옛 페이지의 늦은 정리가 지우지 않게(설계 7 R11 — 라벨만으로 정리하지 않는다).
+/// `gens` 의 **그 세대만** 지운다 — 같은 라벨의 새 페이지가 그 사이 건 구독을 옛 페이지의 늦은 정리가 지우지 않게(라벨만으로 정리하지 않는다).
 pub(crate) fn detach_window(window: &str, gens: &[u64]) -> usize {
     drop_subs(|s| s.window == window && gens.contains(&s.gen))
 }
@@ -1110,13 +1050,11 @@ fn drop_subs(pick: impl Fn(&Sub) -> bool) -> usize {
     n
 }
 
-/// 모두 닫는다 — 트레이 [모든 세션 종료] · 서버 끝. 닫은 수.
 pub(crate) fn close_all() -> usize {
     let ids: Vec<String> = lock(&TABLE).chats.keys().cloned().collect();
     ids.iter().filter(|id| close(id, EndWhy::CloseAll)).count()
 }
 
-/// 표에 있는 채팅 수(진단).
 pub(crate) fn live_count() -> usize {
     lock(&TABLE).chats.len()
 }
@@ -1130,27 +1068,24 @@ fn end_grace() -> Duration {
     }
 }
 
-/// 시험 전용 — TTL · 유예를 함께 바꾼다(`None` = 원래대로).
 #[cfg(test)]
 pub(crate) fn set_end_grace_for_test(d: Option<Duration>) {
     END_GRACE_OVERRIDE_MS.store(d.map_or(0, |d| d.as_millis().max(1) as u64), Ordering::SeqCst);
     wake_reaper();
 }
 
-/// 한 번 훑는다(시계 · 시험이 부른다) — `Dispatching` 시한 · 묶이기 전 TTL · 앨범 끝. 닫은 프로세스 수.
 pub(crate) fn sweep(now: Instant) -> usize {
     let grace = end_grace();
     let chats: Vec<Arc<ProducerChat>> = lock(&TABLE).chats.values().cloned().collect();
     let o = orch();
     let mut closed = 0;
     for c in chats {
-        // 귀속 앨범 — 오케스트레이션 잠금은 채팅 잠금 **앞**에서(설계 2-6).
+        // 오케스트레이션 잠금은 채팅 잠금 **앞**에서.
         let album = o.as_ref().and_then(|o| o.producer_album(&c.id));
         let album_gone = album.is_none() && o.as_ref().is_some_and(|o| o.producer_album_gone(&c.id));
         let mut st = lock(&c.st);
         match st.input.dispatch_expired(now_ms(), DISPATCH_MS) {
             Some(Src::Wake { wake_id }) => {
-                // 깨움 글은 시작 확인이 없으면 버린다 — 재시도는 오케스트레이션이(`Unacked`).
                 st.wake_view = None;
                 if let Some(p) = st.core.live() {
                     let s = seat(&c.id, p);
@@ -1183,7 +1118,6 @@ pub(crate) fn sweep(now: Instant) -> usize {
 
 static REAPER: LazyLock<(Mutex<bool>, Condvar)> = LazyLock::new(|| (Mutex::new(false), Condvar::new()));
 
-/// 시계를 깨운다(처음이면 띄운다 — 스레드 하나 · 1초마다 · 깨우면 곧바로).
 fn wake_reaper() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
@@ -1192,7 +1126,7 @@ fn wake_reaper() {
             if n > 0 {
                 log::line(format!("producer chat: closed {n} process(es) (ttl · album end)"));
             }
-            // 앱이 깨움(단계 4) — 새 사건이 없어도 시한을 다시 판정한다(설계 3-5).
+            // 새 사건이 없어도 깨움 시한을 다시 판정한다.
             wake::tick();
             let (m, cv) = &*REAPER;
             let g = lock(m);

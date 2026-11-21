@@ -1,24 +1,9 @@
 /**
- * **화면 축소판 — 순수 모델** (docs/log/2026-09-29-session-chips.md 의 "미리 보기: 화면 축소판" ·
- * 2026-09-29-dashboard-thumbs.md).
- *
- * 대시보드 세션 칸의 카드마다 그 타일의 **보이는 화면을 색째** 작게 그린다(OS 작업 표시줄 미리 보기처럼 —
- * 처음에는 상태바 칩의 호버 카드에 있었고, 그 카드가 걷히며 대시보드로 옮겼다).
- * 읽으라는 것이 아니라 **알아보라는** 것이다 — Claude 가 도는 중인지, vim 이 열려 있는지, 로그가 흐르는지.
- *
- * 이 모듈은 xterm 버퍼(를 닮은 것)를 읽어 **줄마다 같은 모양의 칸을 이은 토막(run)** 으로 접는다. 룬도 DOM 도
- * 없고, xterm 도 import 하지 않는다 — 버퍼 · 칸 · 팔레트는 구조 타입으로만 받는다(node vitest 로 가짜 칸을 먹인다).
- *
- * - 색: 팔레트 번호(0–255) → 테마의 16색(`black`…`brightWhite`) · `extendedAnsi` · 없으면 xterm 기본값과 같은 6×6×6
- *   정육면체 · 회색 24단. RGB 는 `#rrggbb`. 기본색은 `null`(= 판의 기본 글자색 · 바탕색을 물려받는다).
- * - 반전(`CSI 7 m`)은 글자색과 바탕색을 맞바꾼다 — 기본색이었으면 판의 기본색을 **적어서** 바꾼다.
- * - 굵게 + 팔레트 0–7 은 밝은 색 8–15 로(xterm 의 `drawBoldTextInBrightColors` 기본값과 같다).
- * - 숨김(`CSI 8 m`)은 공백으로.
- * - 넓은 글자(CJK) 뒤의 폭 0 칸은 건너뛴다.
- * - 줄 끝의 **기본 바탕 공백**은 뗀다(그릴 것이 없다).
+ * 대시보드 카드의 화면 축소판 — xterm 버퍼를 줄마다 같은 모양의 토막으로 접는다 (docs/log/2026-09-29-dashboard-thumbs.md).
+ * xterm 을 import 하지 않고 구조 타입으로만 받는다 — node vitest 로 가짜 칸을 먹인다.
  */
 
-/** 테마에서 읽는 칸만 — xterm `ITheme` 과 같은 이름(구조 타입) */
+/** xterm `ITheme` 과 같은 이름 */
 export interface ThumbTheme {
   foreground?: string;
   background?: string;
@@ -41,7 +26,7 @@ export interface ThumbTheme {
   extendedAnsi?: string[];
 }
 
-/** 칸 하나 — xterm `IBufferCell` 에서 여기서 읽는 것만 */
+/** xterm `IBufferCell` 에서 읽는 것만 */
 export interface ThumbCell {
   getChars(): string;
   getWidth(): number;
@@ -57,13 +42,11 @@ export interface ThumbCell {
   isInvisible(): number;
 }
 
-/** 줄 하나 — xterm `IBufferLine` 에서 읽는 것만 */
 export interface ThumbLine {
   readonly length: number;
   getCell(x: number, cell?: ThumbCell): ThumbCell | undefined;
 }
 
-/** 버퍼 — xterm `IBuffer` 에서 읽는 것만(보통 · 대체 화면 어느 쪽이든 `buffer.active`) */
 export interface ThumbBuffer {
   readonly viewportY: number;
   readonly length: number;
@@ -71,7 +54,7 @@ export interface ThumbBuffer {
   getNullCell(): ThumbCell;
 }
 
-/** 같은 모양의 칸을 이은 토막 — 색이 `null` 이면 판의 기본색 */
+/** 색이 `null` 이면 판의 기본색 */
 export interface ThumbRun {
   text: string;
   fg: string | null;
@@ -80,23 +63,19 @@ export interface ThumbRun {
   dim: boolean;
 }
 
-/** 화면 한 장 */
 export interface ScreenSnapshot {
-  /** 그린 칸 수(상한을 지난 뒤) — 축소판의 가로세로 비를 정한다 */
+  /** 상한을 지난 뒤의 칸 수 */
   cols: number;
   rows: number;
-  /** 판의 기본 글자색 · 바탕색 */
   fg: string;
   bg: string;
-  /** 줄마다 토막들 (`rows` 개 — 빈 줄은 빈 배열) */
   lines: ThumbRun[][];
 }
 
-/** 일을 막는 상한 — 타일 하나에 이만큼까지만 읽는다 */
 export const SNAPSHOT_MAX_ROWS = 60;
 export const SNAPSHOT_MAX_COLS = 200;
 
-/** xterm 의 기본 16색 (`DEFAULT_ANSI_COLORS` 앞 16칸과 같다) — 테마가 비워 둔 칸의 대안 */
+/** xterm `DEFAULT_ANSI_COLORS` 앞 16칸과 같다 */
 const DEFAULT_16 = [
   "#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
   "#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
@@ -111,15 +90,11 @@ export const DEFAULT_BG = "#000000";
 
 const hex2 = (n: number): string => n.toString(16).padStart(2, "0");
 
-/** `0xRRGGBB` → `#rrggbb` */
 export function rgbHex(n: number): string {
   return `#${hex2((n >> 16) & 0xff)}${hex2((n >> 8) & 0xff)}${hex2(n & 0xff)}`;
 }
 
-/**
- * 팔레트 번호(0–255) → 색. 0–15 는 테마(없으면 xterm 기본), 16–255 는 테마의 `extendedAnsi` 가 있으면 그것,
- * 없으면 6×6×6 정육면체(16–231) · 회색 24단(232–255). 순수 함수.
- */
+/** 16–255 는 `extendedAnsi` 가 없으면 xterm 기본값과 같은 6×6×6 정육면체 · 회색 24단 */
 export function paletteColor(index: number, theme: ThumbTheme): string {
   const i = Math.max(0, Math.min(255, Math.trunc(index)));
   if (i < 16) {
@@ -137,7 +112,6 @@ export function paletteColor(index: number, theme: ThumbTheme): string {
   return `#${hex2(g)}${hex2(g)}${hex2(g)}`;
 }
 
-/** 칸 하나의 모양 — 색은 `null` 이면 기본 */
 export interface CellStyle {
   fg: string | null;
   bg: string | null;
@@ -145,10 +119,7 @@ export interface CellStyle {
   dim: boolean;
 }
 
-/**
- * 칸의 모양을 푼다 — 팔레트 · RGB · 기본, 굵게의 밝은 색, 반전. 순수 함수.
- * `defaults` 는 반전이 기본색을 맞바꿀 때만 쓴다.
- */
+/** 굵게 + 팔레트 0–7 은 밝은 색 8–15 로 — xterm `drawBoldTextInBrightColors` 기본값과 같다 */
 export function cellStyle(cell: ThumbCell, theme: ThumbTheme, defaults: { fg: string; bg: string }): CellStyle {
   const bold = cell.isBold() !== 0;
   let fg: string | null = null;
@@ -171,10 +142,7 @@ export function cellStyle(cell: ThumbCell, theme: ThumbTheme, defaults: { fg: st
 const sameStyle = (a: CellStyle, b: CellStyle): boolean =>
   a.fg === b.fg && a.bg === b.bg && a.bold === b.bold && a.dim === b.dim;
 
-/**
- * (글자, 모양) 열 → 토막들. 이웃한 같은 모양을 잇고, 줄 끝의 **기본 바탕 공백**을 뗀다(색 바탕 공백은 그림이라
- * 둔다). 순수 함수.
- */
+/** 줄 끝의 기본 바탕 공백만 뗀다 — 색 바탕 공백은 그림이다 */
 export function coalesceRow(cells: readonly { ch: string; style: CellStyle }[]): ThumbRun[] {
   const runs: ThumbRun[] = [];
   for (const { ch, style } of cells) {
@@ -196,11 +164,7 @@ export function coalesceRow(cells: readonly { ch: string; style: CellStyle }[]):
   return runs;
 }
 
-/**
- * 버퍼의 **보이는 화면**(`viewportY` 부터 `rows` 줄 — 스크롤해 둔 자리 그대로) → 축소판 한 장. 줄은 아래쪽
- * [`SNAPSHOT_MAX_ROWS`] 줄, 칸은 왼쪽 [`SNAPSHOT_MAX_COLS`] 칸까지만 읽는다. 기본색은 테마(없으면 xterm 기본).
- * 순수 함수(버퍼는 읽기만 한다).
- */
+/** 스크롤해 둔 자리 그대로의 보이는 화면 */
 export function snapshotScreen(
   buffer: ThumbBuffer,
   size: { cols: number; rows: number },
@@ -234,33 +198,20 @@ export function snapshotScreen(
   return { cols, rows, fg: defaults.fg, bg: defaults.bg, lines };
 }
 
-/** 그릴 글자가 하나도 없는 판인가 — 색 바탕도 없으면 비었다(카드는 글 미리 보기로 떨어진다) */
 export function isBlankSnapshot(s: ScreenSnapshot): boolean {
   return s.lines.every((runs) => runs.every((r) => r.bg === null && r.text.trim() === ""));
 }
 
-/**
- * 축소판에 그릴 **줄들** — 꼬리의 빈 줄(글자도 색 바탕도 없는 줄)을 떼고 마지막 [`max`] 줄. 짧은 화면은 위에서부터,
- * 긴 화면은 최근(아래) 쪽이 보인다 — 대시보드 카드의 축소판은 높이가 정해져 있어 넘치는 위쪽을 버린다.
- * 순수 함수.
- */
 export function thumbTail(s: ScreenSnapshot, max: number): ThumbRun[][] {
   let end = s.lines.length;
   while (end > 0 && s.lines[end - 1].every((r) => r.bg === null && r.text.trim() === "")) end -= 1;
   return s.lines.slice(Math.max(0, end - Math.max(0, max)), end);
 }
 
-// ---------------------------------------------------------------------------
-// 글 미리 보기 — 축소판이 없을 때의 대안 (예전 `chip-card.ts` 에서 옮김 · docs/log/2026-09-29-dashboard-thumbs.md)
-// ---------------------------------------------------------------------------
+// ── 글 미리 보기 — 축소판이 없을 때의 대안 ──
 
-/** 대안 글 미리 보기에 남기는 마지막 줄 수 */
 export const PREVIEW_LINES = 5;
 
-/**
- * 터미널 이스케이프를 걷는다 — CSI(`ESC [ … 끝글자`) · OSC(`ESC ] … BEL|ST`) · 그 밖의 두 글자 ESC 열 ·
- * 8비트 CSI(`\x9b`). 남은 제어 문자는 지우고 탭은 공백 하나로. 순수 함수.
- */
 export function stripAnsi(text: string): string {
   return (
     text
@@ -278,10 +229,6 @@ export function stripAnsi(text: string): string {
   );
 }
 
-/**
- * 줄 배열 → 그릴 **마지막 [`max`] 줄**. 이스케이프를 걷고 오른쪽 여백을 뗀 뒤, 꼬리의 빈 줄을
- * 떼고 끝에서부터 센다. 가운데 빈 줄은 출력의 일부라 둔다. 앞머리의 빈 줄은 뗀다(위가 비어 보이지 않게).
- */
 export function previewLines(lines: readonly string[], max = PREVIEW_LINES): string[] {
   // 줄바꿈으로 먼저 가른다 — `stripAnsi` 는 남은 제어 문자(줄바꿈 포함)를 지운다
   const clean = lines.flatMap((line) => line.split(/\r?\n|\r/)).map((line) => stripAnsi(line).trimEnd());
@@ -291,16 +238,12 @@ export function previewLines(lines: readonly string[], max = PREVIEW_LINES): str
   return tail;
 }
 
-/** 블록 기록의 모양 중 여기서 읽는 칸만 — `block-history` 를 들이지 않으려는 구조 타입 */
+/** `block-history` 를 들이지 않으려는 구조 타입 */
 export interface PreviewBlock {
   commandLine: string;
   excerpt: { head: readonly string[]; tail: readonly string[] };
 }
 
-/**
- * 살아 있는 화면이 없을 때(터미널이 아직 없다)의 대안 — 마지막 명령 블록의 `$ 명령` + 출력 발췌(머리 · 꼬리).
- * 블록이 없으면 빈 배열.
- */
 export function blockPreview(block: PreviewBlock | null | undefined): string[] {
   if (!block) return [];
   const head = block.commandLine.trim() === "" ? [] : [`$ ${block.commandLine}`];

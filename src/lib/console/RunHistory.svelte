@@ -54,32 +54,16 @@
   import { locale, t } from "$lib/i18n/i18n.svelte.js";
   import type { Key } from "$lib/i18n/keys";
 
-  // ---------------------------------------------------------------------------
-  // **작업안 칸 › 기록** — 감사 로그를 사람이 읽는 장부로 (docs/log/2026-09-28-run-history.md ·
-  // 설계 노트 「작업안 실행 기록 화면 설계」 · 목업 안 A).
-  //
-  // 재료는 Rust `audit_runs` 하나다(두 줄을 한 실행으로 묶어 준다). 기간이 가져오는 범위이고, 나머지
-  // 거르기(호스트 · 결과 · 승인 · 검색)는 가져온 것 위에서 한다. 판정·문구·묶음은 순수 모듈
-  // `$lib/run-history` 가 하고, 결과 문구는 **결과 알림과 같은 함수**(`outcomeOf`)다.
-  //
-  // **모양 — 한 줄 목록 + 그 자리 펼침(아코디언, 2026-10-25)**. 고른 줄 하나가 그 바로 아래로 상세를 편다(다시 누르면
-  // 접힌다). 예전의 두 칸(목록 | 상세)은 좁은 작업안 타일(캔버스 45% — 지금은 채팅 독 380px)에서 목록이 "we…" 로 잘려 걷었고, 넓은 폭에서도
-  // 같은 모양 하나다. 상세의 대상별 표는 실패 줄이 먼저다 — "어느 호스트만 튀었나" 를 옛 행렬 보기 대신 여기서 답한다.
-  //
-  // 이 보기는 떠 있을 때만 마운트된다 — 보기를 열 때마다 새로 읽고, 보는 사이 실행이 끝나면
-  // (`operation-state` 의 종료 상태) 한 번 더 읽는다.
-  // ---------------------------------------------------------------------------
+  // 작업안 칸 › 기록 — 감사 로그(`audit_runs`)를 사람이 읽는 장부로.
+  // 모양은 한 줄 목록 + 그 자리 펼침 하나다 — 두 칸(목록 | 상세)은 좁은 독에서 목록이 잘려 걷었다.
 
   interface Props {
-    /** 지금 창이 아는 대상 이름(대시보드의 `targetLookup`) — 감사 스냅샷에 없을 때만 쓴다 */
+    /** 감사 스냅샷에 대상 이름이 없을 때만 쓴다 */
     live: LabelOf;
-    /** 지금 보이는 실행 수(지운 것 · 거른 것 뺌) — 작업안 바닥 줄의 수 · [기록 지우기] 가 켜질지 본다(`PlansView`) */
     count?: number;
-    /** 거르기가 걸려 있나(호스트 · 결과 · 승인 · 찾기) — 그러면 바닥 줄은 "보이는 기록" 만 지운다 */
+    /** 걸려 있으면 바닥 줄은 보이는 기록만 지운다 */
     filtered?: boolean;
-    /** 지금 보이는 실행 id(거른 결과) — 바닥 줄의 [보이는 기록 지우기] 가 이것을 지운다 */
     shownIds?: string[];
-    /** 지운 줄이 밀려 나갈 화면 가장자리 — 감싸는 독이 붙은 쪽 */
     exitSide?: ExitSide;
   }
 
@@ -93,13 +77,11 @@
 
   let runs = $state<AuditRun[]>([]);
   let status = $state<"loading" | "ready" | "error">("loading");
-  /** 고른 실행 — 그 줄 아래로 상세가 펼쳐진다 */
   let selectedId = $state<string | null>(null);
-  /** 사람이 펼친 줄을 다시 눌러 접었다 — 그동안은 가장 최근 실행을 저절로 펴지 않는다 */
+  /** 사람이 접었다 — 그동안은 가장 최근 실행을 저절로 펴지 않는다 */
   let closedByUser = $state(false);
-  /** 딥링크가 고르라고 남긴 실행 — 목록이 오면 고르고, 이 기간에 없으면 90일로 넓혀 한 번 더 본다 */
   let wanted = $state<string | null>(null);
-  /** 기본 펼침(최근 두 날)에서 뒤집은 날 — 접힌 날을 펴거나 편 날을 접는다 */
+  /** 기본 펼침(`OPEN_DAYS`)에서 뒤집은 날 */
   const toggledDays = new SvelteSet<string>();
 
   let listEl = $state<HTMLElement | null>(null);
@@ -123,14 +105,12 @@
     status = "ready";
   }
 
-  // 기간이 바뀌면(그리고 처음 마운트될 때) 새로 읽는다. 읽는 몸은 `untrack` — `runs` 를 들여다보는
-  // 것이 이 효과의 의존성이 되면 목록이 올 때마다 다시 읽는다.
+  // 읽는 몸은 `untrack` — `runs` 가 이 효과의 의존성이 되면 목록이 올 때마다 다시 읽는다.
   $effect(() => {
     const p = period;
     untrack(() => void load(p));
   });
 
-  // 보는 사이 실행이 끝나면 다시 읽는다 — 끝난 줄이 감사 파일에 막 적혔다.
   $effect(() => {
     let off: UnlistenFn | null = null;
     let dead = false;
@@ -145,17 +125,14 @@
     };
   });
 
-  // 딥링크(결과 알림의 [결과 보기] · 진행 보기에서 넘어온 실행) — 요청을 한 번만 가져간다.
   $effect(() => {
     if (historyRequestPending() === null) return;
     const id = takeHistoryRequest();
     if (id === null) return;
     wanted = id;
-    // 거르기가 그 실행을 가리면 안 된다 — 딥링크는 "이것을 보여 달라" 다.
     setHistoryFilter({ host: null, result: "all", approval: "all", query: "" });
   });
 
-  // 목록이 오면 딥링크의 실행을 고른다. 이 기간에 없으면 90일로 넓혀 한 번 더 보고, 그래도 없으면 놓는다.
   $effect(() => {
     const id = wanted;
     if (id === null || status !== "ready") return;
@@ -172,23 +149,15 @@
     wanted = null;
   });
 
-  /**
-   * **화면에서 지운 것을 뺀** 실행(2026-11-13 — 머리줄 🗑 · `app/run-history` 의 `clearHistoryView`). 지운 시각 이전에 승인된 실행은
-   * 그리지 않는다(감사 파일은 그대로). 아래 목록 · 요약 · 호스트 고르기 · 딥링크가 모두 이것을 본다.
-   */
+  /** 화면에서 지운 것을 뺀 실행 — 감사 파일은 그대로다 */
   const kept = $derived.by(() => {
     const cut = historyClearedAt();
     const gone = hiddenRuns();
     return cut > 0 || gone.size > 0 ? runs.filter((r) => r.approvedAt > cut && !gone.has(r.operationId)) : runs;
   });
 
-  /** 지우기 직후에 빠지는 날 카드만 밀려 나간다 — 보기 전환 · 거르기 · 기간 바꾸기로 빠질 때는 곧바로(`row-exit.ts` 의 문) */
   const justCleared = () => historyJustCleared(EXIT_WINDOW_MS);
-  /**
-   * 지운 줄은 알림 칸처럼 **실행 줄마다** 차례로 나간다 — 날짜 머리줄도 한 줄로 끼어(문서 순서 · 날짜 카드를 건너 하나로 센다).
-   * 줄이 날짜 카드마다 흩어져 있어 차례는 목록 상자(`.days`) 안의 `[data-exit-row]` 로 매긴다. 날짜 카드는 줄이 다 나간 뒤 빠진다
-   * (카드에 여백이 없어 줄이 다 접히면 높이가 0 이다).
-   */
+  /** 줄이 날짜 카드마다 흩어져 있어 나가는 차례는 `.days` 안의 `[data-exit-row]` 로 매긴다 */
   const EXIT_ROWS = "[data-exit-row]";
   const rowExit = makeRowExit(
     () => exitSide,
@@ -203,7 +172,6 @@
   const emptyIn = makeEmptyIn(() => exitingWithin(listEl ?? lastListEl, EXIT_ROWS), justCleared);
 
   const shown = $derived(filterRuns(kept, filter, live));
-  // 바닥 줄(`PlansView`)에 넘긴다 — 거르기가 걸려 있으면 보이는 것만 지운다(골라 지우기 · 2026-11-13)
   $effect(() => {
     count = shown.length;
     filtered = filter.host !== null || filter.result !== "all" || filter.approval !== "all" || filter.query.trim() !== "";
@@ -223,12 +191,10 @@
     else toggledDays.add(key);
   }
 
-  /** 펼쳐진 줄 전부(화면 순서) — ↑↓ 가 이 순서로 움직인다 */
   const visibleRuns = $derived.by<AuditRun[]>(() =>
     groups.flatMap((g, i) => (dayOpen(g, i) ? g.runs : [])),
   );
 
-  // 고른 것이 없으면 가장 최근 실행을 편다 — 첫 화면이 접힌 줄뿐이지 않게. 사람이 접었으면 그대로 둔다.
   $effect(() => {
     if (status !== "ready" || wanted !== null) return;
     if (selectedId !== null && shown.some((r) => r.operationId === selectedId)) return;
@@ -236,7 +202,6 @@
     selectedId = visibleRuns[0]?.operationId ?? null;
   });
 
-  /** 줄을 누르면 그 자리에서 펴고, 펼친 줄을 다시 누르면 접는다. 위의 줄이 접히며 밀린 자리를 따라가 보이게 한다. */
   async function toggleRow(id: string): Promise<void> {
     if (selectedId === id) {
       selectedId = null;
@@ -251,7 +216,6 @@
 
   const selected = $derived(runs.find((r) => r.operationId === selectedId) ?? null);
 
-  /** 딥링크로 고른 실행 — 그 날을 펴고, 그려진 뒤 그 줄로 스크롤하고 포커스를 준다 */
   async function selectAndReveal(run: AuditRun): Promise<void> {
     selectedId = run.operationId;
     closedByUser = false;
@@ -269,7 +233,6 @@
     }
   }
 
-  /** ↑↓ — 펼쳐진 날의 줄 사이로 펼침과 포커스를 함께 옮긴다. Enter·Space 는 단추가 스스로 펴고 접는다. */
   function onListKey(ev: KeyboardEvent): void {
     if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp" && ev.key !== "Home" && ev.key !== "End") return;
     const list = visibleRuns;
@@ -330,7 +293,6 @@
     { id: "auto", key: "board.history.approval.auto" },
   ];
 
-  /** 대상 상태 → 문구 키 (진행 보기의 실행 결과 배지와 같은 표) */
   const TARGET_LABEL: Record<string, Key> = {
     pending: "board.target.pending",
     running: "board.target.running",
@@ -348,7 +310,6 @@
     return "dim";
   }
 
-  /** 상세의 대상 표 한 줄 */
   interface TargetLine {
     id: string;
     name: string;
@@ -375,7 +336,7 @@
         duration: ms !== null && ms >= 0 ? formatDuration(ms, t) : null,
       };
     });
-    // 실패 줄이 먼저(2026-10-25) — 나머지는 실행 순서 그대로(첫째가 canary). 정렬은 안정이다.
+    // 실패 줄이 먼저 — 정렬은 안정이라 나머지는 실행 순서(첫째가 canary) 그대로다.
     lines.sort((a, b) => Number(stateKind(b.state) === "bad") - Number(stateKind(a.state) === "bad"));
     const total = runDurationMs(res);
     return {
@@ -392,10 +353,8 @@
     openSettingsAt("automation", "audit-output-excerpt");
   }
 
-  // ── [복사] — 펼친 실행 한 건을 붙여넣을 Markdown 으로(2026-10-27 · 목업 9Pa28svsRh21yxiGBsfTPj) ──────────────
-  // 화면 상세가 이미 쥔 값만 옮긴다(새로 읽는 데이터 없음 — 출력은 저장해 둔 발췌가 있을 때만). 글의 모양은 순수 `runMarkdown`.
+  // ── [복사] ──
 
-  /** 방금 복사한 실행 — 1.5초 동안 단추가 [✓ 복사됨] 이다 */
   let copiedId = $state<string | null>(null);
   let copiedTimer: ReturnType<typeof setTimeout> | null = null;
   const COPIED_MS = 1500;
@@ -438,7 +397,6 @@
 </script>
 
 <div class="history" data-run-history>
-  <!-- 검색 — 알약 입력(제목 · 명령, 대소문자 무시) -->
   <label class="search">
     <UiIcon name="search" size={14} />
     <input
@@ -453,11 +411,7 @@
     />
   </label>
 
-  <!--
-    거르기 — 기간(가져오는 범위) · 호스트 · 결과 · 승인. 칩 하나 = "이름 값 ⌄"(A안, 2026-11-01): 칩 전체가 앱 `Dropdown` 손잡이라
-    누르는 자리 · 포커스 고리가 하나이고, 목록은 칩 왼쪽 끝에 붙는다(`align="start"` · 최소 폭 = 칩 폭). 걸린 칩은
-    secondaryContainer 로 채운다(기간은 늘 걸려 있다 — 가져오는 범위다).
-  -->
+  <!-- 기간은 가져오는 범위라 늘 걸려 있다(`set`) — 나머지 거르기는 가져온 것 위에서 한다 -->
   <div class="filters" role="group" aria-label={t("board.history.filters.aria")}>
     <span class="f set" data-filter="period"
       ><Dropdown
@@ -511,7 +465,6 @@
       >
     </p>
   {:else}
-    <!-- 요약 — 상자 없이 수만 평평하게. 막대는 무채(수동 = 밝은 회색 · 자동 = 어두운 회색) -->
     <div class="summary" data-history-summary>
       <div class="stat">
         <span class="k">{t("board.history.sum.runs")}</span>
@@ -547,7 +500,6 @@
     {:else if shown.length === 0}
       <p class="empty" data-history-state="filtered">{t("board.history.empty.filtered")}</p>
     {:else}
-      <!-- ↑↓ 로 줄 사이를 옮기는 키 처리는 목록 전체가 받는다(줄 자체는 단추라 포커스가 선다) -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div class="days" role="list" aria-label={t("board.history.list.aria")} bind:this={listEl} onkeydown={onListKey}>
         {#each groups as g, gi (g.key)}
@@ -566,7 +518,6 @@
                 >{/if}</button
             >
             {#if isOpen}
-              <!-- 하루 한 장의 카드 — 줄 사이는 옅은 선, 펼친 줄은 그 아래로 상세를 편다 -->
               <div class="list">
                 {#each g.runs as run (run.operationId)}
                   {@const kind = runKind(run)}
@@ -588,10 +539,6 @@
                     >
                       <span class="time">{timeOf(run.approvedAt)}</span>
                       <span class="mark {kind}" aria-hidden="true">{MARK[kind]}</span>
-                      <!--
-                        두 줄 — 위: 제목(없으면 명령 첫 줄을 mono 로 한 번) · 아래: 대상 · 승인 방식. 명령 전문은 펼친 상세에
-                        (제목 있는 줄은 title 로도 보인다). 두 꼴의 줄 높이는 같다.
-                      -->
                       <span class="what">
                         {#if nm.title !== null}
                           <span class="h" title={nm.command}>{nm.title}</span>
@@ -622,7 +569,6 @@
                         {/if}
                       </span>
                     </button>
-                    <!-- 이 실행만 지우기(2026-11-13 — 화면에서만 · 진행 보기 · 알림 칸의 × 와 같은 손동작). 줄에 올리면 보인다 -->
                     <button
                       type="button"
                       class="rdel"
@@ -635,7 +581,6 @@
 
                     {#if open && detail && detail.run.operationId === run.operationId}
                       {@const d = detail}
-                      <!-- 상세 — 메타 칩 · 결과 한 줄 · 명령 전문 · AI 설명 · 경로 · 검증 · 대상별 표(실패 먼저) · 출력 발췌 -->
                       <section
                         class="detail"
                         id={`run-detail-${d.run.operationId}`}
@@ -656,7 +601,6 @@
                             {#if d.duration}<span>{d.duration}</span>{/if}
                             <span class="mono" title={d.run.operationId}>{d.run.operationId.slice(0, 11)}</span>
                           </div>
-                          <!-- [복사] — 이 실행을 Markdown 으로(시각 · 설명 · 명령 · 대상별 결과 · 저장된 출력). 누르면 1.5초 [✓ 복사됨] -->
                           <button
                             type="button"
                             class="copy"
@@ -679,10 +623,6 @@
                           {/if}
                         </div>
                         <pre class="cmd">{d.run.command}</pre>
-                        <!--
-                          AI 가 쓴 설명 · 적은 이유(승인 요약 10-22) — 카드에서는 접어 두는 이유를 "나중에 기록에서" 볼 수 있게 늘 보인다(`AI` 표지).
-                          10-22 전의 실행에는 없다.
-                        -->
                         <AiNote label={t("app.review.summary.label")} text={d.run.summary} />
                         <AiNote label={t("app.review.reason.label")} text={d.run.reason} />
                         {#if d.run.cwd || d.run.validate}
@@ -750,7 +690,6 @@
 </div>
 
 <style>
-  /* 폭은 감싸는 판(채팅 독 380px · 원격 판 · 폰)이 정한다 — 좁은 폭의 줄 모양은 아래 컨테이너 질의가 고른다 */
   .history {
     container-type: inline-size;
     display: flex;
@@ -759,7 +698,6 @@
     padding: var(--space-1) 0 var(--space-4);
   }
 
-  /* 검색 — 36px 알약 입력(낮은 면 · 돋보기). 포커스 고리는 알약 전체에 */
   .search {
     display: flex;
     align-items: center;
@@ -795,10 +733,7 @@
     color: var(--fg-3);
   }
 
-  /*
-   * 거르기 — 알약 칩 줄(28px). 칩 = `Dropdown` 손잡이 하나("이름 값 ⌄") — 손잡이의 우물 면 · 16px 모서리를 이 칩 안에서만 덮는다.
-   * 안 걸린 칩 = 투명 + outline-variant 테두리 · 걸린 칩 = secondaryContainer 채움 · 펼친 동안 = 눌린 면(상태 층 12%) + ⌄ 뒤집힘.
-   */
+  /* `Dropdown` 손잡이의 우물 면 · 모서리를 이 칩 안에서만 덮는다 */
   .filters {
     display: flex;
     flex-wrap: wrap;
@@ -845,7 +780,6 @@
     background: color-mix(in srgb, var(--control-sel-fg) 12%, var(--control-sel-bg));
   }
 
-  /* 이름(흐린 글자) · 값(굵게) — 사이는 한 칸 */
   .f :global(.cur) {
     gap: 5px;
   }
@@ -877,7 +811,6 @@
     color: var(--fg-2);
   }
 
-  /* 요약 — 상자 없이 수 셋(이름 위 · 수 아래) + 수동/자동 막대(무채 두 단) */
   .summary {
     display: flex;
     flex-wrap: wrap;
@@ -960,7 +893,6 @@
     gap: var(--space-2);
   }
 
-  /* 날짜 머리 — 작은 굵은 글자(접힌 날은 "· N건 더 ▾") */
   .day {
     justify-self: start;
     padding: var(--space-1) 2px 0;
@@ -990,15 +922,13 @@
     outline-offset: -2px;
   }
 
-  /* 하루 한 장의 카드 — 테두리 없는 면(surfaceContainerHigh) · 16px 둥글게 */
   .list {
     display: grid;
     overflow: hidden;
     background: var(--control-tile-bg);
-    border-radius: var(--radius-surface-inner); /* 독 · 덮개 안의 카드(2026-10-25) */
+    border-radius: var(--radius-surface-inner);
   }
 
-  /* 줄 + 그 줄의 × — × 는 줄 오른쪽 끝에 겹쳐 서고 올렸을 때(키보드 포커스 · 손가락 화면은 늘)만 보인다. 그동안 결과 칸이 비켜 선다 */
   .irow {
     position: relative;
   }
@@ -1051,7 +981,6 @@
     border-top: 1px solid var(--line-faint);
   }
 
-  /* 한 줄 — 시각 · 표식 · 두 줄(제목 / 대상 · 승인) · 결과 */
   .item {
     display: grid;
     grid-template-columns: 40px 18px minmax(0, 1fr) auto;
@@ -1072,7 +1001,6 @@
     background: var(--control-tile-bg-hover);
   }
 
-  /* 펼친 줄 — 한 단 높은 면(surfaceContainerHighest). 상세는 같은 카드 안에서 그 아래로 */
   .item.sel {
     background: var(--control-bg);
   }
@@ -1083,7 +1011,7 @@
     color: var(--fg-2);
   }
 
-  /* 표식 — 성공 = 초록 동그라미 ✓ · 실패 = 실패색 네모 !(색 하나로만 말하지 않게 모양 · 글자가 함께) */
+  /* 색 하나로만 말하지 않게 모양 · 글자가 함께 다르다 */
   .mark {
     --m: var(--fg-3);
     display: grid;
@@ -1097,7 +1025,6 @@
     border-radius: 50%;
   }
 
-  /* 성공 · 실패 표식은 실행 목록의 상태 알약과 같은 톤 면(container + onContainer — 2026-11-01) */
   .mark.ok {
     color: var(--on-ok-soft);
     background: var(--ok-soft);
@@ -1129,7 +1056,6 @@
     white-space: nowrap;
   }
 
-  /* 첫 줄 — 제목과 명령(mono)의 줄 높이를 같게 둬 두 꼴의 줄 높이가 같다 */
   .what .h {
     font-weight: var(--fw-semibold);
     line-height: 20px;
@@ -1142,7 +1068,6 @@
     color: var(--fg-1);
   }
 
-  /* 둘째 줄 — 대상(말줄임) · 승인 방식 */
   .line2 {
     display: flex;
     align-items: center;
@@ -1166,9 +1091,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /*
-   * 좁은 판(채팅 독 기본 380px) — 결과 칸을 줄여 제목 칸에 폭을 내준다(결과의 곁 토막은 말줄임 · 전문은 펼친 상세의 결과 줄).
-   */
   @container (max-width: 440px) {
     .item {
       grid-template-columns: 38px 16px minmax(0, 1fr) auto;
@@ -1211,12 +1133,10 @@
     border-radius: 999px;
   }
 
-  /* 모두 승인(10-23) — 명령을 가리지 않고 넘어간 실행은 실패색 글자로 갈라 보인다 */
   .how.auto.all {
     color: var(--err);
   }
 
-  /* 상세 — 펼친 줄 바로 아래, 같은 카드 안 */
   .detail {
     display: grid;
     gap: var(--space-3);
@@ -1230,7 +1150,6 @@
     min-width: 0;
   }
 
-  /* 상세 맨 윗줄 — 메타 칩(왼쪽) · [복사](오른쪽 끝) */
   .dtop {
     display: flex;
     align-items: flex-start;
@@ -1278,7 +1197,6 @@
     background: color-mix(in srgb, var(--ok) 14%, transparent);
   }
 
-  /* 메타 칩 — 작은 알약(승인 방식 · 걸린 시간 · id · 경로 · 검증) */
   .meta {
     display: flex;
     flex-wrap: wrap;

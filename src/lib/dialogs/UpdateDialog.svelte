@@ -1,11 +1,5 @@
 <script lang="ts">
-  // **업데이트 카드**(2026-11-12 — 사용자 승인 목업) — 상태바 업데이트 칩 · 새 판 알림의 [새 소식 보기]가 연다. 상태 · 실행은
-  // `app/updater`(사본 · 받기 · 건너뛰기 · 다시 시작), 판정은 순수 `$lib/updater`. 꼴은 `ConfirmDialog` 와 같은 글래스 모달(Tab 순환
-  // `trapTab` · 바깥 누르기 · Esc = [나중에]). **고르기 전에는 아무것도 받거나 깔지 않는다** — [업데이트]가 받기를, [지금 다시 시작]이
-  // 설치를 연다. 받는 동안 닫아도 받기는 이어진다(칩이 진행을 보인다).
-  //
-  // 경고 상자의 바쁜 세션 — 이 창(주 창)의 카드 판(`console/window-cards` — 보조 창 타일 포함)에서 도는 AI 턴 · 셸에서 도는 명령,
-  // 실행 중인 작업안(`app/pending-plans`). 끝날 세션 수는 세션 서버가 센 수(`session_server_status` — 떨어진 세션 포함)다.
+  // 업데이트 카드 — 고르기 전에는 아무것도 받거나 깔지 않는다([업데이트]가 받기를, [지금 다시 시작]이 설치를 연다).
   import { tick, untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { trapTab } from "$lib/focus-trap";
@@ -37,7 +31,7 @@
   const avail = $derived(view?.available ?? null);
   const phase = $derived(view?.phase ?? "idle");
 
-  // 뜰 때마다 세션 수를 새로 읽고 주 단추에 커서를 놓는다 — 여는 것 하나에만 묶는다(`QuitDialog` 와 같은 까닭)
+  // 여는 것 하나에만 묶는다(`untrack` — `QuitDialog` 와 같은 까닭)
   $effect(() => {
     if (!open) return;
     untrack(() => {
@@ -229,7 +223,7 @@
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` */
     box-sizing: border-box;
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
@@ -274,7 +268,6 @@
     font-weight: var(--fw-semibold);
     color: var(--fg-2);
   }
-  /* 릴리스 노트 — 우물 면 · 길면 안에서 스크롤(150px) */
   .notes {
     max-height: 150px;
     overflow-y: auto;
@@ -332,7 +325,6 @@
     font-size: var(--t-xs);
     color: var(--fg-2);
   }
-  /* 경고 상자 — `ConfirmDialog` 의 callout 과 같은 면 */
   .warn {
     margin-top: var(--space-3);
     padding: var(--space-2) var(--space-3);

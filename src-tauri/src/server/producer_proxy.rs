@@ -1,30 +1,11 @@
-//! GUI 쪽 **프로듀서 채팅 껍데기**(오케스트레이션 2단계 단계 2 — 설계 1-2 · 7절). 레지스트리 · stdin · 어댑터는 세션 서버에 산다
-//! (`server::producer`). 여기 있는 것은 같은 이름의 Tauri 명령(전부 `async fn`)과 **사건 구독 라우터** 하나다(단계 3 — `(window, subGen) → Channel`).
+//! GUI 쪽 프로듀서 채팅 껍데기 — 레지스트리 · stdin · 어댑터는 세션 서버(`server::producer`)에 산다. 명령은 전부 `async fn` 이다.
 //!
-//! | Tauri 명령 | 서버 op | 등급 | 인자 → 답 |
-//! | --- | --- | --- | --- |
-//! | [`producer_chat_open`] | 같은 이름 | 쓰기 | `chat, cli, model, effort?, studio, mode` → 스냅숏(띄우지 않는다 · 스튜디오는 서버가 맡기기에서 다시 읽는다) |
-//! | [`producer_chat_send`] | 같은 이름 | 쓰기 | `chat, clientId, text` → `{state, position?, epoch}` |
-//! | [`producer_chat_interrupt`] | 같은 이름 | 쓰기 | `chat, deliverQueued` → bool |
-//! | [`producer_chat_set_model`] · [`producer_chat_set_effort`] | 같은 이름 | 쓰기 | → bool |
-//! | [`producer_chat_decide`] | 같은 이름 | 쓰기 | `chat, epoch, requestId, decision, message?` → true(허용 목록 두 카드에만 뜻 — **승인 등급 아님**) |
-//! | [`producer_chat_queue_cancel`] | 같은 이름 | 쓰기 | `chat, clientId` → bool |
-//! | [`producer_chat_close`] | 같은 이름 | 쓰기 | `chat` → bool |
-//! | [`producer_chat_attach`] · [`producer_chat_status`] · [`producer_chat_list`] | 같은 이름 | 읽기 | 스냅숏 · 상태 · 목록 |
-//! | [`producer_chat_subscribe`] | 같은 이름 | 쓰기 | `chat, channel` → `{subGen, snapshot}`(이 창의 그 채팅 통로를 건다 · 같은 창 · 같은 채팅은 갈음) |
-//! | [`producer_chat_unsubscribe`] | 같은 이름 | 쓰기 | `chat, subGen` → bool(같은 `subGen` 만 지운다) |
-//!
-//! - **창 이름은 GUI 가 채운다** — 부른 웹뷰의 창 라벨(`webview.window().label()`)이고 프런트가 준 값은 받지 않는다. 사이드 채팅과 달리 주 창만이
-//!   아니다(보조 창 · 원격 창도 그 탭의 프로듀서 잎을 그린다 — 설계 7절).
-//! - **사건 중계는 방송하지 않는다**: 서버 이벤트 `producer-chat-event{chat, epoch, seq, ev, subs: [{conn, window, subGen}]}` 는 몸에 대화 본문이 있어
-//!   `client::RELAYED` 에 넣지 않는다. [`on_event`] 가 몸의 `subs` 가운데 **이 GUI 가 그 `(window, subGen)` 으로 통로를 쥔 것 · 그 통로의 채팅이 몸의
-//!   `chat` 과 같은 것 · 창이 살아 있는 것**에만 보낸다(판정은 순수 [`route`]). `subGen` 은 서버 전역 단조 증가라 같은 창의 옛 구독(F5 · 크래시 뒤)과
-//!   섞이지 않는다 — 옛 통로는 새 구독이 갈음하거나 보내기 실패로 걷힌다. 원격 창의 Channel 은 `remote::bridge` 가 가로채 **그 연결의 ws 로만** 보낸다.
-//!   `conn` 은 보지 않는다(이 GUI 의 연결 하나 — 끊긴 연결의 구독은 서버가 `conn_gone` 으로 지운다).
-//! - 창이 사라지면(파괴 · 원격 연결 끝) 서버가 `close_window` · `detach_window` 에서 그 창의 구독을 지우고, 여기 통로는 보낼 때 창이 없으면 걷는다.
-//!
-//! 원격 웹: 전부 `remote::deny::ALLOW`(사람의 말 · 결정 · 끊기 — 스튜디오 · 종류 · 세대 · 미귀속 상한은 서버가 본다 · 맡기기 넓힘은 REAUTH 그대로).
-//! **로그**: 몸(사람 글)은 남기지 않는다. 토큰은 이 파일이 모른다(토큰 표 이름이 한 글자도 없다 — 소스 훑기 시험이 지킨다).
+//! - **창 이름은 GUI 가 채운다** — 부른 웹뷰의 창 라벨이고 프런트가 준 값은 받지 않는다. 사이드 채팅과 달리 주 창만이 아니다.
+//! - **사건 중계는 방송하지 않는다**: 서버 이벤트 `producer-chat-event` 는 몸에 대화 본문이 있어 `client::RELAYED` 에 넣지 않는다. 몸의 `subs`
+//!   가운데 이 GUI 가 그 `(window, subGen)` 으로 **같은 채팅**의 통로를 쥔 것 · 창이 살아 있는 것에만 보낸다([`route`]). 원격 창의 Channel 은
+//!   `remote::bridge` 가 가로채 **그 연결의 ws 로만** 보낸다.
+//! - `producer_chat_decide` 는 **승인 등급이 아니다**(쓰기 등급).
+//! - **로그**: 몸(사람 글)은 남기지 않는다. 토큰은 이 파일이 모른다(토큰 표 이름이 한 글자도 없다 — 소스 훑기 시험이 지킨다 · 주석에도 그 이름을 적지 않는다).
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -59,7 +40,7 @@ async fn call(kind: Grade, op: &str, body: Value) -> Result<Value, String> {
     client::request(kind, op, body).await.map_err(wire_message)
 }
 
-/// 프로듀서 채팅을 연다 — **띄우지 않는다**(첫 보내기가 띄운다). `studio` = 맡긴 저장소의 경로 열쇠(서버가 지금 맡기기에서 다시 읽는다).
+/// **띄우지 않는다** — 첫 보내기가 띄운다.
 #[tauri::command]
 pub async fn producer_chat_open(
     chat: String,
@@ -111,8 +92,7 @@ pub async fn orchestration_album_defaults(repo: String) -> Result<Value, String>
     call(Grade::Read, "orchestration_album_defaults", json!({"repo": repo})).await
 }
 
-/// **사람이 보낸 글** — 서버의 전송기가 곧바로 보내거나 대기열에 넣는다(`clientId` = 서버 중복 제거 열쇠). 프로세스가 없으면 서버가 여기서
-/// 띄우고 준비를 기다린다(그래서 시한이 길다).
+/// 프로세스가 없으면 서버가 여기서 띄우고 준비를 기다린다 — 그래서 시한이 길다.
 #[tauri::command]
 pub async fn producer_chat_send(chat: String, client_id: String, text: String) -> Result<Value, String> {
     check_protocol()?;
@@ -126,7 +106,7 @@ pub async fn producer_chat_send(chat: String, client_id: String, text: String) -
     .map_err(wire_message)
 }
 
-/// 끊기 — ✕(`deliverQueued: false` — 대기열 보류) · [끊고 전달](true). 서버가 그 자리의 `wait_run` 을 먼저 취소한다.
+/// `deliverQueued: false` 면 대기열을 보류한다.
 #[tauri::command]
 pub async fn producer_chat_interrupt(chat: String, deliver_queued: bool) -> Result<Value, String> {
     call(Grade::Write, "producer_chat_interrupt", json!({ "chat": chat, "deliverQueued": deliver_queued })).await
@@ -142,7 +122,7 @@ pub async fn producer_chat_set_effort(chat: String, effort: Option<String>) -> R
     call(Grade::Write, "producer_chat_set_effort", json!({ "chat": chat, "effort": effort })).await
 }
 
-/// **사람의 권한 결정** — 카드로 선 요청만(스튜디오 밖 Read · Aynx DB 읽기 도구 — 그 밖은 서버가 카드 없이 거절해 표에 없다).
+/// 사람의 권한 결정 — 카드로 선 요청만(그 밖은 서버가 카드 없이 거절해 표에 없다).
 #[tauri::command]
 pub async fn producer_chat_decide(
     chat: String,
@@ -174,7 +154,7 @@ pub async fn producer_chat_attach(chat: String) -> Result<Value, String> {
     call(Grade::Read, "producer_chat_attach", json!({ "chat": chat })).await
 }
 
-/// 그 채팅이 열려 있나 · 아니면 끝난 이유(`closed` · `server-restarted`)와 귀속 앨범 — 화면은 `session-gone` 에 스스로 열지 않고 이것을 묻는다.
+/// 화면은 `session-gone` 에 스스로 열지 않고 이것을 묻는다.
 #[tauri::command]
 pub async fn producer_chat_status(chat: String) -> Result<Value, String> {
     call(Grade::Read, "producer_chat_status", json!({ "chat": chat })).await
@@ -189,7 +169,7 @@ pub async fn producer_chat_list() -> Result<Value, String> {
 // 사건 구독 라우터(머리말 "사건 중계는 방송하지 않는다")
 // ---------------------------------------------------------------------------
 
-/// `(창 라벨, subGen)` → `(채팅 id, 통로)`. 같은 창 · 같은 채팅은 하나(다시 구독하면 갈음).
+/// 같은 창 · 같은 채팅은 하나(다시 구독하면 갈음).
 type Subs<T> = HashMap<(String, u64), (String, T)>;
 
 static CHANNELS: LazyLock<Mutex<Subs<Channel<Value>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -198,13 +178,11 @@ fn channels() -> std::sync::MutexGuard<'static, Subs<Channel<Value>>> {
     CHANNELS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 통로를 단다 — 같은 `(창, 채팅)` 의 옛 통로를 먼저 걷는다(순수 · 시험용 일반형).
 fn register<T>(subs: &mut Subs<T>, window: &str, gen: u64, chat: &str, ch: T) {
     subs.retain(|(w, _), (c, _)| !(w == window && c == chat));
     subs.insert((window.to_string(), gen), (chat.to_string(), ch));
 }
 
-/// 통로를 뗀다 — 그 `(창, subGen)` 이고 채팅이 같을 때만. 뗐나.
 fn unregister<T>(subs: &mut Subs<T>, window: &str, gen: u64, chat: &str) -> bool {
     let key = (window.to_string(), gen);
     if subs.get(&key).is_some_and(|(c, _)| c == chat) {
@@ -214,8 +192,7 @@ fn unregister<T>(subs: &mut Subs<T>, window: &str, gen: u64, chat: &str) -> bool
     false
 }
 
-/// 이 창에서 그 채팅의 사건 통로를 건다 — 서버에 구독(`{chat, window}` — 창 라벨은 웹뷰에서)하고 받은 `subGen` 으로 통로를 단다. 답은 그대로
-/// `{subGen, snapshot}`(화면은 스냅숏의 `seq` 에서 시작한다). F5 · 크래시 뒤 새 페이지는 다시 부른다(새 `subGen` — 옛 것은 갈음).
+/// 창 라벨은 웹뷰에서 읽는다.
 #[tauri::command]
 pub async fn producer_chat_subscribe(webview: tauri::Webview, chat: String, channel: Channel<Value>) -> Result<Value, String> {
     let label = webview.window().label().to_string();
@@ -225,7 +202,7 @@ pub async fn producer_chat_subscribe(webview: tauri::Webview, chat: String, chan
     Ok(v)
 }
 
-/// 이 창의 그 구독을 뗀다(잎이 사라짐 · 탭 닫기) — 같은 `subGen` 만(늦은 정리가 새 구독을 지우지 않게).
+/// 같은 `subGen` 만 — 늦은 정리가 새 구독을 지우지 않게.
 #[tauri::command]
 pub async fn producer_chat_unsubscribe(webview: tauri::Webview, chat: String, sub_gen: u64) -> Result<Value, String> {
     let label = webview.window().label().to_string();
@@ -233,8 +210,7 @@ pub async fn producer_chat_unsubscribe(webview: tauri::Webview, chat: String, su
     call(Grade::Write, "producer_chat_unsubscribe", json!({ "chat": chat, "window": label, "subGen": sub_gen })).await
 }
 
-/// 사건을 받을 통로들 — **순수**. 몸의 `subs` 가운데 창이 살아 있고(`alive`) 이 GUI 가 그 `(창, subGen)` 으로 **같은 채팅**의 통로를 쥔 것만.
-/// 몸에 `chat` · `subs` 가 없거나 모양이 틀리면 빈 목록(버린다). 방송 갈래는 없다.
+/// 방송 갈래는 없다 — 모양이 틀린 몸은 버린다.
 pub(crate) fn route(body: &Value, alive: impl Fn(&str) -> bool, has: impl Fn(&str, u64, &str) -> bool) -> Vec<(String, u64)> {
     let Some(chat) = body.get("chat").and_then(Value::as_str) else { return Vec::new() };
     let Some(subs) = body.get("subs").and_then(Value::as_array) else { return Vec::new() };
@@ -250,8 +226,7 @@ pub(crate) fn route(body: &Value, alive: impl Fn(&str) -> bool, has: impl Fn(&st
     out
 }
 
-/// [`route`] 가 고른 통로에 보낸다 — **순수 · 시험용 일반형**. 보내기가 실패한 통로(죽은 페이지 · 느린 수신자)는 **그 구독만** 걷고
-/// `(창, subGen, 채팅)` 을 돌려준다(부르는 쪽이 서버 구독도 같은 세대로 뗀다 — 다른 창 · 같은 창의 다른 세대는 그대로).
+/// 보내기가 실패한 통로는 **그 구독만** 걷고 돌려준다 — 부르는 쪽이 서버 구독도 같은 세대로 뗀다.
 fn deliver<T>(
     subs: &mut Subs<T>,
     body: &Value,
@@ -270,12 +245,10 @@ fn deliver<T>(
     dead
 }
 
-/// 서버 이벤트 `producer-chat-event` — [`route`] 가 고른 통로에만 보낸다(`client::on_event`). 보내기 실패 통로는 걷고 서버 구독도 그 세대로
-/// 뗀다(화면은 `seq` 빈틈에서 다시 구독한다). 사라진 창의 통로는 걷는다. 몸은 로그에 남기지 않는다.
+/// 몸은 로그에 남기지 않는다.
 pub(crate) fn on_event(app: &tauri::AppHandle, body: &Value) {
     let dead = {
         let mut chs = channels();
-        // 창이 사라진 통로부터 걷는다(서버는 `close_window` 에서 그 창의 구독을 지운다).
         chs.retain(|(w, _), _| app.get_webview_window(w).is_some());
         deliver(&mut chs, body, |l| app.get_webview_window(l).is_some(), |ch, b| ch.send(b.clone()).is_ok())
     };
@@ -286,8 +259,7 @@ pub(crate) fn on_event(app: &tauri::AppHandle, body: &Value) {
     }
 }
 
-/// **창이 사라진다 · 다시 뜬다**(F5 · 크래시 · 파괴 — `server::proxy` 의 `detach_window` · `close_window`) — 이 GUI 가 그 창에 쥔 통로를 걷고 그
-/// `subGen` 들을 돌려준다(서버 op 몸 `producerSubs` — 서버는 **그 세대만** 지운다 · 같은 라벨의 새 페이지가 이 뒤에 건 구독은 남는다).
+/// 돌려준 `subGen` 들은 서버 op 몸 `producerSubs` 로 간다 — 서버는 **그 세대만** 지운다(같은 라벨의 새 페이지가 건 구독은 남는다).
 pub(crate) fn take_window(label: &str) -> Vec<u64> {
     take_window_in(&mut channels(), label)
 }
@@ -354,7 +326,7 @@ mod tests {
         assert_eq!(subs.len(), 2);
     }
 
-    /// 단계 5 M20 `producer_slow_receiver_alone` — 보내기가 실패한 통로(느린 수신자 · 죽은 페이지)는 **그 구독만** 걷히고 서버에서 뗄 세대로
+    /// 시험 `producer_slow_receiver_alone` — 보내기가 실패한 통로(느린 수신자 · 죽은 페이지)는 **그 구독만** 걷히고 서버에서 뗄 세대로
     /// 돌아온다 · 같은 사건은 나머지 통로(다른 원격 연결 · 보조 창)에 그대로 간다 · 원격 연결 둘의 본문은 서로의 통로로 새지 않는다(몸의 구독만).
     #[test]
     fn producer_slow_receiver_alone() {
@@ -382,7 +354,7 @@ mod tests {
         assert_eq!(*got.borrow(), ["main"]);
     }
 
-    /// 단계 5 `producer_take_window` — 창이 사라지거나 다시 뜰 때(F5 · 크래시 · 파괴) 그 라벨의 통로만 걷고 그 세대들을 돌려준다(서버는 그 세대만
+    /// 시험 `producer_take_window` — 창이 사라지거나 다시 뜰 때(F5 · 크래시 · 파괴) 그 라벨의 통로만 걷고 그 세대들을 돌려준다(서버는 그 세대만
     /// 지운다) — 다른 창 · 같은 채팅의 다른 창 통로는 그대로. 그 뒤 같은 라벨의 새 구독은 새 세대라 다음 정리에만 걸린다.
     #[test]
     fn producer_take_window() {

@@ -1,11 +1,8 @@
 /**
- * `orch` 영역의 문구 — **오케스트레이션**(2026-10-15 · 2b, docs/log/2026-10-14-orchestration-design.md): 여는 길(팔레트 · 상태바 ·
- * 프로젝트 메뉴 — 3차 6단계부터 "이 저장소에서 AI 타일 열기" / "이 저장소 맡기기…") · 보드 타일(`kind:"run"`) · 이유 코드 · 맡기기.
- * 사람의 Run 시작 대화 · [이어 가기] 문구는 3차 6단계에 걷었다. 한국어가 기준 사전이다(규칙은 `ko/settings.ts` 머리말).
- *
- * 용어: 창 > 워크스페이스 > 탭 > 타일 > 세션. 화면 문구는 B안 낱말(Run = 앨범 · Task = 트랙 · 작업자 = 아티스트 · 조정자 = 프로듀서 ·
- * 맡긴 저장소 = 저장소 · 구성 묶음 = 아티스트)을 쓰고, 키 · 코드 · AI 에게 가는 글은 Run · Task · worktree 설계 낱말 그대로 둔다.
- * 상태 말(설계 D): paused = "조율 멈춤 — 작업자는 계속 돎", stopping = "중단 요청 중".
+ * `orch` 영역의 문구 — 오케스트레이션. 한국어가 기준 사전이다(규칙은 `ko/settings.ts` 머리말).
+ * 화면 문구는 B안 낱말(Run = 앨범 · Task = 트랙 · 작업자 = 아티스트 · 조정자 = 프로듀서 · 맡긴 저장소 = 저장소 · 구성 묶음 = 아티스트)을 쓰고,
+ * 키 · 코드 · AI 에게 가는 글은 Run · Task · worktree 설계 낱말 그대로 둔다.
+ * 상태 말: paused = "조율 멈춤 — 작업자는 계속 돎", stopping = "중단 요청 중".
  */
 export const orch = {
   "player.judgment.current": "현재 보고의 판정",
@@ -204,12 +201,10 @@ export const orch = {
   "count.tracks.many": "트랙 {n}",
   "library.empty": "앨범이 없습니다.",
   // ── 여는 길 ─────────────────────────────────────────────────────────────
-  // (3차 6단계) 팔레트 · 상태바 · 프로젝트 메뉴의 한 갈래 — 맡긴 저장소면 AI 타일 열기, 아니면 맡기기 폼(이름은 `deleg.menu`).
-  // (2026-10-30 ④) 맡긴 저장소 갈래는 오케스트레이션 홈을 그 저장소로 연다 — 이름도 B안("이 저장소로 새 앨범").
   "start.openAiTile": "이 스튜디오로 새 앨범",
   "palette.board": "오케스트레이션",
 
-  // ── 오케스트레이션 탭(2026-10-29 — 1단계 ① 탭 틀 · 화면 용어 B안: Run = 앨범 · 조정자 = 프로듀서 · 맡긴 저장소 = 저장소) ──
+  // ── 오케스트레이션 탭 ──
   "tab.home": "오케스트레이션",
   "tab.preparing": "새 앨범",
   "tab.album": "앨범",
@@ -226,7 +221,6 @@ export const orch = {
   "bar.interrupt": "프로듀서 응답 끊기 — 대기열은 보류",
   "bar.time": "조율 시간",
   "bar.workers": "아티스트 {n} / {max}",
-  // (⑤) 런처 독 오케스트레이션 칸의 툴팁 꼬리 — 산 앨범 수(배지와 같은 수)
   "dock.live": "진행 중 앨범 {n}",
   "bar.reviews": "검토 {n} / {max}",
   "bar.needs": "사람이 필요한 일 {n}건 — 누르면 그 트랙으로",
@@ -237,13 +231,13 @@ export const orch = {
   "bar.tool.files": "파일 편집",
   "bar.tool.mcp": "도구 호출",
   "bar.tool.web": "웹 검색",
-  // ── (④) 홈 · 라이브러리 — 새 앨범(프로듀서 · 저장소 · 첫 지시) · 스튜디오 · 최근 · 앨범 ──
+  // ── 홈 · 라이브러리 ──
   "home.newAlbum": "새 앨범",
   "home.title": "무엇을 나눠 맡길까요?",
   "home.lead": "한 문장으로 말하면 프로듀서가 앨범을 열고 트랙으로 나눠 아티스트에게 맡깁니다. 병합은 끝에 사람이 합니다.",
   "home.pickProducer": "프로듀서",
   "home.first.label": "첫 지시",
-  // 첫 지시 머리말(0-3 Q2) — 입력 칸에 보이게 채우고 사람이 지울 수 있다. AI 가 읽는 글이라 코드 낱말(작업자)을 쓴다.
+  // 첫 지시 머리말 — AI 가 읽는 글이라 코드 낱말(작업자)을 쓴다.
   "home.start": "앨범 시작",
   "home.start.need": "프로듀서 · 스튜디오 · 첫 지시가 있어야 시작합니다",
   "home.library": "라이브러리",
@@ -278,7 +272,7 @@ export const orch = {
   "bar.home.counts": "진행 중 앨범 {live}",
   "bar.now.open": "{name} 상세 보기",
 
-  // ── 앨범 판(2026-10-29 — 1단계 ② · 목업 Main: 앨범 머리 · 트랙 목록) ──
+  // ── 앨범 판 ──
   "album.kicker": "ALBUM · {state}",
   "album.accepted": "수락 {n}",
   "album.integration": "통합 {oid}",
@@ -326,7 +320,7 @@ export const orch = {
   "track.feat": "feat. {name} · {role} 검토 중",
   "track.sub.listening": "{who} 듣는 중",
   "track.noArtist": "아직 아티스트 없음",
-  // ── 작업자 상세(2026-10-30 — 오케스트레이션 탭 ③ · 아티스트 = 작업자 · 판정형, 가사 = 실행 타임라인) ──
+  // ── 작업자 상세 ──
   "track.artist.open": "{name} — 아티스트 상세",
   "artist.back": "앨범으로 돌아가기",
   "artist.back.title": "앨범 판으로 돌아가기 (Esc)",
@@ -392,13 +386,12 @@ export const orch = {
   "lyric.filter.tools": "도구만",
   "lyric.filter.says": "말만",
 
-  // ── 맡기기 폼에서 함께 쓰는 칸 문구 ───────────────────────────────────────
+  // ── 공용 칸 문구 ───────────────────────────────────────────────────────
   "repo.none": "로컬 프로젝트가 없습니다 — 먼저 프로젝트를 추가하세요",
   "sandbox.note": "worktree 는 작업을 나누는 칸이지 보안 샌드박스가 아닙니다(아티스트는 같은 사용자 권한으로 돕니다).",
   "limit.max": "최대 {n}",
 
   // ── 보드 타일 ────────────────────────────────────────────────────────────
-  // F5 — 자동 배치는 한 번 시도뿐이다(장부를 가져온 뒤 타일이 사라졌거나 응답을 못 받았다). 늘 열 수 있는 길을 알린다.
   "board.autoOpenFailed": "앨범 탭을 자동으로 열지 못했습니다 — 오케스트레이션 탭 라이브러리나 [보기]로 여세요",
   "board.loading": "불러오는 중…",
   "board.missing": "이 앨범을 찾을 수 없습니다(보관했거나 세션 서버가 바뀌었습니다)",
@@ -417,7 +410,7 @@ export const orch = {
   "phrase.paused.coordinator": "조율 멈춤 — 아티스트는 계속 돎 · 프로듀서가 끝났습니다 — 라이브러리의 [새 프로듀서로 이어받기] 로 이어 갑니다",
   "phrase.paused.coordinatorChat": "조율 멈춤 — 아티스트는 계속 돎 · 프로듀서가 끝났습니다 — 같은 프로듀서 채팅에 말하거나 라이브러리의 [새 프로듀서로 이어받기] 로 이어 갑니다",
   "phrase.paused.limit": "조율 멈춤 — 아티스트는 계속 돎 · 조율 시간 한도에 닿았습니다",
-  // 조율 멈춤 띠(10-30 실기 — 재생 막대 바로 위 한 줄 · 긴 설명은 툴팁 = 위 phrase.paused.*)
+  // 조율 멈춤 띠 — 긴 설명은 툴팁(`phrase.paused.*`)
   "pauseBand.paused": "조율 멈춤 — 아티스트는 계속 돎",
   "pauseBand.coordinator": "조율 멈춤 — 프로듀서가 끝났습니다",
   "pauseBand.limit": "조율 멈춤 — 조율 시간 한도에 닿았습니다",
@@ -527,7 +520,7 @@ export const orch = {
   "orphan.notice": "진행 중이던 앨범 {n}개가 세션 서버 재시작으로 멈췄습니다 — 라이브러리에서 결과를 확인하세요",
   "coordinator.failed": "프로듀서 타일을 띄우지 못했습니다 — {msg}",
 
-  // ── 작업자(3단계) ───────────────────────────────────────────────────────
+  // ── 작업자 ──────────────────────────────────────────────────────────────
   "workers.title": "아티스트",
   "workers.empty": "아직 아티스트가 없습니다 — 프로듀서가 트랙마다 띄웁니다",
   "attempt.state.spawning": "띄우는 중",
@@ -559,7 +552,7 @@ export const orch = {
   "leftovers.worktree": "worktree {path}",
   "leftovers.halfMade": "반쯤 만든 worktree",
 
-  // ── 이유 코드(서버 · MCP 와 같은 낱말 — `orchestration/model.ts` 의 표) ─────────
+  // ── 이유 코드 — 서버 · MCP 와 같은 낱말(`orchestration/model.ts` 의 표) ─────────
   "reason.not-found": "앨범 또는 트랙을 찾을 수 없습니다",
   "reason.run-paused": "앨범이 멈춰 있습니다 — 재개한 뒤 다시 하세요",
   "reason.run-stopped": "이미 중단된 앨범입니다",
@@ -598,7 +591,7 @@ export const orch = {
   "reason.transcript-unavailable": "아티스트의 고정 대화를 아직 읽을 수 없습니다",
   "reason.report-mismatch": "보고의 브랜치 · 커밋이 그 Attempt 와 맞지 않아 수락할 수 없습니다 — 반려만 됩니다",
 
-  // ── 보고 · 수락(4단계) ───────────────────────────────────────────────────
+  // ── 보고 · 수락 ──────────────────────────────────────────────────────────
   "action.worker_reported": "아티스트 보고",
   "action.task_accepted": "트랙 수락",
   "action.task_rejected": "트랙 반려",
@@ -653,7 +646,7 @@ export const orch = {
   "review.by.human": "사람",
   "deps.needsMerge": "의존 트랙이 여럿입니다 — 사람이 수락 커밋들을 병합한 뒤 프로듀서가 main 에서 띄웁니다",
 
-  // ── 감독 사건(리뷰 F11 — 서버가 사건 id 와 함께 만든다 · 주 창이 한 번 보인다) ──────────────
+  // ── 감독 사건 ──────────────
   "notice.worker-exited": "아티스트가 보고 없이 끝났습니다 — {task}",
   "notice.reviewer-exited": "검토자가 판정 없이 끝났습니다 — {task}",
   "notice.exit-unconfirmed": "아티스트 프로세스 종료를 확인하지 못했습니다 — {task}",
@@ -668,7 +661,7 @@ export const orch = {
   "notice.whileAway": "창이 없던 동안 오케스트레이션 알림 {n}건",
   "notice.open": "앨범 판 보기",
 
-  // ── 최근 활동(6단계 — 작업자의 고정 대화 · worktree 변경) ─────────────────
+  // ── 최근 활동 ─────────────────
   "activity.empty": "아직 대화 기록이 없습니다",
   "activity.changed": "변경 파일 {n}개",
   "activity.changedMore": "변경 파일 {n}개 이상",
@@ -694,7 +687,7 @@ export const orch = {
   "action.worker_stalled": "아티스트 멈춤",
   "action.worker_committed": "아티스트 커밋",
   "action.commit_rejected": "커밋 거절",
-  // ── 통합 설계 1단계(10-15) — 보고 뒤 자동 종료 · 보고 파일 목록 ─────────────
+  // ── 보고 뒤 자동 종료 · 보고 파일 목록 ─────────────
   "action.worker_auto_stopped": "보고 뒤 자동 종료",
   "action.auto_stop_armed": "턴 끝 — 자동 종료 예약",
   "action.auto_stop_cancelled": "자동 종료 취소",
@@ -705,7 +698,7 @@ export const orch = {
   "report.fileList.truncated": "{total}개 중 {shown}개만 보입니다(잘림)",
   "report.fileList.binary": "바이너리",
   "report.fileList.renamed": "← {from}",
-  // ── 통합 설계 2단계(10-15) — 통합 작업 · 보류 · Run 완료 ──────────────────
+  // ── 통합 작업 · 보류 · Run 완료 ──────────────────
   "task.state.integrating": "통합 중",
   "task.state.conflict": "충돌",
   "hold.integration-diverged": "보류 — 통합 ref 가 앱이 아는 머리와 다릅니다(사람이 움직였거나 결과를 모름). 조정 전에는 아무것도 이어지지 않습니다",
@@ -746,7 +739,7 @@ export const orch = {
   "action.run_held": "보류",
   "action.hold_released": "보류 풀림",
   "action.run_done": "앨범 완료",
-  // ── 통합 설계 3단계(10-15) — 통합 ref · 비동기 수락 · 충돌 · [조정] · 내보내기 ──────────
+  // ── 통합 ref · 비동기 수락 · 충돌 · [조정] · 내보내기 ──────────
   "job.phase.prepared": "준비",
   "job.phase.candidate": "후보 만듦",
   "job.phase.awaiting-approval": "검증 확인 대기",
@@ -884,7 +877,7 @@ export const orch = {
   "action.resolver_spawning": "해결 아티스트 띄움",
   "action.human_reconciled": "통합 ref 조정",
   "action.integration_exported": "브랜치 내보냄",
-  // ── 수락 전 검증(통합 설계 4단계 — 5절) ─────────────────────────────────
+  // ── 수락 전 검증 ─────────────────────────────────
   "field.verify": "수락 전 검증",
   "field.verify.placeholder": "npm ci && npm test",
   "field.verify.title": "통합 후보마다 이 한 줄을 앨범 전용 검증 자리에서 cmd.exe 로 돌립니다. 끝 코드 0 이고 추적 파일이 바뀌지 않아야 통과입니다",
@@ -974,7 +967,7 @@ export const orch = {
   "reviewer.waived": "필수 검토 면제(사람 수락)",
   "attempt.role.reviewer": "검토",
   "attempt.role.reviewer.title": "보고 커밋을 읽기만 하는 검토자(고정 인자 · 빈 작업 폴더) — 역할 기반 보조 검토",
-  // 6단계 — 정리(서버 임시 자리 폐기 · Run 끝 [정리])
+  // 정리
   "reason.cleanup-pending": "서버 임시 폴더에 예상 밖 변경이 있거나 아직 쓰는 프로세스가 있어 남겼습니다",
   "reason.not-cleanable": "[정리] 대상이 아닙니다",
   "reason.worktrees-left": "아티스트 worktree 가 남아 있어 보관하지 않았습니다 — 먼저 정리하세요",
@@ -1056,7 +1049,7 @@ export const orch = {
   "temp.why.not-a-worktree": "worktree 가 아님",
   "temp.why.unreadable": "읽지 못함",
 
-  // ── 3차 3b — 헤드리스 작업자 보드(턴 · blocked · 맡기기 띠 · 역할 이력 · 수락 규칙 · 되돌림 · 면제) ─────────────
+  // ── 헤드리스 작업자 보드 ─────────────
   "attempt.state.running": "턴 도는 중",
   "attempt.state.idle": "쉬는 중",
   "hold.repo-identity-changed": "보류 — 저장소가 앨범을 시작한 그 저장소가 아닙니다(같은 경로에 다시 clone · 링크 등). 저장소 설정을 확인하고 다시 세운 뒤 보류를 푸세요",
@@ -1132,9 +1125,9 @@ export const orch = {
   "notice.turn-timeout": "아티스트 턴이 시한을 넘겨 끝냈습니다 — {task}",
   "notice.verify-needs-human": "앨범 권한이 바뀌어 검증을 무인으로 돌리지 않았습니다 — 사람 확인을 기다립니다 · {task}",
   "notice.repo-identity-changed": "저장소가 앨범을 시작한 그 저장소가 아니라 통합을 보류했습니다",
-  // ── 3차 5단계 — AI 가 Run 을 연다(start_run · adopt_run · 보드 자리) ──
+  // ── 앨범 이어받기 · 앱이 깨움 ──
   "notice.run-adopted": "다른 프로듀서가 멈춘 앨범을 이어받았습니다",
-  // 2단계 단계 4 — 앱이 깨움(실기 b 고침 A — 알림 센터 · 토스트 문구. 꺼짐은 까닭 낱말별)
+  // 알림 센터 · 토스트 문구 — 꺼짐은 까닭 낱말별
   "notice.wake-limit": "앱이 프로듀서를 더 깨우지 않습니다 — 프로듀서 채팅에 말하면 이어 갑니다",
   "notice.wake-limit.segment-max": "사람 말 사이 깨움 상한에 닿아 앱이 프로듀서를 더 깨우지 않습니다 — 프로듀서 채팅에 말하면 이어 갑니다",
   "notice.wake-limit.run-max": "앨범의 깨움 누적 상한(200)에 닿아 앱이 프로듀서를 더 깨우지 않습니다 — 프로듀서 채팅에 말해 이어 가세요",
@@ -1143,7 +1136,7 @@ export const orch = {
   "notice.wake-failed": "앱이 프로듀서를 깨우지 못했습니다 — 프로듀서 채팅에 말하면 이어 갑니다",
   "notice.wake-turn-timeout": "앱이 깨운 프로듀서 턴이 시한(30분)을 넘겨 끊었습니다",
 
-  // ── 저장소 맡기기 · 구성 묶음(3차 1단계 — docs/log/2026-10-16-orchestration-headless-design.md 2절 · 2-7) ──
+  // ── 구성 묶음 ──
   "config.role.model": "모델",
   "config.role.effort": "추론 강도",
   "config.role.cliDefault": "Default",
@@ -1158,11 +1151,10 @@ export const orch = {
   "config.verify.risk.inject": "외부 입력(원격 스크롤백 · DB 행 · 웹 문서)에 든 프롬프트 주입이 '아티스트가 테스트 수정 → 검증 자동 실행' 사슬을 탈 수 있습니다.",
   "config.full.risk.text": "'전부 자동' 역할은 묻지 않고 샌드박스 없이 실행합니다 — 프롬프트 주입이 그대로 이 PC 의 실행이 될 수 있습니다.",
   "config.risk.confirm": "위험을 이해했고 이 스튜디오에 이 범위를 맡깁니다",
-  // 화면 정리(목업 10-16) — 목록 표 · 묶음 카드 · 요약 칸 · 역할 표 + 오른쪽 패널 · 문장 꼴 수락 규칙 · 바닥 저장 줄
   "config.risk.more": "자세히",
   "config.risk.short.verify": "검증 자동 실행은 아티스트가 바꾼 테스트 · 빌드 스크립트를 당신 권한으로, 샌드박스 없이 실행합니다. main 병합 관문은 이 PC 를 지키지 않습니다.",
   "config.risk.short.full": "'전부 자동' 역할은 묻지 않고 샌드박스 없이 실행합니다 — 프롬프트 주입이 이 PC 의 실행이 될 수 있습니다.",
-  // ── 프로듀서 채팅(2026-10-30 · 2단계 단계 3 — 구조화 프로듀서 · 목업 CoordChat) ──
+  // ── 프로듀서 채팅 ──
   "producer.head": "프로듀서 · {cli}",
   "producer.act.starting": "시작 중",
   "producer.act.responding": "응답 중",
@@ -1244,7 +1236,7 @@ export const orch = {
   "home.card.reattach": "멈춤 · 프로듀서 없음 · 사람이 멈춤",
   "home.reattach": "프로듀서 다시 붙이기",
   "home.reattach.tip": "다시 붙여도 멈춤 그대로 — [재개] 는 사람",
-  // ── 앱이 깨움(2단계 단계 4 — 목업 CoordChat 의 가운데 점선 알약) ──
+  // ── 앱이 깨움 ──
   "producer.wake.title": "앱이 깨움",
   "producer.wake.retry": "다시 알림",
   "producer.wake.resync": "변화가 많아 처음부터 다시 읽게 함",

@@ -1,11 +1,5 @@
-//! **GUI 가 잠깐 띄우는 `codex app-server` 의 요청 하나** — 지난 대화 이름 바꾸기(`thread/name/set`)와 지우기(`thread/delete`)가
-//! 같이 쓴다(docs/log/2026-10-24-convo-rename.md). 사람의 클릭 하나에 `codex app-server` 를 고정 인자 · 창 없음으로 띄워
-//! `initialize` → `initialized` → **요청 하나** → 답 → 끝. Codex 의 기록(롤아웃 · `state_5.sqlite` · `session_index.jsonl` …)은
-//! 우리가 직접 고치지 않는다 — 여러 곳에 나눠 두어 한쪽만 고치면 어긋나기 때문이다.
-//!
-//! 스레드를 열지 않는 요청만 쓴다 — 그래서 MCP 서버 끄기 · 모델 인자는 없다(실측: 이 교환에서 MCP 서버가 서지 않았다).
-//! 세션 서버의 생성 길(`server/os.rs::spawn_in_job`)이 아니라 GUI 의 짧은 `std::process::Command` 다(`mcp/cli.rs` 의
-//! `codex --version` 과 같은 결).
+//! GUI 가 잠깐 띄우는 `codex app-server` 의 요청 하나 — 지난 대화 이름 바꾸기 · 지우기가 같이 쓴다 (docs/log/2026-10-24-convo-rename.md).
+//! Codex 의 기록은 직접 고치지 않는다 — 여러 곳에 나눠 두어 한쪽만 고치면 어긋난다. 스레드를 열지 않는 요청만 쓰므로 MCP 서버 끄기 · 모델 인자는 없다.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -15,29 +9,23 @@ use serde_json::{json, Value};
 
 use crate::i18n::tr;
 
-/// 교환 전체의 시한.
 const TIMEOUT: Duration = Duration::from_secs(15);
-/// JSON-RPC 오류 — 이 클라이언트가 다루지 않는 서버 요청(사이드 채팅 Codex 어댑터와 같은 값).
+/// 다루지 않는 서버 요청에 답하는 JSON-RPC 오류 — 사이드 채팅 Codex 어댑터와 같은 값.
 pub(crate) const UNSUPPORTED: i64 = -32601;
 
-/// `codex app-server` 의 고정 인자 — 사이드 채팅(`side_chat::codex::argv`)의 끄기 셋과 같다(훅 · 플러그인 · 앱).
+/// 사이드 채팅(`side_chat::codex::argv`)의 끄기 셋과 같다(훅 · 플러그인 · 앱).
 pub(crate) const APP_SERVER_ARGS: &[&str] =
     &["app-server", "--disable", "hooks", "--disable", "plugins", "--disable", "apps"];
 
-/// 교환이 못 끝난 까닭 — 문구는 [`fail_text`] 가 짓고, 서버 오류의 앞말만 부르는 쪽이 고른다.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RpcFail {
-    /// PATH 에 `codex` 가 없다.
     NoExe,
-    /// 띄우지 못했다(OS 문구).
     Spawn(String),
-    /// 답을 받기 전에 끝났다(프로세스가 죽었다 · 읽기 실패 · 시한).
     Closed,
-    /// 서버가 오류로 답했다 — Codex 가 지은 문구(사용자 글자를 담지 않는다 — "no rollout found for thread id …").
+    /// Codex 가 지은 문구 — 사용자 글자를 담지 않는다.
     Error(String),
 }
 
-/// 실패 → 화면 문구. `server` 는 서버 오류(`RpcFail::Error`)의 문구를 짓는다 — 요청마다 앞말이 다르다.
 pub(crate) fn fail_text(f: RpcFail, server: impl FnOnce(&str) -> String) -> String {
     match f {
         RpcFail::NoExe => tr!(ko: "PATH 에서 codex 를 찾지 못했습니다", en: "codex was not found on PATH"),
@@ -47,12 +35,11 @@ pub(crate) fn fail_text(f: RpcFail, server: impl FnOnce(&str) -> String) -> Stri
     }
 }
 
-/// 줄 하나를 보낸다.
 fn send<W: Write>(w: &mut W, v: &Value) -> Result<(), RpcFail> {
     writeln!(w, "{v}").and_then(|_| w.flush()).map_err(|_| RpcFail::Closed)
 }
 
-/// 요청 `id` 의 답(`result`)까지 읽는다 — 알림은 버리고, 서버 요청(`id` + `method`)에는 "다루지 않음" 으로 답한다(영영 기다리지 않게).
+/// 서버 요청(`id` + `method`)에는 "다루지 않음" 으로 답한다 — 영영 기다리지 않게.
 fn wait_reply<R: BufRead, W: Write>(r: &mut R, w: &mut W, id: i64) -> Result<Value, RpcFail> {
     let mut line = String::new();
     loop {
@@ -80,7 +67,6 @@ fn wait_reply<R: BufRead, W: Write>(r: &mut R, w: &mut W, id: i64) -> Result<Val
     }
 }
 
-/// app-server 와의 교환 (**순수** — 읽기 · 쓰기 끝만 받는다): `initialize` → 답 → `initialized` → `method` → 답(`result`).
 pub(crate) fn request_over<R: BufRead, W: Write>(
     r: &mut R,
     w: &mut W,
@@ -101,7 +87,6 @@ fn hide_window(cmd: &mut std::process::Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        /// `CREATE_NO_WINDOW` ([`crate::keygen`] 과 같은 값).
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
@@ -109,7 +94,6 @@ fn hide_window(cmd: &mut std::process::Command) {
     let _ = cmd;
 }
 
-/// `exe app-server` 를 띄워 요청 하나를 보낸다 — 시한 [`TIMEOUT`]. 끝나면 표준 입력을 닫아 스스로 내리게 두고, 늦으면 끈다.
 /// `home` 이 있으면 그 집(`CODEX_HOME`)을 보게 한다 — 목록이 읽은 루트의 집과 어긋나지 않게.
 pub(crate) fn request_with(
     exe: &Path,
@@ -138,11 +122,10 @@ pub(crate) fn request_with(
     std::thread::spawn(move || {
         let mut r = BufReader::new(stdout);
         let out = request_over(&mut r, &mut stdin, &method, params, env!("CARGO_PKG_VERSION"));
-        drop(stdin); // EOF — app-server 가 스스로 내린다
+        drop(stdin);
         let _ = tx.send(out);
     });
     let out = rx.recv_timeout(TIMEOUT);
-    // 답을 받았으면 잠깐 스스로 내리길 기다리고, 아니면(시한 · 실패) 곧바로 끈다.
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while matches!(out, Ok(Ok(_))) && std::time::Instant::now() < deadline {
         if matches!(child.try_wait(), Ok(Some(_))) {
@@ -155,8 +138,7 @@ pub(crate) fn request_with(
     out.unwrap_or(Err(RpcFail::Closed))
 }
 
-/// PATH 의 `codex.exe`(사이드 채팅과 같은 찾기 — `orchestration::spawn::find_exe`)로 [`request_with`]. 집은 **그 대화를 찾은 루트의
-/// 부모**(`<CODEX_HOME>/sessions` → `<CODEX_HOME>` — `codex_roots` 와 같은 집)를 넘긴다.
+/// 집은 그 대화를 찾은 루트의 부모(`<CODEX_HOME>/sessions` → `<CODEX_HOME>`)다 — `codex_roots` 와 같은 집.
 pub(crate) fn request(root: &Path, method: &str, params: Value) -> Result<Value, RpcFail> {
     let exe = crate::orchestration::spawn::find_exe("codex", std::env::var_os("PATH").as_deref())
         .ok_or(RpcFail::NoExe)?;

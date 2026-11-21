@@ -1,10 +1,4 @@
 <script lang="ts">
-  /**
-   * **쿼리 타일의 탭 줄**(`.tabsrow` — 몸 위 줄이면 트리 토글 · 스크립트 탭 · [+] · 연결 상태, 머리줄 안이면 스크립트 탭 · [+] 만) —
-   * `QueryView.svelte` 에서 뗀 표시 조각. 탭 목록 · 고른 탭 · 문서와 실행 결과 · 저장 디바운스와 동작(고르기 · 새 탭 · 닫기 · 이름 · 끌어서 순서 ·
-   * 탭 키 · 우클릭 메뉴)은 부모가 쥔다. 트리 토글은 부모의 스니펫(`treeToggle` — 떠 있는 트리 단추 손잡이가 부모에 있다)을 받아 그린다. 이름 바꾸는 칸의
-   * 글은 `bind:renameText`. 데이터 탭(`x.data` — 2026-11-10)은 표 그림 + 객체 이름이고(이름 바꾸기 · ● 없음) 말풍선이 스키마까지 말한다.
-   */
   import type { Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -51,7 +45,6 @@
     closeTabN: (n: number) => Promise<void>;
     onTabKey: (ev: KeyboardEvent, n: number) => void;
     newTab: () => void;
-    /** 우클릭 — 탭 메뉴(`query/ScriptTabMenu` — 부모가 타일 컨테이너 밖에 그린다) */
     tabMenu: (ev: MouseEvent, n: number) => void;
   } = $props();
 
@@ -61,14 +54,13 @@
   }
 
   /**
-   * 탭 우클릭 — **위임이 아닌 직접 리스너**로 단다. Svelte 의 `oncontextmenu` 는 문서 뿌리 위임이라, 탭이 머리줄 안에 서면
-   * 타일 층(`PaneHost` 의 머리줄 우클릭 = 타일 메뉴 — 호스트에 직접 단 리스너)이 먼저 받아 타일 메뉴를 열고 전파를 끊는다.
-   * 여기서 먼저 `preventDefault` 하면 그 층은 비켜 선다(`ev.defaultPrevented`).
+   * 탭 우클릭은 위임이 아닌 직접 리스너로 단다 — Svelte 의 `oncontextmenu` 는 문서 뿌리 위임이라, 머리줄 안에서는 타일 층(`PaneHost`)이
+   * 먼저 받아 타일 메뉴를 연다. 여기서 먼저 `preventDefault` 하면 그 층이 비켜 선다(`ev.defaultPrevented`).
    */
   function tabContext(el: HTMLElement, n: number) {
     let cur = n;
     const on = (ev: MouseEvent) => {
-      if (renaming === cur) return; // 이름 칸은 편집 필드의 네이티브 메뉴 그대로
+      if (renaming === cur) return;
       ev.preventDefault();
       tabMenu(ev, cur);
     };
@@ -165,7 +157,6 @@
 </div>
 
 <style>
-  /* 탭 줄 — 고른 탭은 편집기와 같은 면(--surface-field) + 아래 강조색 선 */
   .tabsrow {
     flex: 0 0 auto;
     display: flex;
@@ -179,11 +170,7 @@
     color: var(--fg-2);
   }
 
-  /*
-   * 머리줄 안(2026-10-20) — 머리줄 가운데 칸을 채우고 선 · 여백이 없다. 스크립트 탭 모양은 몸 위 줄과 같다(줄 높이를 다 채우는 칸 +
-   * 고른 탭 = 편집기 면 + 아래 강조색 선 — 알약으로 바꿨다가 사용자 실기로 되돌림 10-20). 높이만 머리줄을 따른다.
-   * 연결 글자는 좁으면 점만(아래 `.hidden` — 머리줄은 `qtile` 컨테이너 밖이다).
-   */
+  /* 머리줄 안 — 스크립트 탭 모양은 몸 위 줄과 같다(알약 모양은 실기에서 되돌렸다 — 다시 바꾸지 않는다) */
   .tabsrow.inhead {
     flex: 1 1 0;
     align-self: stretch;
@@ -256,7 +243,6 @@
     outline: none;
   }
 
-  /* ● 저장 안 된 변경 */
   .stab-dirty {
     flex: 0 0 auto;
     width: 6px;
@@ -334,7 +320,6 @@
     background: var(--err);
   }
 
-  /* 좁은 타일(목업 Narrow) — 연결은 글자가 빠지고 점만 남는다(말풍선에 전부). 알약의 접기는 실행 줄의 `fit.pillLabel` */
   @container qtile (max-width: 520px) {
     .conn-label {
       display: none;

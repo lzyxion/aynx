@@ -1,40 +1,16 @@
 //! 내용 기준 병합 판정 — squash · rebase 로 병합한 브랜치도 "병합됨" (docs/log/2026-10-05-squash-merge-detection.md).
 //!
-//! 사용자의 흐름은 `git merge --squash`(GitHub 의 "Squash and merge" · "Rebase and merge" 도)다. 이 병합들은 **새 해시**의
-//! 커밋을 main 에 남기므로, 조상 관계만 보는 옛 규칙(앞선 커밋 0 + reflog 에 일한 자국 — `crate::worktree_changes::is_merged`)
-//! 으로는 브랜치가 영영 "↑N" 으로 남았다. 여기는 그 둘을 **내용**으로 알아본다.
+//! - squash = 브랜치 변경 전체의 `git patch-id --stable` 이 merge-base 이후 main 커밋 하나와 같다 · rebase = `git cherry` 가 모두 `-`.
+//!   (c) squash 를 (b) rebase 보다 먼저 본다 — 커밋 하나짜리 브랜치는 둘 다 맞고, 사용자의 흐름이 squash 라 그 이름을 붙인다.
+//! - **빈 변경은 절대 병합됨이 아니다** — 갓 만든 브랜치는 diff 가 비어 patch-id 가 없고 cherry 에 `-` 도 없다.
+//! - 로컬 · 원격이 같은 재료([`ContentFacts`]) → 같은 순수 판정([`judge`]). main 이 merge-base 에서 움직였을 때만 보는 문은
+//!   [`local_facts`] 와 원격 셸 함수 [`remote_cm_function`] 가 같은 모양으로 지킨다.
+//! - **읽기 전용 · 셸 없음** — git 에 아무것도 쓰지 않는다(임시 객체도 없다). 원격은 셸 함수 `cm` 을 각 좁힌 스크립트 안에 싣는다 — 새 범용 exec 길은 없다.
 //!
-//! ## 규칙 (로컬 · 원격이 같은 재료 [`ContentFacts`] → 같은 순수 판정 [`judge`])
+//! ## 확인된 삭제 ([`verified_target`])
 //!
-//! 병합됨 = (a) **조상** — 앞선 커밋 0 + reflog 에 일한 자국(옛 규칙, 이 모듈 밖) · 또는
-//! - (c) **squash** — 브랜치의 변경 전체(`git diff <merge-base> <브랜치>`)의 `git patch-id --stable` 이 merge-base 이후 main
-//!   커밋(병합 커밋 빼고, 최근 [`MAIN_WINDOW`] 개) **하나**의 patch-id 와 같다. 맞은 main 커밋(= squash 커밋)을 함께 준다.
-//! - (b) **rebase** — `git cherry <main> <브랜치>` 의 줄이 모두 `-`(브랜치의 커밋마다 patch 가 같은 커밋이 main 에 있다).
-//!   main 쪽 짝 = 브랜치 끝 커밋의 patch-id 와 같은 main 커밋(창 안에 없으면 `None` — 병합됨은 그대로).
-//!
-//! (c) 를 (b) 보다 먼저 본다 — 커밋 하나짜리 브랜치는 둘 다 맞고, 사용자의 흐름이 squash 라 그 이름을 붙인다.
-//! **빈 변경은 절대 병합됨이 아니다** — 갓 만든 브랜치는 diff 가 비어 patch-id 가 없고 cherry 에 `-` 도 없다.
-//!
-//! ## 값싸게 (부르는 쪽의 문)
-//!
-//! (b)/(c) 는 (a) 가 아니고 · 브랜치가 main 보다 앞선 커밋이 있고 · **main 이 merge-base 에서 움직였을 때만** 본다 —
-//! main 이 그대로면 그 사이에 병합됐을 리 없다(진행 중인 브랜치의 보통 경우는 git 세 번으로 끝난다). 이 문은
-//! [`local_facts`] 와 원격 셸 함수 [`remote_cm_function`] 가 같은 모양으로 지킨다.
-//!
-//! ## 읽기 전용 · 셸 없음
-//!
-//! 판정은 git 에 아무것도 쓰지 않는다(`commit-tree` 같은 임시 객체도 없다). 로컬은 git 을 셸 없이 띄우고 그 stdout 을
-//! Rust 가 `git patch-id --stable` 의 stdin 에 잇는다([`patch_ids_of`]). 원격은 Rust 가 짓는 셸 함수 `cm` 하나를 각 좁힌
-//! 스크립트(독 배지 · 커밋 그래프 · 확인된 삭제) 안에 싣는다 — 새 범용 exec 길은 없다. 원격은 맞춰 볼 patch-id 두 개와
-//! 같은 main 줄만 awk 로 걸러 보낸다(답이 작다 — 판정은 여전히 Rust).
-//!
-//! ## 확인된 삭제 — `branch -d` 가 거절한 squash · rebase 병합 브랜치 ([`verified_target`])
-//!
-//! `git branch -d` 는 조상 관계만 보므로 squash · rebase 병합 브랜치를 거절한다. 그때(**그때만**) 실행 순간에 이 판정을 다시
-//! 내리고, (b)/(c) 로 병합됨이며 어느 워크트리에도 체크아웃돼 있지 않으면 **방금 판정한 그 커밋**을 조건으로
-//! `git update-ref -d refs/heads/<이름> <해시>` 로 지운다(그사이 브랜치가 움직였으면 git 이 거절한다 — compare-and-swap).
-//! 이어서 `branch -d` 가 하던 대로 `branch.<이름>` 설정 묶음을 걷는다(없으면 조용히). `branch -D` · `--force` 는 쓰지 않는다.
-//! 조상 병합은 여전히 `-d` 만, 병합 안 된 브랜치는 예전처럼 남는다.
+//! `branch -d` 가 거절한 **그때만** 판정을 다시 내려, 내용으로 병합됐고 어느 워크트리에도 체크아웃돼 있지 않으면 방금 판정한 커밋을
+//! 조건으로 `update-ref -d refs/heads/<이름> <해시>`(compare-and-swap)로 지운다. `branch -D` · `--force` 는 쓰지 않는다.
 
 use std::io::Read;
 use std::path::Path;
@@ -50,20 +26,19 @@ use crate::worktree_changes::valid_commit;
 
 /// (c) 에서 맞춰 보는 main 커밋 수 — merge-base 이후 최근 것부터(병합 커밋 빼고).
 pub(crate) const MAIN_WINDOW: usize = 200;
-/// 로컬 git 한 번의 시한.
 const LOCAL_TIMEOUT: Duration = Duration::from_secs(15);
-/// `CREATE_NO_WINDOW` — 콘솔 창이 번쩍이지 않게(`crate::worktree` 와 같은 값).
+/// `crate::worktree` 와 같은 값.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// patch-id 를 낼 diff 의 옵션 — 로컬 · 원격, diff · log 가 **같은 글자**로 만든다(설정 차이로 어긋나지 않게).
+/// 로컬 · 원격, diff · log 가 **같은 글자**로 만든다(설정 차이로 patch-id 가 어긋나지 않게).
 const DIFF_OPTS: [&str; 4] = [
     "--no-color",
     "--no-ext-diff",
     "--no-textconv",
     "--no-renames",
 ];
-/// patch-id 에 넣을 log 의 머리 — `commit <해시>` 줄만(patch-id 가 그 해시를 짝으로 적는다).
+/// `commit <해시>` 줄만 — patch-id 가 그 해시를 짝으로 적는다.
 const LOG_FORMAT: &str = "--format=commit %H";
 
 /// 원격 답의 줄 표식 — [`remote_cm_function`] 이 찍고 [`absorb_line`] 이 읽는다.
@@ -72,7 +47,7 @@ const TAG_TIP: &str = "aynx-cm-tip=";
 const TAG_MAIN: &str = "aynx-cm-main=";
 const TAG_CHERRY: &str = "aynx-cm-cherry=";
 
-/// 무엇으로 병합됐나 — 프런트가 툴팁 · 접힘 상세에 쓴다.
+/// 프런트가 툴팁 · 접힘 상세에 쓴다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MergeKind {
@@ -84,7 +59,6 @@ pub enum MergeKind {
     Squash,
 }
 
-/// 내용 판정의 재료 — 로컬([`local_facts`])과 원격([`absorb_line`])이 같은 모양으로 모은다.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ContentFacts {
     /// `diff <merge-base> <브랜치>` 의 patch-id — 빈 변경이면 `None`
@@ -97,7 +71,6 @@ pub(crate) struct ContentFacts {
     pub cherry: Option<(u32, u32)>,
 }
 
-/// 내용 판정의 답.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContentMerge {
     /// [`MergeKind::Squash`] · [`MergeKind::Rebase`]
@@ -106,7 +79,6 @@ pub(crate) struct ContentMerge {
     pub commit: Option<String>,
 }
 
-/// 브랜치 하나의 판정 — 확인된 삭제가 쓰는 꼴(판정한 브랜치 커밋까지).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Verdict {
     pub merge: ContentMerge,
@@ -118,7 +90,7 @@ pub(crate) struct Verdict {
 // 순수 규칙
 // ---------------------------------------------------------------------------
 
-/// `git patch-id` 의 줄들 `<patch-id> <커밋>` → 쌍들 (**순수 함수**). 모양이 어긋난 줄은 버린다.
+/// 모양이 어긋난 줄은 버린다.
 pub(crate) fn parse_patch_ids(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|l| {
@@ -129,12 +101,10 @@ pub(crate) fn parse_patch_ids(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// patch-id 출력의 첫 id (**순수 함수**) — 빈 변경(출력 없음)이면 `None`.
 pub(crate) fn first_patch_id(text: &str) -> Option<String> {
     parse_patch_ids(text).into_iter().next().map(|(id, _)| id)
 }
 
-/// `git cherry <main> <브랜치>` 의 출력 → (`+` 줄 수, `-` 줄 수) (**순수 함수**). 다른 줄은 세지 않는다.
 pub(crate) fn parse_cherry(text: &str) -> (u32, u32) {
     let (mut plus, mut minus) = (0u32, 0u32);
     for l in text.lines() {
@@ -148,7 +118,6 @@ pub(crate) fn parse_cherry(text: &str) -> (u32, u32) {
     (plus, minus)
 }
 
-/// `<수> <수>` 한 쌍 (**순수 함수**).
 fn parse_pair(s: &str) -> Option<(u32, u32)> {
     let mut it = s.split_whitespace();
     let a = it.next()?.parse().ok()?;
@@ -156,7 +125,7 @@ fn parse_pair(s: &str) -> Option<(u32, u32)> {
     it.next().is_none().then_some((a, b))
 }
 
-/// **내용 판정** (**순수 함수**, 모듈 머리말의 (c) → (b)). 빈 변경 · 재료 없음은 `None`.
+/// 내용 판정 — (c) squash → (b) rebase. 빈 변경 · 재료 없음은 `None`.
 pub(crate) fn judge(f: &ContentFacts) -> Option<ContentMerge> {
     let find = |id: &str| {
         f.main_ids
@@ -179,7 +148,7 @@ pub(crate) fn judge(f: &ContentFacts) -> Option<ContentMerge> {
     }
 }
 
-/// 원격 답 한 줄을 재료에 더한다 (**순수 함수**) — `aynx-cm-…` 줄이면 `true`(첫 줄에서 재료를 연다).
+/// `aynx-cm-…` 줄이면 `true`(첫 줄에서 재료를 연다).
 pub(crate) fn absorb_line(slot: &mut Option<ContentFacts>, line: &str) -> bool {
     let line = line.trim_end_matches('\r');
     if !line.starts_with("aynx-cm-") {
@@ -199,8 +168,7 @@ pub(crate) fn absorb_line(slot: &mut Option<ContentFacts>, line: &str) -> bool {
     true
 }
 
-/// 확인된 삭제의 판정 (**순수 함수**, 모듈 머리말 "확인된 삭제") — 지울 커밋(compare-and-swap 값) 또는 `None`(남긴다).
-/// 체크아웃돼 있으면 · 판정이 없으면 · 조상 병합이면(그건 `-d` 의 몫) `None`.
+/// 확인된 삭제의 판정 — 체크아웃돼 있으면 · 판정이 없으면 · 조상 병합이면(그건 `-d` 의 몫) `None`.
 pub(crate) fn verified_target(verdict: Option<&Verdict>, checked_out: bool) -> Option<&str> {
     if checked_out {
         return None;
@@ -211,19 +179,16 @@ pub(crate) fn verified_target(verdict: Option<&Verdict>, checked_out: bool) -> O
         .filter(|h| valid_commit(h))
 }
 
-/// 브랜치 이름이 인자로 쓸 만한가 — 비지 않고 · `-` 로 시작하지 않고 · 제어 글자 없음.
 fn plain_branch(name: &str) -> Option<&str> {
     let b = name.trim();
     (!b.is_empty() && !b.starts_with('-') && !b.chars().any(char::is_control)).then_some(b)
 }
 
 // ---------------------------------------------------------------------------
-// 원격 글자 (**순수 함수** — 이 글자들만 서버로 나간다)
+// 원격 글자 (이 글자들만 서버로 나간다)
 // ---------------------------------------------------------------------------
 
-/// 원격 셸 함수 `cm <저장소> <main 참조> <브랜치 rev>` — 로컬 [`local_facts`] 와 같은 문 · 같은 재료를 `aynx-cm-…` 줄로.
-/// 변수는 `_cm` 으로 시작한다(부르는 스크립트의 `mb` · `b` 를 덮지 않게). 스크립트 안에 그대로 싣는다(바깥에서 한 번
-/// `sh_quote` 된다).
+/// 변수는 `_cm` 으로 시작한다(부르는 스크립트의 `mb` · `b` 를 덮지 않게). 스크립트 안에 그대로 싣는다(바깥에서 한 번 `sh_quote` 된다).
 pub(crate) fn remote_cm_function() -> String {
     let diff = DIFF_OPTS.join(" ");
     format!(
@@ -248,8 +213,7 @@ pub(crate) fn remote_cm_function() -> String {
     )
 }
 
-/// 원격 확인된 삭제의 판정 스크립트 (**순수 함수**) — `sh -c '<…>'` 한 낱말. 출력: `aynx-busy=1`(어느 워크트리에든
-/// 체크아웃됨) · `aynx-main=<주 브랜치>` · `aynx-head=<브랜치 커밋>` · `cm` 의 재료 줄. 이름이 쓸 수 없으면 `None`.
+/// 원격 확인된 삭제의 판정 스크립트 — `sh -c '<…>'` 한 낱말. 이름이 쓸 수 없으면 `None`.
 pub(crate) fn remote_judge_command(repo: &str, branch: &str) -> Option<String> {
     let r = repo.trim();
     if r.is_empty() || r.chars().any(char::is_control) {
@@ -275,7 +239,6 @@ cm "$R" "refs/heads/$main" "$H"
     Some(format!("sh -c {}", crate::ssh::sh_quote(&script)))
 }
 
-/// 원격 판정 답.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct RemoteJudge {
     pub busy: bool,
@@ -284,7 +247,7 @@ pub(crate) struct RemoteJudge {
     pub facts: Option<ContentFacts>,
 }
 
-/// 원격 판정 답 → 재료 (**순수 함수**). git 이 없으면 `Err`.
+/// git 이 없으면 `Err`.
 pub(crate) fn parse_remote_judge(stdout: &str) -> Result<RemoteJudge, String> {
     let mut out = RemoteJudge::default();
     for raw in stdout.lines() {
@@ -308,7 +271,6 @@ pub(crate) fn parse_remote_judge(stdout: &str) -> Result<RemoteJudge, String> {
     Ok(out)
 }
 
-/// 원격 판정 답 → 판정 (**순수 함수**) — 주 브랜치가 아니고 · 커밋을 알고 · 내용으로 병합됐을 때.
 pub(crate) fn remote_verdict(j: &RemoteJudge, branch: &str) -> Option<Verdict> {
     let main = j.main.as_deref()?;
     if main == branch.trim() {
@@ -320,8 +282,7 @@ pub(crate) fn remote_verdict(j: &RemoteJudge, branch: &str) -> Option<Verdict> {
     })
 }
 
-/// 원격 확인된 삭제 명령 (**순수 함수**) — `git -C <저장소> update-ref -d refs/heads/<이름> <해시>` 다음 `branch.<이름>` 설정
-/// 묶음 걷기(실패해도 조용히 — 묶음이 없을 수 있다). 종료 코드는 update-ref 의 것이다.
+/// 종료 코드는 update-ref 의 것이다(`branch.<이름>` 설정 묶음 걷기는 실패해도 조용히 — 묶음이 없을 수 있다).
 pub(crate) fn remote_verified_delete_command(
     repo: &str,
     branch: &str,
@@ -344,7 +305,6 @@ pub(crate) fn remote_verified_delete_command(
 // 로컬
 // ---------------------------------------------------------------------------
 
-/// git 한 번 — 성공했으면 stdout.
 fn git_text(repo: &Path, args: &[&str]) -> Option<String> {
     run_git(repo, args, LOCAL_TIMEOUT)
         .ok()
@@ -360,8 +320,7 @@ fn git_cmd(repo: &Path) -> Command {
     cmd
 }
 
-/// `git <args>` 의 stdout 을 `git patch-id --stable` 의 stdin 에 잇는다 — 셸 없이(모듈 머리말). 앞의 git 이 실패하거나
-/// 시한을 넘기면 `None`. 답은 patch-id 의 출력 그대로.
+/// 셸 없이 잇는다. 앞의 git 이 실패하거나 시한을 넘기면 `None`.
 pub(crate) fn patch_ids_of(repo: &Path, args: &[&str]) -> Option<String> {
     let mut src = git_cmd(repo)
         .args(args)
@@ -425,8 +384,7 @@ pub(crate) fn patch_ids_of(repo: &Path, args: &[&str]) -> Option<String> {
         .then_some(text)
 }
 
-/// **로컬 재료** — `main_ref`(`refs/heads/<main>`) 대비 `head`(브랜치 참조 · `HEAD` · 해시). 모듈 머리말의 문(main 이
-/// merge-base 에서 움직였고 · 앞선 커밋이 있다)을 못 지나면 `None` — 그때는 내용으로 병합됐을 리 없다.
+/// 로컬 재료 — main 이 merge-base 에서 움직였고 앞선 커밋이 있을 때만(아니면 내용으로 병합됐을 리 없다 — `None`).
 pub(crate) fn local_facts(repo: &Path, main_ref: &str, head: &str) -> Option<ContentFacts> {
     if main_ref.starts_with('-') || head.starts_with('-') {
         return None;
@@ -482,12 +440,10 @@ pub(crate) fn local_facts(repo: &Path, main_ref: &str, head: &str) -> Option<Con
     })
 }
 
-/// 로컬 — `head` 가 내용으로 병합됐나(독 배지 · 커밋 그래프). 모르면 `None`.
 pub(crate) fn content_local(repo: &Path, main_ref: &str, head: &str) -> Option<ContentMerge> {
     judge(&local_facts(repo, main_ref, head)?)
 }
 
-/// 로컬 — 브랜치 하나의 판정(커밋까지 고정해서). 주 브랜치이거나 이름이 쓸 수 없으면 `None`.
 pub(crate) fn judge_branch_local(repo: &Path, main: &str, branch: &str) -> Option<Verdict> {
     let (m, b) = (plain_branch(main)?, plain_branch(branch)?);
     if m == b {
@@ -511,8 +467,7 @@ pub(crate) fn judge_branch_local(repo: &Path, main: &str, branch: &str) -> Optio
     Some(Verdict { merge, head })
 }
 
-/// **로컬 확인된 삭제** (모듈 머리말) — `branch -d` 가 거절한 뒤에 부른다. 지금 다시 읽은 워크트리 목록으로 주 브랜치 ·
-/// 체크아웃 여부를 보고, 내용으로 병합됐으면 판정한 커밋을 조건으로 `update-ref -d`. 지웠으면 그 종류, 아니면 `None`.
+/// 로컬 확인된 삭제 — `branch -d` 가 거절한 뒤에 부른다. 워크트리 목록은 지금 다시 읽는다.
 pub(crate) fn delete_verified_local(
     repo: &Path,
     branch: &str,
@@ -550,7 +505,6 @@ pub(crate) fn delete_verified_local(
     Ok(verdict.map(|v| v.merge.kind))
 }
 
-/// **원격 확인된 삭제** — 로컬과 같은 규칙(판정 스크립트 exec 하나 + 삭제 exec 하나). 지웠으면 그 종류.
 pub(crate) async fn delete_verified_remote(
     handle: &crate::ssh::ExecHandle,
     repo: &str,

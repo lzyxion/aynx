@@ -1,32 +1,23 @@
-//! **잠자기 방지**(keep awake — 2026-10-23 사용자 확정) — 독 실행 판의 ☕ 칸이 켜고 끈다.
+//! **잠자기 방지** — 독 실행 판의 ☕ 칸이 켜고 끈다.
 //!
-//! 결정(사용자): **시스템만 깨운다**(디스플레이는 꺼져도 된다 — 디스플레이 옵션 없음) · **앱 시작 때 늘 꺼짐**(저장하지 않는다) ·
-//! 트레이에 남아 있어도 유지 · **GUI 프로세스가 끝나면 풀린다**. 그래서 이 일은 세션 서버가 아니라 GUI 프로세스 몫이다 —
-//! 요청 핸들을 이 프로세스가 쥐고, 프로세스가 끝나면 OS 가 핸들과 함께 요청을 거둔다(명시적인 정리 코드가 없어도 풀린다).
+//! 시스템만 깨우고(디스플레이 옵션 없음) 앱 시작 때 늘 꺼짐(저장하지 않는다)이다. GUI 프로세스 몫이다 — 프로세스가 끝나면
+//! OS 가 핸들과 함께 요청을 거둔다.
 //!
-//! ## OS 분기는 이 파일의 함수 **하나** 안에서만 갈린다
+//! OS 분기는 [`os_request`] 하나이고 아직 구현하지 않은 OS 는 명시적인 `None` 스텁이다 — 프런트는 `supported` 만 본다.
 //!
-//! `crate::cwd` 와 같은 모양이다: OS 를 타는 몸은 [`os_request`] 하나, 아직 구현하지 않은 OS(Linux · macOS)는 **명시적인 `None`
-//! 스텁**이다 — 그 스텁이 곧 "여기가 비어 있다" 는 문서다. 프런트는 OS 를 모른다 — [`keep_awake_status`] 의 `supported` 하나로
-//! 칸을 세우거나 숨긴다.
-//!
-//! ## Windows: 전원 요청 객체
-//!
-//! `SetThreadExecutionState` 는 **부른 스레드에 묶인다** — async 명령은 tokio 일꾼 스레드에서 돌고 그 스레드는 다음 일을 받거나
-//! 사라지므로 요청이 엉뚱하게 남거나 풀린다. 그래서 스레드에 묶이지 않는 `PowerCreateRequest` → `PowerSetRequest(
-//! PowerRequestSystemRequired)` 를 쓰고, 끌 때 `PowerClearRequest` + `CloseHandle` 한다. 핸들은 전역 `Mutex` 하나가 쥔다.
+//! Windows: `SetThreadExecutionState` 는 부른 스레드에 묶여 tokio 일꾼 스레드에서는 요청이 엉뚱하게 남거나 풀린다 — 스레드에
+//! 묶이지 않는 `PowerCreateRequest` → `PowerSetRequest(PowerRequestSystemRequired)` 를 쓴다.
 
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 
-/// 켜진 동안 쥐고 있는 OS 요청 — 놓으면(`Drop`) 풀린다.
 struct Request {
     #[cfg(windows)]
     handle: windows_sys::Win32::Foundation::HANDLE,
 }
 
-// HANDLE 은 날 포인터라 `Send` 가 아니다 — 전원 요청 핸들은 스레드에 묶이지 않으므로(머리말) 어느 스레드에서 놓아도 된다.
+// HANDLE 은 날 포인터라 `Send` 가 아니다 — 전원 요청 핸들은 스레드에 묶이지 않으므로 어느 스레드에서 놓아도 된다.
 #[cfg(windows)]
 unsafe impl Send for Request {}
 
@@ -43,7 +34,6 @@ impl Drop for Request {
     }
 }
 
-/// 지금 켜져 있으면 `Some`. 앱 시작 때 늘 `None`(저장하지 않는다 — 머리말).
 static ACTIVE: Mutex<Option<Request>> = Mutex::new(None);
 
 /// **OS 분기는 여기 한 곳뿐이다** — 시스템 잠자기를 막는 요청을 하나 만든다. 이 OS 가 지원하지 않거나 실패하면 `None`.
@@ -54,7 +44,7 @@ fn os_request() -> Option<Request> {
         use windows_sys::Win32::System::Power::{PowerCreateRequest, PowerSetRequest, PowerRequestSystemRequired};
         use windows_sys::Win32::System::Threading::{REASON_CONTEXT, REASON_CONTEXT_0, POWER_REQUEST_CONTEXT_SIMPLE_STRING};
 
-        // 전원 관리 진단(`powercfg /requests`)에 보이는 사유 — 호출 동안만 살아 있으면 된다(OS 가 복사한다).
+        // 사유 문자열은 호출 동안만 살아 있으면 된다(OS 가 복사한다).
         let mut reason: Vec<u16> = "Aynx keep awake".encode_utf16().chain(std::iter::once(0)).collect();
         let ctx = REASON_CONTEXT {
             Version: 0, // POWER_REQUEST_CONTEXT_VERSION
@@ -81,7 +71,6 @@ fn os_request() -> Option<Request> {
     }
 }
 
-/// 이 OS 에 잠자기 방지가 있나 — Windows 만(머리말의 스텁).
 fn supported() -> bool {
     cfg!(windows)
 }
@@ -90,7 +79,6 @@ fn status_json(on: bool) -> Value {
     json!({ "supported": supported(), "on": on })
 }
 
-/// 켜고 끈다 — 이미 그 상태면 아무것도 하지 않는다. 결과는 지금 상태(`true` = 켜짐). 켜기에 실패하면 꺼진 채 `false`.
 fn set(on: bool) -> bool {
     let mut active = ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
     if on {
@@ -98,20 +86,18 @@ fn set(on: bool) -> bool {
             *active = os_request();
         }
     } else {
-        // `Drop` 이 요청을 풀고 핸들을 닫는다
         *active = None;
     }
     active.is_some()
 }
 
-/// 지금 상태 — `{ supported, on }`. 칸을 세울지(`supported`)와 칸의 켜짐(`on`)을 함께 준다.
 #[tauri::command]
 pub async fn keep_awake_status() -> Result<Value, String> {
     let on = ACTIVE.lock().unwrap_or_else(|e| e.into_inner()).is_some();
     Ok(status_json(on))
 }
 
-/// 켜고 끈다 — 모든 창(과 상태바 ☕)이 같은 값을 보도록 `keep-awake` 이벤트로 알린다. 돌려주는 것은 `{ supported, on }`.
+/// 모든 창(과 상태바 ☕)이 같은 값을 보도록 `keep-awake` 이벤트로 알린다.
 #[tauri::command]
 pub async fn keep_awake_set(app: AppHandle, on: bool) -> Result<Value, String> {
     if on && !supported() {
@@ -128,7 +114,6 @@ mod tests {
 
     #[test]
     fn set_is_idempotent_and_off_releases() {
-        // 실제 전원 요청을 건다(Windows) — 켜고 바로 끈다. 미지원 OS 에서는 늘 꺼짐이다.
         let first = set(true);
         assert_eq!(first, supported());
         assert_eq!(set(true), first, "두 번 켜도 요청은 하나");

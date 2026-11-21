@@ -1,15 +1,6 @@
 /*
- * **독 목록의 펼침 판** — 호스트(`HostList`) · 프로젝트(`ProjectList`) · DB(`DbList`) 세 칸이 나눠 입는 한 벌
- * (2026-10-19 사용자 승인 목업 · 둥지 꼴은 `tree-accordion.ts` 의 `nestRows`).
- *
- * - `li.dtree-node` = 줄 하나 + (펼쳤으면) 아이들 `ul.dtree-kids`. 펼친 폴더 · 프로젝트(`.open`)는 아이들과 함께 **한 묶음 판**이다:
- *   독 판보다 한 단 밝은 면(MD3 surfaceContainerHigh) · 2px 안쪽 여백 · 위아래 4px 틈. 판 안에서 또 펼친 폴더는 한 단 더 밝다(surfaceContainerHighest).
- *   기본 모서리는 12px · 안쪽 판 10px(`--radius-surface-inner` — 폰 목록 `MobileBrowse` 의 12px 줄에 맞는다).
- *   런처 독(`.dock.launcher`)의 줄은 판 안에서도 알약이라(`--radius-row` — 2026-10-29, 각 칸의 스코프 CSS) **모서리를 알약에 맞춘다**(2026-11-04): 독 줄 40px(`Dock.svelte` 의 `--row-*` 덮개)의 반지름 20 + 여백 2 = 안쪽 판 22,
- *   그 판을 감싸는 바깥 판 24. 판이 줄보다 덜 둥글면 고른 줄 바깥으로 판 모서리가 따로 보이고, 줄보다 더 둥글면 줄 모서리가 판 밖으로 나온다.
- * - 펼침 꺾쇠는 줄 **오른쪽 끝**(`.dtree-chev`) — 아래를 보다가 펼치면 위로 돈다. 아이 없는 줄은 같은 폭을 비운다(`.dtree-chev-pad`).
- * - 판의 면 · 모서리 · 틈은 아이들 묶음의 높이(`accordion` 전이)와 같은 200ms · cubic-bezier(0.2, 0.8, 0.2, 1) 로 옮겨 간다
- *   (설정 › AI 에이전트 펼침과 같은 곡선). 사람이 바꾼 자리가 아니면(`.still` — 검색의 저절로 펼침 등) 곧바로 선다.
+ * 독 목록의 펼침 판 — `HostList` · `ProjectList` · `DbList` 가 나눠 입는다.
+ * 전이 200ms · 곡선은 `tree-accordion.ts` 의 `accordion` 전이와 같은 값이다.
  */
 
 .dtree-node {
@@ -34,6 +25,7 @@
   background-color: var(--m3-surface-container-highest, var(--surface-hover));
 }
 
+/* 독 줄 40px(`Dock.svelte`)의 알약 반지름 20 + 여백 2 = 22, 바깥 판 24 — 줄 모서리와 어긋나면 판 모서리가 따로 보인다 */
 .dock.launcher .dtree-node.open {
   border-radius: 24px;
 }
@@ -42,7 +34,6 @@
   border-radius: 22px;
 }
 
-/* 목록 맨 위 · 맨 아래 · 판 안의 첫 · 끝 줄은 가를 이웃이 없다 — 틈도 없다 */
 .dtree-node.open:first-child {
   margin-top: 0;
 }
@@ -65,7 +56,6 @@
   gap: 2px;
 }
 
-/* 판 안의 아이 판은 틈을 이웃 줄과의 gap 이 대신한다 */
 .dtree-kids > .dtree-node.open {
   margin: 0;
 }

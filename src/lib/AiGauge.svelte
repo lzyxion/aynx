@@ -1,17 +1,7 @@
 <script lang="ts" generics="S extends string">
   /**
-   * **AI 권한 게이지**(2026-10-23 — 사용자 승인 목업 `gauge-mock` · docs/log/2026-10-23-approve-all.md "게이지") — 호스트 폼 AI 칸 · DB 연결 폼 ·
-   * 타일 머리줄의 AI 권한 팝오버(원격 · 쿼리 타일)가 **이 고르개 하나**를 쓴다. 예전의 세그먼트 버튼(아이콘 + 이름 다섯 칸) · 라디오 줄을 대신한다.
-   *
-   * 모양: 왼쪽 작은 고리 = '끔'(고르면 테두리가 찬다), 오른쪽 같은 폭 칸 넷 = 단계 1~4(고른 자리까지 차고, 찬 칸은 **지금 단계의 색** —
-   * `theme.css` 의 `--ai-lv*` · 규칙은 `ai-gauge.ts`). 칸 아래 이름 줄(고른 이름은 굵게 + 단계 색), 위 오른쪽에 지금 단계 이름, 아래 설명 한 줄.
-   * YOLO(자리 4)이면 카드 테두리 · 설명 상자가 따뜻한 판을 입고 위 오른쪽 이름이 표지(단계 색 판) 모양이 된다.
-   *
-   * - **자리 하나 = 단추 하나**(`role="radio"` — 칸과 그 아래 이름이 한 단추라 어디를 눌러도 같다). 묶음은 `radiogroup`, ←→ 로 옮긴다
-   *   (끝에서 돌지 않는다 — `gaugeKeyStep`). 포커스는 고른 단추 하나만 Tab 에 걸린다(`data-gauge-stop` — 팝오버의 ↑↓ 가 이것을 줄 하나로 센다).
-   * - 넓은 꼴(폼): 카드 · 단추 높이 44px 이상. 좁은 꼴(`compact` — 칩 팝오버): 카드 없이 · 32px 이상(이름은 넓은 꼴과 같은 글자 — 10-23 이름이 짧은 영어 낱말이 됐다).
-   * - **고르는 규칙은 모른다** — 누르면 `onpick(단계)` 만 올린다. 확인 상자(YOLO) · 저장 · 원격 웹 재확인은 부르는 쪽 그대로다.
-   *   값이 바뀌었을 때 포커스가 이 안에 있으면 새로 고른 단추로 옮긴다(저장이 비동기여도 · 확인 상자가 포커스를 가져갔으면 손대지 않는다).
+   * AI 권한 고르개 — 누르면 `onpick` 만 올린다. 확인 상자(YOLO) · 저장 · 원격 웹 재확인은 부르는 쪽에 둔다.
+   * `data-gauge-stop` 은 팝오버의 ↑↓ 가 이 고르개를 줄 하나로 세는 손잡이다.
    */
   import { tick } from "svelte";
   import { GAUGE_SEGMENTS, gaugeIndex, gaugeKeyStep, gaugeTone, segmentShape } from "$lib/ai-gauge";
@@ -30,20 +20,17 @@
     onpick,
     ...rest
   }: {
-    /** 단계 다섯(낮은 것부터 — 0 = 끔) */
+    /** 낮은 것부터 — 0 = 끔 */
     levels: readonly S[];
-    /** 지금 단계 — `null` 이면 어느 자리도 고르지 않은 것(DB 연결의 대상이 바뀌어 풀림) */
+    /** `null` = 어느 자리도 고르지 않음(DB 연결의 대상이 바뀌어 풀림) */
     value: S | null;
-    /** 단계 → 이름(모든 언어에서 같은 짧은 영어 낱말 — Off · Read · Ask · Auto · YOLO, 10-23) — 위 오른쪽 · 눈금 · `aria-label` */
     nameOf: (s: S) => string;
-    /** 단계 → 설명 한 줄(말풍선 · 아래 상자) */
     descOf: (s: S) => string;
-    /** 카드 머리 왼쪽 글자(없으면 그리지 않는다 — 바깥에 제목이 있는 자리) */
     title?: string;
     labelledby?: string;
     label?: string;
     compact?: boolean;
-    /** 단추에 다는 `data-*` 이름 — 호스트 `stage` · DB `level`(예전 세그먼트 단추와 같은 손잡이) */
+    /** 단추의 `data-*` 손잡이 이름 */
     itemAttr?: "stage" | "level";
     onpick: (s: S) => void;
     [key: `data-${string}`]: unknown;
@@ -56,7 +43,7 @@
   let group = $state<HTMLElement | null>(null);
   const buttons: HTMLButtonElement[] = $state([]);
 
-  // 값이 바뀌면(키보드 · 저장 뒤 사본) 포커스가 이 묶음 안에 있을 때만 고른 단추로 — 라디오 묶음의 "포커스가 선택을 따라간다"
+  // 포커스가 이 묶음 안에 있을 때만 옮긴다 — 확인 상자가 포커스를 가져갔으면 손대지 않는다
   $effect(() => {
     const i = at;
     const g = group;
@@ -127,7 +114,6 @@
 </div>
 
 <style>
-  /* 넓은 꼴 — 카드(뜬 면 위 한 겹). 판은 본문색을 옅게 얹어 글래스에서도 비친다. 모서리는 MD3 의 큰 둥근 모양(`--radius-md`) */
   .gauge {
     display: flex;
     flex-direction: column;
@@ -162,7 +148,6 @@
     color: var(--ai-c);
   }
 
-  /* YOLO 표지 — 자리 4 에서만 지금 이름(`.now`)이 이 모양을 입는다(이름이 곧 'YOLO' 라 따로 표지를 세우지 않는다 — 10-23). 판 = 단계 색 · 글자 = 그 위 글자색 */
   .now.badge {
     padding: 0 6px;
     border-radius: 4px;
@@ -172,7 +157,6 @@
     background: var(--ai-lv4);
   }
 
-  /* 자리 다섯 — 첫 칸('끔' 고리)은 고정 폭, 나머지 넷은 같은 폭 */
   .track {
     display: grid;
     grid-template-columns: 48px repeat(4, minmax(0, 1fr));
@@ -271,7 +255,6 @@
     color: var(--ai-c);
   }
 
-  /* 설명 한 줄 — 우물 상자. 모두 승인이면 따뜻한 판 */
   .desc {
     margin: var(--space-1) 0 0;
     padding: var(--space-2) var(--space-3);
@@ -287,7 +270,7 @@
     background: var(--ai-all-soft);
   }
 
-  /* 좁은 꼴 — 칩 팝오버 안(상자는 팝오버가 그린다). 칸은 8px · 단추는 32px 이상 */
+  /* 상자는 칩 팝오버가 그린다 */
   .compact {
     gap: var(--space-1);
     padding: 0;
@@ -350,7 +333,6 @@
     color: color-mix(in srgb, var(--ai-lv4) 60%, var(--fg-1));
   }
 
-  /* 폰 · 태블릿(원격 웹) — 좁은 꼴도 손가락 크기 */
   @media (pointer: coarse) {
     .compact .lv {
       min-height: 44px;

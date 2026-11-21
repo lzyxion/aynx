@@ -1,15 +1,11 @@
-// **키 띠 단추의 얼굴**(원격 웹 R5 · 10-20) — 순수 표. 띠(`MobileKeys`)와 폰 설정의 키 띠 하위 화면(`MobileSettings`)이 같은 글자를 쓴다.
-// `band` 가 있는 단추는 셸에 그 키를 보낸다(`$lib/mobile/keys`), 없는 하나(`ctrl`)는 띠의 몫이다(끈적 Ctrl). 맨 왼쪽의 입력 방식 단추는
-// 고정이라 이 표에 없다(`MobileKeys`).
+// 키 띠 단추의 얼굴 — 띠(`MobileKeys`)와 폰 설정의 키 띠 화면(`MobileSettings`)이 함께 쓴다. `band` 없는 `ctrl` 은 띠의 끈적 Ctrl 이다.
 
 import type { Key } from "$lib/i18n/keys";
 import type { BandKey } from "./keys";
 import type { StripId } from "./prefs";
 
 export interface StripKey {
-  /** 단추에 쓰는 글자 */
   label: string;
-  /** 접근성 이름 · 설정 줄 이름 */
   name: Key;
   band?: BandKey;
 }

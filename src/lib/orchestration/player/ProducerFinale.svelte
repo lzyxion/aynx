@@ -1,12 +1,6 @@
 <script lang="ts">
-  // ---------------------------------------------------------------------------
-  // **프로듀서 마무리 카드**(10-31 — 목업 `V3AlbumDone`). 끝난 앨범의 머리 아래 한 장: 프로듀서 얼굴 · "프로듀서 마무리 · 시각 · 앨범 완료" ·
-  // 그 프로듀서 대화의 **마지막 어시스턴트 말** 앞부분(세 줄 · 넘치면 말줄임) · 오른쪽 [전체 대화 →](왼쪽 대화 기록 잎).
-  // 사람이 완료 · 중단한 앨범이면 머리글이 "앨범 완료 전 프로듀서의 마지막 말"이다(그 말은 끝나기 전의 말이라 본문이 머리글과 어긋날 수 있다 · 2026-11-05).
-  // 글은 대화 기록 화면과 같은 읽기(`agent_conversation_transcript` — 최신 쪽 하나)로만 얻는다. 기록이 없거나 못 읽으면 카드를 그리지 않는다.
-  // 프로듀서는 앨범이 끝난 뒤에 최종 요약을 쓰므로 채팅이 닫힐 때까지 다시 읽는다(`followFinale` — 2026-11-07).
-  // 본문은 이 화면에만 — 저장 · 로그로 보내지 않는다.
-  // ---------------------------------------------------------------------------
+  // 글은 대화 기록 화면과 같은 읽기(`agent_conversation_transcript`)로만 얻는다 — 본문은 이 화면에만, 저장 · 로그로 보내지 않는다.
+  // 사람이 끝낸 앨범의 말은 끝나기 전의 말이라 본문이 머리글과 어긋날 수 있다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { agentConversationTranscript } from "$lib/context";
   import { finalePreview, followFinale } from "../model/producer";
@@ -21,14 +15,10 @@
     byHuman = false,
     onopen,
   }: {
-    /** 그 프로듀서 채팅 id — 열려 있는 동안 글을 다시 읽는다 */
     chat: string;
     cli: "claude" | "codex";
-    /** 그 프로듀서 채팅 자신의 대화 id */
     conv: string;
-    /** 앨범 상태 낱말(`done` · `stopped` · `stopping`) */
     runState: string;
-    /** 사람이 끝냈다(`endedByHuman`) — 이 말은 끝나기 전의 말이라 머리글이 그렇게 말한다 */
     byHuman?: boolean;
     onopen: () => void;
   } = $props();

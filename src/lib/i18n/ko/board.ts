@@ -1,35 +1,20 @@
 /**
- * **대시보드**(앞선 이름 관리뷰·관제판)의 문구 — 한국어가 기준 사전이다 (규칙은 `ko/settings.ts`
- * 머리말). 네임스페이스 이름 `board` 는 그 시절 그대로다. 전체 화면 대시보드는 2026-10-07 에 세션 목록 판(캔버스 위쪽)과
- * 작업안 타일로 나뉘어 없어졌다 — 그 두 화면의 문구가 여전히 여기 산다(시트 자신의 머리줄 · 묶음 이름은 `app.sheet.*`).
- *
- * 범위: 작업안 타일(`PlansView.svelte` 와 `console/` 의 보기들 — 작업안 카드 · 기록 ·
- * 실행 결과 · 감사 알약) · 세션의 상태 말(세션 시트 · 상태바 칩 · 칩 목록) · 사용량 화면(`UsageView.svelte`).
- *
- * ## 키 이름
- *
- * `<영역>.<사물>` 에 `.title`(툴팁)·`.aria`·`.label` 꼬리를 단다. 영역은 화면의 구획과 같다:
- * `section`(칸) · `view`(작업안 보기) · `card`·`cards`·`group`(세션 칸) ·
- * `cmd`(긴 명령문 접기·펴기) · `plan`(검토 대기 작업안) · `confirm`(검증 줄 · 위험 확인 경고) ·
- * `exec`(실행 뷰) · `audit` · `notice`(토스트).
- *
- * ## 상태 어휘는 셋으로 나뉜다
- *
- * 화면이 쓰는 상태 표가 셋이고 **서로 다른 축**이라 키도 셋이다:
+ * 작업안 타일 · 세션의 상태 말 · 사용량 화면의 문구 — 한국어가 기준 사전이다 (규칙은 `ko/settings.ts` 머리말). 네임스페이스 이름 `board` 는 옛 대시보드 이름 그대로다.
+ * 상태 어휘는 서로 다른 축이라 키도 셋이다:
  * - `card.state.*` — 세션 칸 카드의 다섯 상태(입력 대기·실패·작업 중·유휴·끊김). 요약 알약도 같은 표.
  * - `target.*` — 대상 하나의 실행 결과(대기·실행중·성공·…). 기록 상세의 대상 표도 같은 표를 쓴다.
  * - `exec.state.*` — 작업안 **집계** 상태(승인됨·전체 성공·일부 성공·…).
  */
 export const board = {
-  // ── 판 껍데기 (머리줄 닫기 — 사용량 화면) ─────────────────────────────────────
+  // ── 판 껍데기 ─────────────────────────────────────
   "close": "닫기",
   "close.title": "닫기 (Esc)",
-  // 사용량 화면(`UsageView.svelte` — 2026-10-04 에 대시보드의 칸에서 나갔다)의 머리줄
+  // 사용량 화면의 머리줄
   "usageView.title": "사용량",
   "usageView.subtitle": "토큰 · 요금제 한도",
-  // 자원 화면(2026-10-17 — 로컬 자원 모니터 `ResourceView.svelte` · 몸통 `console/ResourceBoard.svelte`)
+  // 자원 화면
   "resources.title": "자원",
-  // 폰 작업안 덮개의 제목(2026-10-25 — `mobile/MobilePlans.svelte`)
+  // 폰 작업안 덮개의 제목
   "plans.title": "작업안",
   "resources.subtitle": "CPU · 메모리 — 지난 30분",
   "resources.system": "이 PC 전체",
@@ -100,7 +85,7 @@ export const board = {
   "convo.untitled": "제목 없음",
   "convo.more": "{n}개 더 보기",
   "convo.loading": "대화를 읽는 중…",
-  // ── 어디서 — 사용량 화면의 출처 칩 (docs/log/2026-09-27-remote-conversations.md "2단계") ──
+  // ── 어디서 — 사용량 화면의 출처 칩 (docs/log/2026-09-27-remote-conversations.md) ──
   "source.aria": "어디서",
   "source.local": "이 PC · {n}",
   "source.localBare": "이 PC",
@@ -274,9 +259,7 @@ export const board = {
   "target.unknown": "상태 불명",
 
   // ── 긴 명령문 접기·펴기 (작업안 카드 · 실행 뷰) ────────────────────────────
-  //
-  // 버튼 글자가 **무엇을 펴는지**를 먼저 말한다 — 13 KB 짜리 한 덩어리를 모르고 펴면
-  // 패널이 통째로 밀린다 (docs/log/2026-09-20-console-fixes.md ①).
+  // 버튼 글자가 무엇을 펴는지 먼저 말한다 — 큰 덩어리를 모르고 펴면 패널이 통째로 밀린다 (docs/log/2026-09-20-console-fixes.md).
   "cmd.expand": "전체 보기 ({chars}자 · {lines}줄)",
   "cmd.collapse": "접기",
 
@@ -316,13 +299,13 @@ export const board = {
   "exec.state.failed": "실패",
   "exec.state.cancelled": "취소됨",
 
-  // ── 감사 한 줄 (관제판 바닥) ────────────────────────────────────────────────
+  // ── 감사 한 줄 ────────────────────────────────────────────────
   "audit.summary": "감사: {state} · 기록 {written}",
   "audit.failed": " · 실패 {n}",
   "audit.on": "기록 중",
   "audit.off": "꺼짐",
   "audit.nodir": "감사 폴더 없음",
-  // 머리 줄의 감사 알약(2026-10-25) — 전체 문구는 title 의 `audit.summary`
+  // 머리 줄의 감사 알약 — 전체 문구는 title 의 `audit.summary`
   "audit.pill": "감사 {n}",
   "audit.pill.off": "감사 꺼짐",
 

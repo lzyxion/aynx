@@ -1,7 +1,4 @@
 <script lang="ts">
-  // **아티스트 캐릭터 동그라미 하나**(오케스트레이션 탭 ② — 노트 5-1). 그림은 `artists.ts` 의 `artistOf` 하나에서 온다(아바타
-  // 라이브러리 — 프로필의 `user:<12hex>` · CLI 별 아바타, docs/log/2026-10-31-avatars.md). 48px 넘는 자리는 256px 원본을 쓴다.
-  // 그림이 없는 CLI 는 이름 첫 글자. `ring` 은 겹쳐 놓을 때 바탕색 테두리(목업의 겹친 얼굴).
   import { artistOf } from "../artists";
   import type { ArtistProfile } from "../artist-form";
 
@@ -39,7 +36,6 @@
   .avatar.square {
     border-radius: var(--radius-md, 12px);
   }
-  /* 겹친 얼굴 — 바탕색 테두리로 앞 얼굴과 가른다(바탕은 놓인 판의 색을 이어받는다) */
   .avatar.ring {
     border: 2px solid var(--album-bg, var(--m3-surface-container-low, var(--bg-panel)));
   }

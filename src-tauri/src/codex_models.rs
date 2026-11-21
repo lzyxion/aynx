@@ -1,33 +1,18 @@
-//! Codex 모델 이름 — 사이드 채팅 칩의 모델 목록(2026-10-23).
-//!
-//! **지어내지 않는다** — 두 곳에서 읽기만 한다(프로세스를 띄우지 않는다 — 드롭다운을 열 때마다 `codex debug models` 를
-//! 돌리면 느리다):
-//! - `<codex_home>/models_cache.json` — Codex 자신이 받아 둔 모델 목록(`models[].slug` · `visibility` · `priority`).
-//!   `visibility: "list"` 인 것만(Codex 의 `/model` 고르개가 보여 주는 것), `priority` 오름차순.
-//! - `<codex_home>/config.toml` 의 맨 위 `model` — 사용자가 고른 기본 모델.
-//!
-//! - 같은 캐시의 모델마다 `supported_reasoning_levels[].effort` · `default_reasoning_level` — AI 타일 대화 면의 Codex 모델 메뉴(2026-11-14)가
-//!   그 모델이 받는 단계만 게이지에 세운다. 단계 낱말은 짧은 소문자만 받는다(그 밖은 버린다 — 보낼 줄은 프런트의 고정 허용 목록이 다시 거른다).
-//!
-//! 두 파일 다 없거나 깨져 있으면 빈 값이다(오류 아님 — 칩은 "CLI 기본" 과 직접 입력만 남는다). 파일 내용은 싣지 않는다.
+//! Codex 모델 이름 — 사이드 채팅 칩 · AI 타일 대화 면의 모델 목록. 지어내지 않고 Codex 의 `models_cache.json` · `config.toml` 을 읽기만 한다
+//! (드롭다운을 열 때마다 `codex debug models` 를 돌리면 느리다). 파일이 없거나 깨지면 빈 값이고, 파일 내용은 싣지 않는다.
 
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-/// `codex_models` 결과(camelCase)
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexModels {
-    /// `config.toml` 의 `model`(없으면 `None`)
     pub configured: Option<String>,
-    /// 캐시의 보이는 모델 slug — 순서 = Codex 의 `priority`
     pub models: Vec<String>,
-    /// 보이는 모델 slug → 그 모델이 받는 추론 단계(캐시 순서) · 기본 단계
     pub levels: BTreeMap<String, CodexLevels>,
 }
 
-/// 모델 하나의 추론 단계(camelCase)
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexLevels {
@@ -35,12 +20,10 @@ pub struct CodexLevels {
     pub default: Option<String>,
 }
 
-/// 단계 낱말로 받아 줄 글자 — 짧은 소문자만
 fn level_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 16 && s.chars().all(|c| c.is_ascii_lowercase())
 }
 
-/// `models_cache.json` 본문 → 보이는 slug 마다 단계 · 기본 단계([`parse_cache`] 와 같은 거르기)
 pub(crate) fn parse_cache_levels(text: &str) -> BTreeMap<String, CodexLevels> {
     let mut out = BTreeMap::new();
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
@@ -73,14 +56,13 @@ pub(crate) fn parse_cache_levels(text: &str) -> BTreeMap<String, CodexLevels> {
     out
 }
 
-/// 모델 이름으로 받아 줄 글자 — 프런트 `sideChatModelOk` 와 같은 모양(셸 줄에 실릴 값이라 좁게 · 64자)
+/// 프런트 `sideChatModelOk` 와 같은 모양 — 셸 줄에 실릴 값이라 좁게 둔다.
 fn plausible(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 64
         && s.chars().all(|c| c.is_ascii_alphanumeric() || "._:[]-".contains(c))
 }
 
-/// `models_cache.json` 본문 → 보이는 slug 목록(중복 없음 · `priority` 순)
 pub(crate) fn parse_cache(text: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
         return Vec::new();
@@ -104,14 +86,12 @@ pub(crate) fn parse_cache(text: &str) -> Vec<String> {
     rows.into_iter().map(|r| r.2).collect()
 }
 
-/// `config.toml` 본문 → 맨 위 `model`(프로필 안 값은 보지 않는다)
 pub(crate) fn parse_config_model(text: &str) -> Option<String> {
     let doc: toml_edit::DocumentMut = text.parse().ok()?;
     let s = doc.get("model")?.as_str()?.trim();
     plausible(s).then(|| s.to_owned())
 }
 
-/// 사이드 채팅 칩의 Codex 모델 목록 — 파일 둘을 읽기만 한다(블로킹 풀)
 #[tauri::command]
 pub async fn codex_models() -> Result<CodexModels, ()> {
     tauri::async_runtime::spawn_blocking(|| {

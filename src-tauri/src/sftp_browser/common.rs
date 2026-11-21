@@ -14,11 +14,10 @@ use crate::sftp::{forget, is_transport_error, normalize_remote};
 use super::*;
 
 // ---------------------------------------------------------------------------
-// 공통 (오류·경로 해석)
+// 공통
 // ---------------------------------------------------------------------------
 
-/// SFTP 오류를 한국어 한 줄로 바꾼다. **전송이 죽은 오류면 캐시된 채널을 버린다** —
-/// 안 그러면 한 번 끊긴 세션에서 영원히 같은 오류만 난다([`crate::sftp`] 와 같은 규칙).
+/// 전송이 죽은 오류면 캐시된 채널을 버린다 — 안 그러면 한 번 끊긴 세션에서 같은 오류만 난다.
 pub(crate) async fn fail(session: u32, error: SftpError, what: &str) -> String {
     fail_on(Some(session), error, what).await
 }
@@ -34,8 +33,7 @@ pub(crate) async fn fail_on(session: Option<u32>, error: SftpError, what: &str) 
                 Some(message) => format!("{what}: {message}"),
                 None => format!("{what}: {error}"),
             };
-            // 세션이 끊긴 것만 프런트가 갈래를 가른다 — 이유 코드는 **감싼 바깥**에 붙는다
-            // (사람이 읽는 줄이 `[…]` 로 시작하지 않게).
+            // 이유 코드는 감싼 바깥에 붙는다 — 사람이 읽는 줄이 `[…]` 로 시작하지 않게.
             if is_connection_lost(status.status_code) {
                 crate::errors::with_reason(crate::errors::SESSION_GONE, line)
             } else {
@@ -64,12 +62,7 @@ pub(crate) async fn home_of(session: u32, sftp: &SftpSession) -> Result<String, 
     }
 }
 
-/// 프런트가 준 경로를 **절대 경로**로 만든다.
-///
-/// `realpath(경로)` 를 쓰지 않는 이유: realpath 는 **마지막 조각의 심링크까지 따라간다**.
-/// 그러면 `/usr/bin/python` 을 지우라는 요청이 `python3.12` 를 지우는 요청이 되고,
-/// 목록에서 링크는 자기 이름을 잃는다. 그래서 홈만 앞에 붙이고 나머지는 손대지 않는다
-/// (절대 경로면 왕복도 없다).
+/// `realpath` 를 쓰지 않는다 — 마지막 조각의 심링크까지 따라가 `/usr/bin/python` 삭제가 `python3.12` 삭제가 된다. 홈만 앞에 붙인다.
 pub(super) async fn absolute(
     session: u32,
     sftp: &SftpSession,
@@ -96,8 +89,7 @@ pub(super) async fn expect_dir(session: u32, sftp: &SftpSession, dest: &str) -> 
     }
 }
 
-/// [`absolute`] + 그때 쓴 홈. 삭제·이름 바꾸기처럼 **보호 대상을 판단해야 하는** 명령용
-/// (홈을 알아야 하므로 절대 경로여도 `realpath(".")` 한 번을 낸다).
+/// 보호 대상 판단용 — 홈을 알아야 해서 절대 경로여도 `realpath(".")` 한 번을 낸다.
 pub(super) async fn absolute_and_home(
     session: u32,
     sftp: &SftpSession,
@@ -108,11 +100,7 @@ pub(super) async fn absolute_and_home(
     Ok((absolute, home))
 }
 
-/// 심링크 항목에 `symlinkTarget` · `linkIsDir` 를 채운다.
-///
-/// 링크 하나에 `stat`(따라간 뒤의 종류)과 `readlink`(적힌 문자열) 두 요청이 필요한데,
-/// 둘은 서로 독립이라 `join!` 으로 겹치고, 링크끼리도 [`SYMLINK_BATCH`] 개씩 겹친다.
-/// 끊어진 링크의 stat 실패는 오류가 아니다 — `linkIsDir: false` 로 남는 정상적인 답이다.
+/// 심링크 항목에 `symlinkTarget` · `linkIsDir` 를 채운다 — 끊어진 링크의 stat 실패는 오류가 아니다(`linkIsDir: false`).
 pub(super) async fn resolve_symlinks(sftp: &Arc<SftpSession>, entries: &mut [SftpEntry]) {
     let links: Vec<usize> = entries
         .iter()

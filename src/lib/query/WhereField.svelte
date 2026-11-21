@@ -1,16 +1,11 @@
 <script lang="ts" module>
-  /** 목록 id — 데이터 탭이 여럿이어도 겹치지 않게 */
   let seq = 0;
 </script>
 
 <script lang="ts">
   /**
-   * **데이터 탭의 WHERE 칸** — 평범한 `<input>`(값 · 셀렉터 `data-query-data-where` 그대로) + 작은 자동완성 목록(2026-11-10). 후보는 부르는 쪽
-   * `source`(그 표의 열 + 조건 키워드 — `sql-complete`)가 짓는다.
-   *
-   * 키(목록이 떠 있을 때만): `↑` `↓` = 고르기 · `Enter` · `Tab` = 넣기 · `Esc` = 닫기. 목록이 없으면 키는 부르는 쪽 `onkeydown`(Enter = 적용 ·
-   * Esc = 되돌림)으로 간다. `Ctrl+Space` = 부르기. 저절로 뜨는 때는 `source` 가 정한다(낱말 두 글자 이상 · 점 뒤). 목록은 `document.body`
-   * 에 그린다(쿼리 타일은 컨테이너 질의 상자 안이라 그 안의 `position: fixed` 는 창 기준이 아니다 — `GridMenu` 와 같은 까닭).
+   * 값 · 셀렉터 `data-query-data-where` 는 그대로 둔다. 목록은 `document.body` 에 그린다 — 쿼리 타일은 컨테이너 질의 상자 안이라
+   * 그 안의 `position: fixed` 는 창 기준이 아니다(`GridMenu` 와 같은 까닭).
    */
   import { tick } from "svelte";
   import { DROPDOWN_GAP } from "$lib/dropdown";
@@ -28,7 +23,6 @@
     el?: HTMLInputElement | null;
     placeholder: string;
     ariaLabel: string;
-    /** 후보 — 뜰 때가 아니면 `null`. `from` 은 바꿀 자리의 시작(칸 글자 위치) */
     source: (text: string, pos: number, explicit: boolean) => { from: number; items: CompleteItem[] } | null;
     onkeydown: (ev: KeyboardEvent) => void;
   } = $props();
@@ -104,7 +98,6 @@
     onkeydown(ev);
   }
 
-  // 창이 움직이면 닫는다(조상 패널의 스크롤까지 — 캡처 단계 · 목록 자신의 스크롤은 빼고)
   $effect(() => {
     if (!open) return;
     const onScroll = (ev: Event) => {

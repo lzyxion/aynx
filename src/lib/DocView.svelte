@@ -1,139 +1,17 @@
 <script lang="ts">
   /**
-   * **문서 보기 타일** — 파일 한 장을 읽기 전용으로 보여 준다 (docs/log/2026-09-27-doc-tile.md).
+   * 문서 보기 타일 (docs/log/2026-09-27-doc-tile.md). 어디의 파일인지는 `backend` 만 안다 — 여기에는 `local_*` · `sftp_*` · 세션 id 가 없다.
    *
-   * ## 어디의 파일인지는 [`backend`] 만 안다
+   * - 원본이 끊기거나 사라져도 마지막으로 읽은 글은 그대로 둔다. `[session-gone]` 은 빨간 오류로 적지 않는다 — 배너가 같은 사실을 말한다.
+   * - HTML 을 만들지 않는다 — 문서 글이 `{@html}` 로 들어가는 곳은 없다. 예외는 mermaid `securityLevel: "strict"` 의 SVG 와 KaTeX `trust: false` 의 HTML 둘뿐.
+   * - 그림은 문서와 같은 백엔드의 경로만 `blob:` `<img>` 로 그린다 — 스킴 있는 주소(`http` · `data:` · `file:` …)는 불러오지 않는다(문서를 여는 것만으로 바깥에 요청이 나가지 않게).
+   * - `F5` · `Ctrl+R` 은 개발용으로 살려 둔 브라우저 키라 가로채지 않는다.
+   * - 저장은 사람이 누른 저장(`Ctrl+S` · [저장])뿐이고 편집 시작 때의 `version` 을 기대값으로 보낸다. 편집 중 자동 새로고침은 글을 바꾸지 않고 띠만 세운다.
+   * - 편집기는 보기를 바꿔도 내리지 않고 숨기기만 한다 — 되돌리기 기록 · 커서가 산다.
+   * - 읽기 보기 · 편집 중 미리 보기 · 줄↔절이 같은 `DOC_TILE_MD` 선택을 써야 제목 짝이 맞는다.
    *
-   * 파일 브라우저(`SftpBrowser`)와 같은 규칙이다: 이 컴포넌트에는 `local_*` 도 `sftp_*` 도 세션 id 도 없고,
-   * 읽기(`readText`)·외부로 열기·편집을 **능력 플래그**대로 부른다. 원격이면 상위가 원본 터미널의 세션을
-   * 그때그때 조회해 백엔드를 내려 주므로(`PaneHost` 의 `docBackend`), 재연결하면 [`FsBackend.key`] 가 바뀌고
-   * 아래 효과가 **같은 파일을 다시 읽는다**.
-   *
-   * ## 끊겨도 글은 남긴다
-   *
-   * 원본이 끊기면(대기 배너) · 사라지면(원본 없음 배너) 마지막으로 읽은 내용을 **그대로 둔다**. 읽던 글이
-   * 연결 사정으로 사라지면 사람이 잃는 것만 있다. 세션이 없다는 실패(`[session-gone]`)는 빨간 오류로 적지
-   * 않는다 — 배너가 같은 사실을 더 정확히 말한다(`browser/file-listing.svelte.ts` 의 `failureOf` 와 같은 규칙).
-   *
-   * ## HTML 을 만들지 않는다
-   *
-   * 마크다운은 `MarkdownBlocks`(구조 파싱 → 글자 보간), 코드는 `CodeView`(lowlight 의 hast 트리를 재귀로
-   * 그린다) — 문서 글이 `{@html}` 로 들어가는 곳이 없어 원격 파일의 `<script>` 는 글자다. 예외는 둘이고 둘 다 남의
-   * 그리기 엔진이 **자기 손으로 짠** 출력이다: ```mermaid 블록의 다이어그램(`diagrams` → `MermaidView` — mermaid
-   * `securityLevel: "strict"` 의 SVG)과 수식(`DOC_TILE_MD` 의 `math` → `MathView` — KaTeX `trust: false` 의 HTML). 근거는
-   * 각 머리말.
-   *
-   * 그림(`![alt](src)`)은 **문서와 같은 백엔드의 경로**만 불러온다(상대 · 절대 — 문서 링크와 같은 `resolveDocLink` 규칙).
-   * 바이트를 `readPreview`(파일 타일 미리 보기 패널과 같은 문)로 받아 `blob:` URL 의 `<img>` 로 그린다 — 원격 파일의
-   * 바이트가 HTML 이 되지 않고, SVG 도 `<img>` 라 스크립트가 돌지 않는다. `http`/`https` · `data:` · `file:` 같은 스킴 있는
-   * 주소는 불러오지 않는다(문서를 여는 것만으로 바깥에 요청이 나가지 않게 — 대체 글자 + 툴팁). 캐시 · 거두기는
-   * `doc-images.svelte.ts`, 판정은 `doc-images.ts`.
-   *
-   * ## 키보드
-   *
-   * 뿌리가 `[data-tile-focus]` 라 `Alt+화살표`로 들어오면 여기 포커스가 온다. ↑↓ · PgUp/PgDn · Home/End 로
-   * 스크롤한다(수식 키가 섞이면 비켜난다 — 전역 단축키의 것이다). 새로고침은 **단추만**이다: `F5`·`Ctrl+R` 은
-   * 개발용으로 살려 둔 브라우저 키라 가로채지 않는다. 선택 + `Ctrl+C` 는 브라우저 기본 복사 그대로다.
-   *
-   * ## 자동 새로고침
-   *
-   * 보이는 동안 주기마다 `stat` 을 묻고, 크기·시각이 바뀌면 다시 읽는다. `version` 이 같으면 **아무것도 바꾸지
-   * 않는다** — 그린 블록 · 선택 · 스크롤 · 원문/보기가 그대로다. 규칙(주기 · 멈춤 · 들이는 법 · 맨 아래 붙기)은
-   * 전부 `doc-refresh.ts` 의 순수 함수이고 여기는 타이머와 DOM 만 쥔다. 서 있는지 · 마지막으로 읽은 시각 · 주기는 도구줄
-   * **새로고침 단추의 툴팁**이 말한다(예전 도구줄의 작은 점은 늘 떠 있어 걷었다). 도구줄에는 ⋯ 가 없다 — 한 타일에 ⋯ 가
-   * 위아래 둘이던 것을 걷었다.
-   *
-   * ## 편집 (E1 — docs/log/2026-09-27-doc-edit.md)
-   *
-   * [편집]은 백엔드가 쓸 수 있고(`canWrite`) 파일이 편집할 만할 때(`editBlockOf` — 잘림 · 이진 · 깨진 UTF-8 이
-   * 아닐 때)만 선다. 누르면 몸통이 `DocEditor`(CodeMirror — 늦게 받는다)로 바뀌고, 미리 보기였으면 **고정**된다.
-   * 저장은 사람이 누른 저장뿐(`Ctrl+S` · [저장])이고, 편집을 시작할 때의 `version` 을 기대값으로 보내 디스크가
-   * 그사이 바뀌었으면 쓰지 않고 충돌 띠를 세운다([덮어쓰기]만 기대값 없이 쓴다). 편집 중 자동 새로고침은 **글을
-   * 바꾸지 않고** 띠만 세운다. 띠의 전이는 `doc-edit.ts` 의 순수 함수다. 충돌 · 바뀜 띠의 [비교]는 디스크를 따로 읽어 내 편집과
-   * 나란히 보여 준다(읽기 전용 — `doc-compare.ts` · `doc/DocCompareView.svelte`, 편집 면은 가리기만 한다). 저장 안 한 변경은 `app/doc-dirty` 에
-   * 적고(닫기 가드 · 머리줄 ● 가 읽는다), 저장 함수도 거기 등록한다 — 둘 다 [`paneId`] 가 있을 때만.
-   *
-   * 마크다운이면 편집 중에도 그린 결과를 본다. 넓은 타일(`isWideEdit` — 곁 패널을 뺀 본문 폭 900px 이상)은 도구줄 맨 앞 세 칸 묶음
-   * [원문만 | 나란히 | 미리 보기만](기본 나란히 — 고른 값과 경계 비율은 타일의 것: `PaneSpec.docEditView` · `docSplit`,
-   * 미리 보기를 고정하지 않는다), 좁은 타일은 [원문 | 미리 보기] 두 칸 탭(저장하지 않는 한때 값). 편집기는 보기를 바꿔도
-   * **내리지 않고 숨기기만** 한다(되돌리기 기록 · 커서가 산다). 미리 보기는 입력이 200ms 멈춘 뒤 다시 파싱한다(mermaid 는
-   * 같은 원문이면 `MermaidView` 캐시). 스크롤 맞추기(나란히일 때만 · 기본 켬)는 **편집기 → 미리 보기 한 방향**이다:
-   * 커서가 편집기 화면 안이면 커서 절, 밖이면 맨 위 줄의 절(`syncTarget`)로 미리 보기를 밀고 커서 절 제목에 옅은 판을
-   * 깐다. 미리 보기 내용의 크기가 바뀌면(늦은 mermaid) 맞춰 둔 절로 한 번 다시 민다 — 사람이 미리 보기를 직접 밀었으면
-   * 그대로 둔다. 줄 → 절은 `doc-edit-preview.ts` 의 `sectionLines`(원문 제목 줄 ↔ `headingSlugs`)다.
-   *
-   * ## 체크박스 (`- [ ]` · `- [x]`)
-   *
-   * 읽기 보기에서 누르면 **파일에 바로** 쓴다 — 그 줄의 `[ ]`↔`[x]` 한 글자(`doc-task.ts` 의 `toggleTaskLine`)를 지금
-   * `version` 을 기대값으로 저장 경로(`writeText`)에 보낸다. 디스크가 그사이 바뀌었으면(충돌) 쓰지 않고 다시 읽은 뒤 토스트로
-   * 알린다. 여러 번 눌러도 쓰기는 **차례로** 간다(앞 쓰기의 새 version 이 다음 기대값) — 쓰는 동안 그 체크박스는 막힌다.
-   * 편집을 막는 사정(쓸 수 없는 백엔드 · 잘림 · 이진 · 깨진 UTF-8 · 끊김)이면 막힌 채 툴팁이 까닭을 말한다. 편집 중 미리
-   * 보기의 체크박스는 파일이 아니라 **편집기 글**을 바꾼다(되돌리기 기록에 남는다 — 저장은 사람이 한다).
-   *
-   * 마크다운은 `DOC_TILE_MD`(`frontmatter` · `math`) 선택으로 파싱한다 — 파일 맨 앞 머리말이 접힘 상자가 되고(목차 · 앵커 ·
-   * 줄↔절에서 빠진다), `$…$` · `$$…$$` · ```math 가 수식이 된다(KaTeX 는 처음 수식이 나올 때 받는다). 읽기 보기 · 편집 중
-   * 미리 보기 · 줄↔절이 같은 선택을 써야 제목 짝이 맞는다. 기록 보기 같은 남의 말에는 이 선택이 없다(`$` 가 흔하다).
-   *
-   * ## 문서 안의 링크 (B7)
-   *
-   * 웹 링크 밖에 **문서 링크**도 Ctrl+클릭으로 산다(`doc-links.ts` 가 가른다): `#절` 만이면 이 문서의 그 제목으로
-   * 스크롤하고(제목의 `data-slug` — GitHub 식 이름), 경로(`other.md` · `./docs/a.md#절`)면 [`onopenlink`] 로 올린다 —
-   * 푸는 일 · 확인 · 자리 잡기는 상위(`openDocLink`)가 한다. 그렇게 연 타일이 받은 한 번짜리 [`anchor`] 는 글을 그린
-   * 뒤 그 제목으로 스크롤하고 [`onanchordone`] 으로 돌려준다(못 찾아도 — 다시 시도하지 않는다).
-   *
-   * 같은 모양의 한 번짜리 [`line`] 은 터미널의 `파일:12` Ctrl+클릭에서 온다 — 코드 보기는 그 줄, 그린 마크다운은 그 줄이 든
-   * 최상위 블록으로 스크롤하고 2초 강조한 뒤 [`onlinedone`] 으로 돌려준다(편집 중이면 아무것도 하지 않고 돌려준다 · 규칙은
-   * `doc-line-jump.ts`).
-   *
-   * 각주(`[^id]`)의 위첨자 ↔ 글 끝 각주 항목 오가기는 **그냥 클릭**이고(근거는 `MarkdownBlocks` 머리말) 앵커와 같은 손잡이로
-   * 그 상자(읽기 본문 · 편집 중 미리 보기)만 민다.
-   *
-   * ## 문서 안 검색
-   *
-   * `Ctrl+F`(앱의 `find` 키 — 포커스된 타일이 문서 타일이면 `app/tile-find.ts` 로 여기 온다)가 도구줄 아래 얇은 띠를 연다(`DomFindBar`):
-   * 입력 칸 · "i / N" · [대소문자] · [이전] · [다음] · [닫기]. `Enter` · `F3` 다음 · `Shift+Enter` · `Shift+F3` 이전 · `Esc` 닫고 본문으로.
-   * 미리 보기 · 원문 · 코드 파일 모두 같다(보이는 글자를 훑는다). 편집 중에는 띠 대신 편집기의 검색 패널이 열린다.
-   * 칠은 **DOM 을 바꾸지 않는** CSS Custom Highlight 다(`doc-find-dom.ts` — 줄 번호 · mermaid SVG · 수식 · 단추는 빼고 훑는다).
-   * 글이 다시 그려지면(자동 새로고침 · 보기 전환 · 늦은 mermaid) `MutationObserver` 가 다시 찾는다 — 고른 번호는 지키고
-   * 스크롤은 하지 않는다. 지금 일치로 미는 것은 본문 상자만이다(`scrollIntoView` 를 쓰지 않는 까닭은 앵커 스크롤과 같다).
-   *
-   * ## 곁 패널 (왼쪽 파일 · 오른쪽 목차 — 2026-11-19)
-   *
-   * 본문 줄은 `[파일 | 본문 | 목차]` 다. 켬은 둘 다 타일의 것(`PaneSpec.docFiles` · `docOutline` — 배치에 저장 · **미리 보기를 고정하지 않는다**)이고,
-   * 무엇이 패널로 보이나 · 본문 폭은 순수 함수 하나(`doc-side-panels.ts` 의 `docPanelLayout`)가 정한다.
-   *
-   * - **단추 자리는 고정** — 파일 토글은 이름 바로 뒤(머리줄의 `tail` — 몸 위 줄이면 도구줄 맨 앞), 목차 토글은 도구줄 맨 끝(새로고침 뒤).
-   *   패널을 여닫아도 · 폭이 바뀌어도 x 가 움직이지 않는다. 그림은 파일 = `side-panel`(왼쪽 패널) · 목차 = `preview`(오른쪽 패널 — 파일 타일의 미리 보기
-   *   패널과 같은 그림). 파일 단추는 경로가 있으면 늘(원문 · 편집 중 · 코드 파일 포함), 목차 단추는 그린 마크다운에만 서고 제목이 없으면 흐린 채 툴팁이 까닭을 말한다.
-   * - **좁은 타일**(640 미만 — `isNarrowOutline` 문턱 하나) — 두 단추 모두 같은 자리 · 같은 그림 + ▾ 의 드롭다운 단추가 된다. 드롭다운은 한 번에 하나만
-   *   (하나를 열면 다른 것을 닫는다) · 넓어지면 닫는다. 파일 드롭다운은 단추 왼쪽 변, 목차 드롭다운은 단추 오른쪽 변에 맞춘다. 고르는 줄은 메뉴 통로
-   *   `runOnMenu` 를 지난다(파일 드롭다운의 폴더 줄은 닫지 않고 그 안에서 들어간다).
-   * - **둘 다 열기** — 둘이 함께 설 폭(882 — `DOC_BOTH_PANELS_MIN_PX`)이 없을 때 토글로 **열면** 먼저 열려 있던 쪽을 명세에서도 끈다(`panelToCloseOnOpen`).
-   *   창을 줄여 그 밑으로 간 것은 보이기만 숨긴다(나중에 연 쪽 `last` 만 — 넓히면 돌아온다). 토글의 눌림(`aria-pressed`)은 "보이는가" 다 — 숨겨진 쪽의
-   *   토글을 누르면 여는 것으로 다룬다. 편집 보기의 넓음(`isWideEdit`)은 타일 폭이 아니라 패널을 뺀 본문 폭(`bodyW`)으로 잰다.
-   * - **파일**(`doc/files-controller.svelte.ts` · `DocFiles.svelte`) — 지금 문서의 폴더에서 시작해 폴더로 들어가고, 찾기는 하위 폴더까지(팔레트 "파일 열기…" 와
-   *   같은 `scanTextFiles`). 패널이 보이거나 드롭다운이 열려 있을 때만 읽는다(그리고 `backend.key` 가 바뀌면 다시). 고른 파일은 **이 타일에서** 열린다 —
-   *   [`onswitch`] → 상위 `switchDocHere`(같은 문서면 본문 포커스 · 다른 타일이 보고 있으면 그리로 · 저장 안 한 변경이면 묻는다 · 최대화는 새 타일이 이어받는다).
-   *   여기서는 따로 막지 않는다. 고를 때 파일 칸의 상태 사본(`fc.snapshot`)을 함께 올리고, 갈아 끼워 선 새 DocView 는 그것을 씨앗으로 받아
-   *   폴더 · 목록 · 찾기 글 · 찾기 자료 · 고른 줄 · 스크롤 그대로 선다(`doc-swap.ts` 의 `takeDocSwap` — 초기화 때 한 번). 문서 → 문서 갈아 끼우기는
-   *   타일 등장 애니메이션 없이 뚝 서고 본문만 떠오른다(스크립트의 "갈아 끼워진 문서" 절).
-   * - **목차**(`doc/outline-controller.svelte.ts` · `DocOutline.svelte`) — 지금 읽는 절은 본문 스크롤과 본문 내용 상자의 크기 변화(늦게 그려지는 mermaid —
-   *   `ResizeObserver`)를 rAF 로 묶어 다시 잰다(`currentSection`). 줄을 고르면 앵커 링크와 같은 [`scrollToAnchor`] 로 간다. 규칙은 `doc-outline.ts`.
-   * - **움직임** — 사람이 토글로 여닫을 때만 패널이 옆 변에서 폭을 키우며 들어오고 줄며 나간다(`sidePanelGrow` — 독 펼침 판과 같은 200ms ·
-   *   곡선 · 문지기 `panelMotion`). 첫 그리기 · 이 타일에서 문서 바꾸기(새 DocView — 패널은 그대로 서고 본문만 떠오른다) · 폭 문턱(882 · 640)에 숨고 돌아오기 · 움직임 줄이기는 뚝 선다.
-   *   안쪽 내용은 고정 폭(`.side-inner`)이라 자라는 동안 줄이 다시 흐르지 않는다. 폭 판정(`layout` · `isWideEdit`)은 명세 값이라 중간 폭에 흔들리지 않는다.
-   * - **포커스** — 곁 패널은 토글로 열어도 포커스를 가져가지 않는다. 패널 줄을 고르면 · 패널 칸에서 Esc(질의 없음) 하면 본문(키보드 몸)으로 돌아온다.
-   *   패널 안 입력 칸의 키는 뿌리의 키 손잡이가 비켜난다(`onkeydown` 의 입력 칸 거름).
-   *
-   * ## 글자 크기
-   *
-   * 본문 상자 위 `Ctrl+휠` 이 타일의 글자 배율을 한 단계씩 바꾼다(80~200% — `doc-zoom.ts`, 타일의 것: `PaneSpec.docZoom`,
-   * **미리 보기를 고정하지 않는다**). `zoom` 속성이 아니라 뿌리의 CSS 변수 `--doc-zoom` 을 글자 크기에 곱한다 — 미리 보기
-   * (`.md-page`) · 코드 블록 · 원문/코드 파일(`CodeView` — 줄 번호 거터 포함) · 편집기(CodeMirror — 바뀌면 `remeasure`)가
-   * 같이 커지고, 줄 바꿈은 타일 폭에 맞춰 다시 흐른다. mermaid 는 둘레 글자 크기로 다시 그린다(`doc-zoom-context`). 다이어그램
-   * 위의 `Ctrl+휠` 은 그 다이어그램의 확대가 먼저 가진다(`MermaidView` 가 막은 사건은 건너뛴다). 100% 가 아니면 도구줄에 작은
-   * "120%" 글자 단추가 서고 누르면 100% 다. 바꿀 때 읽던 자리는 스크롤 비율로 지킨다. 키보드(`Ctrl+=` · `Ctrl+-` ·
-   * `Ctrl+0`)는 아직 없다 — 웹뷰 확대 단축키는 꺼져 있어(Tauri `zoomHotkeysEnabled` 기본 끔) 그 키는 지금 아무 일도 하지 않는다.
+   * 곁 패널 — 켬 · 편집 보기 · 글자 배율은 타일의 것이고 미리 보기를 고정하지 않는다. 단추 자리는 고정이다(파일 토글은 이름 뒤 `tail`,
+   * 목차 토글은 도구줄 맨 끝) — 여닫아도 · 넓음 ↔ 좁음에도 x 가 움직이지 않는다.
    */
   import { onDestroy, tick, untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -244,83 +122,48 @@
     oneditoncedone,
     onmenu,
   }: {
-    /** 이 타일의 id — 저장 안 한 변경(`app/doc-dirty`)과 저장 함수를 이 이름으로 적는다. 없으면 적지 않는다 */
     paneId?: string;
-    /** 보여 줄 파일의 절대 경로 (`PaneSpec.path`) */
     path: string;
-    /** 어디서 읽는가 — 원격이면 원본 터미널의 세션을 빌린 어댑터, 로컬이면 디스크 */
     backend: FsBackend;
-    /** 마크다운의 보기 (`PaneSpec.docMode` — 없으면 그린 보기) */
     mode?: DocMode;
-    /** [원문]/[보기] — 상위가 패널 명세에 적는다(배치 저장·창 이관이 따라온다) */
     onmode?: (mode: DocMode) => void;
-    /** 목차 곁 패널(오른쪽)을 켰는가 (`PaneSpec.docOutline` — 없으면 꺼짐). 좁은 타일에서는 드롭다운이 대신한다 */
     outline?: boolean;
-    /** [목차] 토글 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
     onoutline?: (open: boolean) => void;
-    /** 파일 곁 패널(왼쪽)을 켰는가 (`PaneSpec.docFiles` — 없으면 꺼짐). 좁은 타일에서는 드롭다운이 대신한다 */
     files?: boolean;
-    /** [파일] 토글 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
     onfiles?: (open: boolean) => void;
-    /**
-     * 파일 칸에서 파일을 골랐다 — 상위가 **이 타일에서** 그 파일로 바꾼다(`switchDocHere` — 물음 · 같은 문서 · 다른 타일은 거기서 가른다).
-     * `files` 는 파일 칸의 지금 상태 사본 — 갈아 끼울 때만 새 타일에 넘어간다(`doc-swap.ts`)
-     */
     onswitch?: (path: string, files: DocFilesSeed) => void;
-    /** 마크다운 편집 중 고른 보기 (`PaneSpec.docEditView` — 없으면 나란히). 좁은 타일에서는 두 칸 탭이 대신한다 */
     editView?: DocEditView;
-    /** 세 칸 묶음 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
     oneditview?: (view: DocEditView) => void;
-    /** 나란히의 편집기 몫 (`PaneSpec.docSplit` — 없으면 0.5) */
     split?: number;
-    /** 경계를 다 끌었다 · 더블클릭 · ←/→ — 상위가 패널 명세에 적는다 */
     onsplit?: (ratio: number) => void;
-    /** 글자 크기 % (`PaneSpec.docZoom` — 없으면 100) */
     zoom?: number;
-    /** `Ctrl+휠` · [100%] 단추 — 상위가 패널 명세에 적는다(미리 보기는 고정하지 않는다) */
     onzoom?: (zoom: number) => void;
-    /**
-     * 미리 보기 문서인가 (`PaneSpec.docPreview`) — 다음에 파일 타일에서 여는 파일이 이 칸을 갈아 끼운다.
-     * 참일 때만 [고정] 단추가 선다.
-     */
     preview?: boolean;
-    /** [고정] — 상위가 미리 보기 표식을 지운다(붙박이). [원문]/[보기] 전환도 같은 일을 한다(상위 몫) */
     onkeep?: () => void;
-    /** [고정 해제] · 편집 때문에 고정했던 타일의 [편집 종료] — 상위가 다시 미리 보기로 돌린다 */
     onunkeep?: () => void;
-    /** 원본 터미널의 별칭 (대기 배너 문구에만 쓴다) */
     alias?: string;
-    /** 원본 터미널 타일이 **아예 없어졌다** (닫혔거나 이관에서 빠졌다) — 원격만 */
+    /** 원본 터미널 타일이 아예 없어졌다(닫혔거나 이관에서 빠졌다) — 원격만 */
     sourceGone?: boolean;
     onnotice?: (message: string) => void;
-    /** 문서 안의 **경로** 링크 Ctrl+클릭 — 적힌 경로(퍼센트 인코딩을 푼 것)와 `#절`. 상위가 이 문서 기준으로 푼다 */
+    /** 적힌 경로(퍼센트 인코딩을 푼 것)와 `#절` — 상위가 이 문서 기준으로 푼다 */
     onopenlink?: (link: string, anchor?: string) => void;
-    /** 글을 그린 뒤 한 번 찾아갈 제목(앵커) — 저장되지 않는 한때 값(`app/doc-anchors`) */
+    /** 저장되지 않는 한때 값(`app/doc-anchors`) */
     anchor?: string;
-    /** [`anchor`] 를 썼다(스크롤했거나 못 찾았다) — 상위가 지운다 */
     onanchordone?: () => void;
-    /** 글을 그린 뒤 한 번 찾아갈 줄(1 기준 — 터미널의 `파일:12`) — 저장되지 않는 한때 값(`app/doc-anchors`) */
+    /** 1 기준 줄(터미널의 `파일:12`) — 저장되지 않는 한때 값(`app/doc-anchors`) */
     line?: number;
-    /** [`line`] 을 썼다(스크롤했거나 못 찾았다 · 편집 중이었다) — 상위가 지운다 */
     onlinedone?: () => void;
-    /** 글을 읽은 뒤 한 번 편집을 시작한다([새 문서…]로 만들어 연 타일) — 저장되지 않는 한때 값(`app/doc-anchors`) */
+    /** 저장되지 않는 한때 값(`app/doc-anchors`) */
     editOnce?: boolean;
-    /** [`editOnce`] 를 썼다(편집을 시작했거나 · 막혔거나 · 읽기가 실패했다) — 상위가 지운다 */
     oneditoncedone?: () => void;
-    /**
-     * 본문 우클릭 — 커서 자리에 타일 메뉴(`PaneMenu` — 터미널 본문 우클릭과 같은 상자)를 연다. 줄은 `doc-menu.ts` 가 짓고, 누른 줄의 열쇠는
-     * `run` 으로 이 타일에 돌아온다(통로는 `PaneHost` 의 `runTileMenu` → `runOnMenu`). 없으면(상위가 넘기지 않음) 우클릭에 아무것도 뜨지 않는다
-     */
     onmenu?: (x: number, y: number, menu: { rows: PaneMenuRow[]; run: (key: string) => void }) => void;
   } = $props();
 
   let bodyEl = $state<HTMLDivElement | null>(null);
   let rootEl = $state<HTMLDivElement | null>(null);
 
-  // ── 갈아 끼워진 문서 (`doc-swap.ts` — 2026-11-20) ─────────────────────────────────
-  // 이 타일에서 문서만 바뀐 것이면(파일 칸에서 고름 · 파일 타일의 미리 보기 바꾸기) 타일 틀은 등장 애니메이션 없이 뚝 서고(`replaceTile`),
-  // 본문만 처음 내용을 그릴 때 한 번 떠오른다. 읽는 동안의 빈 본문에는 걸지 않는다. 거는 자리는 본문 상자(`.body`)다 — 타일 상자나
-  // 그 조상에 `opacity` 를 걸면 글래스 흐림 판이 빠진다(`PaneHost` 의 `.glass-tile` 절). 파일 칸 인계(`files`)는 아래 `createDocFiles` 의 씨앗.
+  // ── 갈아 끼워진 문서 ──
+  // 떠오르기는 본문 상자(`.body`)에만 건다 — 타일 상자나 그 조상에 `opacity` 를 걸면 글래스 흐림 판이 빠진다(`PaneHost` 의 `.glass-tile` 절).
   // 첫 id 로 한 번만 꺼낸다(뒤에 바뀐 id 는 갈아 끼워진 문서가 아니다) — 그래서 `untrack`
   const swapped = untrack(() => (paneId ? takeDocSwap(paneId) : null));
   let fadePending = swapped !== null;
@@ -332,10 +175,7 @@
     el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DOC_SWAP_FADE_MS, easing: "ease-out" });
   });
 
-  // ── 문서 (불러오기 · 자동 새로고침 · 편집 · 저장 · 띠 · 체크박스 쓰기) ───────────────────────
-  // 마지막으로 읽은 파일 · 읽는 중 · 오류 · 도장 · 편집 중 · 더러움 · 저장 · 띠 · 체크박스 쓰기 — `doc/document-controller.svelte.ts`
-  // (2026-10-27 분할 9차). 효과(다시 읽기 · 박자 · 더러움 표 · 저장 함수 등록) · 정리는 아래 원래 자리 · 원래 순서 그대로이고, 편집 미리
-  // 보기의 한때 값은 이 파일에 남아 편집 시작 · 다시 불러오기가 `onEditStart` · `onEditReload` 로 만진다.
+  // ── 문서 ──
   const dc = createDocDocument({
     get path() {
       return path;
@@ -369,33 +209,24 @@
 
   const offline = $derived(!backend.online);
   const markdown = $derived(isMarkdown(path));
-  /** 마크다운을 그려서 보이는 중인가 — 아니면 코드 보기(원문 · 그 밖의 파일). 편집 중에는 늘 편집기다 */
   const rendered = $derived(markdown && mode !== "source" && !dc.editing);
   const lang = $derived(markdown ? "markdown" : langOf(path));
   const text = $derived(dc.file && !dc.file.binary ? dc.file.text : "");
   const blocks = $derived(rendered && text !== "" ? parseMarkdown(text, DOC_TILE_MD) : []);
-  /** 코드 보기에서 강조를 껐는가 — 언어를 모르면 원래 평문이라 띠를 걸 일이 없다 */
   const plain = $derived(!rendered && lang !== null && text !== "" && tooLargeToHighlight(text));
 
-  /**
-   * 박자 — 숫자로 떼어 둔다. 상위가 백엔드 객체를 새로 내려 줄 때마다 타이머가 다시 서면(그래서 영영 울리지
-   * 않으면) 안 된다: `$derived` 는 값이 같으면 아래 효과를 깨우지 않는다.
-   */
+  /** 숫자로 떼어 둔다 — 상위가 백엔드 객체를 새로 내려 줄 때마다 타이머가 다시 서면 영영 울리지 않는다 */
   const pollMs = $derived(pollIntervalOf(backend.key));
-  /** 자동 새로고침이 서 있는가(끊김 · 원본 없음 · 오류면 멈춤) — 타일 ⋯ 메뉴의 정보 줄이 말한다 */
   const autoOn = $derived(
     autoRefreshOn({ online: backend.online, sourceGone, hasFile: dc.file !== null, error: dc.error !== null }),
   );
 
-  // ── 편집 (E1) ────────────────────────────────────────────────────────────────
-  // 편집 상태 · 저장 · 띠 · 다시 불러오기는 `dc`(위). 여기는 편집기 손잡이와 단추 모양만.
+  // ── 편집 ──
 
   let editor = $state<ReturnType<typeof DocEditor> | null>(null);
 
-  /** [편집] 단추가 서는가 — 쓸 수 있는 백엔드 · 읽은 글자 파일 */
   const showEdit = $derived(backend.canWrite === true && dc.file !== null && !dc.file.binary);
 
-  /** 편집 단추의 툴팁 — 막혔으면 왜인지, 아니면 이름만(단추는 아이콘뿐이라 이것이 이름이다) */
   function editTitle(): string {
     if (dc.editBlock === "truncated") return t("files.doc.edit.block.truncated");
     if (dc.editBlock === "lossy") return t("files.doc.edit.block.lossy");
@@ -403,12 +234,9 @@
     return t("files.doc.edit");
   }
 
-  // 저장 안 한 변경 표(`app/doc-dirty`) — 표는 늘 `(paneId, editing && dirty || 걸어 둔 초안)` 과 같다(`DirtyBinding`).
-  // 걸어 둔 초안(다른 창에서 옮겨 와 아직 편집기에 들이지 못한 글 — `app/doc-drafts`)도 저장 안 한 변경이다.
-  // - 효과는 **정리 함수가 없다**: 정리 함수로 지우면 상위가 같은 타일을 다시 내려 줄 때(포커스 이동) 지운 뒤 다시
-  //   적지 않아 ● 가 꺼지고 닫기가 묻지 않았다(편집 유실 — docs/log/2026-09-27-doc-edit.md). 지우기는 id 가 값으로
-  //   바뀔 때(옛 id)와 `onDestroy` 뿐.
-  // - 쓰기는 `untrack` — 표를 읽어 구독하면 제가 쓴 값에 다시 깨어난다(`effect_update_depth_exceeded`).
+  // 저장 안 한 변경 표 — 걸어 둔 초안(`app/doc-drafts`)도 저장 안 한 변경이다.
+  // 효과에 정리 함수를 두지 않는다 — 상위가 같은 타일을 다시 내려 줄 때 지운 뒤 다시 적지 않아 ● 가 꺼지고 닫기가 묻지 않았다(docs/log/2026-09-27-doc-edit.md).
+  // 쓰기는 `untrack` — 표를 읽어 구독하면 제가 쓴 값에 다시 깨어난다(`effect_update_depth_exceeded`).
   const dirtyBinding = new DirtyBinding(setDocDirty);
   $effect(() => {
     const id = paneId;
@@ -416,8 +244,7 @@
     untrack(() => dirtyBinding.sync(id, value));
   });
 
-  // 닫기 가드의 [저장하고 닫기]가 부를 저장 함수 — `paneId` 만 구독한다(`save` 는 부를 때 상태를 읽는다).
-  // 다시 돌면 정리 함수(푼다)가 **먼저**, 몸통(등록)이 나중이라 등록이 남는다 — 효과 하나 안의 순서다.
+  // `paneId` 만 구독한다 — `save` 는 부를 때 상태를 읽는다
   $effect(() => {
     const id = paneId;
     if (!id) return;
@@ -433,13 +260,8 @@
     );
   });
 
-  // ── 창을 넘는 초안 (`doc-draft.ts` · `app/doc-drafts`) ──────────────────────────
-  //
-  // 보내는 쪽: 이관 짐을 만드는 순간(`app/tear` — 동기) 편집기의 글 · 커서 · 기록을 뜬다. 편집 중 · 저장 안 한 변경 · 편집기가 섰을
-  // 때만이고, 글이 상한을 넘으면 `null`(창 넘기기 거절). `still` 은 뜬 뒤 글이 그대로인가 — 원본을 내리기 직전에 다시 묻는다.
-  // 받는 쪽: 걸어 둔 초안이 있으면 파일을 읽은 뒤 [편집]과 같은 문으로 그 글을 들인다(`dc.startEditFromDraft`). 편집기가 **실제로
-  // 섰을 때만** 초안을 내린다 — 읽기 실패 · 편집할 수 없음 · 끊김 · 편집기 지연 로딩 실패면 초안을 쥔 채 띠로 말하고(다시 시도 ·
-  // 초안 복사 · 초안 버리기), 그동안도 저장 안 한 변경으로 보인다(닫기 가드 · ●).
+  // ── 창을 넘는 초안 ──
+  // 받는 쪽은 편집기가 실제로 섰을 때만 초안을 내린다 — 그 전에 막히면 초안을 쥔 채 띠로 말하고, 그동안도 저장 안 한 변경이다(닫기 가드 · ●).
 
   function captureDraft(): DraftCapture | null {
     const ed = editor;
@@ -469,14 +291,10 @@
     return untrack(() => registerDocDraft(id, captureDraft));
   });
 
-  /** 걸어 둔 초안 — 다른 창에서 옮겨 와 아직 편집기에 들이지 않은 글 */
   const heldDraft = $derived(paneId ? pendingDocDraft(paneId) : undefined);
-  /** 초안으로 세우던 편집기가 지연 로딩에 실패했다 — 저절로 다시 세우지 않는다([다시 시도]가 푼다) */
   let draftStalled = $state(false);
-  /** 지금 편집기로 들이는 중인 초안 — 편집기가 서면 그것만 내린다 */
   let applyingDraft: DocDraft | null = null;
 
-  /** 초안을 들이지 못하는 까닭 — 없으면 `null`(들일 수 있다 · 들이는 중 · 초안 없음) */
   const draftBlock = $derived.by<"wait" | "read" | "noedit" | "readonly" | "offline" | "editor" | null>(() => {
     if (!heldDraft || dc.editing) return null;
     if (draftStalled) return "editor";
@@ -487,7 +305,6 @@
     return null;
   });
 
-  // 들일 수 있게 되면(읽었다 · 다시 이어졌다) 한 번 — 편집 중이 아니고 막는 까닭이 없을 때
   $effect(() => {
     const d = heldDraft;
     if (!d || dc.editing || draftBlock !== null) return;
@@ -496,14 +313,12 @@
     });
   });
 
-  /** 편집기가 섰다 — 들이던 초안을 내린다(그 글은 이제 편집기에 있다) */
   function editorReady() {
     const d = applyingDraft;
     applyingDraft = null;
     if (d && paneId) dropDocDraft(paneId, d);
   }
 
-  /** 편집기를 받지 못했다 — 초안으로 세우던 중이면 초안은 쥔 채 멈춘다(저절로 다시 받지 않는다) */
   function onEditorFailed(message: string) {
     if (applyingDraft) {
       applyingDraft = null;
@@ -512,7 +327,6 @@
     dc.editorFailed(message);
   }
 
-  /** 띠의 [다시 시도] — 읽기부터(읽지 못했으면) 또는 편집기 받기부터 */
   function retryDraft() {
     draftStalled = false;
     if (dc.file === null || dc.error !== null) void dc.load();
@@ -539,7 +353,6 @@
 
   // ── 체크박스 ─────────────────────────────────────────────────────────────────
 
-  // 읽기 보기의 체크박스 쓰기(차례로 · 막는 까닭 · 쓰는 중인 줄)는 `dc` — 편집 중 미리 보기의 것은 아래(편집기 글을 바꾼다)
   const readTasks = $derived({
     title: t("files.doc.task.toggle"),
     blocked: dc.taskBlocked,
@@ -553,10 +366,7 @@
     ontoggle: togglePreviewTask,
   });
 
-  /**
-   * 편집 중 미리 보기의 체크박스 — 파일이 아니라 편집기 글의 그 한 글자를 바꾼다(되돌리기 기록에 남는다). 미리 보기가
-   * 아직 옛 글이면(입력이 멈추기 전) 지금 글로 다시 그리기만 한다 — 줄이 어긋난 채 고치지 않는다.
-   */
+  /** 편집 중 미리 보기의 체크박스 — 미리 보기가 아직 옛 글이면 다시 그리기만 한다(줄이 어긋난 채 고치지 않는다) */
   function togglePreviewTask(line: number, wasChecked: boolean) {
     if (!dc.editing || !editor) return;
     if (editor.getText() !== previewText) {
@@ -575,10 +385,7 @@
     return () => clearInterval(id);
   });
 
-  /**
-   * 경로·원본이 바뀌면 다시 읽는다 — 재연결로 세션이 바뀐 것도 여기 걸린다(`backend.key`).
-   * 끊겨 있으면 읽지 않는다(부르면 `[session-gone]` 이고, 배너가 이미 그 사실을 말한다).
-   */
+  /** 경로 · 원본(`backend.key` — 재연결이면 바뀐다)이 바뀌면 다시 읽는다 */
   $effect(() => {
     const p = path;
     void backend.key;
@@ -586,13 +393,9 @@
     untrack(() => void dc.load());
   });
 
-  /** 툴팁을 띄울 때의 지금 — 상대 시각("3초 전")을 그 순간 값으로 쓰려고 단추에 포인터·포커스가 올 때 잰다(시계를 돌리지 않는다) */
+  /** 툴팁을 띄울 때 잰 지금 — 시계를 돌리지 않는다 */
   let infoNow = $state(Date.now());
 
-  /**
-   * 자동 새로고침 정보 — 새로고침 단추 툴팁의 흐린 뒤쪽(`data-tip-sub`). 마지막으로 읽은 때를 상대 시각으로, 멈췄으면
-   * "자동 새로고침 멈춤"(왜인지는 배너·띠가 이미 말한다). 아직 읽은 적 없으면 없다
-   */
   const autoInfo = $derived.by(() => {
     if (!autoOn) return t("files.doc.autoinfo.off");
     if (!dc.updatedAt) return undefined;
@@ -600,36 +403,30 @@
     return t(`files.doc.autoinfo.${ago.unit}`, { n: String(ago.n) });
   });
 
-  /** [고정] — 단추는 누르자마자 사라지므로(미리 보기일 때만 선다) 포커스를 타일의 키보드 몸으로 되돌린다 */
+  /** 단추가 누르자마자 사라지므로 포커스를 타일의 키보드 몸으로 되돌린다 */
   function keep() {
     onkeep?.();
     rootEl?.focus({ preventScroll: true });
   }
 
-  /** [고정 해제] — [고정]과 같은 자리에서 바뀐다 */
   function unkeep() {
     onunkeep?.();
     rootEl?.focus({ preventScroll: true });
   }
 
-  /** 링크 — `MarkdownBlocks` 가 이미 `http`/`https` 만 넘긴다(터미널 OSC 8 과 같은 규칙 · 같은 opener) */
+  /** `MarkdownBlocks` 가 이미 `http`/`https` 만 넘긴다 */
   function openLink(href: string) {
     void openUrl(href).catch((e: unknown) => {
       console.error(`[aynx] 링크를 열지 못했습니다: ${href}`, e);
     });
   }
 
-  /** 문서 링크 — `#절` 은 이 문서 안에서, 경로는 상위로. 그 밖(`mailto:` …)은 `MarkdownBlocks` 가 살리지 않는다 */
   function openDocLink(href: string) {
     const c = classifyDocHref(href);
     if (c.kind === "anchor") scrollToAnchor(c.anchor);
     else if (c.kind === "path") onopenlink?.(c.path, c.anchor);
   }
 
-  /**
-   * 코드 블록 머리 띠의 [터미널에 넣기](`DocCodeBlock`) — 셸 타일의 입력 줄에 넣기만(`app/code-to-term`). 문서 **타일**일 때만
-   * (`paneId` — 새 터미널이 이 옆에 선다). 상자는 단추 아래 · 오른쪽 맞춤
-   */
   const codeActions = $derived.by(() => {
     const id = paneId;
     if (!id) return undefined;
@@ -641,16 +438,12 @@
     };
   });
 
-  /**
-   * 그 앵커의 제목으로 스크롤 — 본문 상자만 민다(`scrollIntoView` 는 조상의 넘침 숨김 상자까지 밀어 타일 배치를
-   * 흔들 수 있다). 못 찾으면 `false`.
-   */
+  /** 본문 상자만 민다 — `scrollIntoView` 는 조상의 넘침 숨김 상자까지 밀어 타일 배치를 흔든다 */
   function scrollToAnchor(a: string): boolean {
     if (!bodyEl || !rendered) return false;
     return scrollBoxToAnchor(bodyEl, a);
   }
 
-  /** 그 상자 안에서 앵커의 제목으로 — 읽기 본문 · 편집 중 미리 보기가 같이 쓴다 */
   function scrollBoxToAnchor(box: HTMLElement, a: string): boolean {
     const heads = [...box.querySelectorAll<HTMLElement>("[data-slug]")];
     const hit = matchAnchor(
@@ -663,16 +456,11 @@
     return true;
   }
 
-  /** 그 상자를 밀어 안의 요소를 위쪽에 — 앵커 · 각주 오가기(`MarkdownBlocks` 의 `onjump`)가 같이 쓴다 */
   function scrollBoxToEl(box: HTMLElement, el: HTMLElement) {
     const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
     box.scrollTo({ top: Math.max(0, top - 8) });
   }
 
-  /**
-   * 걸린 앵커 — 글이 들어와 그려진 뒤 한 번. 읽기가 실패했으면(글 없이 오류) 그냥 돌려준다. 원문 보기면 제목이
-   * 없으니 역시 돌려준다.
-   */
   $effect(() => {
     const a = anchor;
     if (!a) return;
@@ -689,9 +477,7 @@
     });
   });
 
-  // ── 편집으로 한 번 ([새 문서…] — `app/new-doc`) ─────────────────────────────────
-  // 앵커 · 줄과 같은 한 번짜리다: 글을 읽으면 [편집] 단추와 같은 문(`dc.startEdit` — 막혔으면 아무것도 하지 않는다)으로 한 번 들어가고 돌려준다.
-  // 읽기가 실패했으면 그냥 돌려준다. 편집기 지연 로딩이 실패하면 편집 면이 스스로 읽기 보기로 물러선다(`dc.editorFailed`).
+  // ── 편집으로 한 번 ([새 문서…]) ──
   $effect(() => {
     if (!editOnce) return;
     if (dc.file === null) {
@@ -704,14 +490,10 @@
     });
   });
 
-  // ── 이 줄로 (터미널의 `파일:12` — `doc-line-jump.ts`) ─────────────────────────────
-  // 앵커와 같은 한 번짜리다: 글이 들어와 그려진 뒤 한 번 가고 돌려준다(못 찾아도 · 다시 시도하지 않는다). 편집 중이면
-  // 편집기를 건드리지 않고 그냥 돌려준다. 코드 보기는 그 줄에 `CodeView` 의 판을, 그린 마크다운은 그 줄이 든 최상위 블록에
-  // 판(`.line-flash`)을 잠깐 깐다 — 커서 절 강조(`.sync-hl`)처럼 그린 요소에 클래스를 다는 방식이다.
+  // ── 이 줄로 (터미널의 `파일:12`) ──
 
-  /** 코드 보기에서 강조 중인 줄(0 기준) — `CodeView` 의 `flashLine` */
+  /** 0 기준 */
   let codeFlash = $state<number | null>(null);
-  /** 그린 마크다운에서 강조 중인 요소 */
   let flashEl: HTMLElement | null = null;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -746,7 +528,6 @@
     });
   });
 
-  /** 그 줄(1 기준)로 스크롤하고 잠깐 강조 — 못 찾으면 아무것도 하지 않는다 */
   async function jumpToLine(n: number) {
     const file = dc.file;
     if (!bodyEl || !file || file.binary || dc.editing) return;
@@ -760,7 +541,7 @@
       el.classList.add("line-flash");
       flashEl = el;
     } else {
-      // 판을 다시 세운다(같은 줄이어도 애니메이션이 처음부터) — 그려진 뒤 그 판 자리로 민다
+      // 판을 다시 세운다 — 같은 줄이어도 애니메이션이 처음부터
       await tick();
       codeFlash = idx;
       await tick();
@@ -772,11 +553,7 @@
     flashTimer = setTimeout(stopLineFlash, LINE_FLASH_MS);
   }
 
-  /**
-   * 그린 마크다운에서 그 줄(0 기준)이 든 최상위 블록의 요소. `MarkdownBlocks` 는 최상위 블록마다 요소 하나를 뿌리(`.md`)의
-   * 자식으로 그린다 — 개수가 맞을 때만 번호로 고른다. 어긋나면(그리는 모양이 바뀌었다 — 고칠 버그) 그 줄이 든 절의 제목으로
-   * 물러선다(`sectionAt`). 그것도 없으면 `null`.
-   */
+  /** 최상위 블록 수가 맞을 때만 번호로 고르고, 어긋나면 그 줄이 든 절의 제목으로 물러선다 */
   function renderedBlockAt(idx: number): HTMLElement | null {
     const root = pageEl?.querySelector<HTMLElement>(":scope > [data-markdown]");
     if (!root) return null;
@@ -789,19 +566,14 @@
     return slug === null ? null : root.querySelector<HTMLElement>(`[data-slug="${CSS.escape(slug)}"]`);
   }
 
-  /** 지금 스크롤하는 상자 — 코드 보기는 `CodeView` 자신(`fill`)이, 그린 마크다운은 본문 상자가 민다 */
   function scroller(): HTMLElement | null {
     if (!bodyEl) return null;
     if (rendered) return bodyEl;
     return bodyEl.querySelector<HTMLElement>("[data-code-view]") ?? bodyEl;
   }
 
-  // ── 곁 패널 — 목차(오른쪽) ───────────────────────────────────────────────────
-  // 목차 줄 · 자리 · 지금 절(rAF) · 고른 자리 · 드롭다운 — `doc/outline-controller.svelte.ts`(2026-10-27 분할 6차).
-  // 좁은가 · 보이는가는 아래 `layout`(양옆 곁 패널의 폭 규칙 한 곳)에서 받는다. 관찰자 · 리스너 · 효과는 아래 원래 자리 · 원래 순서 그대로다
-  // (타일 폭은 곁 패널 · 편집 보기도 읽어 여기 산다).
+  // ── 곁 패널 — 목차(오른쪽) ──
 
-  /** 타일 폭 — 좁으면 곁 패널 대신 드롭다운. 못 쟀으면 0 */
   let tileWidth = $state(0);
   const oc = createDocOutline({
     get rendered() {
@@ -831,18 +603,15 @@
     scrollToAnchor,
   });
 
-  // ── 곁 패널 — 파일(왼쪽) · 폭 규칙 · 토글 ───────────────────────────────────────
+  // ── 곁 패널 — 파일(왼쪽) · 폭 규칙 · 토글 ──
 
-  /** 나중에 연 쪽 — 둘이 함께 설 폭이 없을 때 이쪽만 보인다(한때 값 · 저장하지 않는다) */
+  /** 나중에 연 쪽 — 한때 값 · 저장하지 않는다 */
   let lastPanel = $state<DocSidePanel | null>(null);
-  /** 파일 단추가 서는가 — 경로가 있으면 늘(원문 · 편집 중 · 코드 파일 포함) */
   const filesSlot = $derived(path !== "");
-  /** 무엇이 패널로 보이나 · 본문 폭 — 곁 패널 둘 · 편집 보기 넓음이 이 한 값을 읽는다(`doc-side-panels.ts`) */
   const layout = $derived(
     docPanelLayout({ width: tileWidth, files: files && filesSlot, outline, outlineReady: oc.hasOutline, last: lastPanel }),
   );
 
-  /** 파일 칸에서 고른 파일 — 이 타일에서 바꾸기는 상위(`switchDocHere`)가 한다. 파일 칸의 지금 상태를 함께 올린다(새 칸이 이어받는다) */
   const switchTo = (p: string) => onswitch?.(p, fc.snapshot());
   const fc = createDocFiles({
     seed: swapped?.files ?? null,
@@ -856,14 +625,10 @@
       return sourceGone;
     },
     root: () => rootEl,
-    // 드롭다운이면 메뉴 통로(고른 것을 쥐고 → 닫고 → 간다) — 패널이면 바로
     onpick: (p) => (fc.drop ? runOnMenu(() => p, fc.closeDrop, switchTo) : switchTo(p)),
   });
 
-  /**
-   * 곁 패널 하나를 **연다** — 숨겨진 쪽(켜 두었지만 다른 쪽에 밀려 안 보임)의 토글도 여기로 온다. 둘이 함께 설 폭이 없으면 다른 쪽을 명세에서도
-   * 끈다(`panelToCloseOnOpen` — 규칙은 머리말 "곁 패널"). 포커스는 옮기지 않는다.
-   */
+  /** 숨겨진 쪽의 토글도 여기로 온다 · 포커스는 옮기지 않는다 */
   function openPanel(which: DocSidePanel) {
     const close = panelToCloseOnOpen({
       width: tileWidth,
@@ -879,26 +644,22 @@
     else if (which === "outline" && !outline) onoutline?.(true);
   }
 
-  /** 곁 패널 움직임의 문지기 — 사람이 토글을 누른 때만 `mark`(첫 그리기 · 폭 문턱 · 새 DocView 는 그대로 선다). 두 패널이 한 키를 쓴다 —
-   *  좁은 폭에서 하나를 열면 다른 하나가 함께 닫히고, 그 둘이 같이 움직인다 */
+  /** 사람이 토글을 누른 때만 `mark` — 두 패널이 한 키를 써야 함께 닫히는 쪽도 같이 움직인다 */
   const panelMotion = createToggleMotion();
   const PANEL_MOTION = "doc-panel";
 
-  /** [파일] 토글 — 보이면 끄고, 아니면(꺼짐 · 숨겨짐) 연다 */
   function toggleFiles() {
     panelMotion.mark(PANEL_MOTION);
     if (layout.filesShown) onfiles?.(false);
     else openPanel("files");
   }
 
-  /** [목차] 토글 — 보이면 끄고, 아니면(꺼짐 · 숨겨짐) 연다 */
   function toggleOutline() {
     panelMotion.mark(PANEL_MOTION);
     if (layout.outlineShown) onoutline?.(false);
     else openPanel("outline");
   }
 
-  /** 좁은 타일의 드롭다운 — 한 번에 하나만(하나를 열면 다른 것을 닫는다) */
   function toggleFilesDrop() {
     if (fc.drop) fc.closeDrop();
     else {
@@ -915,20 +676,17 @@
     }
   }
 
-  /** 파일 목록을 읽어야 하는가 — 패널이 보이거나 드롭다운이 열려 있다 */
   const filesLive = $derived(layout.filesShown || fc.drop !== null);
-  /** 원본(재연결이면 바뀐다) · 끊김 — 백엔드 객체가 새로 내려와도 값이 같으면 아래 효과를 깨우지 않는다 */
+  /** 백엔드 객체가 새로 내려와도 값이 같으면 아래 효과를 깨우지 않는다 */
   const filesSource = $derived(`${backend.key}\n${backend.online}`);
 
-  // 파일 목록 다시 읽기 — 보이기 시작할 때 · 원본이 바뀔 때. 닫혀 있으면 읽지 않는다. 읽기는 제가 쓰는 상태(목록 · 질의 · 찾기 자료)를
-  // 읽으므로 `untrack` — 아니면 제가 쓴 값에 다시 깨어난다(`pane-tools.svelte.ts` 머리말의 함정과 같다)
+  // 읽기는 제가 쓰는 상태를 읽으므로 `untrack` — 아니면 제가 쓴 값에 다시 깨어난다
   $effect(() => {
     void filesSource;
     if (!filesLive) return;
     untrack(() => void fc.load());
   });
 
-  // 파일 드롭다운은 좁은 타일의 것 — 넓어졌거나 단추가 사라지면 닫는다(목차 드롭다운의 효과와 같다)
   $effect(() => {
     const keep = layout.narrow && filesSlot;
     if (!keep) untrack(() => fc.closeDrop());
@@ -947,8 +705,7 @@
     return () => ro.disconnect();
   });
 
-  // 본문 스크롤을 따라 지금 절을 다시 잰다. 휠 · 누름은 "사람이 직접 민다" 라 고른 자리를 놓는다.
-  // 마크업 속성으로 달지 않는 것은 정적 상자에 손잡이를 붙이는 a11y 경고 때문이다(이 상자는 누를 것이 아니다)
+  // 마크업 속성으로 달지 않는다 — 정적 상자에 손잡이를 붙이면 a11y 경고가 난다
   $effect(() => {
     const el = bodyEl;
     if (!el) return;
@@ -963,8 +720,6 @@
     };
   });
 
-  // 본문 내용 상자(`.md-page`)의 크기가 바뀌면 제목 자리가 옮겨진다 — mermaid 처럼 늦게 그려지는 것 · 접혔다 펴지는
-  // 표 · 늦게 온 글꼴. 스크롤이 없어도 그림 틀에 한 번 다시 잰다(처음 관찰 때도 한 번 불린다)
   let pageEl = $state<HTMLDivElement | null>(null);
   $effect(() => {
     const el = pageEl;
@@ -974,7 +729,6 @@
     return () => ro.disconnect();
   });
 
-  // 글이 새로 그려졌거나 목차를 보이기 시작했으면 한 번 잰다
   $effect(() => {
     void oc.outlineItems;
     void oc.panelOpen;
@@ -982,7 +736,6 @@
     untrack(() => void tick().then(oc.scheduleTrack));
   });
 
-  // 드롭다운은 좁은 타일의 것 — 넓어졌거나 목차 자리가 사라지면(원문 · 편집으로 바뀜) 닫는다
   $effect(() => {
     const keep = oc.narrow && oc.hasOutline;
     if (!keep) untrack(() => oc.closeOutlineDrop());
@@ -992,22 +745,15 @@
     oc.dispose();
   });
 
-  // ── 띠의 [비교] (2026-11-11) ─────────────────────────────────────────────────
-  //
-  // `conflict` · `changed` 띠에만 선다. 누르는 순간 디스크를 **따로** 읽고(`dc.load` · `accept` 와 섞지 않는다 — 편집 상태 · 띠 ·
-  // 기준 version 은 그대로) 편집기의 지금 글과 견준다(`doc-compare.ts`). 보기는 편집 면을 가리기만 한다(`DocEditPane` 의
-  // `covered` — 편집기는 내리지 않는다). 띠가 사라지거나 `unsaved` 로 바뀌면 · 편집이 끝나면 닫는다.
+  // ── 띠의 [비교] ──
+  // 디스크를 따로 읽는다 — `dc.load` · `accept` 와 섞지 않는다(편집 상태 · 띠 · 기준 version 은 그대로).
 
-  /** 비교 결과 — 서 있으면 비교 보기 */
   let compare = $state<CompareResult | null>(null);
-  /** 디스크를 읽는 중 */
   let compareBusy = $state(false);
   /** 늦게 온 읽기가 닫은 뒤 · 새 [비교] 뒤에 보기를 세우지 않게 */
   let compareSeq = 0;
-  /** 비교 보기의 스크롤 상자 — 찾기가 훑는다 */
   let compareEl = $state<HTMLDivElement | null>(null);
 
-  /** [비교]를 띄울 띠인가 */
   function compareBand(): boolean {
     const b = dc.bands.band;
     return dc.editing && b !== null && b.kind !== "unsaved";
@@ -1033,7 +779,6 @@
     }
   }
 
-  /** 비교 보기를 닫는다 — `focus` 면 편집기로(돌아가기 · `Esc` · 보기 안에 포커스가 있었을 때) */
   function closeCompare(focus: boolean) {
     compareSeq++;
     compareBusy = false;
@@ -1041,7 +786,6 @@
     if (focus) void tick().then(() => editor?.focus());
   }
 
-  // 띠가 내려갔다(저장 성공 · [무시] · [취소] · 편집 종료) · 저장 못 함 띠로 바뀌었다 — 비교 보기도 닫는다
   $effect(() => {
     if (compareBand()) return;
     untrack(() => {
@@ -1051,16 +795,14 @@
     });
   });
 
-  // ── 문서 안 검색 (Ctrl+F) ────────────────────────────────────────────────────
+  // ── 문서 안 검색 (Ctrl+F) ──
 
-  /** 찾기 띠 — 훑기 · 칠 · 키는 `DomFindBar`(이 파일에서 떼어 냈다 — 대화 면 · diff 패치가 같이 쓴다) */
   let finder = $state<ReturnType<typeof DomFindBar> | null>(null);
-  /** 찾을 글이 보이는가 — 읽은 글자 파일 · 편집 중이 아님, 또는 편집 중 비교 보기 */
   const findable = $derived(
     (dc.editing && compare !== null) || (!dc.editing && dc.file !== null && !dc.file.binary && text !== ""),
   );
 
-  /** `find` 액션 — 편집 중이면 편집기의 검색 패널(비교 보기가 서 있으면 그 보기의 띠), 아니면 띠. 찾을 글이 없으면 `false`(터미널 검색으로 넘어간다) */
+  /** 찾을 글이 없으면 `false` — 터미널 검색으로 넘어간다 */
   function openFind(): boolean {
     if (dc.editing && compare !== null) return finder?.show() ?? false;
     if (dc.editing) {
@@ -1072,17 +814,13 @@
     return finder?.show() ?? false;
   }
 
-  // 찾을 글이 사라졌다(편집 시작 · 빈 파일 · 이진) — 띠를 닫는다. 포커스는 옮기지 않는다(편집기가 받는다)
   $effect(() => {
     if (!findable) untrack(() => finder?.close());
   });
 
-  // ── 본문 우클릭 메뉴 (2026-10-25 — 줄은 `doc-menu.ts`) ──────────────────────────
-  //
-  // 읽기(그린 문서 · 원문/코드 · 편집 중 미리 보기)와 편집(편집기 안) 두 모양. 링크 · 고른 글은 **누른 순간의 것**을 묶어 둔다 — 메뉴가 떠 있는 동안
-  // 포커스가 메뉴로 가 선택이 바뀔 수 있다(`PaneHost` 의 `TileMenu.term` 과 같은 까닭). 입력 칸(찾기 띠 · 편집기 검색 패널)은 네이티브 편집 메뉴 그대로다.
+  // ── 본문 우클릭 메뉴 ──
+  // 링크 · 고른 글은 누른 순간의 것을 묶어 둔다 — 메뉴가 떠 있는 동안 포커스가 메뉴로 가 선택이 바뀔 수 있다.
 
-  /** 읽기 모양 줄이 부르는 동작(`doc/context-actions` 의 `runReadMenu`) — `editing` 은 실행 순간의 값 */
   const readActions: ReadMenuActions = {
     editing: () => dc.editing,
     openLink,
@@ -1093,7 +831,6 @@
   };
 
   function onBodyContextMenu(ev: MouseEvent) {
-    // 앱 메뉴가 이미 받았다(그림 · SVG 메뉴) — 그대로 둔다
     if (ev.defaultPrevented || !onmenu) return;
     const target = ev.target instanceof Element ? ev.target : null;
     if (!target || target.closest("input, textarea")) return;
@@ -1131,45 +868,37 @@
     onmenu(ev.clientX, ev.clientY, { rows, run: (key) => runReadMenu(key, { box, link, sel }, readActions) });
   }
 
-  // `find` 액션의 문 — 제 타일 id 로 적는다(`app/tile-find.ts`)
   $effect(() => {
     const id = paneId;
     if (!id) return;
     return untrack(() => registerTileFind(id, openFind));
   });
 
-  // ── 편집 중 미리 보기 (마크다운) ─────────────────────────────────────────────
+  // ── 편집 중 미리 보기 (마크다운) ──
 
-  /** 마크다운을 편집하는 중인가 — 미리 보기 · 보기 고르기는 이때만 */
   const mdEdit = $derived(dc.editing && markdown);
-  /** 좁은 타일의 두 칸 탭 — 저장하지 않는다. 편집을 시작할 때 고른 값에서 정한다 */
+  /** 저장하지 않는 한때 값 */
   let narrowTab = $state<NarrowEditTab>("source");
-  /** 편집 면의 폭 — 곁 패널을 뺀 본문 폭(`layout.bodyW`), 못 쟀으면 타일 폭 */
   const editWidth = $derived(layout.bodyW || tileWidth);
   const wideEdit = $derived(isWideEdit(editWidth));
-  /** 지금 보이는 보기 — 넓으면 고른 값, 좁으면 탭 */
   const editShown = $derived<DocEditView>(mdEdit ? visibleEditView(editView, editWidth, narrowTab) : "source");
   const showPreview = $derived(mdEdit && editShown !== "source");
-  /** 끄는 동안의 비율 — 놓을 때 상위에 한 번 적는다(끄는 동안 배치 자동 저장을 두드리지 않게) */
+  /** 끄는 동안의 비율 — 놓을 때 한 번 적는다(끄는 동안 배치 자동 저장을 두드리지 않게) */
   let dragSplit = $state<number | null>(null);
   let splitDrag: { left: number; width: number } | null = null;
   const splitRatio = $derived(dragSplit ?? clampDocSplit(split ?? DOC_SPLIT_DEFAULT));
-  /** 스크롤 맞추기 — 타일의 한때 값(기본 켬) */
   let syncScroll = $state(true);
   const syncOn = $derived(mdEdit && syncScroll && editShown === "split");
 
-  /** 미리 보기가 그리는 글 — 입력이 멈추고 [`PREVIEW_DELAY_MS`] 뒤에 편집기에서 옮겨 온다 */
   let previewText = $state("");
   const PREVIEW_DELAY_MS = 200;
   let previewTimer: ReturnType<typeof setTimeout> | null = null;
   const previewBlocks = $derived(showPreview ? parseMarkdown(previewText, DOC_TILE_MD) : []);
 
-  // ── 그림 ────────────────────────────────────────────────────────────────────
+  // ── 그림 ──
 
-  /** 문서 속 그림 — 읽기 보기와 편집 미리 보기가 같은 캐시를 쓴다(같은 그림을 두 번 읽지 않는다) */
   const images = new DocImageCache();
 
-  // 글의 그림 주소 · 백엔드(재연결 · 끊김) · 문서 version(바뀌면 읽은 그림의 바뀜을 다시 묻는다)을 따라 맞춘다
   $effect(() => {
     const srcs = [...imageSrcsOf(blocks), ...imageSrcsOf(previewBlocks)];
     const ctx = { backend, docPath: path, remote: backend.key !== LOCAL_KEY, gen: dc.file?.version ?? "" };
@@ -1180,15 +909,12 @@
   onDestroy(() => images.dispose());
   const previewSections = $derived(showPreview ? sectionLines(previewText, previewBlocks, DOC_TILE_MD) : []);
   let previewEl = $state<HTMLDivElement | null>(null);
-  /** 편집기 · 경계 · 미리 보기를 담는 줄 — 끄는 비율의 기준 폭 */
   let splitEl = $state<HTMLDivElement | null>(null);
 
-  /** 편집기의 커서 줄 · 보이는 줄 범위(0 기준) */
+  /** 0 기준 */
   let cursorLine = $state(0);
   let edView = $state<EditorViewport>({ top: 0, bottom: Number.POSITIVE_INFINITY });
-  /** 커서가 있는 절 — 옅은 판을 깐다 */
   const cursorSlug = $derived(syncOn ? syncTarget(previewSections, cursorLine, { top: cursorLine, bottom: cursorLine }) : null);
-  /** 미리 보기를 데려갈 절 (`syncTarget` — 커서가 편집기 화면 밖이면 맨 위 줄의 절) */
   const syncSlug = $derived(syncOn ? syncTarget(previewSections, cursorLine, edView) : null);
 
   function stopPreviewTimer() {
@@ -1196,7 +922,6 @@
     previewTimer = null;
   }
 
-  /** 편집을 시작했다(`dc.startEdit` 의 원래 자리) — 미리 보기 글 · 좁은 타일 탭 · 커서 줄 · 화면 범위를 그 글로 */
   function previewOnEditStart(text: string) {
     previewText = text;
     narrowTab = narrowTabOf(editView);
@@ -1204,7 +929,6 @@
     edView = { top: 0, bottom: Number.POSITIVE_INFINITY };
   }
 
-  /** 다시 불러오기로 편집을 새로 세운다(`dc.reloadForEdit` 의 원래 자리) — 타이머를 멈추고 미리 보기 글 · 커서 줄 · 화면 범위를 새 글로 */
   function previewOnEditReload(text: string) {
     stopPreviewTimer();
     previewText = text;
@@ -1212,7 +936,6 @@
     edView = { top: 0, bottom: Number.POSITIVE_INFINITY };
   }
 
-  /** 편집기의 글이 바뀌었다 — 멈춘 뒤에 한 번 옮긴다 */
   function editorChanged() {
     if (!markdown) return;
     stopPreviewTimer();
@@ -1222,13 +945,11 @@
     }, PREVIEW_DELAY_MS);
   }
 
-  /** 기다리지 않고 지금 옮긴다 — 미리 보기를 막 열 때 */
   function flushPreview() {
     stopPreviewTimer();
     if (dc.editing && editor) previewText = editor.getText();
   }
 
-  /** 미리 보기 상자를 그 절로 — `null` 이면 맨 위 */
   function scrollPreviewTo(slug: string | null) {
     const box = previewEl;
     if (!box) return;
@@ -1236,7 +957,6 @@
     else scrollBoxToAnchor(box, slug);
   }
 
-  /** 미리 보기를 막 보이기 시작했다 — 지금 글로 그리고 커서 절로 */
   async function revealPreviewAtCursor() {
     flushPreview();
     await tick();
@@ -1244,7 +964,6 @@
     scrollPreviewTo(syncTarget(previewSections, line, { top: line, bottom: line }));
   }
 
-  /** 세 칸 묶음 — 미리 보기가 새로 보이면 커서 절로 */
   function pickEditView(v: DocEditView) {
     const was = editShown;
     if (v !== editView) oneditview?.(v);
@@ -1252,14 +971,12 @@
     else if (v !== "preview") void tick().then(() => editor?.focus());
   }
 
-  /** 좁은 타일의 두 칸 탭 */
   function pickNarrowTab(tab: NarrowEditTab) {
     if (tab === narrowTab) return;
     narrowTab = tab;
     if (tab === "preview") void revealPreviewAtCursor();
   }
 
-  /** 두 칸 탭의 ←/→ — 탭 목록의 몸짓(고르면 바로 보인다) */
   function narrowTabKey(ev: KeyboardEvent) {
     if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
     ev.preventDefault();
@@ -1268,16 +985,12 @@
     void tick().then(() => rootEl?.querySelector<HTMLElement>(`[data-edit-tab="${next}"]`)?.focus());
   }
 
-  /**
-   * 스크롤 맞추기가 마지막으로 데려간 절(`null` = 맨 위) — 사람이 미리 보기를 직접 밀면(휠 · 누름) `undefined`.
-   * 미리 보기 내용의 크기가 바뀌면(늦게 그려진 mermaid · 다시 파싱) 맞춰 둔 자리가 어긋나므로 이 절로 한 번 다시 민다 —
-   * 사람이 밀어 둔 자리는 건드리지 않는다.
-   */
+  /** 스크롤 맞추기가 마지막으로 데려간 절(`null` = 맨 위) — 사람이 미리 보기를 직접 밀면 `undefined`(그 자리는 건드리지 않는다) */
   let alignedSlug: string | null | undefined = undefined;
   let previewPageEl = $state<HTMLDivElement | null>(null);
   let realignFrame = 0;
 
-  // 스크롤 맞추기 — 데려갈 절이 **바뀔 때만** 민다(같은 절 안에서 치는 동안은 사람이 밀어 둔 미리 보기 그대로)
+  // 데려갈 절이 바뀔 때만 민다 — 같은 절 안에서 치는 동안은 사람이 밀어 둔 미리 보기 그대로
   $effect(() => {
     const slug = syncSlug;
     if (!syncOn) return;
@@ -1290,7 +1003,6 @@
     );
   });
 
-  // 미리 보기를 사람이 밀면 맞춰 둔 자리를 놓는다(위 `alignedSlug`) — 본문 상자의 `release` 와 같은 몸짓
   $effect(() => {
     const el = previewEl;
     if (!el) return;
@@ -1303,7 +1015,6 @@
     };
   });
 
-  // 미리 보기 내용의 크기가 바뀌었다 — 맞춰 둔 절이 있으면 그림 틀에 한 번 다시 그 절로
   $effect(() => {
     const el = previewPageEl;
     if (!el) return;
@@ -1322,7 +1033,7 @@
     if (realignFrame) cancelAnimationFrame(realignFrame);
   });
 
-  // 커서 절 제목의 옅은 판 — 다시 그리면 제목 요소가 새로 설 수 있어 그릴 때마다 다시 단다
+  // 다시 그리면 제목 요소가 새로 설 수 있어 그릴 때마다 다시 단다
   $effect(() => {
     const el = previewEl;
     const slug = cursorSlug;
@@ -1337,7 +1048,6 @@
     );
   });
 
-  /** 미리 보기 속 문서 링크 — `#절` 은 미리 보기 상자 안에서, 경로는 읽기 보기와 같이 상위로 */
   function openPreviewDocLink(href: string) {
     const c = classifyDocHref(href);
     if (c.kind === "anchor") {
@@ -1370,7 +1080,6 @@
     if (r !== null) onsplit?.(r);
   }
 
-  /** 경계의 ←/→ — 한 번에 5%p (포커스한 경계만의 몸짓 — 전역 단축키가 아니다) */
   function splitKey(ev: KeyboardEvent) {
     const step = ev.key === "ArrowLeft" ? -0.05 : ev.key === "ArrowRight" ? 0.05 : 0;
     if (step === 0) return;
@@ -1378,12 +1087,10 @@
     onsplit?.(clampDocSplit(splitRatio + step));
   }
 
-  // ── 글자 크기 ────────────────────────────────────────────────────────────
+  // ── 글자 크기 ──
 
-  // mermaid 가 배율이 바뀌면 둘레 글자 크기로 다시 그리게 — 값은 CSS 변수가 옮긴다
   provideDocZoom(() => zoom);
 
-  /** 바꾸기 직전 스크롤 상자의 읽던 자리(비율) — 배율이 들어온 뒤 같은 비율로 되놓는다 */
   let zoomAnchor: { el: HTMLElement; ratio: number } | null = null;
 
   function setZoom(next: number) {
@@ -1393,8 +1100,7 @@
     onzoom?.(next);
   }
 
-  // 배율이 들어왔다(처음 그림 포함) — 글이 다시 흐른 뒤 읽던 자리로 · 편집기는 다시 잰다. 목차 지금 절 · 미리 보기 맞추기 ·
-  // mermaid 맞춤 폭은 각자의 `ResizeObserver` 가 내용 크기 변화로 잡는다
+  // 목차 지금 절 · 미리 보기 맞추기 · mermaid 맞춤 폭은 각자의 `ResizeObserver` 가 내용 크기 변화로 잡는다
   $effect(() => {
     void zoom;
     untrack(() =>
@@ -1407,15 +1113,7 @@
     );
   });
 
-  /**
-   * `Ctrl+휠` — 굴린 양을 모아 한 눈금마다 한 단계(mermaid 확대와 같은 셈 — 터치패드 집기가 끝까지 튀지 않게). 다이어그램
-   * 위면 `MermaidView` 가 이미 막았다(`defaultPrevented`) — 그 확대가 먼저다. 수동 등록인 까닭: `preventDefault` 를 하려면
-   * passive 가 아니어야 한다(웹뷰 확대 단축키는 꺼져 있지만 페이지 스크롤은 막아야 한다).
-   */
-  /**
-   * 본문 상자의 높이 — 확대한 mermaid 상자의 높이 상한(그 80%)을 CSS 변수 `--doc-mmd-max` 로 내려 준다. `70vh` 는 창 기준이라
-   * 짧은 타일에서는 상자가 타일보다 커져 다이어그램 안을 미는 것과 문서를 미는 것이 엉켰다. 못 쟀으면 `MermaidView` 의 70vh
-   */
+  /** 확대한 mermaid 상자의 높이 상한(본문 높이의 80%) — `70vh` 는 창 기준이라 짧은 타일에서 다이어그램 밀기와 문서 밀기가 엉킨다 */
   let bodyH = $state(0);
   $effect(() => {
     const el = bodyEl;
@@ -1426,6 +1124,7 @@
   });
   const mermaidMax = $derived(bodyH > 0 ? `${Math.round(bodyH * 0.8)}px` : null);
 
+  // `Ctrl+휠` — 한 눈금마다 한 단계(터치패드 집기가 끝까지 튀지 않게). passive 가 아니어야 `preventDefault` 로 페이지 스크롤을 막는다
   const ZOOM_WHEEL_STEP = 50;
   let zoomWheelAcc = 0;
   $effect(() => {
@@ -1448,7 +1147,7 @@
   const LINE_PX = 40;
 
   function onkeydown(ev: KeyboardEvent) {
-    // 편집 중 `Ctrl+S` — 편집기 안이면 편집기가 이미 잡았다(`defaultPrevented`). 도구줄 · 띠에 포커스가 있어도 저장
+    // 편집기 안이면 편집기가 이미 잡았다(`defaultPrevented`) — 도구줄 · 띠에 포커스가 있어도 저장
     if (dc.editing && !ev.defaultPrevented && ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey && ev.code === "KeyS") {
       ev.preventDefault();
       void dc.save();
@@ -1493,10 +1192,6 @@
     }
     if (handled) ev.preventDefault();
   }
-  // 타일 제목줄 개편(2026-10-20) — 머리줄이 서 있으면 이 도구줄이 머리줄 가운데로 올라가 한 줄이 된다(`pane/pane-tools.svelte.ts`).
-  // 머리줄이 없으면(설정 `tile_header` · 폰) 예전처럼 몸 맨 위에 그린다. 스니펫이라 어디에 그려지든 이 화면의 상태 · 단축키가 그대로다.
-  // 외부 열기(기본 앱으로 열기 · 외부 편집기로 편집)는 머리줄에서는 도구줄이 아니라 타일 ⋯ 의 [경로 복사] 위 줄이다(`fileMenu` · `run` — 2026-11-19 사용자).
-  // ⋯ 에 도구 줄이 얹히는 것은 머리줄이 서 있을 때뿐이라, 몸 위 도구줄은 예전 단추를 그대로 그린다(`DocToolbar` 의 `!head` 갈래).
   const inHead = $derived(!!paneId && paneHeadShown(paneId));
   $effect(() => {
     const id = paneId;
@@ -1512,15 +1207,8 @@
       },
     });
   });
-  // 머리줄 ④판(10-20): 왼쪽 곁 패널 토글은 이름 뒤(`tail`)다 — 2026-11-19 부터 파일 토글(그 앞은 목차 토글이었다). 좁은 타일의 드롭다운 단추도
-  // 같은 `tail` 자리다(10-20 실기 — 넓음 ↔ 좁음에 단추가 튀지 않게). 목차 토글은 도구줄 맨 끝(새로고침 뒤 — `DocToolbar`)이다.
-  // 왼쪽 패널이 열리면 왼쪽 무리가 패널 경계까지를 쥐던 규칙(`span` — 문서 도구가 본문 열 위에서 시작)은 2026-11-19 에 걷었다(사용자 — 오른쪽
-  // 곁 패널과 맞춘다). 토글은 패널을 여닫아도 제자리에 서 있고, 문서 도구는 늘 왼쪽 무리 바로 뒤에서 시작한다(`pane/head-span` 머리말).
 </script>
 
-<!-- 파일 곁 패널(왼쪽) 토글 — 머리줄 안이면 이름 뒤의 테두리 없는 아이콘 단추(쿼리 타일의 트리 토글과 같은 결 — `inhead`), 몸 위 줄이면 도구줄
-     맨 앞의 예전 단추. 그림은 왼쪽 패널(`side-panel`). 눌림은 "보이는가"(`layout.filesShown`) — 켜지면 어느 줄이든 목차 토글과 같은 강조 면
-     (몸 위 줄은 `.on`, 머리줄 안은 `aria-pressed` — 아래 "곁 패널 단추의 켬") -->
 {#snippet filesToggle(head: boolean)}
   <button
     type="button"
@@ -1534,8 +1222,6 @@
   >
 {/snippet}
 
-<!-- 좁은 타일의 파일 드롭다운 단추 — 토글과 **같은 그림**(`side-panel`)에 ▾. 머리줄 안이면 토글과 같은 자리(이름 뒤 `tail`) · 같은 결이라
-     넓음 ↔ 좁음 전환에 단추가 튀지 않는다. 몸 위 줄이면 도구줄 맨 앞 -->
 {#snippet filesDropButton(head: boolean)}
   <button
     type="button"
@@ -1551,8 +1237,6 @@
   >
 {/snippet}
 
-<!-- 목차 곁 패널(오른쪽) 토글 — 도구줄 맨 끝(새로고침 뒤)의 도구줄 단추. 그림은 오른쪽 패널(`preview` — 파일 타일의 미리 보기 패널과 같은
-     "오른쪽 패널을 여닫는다" 그림). 제목이 없으면 흐린 채 서서 툴팁이 까닭을 말한다. 눌림은 "보이는가"(`layout.outlineShown`) -->
 {#snippet outlineToggle()}
   <button
     type="button"
@@ -1567,8 +1251,6 @@
   >
 {/snippet}
 
-<!-- 좁은 타일의 목차 드롭다운 단추 — 토글과 **같은 그림**(`preview`)에 ▾ 를 붙인 것(지금 절 이름은 글자로 두지 않고 말풍선에만 — 10-20 사용자,
-     DB 타일 트리 드롭다운과 같은 꼴). 토글과 같은 자리(도구줄 맨 끝)라 넓음 ↔ 좁음 전환에 단추가 튀지 않는다. 상자는 단추 오른쪽 변에 맞춘다 -->
 {#snippet outlineDropButton()}
   <button
     type="button"
@@ -1584,17 +1266,12 @@
   >
 {/snippet}
 
-<!-- 이름 뒤 조각(머리줄이 그린다) — 넓은 타일은 파일 토글(패널을 여닫아도 이름 바로 뒤 그대로 — 2026-11-19), 좁은 타일은 같은 자리의 드롭다운 단추 -->
 {#snippet docTail()}
   {#if filesSlot}
     {#if layout.narrow}{@render filesDropButton(true)}{:else}{@render filesToggle(true)}{/if}
   {/if}
 {/snippet}
 
-<!-- 도구줄 — 머리줄이 서 있으면 머리줄 가운데(`head` = 참)에, 아니면 몸 맨 위에 그린다(위 `inHead` · `pane/pane-tools.svelte.ts`).
-     머리줄 안에서 포커스 밖이면 조작 단추(`data-head-act`)는 접히고 글자 크기 · 미리 보기 핀 · 저장 표시(● · 저장됨)는 남는다
-     ("늘 보임 / 드러날 때만"). 머리줄 안에는 외부 열기 단추가 없다 — 타일 ⋯ 의 [경로 복사] 위 줄이 쥔다(위 `setPaneTools` 의 `fileMenu`). 미리 보기 핀은 누르면 고정하는 단추지만 "다음 파일이 이 칸을 갈아 끼운다" 를 말하는 표지라 남긴다.
-     **경로 글자는 없다**(10-20 사용자) — 이름은 머리줄이 말하고, 전체 경로는 타일 ⋯ 의 [경로 복사] 줄이 말풍선으로 보여 주고 복사한다 -->
 {#snippet docBar(head: boolean)}
   <DocToolbar
     {head}
@@ -1645,10 +1322,6 @@
   />
 {/snippet}
 
-<!--
-  `tabindex="-1" data-tile-focus` — 이 상자가 **타일의 키보드 몸**이다 (`routeTileFocus` 가 여기 포커스를 준다).
-  탭 순회에는 끼지 않는다.
--->
 <div
   class="doc"
   role="presentation"
@@ -1659,14 +1332,8 @@
   style:--doc-mmd-max={mermaidMax}
   {onkeydown}
 >
-  <!--
-    도구줄 단추는 **아이콘만**이다 — 이름은 툴팁 · `aria-label`(같은 글)이고, 부연 설명은 두지 않는다. 툴팁이 이름과
-    다른 것은 **비활성 까닭**뿐이다(편집 불가 · 목차 없음). **[고정] 핀**은 미리 보기에서 강조 없이 서고(임시임은
-    이름의 기울임이 말한다) 고정되면 강조 면(`.on`)이 된다. 다른 조작처럼 포커스 밖에서는 접힌다(`data-head-act`). 좁은 타일(`layout.narrow`)에서는 파일 · 목차가 드롭다운으로 바뀐다.
-  -->
   {#if !inHead}{@render docBar(false)}{/if}
 
-  <!-- 문서 안 검색 띠 — 열기는 `openFind`(앱의 `find` 액션), 닫으면 키보드는 본문으로 -->
   <DomFindBar
     bind:this={finder}
     root={compare !== null ? compareEl : bodyEl}
@@ -1676,8 +1343,6 @@
   />
 
   {#if fc.drop}
-    <!-- 좁은 타일의 파일 드롭다운 — 목차 드롭다운과 같은 상자 · 같은 닫기 몸짓(바깥 누르기 · 우클릭 · Esc). 파일 줄은 메뉴 통로를 지난다
-         (`fc` 의 `onpick`), 폴더 줄은 닫지 않고 그 안에서 들어간다 -->
     <button
       type="button"
       class="menu-backdrop"
@@ -1723,7 +1388,6 @@
       style:width={`${oc.outlineDrop.w}px`}
       style:max-height={`${oc.outlineDrop.maxH}px`}
     >
-      <!-- 항목은 메뉴 통로를 지난다 — 고른 줄을 먼저 쥐고, 닫고, 간다 -->
       <DocOutline
         items={oc.outlineItems}
         current={oc.curIdx}
@@ -1734,14 +1398,12 @@
     </div>
   {/if}
 
-  <!-- 편집 중 띠 — 충돌 · 디스크 바뀜(같은 문구, 단추만 다르다) · 저장 못 함(글은 그대로 — 복사는 된다) -->
   {#if dc.editing && dc.bands.band}
     {@const band = dc.bands.band}
     {#if band.kind === "conflict" || band.kind === "changed"}
       <p class="banner wait" role="alert">
         <span class="err-text">{t("files.doc.conflict")}</span>
         <span class="acts">
-          <!-- [비교] — 디스크를 따로 읽어 내 편집과 나란히(읽기 전용). 비교 보기가 서 있어도 다시 누르면 새로 읽는다 -->
           <button
             type="button"
             class="retry primary"
@@ -1750,7 +1412,6 @@
             onclick={() => void openCompare()}
             >{compareBusy ? t("files.doc.compare.busy") : t("files.doc.compare")}</button
           >
-          <!-- 띠의 단추를 누르면 비교 보기는 닫힌다(포커스는 옮기지 않는다 — 다시 불러오기는 새 편집기가 가져간다) -->
           <button
             type="button"
             class="retry"
@@ -1796,7 +1457,6 @@
     {/if}
   {/if}
 
-  <!-- 배너 둘은 뜻이 다르다 — 기다리면 돌아온다(대기) · 돌아오지 않는다(원본 없음). 파일 브라우저와 같은 문구 -->
   {#if sourceGone}
     <p class="banner gone">{t("files.browser.source.gone")}</p>
   {:else if offline}
@@ -1805,7 +1465,6 @@
     </p>
   {/if}
 
-  <!-- 다른 창에서 옮겨 온 저장 안 한 글 — 편집기에 들이기 전(읽는 중 · 막힘). 들일 수 있게 되면 저절로 편집으로 이어지고 띠는 사라진다 -->
   {#if heldDraft && !dc.editing}
     <p class="banner {draftBlock === 'wait' || draftBlock === 'offline' || draftBlock === null ? 'wait' : 'err'}" role="alert">
       <span class="err-text">{t(`files.doc.draft.${draftBlock ?? "wait"}`)}</span>
@@ -1830,8 +1489,7 @@
 
   {#if dc.file && !dc.file.binary}
     {#if dc.file.truncated}
-      <!-- 두 수를 같은 형식기로 — 단위가 섞이면("2 MiB · 2.4MB") 비교가 안 된다. 형식기는 파일 목록의 것
-           (`formatSize` — "4.1 MB")이 정본이다: 문서는 파일 타일에서 열리고, 두 화면이 나란히 선다 -->
+      <!-- 두 수를 같은 형식기(`formatSize`)로 — 단위가 섞이면 비교가 안 된다 -->
       <p class="band">
         {t("files.doc.truncated", { shown: formatSize(TEXT_VIEW_MAX_BYTES), size: formatSize(dc.file.size) })}
       </p>
@@ -1844,10 +1502,8 @@
     {/if}
   {/if}
 
-  <!-- 본문 줄 — `[파일 | 본문 | 목차]`(보이는 것은 `layout`). `.md-page` 의 가운데 배치는 남은 폭 안에서다 -->
   <div class="content" style:--files-w="{DOC_FILES_PANEL_W}px" style:--outline-w="{DOC_OUTLINE_PANEL_W}px">
     {#if layout.filesShown}
-      <!-- `<nav aria-label=파일>` 은 `DocFiles` 가 제 뿌리로 그린다 — 여기는 폭 · 경계선 · 여닫는 움직임(바깥 상자만 자란다 — 위 "곁 패널") -->
       <div class="files-panel" transition:sidePanelGrow={{ motion: panelMotion, key: PANEL_MOTION }}>
         <div class="side-inner">
           <DocFiles {fc} variant="panel" />
@@ -1857,7 +1513,6 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="body" class:md={rendered} bind:this={bodyEl} oncontextmenu={onBodyContextMenu}>
       {#if dc.editing && dc.file}
-        <!-- 편집 면 — 편집기 · 경계 · 미리 보기(`doc/DocEditPane.svelte`). 손에 쥘 넷은 `bind:` 로 돌아온다 -->
         <DocEditPane
           bind:editor
           bind:splitEl
@@ -1893,7 +1548,6 @@
           covered={compare !== null}
         />
         {#if compare !== null}
-          <!-- 띠의 [비교] — 편집 면을 가리기만 한다(편집기는 위에 숨은 채 산다). 좁은 타일은 한 칸 -->
           <DocCompareView bind:scrollEl={compareEl} result={compare} wide={wideEdit} onback={() => closeCompare(true)} />
         {/if}
       {:else if dc.file === null}
@@ -1950,13 +1604,12 @@
 </div>
 
 <style>
-  /* 타일을 꽉 채운다 — 파일 브라우저와 같은 바탕(합성된 패널 색) */
   .doc {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    /* 글래스 크롬 타일이면 판(흐림 + `--glass-mid`)은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명 · `PaneHost`) */
+    /* 글래스 크롬 타일이면 판은 타일 상자가 한 번 칠한다 — 여기는 `--tile-inner`(투명) */
     background: var(--tile-inner, var(--bg-panel));
     color: var(--fg);
     font-family: var(--font-ui);
@@ -1966,10 +1619,7 @@
     outline: none;
   }
 
-  /*
-   * 머리줄 안의 파일 토글(④판 — 이름 뒤 `tail` · 2026-11-19 전에는 목차 토글이 이 자리였다) — 쿼리 타일의 트리 토글(`QueryView` 의 `.tree-toggle.inhead`)과 같은 결: 테두리 없이 아이콘만, 호버 · 누르는
-   * 순간 옅은 판(24px). 머리줄 왼쪽 무리의 칸이라 포커스 밖에서 접힐 때 지울 앞 간격 = 머리줄 `gap`(`--head-act-gap` — `PaneHeader` "드러냄" 절).
-   */
+  /* 포커스 밖에서 접힐 때 지울 앞 간격 = 머리줄 `gap`(`--head-act-gap` — `PaneHeader` "드러냄" 절) */
   .side-toggle.inhead {
     flex: 0 0 auto;
     display: flex;
@@ -2042,7 +1692,6 @@
     cursor: default;
   }
 
-  /* 아이콘만 선 단추 — 정사각 한 크기(그림 + ▾ 의 드롭다운 단추만 이 밖이다 — `.btn.side-drop`) */
   .btn.ico {
     width: 24px;
     height: 24px;
@@ -2059,13 +1708,11 @@
     cursor: default;
   }
 
-  /* 켜진 토글(목차 · 원문 보기 · 편집 보기 · 스크롤 맞추기) — 파일 타일 도구줄(`.bar-btn.on`)과 같은 말: 강조 면 하나 */
   .btn.on {
     color: var(--fg);
     background: var(--accent-soft);
   }
 
-  /* 좁은 타일 — 문구 옆에 단추가 들어갈 자리가 없으면 단추(무리)가 문구 아래 줄로 내려간다(`.err-text` 의 바탕 폭 · `.acts`) */
   .banner,
   .band {
     display: flex;
@@ -2080,37 +1727,29 @@
     border-bottom: 1px solid var(--border);
   }
 
-  /* 기다리면 돌아온다 — 경고(앰버) */
   .banner.wait {
     color: var(--warn);
     background: var(--warn-soft);
   }
 
-  /* 돌아오지 않는다 · 실패 */
   .banner.gone,
   .banner.err {
     color: var(--err);
     background: var(--err-soft);
   }
 
-  /* 알림 띠(잘림 · 대체 문자 · 강조 끔) — 고장이 아니라 사정이다: 흐린 글자 */
   .band {
     color: var(--fg-2);
     background: var(--surface-hover);
   }
 
-  /*
-   * 문구 — 바탕 폭(16em)을 두어 줄 나눔이 "문구 16em + 단추" 가 한 줄에 드는가로 정해지게 한다. 들면 지금처럼 한 줄(문구가 남는 폭을
-   * 채운다), 안 들면 단추가 아래 줄로 가고 문구는 한 줄을 다 쓴다. 바탕 폭 없이(`auto`) 줄지 않게만 하면 긴 문구가 넓은 타일에서도
-   * 단추를 밀어 내리고, 줄 나눔 없이 줄게만 두면 `overflow-wrap: anywhere` 탓에 한 글자 폭까지 눌린다(긴 경로 · 오류 글을 꺾으려 둔 값).
-   */
+  /* 바탕 폭 16em — 없으면 긴 문구가 넓은 타일에서도 단추를 밀어 내리고, 줄게만 두면 `overflow-wrap: anywhere` 탓에 한 글자 폭까지 눌린다 */
   .err-text {
     flex: 1 1 16em;
     min-width: 0;
     overflow-wrap: anywhere;
   }
 
-  /* 단추 무리 — 아래 줄로 갈 때 한 덩이로 간다. 그 줄에서도 넘치면 안에서 줄을 바꾼다 */
   .acts {
     display: flex;
     flex-wrap: wrap;
@@ -2140,7 +1779,6 @@
     cursor: default;
   }
 
-  /* 띠의 먼저 볼 단추([비교]) — 강조색 채움 */
   .retry.primary {
     color: var(--on-accent);
     background: var(--accent);
@@ -2151,20 +1789,13 @@
     background: var(--accent-hover);
   }
 
-  /*
-   * 본문 — 코드 보기는 `CodeView`(fill)가 스스로 스크롤하므로 여기는 넘치지 않게만 잡고, 그린 마크다운은
-   * 이 상자가 세로로 민다. 글은 고를 수 있다(선택 + Ctrl+C).
-   */
   .content {
     display: flex;
     flex: 1 1 auto;
     min-height: 0;
   }
 
-  /*
-   * 곁 패널 — 폭 고정(`--files-w` · `--outline-w` = `doc-side-panels.ts` 의 `DOC_FILES_PANEL_W` · `DOC_OUTLINE_PANEL_W` — `.content` 가 받는다),
-   * 목록은 제 상자에서 민다. 경계선(1px = `DOC_PANEL_LINE_W`)은 본문 쪽 변이다: 파일은 오른쪽 · 목차는 왼쪽
-   */
+  /* 폭 = `doc-side-panels.ts` 의 `DOC_FILES_PANEL_W` · `DOC_OUTLINE_PANEL_W`, 경계선 1px = `DOC_PANEL_LINE_W` */
   .files-panel {
     flex: 0 0 var(--files-w);
     width: var(--files-w);
@@ -2181,10 +1812,7 @@
     border-left: 1px solid var(--line);
   }
 
-  /*
-   * 패널 안쪽 — 늘 제 폭(패널 폭)이라 여닫는 움직임(`sidePanelGrow` 가 바깥 상자의 폭만 키운다) 동안 줄이 다시 흐르지 않고 잘려 보인다.
-   * 파일 패널은 왼쪽에서 나오는 서랍이라 안쪽을 오른쪽 변(본문 쪽)에, 목차 패널은 오른쪽 서랍이라 왼쪽 변(본문 쪽)에 붙인다
-   */
+  /* 안쪽은 늘 패널 폭 — 여닫는 동안(`sidePanelGrow` 는 바깥 폭만 키운다) 줄이 다시 흐르지 않는다 */
   .files-panel,
   .outline-panel {
     display: flex;
@@ -2209,7 +1837,6 @@
     min-height: 0;
   }
 
-  /* 좁은 타일의 드롭다운(파일 · 목차) — 높이 상한은 자리 셈이 준다, 목록이 그 안에서 민다 */
   .files-pop,
   .outline-pop {
     position: fixed;
@@ -2220,7 +1847,6 @@
     overflow: hidden;
   }
 
-  /* 몸 위 줄 · 도구줄의 드롭다운 단추(그림 + ▾) — 아이콘 단추 줄과 같은 높이. 글자가 없어 줄지 않는다 */
   .btn.side-drop {
     flex: 0 0 auto;
     height: 24px;
@@ -2228,12 +1854,9 @@
     padding: 0 5px;
   }
 
-  /*
-   * 머리줄 안의 파일 드롭다운 단추(좁은 타일 — 이름 뒤 `tail`). 넓은 타일의 `.side-toggle.inhead` 와 같은 결 · 높이이고, 왼쪽 안쪽 여백을
-   * (24 − 14) / 2 = 5px 로 두어 아이콘이 토글의 아이콘과 같은 x 에 선다. 지금 폴더 이름은 말풍선에만 있다.
-   */
+  /* 왼쪽 안쪽 여백 (24 − 14) / 2 = 5px — 아이콘이 토글의 아이콘과 같은 x 에 선다 */
   .side-drop.inhead {
-    /* 글자 없이 그림 둘(패널 · ▾)이라 줄지 않는다 — 줄면 ▾ 부터 잘린다(10-20) */
+    /* 줄면 ▾ 부터 잘린다 */
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -2272,11 +1895,7 @@
     outline-offset: -2px;
   }
 
-  /*
-   * 곁 패널 단추의 켬 — 패널이 보인다(`aria-pressed`) · 드롭다운이 열려 있다(`aria-expanded`). 목차 토글의 `.btn.on` 과 같은 강조 면 하나다 — 머리줄 안이든
-   * 몸 위 줄이든, 토글이든 드롭다운 단추든(2026-11-19 사용자 — 문서 · DB 타일의 곁 패널 단추는 한 규칙 · 쿼리 타일의 트리 단추도 같다). 크기 · 모서리는
-   * 각 단추의 것(24px · `--radius-sm`)이 이미 같다. 호버가 덮는 것도 `.btn.on` 과 같다
-   */
+  /* `.btn.on` 과 같은 강조 면 — 문서 · DB 타일의 곁 패널 단추는 한 규칙이다 */
   .side-toggle.inhead[aria-pressed="true"],
   .side-drop[aria-expanded="true"] {
     color: var(--fg);
@@ -2295,19 +1914,15 @@
     overflow: auto;
   }
 
-  /* 읽는 폭은 920px 까지 — 타일이 더 넓으면 양옆을 비워 가운데 둔다 */
   .md-page {
     max-width: 920px;
     margin: 0 auto;
     padding: var(--space-4) var(--space-5);
-    /* 글자 크기 배율(`--doc-zoom` — 위 "글자 크기"). 읽는 폭 상한은 그대로라 크게 하면 한 줄에 드는 글자가 준다 */
     font-size: calc(var(--t-sm) * var(--doc-zoom, 1));
     line-height: 1.6;
     color: var(--fg-1);
   }
 
-  /* "이 줄로" 의 블록 강조 — 커서 절 강조(`.sync-hl`)와 같은 둥근 판이되 선택 줄 색(`--accent-soft`), 2초에 걸쳐 사라진다.
-     판을 가진 블록(코드 · 표)은 제 판이 덮으므로 바깥 고리(그림자)로도 보인다. 움직임 줄이기면 전환 없이 있다가 걷힌다 */
   .md-page :global(.line-flash) {
     border-radius: var(--radius);
     animation: doc-line-flash 2s ease-out forwards;

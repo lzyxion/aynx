@@ -1,15 +1,5 @@
 <script lang="ts">
-  /**
-   * **추론 강도 가로 게이지**(2026-11-13 — 사이드 채팅 모델 메뉴 · 목업 D2) — AI 권한 게이지(`AiGauge`)와 같은 손: 왼쪽 작은 고리 = "Default"
-   * (CLI 가 정한다), 오른쪽 같은 폭 칸 = 강도 단계(낮은 것부터 — 수 · 이름은 부르는 쪽이 준다: CLI · 모델마다 다르다). 지금 단계까지 차고
-   * (`--control-on-bg`), 고른 칸에 고리 표시 · 그 아래 이름이 굵다. 위 오른쪽에 지금 이름.
-   *
-   * 자리 하나 = 단추 하나(`role="radio"` — 칸과 그 아래 이름이 한 단추). 묶음은 `radiogroup`, ←→ 로 고른다(끝에서 돌지 않는다 —
-   * `gaugeKeyStep`) · Tab 에는 고른 단추 하나만 걸린다. 고르는 규칙은 모른다 — `onpick(강도)` 만 올린다.
-   *
-   * `noDefault`(AI 타일 대화 면의 모델 메뉴 — 목업 E3): 왼쪽 "Default" 고리가 없고 단계 칸만 선다(그 CLI 의 `/effort` 에 "기본" 이 없다).
-   * 지금 값이 단계 밖이면(모름) 아무 칸도 고르지 않은 채다.
-   */
+  /** `noDefault`(AI 타일 대화 면) — 그 CLI 의 `/effort` 에는 "기본" 이 없어 왼쪽 Default 고리를 세우지 않는다 */
   import { tick } from "svelte";
   import { gaugeKeyStep } from "$lib/ai-gauge";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -22,29 +12,25 @@
     noDefault = false,
     onpick,
   }: {
-    /** 강도 단계(낮은 것부터 · "Default" 는 빼고) */
+    /** 낮은 것부터 · "Default" 는 빼고 */
     levels: readonly string[];
-    /** 지금 강도(`""` = Default) */
+    /** `""` = Default */
     value: string;
     nameOf: (effort: string) => string;
-    /** 폰 — 단추 44px */
     touch?: boolean;
-    /** "Default" 고리 없이 단계 칸만(AI 타일 대화 면) */
     noDefault?: boolean;
     onpick: (effort: string) => void;
   } = $props();
 
-  /** 자리 — 0 = Default, 1.. = 단계(`noDefault` 면 0.. = 단계 · 모르면 -1) */
+  /** 0 = Default · `noDefault` 면 0 부터 단계이고 모르면 -1 */
   const stops = $derived(noDefault ? [...levels] : ["", ...levels]);
   const at = $derived(noDefault ? stops.indexOf(value) : Math.max(0, stops.indexOf(value)));
-  /** 고리 칸이 있는가 — 그 칸이 0 번 */
   const ring = $derived(!noDefault);
   const labelId = `effort-${Math.random().toString(36).slice(2, 8)}`;
 
   let group = $state<HTMLElement | null>(null);
   const buttons: HTMLButtonElement[] = $state([]);
 
-  // 값이 바뀌면 포커스가 이 묶음 안에 있을 때만 고른 단추로(라디오 묶음의 "포커스가 선택을 따라간다")
   $effect(() => {
     const i = at;
     const g = group;
@@ -142,7 +128,6 @@
     color: var(--control-sel-fg);
   }
 
-  /* 첫 칸(Default 고리)은 고정 폭, 나머지는 같은 폭 */
   .track {
     display: grid;
     grid-template-columns: 44px repeat(var(--eg-n), minmax(0, 1fr));
@@ -209,7 +194,6 @@
     background: var(--control-on-bg);
   }
 
-  /* 고른 칸 — 틈을 둔 글자색 고리(목업 D2 의 표시 · 판 색을 몰라도 되게 outline) */
   .seg.on {
     outline: 1.5px solid var(--fg-1);
     outline-offset: 2px;
@@ -254,7 +238,7 @@
     color: var(--fg-1);
   }
 
-  /* 고른 칸 이름은 색만 바꾼다 — 굵게 하면 칸이 여섯일 때 "Medium" 이 넓어져 말줄임으로 잘렸다(2026-11-14). 이름은 머리 오른쪽에 굵게 따로 있다 */
+  /* 굵게 하지 않는다 — 칸이 여섯일 때 "Medium" 이 넓어져 말줄임으로 잘린다 */
   .lv.on .tick {
     color: var(--fg-1);
   }

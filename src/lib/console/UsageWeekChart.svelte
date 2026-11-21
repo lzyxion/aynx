@@ -1,11 +1,5 @@
 <script lang="ts">
-  /**
-   * **최근 7일 · 모델별 토큰** — 날마다 쌓은 세로 막대 (docs/log/2026-09-26-agent-usage.md "사용량 칸").
-   *
-   * 일주일 합으로 위 네 모델이 제 조각을 갖고 나머지는 "기타"(회색). 빛깔은 에이전트마다 한 빛깔(Claude 테라코타 ·
-   * Codex 거의 흰 회색 — theme.css `--agent-*`)이고 같은 에이전트의 모델은 밝기로 가른다. 아주 작은 날도 보이게
-   * 막대에 바닥 높이를 둔다. 막대에 포인터를 얹거나 포커스하면 그날의 모델별 줄이 뜬다. 오늘 열은 글자가 진하다.
-   */
+  /** 최근 7일 · 모델별 토큰 — 날마다 쌓은 세로 막대 */
   import { formatTokens } from "$lib/agent-usage";
   import { barHeight, monthDay, shortModel, weekdayName, OTHER_KEY, type WeekChart } from "$lib/usage-board";
   import { locale, t } from "$lib/i18n/i18n.svelte.js";
@@ -114,7 +108,7 @@
     white-space: nowrap;
   }
 
-  /* 막대가 서는 자리 — 숫자와 요일을 뺀 높이(막대의 % 는 이 높이의 %) */
+  /* 막대의 % 는 이 높이(숫자와 요일을 뺀 것)의 % 다 */
   .track {
     flex: 1;
     min-height: 0;
@@ -122,7 +116,6 @@
     align-items: flex-end;
   }
 
-  /* 쌓은 막대 — 조각은 위에서 아래로 토큰 순(column-reverse 로 큰 것이 바닥) */
   .stack {
     display: flex;
     flex-direction: column-reverse;

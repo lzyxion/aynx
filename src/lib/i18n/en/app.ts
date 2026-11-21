@@ -1,16 +1,8 @@
 import type { app as koApp } from "$lib/i18n/ko/app";
 
 /**
- * `app` namespace — English. Glossary lives in `en/settings.ts`.
- *
- * Sentence case, concise. Terms follow the glossary: window · tab · tile ·
- * session · host · layout · dock · status bar · command palette · dashboard ·
- * favorites · broadcast input · privacy lock.
- *
- * Sentences with markup in the middle are split into numbered pieces
- * (`…lead.1` · `…lead.term` · `…lead.2` …). The **order of the pieces is fixed
- * by the markup**, so English changes the wording of a piece, never its slot —
- * and no piece may be empty (`i18n.test.ts` checks that).
+ * `app` namespace — English. Sentence case; terms follow the glossary in `en/settings.ts`.
+ * Numbered pieces (`…lead.1` · `…lead.term` · `…lead.2`) are ordered by the markup — change the wording, never the slot.
  */
 export const app: Record<keyof typeof koApp, string> = {
   // ── Shared modal buttons ──────────────────────────────────────────────────
@@ -29,7 +21,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "splash.aria": "Starting",
   "toast.dismiss": "Dismiss notification",
 
-  // ── Review card (bottom centre; approve/reject in place) ─────────────────
+  // ── Review card ──
   "review.label": "Awaiting review",
   "review.db.via": "via SSH {host}",
   "review.db.max": "Max affected rows {n} · {count} statements",
@@ -113,11 +105,11 @@ export const app: Record<keyof typeof koApp, string> = {
   "review.expand": "Expand",
   "review.autoRefused": "Not auto-approved",
 
-  // OS notification for a review request — only while the window is not in front.
+  // OS notification for a review request
   "review.notify.one": "Awaiting approval: {headline} · {n} targets",
   "review.notify.many": "{n} plans awaiting approval",
 
-  // Run-result notifications (2026-09-28)
+  // Run-result notifications
   "opnotify.title": "A task plan finished running",
   "opnotify.kind": "Task plan run",
   "opnotify.auto": "Auto-approved",
@@ -209,8 +201,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "remoteReauth.what.set_session_ai_read": "Allow AI to read this tile",
   "veil.gate.title": "Locked",
   "veil.gate.label": "Master password",
-  // The two hint lines ("leave it empty and press Enter") are gone — the locked screen must
-  // not tell a passer-by that an empty Enter opens it (see `Veil.svelte`).
+  // The locked screen must not tell a passer-by that an empty Enter opens it (see `Veil.svelte`).
   "veil.gate.wrong": "That master password does not match.",
   "veil.gate.open": "Open",
   "veil.sessions.running": "Running {n}",
@@ -219,7 +210,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "veil.sessions.none": "No open sessions",
 
   // ── Icon picker ───────────────────────────────────────────────────────────
-  // Icon · color fields — host form · folder dialog · project form (`IconColorFields.svelte`)
+  // Icon · color fields
   "iconcolor.icon": "Icon",
   "iconcolor.icon.placeholder": "Find by name or type an emoji",
   "iconcolor.icon.reset.aria": "Clear icon",
@@ -319,7 +310,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "notify.ago.days": "{n}d ago",
 
   // ── Dock ──────────────────────────────────────────────────────────────────
-  // ── Unified dock (2026-10-18) ──────────────
+  // ── Unified dock ──
   "dock.title.alerts": "Alerts",
   "dock.tools.aria": "App buttons",
   "dock.tool.reload": "Reload",
@@ -408,7 +399,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "chatDock.section.plansPending": "Task plans · {n} awaiting approval",
   "chatDock.pin": "Pin",
   "chatDock.unpin": "Unpin",
-  // Side chats (2026-10-23 — step 2 · ChatDock.svelte)
+  // Side chats
   "chatDock.untitled": "New chat",
   "chatDock.notify.finished": "‘{title}’ finished answering",
   "chatDock.notify.failed": "‘{title}’ failed to answer",
@@ -429,7 +420,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "chatDock.unseen": "New reply",
   "chatDock.permission": "Asking for permission",
   "chatDock.cliDefault": "Default",
-  // The [+] inside the composer line (2026-11-13 — image · tile link · MCP) · the model menu
+  // The [+] inside the composer line · the model menu
   "chatDock.plus": "Upload file · tile link · MCP",
   "chatDock.plus.link": "Link a tile",
   "chatDock.plus.mcp": "MCP",
@@ -450,7 +441,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "chatDock.gate.starting": "Starting {cli}…",
   "chatDock.gate.ended": "The CLI has exited",
   "chatDock.gate.restart": "Restart",
-  // Side chat v2 (2026-10-23 — structured mode · SideChatFace.svelte · app/side-chat-live)
+  // Side chat — structured mode
   "chatDock.convo.aria": "Chat conversation",
   "chatDock.convo.empty": "Ask anything.",
   "chatDock.chip.untested": "Untested CLI version ({v}) — it may behave differently",
@@ -594,7 +585,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "dock.dot.place": "{place} — {fact}",
   "dock.dot.entrance.hosts": "Hosts: agent waiting for permission · finished",
   "dock.dot.entrance.projects": "Projects: agent waiting for permission · finished",
-  // Agent turn-end notice (agent-notify.ts · app/agent-notify.ts) — `{agent}` = Claude Code · Codex
+  // Agent turn-end notice — `{agent}` = Claude Code · Codex
   "agent.name.generic": "The AI agent",
   "agent.subagents.one": "1 subagent running",
   "agent.subagents.many": "{n} subagents running",
@@ -665,7 +656,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "start.empty.hosts": "Hosts you connect to show up here",
   "start.empty.projects": "Add them in the dock's Projects section",
   "start.shell.default": "Default shell",
-  // Start screen widget board (docs/log/2026-10-28-start-widgets.md)
+  // Start screen widget board
   "start.widget.remove": "Remove the {name} widget",
   "start.widget.resize": "Resize the {name} widget",
   "start.widget.rows": "{n} rows",
@@ -680,7 +671,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "start.favorites.aria": "Favorites",
   "start.favorites.full": "Favorites hold up to {max} items.",
   "start.favorite.menu.aria": "{name} menu",
-  // Project start screen (docs/log/2026-09-26-project-start-screen.md)
+  // Project start screen
   "projectStart.new": "Start new",
   "projectStart.past": "Past conversations · this worktree",
   "projectStart.pastBare": "Past conversations",
@@ -750,7 +741,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "ai.noneEnabled": "No AI agent is in use — turn one on in Settings › AI agents.",
   "ai.noneInstalled": "No AI CLI is installed — install Claude Code or Codex to open it here.",
   "ai.noneInstalled.open": "How to install",
-  // AI CLI picker — Ctrl+Shift+A (`ai-panel` · AiLaunchPicker.svelte · app/ai-launch.svelte.ts)
+  // AI CLI picker
   "ai.launch.aria": "Choose an AI CLI to open",
   "ai.launch.notInstalled": "Not installed",
 
@@ -841,7 +832,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "profile.remove.confirm": 'Delete the theme profile "{name}"?',
   "profile.remove.title": "Delete theme profile",
   "profile.reflect.done": 'Also applied to the theme profile "{name}"',
-  // Theme profile switcher — the card row that drops from the top (docs/log/2026-09-28-profile-switcher.md)
+  // Theme profile switcher
   "profileSwitcher.aria": "Switch theme profile",
   "profileSwitcher.title": "Theme profiles",
   "profileSwitcher.empty": "No saved profiles — create one in Settings › Theme",
@@ -899,7 +890,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "save.note.master":
     "Locked with your master password — locked whenever the privacy veil comes up, and that password is what clears the veil.",
 
-  // ── Private key passphrase (docs/log/2026-09-19-identity-file-auth.md) ──
+  // ── Private key passphrase ──
   "passphrase.title": "Key passphrase — {name}",
   "passphrase.lead.1":
     "This private key is passphrase-protected. Unless you tick save below, what you type is ",
@@ -915,10 +906,9 @@ export const app: Record<keyof typeof koApp, string> = {
   "passphrase.skip": "Skip this key",
   "passphrase.unlock": "Unlock key",
 
-  // ── Vault unlock (docs/log/2026-09-19-vault.md) ───────────────────────────
+  // ── Vault unlock ──
   "vault.unlock.title": "Unlock the vault",
-  // One lead, one field, whether or not a master password exists — the separate "no master
-  // password" lead and hint are gone for the same reason as the veil's.
+  // One lead, one field, whether or not a master password exists — same reason as the veil's.
   "vault.unlock.lead":
     "Using the saved passwords and passphrases needs your master password. Skipping connects without the vault this time.",
   "vault.unlock.label": "Master password",
@@ -1214,7 +1204,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "hostform.inherited.on": "Inherited: on",
   "hostform.inherited.off": "Inherited: off",
 
-  // ── Stored credentials (edit mode only · docs/log/2026-09-19-vault.md) ────
+  // ── Stored credentials ──
   "hostform.field.vault": "Stored credentials",
   "hostform.vault.password": "Password stored",
   "hostform.vault.passphrase": "Key passphrase stored",
@@ -1343,7 +1333,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "projects.worktrees.removed.keptUnmerged": "Worktree removed · kept branch {branch} (unmerged commits)",
   "projects.worktrees.removed.keptPredates": "Worktree removed · kept the branch (it existed before the worktree)",
   "projects.worktrees.removed.kept": "Worktree removed · kept branch {branch}",
-  // Deleting a branch (docs/log/2026-10-01-worktree-branch-ops.md)
+  // Deleting a branch
   "projects.worktrees.branch.delete": "Delete branch…",
   "projects.worktrees.branch.delete.title": "Delete branch",
   "projects.worktrees.branch.delete.lead": "Only merged branches are deleted (squash and rebase merges included — the app re-checks at that moment). If it has unmerged commits, it is never deleted.",
@@ -1365,7 +1355,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "projects.hooks.auto.doneTrust": "Installed the {agent} hooks on {alias} (version {version}) — approve them once with /hooks inside {agent}",
   "projects.hooks.auto.localRefreshed": "Updated this PC's {agent} hooks to version {version} — approve them once with /hooks inside {agent}",
   "projects.hooks.auto.failed": "Could not install the server hooks: {reason} — try again from the project menu",
-  // Outdated hook notice (docs/log/2026-09-27-remote-hook-version.md)
+  // Outdated hook notice
   "hookVersion.remote": "The {agent} hook on {alias} is outdated ({from} → {to})",
   "hookVersion.local": "This PC's {agent} hook is outdated ({from} → {to}) — Settings › AI agents",
   "hookVersion.orOlder": "v{n} or older",
@@ -1379,7 +1369,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "projects.remove.item.records": "Per-worktree script run records ({n})",
   "projects.remove.item.templates": "{n} templates",
   "projects.remove.ok": "Remove",
-  // Setup script (docs/log/2026-09-28-project-agent-setup-script.md)
+  // Setup script
   "projects.setup.none": "This project has no setup script — you can write one in Edit project",
   "projects.setup.gone": "This project is no longer in the list",
   "projects.worktree.runSetup": "Run setup script",
@@ -1487,7 +1477,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "projects.worktrees.changes.mergedTitle": "All commits are in main — use Clean up to remove the worktree and its branch",
   "projects.worktrees.changes.mergedTitleSquash": "Merged into main by squash — use Clean up to remove the worktree and its branch",
   "projects.worktrees.changes.mergedTitleRebase": "Merged into main by rebase — use Clean up to remove the worktree and its branch",
-  // 브랜치 그래프 (docs/log/2026-09-29-branch-graph.md)
+  // Branch graph
   "projects.menu.branches": "Branch graph",
   "projects.worktrees.changes.open": "Click for the branch graph",
   "branches.readOnly": "Read-only",
@@ -1536,7 +1526,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "branches.goto.title": "Focus the agent tile in this worktree",
   "branches.open.noProject": "Could not find this tile's project — open it from a tile in a project folder",
   "branches.error.shape": "Could not read the branch graph's answer",
-  // diff 타일 (docs/log/2026-10-05-diff-tile.md)
+  // Diff tile
   "projects.menu.diff": "View changes",
   "projects.menu.diff.sub": "vs {main}",
   "projects.menu.diff.detached": "A worktree without a branch (detached HEAD) has no branch-wide diff",
@@ -1685,7 +1675,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "workspaces.migration.fresh": "Start fresh (move originals to a backup folder)",
 
   // ── AI access levels ─────────────────────────────────────────────────────
-  // Names are the same English words in every language (2026-10-23): Off · Read · Ask · Auto · YOLO — the description line says what they mean.
+  // Names are the same English words in every language: Off · Read · Ask · Auto · YOLO.
   "ai.stage.off": "Off",
   "ai.stage.read": "Read",
   "ai.stage.approve": "Ask",
@@ -1756,7 +1746,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "ai.headless.desc": "When a plan is approved, the app connects to this host without a tile · available from Ask",
   "ai.vault": "Vault passphrase",
   "ai.adhoc": "Save it as a host to give the AI access",
-  // 원격 접속(R1a-5 — 원격 웹 클라이언트)
+  // Remote web client
   "statusbar.remote.active": "Remote access ({n})",
   "statusbar.remote.active.short": "Remote {n}",
   "statusbar.remote.tip": "Remote access: {names}",
@@ -1902,7 +1892,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "mobile.settings.unpair.body": "Removes the pairing of “{name}”. To use it again, allow it anew on the main PC.",
   "mobile.settings.unpair.ok": "Unpair",
   "mobile.settings.full": "Open all settings",
-  // Tab templates (2026-11-16)
+  // Tab templates
   "tabs.ctx.saveTemplate": "Save template",
   "tabTemplates.save.title": "Save template",
   "tabTemplates.save.lead": "Keeps how to open this tab (the layout and what each tile connects to) under a name. Each open starts new sessions.",

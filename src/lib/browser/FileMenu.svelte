@@ -10,12 +10,8 @@
   import type { Key } from "$lib/i18n/keys";
 
   /**
-   * **파일 타일의 우클릭 메뉴** — 항목 메뉴 · 다중 선택 메뉴 · 빈 배경 메뉴, 그리고 그 안에서
-   * 모드만 바꿔 뜨는 인라인 폼 셋(이름 변경 · 새 폴더 · 삭제 확인).
-   *
-   * 항목 핸들러는 **전부 통로 하나**를 지난다 (`$lib/browser/menu-runner` ·
-   * `docs/conventions.md`): 스냅샷 → 닫기 → 실행. `entry` 는 이 컴포넌트의 프롭이므로 닫는
-   * 순간(부모가 `menu = null`) 통째로 사라진다 — 닫고 나서 읽으면 그 자리에서 죽는다.
+   * 파일 타일의 우클릭 메뉴. 항목은 전부 통로 하나(`menu-runner` — 스냅샷 → 닫기 → 실행)를 지난다 —
+   * `entry` 는 프롭이라 닫는 순간(부모가 `menu = null`) 사라지고, 닫고 나서 읽으면 그 자리에서 죽는다.
    */
   let {
     menu,
@@ -23,21 +19,17 @@
     edit,
     backend,
     cwd,
-    /** 새 폴더 폼이 만들 자리 — 부르는 쪽이 폼을 연 순간 정한다(툴바 = 대상 폴더 · 폴더 메뉴 = 그 폴더) */
     newFolderDir = cwd,
-    /** 트리 보기인가 — 폴더 줄 메뉴에 "새 폴더…" 가 선다 */
     tree = false,
     atRoot,
     isLocal,
     selCount,
     selPaths,
     selHasFolder,
-    /** 전송이 도는 중인가 — [다운로드]·[내보내기]를 흐리게 하고 이유를 괄호로 적는다 */
     busy,
     hasClip,
-    /** 지금 삭제 확인이 걸려 있는 경로들 (하나일 수도, 고른 것 전부일 수도 있다) */
     removeTargets,
-    /** 백엔드가 "비어 있지 않다" 로 거절한 뒤에만 참 — 그때만 재귀 삭제를 묻는다 */
+    /** 백엔드가 "비어 있지 않다" 로 거절한 뒤에만 참 */
     confirmRecursive,
     sourcePaneId,
     onclose,
@@ -78,7 +70,7 @@
     isLocal: boolean;
     selCount: number;
     selPaths: readonly string[];
-    /** 고른 것 중 폴더(폴더를 가리키는 링크 포함)가 있는가 — 다중 메뉴의 [이 기기로 다운로드] 줄이 서는지 가른다 */
+    /** 폴더를 가리키는 링크도 포함 */
     selHasFolder: boolean;
     busy: boolean;
     hasClip: boolean;
@@ -91,10 +83,8 @@
     onpaste: () => void;
     ondownload: (paths: readonly string[]) => void;
     onexport: (paths: readonly string[]) => void;
-    /** 원격 창의 [이 기기로 다운로드] — 파일 하나 또는 여럿(차례로 · `browser/device-download.ts`) */
     ontodevice: (paths: readonly string[]) => void;
     onopenentry: (entry: SftpEntry) => void;
-    /** "미리 보기" — 문서 보기 타일로 연다(docs/log/2026-09-27-doc-tile.md). 없으면 그 줄이 서지 않는다 */
     onpreview?: (entry: SftpEntry) => void;
     oneditentry: (entry: SftpEntry) => void;
     onopenexternal: (entry: SftpEntry) => void;
@@ -115,20 +105,17 @@
     onsubmitremove: (recursive: boolean) => void;
   } = $props();
 
-  /** 확인 문구에 적을 이름 — 하나면 그 이름, 여럿이면 개수 */
   const removeLabel = $derived(
     removeTargets.length === 1
       ? baseNameOf(removeTargets[0])
       : t("files.menu.remove.targets", { count: removeTargets.length }),
   );
 
-  /** [이 기기로 다운로드] 줄의 글자 — 서는 상태(`deviceDownloadRow`)마다 하나("none" 은 줄이 없다) */
   const toDeviceLabel: Record<Exclude<DeviceDownloadRow, "none">, Key> = {
     go: "files.menu.todevice",
     busy: "files.menu.todevice.busy",
   };
 
-  /** 항목 하나를 대상으로 하는 통로 — 대상은 **인자로** 온다 */
   const onEntry = (fn: (entry: SftpEntry) => void) => runOnMenu(() => menu.entry, onclose, fn);
 
   function menuKeydown(ev: KeyboardEvent) {
@@ -186,7 +173,6 @@
       </button>
     </div>
   {:else if mode === "newfolder" || mode === "newfile"}
-    <!-- 새 폴더 · 새 파일은 같은 폼이다 — 제목 · 자리 글자 · 확정만 갈린다 -->
     {@const file = mode === "newfile"}
     {@const submitNew = file ? onsubmitnewfile : onsubmitnewfolder}
     <div class="ctx-title menu-title" title={newFolderDir}>
@@ -216,12 +202,7 @@
       </button>
     </div>
   {:else if mode === "confirm"}
-    <!--
-      삭제 확인. 처음에는 그냥 "지울까?" 이고, 백엔드가 "비어 있지 않다" 로 거절한 뒤에만
-      재귀 삭제 버튼이 나타난다 (`confirmRecursive`) — 그 편이 실수로 트리를 통째로 날리는
-      길을 한 단계 멀리 둔다. 여럿이면 **개수**를 적는다: 하나를 지우는 줄 알았는데 스물이
-      사라지는 일이 없어야 한다.
-    -->
+    <!-- 재귀 삭제는 백엔드가 "비어 있지 않다" 로 거절한 뒤에만 — 트리를 통째로 날리는 길을 한 단계 멀리 둔다 -->
     <div class="ctx-title menu-title" title={removeTargets.join("\n")}>{removeLabel}</div>
     <div class="ctx-confirm">
       {confirmRecursive
@@ -242,12 +223,6 @@
       {/if}
     </div>
   {:else if menu.entry && selCount >= 2}
-    <!--
-      **다중 선택 메뉴** — 여럿을 골라 놓고 무엇을 우클릭했든 같은 메뉴다. 단일 메뉴의
-      항목 대부분(열기·편집·이름 변경·경로 복사)은 "그 하나" 를 전제로 하는 것이라 여기서는
-      뜻이 없다. 남는 것은 **전부에 대해 뜻이 있는 것**뿐이고, 무리 순서는 단일 메뉴와 같다
-      (클립보드 → 보내기 → 삭제 — VS Code 탐색기의 순서).
-    -->
     <div class="ctx-title menu-title">{t("files.menu.selected", { count: selCount })}</div>
     <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, oncut)}>
       {t("files.menu.cut")}
@@ -260,11 +235,7 @@
         {t("files.menu.paste")}
       </button>
     {/if}
-    <!--
-      원격 창 — 두 줄([다운로드] · [내보내기])은 메인 PC 대화상자라 서지 못하고, 그 자리에 [이 기기로 다운로드] 한 줄
-      (고른 파일을 차례로). 폴더가 하나라도 섞이면(`deviceDownloadRow` → "none") 보내기 무리가 통째로 없다 — 구분선도
-      세우지 않는다. 구분선 규칙은 메인 PC 창의 보내기 무리와 같다. 통로는 [다운로드]와 같은 `runOnMenu`.
-    -->
+    <!-- 원격 창에서는 [다운로드] · [내보내기] 가 메인 PC 대화상자라 서지 못한다 — 그 자리에 [이 기기로 다운로드] -->
     {#if isRemote}
       {@const deviceRow = deviceDownloadRow({ hasFolder: selHasFolder, busy })}
       {#if (backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)) && deviceRow !== "none"}
@@ -283,7 +254,6 @@
     {#if backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)}
       <div class="ctx-sep menu-sep" role="separator"></div>
     {/if}
-    <!-- [다운로드] — 하나를 전제하지 않는 조작이라 다중 메뉴에도 있고, 단일 메뉴와 같은 함수로 간다 -->
     {#if backend.canDownload}
       <button
         type="button"
@@ -295,10 +265,6 @@
         {busy ? t("files.menu.download.busy") : t("files.menu.download")}
       </button>
     {/if}
-    <!--
-      로컬 타일의 짝 — `Alt`+드래그가 못 하는 자리(네트워크·긴 경로)의 대체 길이기도 하다
-      (docs/log/2026-09-04-native-drag-out.md).
-    -->
     {#if backend.key === LOCAL_KEY && !atRoot}
       <button
         type="button"
@@ -318,23 +284,13 @@
       </button>
     {/if}
   {:else if menu.entry}
-    <!--
-      **항목 하나의 메뉴** — 무리 순서는 VS Code 탐색기를 따른다: 만들기(트리의 폴더 줄만) → 열기 → 보내기 →
-      클립보드 → 경로 복사 → 이름 바꾸기 · 삭제(위험한 것이 맨 아래). 무리 사이에만 구분선을 둔다.
-    -->
     {@const entry = menu.entry}
     {@const canCreate = tree && isDirLike(entry) && !atRoot}
     {@const canSend = backend.canDownload || (backend.key === LOCAL_KEY && !atRoot)}
-    <!-- 원격 창의 [이 기기로 다운로드] 줄 — 폴더(링크 포함)는 "none" 이라 줄도 그 앞 구분선도 서지 않는다 -->
     {@const deviceRow = deviceDownloadRow({ hasFolder: isDirLike(entry), busy })}
     {@const sendGroup = isRemote ? canSend && deviceRow !== "none" : canSend}
     <div class="ctx-title menu-title" title={entry.path}>{entry.name}</div>
     {#if canCreate}
-      <!--
-        **트리의 폴더 줄에서 곧바로 새 파일 · 새 폴더** — 들어가기 보기에서는 "폴더에 들어가 빈 곳 메뉴로" 하던
-        일을 그 자리로 옮겼다(호스트 트리의 폴더 메뉴 "하위 폴더 추가…" 와 같은 까닭). 폼은 이 메뉴
-        안에서 모드만 바꿔 뜬다 — 대상 경로는 부르는 쪽이 메뉴를 연 순간 정해 둔 값이다.
-      -->
       <button type="button" class="ctx-item menu-row" role="menuitem" data-menu-newfile onclick={onstartnewfile}>
         {t("files.menu.newfile")}
       </button>
@@ -346,11 +302,7 @@
     <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => onEntry(onopenentry)}>
       {isDirLike(entry) ? t("files.menu.enter") : t("files.menu.open")}
     </button>
-    <!--
-      미리 보기 — 파일에만, 글자로 읽을 수 있는 백엔드(`canView`)에서만. 이름으로 거르지 않는다(모르는 확장자도
-      사람이 골랐으면 열어 본다 — 이진이면 타일이 그렇게 말한다). 통로는 다른 줄과 같은 `onEntry`.
-      그림 파일에는 세우지 않는다(2026-11-14) — [열기]가 곧 이미지 타일이라 같은 일을 하는 줄이 둘이 된다.
-    -->
+    <!-- 그림 파일에는 세우지 않는다 — [열기]가 곧 이미지 타일이라 같은 일을 하는 줄이 둘이 된다 -->
     {#if !isDirLike(entry) && backend.canView && onpreview && imageMime(entry.name) === null}
       {@const preview = onpreview}
       <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => onEntry(preview)}>
@@ -362,10 +314,6 @@
         {t("files.menu.edit.external")}
       </button>
     {/if}
-    <!--
-      로컬 전용 두 줄. "기본 앱으로 열기" 는 파일에만 붙인다 — 폴더에서 그 뜻은 이미 위
-      [들어가기] 가 갖고 있고, 탐색기로 보내는 길은 바로 아래 줄이 따로 있다.
-    -->
     {#if !isDirLike(entry) && backend.canOpenExternal}
       <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => onEntry(onopenexternal)}>
         {t("files.menu.openexternal")}
@@ -379,15 +327,8 @@
     {#if sendGroup}
       <div class="ctx-sep menu-sep" role="separator"></div>
     {/if}
-    <!--
-      **폴더도 받는다** — 예전에는 파일에만 붙던 줄이다. 받을 자리는 폴더 선택 대화상자가
-      정하고, 그 뒤는 붙여넣기·드롭과 같은 몸통이다.
-    -->
     {#if isRemote}
-      <!--
-        원격 창 — [다운로드] · [내보내기] 둘 다 메인 PC 의 폴더 고르기 대화상자라 서지 못한다. 그 자리에 이 기기(브라우저)로
-        받는 한 줄. 폴더(폴더 링크 포함)에는 서지 않는다 — 통로는 다른 줄과 같은 `onEntry`.
-      -->
+      <!-- 원격 창에서는 [다운로드] · [내보내기] 가 메인 PC 대화상자라 서지 못한다 -->
       {#if sendGroup && deviceRow !== "none"}
         {@const row = deviceRow}
         <button
@@ -412,7 +353,6 @@
         {busy ? t("files.menu.download.busy") : t("files.menu.download")}
       </button>
     {/if}
-    <!-- [탐색기로 내보내기…] — 다중 메뉴와 **같은 함수**로 간다 (대상만 이 한 줄이다) -->
     {#if backend.key === LOCAL_KEY && !atRoot}
       <button
         type="button"
@@ -427,7 +367,6 @@
     {/if}
     {#if !atRoot}
       <div class="ctx-sep menu-sep" role="separator"></div>
-      <!-- 클립보드 셋 — 하나짜리 메뉴에도 붙는다 (다중 메뉴와 **같은 함수**로 간다) -->
       <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, oncut)}>
         {t("files.menu.cut")}
       </button>
@@ -435,8 +374,6 @@
         {t("files.menu.copy")}
       </button>
       {#if hasClip}
-        <!-- 붙일 자리는 부르는 쪽이 메뉴를 연 순간 정해 둔 폴더다 — 트리에서는 이 줄의 폴더(폴더면 그
-             안, 파일이면 그것이 든 폴더), 들어가기 보기에서는 지금 폴더 -->
         <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, onpaste)}>
           {t("files.menu.paste")}
         </button>
@@ -456,11 +393,6 @@
       </button>
     {/if}
   {:else}
-    <!--
-      **빈 곳 메뉴** — 대상은 지금 폴더. 무리 순서(VS Code 탐색기 빈 곳과 같은 뜻): 만들기 → 이 폴더 열기(탐색기 · 터미널) →
-      붙여넣기 → 들여오기(업로드 · 가져오기) → 새로 고침. 무리가 하나라도 앞에 섰을 때만 구분선을 둔다.
-      원격 창에는 [폴더 가져오기…]가 없으므로(메인 PC 대화상자) 그 하나만으로 들여오기 무리를 세우지 않는다 — 구분선이 홀로 남지 않게.
-    -->
     {@const gCreate = !atRoot}
     {@const gPlace = (backend.canReveal && !atRoot) || !!sourcePaneId}
     {@const gPaste = hasClip && !atRoot}
@@ -489,11 +421,6 @@
     {/if}
     {#if gPaste}
       {#if gCreate || gPlace}<div class="ctx-sep menu-sep" role="separator"></div>{/if}
-      <!--
-        빈 곳 우클릭의 붙여넣기 — **지금 폴더가 대상**이라 여기가 제자리다. 항목을 하나도
-        고르지 않은 채로 붙일 수 있어야 하고(방금 다른 타일에서 잘라 왔다), 그 상태에서는
-        항목 메뉴가 뜰 자리가 없다.
-      -->
       <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, onpaste)}>
         {t("files.menu.paste")}
       </button>
@@ -506,12 +433,7 @@
           {isLocal && !isRemote ? t("files.menu.import") : t("files.menu.upload")}
         </button>
       {/if}
-      <!--
-        **폴더 가져오기** — 로컬 타일에만. 파일은 탐색기에서 끌어다 놓으면 되지만 폴더는
-        웹 DnD 로 오지 않아(`File` 이 아니다) 대화상자로 경로를 받는 길이 하나 필요하다.
-        항목 메뉴의 [탐색기로 내보내기…] 와 정확히 짝이다.
-        원격 창에서는 숨긴다 — 메인 PC 의 폴더 고르기 대화상자(`plugin:dialog|open`)를 폴리필이 거절해 오류만 난다.
-      -->
+      <!-- 폴더는 웹 DnD 로 오지 않아 대화상자가 필요하다 — 원격 창은 폴리필이 그 대화상자를 거절해 숨긴다 -->
       {#if isLocal && !isRemote}
         <button type="button" class="ctx-item menu-row" role="menuitem" onclick={() => runAfterClose(onclose, onimportfolders)}>
           {t("files.menu.importfolders")}
@@ -526,8 +448,6 @@
 </div>
 
 <style>
-  /* ── 우클릭 메뉴 (호스트 트리와 같은 모양) ───────────────────────────────── */
-
   .menu-backdrop {
     position: fixed;
     inset: 0;
@@ -538,11 +458,7 @@
     cursor: default;
   }
 
-  /*
-   * 커서 자리(JS 로 클램프)에 뜨는 작은 메뉴 상자. 모양(상자·줄·머리글·구분선·인라인 칸)은
-   * 전역 메뉴 한 벌(`theme.css` 의 `.menu-*` — docs/log/2026-09-25-leftovers-menus-dots.md)이고
-   * 여기 남는 것은 자리와 폭뿐이다. `ctx-*` 이름은 표식으로 남는다(검증 도구가 이 이름으로 찾는다).
-   */
+  /* `ctx-*` 이름은 표식으로 남는다 — 검증 도구가 이 이름으로 찾는다 */
   .ctx-menu {
     position: fixed;
     z-index: 41;
@@ -556,7 +472,6 @@
     font-size: var(--t-xs);
     line-height: 1.4;
     color: var(--err);
-    /* 오류에 긴 이름 · 경로가 실려도 메뉴 폭(최대 240px) 밖으로 나가지 않게 — 끊을 자리가 없을 때만 꺾는다 */
     overflow-wrap: anywhere;
   }
 
@@ -575,12 +490,7 @@
     padding: var(--space-1) var(--space-1) 2px;
   }
 
-  /*
-   * 인라인 대화의 단추 — 전역 `.btn .btn-sm` 세 종류 (`HostMenu`·`ProjectMenu` 와 같은 처방,
-   * docs/log/2026-09-25-finish-menus.md). 취소 = 보조, 확인 = 주(채운 강조색), 되돌릴 수 없는
-   * 확인(삭제) = 채운 `--err`. 옛 선 두른 규칙은 지웠다 — 스코프 규칙이 전역 클래스를 이긴다.
-   * `ctx-btn` 은 표식으로만 남는다.
-   */
+  /* 스코프 규칙이 전역 `.btn` 을 이긴다 — 여기에는 삭제 색만 둔다 */
   .ctx-btn.danger {
     color: var(--on-accent);
     background: var(--err);

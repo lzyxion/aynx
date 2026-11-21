@@ -1,9 +1,6 @@
 <script lang="ts">
-  // 플레이어 판 맨 위 한 줄 — 원형 ← · 라이브러리 › (스튜디오 ›) 앨범 › 트랙 · 같은 줄 오른쪽 끝의 화면별 단추(`end` — 앨범 = [새 탭으로 열기] · 트랙 = 이웃 트랙 칩).
-  // 라이브러리 루트에는 그리지 않는다(제목 "라이브러리" 와 겹친다 — 부르는 쪽이 판정). ← 는 이 줄 하나만 가진다.
-  // 모양은 화면마다 하나(실기 10-31 — 앨범 · 트랙 · 아티스트 · 새 앨범): 줄이 든 판의 왼쪽 위에서 ← 가 (24, 14) · ← 32px 원 · 글자 12.5px(목업 V3).
-  // 여백은 이 줄이 스스로 갖는다 — 여백이 있는 판 안에 놓일 때는(`host` = 그 판의 선택자) 판의 지금 안쪽 여백만큼 바깥으로 물러나
-  // 판 가장자리에 붙는다(판의 여백이 폭 문턱에서 바뀌어도 따라간다 — 크기 관찰).
+  // 라이브러리 루트에는 그리지 않는다(부르는 쪽이 판정). ← 는 이 줄 하나만 가진다.
+  // `host` 판 안에 놓이면 판의 지금 안쪽 여백만큼 바깥으로 물러나 가장자리에 붙는다(여백이 폭 문턱에서 바뀌어도 크기 관찰로 따라간다).
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { OrchMark } from "$lib/session/spec";
@@ -12,7 +9,6 @@
   import { studioLabel } from "$lib/app/studio-projects.svelte.js";
   let { path, detail, onnavigate, end, host }: {
     path: OrchMark; detail: RunDetail | null; onnavigate: (path: OrchMark) => void; end?: Snippet;
-    /** 이 줄을 담은 판(여백 있는 조상)의 선택자 — 없으면 줄이 판 맨 위 가장자리에 바로 놓인 것으로 본다 */
     host?: string;
   } = $props();
   let nav = $state<HTMLElement | null>(null);
@@ -48,13 +44,12 @@
 </nav>
 
 <style>
-  /* 높이 고정(위 여백 14 + ← 32) — 오른쪽 끝 단추가 화면마다 달라도 줄 높이 · 글자 자리는 같다 */
+  /* 높이 고정 — 오른쪽 끝 단추가 화면마다 달라도 줄 높이 · 글자 자리는 같다 */
   .path { display: flex; align-items: center; gap: 8px; min-width: 0; height: 46px; box-sizing: border-box; padding: 14px 24px 0; color: var(--fg-2);
     font-size: 12.5px; font-weight: 400; line-height: 1.4; flex: 0 0 auto; }
   .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; overflow: hidden; white-space: nowrap; }
   .crumb { font: inherit; color: var(--fg-2); background: none; border: 0; padding: 0; cursor: pointer; flex: 0 4 auto; min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; }
   .crumb:hover { color: var(--fg-1); text-decoration: underline; }
-  /* 좁으면 지나온 칸이 먼저 줄고 지금 칸은 나중에 준다 */
   .here { color: var(--fg-1); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sep { flex: 0 0 auto; color: var(--fg-3); }
   .back { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; padding: 0; border: 0; display: inline-flex; align-items: center; justify-content: center;

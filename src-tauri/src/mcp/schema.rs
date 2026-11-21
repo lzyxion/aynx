@@ -1,45 +1,33 @@
-//! AI 가 읽는 계약 글자 — `initialize` 결과와 핸드셰이크 안내([`INSTRUCTIONS`]), `tools/list` 의
-//! 도구 스키마 — 전역 토큰의 13개([`tools_list_result`]) + DB 뒷면이 있을 때의 DB 도구 7개(권한과 무관하게 늘 — `mcp/db.rs` · 쿼리 타일 3a · 3b,
-//! [`tools_list_result_for`]) · 역할별 목록([`tools_list_for`] — 조정자는 전역과 같은 목록 + 조율 도구, 작업자는 작업자 도구만, 검토자는 검토 도구만 ·
-//! 조율 도구 스키마는 `crate::orchestration`). 전부 영어다(MCP 표면은 표시 언어를 타지 않는다 — i18n.rs 머리말).
+//! AI 가 읽는 계약 글자 — `initialize` 결과 · 핸드셰이크 안내 · `tools/list` 의 도구 스키마. 전부 영어다(MCP 표면은 표시 언어를 타지 않는다).
 //!
 //! 불변식:
 //! - 13개 도구는 전부 읽기·계획이다. 작업안 도구 설명은 하나같이 **"이 도구는 명령을 실행하지 않는다"** 를 못 박는다.
-//! - 조율 도구(조정자 — 2026-10-14)는 자기 Run 의 Task 를 정의 · 갱신하고 기다릴 뿐이다 — 명령 실행 · PTY 입력은 없다.
+//! - 조율 도구는 자기 Run 의 Task 를 정의 · 갱신하고 기다릴 뿐이다 — 명령 실행 · PTY 입력은 없다.
 //! - 승인·실행·취소·키 전송·권한 응답 도구와 위임 쓰기 도구는 **어느 역할의** 목록에도 없다 — 승인은 사용자가 앱에서만 한다.
-//! - DB 도구는 구조 · 읽기 조회 · **쓰기 작업안 초안**(3b — `create_db_write_plan`, 저장만 · 사람 승인 · 자동 승인 없음)이다. `db_query` 설명은
-//!   **"행이 모델 제공자로 간다"** 를 밝힌다. 목록 · 권한 판정은 전역이든 조정자든 같다(작업자에게는 없다) — 목록은 단계를 타지 않고
-//!   판정은 호출마다 서버다(2026-11-09 — CLI 가 목록을 캐시하므로 권한을 올리면 재연결 없이 바로 쓰이게).
+//! - DB 도구는 구조 · 읽기 조회 · **쓰기 작업안 초안**(`create_db_write_plan` — 저장만)이다. `db_query` 설명은 **"행이 모델 제공자로 간다"** 를 밝힌다.
+//!   작업자 · 검토자 · 사이드 채팅에는 DB 도구가 없다.
+//! - 목록은 조정자가 돼도 · DB 권한이 바뀌어도 바뀌지 않는다 — Codex 는 대화 중 목록 갱신을 받지 않는다. 판정은 호출마다 서버다.
 
 use serde_json::{json, Value};
 
 use super::*;
 
-/// `initialize` 가 돌려주는 프로토콜 버전 (모듈 문서의 "프로토콜 버전" 참고).
+/// MCP 최초 안정 버전 — Claude Code 가 협상에서 받아들이는 값이고, 우리 표면은 이후 개정에서도 같아 올릴 이유가 없다.
 pub(super) const PROTOCOL_VERSION: &str = "2024-11-05";
 
-/// `initialize` 결과.
-///
-/// `instructions` 는 **접속하는 AI(Claude·Codex 등)가 핸드셰이크에서 받는 CLI-무관 안내**다 —
-/// 이 서버가 읽기·계획 전용이고 무엇도 실행하지 않는다는 것, 그리고 정점 루프의 순서를 알려 준다.
-/// 요점은 둘이다: 승인은 오직 사용자가 앱에서 한다(이 서버로는 불가) · 그러니 [`wait_for_operation`]
-/// 으로 **잠깐만**(합쳐 5분쯤) 기다리고 그래도 대기면 **사람에게 턴을 넘겨라** — 승인하는 순간
-/// 앱이 혼자 돌리고 결과는 남는다(docs/log/2026-09-22-wait-for-operation.md).
-/// 안내의 갈래 — 오케스트레이션 절은 **조율 도구가 목록에 실리는 프로듀서 채팅**에만 싣는다(설계 3-6 · 2단계 2-7). 타일은 맡긴 저장소가 있으면
-/// 안내 한 줄([`TILE_ORCHESTRATION_HINT`]). 작업자 · 검토자는 작업자 한 줄.
+/// 안내의 갈래 — 오케스트레이션 절은 조율 도구가 목록에 실리는 프로듀서 채팅에만 싣는다. 타일은 안내 한 줄([`TILE_ORCHESTRATION_HINT`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Instructions {
     Base,
-    /// 사람이 이미 연 앨범의 프로듀서(옛 start_run 안내를 받지 않는다).
+    /// 사람이 이미 연 앨범의 프로듀서.
     Album,
-    /// 로컬 AI 타일 · 감싸개 셸 타일 + 맡긴 저장소 하나 이상 — 기본 안내 + 한 줄(조율 도구는 없다).
+    /// 로컬 AI 타일 · 감싸개 셸 타일 — 기본 안내 + 한 줄(조율 도구는 없다).
     TileHint,
     Worker,
-    /// 사이드 채팅(5단계 — `mcp/chat_read.rs`) — 기본 안내 대신 짧은 연결 안내 하나(작업안 · DB 절이 없다 · 그 도구가 없다).
+    /// 사이드 채팅 — 기본 안내 대신 짧은 연결 안내(작업안 · DB 도구가 없다).
     SideChat,
 }
 
-/// `initialize` 결과 — 갈래([`Instructions`])마다 안내 글이 다르다.
 pub(super) fn initialize_result_for(kind: Instructions) -> Value {
     let text = match kind {
         Instructions::Base => INSTRUCTIONS.to_string(),
@@ -56,7 +44,7 @@ pub(super) fn initialize_result_for(kind: Instructions) -> Value {
     })
 }
 
-/// 새 길의 계약. 구성과 검증 명령은 사람이 이미 고른 값이며 MCP 쓰기 도구는 없다.
+/// 구성과 검증 명령은 사람이 이미 고른 값이며 MCP 쓰기 도구는 없다.
 const ALBUM_INSTRUCTIONS: &str = "\
 Orchestration (Aynx): the album is already open. Call get_run first without arguments to read runId and gen. \
 Pass runId and gen on every other coordination call. Retry the same write with the same requestId; use a new requestId for a different call. \
@@ -68,18 +56,17 @@ The app runs verification; only a person can override a failure. If get_run show
 When everything is accepted call complete_run and report the exported branch; you cannot merge: a person merges into main with [Merge] on the album page, or the album merges itself after you complete it if the person turned on auto-merge. Mention auto-merge only when the complete_run result has an autoMerge field. \
 If this chat restarted or was opened to take over, call adopt_run only for the album in your producer instructions. A run a person paused stays paused until they resume it; tell them its state and end your turn.";
 
-/// 타일의 안내 한 줄(2단계 2-7 · 사용자 결정 U3) — 맡긴 저장소가 하나라도 있는 PC 의 로컬 AI 타일 · 감싸개 셸 타일. 조율 도구는 목록에 없다
-/// (불러도 모르는 도구 — `orchestration::is_tool_for`).
+/// 조율 도구는 타일 목록에 없다(불러도 모르는 도구 — `orchestration::is_tool_for`).
 pub(super) const TILE_ORCHESTRATION_HINT: &str = "\
 Orchestration (Aynx): albums that split work across several workers open only from the producer chat of the Aynx orchestration tab — \
 to split work across workers, tell the person to open the Aynx orchestration tab or use [Continue in orchestration] on this tile (the conversation is copied there).";
 
-/// 작업자 · 검토자 한 줄(헤드리스 턴 — 역할별 실패 지침은 턴 지침 파일에 있다 · `orchestration::spawn`).
+/// 역할별 실패 지침은 턴 지침 파일에 있다(`orchestration::spawn`).
 pub(super) const WORKER_INSTRUCTIONS: &str = "\
 If you were started as an orchestration worker, commit your work with commit_changes (the app runs git for you — selection \"all\" or a list of files) and call report_done exactly once when you finish (also when you failed or are blocked). \
 If you were started as a reviewer, call report_review exactly once.";
 
-/// 핸드셰이크에서 내보내는 기본 안내(모듈 문서·[`initialize_result_for`] 참고) — 모든 호출자. 오케스트레이션 절은 [`ORCHESTRATION_INSTRUCTIONS`].
+/// 핸드셰이크 기본 안내 — 사이드 채팅을 뺀 모든 호출자.
 pub(super) const INSTRUCTIONS: &str = "\
 This server (the session server of the aynx app) is a **read-and-plan-only** MCP server that serves context from several remote sessions — it runs nothing. \
 The user decides in the app which sessions are visible: a remote (SSH) session follows its host's AI permission (Read or higher — the same for every tile of that host and for its headless sessions), and a local session is visible only while 'allow AI to read' is on for that tile (sessions you may not read are hidden entirely). \
@@ -123,19 +110,13 @@ and rolls everything back if a statement fails or the affected rows exceed maxAf
 While a person keeps the connection open in a query tile, AI connections reuse the password that tile authenticated with (typed or from the vault) — also while aynx is locked; it is cleared when the last tile closes or the connection's target changes. Otherwise an AI connection uses the password stored in the vault — only on a connection the user allowed to open without a query tile (headless:true in list_db_connections; false means ask the user to open it in a query tile), and the vault must be unlocked. A SQLite connection has no password but follows the same rule: without a query tile it opens only when headless is true. \
 If a tool says a person must open the connection in a query tile, save its password or unlock the vault, tell the user exactly that instead of retrying.";
 
-/// `tools/list` 결과 — 도구 13개와 각 JSON Schema(읽기 7 + 단계 8 작업안 3 + 검토 대기 롱폴 1
-/// + 단계 9 결과 읽기 1 + 자동 승인 정책 읽기 1). 전부 읽기/계획이다.
-///
-/// 설명은 **AI 가 읽는 유일한 계약 문서**다. 읽기 도구는 셋을 반드시 말한다: 옵트인된 세션만
-/// 보인다 · 이력은 메모리에만 있고 세션이 사는 동안만 산다 · 출력은 발췌라 `truncated` 가 붙는다.
-/// 작업안 도구 셋은 하나같이 **"이 도구는 명령을 실행하지 않는다"** 를 못 박는다 — 실행 경로는
-/// 이 서버에 없다(단계 8: 저장 + 검토 요청뿐).
+/// 설명은 **AI 가 읽는 유일한 계약 문서**다. 읽기 도구는 셋을 반드시 말한다: 옵트인된 세션만 보인다 · 이력은 메모리에만,
+/// 세션이 사는 동안만 산다 · 출력은 발췌라 `truncated` 가 붙는다.
 #[cfg(test)]
 pub(super) fn tools_list_result() -> Value {
     tools_list_result_for(false)
 }
 
-/// [`tools_list_result`] + DB 도구 일곱(`with_db` = DB 뒷면이 있나 — 권한과 무관하게 늘 전부, `mcp/db.rs` `tool_schemas`).
 pub(super) fn tools_list_result_for(with_db: bool) -> Value {
     let mut v = base_tools();
     if with_db {
@@ -146,10 +127,7 @@ pub(super) fn tools_list_result_for(with_db: bool) -> Value {
     v
 }
 
-/// 호출자에 따른 `tools/list`(2026-10-14 · 3차 5단계 · 2단계 2-7) — 전역 · **타일** = 13개 + DB 도구 일곱(**조율 도구 없음** — 타일은 자리가
-/// 되지 못한다) · (시험의) 조정자 = + 타일 도구 + 조율 도구 · 프로듀서 채팅 = 13(작업안은 칸) + DB + 타일 도구 + 조율 도구 · 작업자 = 작업자 도구만
-/// (DB 도구 없음). **목록은 조정자가 돼도 · DB 권한이 바뀌어도 바뀌지 않는다**(Codex 는 대화 중 목록 갱신을 받지 않는다 — 설계 3-3 · 2026-11-09).
-/// `db` 는 DB 뒷면이 있나(전역 · 타일 · 프로듀서에게 같다 — 작업자에겐 쓰지 않는다 · 권한은 호출마다 서버). `orchestration` 은 프로듀서의 "작업안 도구를 싣나".
+/// 프로듀서의 `orchestration` = "작업안 도구를 싣나". 목록은 그 프로세스 동안 고정이다.
 pub(super) fn tools_list_for(caller: &crate::orchestration::Caller, db: bool, orchestration: bool) -> Value {
     use crate::orchestration::Caller;
     match caller {
@@ -163,12 +141,9 @@ pub(super) fn tools_list_for(caller: &crate::orchestration::Caller, db: bool, or
             v
         }
         Caller::Worker { .. } => json!({ "tools": crate::orchestration::worker_tool_schemas() }),
-        // 검토자(5단계) — 검토 도구 셋만(DB · 13개 · 조율 도구 없음).
         Caller::Reviewer { .. } => json!({ "tools": crate::orchestration::reviewer_tool_schemas() }),
-        // 사이드 채팅(5단계) — 세션 읽기 도구 일곱만(DB · 작업안 · 조율 없음). **늘 같다** — 연결 여부는 호출마다 서버가 판정한다.
+        // 사이드 채팅 — 늘 같다. 연결 여부는 호출마다 서버가 판정한다.
         Caller::SideChat { .. } => super::chat_read::tools_list(),
-        // 프로듀서 채팅(2단계 단계 2 — 설계 2-7): 13 + DB + 타일 도구 + 조율 도구 전부 — 작업안 도구(DB 쓰기 초안 포함)는 띄울 때의 "프로듀서
-        // 작업안 도구" 값(`orchestration` 자리에 rpc 가 넣는다)이 켜졌을 때만. 목록은 그 프로세스 동안 고정이다.
         Caller::Producer { .. } => {
             let mut v = tools_list_result_for(db);
             if let Some(list) = v.get_mut("tools").and_then(Value::as_array_mut) {

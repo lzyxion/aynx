@@ -1,8 +1,6 @@
 /**
- * 탭 바 드롭의 구역·이동량(순수) — 처음 찍은 client rect 만 겨눈다.
- * 움직인 DOM 을 다시 읽으면 탭이 비켜서는 순간 삽입·머무름이 뒤집힌다. 채집·시계·드롭은 Tabs 몫이다.
- * 탭 드래그는 순서 바꾸기뿐이다 — 이 창 탭은 따라오는 탭의 가운데(크롬식, `tabReorderTarget`),
- * 다른 창 탭은 커서 반반. 머무름은 타일 드래그(가운데 50%)와 이 창 탭 드래그(겹침 — `tabOverlapTarget`)에 있다.
+ * 탭 바 드롭의 구역 · 이동량(순수) — 처음 찍은 client rect 만 겨눈다.
+ * 움직인 DOM 을 다시 읽으면 탭이 비켜서는 순간 삽입 · 머무름이 뒤집힌다.
  */
 import { dragTabHoverAction, type TabHoverDrag } from "$lib/tab-hover";
 
@@ -20,10 +18,7 @@ export interface TabDropPreview {
   ghost: { left: number; top: number; width: number; height: number } | null;
 }
 
-/**
- * 커서 기준 판정 — 타일·호스트·다른 창 탭. 가운데는 머무를 수 있는 탭(타일 드래그)에만 있다.
- * 겹친 대각선·탭 사이 틈은 다음 탭 앞에 양보한다. 이 창 탭은 `tabReorderTarget` 이 맡는다.
- */
+/** 커서 기준 판정 — 타일 · 호스트 · 다른 창 탭. 이 창 탭은 `tabReorderTarget` 이 맡는다 */
 export function tabDropTarget({
   snapshot, clientX, kind, activeId, draggedTabId,
 }: {
@@ -47,10 +42,8 @@ export function tabDropTarget({
   for (let i = 0; i < snapshot.length; i++) {
     const tab = snapshot[i];
     if (clientX < tab.rect.left) return insert(i);
-    // 이웃과 겹친 부분(다음 탭의 left 가 이 탭의 오른쪽 변보다 앞)도 target DOM 과 무관하게 같은 답을 낸다.
     if (i + 1 < snapshot.length && clientX >= snapshot[i + 1].rect.left) continue;
     if (clientX >= tab.rect.right) continue;
-    // 다른 창 탭은 커서 반반 그대로다 — 이 창 탭의 머무름은 겹침(`tabOverlapTarget`)이 맡는다.
     const dwell = dragTabHoverAction({
       kind: kind === "pane" ? kind : null, overId: tab.id, activeId, pendingId: null,
     }) === "arm";
@@ -62,11 +55,8 @@ export function tabDropTarget({
 }
 
 /**
- * 이 창 탭 드래그의 삽입 자리 — 커서가 아니라 **따라오는 탭의 가운데**로 정한다(크롬 규칙).
- * `offset` 은 `tabDragOffset` 의 값 그대로라 보이는 탭과 판정이 같은 클램프를 쓴다. 끄는 탭을 뺀
- * 나머지 중 끄는 탭 왼쪽에 남은 탭 수가 곧 자리다 — 이웃의 가운데에 닿는 순간 이웃이 비켜선다.
- * 같은 쪽 끝 모서리에 닿아도 넘은 것으로 친다: 스트립 끝에 갇힌 탭은 폭이 이웃과 다를 수 있어
- * 가운데가 못 닿아도 맨 앞·맨 끝이어야 한다.
+ * 커서가 아니라 따라오는 탭의 가운데로 정한다(크롬 규칙). `offset` 은 `tabDragOffset` 의 값이어야 보이는 탭과 판정이 같다.
+ * 끝 모서리에 닿아도 넘은 것으로 친다 — 스트립 끝에 갇힌 탭은 폭이 달라 가운데가 못 닿을 수 있다.
  */
 export function tabReorderTarget({
   snapshot, draggedTabId, offset,
@@ -87,7 +77,6 @@ export function tabReorderTarget({
     if (i < source && dragged > center(rect) && left > rect.left) passed++;
     if (i > source && (dragged >= center(rect) || left + width >= rect.right)) passed++;
   }
-  // 나머지 목록의 자리를 원래 순서로 되돌린다 — 원본 뒤쪽은 원본이 빠진 한 칸을 더한다.
   if (passed === source) return null;
   const index = passed < source ? passed : passed + 1;
   return index === snapshot.length
@@ -95,11 +84,7 @@ export function tabReorderTarget({
     : { kind: "insert", beforeId: snapshot[index].id };
 }
 
-/**
- * 이 창 탭 드래그의 머무를 탭 — 끄는 탭이 **보이는 자리**에서 가장 많이 겹친 다른 탭.
- * 이웃은 끄는 탭의 가운데가 제 가운데를 넘는 순간 비켜서므로 겹침은 절반 남짓이 한계다 —
- * 그 언저리(`min` 이상)에 걸쳐 둔 것을 "그 탭 위에 올렸다" 로 읽는다. `offsets` 는 지금 미리보기의 이동량이다.
- */
+/** 이웃은 가운데를 넘는 순간 비켜서므로 겹침은 절반 남짓이 한계다 — `min` 을 그보다 올리면 머무름이 서지 않는다 */
 export function tabOverlapTarget({
   snapshot, draggedTabId, offset, offsets, min = 0.3,
 }: {
@@ -137,7 +122,7 @@ function tabPitch(snapshot: readonly TabDropSnapshotItem[], index: number, gap: 
       : snapshot[index].rect.left - snapshot[index - 1].rect.left;
 }
 
-/** 바 밖으로 빠진 탭의 뒤만 당긴다 — + 버튼도 같은 피치로 원래 자리를 닫는다. */
+/** 바 밖으로 빠진 탭의 뒤만 당긴다 */
 export function tabDragCollapse({
   snapshot, draggedTabId, gap = 0,
 }: {
@@ -153,7 +138,6 @@ export function tabDragCollapse({
   return { offsets, newTabOffset: -pitch };
 }
 
-/** 삽입 자리까지 사이 탭들만 비켜선다. */
 export function tabDropPreview({
   snapshot, target, draggedTabId, fallbackWidth = 200, gap = 0,
 }: {
@@ -201,7 +185,7 @@ export function tabDropPreview({
   };
 }
 
-/** 잡은 지점을 유지한 채 보이는 스트립 안에 가둔다 — 이 창 탭의 삽입 판정(`tabReorderTarget`)도 이 값을 쓴다. */
+/** 이 창 탭의 삽입 판정(`tabReorderTarget`)도 이 값을 쓴다 */
 export function tabDragOffset({
   snapshot, bounds, clientX, grab, draggedTabId,
 }: {

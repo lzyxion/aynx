@@ -73,16 +73,7 @@ export interface TabLocations {
   locations: readonly (Pick<OpenLocation, "host" | "folder" | "projectId" | "remoteHome"> | null)[];
 }
 
-/**
- * **워크트리를 지울 때 함께 닫을 탭** (docs/log/2026-10-05-worktree-cleanup-tabs-refresh.md).
- *
- * 타일의 자리는 독의 "열린 곳" 과 같은 판정([`matchProjectLocation`] — 그 폴더를 품은 **가장 깊은** 등록 폴더)이고,
- * 그 답이 지울 워크트리(`target`)면 그 타일은 워크트리 안에 있다. 그래서 `fe` 와 `fe2` 는 경계로 갈리고, 워크트리
- * 안에 다른 등록 폴더가 겹쳐 있으면 그 안의 타일은 그쪽 것이다. Windows 경로는 대소문자·구분자를 가리지 않는다.
- *
- * - `close` — **모든** 타일이 그 워크트리 안인 탭. 자리를 모르는 타일이 하나라도 있으면 닫지 않는다(보수적으로).
- * - `mixed` — 그 워크트리 타일이 있지만 다른 타일이 섞인 탭의 수(남긴다 — 상자가 한 줄로 밝힌다).
- */
+/** 자리를 모르는 타일이 하나라도 있는 탭은 닫지 않는다(`mixed` 로 센다) */
 export function worktreeTabsVerdict(
   tabs: readonly TabLocations[],
   target: ProjectFolder,

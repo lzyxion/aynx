@@ -1,17 +1,6 @@
 <!--
-  **폰 설정 화면**(원격 웹 R5 · 10-20) — 전체 화면 덮개. 들어오는 길은 셋: "새 탭에 열기" 시트의 [설정] · 고르기 화면 머리의 톱니 · 독 머리 줄의 톱니(`Dock` 의 `runTool` — 폰 배치일 때).
-  줄은 높이 52px 이상 · 묶음마다 둥근 판 · 묶음 이름은 강조색.
-
-  - **이 기기**(이 브라우저의 `localStorage` 에만 — 메인 PC 의 `settings.toml` 에 쓰지 않는다 · `app/mobile`):
-    터미널 글자 크기 [− n +](이 기기 터미널만 — 메인 PC 값과 같아지면 이 기기 값을 지운다) · 이 기기 크기로 맞추기(위 띠 `⤢` 와 같은
-    값) · 입력 방식 [입력 칸 · 바로 입력](키 띠 맨 왼쪽 단추와 같은 값 — 기본 입력 칸 · `mobile/MobileKeys`) · 키 띠 ›(작은 하위 화면 —
-    단추마다 켜고 끄기 · 위로 · 아래로 · 맨 왼쪽 입력 방식 단추는 고정이라 없다) · 테마 [시스템 · 밝게 · 어둡게](화면에만 — `mode.svelte.ts`).
-  - **메인 PC**: 자동 승인 — `[automation]` 은 원격 창의 칸 단위 문(`remote/deny.rs` 의 `settings_home_only`)이 막는 메인 PC 전용 칸이라
-    스위치가 아니라 **읽기 전용 줄**(지금 상태 + "메인 PC 에서"). 알림 ›(전체 설정의 알림 칸).
-  - **이 기기 관리**: 지금 잠그기(상태바 자물쇠와 같은 문 — 가림막 + 볼트 잠금) · 연결 끊기(상태바 원격 칩과 같은 `POST /remote/lock`
-    — 이 원격 세션을 닫고 잠금 해제 쪽으로) · 이 기기 페어링 해제(원격 허용 `remote_device_revoke` — 이 기기의 id 는 관문의 부팅 표).
-    끊기 · 해제는 앱 확인 상자(`askConfirm`)로 한 번 묻는다.
-  - 꼬리: [전체 설정 열기 ›](설정 모달).
+  폰 설정 화면 — 전체 화면 덮개. "이 기기" 값은 이 브라우저의 `localStorage` 에만 산다(메인 PC 의 `settings.toml` 에 쓰지 않는다).
+  자동 승인(`[automation]`)은 원격 창의 칸 단위 문(`remote/deny.rs` 의 `settings_home_only`)이 막는 메인 PC 전용 칸이라 읽기 전용 줄이다.
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
@@ -58,7 +47,6 @@
   } from "$lib/mobile/prefs";
   import { STRIP_KEYS } from "$lib/mobile/strip-keys";
 
-  /** 하위 화면 — 키 띠 고르기 */
   let view = $state<"main" | "keys">("main");
 
   const font = $derived(terminalFontSize());
@@ -332,7 +320,6 @@
   }
   @keyframes msettings-in {
     from {
-      /* 화면 폭 전체가 오른쪽에서 밀려 들어온다(밀어 넣는 화면) — 아래에서 올라오는 것은 새 탭 시트뿐 */
       transform: translateX(100%);
     }
   }
@@ -484,7 +471,7 @@
   .mini:disabled {
     opacity: 0.35;
   }
-  /* 이어 붙은 묶음(2026-10-28 — 설정 칩과 같은 규칙 · 목업 6eWvPcEZZeQ7sgGckwkBed): 2px 틈, 바깥 끝 = 반원 · 맞닿는 쪽 = 6px, 고른 칸만 알약 */
+  /* 이어 붙은 묶음 — 설정 칩과 같은 규칙 */
   .seg {
     flex: 0 0 auto;
     display: flex;

@@ -1,20 +1,9 @@
-//! **aynx 이 띄우는 에이전트에 외부 MCP 서버를 싣는 규칙** (docs/log/2026-10-01-mcp-inject.md).
+//! aynx 이 띄우는 에이전트에 외부 MCP 서버를 싣는 규칙 (docs/log/2026-10-01-mcp-inject.md).
 //!
-//! 설정의 [[ai.mcp_servers]] 는 앱 전체·프로젝트별 목록과 볼트 참조만 담는다. 사용자 ~/.claude.json·~/.codex/config.toml 은
-//! 쓰지 않고, Claude 는 앱 데이터 루트의 JSON 파일, Codex 는 -c TOML 값으로 다음 실행에만 싣는다.
+//! 사용자 ~/.claude.json · ~/.codex/config.toml 은 쓰지 않는다 — Claude 는 앱 데이터 루트의 JSON 파일, Codex 는 -c TOML 값으로 다음 실행에만 싣는다.
 //! 세션 서버는 [ai]의 켬/끔·대상 선택에 따라 같은 실행 설정에 더한다. 외부 목록에서 현재·옛 이름은 거절한다.
 //! 토큰은 Claude 실행 설정 파일에만 쓰고 Codex 인자에는 토큰 환경변수 이름만 싣는다.
-//!
-//! 생성은 순수 함수(with_servers·claude_config)이고, 낱말의 셸 인용·자리는 agent_args::with_tokens 하나다.
-//! 문자열은 agent_args 의 금지 문자·빈 낱말·끝 역슬래시 규칙에 더해 TOML 리터럴의 작은따옴표도 거절한다.
-//! 손으로 고친 파일의 잘못된 항목은 그 항목만 버린다. 같은 범위·이름은 첫 유효 항목만 남긴다.
-//!
-//! 로컬 autorun 관문(agent_autorun::agent_autorun_command)과 로컬 셸 타일의 장식 파일(`crate::agent_tile` — 2026-10-26, 셸 통합 감싸개가
-//! 읽는다 · 같은 [`configured_tokens`])에서만 부른다. SSH 는 Terminal.svelte 의
-//! pane.kind === "local" 조건 밖에서 첫 입력을 그대로 보내고, 프로젝트 재실행도 SSH 분기에서 반환한다.
-//! WSL 은 여기서도 검사하여 파일·인자 모두 싣지 않는다.
-//! 사이드 채팅(2026-10-25)은 세션 서버가 [`side_chat_servers`] 로 저장된 설정을 직접 읽어 `side_chat` 을 고른 서버만 싣는다
-//! (`server::side_chat` — 실행 모양은 [`claude_entry`] · [`codex_overrides`] 공용).
+//! 로컬 autorun 관문과 로컬 셸 타일의 장식 파일(`crate::agent_tile`)에서만 부른다. SSH 는 여기를 지나지 않고, WSL 은 파일 · 인자 모두 싣지 않는다.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -39,7 +28,7 @@ pub struct McpEnv {
 pub struct McpServer {
     pub name: String,
     pub enabled: bool,
-    /// 없으면 두 에이전트 모두(1차 호환), 빈 배열이면 주입하지 않는다. 모르는 id 는 무시한다.
+    /// 없으면 두 에이전트 모두(옛 설정 호환), 빈 배열이면 주입하지 않는다. 모르는 id 는 무시한다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agents: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,11 +44,9 @@ pub struct McpServer {
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// 사이드 채팅에도 싣는다(기본 끔 · 옛 설정은 칸 없음 = 끔 — 2026-10-25). 범위 · 켬은 AI 타일과 같은 판정([`side_chat_selected`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub side_chat: bool,
-    /// **옛 칸** `side_chat_no_ask`(사이드 채팅에서 묻지 않기 — 2026-11-20 걷음: 묻지 않기는 사이드 채팅의 모드 · 허용 목록이 정한다). 옛
-    /// `settings.toml` 에 남아 있어도 이 항목을 버리지 않게(`deny_unknown_fields`) **읽기만** 받고 아무 데도 쓰지 않으며, 다음 저장에서 빠진다.
+    /// 옛 칸 — 옛 `settings.toml` 에 남아 있어도 이 항목을 버리지 않게(`deny_unknown_fields`) 읽기만 받고 다음 저장에서 빠진다.
     #[serde(default, rename = "side_chat_no_ask", skip_serializing)]
     pub(crate) legacy_no_ask: Option<bool>,
 }
@@ -115,7 +102,7 @@ pub(crate) fn header_name_ok(name: &str) -> bool {
             .contains(&name.to_ascii_lowercase().as_str())
 }
 
-/// 한 항목의 판정 — 설정 화면과 띄우기가 함께 쓴다. 값 자체는 오류 문구에 싣지 않는다.
+/// 값 자체는 오류 문구에 싣지 않는다.
 fn validate(server: &McpServer) -> Option<String> {
     let name = &server.name;
     if name.is_empty()
@@ -204,14 +191,14 @@ fn validate(server: &McpServer) -> Option<String> {
     }
 }
 
-/// 틀린 항목만 버린다 — 꺼진 항목도 검사하므로 다음에 켜도 안전하다.
+/// 꺼진 항목도 검사하므로 다음에 켜도 안전하다.
 pub(crate) fn clean_servers(servers: &mut Vec<McpServer>) {
     let mut names = HashSet::new();
     servers
         .retain(|s| validate(s).is_none() && names.insert((s.project_id.clone(), s.name.clone())));
 }
 
-/// 저장 전 항목 검사 — existing_names 에는 편집 중인 자기 이름을 빼고 보낸다.
+/// existing_names 에는 편집 중인 자기 이름을 빼고 보낸다.
 #[tauri::command]
 pub async fn agent_mcp_validate(server: McpServer, existing_names: Vec<String>) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -238,7 +225,7 @@ fn enabled(servers: &[McpServer], agent: &str) -> Vec<McpServer> {
         .collect()
 }
 
-/// Claude --mcp-config 파일 내용 — 세션 서버 토큰은 이 파일에만 들어간다.
+/// 세션 서버 토큰은 이 파일에만 들어간다.
 fn claude_config(servers: &[McpServer], sessions: Option<&SessionsServer>) -> Option<String> {
     let mut map = serde_json::Map::new();
     for s in enabled(servers, "claude") {
@@ -258,7 +245,6 @@ fn claude_config(servers: &[McpServer], sessions: Option<&SessionsServer>) -> Op
     }
 }
 
-/// Claude `--mcp-config` 의 서버 한 칸(실행 모양 — 준비된 서버면 도우미 · 프록시 URL). 사이드 채팅도 쓴다(`side_chat::claude`).
 pub(crate) fn claude_entry(s: &McpServer) -> Value {
     if s.transport == "stdio" {
         json!({ "type": "stdio", "command": s.command, "args": s.args })
@@ -267,8 +253,6 @@ pub(crate) fn claude_entry(s: &McpServer) -> Value {
     }
 }
 
-/// Codex `-c` 의 값들(앞의 `-c` 없이) — 서버 한 칸의 실행 모양(stdio = command · args, HTTP = url). 사이드 채팅도 쓴다(`side_chat::codex` —
-/// 싣기 전에 [`launch_ok`] 로 다시 본다).
 pub(crate) fn codex_overrides(s: &McpServer) -> Vec<String> {
     let prefix = format!("mcp_servers.{}", s.name);
     if s.transport == "stdio" {
@@ -281,7 +265,6 @@ pub(crate) fn codex_overrides(s: &McpServer) -> Vec<String> {
     }
 }
 
-/// 실행 모양(준비된 뒤 — 도우미 경로 · 프록시 URL 포함)이 인자 · TOML 작은따옴표 리터럴에 안전하게 실리나.
 pub(crate) fn launch_ok(s: &McpServer) -> bool {
     match s.transport.as_str() {
         "stdio" => s.command.as_deref().is_some_and(value_ok) && s.args.iter().all(|a| value_ok(a)),
@@ -290,7 +273,7 @@ pub(crate) fn launch_ok(s: &McpServer) -> bool {
     }
 }
 
-/// Codex -c 의 TOML 값 — validate 를 지난 값에는 작은따옴표가 없다.
+/// validate 를 지난 값에는 작은따옴표가 없다.
 fn codex_tokens(servers: &[McpServer], sessions: Option<&SessionsServer>) -> Vec<String> {
     let mut tokens = Vec::new();
     for s in enabled(servers, "codex") {
@@ -312,8 +295,7 @@ fn codex_tokens(servers: &[McpServer], sessions: Option<&SessionsServer>) -> Vec
     tokens
 }
 
-/// 그 셸에서 다음 실행할 한 줄 — 순수. Claude 파일 쓰기에 실패했으면 path 를 주지 않는다. 제품 길은 [`apply_configured`] 가
-/// [`server_tokens`] 를 줄에 놓는다 — 이것은 그 순수 판(시험). `--strict-mcp-config` 는 **쓰지 않는다**(사용자의 다른 MCP 를 유지 — 설계 C-5).
+/// `--strict-mcp-config` 는 쓰지 않는다 — 사용자의 다른 MCP 를 유지한다.
 #[cfg(test)]
 fn with_servers(
     line: &str,
@@ -330,9 +312,7 @@ fn with_servers(
     crate::agent_args::with_tokens(line, shell, &tokens)
 }
 
-/// 그 에이전트에 붙일 MCP 낱말(셸 글자가 되기 전 — **순수**). Claude 파일 경로가 없거나 실을 수 없으면 아무것도 없다.
-/// 줄에 놓는 [`apply_configured`] 와 로컬 셸 타일의 장식 파일(`crate::agent_tile`)이 함께 쓴다. **오케스트레이션 도구의 미리 허용은 없다** —
-/// 타일은 조정자 자리가 되지 못한다(목록에도 없다 · 미리 허용은 프로듀서 채팅만 — `server::producer::launch`).
+/// 오케스트레이션 도구의 미리 허용은 없다 — 타일은 조정자 자리가 되지 못한다(미리 허용은 프로듀서 채팅만 — `server::producer::launch`).
 fn server_tokens(agent: &str, servers: &[McpServer], path: Option<&str>, sessions: Option<&SessionsServer>) -> Vec<String> {
     match agent {
         "claude" if claude_config(servers, sessions).is_some() => {
@@ -346,8 +326,7 @@ fn server_tokens(agent: &str, servers: &[McpServer], path: Option<&str>, session
     }
 }
 
-/// 옛 조정자 역할 설정 파일 이름 `orch-run-<32 hex>-g<세대>.json` 인가 — 경로 · 다른 파일은 받지 않는다. **옛 파일 호환**: 3차 4단계부터 새로
-/// 쓰지 않고(조정자 토큰이 없다) 3차 6단계부터는 주장도 받지 않는다 — 옛 판이 남긴 파일(죽은 조정자 토큰이 든)을 시작 정리가 지우는 데만 쓴다.
+/// 옛 조정자 역할 설정 파일 이름 — 새로 쓰지도 주장을 받지도 않는다. 옛 판이 남긴 파일(죽은 조정자 토큰이 든)을 시작 정리가 지우는 데만 쓴다.
 fn is_role_config(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("orch-").and_then(|r| r.strip_suffix(".json")) else {
         return false;
@@ -358,8 +337,7 @@ fn is_role_config(name: &str) -> bool {
     crate::orchestration::is_run_id(run) && !gen.is_empty() && gen.len() <= 10 && gen.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// 작업자 · 검토자 턴 설정 파일 이름 `orch-att-<32 hex>-t<턴>.json`(3a — 턴마다 하나 · 서버가 쓴다, [`write_worker_config`]) 또는 옛
-/// `orch-att-<32 hex>.json`(2차 — 시작 정리가 지울 수 있게) 인가.
+/// 옛 `orch-att-<32 hex>.json` 도 받는다 — 시작 정리가 지울 수 있게.
 fn is_worker_config(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("orch-").and_then(|r| r.strip_suffix(".json")) else {
         return false;
@@ -371,10 +349,8 @@ fn is_worker_config(name: &str) -> bool {
     crate::orchestration::is_attempt_id(id)
 }
 
-/// **세션 서버가** 작업자 · 검토자 Claude 턴의 실행 설정 파일을 쓴다(설계 C-3 ⑤ · 헤드리스 설계 4-5 · D11) — 세션 서버 하나 · **그 턴의**
-/// 작업자 토큰(`--strict-mcp-config` 와 짝 — 사용자 MCP 는 싣지 않는다). 파일은 **턴 자원**이다: 쓰기 **전에** 그 턴의 열쇠(`claim`)가 쥔다고
-/// 적고, 서버 손이 그 턴의 트리 종료를 확인한 뒤 놓는다([`release_stream`] — 다음 턴은 새 파일). 경로(`/` 구분자)를 돌려준다. 못 쓰면
-/// `None`(생성 실패).
+/// 세션 서버가 작업자 · 검토자 Claude 턴의 실행 설정 파일을 쓴다 — 그 턴의 작업자 토큰만(`--strict-mcp-config` 와 짝 — 사용자 MCP 는 싣지 않는다).
+/// 파일은 턴 자원이다 — 쓰기 전에 그 턴의 열쇠(`claim`)가 쥔다고 적고, 서버가 그 턴의 트리 종료를 확인한 뒤 놓는다.
 pub(crate) fn write_worker_config(attempt_id: &str, turn: u32, port: u16, token: &str, claim_key: &str) -> Option<String> {
     if !crate::orchestration::is_attempt_id(attempt_id) || port == 0 || token.is_empty() || turn == 0 {
         return None;
@@ -397,7 +373,6 @@ pub(crate) fn write_worker_config(attempt_id: &str, turn: u32, port: u16, token:
 /// 같은 실행 설정 파일 쓰기를 직렬화한다. 임시 파일도 비밀을 쓰기 전에 권한을 좁힌다.
 static CONFIG_WRITE: Mutex<()> = Mutex::new(());
 
-/// 로컬 셸 타일의 장식 파일(`crate::agent_tile`)도 같은 쓰기(권한 먼저 · 원자 교체)를 쓴다.
 pub(crate) fn write_config(path: &Path, config: &str) -> Option<()> {
     use std::io::Write;
 
@@ -426,34 +401,24 @@ pub(crate) fn write_config(path: &Path, config: &str) -> Option<()> {
     saved
 }
 
-// ---------------------------------------------------------------------------
-// 실행 설정 파일(`agent-mcp/{GUI pid}-{해시}.json`)의 수명 — ③-3c · 설계 4.4 "생존 인스턴스·파일 사용 여부"
-//
-// 파일은 GUI 가 AI 타일을 띄울 때 쓰고(`claude --mcp-config <파일>` — claude 는 시작 때 읽고, `/mcp` 재연결 때 **다시** 읽는다),
-// 셸은 세션 서버의 자식이라 GUI 가 죽어도 산다. 그래서 예전의 "다른 pid 의 파일은 지운다" 는 GUI 재시작 때 살아남은 claude 의
-// 설정을 지웠다(③-3b1 실기). 이제 규칙은 둘이다:
-// - **주장**: GUI 는 파일을 쓰기 **전에** 세션 서버에 "이 스트림(타일)이 이 파일을 쓴다" 를 알린다(op `agent_mcp_claim`). 서버는
-//   세션 자원을 회수할 때(셸이 끝났거나 닫혔다) 그 스트림의 주장을 놓고, **아무도 안 쥔 파일은 지운다**([`release_stream`]).
-// - **시작 정리**: GUI 가 뜰 때 파일마다 — 이름의 pid 가 살아 있거나(이 GUI 포함), 서버의 살아 있는 세션이 쥐었으면 남긴다.
-//   서버에 묻지 못하면 **아무것도 지우지 않는다**(안전한 쪽).
-// ---------------------------------------------------------------------------
+// ── 실행 설정 파일(`agent-mcp/{GUI pid}-{해시}.json`)의 수명 ──
+// 셸은 세션 서버의 자식이라 GUI 가 죽어도 살고 claude 는 `/mcp` 재연결 때 파일을 다시 읽는다 — "다른 pid 의 파일은 지운다" 는 쓰지 않는다.
+// 주장: GUI 는 쓰기 전에 서버에 알리고, 서버는 세션 자원을 회수할 때 놓아 아무도 안 쥔 파일을 지운다. 시작 정리: 서버에 묻지 못하면 아무것도 지우지 않는다.
 
-/// 서버 프로세스의 주장 표 — 파일 이름 → 그 파일을 쓰는 스트림들.
 static CLAIMS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> = LazyLock::new(Default::default);
 
 fn claims() -> std::sync::MutexGuard<'static, HashMap<String, HashSet<String>>> {
     CLAIMS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 실행 설정 파일 이름의 모양 `{pid}-{16 hex}.json` 이면 pid — 아니면 `None`(경로·다른 파일은 받지 않는다).
+/// 경로 · 다른 파일은 받지 않는다.
 fn config_pid(name: &str) -> Option<u32> {
     let (pid, hash) = name.strip_suffix(".json")?.split_once('-')?;
     let ok = hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit());
     ok.then(|| pid.parse::<u32>().ok()).flatten()
 }
 
-/// (서버) 이 스트림이 이 파일을 쓴다 — 이름이 실행 설정 파일 · 로컬 셸 타일 장식 파일(`crate::agent_tile`) 모양이 아니면 `false`
-/// (경로 조작 불가 — 이름만 받는다).
+/// 이름이 실행 설정 파일 · 장식 파일 모양이 아니면 `false` — 경로 조작 불가(이름만 받는다).
 pub(crate) fn claim(stream: &str, file: &str) -> bool {
     if (config_pid(file).is_none() && !is_worker_config(file) && !crate::agent_tile::is_file_name(file)) || stream.is_empty() {
         return false;
@@ -462,14 +427,12 @@ pub(crate) fn claim(stream: &str, file: &str) -> bool {
     true
 }
 
-/// (서버) 살아 있는 세션이 쥔 파일 이름들(정렬).
 pub(crate) fn claimed_files() -> Vec<String> {
     let mut v: Vec<String> = claims().keys().cloned().collect();
     v.sort();
     v
 }
 
-/// (서버) 세션 자원 회수 — 그 스트림의 주장을 놓고 아무도 안 쥔 파일을 지운다. 지운 수.
 pub(crate) fn release_stream(stream: &str) -> usize {
     let orphaned: Vec<String> = {
         let mut c = claims();
@@ -493,7 +456,6 @@ pub(crate) fn release_stream(stream: &str) -> usize {
         .count()
 }
 
-/// 시작 정리의 판정 — `keep(pid, 파일 이름)` 이 거짓인 실행 설정 파일과 옛 단일 파일(`agent-mcp.json`)을 지운다. 지운 수.
 fn cleanup_configs(root: &Path, keep: impl Fn(u32, &str) -> bool) -> usize {
     let _ = std::fs::remove_file(root.join("agent-mcp.json"));
     let Ok(files) = std::fs::read_dir(root.join("agent-mcp")) else {
@@ -515,8 +477,7 @@ fn cleanup_configs(root: &Path, keep: impl Fn(u32, &str) -> bool) -> usize {
     removed
 }
 
-/// 조정자 역할 설정 파일(`orch-…`) · 로컬 셸 타일 장식 파일(`tile-…`)의 시작 정리 — 이름에 pid 가 없으니 **서버의 살아 있는 세션이 쥔 것만**
-/// 남긴다(`keep`). 지운 수.
+/// 이름에 pid 가 없으니 서버의 살아 있는 세션이 쥔 것만 남긴다.
 fn cleanup_role_configs(root: &Path, keep: impl Fn(&str) -> bool) -> usize {
     let Ok(files) = std::fs::read_dir(root.join("agent-mcp")) else {
         return 0;
@@ -532,8 +493,7 @@ fn cleanup_role_configs(root: &Path, keep: impl Fn(&str) -> bool) -> usize {
         .count()
 }
 
-/// (서버) 시작 때 한 번 — 아무도 쥐지 않은 작업자 · 검토자 턴 설정 파일(`orch-att-…`)을 지운다(헤드리스 설계 4-5 · D11 — 산 턴이 없는
-/// 파일은 옛 서버의 것이다: 그 턴 잡은 옛 서버의 자기 잡과 함께 끝났다). 쓰다 만 `.tmp` 도. 지운 수.
+/// 산 턴이 없는 파일은 옛 서버의 것이다(그 턴 잡은 옛 서버의 잡과 함께 끝났다).
 pub(crate) fn sweep_worker_configs() -> usize {
     let Some(dir) = crate::instance::data_root().map(|r| r.join("agent-mcp")) else {
         return 0;
@@ -552,8 +512,7 @@ pub(crate) fn sweep_worker_configs() -> usize {
         .count()
 }
 
-/// GUI 시작 때 한 번 — 이름의 pid 가 살아 있지 않고 서버의 살아 있는 세션도 쥐지 않은 실행 설정 파일을 지운다. 서버에 묻지
-/// 못하면 아무것도 지우지 않는다(살아남은 claude 의 설정을 지우는 것보다 남기는 쪽이 안전하다).
+/// 서버에 묻지 못하면 아무것도 지우지 않는다 — 살아남은 claude 의 설정을 지우는 것보다 남기는 쪽이 안전하다.
 pub(crate) async fn cleanup_stale_configs() {
     let Some(claimed) = crate::server::ai_proxy::claimed_agent_mcp().await else {
         eprintln!("[aynx] agent-mcp 정리: 세션 서버에 묻지 못해 건너뜁니다");
@@ -595,7 +554,7 @@ impl SessionsServer {
     }
 }
 
-/// PTY에 토큰을 주는 타일만 세션 서버를 받는다. 설정·WSL·대상 판정도 순수 함수다.
+/// PTY에 토큰을 주는 타일만 세션 서버를 받는다.
 fn sessions_for<'a>(
     agent: &str,
     shell: Option<&str>,
@@ -614,10 +573,7 @@ fn sessions_for<'a>(
     })
 }
 
-/// autorun 의 한 문만 부른다 — 파일 실패는 이 장식만 빼고 띄우기는 계속한다. `stream` 은 그 타일의 스트림 — 실행 설정 파일을
-/// 쓰기 **전에** 세션 서버에 주장한다(`claim` — 그 세션이 살아 있는 동안 파일이 남는다). **블로킹**(파일·파이프 왕복).
-/// `sessions` 는 **그 타일의 토큰**을 실은 좌표다(3차 4단계 — 토큰이 타일마다 달라 Claude 파일도 타일마다 하나가 된다). 오케스트레이션 도구의
-/// 미리 허용은 없다(오케스트레이션 탭 2단계 — 타일은 조정자 자리가 되지 못한다 · 목록에도 없다).
+/// 파일 실패는 이 장식만 빼고 띄우기는 계속한다. 실행 설정 파일을 쓰기 전에 세션 서버에 주장한다. 블로킹(파일 · 파이프 왕복).
 pub(crate) fn apply_configured(
     line: &str,
     shell: Option<&str>,
@@ -633,8 +589,7 @@ pub(crate) fn apply_configured(
     crate::agent_args::with_tokens(line, shell, &tokens)
 }
 
-/// [`apply_configured`] 의 몸 — 그 에이전트에 붙일 MCP 낱말(셸 글자가 되기 전). Claude 실행 설정 파일을 쓰고(주장 먼저) 그 경로를 싣는다.
-/// 로컬 셸 타일의 장식 파일(`crate::agent_tile` — 2026-10-26)도 이것을 부른다 — autorun 과 같은 장식이 한 곳에서 나온다. WSL 이면 없음. **블로킹**.
+/// 블로킹 — 실행 설정 파일을 쓴다(주장 먼저).
 pub(crate) fn configured_tokens(
     agent: &str,
     shell: Option<&str>,
@@ -671,7 +626,6 @@ pub(crate) fn configured_tokens(
         config.hash(&mut hash);
         let dir = crate::instance::data_root()?.join("agent-mcp");
         std::fs::create_dir_all(&dir).ok()?;
-        // 이름 = GUI pid + 내용 해시 — 3차 4단계부터 토큰이 타일마다 달라 사실상 타일마다 한 파일(조정자 타일도 같다 — 역할 파일은 없다).
         let path = dir.join(format!("{}-{:016x}.json", std::process::id(), hash.finish()));
         let value = path.to_str()?.replace('\\', "/");
         if !value_ok(&value) {
@@ -687,22 +641,19 @@ pub(crate) fn configured_tokens(
         Some(value)
     })();
     let mut tokens = server_tokens(agent, &servers, path.as_deref(), sessions);
-    // **타일 권한 훅**(2026-11-01 — `crate::tile_permission::hook_words`): 로컬 AI 타일 · 감싸개 셸 타일(`inject_mcp_token` — 세션 서버가 같은 타일에
-    // 권한 결정 토큰을 뽑는다)의 그 프로세스에만. 사용자 전역 훅 파일은 건드리지 않는다. WSL 은 위에서 이미 빈 것.
+    // 타일 권한 훅은 로컬 AI 타일 · 감싸개 셸 타일의 그 프로세스에만 — 사용자 전역 훅 파일은 건드리지 않는다.
     if inject_mcp_token {
         tokens.extend(crate::tile_permission::hook_words(agent));
     }
     tokens
 }
 
-/// **사이드 채팅에 실을 외부 서버**(순수 — 2026-10-25) — AI 타일과 같은 범위 판정([`servers_for_project`] — 같은 이름은 프로젝트 항목이
-/// 가린다)에서 켠(`enabled`) · 사이드 채팅을 고른(`side_chat`) 것만. 대상 칩(`agents`)은 보지 않는다. `project` = 채팅 cwd 의 프로젝트.
+/// AI 타일과 같은 범위 판정에서 켠 · 사이드 채팅을 고른 것만 — 대상 칩(`agents`)은 보지 않는다.
 pub(crate) fn side_chat_selected(servers: &[McpServer], project: Option<&str>) -> Vec<McpServer> {
     servers_for_project(servers, project).into_iter().filter(|s| s.enabled && s.side_chat).collect()
 }
 
-/// [`side_chat_selected`] 를 **저장된 설정**에서(세션 서버가 직접 읽는다 — 목록은 프런트 인자로 오지 않는다). cwd 의 프로젝트는 AI 타일과
-/// 같은 판정([`project_for_cwd`] — 가장 가까운 등록 프로젝트 · 워크트리는 공통 Git 디렉터리). 블로킹(설정 · 프로젝트 파일 · git 한 번).
+/// 세션 서버가 저장된 설정을 직접 읽는다 — 목록은 프런트 인자로 오지 않는다. 블로킹.
 // 시험 빌드의 서버 표는 가짜 목록을 읽는다(서버 표의 picked_servers).
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) fn side_chat_servers(cwd: Option<&str>) -> Vec<McpServer> {
@@ -757,7 +708,6 @@ fn project_from_roots(cwd: &str, roots: &[(String, String)]) -> Option<String> {
         .map(|(id, _)| id.clone())
 }
 
-/// 보통 폴더는 가장 가까운 등록 프로젝트, 워크트리는 공통 Git 디렉터리의 프로젝트를 찾는다.
 fn project_for_cwd(cwd: Option<&str>) -> Option<String> {
     let cwd = cwd?;
     let roots = crate::projects::mcp_project_roots();

@@ -1,7 +1,7 @@
 import type { orch as koOrch } from "$lib/i18n/ko/orch";
 
 /**
- * `orch` namespace — English (orchestration · 2026-10-15 stage 2b). Glossary lives in `en/settings.ts`.
+ * `orch` namespace — English (orchestration). Glossary lives in `en/settings.ts`.
  * Screen text uses the B words (run = album · task = track · worker = artist · coordinator = producer · delegated repository = repository ·
  * preset = artists); keys, code and text sent to the AI keep the design words Run · Task · worktree · coordinator · worker.
  */
@@ -202,11 +202,10 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "count.tracks.many": "{n} tracks",
   "library.empty": "No albums.",
   // ── Entry points ────────────────────────────────────────────────────────
-  // (stage 6) One entry for the palette · status bar · project menu — a delegated repository opens an AI tile, otherwise the delegation form.
   "start.openAiTile": "New album in this studio",
   "palette.board": "Orchestration",
 
-  // ── Orchestration tab (2026-10-29 — stage 1 tab frame · screen terms: run = album · coordinator = producer · delegated repo = repository) ──
+  // ── Orchestration tab ──
   "tab.home": "Orchestration",
   "tab.preparing": "New album",
   "tab.album": "Album",
@@ -223,7 +222,6 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "bar.interrupt": "Interrupt the producer's reply — the queue is held",
   "bar.time": "Coordination time",
   "bar.workers": "Artists {n} / {max}",
-  // (⑤) 런처 독 오케스트레이션 칸의 툴팁 꼬리 — 산 앨범 수(배지와 같은 수)
   "dock.live": "{n} album(s) in progress",
   "bar.reviews": "Reviews {n} / {max}",
   "bar.needs": "{n} thing(s) need you — click to jump to the track",
@@ -234,7 +232,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "bar.tool.files": "Editing files",
   "bar.tool.mcp": "Tool call",
   "bar.tool.web": "Web search",
-  // ── (④) Home · library ──
+  // ── Home · library ──
   "home.newAlbum": "New album",
   "home.title": "What should be split up?",
   "home.lead": "Say it in a sentence — the producer opens an album, splits it into tracks and hands them to artists. You merge at the end.",
@@ -274,7 +272,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "bar.home.counts": "{live} albums in progress",
   "bar.now.open": "Show {name}",
 
-  // ── Album panel (2026-10-29 — stage 1 ② · mock-up Main: album header · track list) ──
+  // ── Album panel ──
   "album.kicker": "ALBUM · {state}",
   "album.accepted": "{n} accepted",
   "album.integration": "Integrated {oid}",
@@ -322,7 +320,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "track.feat": "feat. {name} · {role} reviewing",
   "track.sub.listening": "{who} is listening",
   "track.noArtist": "No artist yet",
-  // ── Artist detail (2026-10-30 — orchestration tab ③) ──
+  // ── Artist detail ──
   "track.artist.open": "{name} — artist detail",
   "artist.back": "Back to the album",
   "artist.back.title": "Back to the album (Esc)",
@@ -388,7 +386,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "lyric.filter.tools": "Tools",
   "lyric.filter.says": "Words",
 
-  // ── Fields shared with the delegation form ──────────────────────────────
+  // ── Shared field text ──────────────────────────────────────────────────
   "repo.none": "No local projects — add a project first",
   "sandbox.note": "A worktree separates the work; it is not a security sandbox (artists run with your user's permissions).",
   "limit.max": "max {n}",
@@ -521,7 +519,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "orphan.notice": "{n} album(s) in progress stopped when the session server restarted — check the results in the Library",
   "coordinator.failed": "Could not open the producer tile — {msg}",
 
-  // ── Workers (stage 3) ───────────────────────────────────────────────────
+  // ── Workers ─────────────────────────────────────────────────────────────
   "workers.title": "Artists",
   "workers.empty": "No artists yet — the producer starts one per track",
   "attempt.state.spawning": "Starting up",
@@ -592,7 +590,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "reason.transcript-unavailable": "The artist's pinned conversation cannot be read yet",
   "reason.report-mismatch": "The report's branch or commit does not match its attempt — it cannot be accepted, only rejected",
 
-  // ── Reports · acceptance (stage 4) ─────────────────────────────────────
+  // ── Reports · acceptance ───────────────────────────────────────────────
   "action.worker_reported": "Artist reported",
   "action.task_accepted": "Track accepted",
   "action.task_rejected": "Track rejected",
@@ -647,7 +645,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "review.by.human": "person",
   "deps.needsMerge": "Several dependencies — a person merges their accepted commits, then the producer starts from main",
 
-  // ── Supervision notices (review F11 — made by the server with an event id · shown once by the main window) ──
+  // ── Supervision notices ──
   "notice.worker-exited": "An artist exited without reporting — {task}",
   "notice.reviewer-exited": "A reviewer exited without a verdict — {task}",
   "notice.exit-unconfirmed": "An artist's process exit is unconfirmed — {task}",
@@ -662,7 +660,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "notice.whileAway": "{n} orchestration notice(s) while no window was open",
   "notice.open": "Open album board",
 
-  // ── Recent activity (stage 6 — the worker's pinned conversation · worktree changes) ──
+  // ── Recent activity ──
   "activity.empty": "No transcript yet",
   "activity.changed": "{n} changed files",
   "activity.changedMore": "{n}+ changed files",
@@ -688,7 +686,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "action.worker_stalled": "Artist stalled",
   "action.worker_committed": "Artist commit",
   "action.commit_rejected": "Commit refused",
-  // ── Integration design stage 1 (10-15) — auto-stop after report · report file list ──
+  // ── Auto-stop after report · report file list ──
   "action.worker_auto_stopped": "Ended after report",
   "action.auto_stop_armed": "Turn ended — auto-stop scheduled",
   "action.auto_stop_cancelled": "Auto-stop cancelled",
@@ -699,7 +697,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "report.fileList.truncated": "Showing {shown} of {total} (cut)",
   "report.fileList.binary": "binary",
   "report.fileList.renamed": "← {from}",
-  // ── Integration design stage 2 (10-15) — integration jobs · hold · run completion ──
+  // ── Integration jobs · hold · run completion ──
   "task.state.integrating": "Integrating",
   "task.state.conflict": "Conflict",
   "hold.integration-diverged": "On hold — the integration ref is not the head the app knows (someone moved it, or the result is unknown). Nothing continues until it is reconciled",
@@ -740,7 +738,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "action.run_held": "On hold",
   "action.hold_released": "Hold released",
   "action.run_done": "Album completed",
-  // ── Integration design stage 3 (10-15) — integration ref · async accept · conflict · reconcile · export ──
+  // ── Integration ref · async accept · conflict · reconcile · export ──
   "job.phase.prepared": "prepared",
   "job.phase.candidate": "candidate made",
   "job.phase.awaiting-approval": "awaiting verify approval",
@@ -878,7 +876,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "action.resolver_spawning": "Resolver artist started",
   "action.human_reconciled": "Integration ref reconciled",
   "action.integration_exported": "Branch exported",
-  // ── pre-acceptance verification (integration design stage 4 — section 5) ──
+  // ── Pre-acceptance verification ──
   "field.verify": "Verify before accepting",
   "field.verify.placeholder": "npm ci && npm test",
   "field.verify.title": "For every integration candidate this one line runs with cmd.exe in the album's own verify folder. It passes on exit code 0 with no tracked file changed",
@@ -968,7 +966,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "reviewer.waived": "Required review waived (accepted by a person)",
   "attempt.role.reviewer": "Review",
   "attempt.role.reviewer.title": "A reviewer that only reads the reported commit (fixed arguments · empty working folder) — role-based supplementary review",
-  // Stage 6 — cleanup (server temp folders · end-of-run [Clean up])
+  // Cleanup
   "reason.cleanup-pending": "A server temp folder has unexpected changes or a process may still use it, so it was kept",
   "reason.not-cleanable": "Not something cleanup can remove",
   "reason.worktrees-left": "Artist worktrees are left, so the album was not archived — clean them up first",
@@ -1050,7 +1048,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "temp.why.not-a-worktree": "not a worktree",
   "temp.why.unreadable": "unreadable",
 
-  // ── Stage 3-3b — headless worker board (turns · blocked · delegation band · role history · acceptance rules · rework · waivers) ──
+  // ── Headless worker board ──
   "attempt.state.running": "Running a turn",
   "attempt.state.idle": "Idle",
   "hold.repo-identity-changed": "On hold — the repository is not the one this album started with (re-cloned at the same path, a link …). Check the album permissions, set it up again, then release the hold",
@@ -1126,7 +1124,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "notice.turn-timeout": "An artist's turn ran past its time limit and was ended · {task}",
   "notice.verify-needs-human": "The album permissions changed, so the verification was not run unattended — it waits for your approval · {task}",
   "notice.repo-identity-changed": "The repository is not the one the album started with — integration was put on hold",
-  // ── Stage 3-5 — the AI opens a run (start_run · adopt_run · board placement) ──
+  // ── Album takeover · wake-ups ──
   "notice.run-adopted": "Another producer took over the paused album",
   "notice.wake-limit": "Aynx stopped waking the producer — message the producer chat to continue",
   "notice.wake-limit.segment-max": "Aynx reached the wake-up limit between your messages and stopped waking the producer — message the producer chat to continue",
@@ -1136,7 +1134,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "notice.wake-failed": "Aynx could not wake the producer — message the producer chat to continue",
   "notice.wake-turn-timeout": "A producer turn started by Aynx ran past its time limit (30 min) and was interrupted",
 
-  // ── Repository delegation · presets (stage 3-1) ──
+  // ── Presets ──
   "config.role.model": "Model",
   "config.role.effort": "Reasoning effort",
   "config.role.cliDefault": "Default",
@@ -1155,7 +1153,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "config.risk.short.verify": "Automatic verification runs the tests and build scripts artists changed with your permissions and no sandbox. The main merge gate does not protect this PC.",
   "config.risk.short.full": "'Full auto' roles run without asking and without a sandbox — a prompt injection can become execution on this PC.",
 
-  // ── Producer chat (2026-10-30 · stage 2 step 3 — structured producer · mockup CoordChat) ──
+  // ── Producer chat ──
   "producer.head": "Producer · {cli}",
   "producer.act.starting": "Starting",
   "producer.act.responding": "Responding",
@@ -1237,7 +1235,7 @@ export const orch: Record<keyof typeof koOrch, string> = {
   "home.card.reattach": "Paused · no producer · paused by a person",
   "home.reattach": "Reattach producer",
   "home.reattach.tip": "Reattaching keeps it paused — [Resume] is up to a person",
-  // ── App wake-ups (stage 2 step 4) ──
+  // ── App wake-ups ──
   "producer.wake.title": "Aynx woke the producer",
   "producer.wake.retry": "reminder",
   "producer.wake.resync": "many changes — asked to read from scratch",

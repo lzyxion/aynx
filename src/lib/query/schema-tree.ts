@@ -1,29 +1,9 @@
 /**
- * **스키마 트리의 규칙** — 펼침 상태 · 폴더 나누기 · 줄 펴기 · 키보드 · 넣을 이름 · 외래 키 따라가기. **순수 함수**(입출력 없음 —
- * 그림은 `SchemaTree.svelte`, 읽기는 `query-backend` 의 `dbSchema`·`dbObjects`·`dbTableDetail`).
+ * 스키마 트리의 규칙 — 폴더 나누기 · 줄 펴기 · 키보드 · 넣을 이름 · 외래 키 따라가기.
  *
- * 모양(DBeaver 식):
- *
- * ```text
- * ▸ public                 스키마(첫 단계 — 이름만 읽는다)
- *   ▸ 테이블 12             종류별 폴더(스키마를 펼칠 때 그 스키마의 객체를 한 번에 읽는다 · 빈 폴더는 숨김)
- *     ▸ orders              테이블 · 뷰 · 구체화 뷰 · 외부 테이블은 펼치면 구조(`dbTableDetail` — 한 번에)
- *       ▸ 컬럼 8            구조 폴더(빈 폴더 숨김): 컬럼 · 인덱스 · 제약 조건 · 외래 키 · 참조됨 · 트리거 · 파티션
- *           id   integer
- *       ▸ 외래 키 1
- *           (customer_id) → customers(id)     누르면 대상 테이블로 트리 이동
- *   ▸ 함수 3
- *       f1(a integer)       함수 · 프로시저 · 시퀀스 · 형은 잎
- * ```
- *
- * - SQLite 에 붙인 DB 가 `main` 하나뿐이면 스키마 단계를 건너뛴다(폴더가 맨 위).
- * - 인덱스 · 트리거는 엔진과 상관없이 **테이블 아래**에만 선다(스키마 단 폴더 없음 — 엔진끼리 모양을 맞춘다).
- * - 모든 단계는 **기본 접힘**이다. 펼친 열쇠 목록은 타일(`QueryView`)이 쥔다 — 트리를 숨겼다 펴도 · 다시 연결해도 남는다.
- * - 열쇠는 스키마 · 폴더 · 객체 · 구조 폴더를 NUL 로 이은 글자다(이름에 무엇이 와도 겹치지 않는다).
- * - **이름 필터**(`TreeInput.filter` — 10-13): **이미 읽어 온 것**에서 대소문자 무시 부분 일치. 일치한 것의 조상(스키마 · 폴더 ·
- *   테이블 · 구조 폴더)은 펼친 목록과 상관없이 펼쳐 보이고(목록은 건드리지 않는다 — 필터를 지우면 원래 펼침), 일치 없는 가지는
- *   숨기고, 폴더 개수는 `일치/전체`. 이름이 일치한 객체 아래는 평소처럼 펼친 목록을 따른다. 아직 안 읽은 스키마는 거르지 못한다 —
- *   맨 위 안내 줄(`unread` — "읽지 않은 스키마 N개 · [모두 읽기]")이 센다(서버 검색 op 를 두지 않은 까닭은 `SchemaTree` 머리말).
+ * - 인덱스 · 트리거는 엔진과 상관없이 테이블 아래에만 선다(엔진끼리 모양을 맞춘다).
+ * - 펼친 열쇠 목록은 타일(`QueryView`)이 쥔다. 열쇠는 NUL 로 이은 글자다(이름에 무엇이 와도 겹치지 않는다).
+ * - 이름 필터는 이미 읽어 온 것만 거르고, 펼친 목록은 건드리지 않는다(필터를 지우면 원래 펼침). 서버 검색 op 를 두지 않은 까닭은 `SchemaTree` 머리말.
  */
 import type {
   DbConstraint,
@@ -40,18 +20,17 @@ import type {
 } from "./query-backend";
 import { qualifiedName, quoteIdent } from "./sql-quote";
 
-/** 방언별 폴더 순서 — DBeaver 의 순서를 따른다. 목록에 없는 종류는 그 방언에서 오지 않는다 */
+/** 목록에 없는 종류는 그 방언에서 오지 않는다 */
 export const FOLDERS: Record<DbDialect, readonly DbObjectKind[]> = {
   postgres: ["table", "view", "matview", "foreign", "function", "procedure", "sequence", "type"],
   mysql: ["table", "view", "function", "procedure", "sequence"],
   sqlite: ["table", "view"],
 };
 
-/** 테이블 아래 구조 폴더 — 순서대로(빈 폴더는 숨김) */
 export const PARTS = ["columns", "indexes", "constraints", "foreignKeys", "referencedBy", "triggers", "partitions"] as const;
 export type DetailPart = (typeof PARTS)[number];
 
-/** 구조 폴더의 잎 하나(컬럼은 따로 — `column` 줄) */
+/** 컬럼은 따로 — `column` 줄 */
 export type DetailLeaf =
   | { part: "indexes"; item: DbIndex }
   | { part: "constraints"; item: DbConstraint }
@@ -59,7 +38,6 @@ export type DetailLeaf =
   | { part: "triggers"; item: DbTrigger }
   | { part: "partitions"; item: DbPartition };
 
-/** 행을 가진 관계 — 누르면 `SELECT * …` · 펼치면 구조 */
 export function isRelation(kind: DbObjectKind): boolean {
   return kind === "table" || kind === "view" || kind === "matview" || kind === "foreign";
 }
@@ -67,22 +45,19 @@ export function isRelation(kind: DbObjectKind): boolean {
 const SEP = "\u0000";
 export const schemaKey = (schema: string) => `s${SEP}${schema}`;
 export const folderKey = (schema: string, kind: DbObjectKind) => `f${SEP}${schema}${SEP}${kind}`;
-/** 객체 열쇠 — 겹지정 함수(같은 이름 · 다른 인자)가 갈리게 인자까지 */
+/** 겹지정 함수(같은 이름 · 다른 인자)가 갈리게 인자까지 */
 export const objectKey = (schema: string, o: DbObject) => `o${SEP}${schema}${SEP}${o.kind}${SEP}${o.name}${SEP}${o.args ?? ""}`;
-/** 구조 폴더 열쇠 — 그 관계의 열쇠 아래 */
 export const partKey = (objKey: string, part: DetailPart) => `p${SEP}${objKey}${SEP}${part}`;
 
-/** 폴더 하나 — 비어 있지 않은 것만 만든다 */
 export interface Folder {
   kind: DbObjectKind;
   items: DbObject[];
-  /** 상한에서 잘렸다(개수 뒤에 `+`) */
   truncated: boolean;
-  /** 이름 필터 중 — 일치한 수(개수는 `일치/전체`) */
+  /** 이름 필터 중 — 일치한 수 */
   matched?: number;
 }
 
-/** 객체를 방언의 폴더 순서로 나눈다 — 빈 폴더는 숨긴다(엔진·판마다 없는 종류가 많아 빈 폴더가 대부분이다). 모르는 종류는 버린다 */
+/** 빈 폴더는 숨긴다 — 엔진 · 판마다 없는 종류가 많아 빈 폴더가 대부분이다 */
 export function groupFolders(dialect: DbDialect, data: DbObjects): Folder[] {
   const out: Folder[] = [];
   for (const kind of FOLDERS[dialect]) {
@@ -92,21 +67,17 @@ export function groupFolders(dialect: DbDialect, data: DbObjects): Folder[] {
   return out;
 }
 
-/** 구조 폴더 하나(비어 있지 않은 것만) */
 export interface PartFolder {
   part: DetailPart;
   count: number;
   truncated: boolean;
-  /** 이름 필터 중 — 일치한 수 */
   matched?: number;
 }
 
-/** 구조를 폴더로 — 순서는 [`PARTS`], 빈 칸은 숨긴다(엔진에 없는 종류 · 뷰의 인덱스 …) */
 export function detailParts(d: DbTableDetail): PartFolder[] {
   return PARTS.filter((p) => (d[p]?.length ?? 0) > 0).map((p) => ({ part: p, count: d[p].length, truncated: d.truncated.includes(p) }));
 }
 
-/** 폴더 머리의 개수 글자 — 잘렸으면 `5000+`, 이름 필터 중이면 `일치/전체` */
 export function countLabel(f: { items?: unknown[]; count?: number; truncated: boolean; matched?: number }): string {
   const n = f.count ?? f.items?.length ?? 0;
   const total = f.truncated ? `${n}+` : String(n);
@@ -115,17 +86,16 @@ export function countLabel(f: { items?: unknown[]; count?: number; truncated: bo
 
 // ── 이름 필터 ─────────────────────────────────────────────────────────────
 
-/** 필터 글자를 비교 꼴로 — 앞뒤 공백을 떼고 소문자. 비면 `""`(거르지 않음) */
 export function normFilter(filter: string | undefined): string {
   return (filter ?? "").trim().toLowerCase();
 }
 
-/** 이름이 필터에 맞나 — 대소문자 무시 부분 일치(`q` 는 [`normFilter`] 를 지난 것 · 빈 `q` 는 늘 거짓) */
+/** `q` 는 [`normFilter`] 를 지난 것 */
 export function nameMatches(name: string, q: string): boolean {
   return q !== "" && name.toLowerCase().includes(q);
 }
 
-/** 강조할 자리 `[시작, 끝)` — 없으면 `null`. 소문자로 바꿔 길이가 달라지는 글자가 있으면 강조하지 않는다(일치는 그대로) */
+/** 소문자로 바꿔 길이가 달라지는 글자가 있으면 강조하지 않는다(일치는 그대로) */
 export function matchSpan(text: string, filter: string | undefined): [number, number] | null {
   const q = normFilter(filter);
   if (!q) return null;
@@ -135,7 +105,7 @@ export function matchSpan(text: string, filter: string | undefined): [number, nu
   return i < 0 ? null : [i, i + q.length];
 }
 
-/** 구조 잎의 거를 이름 — 이름 없는 외래 키(SQLite)는 다른 쪽 테이블 이름 */
+/** 이름 없는 외래 키(SQLite)는 다른 쪽 테이블 이름으로 거른다 */
 export function leafName(l: DetailLeaf | { part: "columns"; item: DbTableColumn }): string {
   switch (l.part) {
     case "foreignKeys":
@@ -148,26 +118,18 @@ export function leafName(l: DetailLeaf | { part: "columns"; item: DbTableColumn 
   }
 }
 
-/** 함수 꼴 이름 — `f1(a integer) → integer`(프로시저는 화살표 없음). 함수가 아니면 이름 그대로 */
 export function signature(o: DbObject): string {
   if (o.args === undefined) return o.name;
   return `${o.name}(${o.args})${o.returns ? ` → ${o.returns}` : ""}`;
 }
 
-/**
- * 잎을 눌렀을 때 편집기 커서 자리에 넣을 글자 — 인용된 정규화 이름(`"스키마"."이름"`). SQLite 의 `main` 은 생략(`qualifiedName`).
- * 함수 · 프로시저는 여는 괄호까지(`"public"."f1"(`) — 인자는 사람이 친다.
- */
+/** 함수 · 프로시저는 여는 괄호까지 — 인자는 사람이 친다 */
 export function insertText(dialect: DbDialect, schema: string | null, o: DbObject): string {
   const base = qualifiedName(dialect, schema, o.name);
   return o.kind === "function" || o.kind === "procedure" ? `${base}(` : base;
 }
 
-/**
- * 구조 폴더의 잎을 눌렀을 때 넣을 글자 — 그 엔진에서 그 이름을 쓰는 자리의 꼴로. 컬럼 · 제약 = 이름만(테이블에 딸린다) · 인덱스 =
- * PG · SQLite 는 스키마에 딸려 정규화, MySQL 은 테이블에 딸려 이름만 · 트리거 = PG 는 테이블에 딸려 이름만, MySQL · SQLite 는
- * 정규화. 이름이 없으면(SQLite 의 제약) `null`. 외래 키 · 참조됨 · 파티션은 넣지 않는다(트리 이동 · SELECT 채우기).
- */
+/** 그 엔진에서 그 이름을 쓰는 자리의 꼴(스키마에 딸리면 정규화 · 테이블에 딸리면 이름만) */
 export function leafInsertText(dialect: DbDialect, schema: string, leaf: DetailLeaf | { part: "columns"; item: DbTableColumn }): string | null {
   switch (leaf.part) {
     case "columns":
@@ -183,57 +145,49 @@ export function leafInsertText(dialect: DbDialect, schema: string, leaf: DetailL
   }
 }
 
-/** 열 목록 글자 — `(a, b)`(식 열 `null` 은 `expr` 로) */
+/** 식 열 `null` 은 `expr` 로 */
 export function columnList(cols: readonly (string | null)[], expr = "…"): string {
   return `(${cols.map((c) => c ?? expr).join(", ")})`;
 }
 
-/** 다른 스키마면 `스키마.이름`, 같으면 이름만(표시용 — 인용하지 않는다) */
+/** 표시용 — 인용하지 않는다 */
 function shortName(here: string, schema: string, name: string): string {
   return schema === here ? name : `${schema}.${name}`;
 }
 
-/**
- * 외래 키의 화살표 글자(표시용) — 외래 키 칸은 `(customer_id) → customers(id)`(가리키는 쪽이 이 테이블), 참조됨 칸은
- * `orders(customer_id) → (id)`(가리켜지는 쪽이 이 테이블). 다른 스키마의 테이블은 `스키마.테이블`.
- */
 export function fkArrow(part: "foreignKeys" | "referencedBy", fk: DbForeignKey, here: string): string {
   if (part === "foreignKeys") return `${columnList(fk.columns)} → ${shortName(here, fk.refSchema, fk.refTable)}${columnList(fk.refColumns)}`;
   return `${shortName(here, fk.schema, fk.table)}${columnList(fk.columns)} → ${columnList(fk.refColumns)}`;
 }
 
-/** 외래 키 · 참조됨 잎이 가리키는 **다른 쪽** 테이블 — 누르면 트리가 그리로 간다 */
+/** 외래 키 · 참조됨 잎이 가리키는 다른 쪽 테이블 */
 export function fkTarget(part: "foreignKeys" | "referencedBy", fk: DbForeignKey): { schema: string; table: string } {
   return part === "foreignKeys" ? { schema: fk.refSchema, table: fk.refTable } : { schema: fk.schema, table: fk.table };
 }
 
-/** 스키마 단계를 건너뛰나 — SQLite 에 붙인 DB 가 하나(`main`)뿐일 때 */
 export function skipSchemaLevel(dialect: DbDialect, schemas: readonly string[]): boolean {
   return dialect === "sqlite" && schemas.length === 1;
 }
 
 // ── 외래 키 따라가기 ──────────────────────────────────────────────────────
 
-/** 스키마의 객체 목록에서 관계 하나를 찾는다 — 이름이 꼭 같은 것, 없으면 대소문자만 다른 것(SQLite · MySQL 은 이름이 대소문자를 가리지 않는 때가 있다) */
+/** 없으면 대소문자만 다른 것 — SQLite · MySQL 은 이름이 대소문자를 가리지 않는 때가 있다 */
 export function findRelation(data: DbObjects, table: string): DbObject | null {
   const rels = data.objects.filter((o) => isRelation(o.kind));
   return rels.find((o) => o.name === table) ?? rels.find((o) => o.name.toLowerCase() === table.toLowerCase()) ?? null;
 }
 
-/** 관계 하나를 보이게 할 때 펼칠 열쇠 — 스키마(건너뛰지 않으면) · 그 종류의 폴더 */
 export function revealKeys(dialect: DbDialect, schemas: readonly string[], schema: string, o: DbObject): string[] {
   const keys = skipSchemaLevel(dialect, schemas) ? [] : [schemaKey(schema)];
   return [...keys, folderKey(schema, o.kind)];
 }
 
-/** 열쇠 여럿을 펼친 목록에 더한다 — 새 배열(이미 있으면 그대로) */
 export function withExpanded(expanded: readonly string[], keys: readonly string[]): string[] {
   return [...expanded, ...keys.filter((k, i) => !expanded.includes(k) && keys.indexOf(k) === i)];
 }
 
 // ── 줄 펴기 ─────────────────────────────────────────────────────────────
 
-/** 읽는 중 · 실패 · 받은 값 */
 export type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; value: T };
 
 export type TreeRow =
@@ -252,16 +206,14 @@ export type TreeRow =
       level: number;
       schema: string;
       object: DbObject;
-      /** 구조를 펼칠 수 있다(관계) */
       expandable: boolean;
       expanded: boolean;
     }
-  /** 테이블 아래 구조 폴더 */
   | { type: "part"; key: string; level: number; schema: string; folder: PartFolder; expanded: boolean }
   | { type: "column"; key: string; level: number; schema: string; column: DbTableColumn }
-  /** 구조 폴더의 잎(컬럼 밖) — `table` = 그 구조를 가진 관계(인덱스 · 트리거 · 제약의 DDL 보기) */
+  /** `table` = 그 구조를 가진 관계 */
   | { type: "leaf"; key: string; level: number; schema: string; table: string; leaf: DetailLeaf }
-  /** 읽는 중 · 실패 · 비어 있음 · 잘림 · (필터 중) 일치 없음 · 읽지 않은 스키마 `count` 개 — 고를 수 없는 줄 */
+  /** 고를 수 없는 줄 */
   | {
       type: "note";
       key: string;
@@ -271,10 +223,7 @@ export type TreeRow =
       count?: number;
     };
 
-/**
- * 데이터 탭을 여는 줄의 객체(2026-11-10) — 관계(테이블 · 뷰 · 구체화 뷰 · 외부 테이블) 줄과 PG 파티션 잎. 그 밖의 줄이면 `null`
- * (트리의 두 번 누르기 · Enter · 우클릭 "데이터 보기" 가 이 판정 하나를 쓴다).
- */
+/** 데이터 탭을 여는 줄의 객체 */
 export interface TreeRelation {
   kind: "table" | "view" | "matview" | "foreign" | "partition";
   schema: string | null;
@@ -298,18 +247,16 @@ export interface TreeInput {
   objects: ReadonlyMap<string, Load<DbObjects>>;
   /** 관계 열쇠 → 구조 */
   details: ReadonlyMap<string, Load<DbTableDetail>>;
-  /** 이름 필터(빈 글자 = 거르지 않음) — 머리말 */
   filter?: string;
 }
 
-/** 구조 폴더 하나의 잎 줄 */
 function partRows(d: DbTableDetail, part: DetailPart, pk: string, level: number, schema: string, table: string): TreeRow[] {
   if (part === "columns") return d.columns.map((c, i) => ({ type: "column", key: `${pk}${SEP}${i}`, level, schema, column: c }));
   const items = d[part] as DetailLeaf["item"][];
   return items.map((item, i) => ({ type: "leaf", key: `${pk}${SEP}${i}`, level, schema, table, leaf: { part, item } as DetailLeaf }));
 }
 
-/** 관계 하나 아래 — 펼친 목록대로(구조 폴더 · 잎). 관계 줄은 부르는 쪽이 넣는다 */
+/** 관계 줄은 부르는 쪽이 넣는다 */
 function objectSubtree(t: TreeInput, schema: string, ok: string, o: DbObject, level: number): TreeRow[] {
   const rows: TreeRow[] = [];
   const det = t.details.get(ok);
@@ -326,7 +273,6 @@ function objectSubtree(t: TreeInput, schema: string, ok: string, o: DbObject, le
   return rows;
 }
 
-/** 이름 필터 중 — 일치하는 잎만 남긴 구조 폴더(펼친 채 · 개수 `일치/전체`). 일치가 없으면 빈 목록 */
 function matchedSubtree(d: DbTableDetail, schema: string, ok: string, o: DbObject, level: number, q: string): TreeRow[] {
   const rows: TreeRow[] = [];
   for (const pf of detailParts(d)) {
@@ -340,7 +286,7 @@ function matchedSubtree(d: DbTableDetail, schema: string, ok: string, o: DbObjec
   return rows;
 }
 
-/** 이름 필터 중의 줄 — 머리말의 규칙. 펼친 목록은 읽기만 한다 */
+/** 펼친 목록은 읽기만 한다 */
 function filteredRows(t: TreeInput, q: string): TreeRow[] {
   const rows: TreeRow[] = [];
   const skip = skipSchemaLevel(t.dialect, t.schemas);
@@ -386,7 +332,7 @@ function filteredRows(t: TreeInput, q: string): TreeRow[] {
   return [...head, ...rows];
 }
 
-/** 지금 보이는 줄 — 위에서 아래로. 들여쓰기는 `level`, 키보드 이동은 이 순서를 그대로 쓴다 */
+/** 키보드 이동은 이 순서를 그대로 쓴다 */
 export function visibleRows(t: TreeInput): TreeRow[] {
   const q = normFilter(t.filter);
   if (q) return filteredRows(t, q);
@@ -427,12 +373,10 @@ export function visibleRows(t: TreeInput): TreeRow[] {
   return rows;
 }
 
-/** 펼칠 수 있는 줄인가(스키마 · 폴더 · 관계 · 구조 폴더) */
 export function isExpandable(r: TreeRow): boolean {
   return r.type === "schema" || r.type === "folder" || r.type === "part" || (r.type === "object" && r.expandable);
 }
 
-/** 키보드 초점이 설 수 있는 줄인가 — 안내 줄은 건너뛴다 */
 export function isFocusable(r: TreeRow): boolean {
   return r.type !== "note";
 }
@@ -443,10 +387,7 @@ export type KeyAction =
   | { kind: "collapse"; key: string }
   | { kind: "activate"; key: string };
 
-/**
- * 트리 키 하나 → 할 일 — WAI-ARIA 트리 문법. ↑↓ = 이웃 줄 · → = 접혀 있으면 펼치기, 펼쳐 있으면 첫 자식으로 · ← = 펼쳐 있으면
- * 접기, 아니면 부모로 · Home/End · Enter = 고르기(스키마 · 폴더 · 구조 폴더는 펼치기/접기). 할 일이 없으면 `null`.
- */
+/** WAI-ARIA 트리 문법 */
 export function keyAction(rows: readonly TreeRow[], focusKey: string | null, key: string): KeyAction | null {
   const nav = rows.filter(isFocusable);
   if (nav.length === 0) return null;
@@ -485,14 +426,14 @@ function expandedRow(r: TreeRow): boolean {
   return (r.type === "schema" || r.type === "folder" || r.type === "object" || r.type === "part") && r.expanded;
 }
 
-/** 열쇠를 펼친 목록에 넣거나 뺀다 — 새 배열(펼친 목록은 타일 상태라 바꿔 끼운다) */
+/** 새 배열 — 펼친 목록은 타일 상태라 바꿔 끼운다 */
 export function toggled(expanded: readonly string[], key: string, open: boolean): string[] {
   const has = expanded.includes(key);
   if (open === has) return [...expanded];
   return open ? [...expanded, key] : expanded.filter((k) => k !== key);
 }
 
-/** 펼친 객체 열쇠 → 그 구조를 읽을 `(스키마, 이름)` — 지금 받은 객체 목록에 있는 관계만(사라졌으면 `null`) */
+/** 지금 받은 객체 목록에 있는 관계만 — 사라졌으면 `null` */
 export function relationFor(objects: ReadonlyMap<string, Load<DbObjects>>, key: string): { schema: string; name: string } | null {
   if (!key.startsWith(`o${SEP}`)) return null;
   const [, schema] = key.split(SEP);

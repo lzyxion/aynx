@@ -1,44 +1,15 @@
-//! **로컬 자원 모니터**(2026-10-17 — 첫 조각) — 어느 로컬 타일(셸 아래 프로세스 트리)이 CPU · 메모리를 얼마나 쓰는지,
-//! 앱 자신(GUI · WebView2 · 세션 서버)이 얼마나 쓰는지. 타일 머리줄의 칩(`src/lib/pane/HeaderChips.svelte`)과 사용량 화면의
-//! "자원" 칸(`src/lib/console/ResourceBoard.svelte`)이 읽는다.
+//! 로컬 자원 모니터 — 로컬 타일(셸 아래 프로세스 트리) · 앱 자신 · 이 PC 전체의 CPU · 메모리 표본.
 //!
-//! | 자리 | 하는 일 | 어느 프로세스 |
-//! | --- | --- | --- |
-//! | op `resource_snapshot`(읽기) | `{since, guiPid}` → `since` 뒤의 표본 + 가장 새 표본의 상위 프로세스 이름 · 관찰 임대 갱신 | 서버 |
-//! | 표본 스레드 | 보는 쪽이 있으면 2초 · 없으면 10초마다 프로세스 목록 → 뿌리(타일 셸 · 서버 · GUI)별 합 + 이 PC 전체(CPU · 메모리) → 링(30분) · 보는 쪽도 세션도 없으면 쉼 | 서버 |
-//! | Tauri 명령 [`resource_snapshot`] | 같은 이름의 프록시(GUI pid 를 싣는다) | GUI |
-//!
-//! ## 불변식
-//!
-//! - **상시 수집 · 간격만 바뀐다**(2026-10-17 사용자 결정 — 첫 조각의 "보일 때만" 을 바꿨다). 표본 스레드는 서버가 뜰 때
-//!   ([`start`] — `server::session_server_main`) 서고 서버가 끝날 때까지 산다. 간격은 순수 함수 [`pace`] 하나가 정한다:
-//!   **세션 0 → 쉼**(프로세스 목록을 읽지 않고 `System` 도 버린다 — 세션 수만 [`INTERVAL`] 마다 본다) · **관찰 임대가 살아
-//!   있음**(마지막 `resource_snapshot` 뒤 [`LEASE`] 안) → [`INTERVAL`](2초) · **없음** → [`IDLE_INTERVAL`](10초). 그래서 GUI 가
-//!   꺼져 있던 동안에도 세션이 있으면 이력이 남는다. 이벤트 방송(`hub::emit` · `RELAYED`)은 쓰지 않는다(당김뿐).
-//! - **자진 종료에 끼지 않는다** — 고아 자진 종료의 바쁜 이유(`serve::Busy`)에 자원 칸은 없고, 이 스레드는 세션 · 임대를 쥐지
-//!   않으며(세션 표는 읽기만) 프로세스 끝(`main` 의 `process::exit`)을 기다리게 하지도 않는다(시험 `idle_exit_ignores_resources`).
-//! - GUI 몫은 마지막 호출이 실어 온 pid 다. 그 프로세스가 목록에서 사라졌거나 같은 pid 가 다른 프로세스(시작 시각이 다름)면
-//!   버린다([`gui_alive`]) — GUI 없는 표본의 `gui` 는 0 이다.
-//! - server.log 에는 쉼 ↔ 수집 전환만 한 줄씩 남긴다(표본마다 · 간격 바뀜마다 찍지 않는다).
-//! - **명령줄 인자는 읽지 않는다**(토큰이 섞일 수 있다) — sysinfo 갱신 종류는 CPU 시간 · 메모리뿐이고(`ProcessRefreshKind::nothing()
-//!   .with_cpu().with_memory()` — exe 경로 · cmd · environ · cwd · user · 디스크 끔), 이름은 목록이 주는 실행 파일 이름뿐이다.
-//!   이 PC 전체 칸은 `refresh_cpu_usage()`(전역 CPU) · `refresh_memory_specifics(ram)` 둘뿐이다(전체 갱신 · 스왑 없음).
-//! - **표본은 tokio 런타임 밖** — 전용 std 스레드 하나가 돈다(블로킹 갱신이 연결 고리 · 블로킹 풀을 잡지 않는다). op 는 링을
-//!   잠깐 읽기만 한다.
-//! - **트리 합 · CPU% · 링은 순수 함수**(아래 `attribute` · `cpu_pct` · `summarize` · `Ring`)라 시험이 OS 없이 본다.
-//! - CPU% 는 **기계 전체 대비**(작업 관리자와 같은 기준, 0~100): 직전 표본과의 누적 CPU 시간 차 ÷ (벽시계 차 × 논리 CPU 수).
-//!   sysinfo 의 `cpu_usage()`(코어 하나 대비)는 쓰지 않는다 — 기준이 OS 마다 같은 우리 셈 하나로 둔다.
-//! - 메모리는 **뿌리에 귀속된 프로세스만** Windows 의 **전용 작업 집합**([`os::private_memory`] — 작업 관리자 "메모리" 칸과
-//!   같은 기준, 2026-10-27 사용자 결정)이다. 처음에는 sysinfo `memory()`(작업 집합)를 더했는데, 나눠 쓰는 쪽(DLL · WebView2
-//!   공용 코드)이 프로세스 수만큼 겹쳐 더해져 앱 몫이 작업 관리자의 두 배쯤(실측 751MB 대 368MB)으로 보였다. 전용 값은 Aynx
-//!   프로세스끼리만 나눠 쓰는 몫도 빠뜨려 조금 작게 나오는 쪽이지만 진짜 몫에 훨씬 가깝다. 그 값을 못 읽으면(권한 · 옛 Windows)
-//!   그 프로세스는 작업 집합 그대로다. 리눅스 · macOS 는 RSS(스텁). 뿌리 밖(다른 프로그램)은 읽지 않는다 — 이 PC 전체 칸은
-//!   OS 의 사용 메모리라 따로다.
-//! - 귀속은 **가장 가까운 뿌리 조상**이다 — 타일 셸이 서버 아래 · (분리 실행 폴백이면) 서버가 GUI 아래여도 각자의 몫으로 갈린다.
-//!   pid 재사용은 시작 시각으로 거른다(부모가 자식보다 늦게 시작했으면 그 고리를 끊는다).
-//! - 타일 열쇠는 서버 세션 표의 스트림(`historyStreamId`)이다. 세션이 닫히면 그 줄은 다음 표본부터 없다(링의 옛 표본에는 남는다).
-//! - 서버의 몫(`server`)에는 서버가 띄운 헤드리스 턴 · 검증 명령 · ConPTY 의 conhost 도 든다(타일 셸 트리 밖이라서) — 오케스트레이션
-//!   작업자를 따로 보이는 것은 다음 조각이다. WSL 타일은 Windows 쪽 `wsl.exe` 트리만 보인다(리눅스 프로세스는 VM 안).
+//! - **상시 수집 · 간격만 바뀐다**(사용자 결정) — 간격은 순수 함수 [`pace`] 하나가 정한다. **세션 0 이면 쉰다**(프로세스 목록을 읽지 않는다).
+//!   이벤트 방송은 쓰지 않는다(당김뿐).
+//! - **자진 종료에 끼지 않는다** — `serve::Busy` 에 자원 칸은 없고 이 스레드는 세션 · 임대를 쥐지 않는다(시험 `idle_exit_ignores_resources`).
+//! - **명령줄 인자는 읽지 않는다**(토큰이 섞일 수 있다) — sysinfo 갱신은 CPU 시간 · 메모리뿐이다(시험 `never_reads_command_lines`).
+//! - **표본은 tokio 런타임 밖** 전용 std 스레드 하나가 돈다 — 블로킹 갱신이 연결 고리 · 블로킹 풀을 잡지 않게.
+//! - CPU% 는 **기계 전체 대비**(작업 관리자와 같은 기준) — sysinfo 의 `cpu_usage()`(코어 하나 대비)는 쓰지 않는다.
+//! - 메모리는 뿌리에 귀속된 프로세스만 **전용 작업 집합**(작업 관리자 "메모리" 칸과 같은 기준 · 사용자 결정) — 작업 집합을 더하면 나눠 쓰는
+//!   DLL · WebView2 공용 코드가 겹쳐 앱 몫이 두 배쯤 보인다. 뿌리 밖(다른 프로그램)의 프로세스는 열지 않는다.
+//! - 귀속은 **가장 가까운 뿌리 조상** — pid 재사용은 시작 시각으로 거른다.
+//! - 서버의 몫에는 서버가 띄운 헤드리스 턴 · 검증 명령 · conhost 도 든다(타일 셸 트리 밖). WSL 타일은 Windows 쪽 `wsl.exe` 트리만 보인다.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Condvar, LazyLock, Mutex};
@@ -54,40 +25,33 @@ use super::log;
 use crate::i18n::tr;
 use crate::session_core::Kind;
 
-/// 보는 쪽이 있을 때의 표본 간격(그리고 쉬는 동안 세션 수를 다시 보는 간격).
+/// 쉬는 동안 세션 수를 다시 보는 간격이기도 하다.
 pub(crate) const INTERVAL: Duration = Duration::from_secs(2);
-/// 보는 쪽이 없을 때의 표본 간격.
 pub(crate) const IDLE_INTERVAL: Duration = Duration::from_secs(10);
-/// 관찰 임대 — 마지막 호출 뒤 이만큼 아무도 묻지 않으면 간격이 [`IDLE_INTERVAL`] 로 늘어난다.
 const LEASE: Duration = Duration::from_secs(10);
-/// 링이 쥐는 시간(30분) — 보관 기준은 **시각**이다(간격이 2초 · 10초로 섞여도 30분).
+/// 보관 기준은 **시각**이다(간격이 섞여도 30분).
 const KEEP_MS: u64 = 30 * 60 * 1000;
-/// 링 상한 — 보관 기준이 아니라 안전망(시계가 뒤로 가도 끝없이 쌓이지 않게). 가장 촘촘한 간격으로 30분(900개)보다 넉넉하다.
+/// 보관 기준이 아니라 안전망(시계가 뒤로 가도 끝없이 쌓이지 않게).
 const RING_CAP: usize = 1000;
 const _: () = assert!(RING_CAP as u64 * INTERVAL.as_millis() as u64 > KEEP_MS);
-/// 뿌리마다 이름을 돌려줄 상위 프로세스 수.
 const TOP_N: usize = 3;
-/// 조상을 거슬러 오르는 상한(고리 · 깊은 사슬 방어).
 const MAX_DEPTH: usize = 64;
 
 // ── 순수 층 ─────────────────────────────────────────────────────────────────
 
-/// 프로세스 한 줄(표본 재료) — 명령줄은 없다(머리말).
+/// 명령줄은 없다(머리말).
 #[derive(Debug, Clone)]
 pub(crate) struct Proc {
     pub pid: u32,
     pub ppid: Option<u32>,
-    /// 시작 시각(유닉스 초) — pid 재사용 거르기.
+    /// 유닉스 초 — pid 재사용 거르기.
     pub start: u64,
-    /// 누적 CPU 시간(ms).
     pub cpu_ms: u64,
-    /// 메모리(바이트 — 읽을 때는 작업 집합, 뿌리에 귀속되면 [`with_private_memory`] 가 전용 작업 집합으로 바꾼다).
+    /// 바이트 — 읽을 때는 작업 집합, 뿌리에 귀속되면 [`with_private_memory`] 가 전용 작업 집합으로 바꾼다.
     pub mem: u64,
-    /// 실행 파일 이름.
     pub name: String,
 }
 
-/// 합을 모으는 뿌리.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum Bucket {
     Gui,
@@ -95,16 +59,13 @@ pub(crate) enum Bucket {
     Tile(String),
 }
 
-/// 한 뿌리의 합.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 pub(crate) struct Usage {
-    /// 기계 전체 대비 CPU %(0~100, 소수 한 자리).
     pub cpu: f32,
     /// 바이트.
     pub mem: u64,
 }
 
-/// 상위 프로세스 한 줄(이름 · 그 프로세스 하나의 값).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct TopProc {
     pub name: String,
@@ -112,20 +73,18 @@ pub(crate) struct TopProc {
     pub mem: u64,
 }
 
-/// 표본 하나.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct Sample {
     /// 벽시계 ms.
     pub at: u64,
     pub gui: Usage,
     pub server: Usage,
-    /// 스트림 → 그 타일 트리의 합.
     pub tiles: BTreeMap<String, Usage>,
-    /// 이 PC 전체(2026-10-17 — 판 18 에 칸만 더함, 옛 GUI 는 모르는 칸을 버린다).
+    /// 판 18 에 더한 칸 — 옛 GUI 는 모르는 칸을 버린다.
     pub system: SystemUsage,
 }
 
-/// 이 PC 전체 — CPU 는 기계 전체 대비 %(0~100, 소수 한 자리 — 타일 CPU% 와 같은 기준), 메모리는 바이트(사용 = 전체 − 가용).
+/// CPU 는 타일 CPU% 와 같은 기준. 사용 메모리 = 전체 − 가용.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SystemUsage {
@@ -134,19 +93,16 @@ pub(crate) struct SystemUsage {
     pub mem_total: u64,
 }
 
-/// OS 가 준 값 → 이 PC 전체 칸. CPU 는 0~100 으로 자르고 소수 한 자리(NaN 은 0), 사용 메모리는 전체를 넘지 않게(전체를 모르면 그대로).
 pub(crate) fn system_usage(cpu: f32, mem_used: u64, mem_total: u64) -> SystemUsage {
     let cpu = if cpu.is_finite() { round1(cpu.clamp(0.0, 100.0)) } else { 0.0 };
     let mem_used = if mem_total > 0 { mem_used.min(mem_total) } else { mem_used };
     SystemUsage { cpu, mem_used, mem_total }
 }
 
-/// 직전 표본의 누적 CPU 시간 — pid → (시작 시각, 누적 ms).
+/// pid → (시작 시각, 누적 ms).
 pub(crate) type PrevCpu = HashMap<u32, (u64, u64)>;
 
-/// 이 프로세스가 직전 표본 뒤에 쓴 CPU 를 기계 전체 대비 %로. `prev_at_ms` 는 직전 표본 시각, `wall_ms` 는 두 표본 사이.
-/// 직전 표본에 없던 프로세스는 그 사이에 시작했을 때만(시작 시각이 직전 표본 −1초 이후) 누적 전부를 그 사이의 몫으로 센다 —
-/// 그보다 오래된데 처음 보이면(목록에서 빠졌다 다시 보임 등) 0 으로 둔다.
+/// 직전 표본에 없던 프로세스는 그 사이에 시작했을 때만 누적 전부를 그 사이의 몫으로 센다 — 오래된데 처음 보이면 0 이다.
 pub(crate) fn cpu_pct(p: &Proc, prev: &PrevCpu, prev_at_ms: u64, wall_ms: u64, ncpu: usize) -> f32 {
     if wall_ms == 0 || ncpu == 0 {
         return 0.0;
@@ -160,7 +116,7 @@ pub(crate) fn cpu_pct(p: &Proc, prev: &PrevCpu, prev_at_ms: u64, wall_ms: u64, n
     pct.clamp(0.0, 100.0) as f32
 }
 
-/// pid → 뿌리. **가장 가까운 뿌리 조상**(자기 자신 포함)에 귀속한다. 부모가 자식보다 늦게 시작했으면(pid 재사용) 그 고리를 끊는다.
+/// 부모가 자식보다 늦게 시작했으면(pid 재사용) 그 고리를 끊는다.
 pub(crate) fn attribute(procs: &[Proc], roots: &HashMap<u32, Bucket>) -> HashMap<u32, Bucket> {
     let by_pid: HashMap<u32, &Proc> = procs.iter().map(|p| (p.pid, p)).collect();
     let mut out = HashMap::new();
@@ -187,8 +143,7 @@ pub(crate) fn attribute(procs: &[Proc], roots: &HashMap<u32, Bucket>) -> HashMap
     out
 }
 
-/// 뿌리에 귀속된 프로세스의 메모리를 `private` 이 주는 값(전용 작업 집합)으로 바꾼다 — 못 주면(`None`) 그대로. 뿌리 밖은
-/// 묻지도 않는다(다른 프로그램의 프로세스를 열지 않는다).
+/// 뿌리 밖은 묻지도 않는다 — 다른 프로그램의 프로세스를 열지 않는다.
 pub(crate) fn with_private_memory(procs: &mut [Proc], roots: &HashMap<u32, Bucket>, private: impl Fn(u32) -> Option<u64>) {
     let owned = attribute(procs, roots);
     for p in procs.iter_mut().filter(|p| owned.contains_key(&p.pid)) {
@@ -198,7 +153,6 @@ pub(crate) fn with_private_memory(procs: &mut [Proc], roots: &HashMap<u32, Bucke
     }
 }
 
-/// 한 표본의 요약 — 뿌리별 합과 상위 프로세스.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct Summary {
     pub usage: BTreeMap<Bucket, Usage>,
@@ -209,8 +163,7 @@ fn round1(x: f32) -> f32 {
     (x * 10.0).round() / 10.0
 }
 
-/// 프로세스 목록 + 뿌리 + 프로세스별 CPU% → 뿌리별 합(CPU 는 100 상한 · 소수 한 자리)과 상위 [`TOP_N`](CPU 먼저, 같으면 메모리).
-/// 뿌리에 든 프로세스가 하나도 없어도 그 뿌리의 줄은 선다(0 — 셸이 막 끝났거나 목록에 아직 없음).
+/// 뿌리에 든 프로세스가 하나도 없어도 그 뿌리의 줄은 선다(0).
 pub(crate) fn summarize(procs: &[Proc], roots: &HashMap<u32, Bucket>, cpu_of: impl Fn(&Proc) -> f32) -> Summary {
     let owner = attribute(procs, roots);
     let mut usage: BTreeMap<Bucket, Usage> = roots.values().map(|b| (b.clone(), Usage::default())).collect();
@@ -237,7 +190,6 @@ pub(crate) fn summarize(procs: &[Proc], roots: &HashMap<u32, Bucket>, cpu_of: im
     Summary { usage, top }
 }
 
-/// 요약 → 표본.
 pub(crate) fn sample_of(at: u64, s: &Summary, system: SystemUsage) -> Sample {
     let mut tiles = BTreeMap::new();
     let mut gui = Usage::default();
@@ -254,7 +206,6 @@ pub(crate) fn sample_of(at: u64, s: &Summary, system: SystemUsage) -> Sample {
     Sample { at, gui, server, tiles, system }
 }
 
-/// 표본 링 — 시간 순, [`KEEP_MS`] 보다 오래된 것과 [`RING_CAP`] 넘는 것은 앞에서 버린다.
 #[derive(Debug, Default)]
 pub(crate) struct Ring {
     items: VecDeque<Sample>,
@@ -269,23 +220,18 @@ impl Ring {
         }
     }
 
-    /// `since` 보다 뒤의 표본들.
     pub(crate) fn since(&self, since: u64) -> Vec<Sample> {
         self.items.iter().filter(|s| s.at > since).cloned().collect()
     }
 }
 
-/// 표본 스레드의 다음 걸음.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Pace {
-    /// 세션이 없다 — 재지 않는다(`System` 을 버린다).
     Rest,
-    /// 이만큼마다 잰다.
     Every(Duration),
 }
 
-/// 간격 결정 — 임대가 살아 있으면 세션 수와 상관없이 [`INTERVAL`](상태바 고리는 이 PC 전체 값이라 세션 0 이어도 보인다),
-/// 임대가 없으면 세션이 있을 때만 [`IDLE_INTERVAL`] · 세션 0 이면 쉼(보는 쪽도 지킬 타일도 없다 — 자진 종료와 무관하게).
+/// 임대가 살아 있으면 세션 0 이어도 잰다 — 상태바 고리는 이 PC 전체 값이라 세션 0 이어도 보인다.
 pub(crate) fn pace(sessions: usize, leased: bool) -> Pace {
     match (sessions, leased) {
         (_, true) => Pace::Every(INTERVAL),
@@ -294,13 +240,11 @@ pub(crate) fn pace(sessions: usize, leased: bool) -> Pace {
     }
 }
 
-/// 관찰 임대가 살아 있나 — 마지막 호출 뒤 [`LEASE`] 안.
 pub(crate) fn leased(touched: Option<Instant>, now: Instant) -> bool {
     touched.is_some_and(|t| now.saturating_duration_since(t) <= LEASE)
 }
 
-/// GUI 뿌리가 아직 그 프로세스인가 — 목록에 pid 가 있고, 처음 본 시작 시각(`known_start`)이 있으면 그것과 같아야 한다(pid 재사용).
-/// 살아 있으면 그 시작 시각, 아니면 `None`(버린다).
+/// 처음 본 시작 시각과 다르면 pid 재사용으로 보고 버린다.
 pub(crate) fn gui_alive(pid: u32, known_start: Option<u64>, procs: &[Proc]) -> Option<u64> {
     let p = procs.iter().find(|p| p.pid == pid)?;
     known_start.is_none_or(|s| s == p.start).then_some(p.start)
@@ -312,21 +256,19 @@ pub(crate) fn gui_alive(pid: u32, known_start: Option<u64>, procs: &[Proc]) -> O
 struct State {
     touched: Option<Instant>,
     running: bool,
-    /// 마지막 호출이 실어 온 GUI pid · 표본 스레드가 처음 본 그 프로세스의 시작 시각(pid 재사용 거르기).
     gui: Option<(u32, Option<u64>)>,
     ring: Ring,
     top: BTreeMap<Bucket, Vec<TopProc>>,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Default::default);
-/// 표본 스레드를 깨운다 — 임대가 새로 설 때(10초 기다림 중이어도 곧바로 2초 걸음으로).
 static WAKE: Condvar = Condvar::new();
 
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 이 파일이 받는 op 인가(`serve` 가 가른다 — 잠금과 복사뿐이라 고리 안에서).
+/// 잠금과 복사뿐이라 `serve` 가 고리 안에서 처리한다.
 pub(crate) fn is_resource_op(op: &str) -> bool {
     op == "resource_snapshot"
 }
@@ -340,7 +282,7 @@ struct SnapshotArg {
     gui_pid: Option<u32>,
 }
 
-/// 표본 스레드를 세운다(이미 있으면 그대로) — 서버 시작(`server::session_server_main`)과 op 가 부른다. 잠금을 쥔 채로.
+/// 이미 있으면 그대로 — 잠금을 쥔 채로 본다.
 fn ensure_running(st: &mut State) {
     if st.running {
         return;
@@ -352,12 +294,10 @@ fn ensure_running(st: &mut State) {
     }
 }
 
-/// 서버가 뜰 때 한 번 — 표본 스레드를 세운다(세션이 생기기 전까지는 쉰다).
 pub(crate) fn start() {
     ensure_running(&mut state());
 }
 
-/// op 하나 — 임대를 갱신하고(스레드가 없으면 띄운다) `since` 뒤의 표본과 가장 새 표본의 상위 프로세스를 돌려준다.
 pub(crate) fn handle(op: &str, b: Value) -> Result<Value, WireError> {
     if op != "resource_snapshot" {
         return Err(WireError::new(code::UNKNOWN_OP, format!("unknown op: {op}")));
@@ -397,7 +337,6 @@ pub(crate) fn handle(op: &str, b: Value) -> Result<Value, WireError> {
     }))
 }
 
-/// 지금 뿌리 — 로컬 세션 셸(스트림 열쇠) · 서버 자신 · GUI.
 fn current_roots(gui_pid: Option<u32>) -> HashMap<u32, Bucket> {
     let mut roots = HashMap::new();
     roots.insert(std::process::id(), Bucket::Server);
@@ -417,7 +356,7 @@ fn current_roots(gui_pid: Option<u32>) -> HashMap<u32, Bucket> {
     roots
 }
 
-/// sysinfo 손잡이 — 스레드 하나가 쥐고 재사용한다(CPU% 는 직전 표본과의 차이).
+/// 스레드 하나가 쥐고 재사용한다(CPU% 는 직전 표본과의 차이).
 pub(crate) struct Reader {
     sys: sysinfo::System,
     ncpu: usize,
@@ -434,7 +373,7 @@ impl Reader {
         Reader { sys, ncpu }
     }
 
-    /// 프로세스 목록 한 번 — CPU 시간 · 메모리만 갱신(머리말), 사라진 프로세스는 걷는다.
+    /// CPU 시간 · 메모리만 갱신한다(머리말).
     pub(crate) fn read(&mut self) -> Vec<Proc> {
         use sysinfo::{ProcessRefreshKind, ProcessesToUpdate};
         self.sys
@@ -453,8 +392,7 @@ impl Reader {
             .collect()
     }
 
-    /// 이 PC 전체 한 번 — 전역 CPU 사용률(직전 호출과의 차 — Windows 는 PDH `% Idle Time`, 첫 호출 값은 버려진다: 수집 첫 바퀴는
-    /// 재료만 쌓는다)과 실 메모리(RAM 만 — 스왑 · 전체 갱신 없음).
+    /// 전역 CPU 는 직전 호출과의 차라 첫 호출 값은 버려진다. 메모리는 RAM 만(스왑 · 전체 갱신 없음).
     pub(crate) fn system(&mut self) -> SystemUsage {
         self.sys.refresh_cpu_usage();
         self.sys.refresh_memory_specifics(sysinfo::MemoryRefreshKind::nothing().with_ram());
@@ -462,7 +400,6 @@ impl Reader {
     }
 }
 
-/// 표본 스레드 — 서버 끝까지 산다. 걸음마다 [`pace`] 를 묻고, 쉼이면 `System` 을 버린 채 [`INTERVAL`] 뒤 세션 수를 다시 본다.
 /// 수집으로 돌아온 첫 바퀴는 재료만 쌓는다(CPU% 는 차이라 직전이 필요하다). 로그는 쉼 ↔ 수집 전환만.
 fn sampler() {
     let mut reader: Option<Reader> = None;
@@ -491,7 +428,7 @@ fn sampler() {
     }
 }
 
-/// `wait` 만큼 잔다 — 10초 걸음 중에 임대가 새로 서면 곧바로 깬다(가짜 깸 · 놓친 알림은 다시 재서 거른다).
+/// 임대가 새로 서면 곧바로 깬다(가짜 깸 · 놓친 알림은 다시 재서 거른다).
 fn nap(wait: Duration) {
     let deadline = Instant::now() + wait;
     let mut st = state();
@@ -504,7 +441,6 @@ fn nap(wait: Duration) {
     }
 }
 
-/// 표본 한 번 — 목록을 읽고, GUI 뿌리가 아직 그 프로세스인지 확인해(아니면 버린다) 뿌리별 합을 링에 넣는다.
 fn sample_once(reader: &mut Reader, prev: &mut Option<(u64, PrevCpu)>) {
     let mut procs = reader.read();
     let system = reader.system();
@@ -540,8 +476,7 @@ fn sample_once(reader: &mut Reader, prev: &mut Option<(u64, PrevCpu)>) {
 
 // ── GUI 껍데기 ──────────────────────────────────────────────────────────────
 
-/// 자원 표본(로컬 타일 · 앱) — 칩 · 자원 칸이 **보일 때만** 2초마다 부른다(서버 임대 갱신). 서버 op 같은 이름(읽기).
-/// 연결이 없으면 기다리지 않는다(`request_now` — 다음 바퀴가 다시 묻는다). 판 17 이하 서버면 `[server-outdated]`.
+/// 연결이 없으면 기다리지 않는다(다음 바퀴가 다시 묻는다). 판 17 이하 서버면 `[server-outdated]`.
 #[tauri::command]
 pub async fn resource_snapshot(since: Option<u64>) -> Result<Value, String> {
     if super::client::negotiated_protocol().is_some_and(|p| p < super::ipc::frame::RESOURCE_PROTOCOL) {

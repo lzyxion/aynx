@@ -5,19 +5,8 @@
   import { currentOpacity, playClose, playOpen, prefersReducedMotion } from "$lib/console/dashboard-motion";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
-  // ---------------------------------------------------------------------------
-  // **캔버스를 덮는 판의 껍데기** (2026-10-17 — 사용량 화면 `UsageView.svelte` 에서 뗐다. 자원 화면 `ResourceView.svelte` 가 같은 급의
-  // 둘째 판이 되면서 같은 껍데기를 나눠 쓴다). 어느 판이 떠 있는지는 `app/usage-view.svelte.ts` 하나가 쥔다(둘이 동시에 서지 않는다).
-  //
-  // 껍데기는 전체 화면 대시보드(2026-10-07 에 세션 시트 · 작업안 타일로 나뉘어 없어졌다)와 같은 말이었다:
-  // `.pane` 을 `inset: 0` 으로 덮는 불투명 판 · 늘 마운트 ·
-  // `hidden` 으로 숨음 · 열리면 키보드를 가져옴 · Escape 로 닫힘 · 닫히는 동안 `inert` 로 흐려짐. 다른 것은
-  // 움직임의 방향뿐이다 — 상태바의 고리에서 나오는 판이라 **아래에서 떠오르고 아래로 내려가며** 걷힌다
-  // (`dashboard-motion.ts` 의 `slide` 갈래).
-  //
-  // `data-cover-view` 는 `tabs.svelte.ts` 가 "포커스가 이 판 안에 있었나" 를 볼 때 쓰는 표식이다. 판마다의 손잡이
-  // (`data-usage-view` · `data-resource-view` — 하네스가 잡는다)는 부르는 쪽이 `data-*` 로 얹는다.
-  // ---------------------------------------------------------------------------
+  // 캔버스를 덮는 판의 껍데기(사용량 · 자원 화면) — 늘 마운트되고 `hidden` 으로 숨는다.
+  // `data-cover-view` 는 `tabs.svelte.ts` 가 "포커스가 이 판 안에 있었나" 를 볼 때 쓰는 표식이다.
 
   let {
     open,
@@ -27,11 +16,10 @@
     children,
     ...attrs
   }: {
-    /** 이 판이 지금 떠 있는가 */
     open: boolean;
     title: string;
     subtitle: string;
-    /** × · Escape — 포커스를 열기 전 자리로 돌려주며 닫는다 */
+    /** 포커스를 열기 전 자리로 돌려주며 닫는다 */
     onclose: () => void;
     children: Snippet;
     [key: `data-${string}`]: unknown;
@@ -39,7 +27,7 @@
 
   let panelEl = $state<HTMLElement | null>(null);
 
-  /** 열리면 키보드를 판으로 — 캔버스를 덮었는데 포커스가 밑의 터미널에 남으면 글자가 보이지 않는 셸로 간다 */
+  // 열리면 키보드를 판으로 — 포커스가 밑의 터미널에 남으면 글자가 보이지 않는 셸로 간다
   $effect(() => {
     if (!open) return;
     void tick().then(() => {
@@ -47,7 +35,6 @@
     });
   });
 
-  // 여닫기 움직임 — 닫힘은 즉시, 흔적만 `lingering` 동안(옛 대시보드 판과 같은 모형).
   /** 닫혔지만 내려가는 중 — `hidden` 을 미룬다 */
   let lingering = $state(false);
   let exitAnim: Animation | null = null;
@@ -92,7 +79,7 @@
     });
   });
 
-  /** Escape — 입력칸이 아닐 때만 닫고 전파를 끊는다(창 층위 Escape 사슬이 한 번 더 먹지 않게) */
+  /** 전파를 끊는다 — 창 층위 Escape 사슬이 한 번 더 먹지 않게 */
   function onKeydown(ev: KeyboardEvent): void {
     if (ev.key !== "Escape") return;
     if (isEditableTarget(ev.target)) return;
@@ -102,9 +89,6 @@
   }
 </script>
 
-<!--
-  `role="presentation"` · `tabindex="-1"` · `hidden`/`inert`/`data-closing` 은 옛 대시보드 판과 같은 규칙이다.
--->
 <div
   {...attrs}
   class="cover-view"
@@ -136,11 +120,8 @@
 
 <style>
   /*
-   * 캔버스 위의 판(z-index 90 — 타일(캔버스 안 최고 21)보다 위, 독(100)보다 아래). **타일 한 장처럼 보인다**(10-27 사용자 —
-   * 직각 · 꽉 채움이 이 판들만 달랐다): 타일 캔버스와 같은 틈(`--gap`) 안쪽 · 타일 모서리(`--radius-surface`) · 타일 테두리
-   * (글래스면 `--tile-rim`). 면은 프로젝트 시작 화면과 같은 **크롬의 우물**(`--surface-field` — 크롬 투명도 슬라이더를 탄다):
-   * 크롬 글자를 얹는 판이라 터미널 판이 아니다. 판이 비치므로 그 밑의 타일은 판이 떠 있는 동안 감춘다(+page `.pane` — 마운트 ·
-   * 출력은 그대로).
+   * z-index 90 — 타일(캔버스 안 최고 21)보다 위, 독(100)보다 아래. 크롬 글자를 얹는 판이라 터미널 면이 아니다.
+   * 판이 비치므로 밑의 타일은 판이 떠 있는 동안 +page `.pane` 이 감춘다.
    */
   .cover-view {
     position: absolute;
@@ -214,7 +195,6 @@
     color: var(--fg-2);
   }
 
-  /* 본문 — 대시보드와 같은 1080px 가운데 열 */
   .body {
     flex: 1;
     min-height: 0;

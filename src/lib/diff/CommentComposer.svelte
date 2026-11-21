@@ -1,9 +1,4 @@
 <script lang="ts">
-  /**
-   * **줄 코멘트 입력 칸**(고른 범위 바로 아래 — Ctrl+Enter 추가 · Esc 취소) — `DiffView.svelte` 에서 뗀 표시 조각.
-   * 쓰는 중인 코멘트(`composer`) · 추가/취소 · 키 처리는 부모가 쥐고, 글(`draft`)과 입력 칸 요소(`composerEl` — 부모가 포커스를 준다)만
-   * `bind:` 로 부모 상태에 잇는다. 댓글 상태 · 전송은 여기 없다.
-   */
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   let {
@@ -45,7 +40,7 @@
 </div>
 
 <style>
-  /* 쓰는 중 · 단 코멘트 — 범위 바로 아래, 줄 번호 칸만큼 들여(가로 스크롤해도 왼쪽에 붙어 있다) */
+  /* 가로 스크롤해도 왼쪽에 붙어 있게 sticky */
   .composer {
     position: sticky;
     left: 0;
@@ -138,7 +133,6 @@
     background: var(--accent-hover);
   }
 
-  /* 강조색 단추 위의 단축키 칩 — 불투명 판 대신 단추 글자색을 옅게 섞은 판 · 선 */
   .tbtn.primary {
     --keycap-fg: var(--on-accent);
     --keycap-bg: color-mix(in srgb, var(--on-accent) 14%, transparent);

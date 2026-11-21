@@ -1,14 +1,7 @@
 <script lang="ts">
   /**
-   * **문서 편집의 비교 보기** — 띠([디스크의 파일이 바뀌었습니다])의 [비교]가 편집 면 자리에 세운다(2026-11-11).
-   *
-   * 왼쪽 = 방금 읽은 디스크 글, 오른쪽 = 편집기의 지금 글. 읽기 전용이고 병합은 없다. 행 · 접힘 · 다른 곳 수는 순수
-   * `doc-compare.ts` 가 셈하고 여기는 그리기만 한다 — 넓으면 두 칸 나란히(한 행 = 좌우 한 줄, 긴 줄은 칸 안에서 접어 두 칸이
-   * 함께 자란다 · 세로 스크롤 하나), 좁으면(`isWideEdit` 밖) 한 칸(`−` 줄들 다음 `+` 줄들). 다른 줄은 색과 `−`/`+` 글자 둘로 말한다.
-   *
-   * 편집기는 내리지 않는다 — `DocView` 가 편집 면(`DocEditPane`)을 **가리기만** 하고 이 보기를 곁에 세운다(되돌리기 기록 ·
-   * 커서 · 저장 안 한 글이 산다). 읽기 · 닫기 · 띠와의 수명도 `DocView` 가 쥔다. 문서 안 찾기(`DomFindBar`)는 이 보기의 스크롤
-   * 상자(`scrollEl`)를 훑는다 — 줄 번호 · `−`/`+` · 머리 · 접힘 단추는 `data-find-skip` 이나 단추라 빠진다.
+   * 문서 편집의 비교 보기 — 왼쪽 = 디스크 글, 오른쪽 = 편집기의 지금 글. 읽기 전용 · 병합 없음.
+   * 편집 면(`DocEditPane`)은 내리지 않고 가리기만 한다 — 내리면 되돌리기 기록 · 커서 · 저장 안 한 글이 사라진다.
    */
   import { onMount } from "svelte";
   import { unifiedRows, type CompareResult, type CompareRow, type CompareLine } from "$lib/doc-compare";
@@ -21,15 +14,12 @@
     scrollEl = $bindable(null),
   }: {
     result: CompareResult;
-    /** 넓은 타일 — 두 칸 나란히. 아니면 한 칸 */
     wide: boolean;
-    /** [편집으로 돌아가기] · `Esc` */
     onback: () => void;
-    /** 스크롤 상자 — 찾기 띠가 훑고 민다 */
+    /** 찾기 띠(`DomFindBar`)가 이 상자를 훑는다 */
     scrollEl?: HTMLDivElement | null;
   } = $props();
 
-  /** 펼친 접힘(`fold.id`) — 결과가 바뀌면(다시 [비교]) 비운다 */
   let opened = $state<ReadonlySet<number>>(new Set());
   $effect(() => {
     void result;
@@ -49,7 +39,6 @@
     }
   }
 
-  // 서자마자 스크롤 상자로 — 화살표 · PgUp/PgDn 이 밀고 `Esc` 가 돌아간다
   onMount(() => scrollEl?.focus({ preventScroll: true }));
 </script>
 
@@ -145,7 +134,6 @@
 
 <style>
   .cmp {
-    /* diff 타일(`DiffView`)과 같은 줄 색 — 성공 · 오류 색을 섞는다(새 색 없음) */
     --plus-fg: color-mix(in srgb, var(--ok) 70%, var(--fg-3));
     --minus-fg: color-mix(in srgb, var(--err) 70%, var(--fg-3));
     --plus-bg: color-mix(in srgb, var(--ok) 14%, transparent);
@@ -176,7 +164,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    /* 끈끈한 머리 — 밑으로 줄이 지나가니 불투명(`PatchView` 의 나란히 머리와 같다) */
+    /* 밑으로 줄이 지나가니 불투명 */
     background: var(--tile-sticky, var(--surface-raised));
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
@@ -192,7 +180,6 @@
     padding: 3px 12px;
   }
 
-  /* 나란히 — 한 행 = 두 칸. 긴 줄은 칸 안에서 접는다(두 칸이 함께 자라 좌우가 어긋나지 않는다) */
   .pair {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -209,7 +196,6 @@
     border-right: 1px solid var(--border);
   }
 
-  /* 한 칸 — 옛 · 새 줄 번호 두 칸 */
   .ln {
     display: grid;
     grid-template-columns: 40px 40px 16px minmax(0, 1fr);
@@ -235,7 +221,6 @@
     padding-right: 12px;
   }
 
-  /* 같은 줄은 흐리게 — 눈이 다른 줄에 간다 */
   .k-same .tx {
     color: var(--fg-3);
   }
@@ -258,7 +243,6 @@
     color: var(--minus-fg);
   }
 
-  /* 맞은편에 줄이 없는 칸 — 빗금(`PatchView` 와 같다) */
   .fill {
     background: repeating-linear-gradient(
       135deg,

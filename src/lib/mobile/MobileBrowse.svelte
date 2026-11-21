@@ -1,13 +1,6 @@
 <!--
-  **폰의 둘러보기 화면**(원격 웹 R5 · 10-20 — "호스트 · 프로젝트 · DB 전체 보기") — 열기 시트에서 밀어 넣는 전체 화면. 머리 =
-  44px 둥근 뒤로(→ 시트) + 칸 고르기 [호스트 | 프로젝트 | DB]. 몸통 = "최근"(몇 줄 · 열려 있으면 점) + "전체"(데스크톱 독과 **같은 트리** —
-  순수 층 `hostTreeRows` · `projectTreeRows` · `dbDockTree` 와 둥지 꼴 `nestRows`, 펼친 폴더 = 둥근 묶음 판 `dock-tree.css`).
-
-  폰 몸짓만 다르다: **두 번 누르기가 없다** — 폴더 줄을 누르면 펼치고 접고, 항목 줄을 누르면 고르기만 하고 줄 오른쪽에 알약 하나가 선다
-  (호스트 [접속] · 프로젝트 [열기] · DB [쿼리 열기]). 알약을 누르면 시트의 여는 자리(11-15 — [지금 탭에 | 새 탭에])대로 호스트 · DB 는
-  지금 탭에 타일 하나 더(`connect` · `openQueryTile` — 메인 PC 에 `openPane` 요청) 또는 그것 하나뿐인 새 탭(시트를 연 자리의 워크스페이스 —
-  `openInTarget`)이고(`openFromSheet`), 프로젝트는 데스크톱의 프로젝트 열기 규칙 그대로(열린 자리가 있으면 그리로 · 아니면 제 탭)다. 덮개가 모두 닫힌다.
-  끌어 놓기 · 폴더 편집 · 우클릭 메뉴는 없다. 펼침은 이 화면의 지역 상태다(데스크톱 독의 펼침 기록을 건드리지 않는다).
+  폰의 둘러보기 화면 — 데스크톱 독과 같은 트리이고 폰 몸짓만 다르다(두 번 누르기 없음 · 끌어 놓기 · 우클릭 없음).
+  펼침은 이 화면의 지역 상태다 — 데스크톱 독의 펼침 기록을 건드리지 않는다.
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
@@ -58,7 +51,6 @@
     { id: "db", label: "app.dock.title.db" },
   ];
   const kind = $derived(mobileBrowseKind());
-  /** 고른 줄의 열쇠(칸마다 다른 접두) — 그 줄 오른쪽에 알약이 선다 */
   let selected = $state<string | null>(null);
 
   let groupMeta = $state<Record<string, GroupMeta>>({});
@@ -244,7 +236,6 @@
       </li>
     {:else}
       {@const key = `d:${row.id}`}
-      <!-- 마지막 접속(독 DB 칸과 같은 `db-history` · 10-20 — 줄에 주소는 없다) -->
       {@const lastDb = dbLastOkAt(dbHistory(), row.id)}
       <li class="dtree-node">
         <div class="line" class:picked={selected === key}>
@@ -366,7 +357,6 @@
   }
   @keyframes browse-in {
     from {
-      /* 화면 폭 전체가 오른쪽에서 밀려 들어온다(밀어 넣는 화면) — 아래에서 올라오는 것은 새 탭 시트뿐 */
       transform: translateX(100%);
     }
   }
@@ -391,7 +381,7 @@
     color: var(--fg-1);
     cursor: pointer;
   }
-  /* 이어 붙은 묶음(2026-10-28 — 설정 칩과 같은 규칙 · 목업 6eWvPcEZZeQ7sgGckwkBed): 2px 틈, 바깥 끝 = 반원 · 맞닿는 쪽 = 6px, 고른 칸만 알약 */
+  /* 이어 붙은 묶음 — 설정 칩과 같은 규칙 */
   .seg {
     flex: 1 1 auto;
     min-width: 0;

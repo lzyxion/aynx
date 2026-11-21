@@ -2,15 +2,11 @@
 //! 볼트에서 값을 읽어 루프백 TCP로 Rust 도우미에 전달하고, 대상 자식에만 심는다.
 //! MCP RPC·프런트에는 이 통로가 없다. 비밀은 출력·Debug로 남기지 않는다.
 //!
-//! **③-3b1 부터 세션 서버 프로세스에 산다**([`Broker`] 한 벌 — `server::serve` 가 볼트와 함께 쥔다). 볼트와 같은
-//! 프로세스여야 값이 파이프를 타지 않는다. GUI 는 서버 op `mcp_prepare`·`mcp_retain` 으로만 닿고(`server::vault_ops`),
-//! 받는 것은 티켓이 박힌 실행 모양(도우미 인자·프록시 URL)뿐이다. 그래서 GUI 를 강제 종료해도 살아남은 AI CLI 의
-//! 외부 MCP 가 이어진다(창 0개 잠금 동안은 정지 — 볼트가 잠겨 값을 내주지 않는다, 해제하면 같은 티켓으로 복구).
+//! 세션 서버 프로세스에 산다 — 볼트와 같은 프로세스여야 값이 파이프를 타지 않는다. GUI 는 서버 op `mcp_prepare`·`mcp_retain` 으로만
+//! 닿고 받는 것은 티켓이 박힌 실행 모양(도우미 인자·프록시 URL)뿐이다. 창 0개 잠금 동안은 정지이고 해제하면 같은 티켓으로 복구된다.
 //!
-//! - 실행 브로커: 127.0.0.1 임시 포트. `aynx mcp-run <포트> <티켓>` 도우미가 **인자로** 포트를 안다(그 인자는 GUI 가
-//!   `--mcp-config` 파일·codex `-c` 에 적는다) — 포트가 GUI 것에서 서버 것으로 바뀌었을 뿐 모양은 그대로다.
-//! - 헤더 프록시: 127.0.0.1 의 **자기 포트**(`proxy`, 처음 HTTP 티켓을 만들 때 띄운다). 신호 평면(`server::signal_http`)
-//!   포트와 합치는 일은 ③-3c(MCP 가 서버로 올 때 한 포트로 모은다).
+//! - 실행 브로커: 127.0.0.1 임시 포트. `aynx mcp-run <포트> <티켓>` 도우미가 **인자로** 포트를 안다.
+//! - 헤더 프록시: 127.0.0.1 의 **자기 포트**(`proxy`, 처음 HTTP 티켓을 만들 때 띄운다).
 
 use crate::i18n::tr;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -51,7 +47,6 @@ struct Ticket {
 
 type Tickets = Arc<Mutex<HashMap<String, Ticket>>>;
 
-/// 실행 브로커 한 벌 — 티켓 표·브로커 포트·(필요할 때 띄우는) 헤더 프록시 포트.
 pub(crate) struct Broker {
     port: u16,
     tickets: Tickets,
@@ -60,7 +55,6 @@ pub(crate) struct Broker {
 }
 
 impl Broker {
-    /// 브로커를 띄운다(127.0.0.1 임시 포트 + 듣기 스레드 하나).
     pub(crate) fn start(vault: Arc<Vault>) -> Result<Arc<Broker>, ()> {
         let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| ())?;
         let port = listener.local_addr().map_err(|_| ())?.port();
@@ -83,12 +77,10 @@ impl Broker {
         }))
     }
 
-    /// 브로커 포트(`mcp-run` 도우미가 인자로 받는 것).
     pub(crate) fn port(&self) -> u16 {
         self.port
     }
 
-    /// 헤더 프록시 포트 — 아직 HTTP 티켓을 만든 적이 없으면 `None`.
     pub(crate) fn proxy_port(&self) -> Option<u16> {
         self.proxy_port.get().and_then(|r| r.ok())
     }
@@ -119,7 +111,6 @@ impl Broker {
             .collect())
     }
 
-    /// 살아 있는 티켓 수 `(stdio, http)` — 상태 줄·로그용.
     pub(crate) fn counts(&self) -> (usize, usize) {
         let Ok(t) = self.tickets.lock() else { return (0, 0) };
         let http = t.values().filter(|x| x.server.transport == "http").count();

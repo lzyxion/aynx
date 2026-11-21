@@ -1,21 +1,15 @@
-//! **앨범 병합**(2026-11-07 — docs/log/2026-11-07-album-merge.md) — 내보낸 브랜치를 시작 때의 브랜치(`Integration.base_branch`)에
-//! `git merge --no-ff` 로 넣는다. 스쿼시 없음 · **push 없음**. 길은 둘뿐이다: 사람의 [병합](op `orchestration_merge` — 원격은 재확인) ·
-//! 사람이 앨범마다 켠 자동 병합(`AlbumConfig.auto_merge` — `complete_run_by` 의 내보내기 뒤 한 번). **MCP 에는 켜기 · 병합 길이 없다**
+//! 앨범 병합 — 내보낸 브랜치를 시작 때의 브랜치에 `git merge --no-ff` 로 넣는다. 스쿼시 없음 · **push 없음**(docs/log/2026-11-07-album-merge.md).
+//! 길은 둘뿐이다: 사람의 [병합](원격은 재확인) · 사람이 앨범마다 켠 자동 병합(완료의 내보내기 뒤 한 번). **MCP 에는 켜기 · 병합 길이 없다**
 //! (시험 `album_merge_has_no_mcp_path`).
 //!
 //! 불변식:
-//! - **검사는 저장소를 바꾸지 않는다**(`inspect`): `status` 는 `--no-optional-locks`(인덱스를 다시 쓰지 않는다), 충돌 예상은 `merge-tree`
-//!   (쓰는 것은 참조 없는 트리 객체뿐 — gc 대상 · 작업 폴더 · 인덱스 · ref 를 건드리지 않는다). 사람 병합은 창을 열 때 + 실행 직전에 두 번 돈다.
-//! - **더러움의 범위**(`inspect` 의 ③): 추적 파일의 변경(스테이지 · 작업 폴더 — `--untracked-files=no`) + **병합이 새로 놓을 경로에 이미 있는
-//!   미추적 · 무시 파일**. 무시 파일까지 보는 까닭: `git merge` 는 미추적만 거절하고 무시 파일은 조용히 덮는다(`--overwrite-ignore` 기본).
-//!   병합과 무관한 미추적 파일은 막지 않는다(그대로 남고 잃는 것이 없다).
-//! - **임의 실행 관문**: 지원 범위 검사(`IntegrationGit::unsupported` — 병합 드라이버 · 필터 · renormalize · 바뀐 gitlink)를 **`merge-tree`
-//!   앞에서** 돌린다(`merge-tree` 도 드라이버를 실제로 실행한다 — `merge.rs` 머리말). 실행은 `--attr-source=<대상 머리>`(검사와 같은 속성 출처 —
-//!   주 작업 폴더의 커밋 안 된 `.gitattributes` 에 흔들리지 않게).
-//! - **훅 끔**(공용 실행기 `git.rs` 의 `core.hooksPath=<빈 폴더>` — 작업자 worktree 와 같은 관례): `.githooks` 처럼 저장소 안에 있는 훅은 AI 가
-//!   바꿀 수 있는 코드다. 사람의 [병합]도 같은 몸이라 사용자 훅(`pre-merge-commit` · `post-merge`)이 돌지 않는다 — 돌려야 하면 터미널에서 병합한다.
-//! - **git 은 잠금 밖**: 잠금은 재료를 읽을 때와 결과를 적을 때만 쥔다. 한 앨범의 병합은 한 번에 하나(`Slot.merging`) — 겹친 실패가 다른 쪽의
-//!   병합을 `--abort` 하지 않게.
+//! - **검사는 저장소를 바꾸지 않는다** — `status --no-optional-locks` · `merge-tree`(참조 없는 트리 객체만 쓴다). 사람 병합은 창을 열 때 + 실행 직전 두 번.
+//! - **더러움의 범위** = 추적 파일의 변경 + 병합이 새로 놓을 경로에 이미 있는 미추적 · **무시** 파일(`git merge` 는 무시 파일을 조용히 덮는다).
+//!   병합과 무관한 미추적 파일은 막지 않는다.
+//! - **임의 실행 관문**: 지원 범위 검사를 **`merge-tree` 앞에서** 돌린다(`merge-tree` 도 드라이버를 실행한다). 실행은
+//!   `--attr-source=<대상 머리>` — 커밋 안 된 `.gitattributes` 에 흔들리지 않게.
+//! - **훅 끔** — 저장소 안 훅은 AI 가 바꿀 수 있는 코드다. 사람의 [병합]도 같은 몸이라 사용자 훅이 돌지 않는다(알고 받은 한계 — 돌려야 하면 터미널에서).
+//! - **git 은 잠금 밖** · 한 앨범의 병합은 한 번에 하나(`Slot.merging`) — 겹친 실패가 다른 쪽의 병합을 `--abort` 하지 않게.
 //! - **실패는 되돌리고 정직하게**: 실패면 `MERGE_HEAD` 가 **우리가 넣던 머리일 때만** `git merge --abort`.
 //! - **자동 병합은 재시도하지 않는다**: 멈추면 까닭을 Run 칸 · 장부 · 사람 알림에 남기고 끝이다. 다시 하는 것은 사람의 [병합].
 //! - 장부 낱말(`integration_merged` · `integration_auto_merged` · `auto_merge_stopped`)은 깨움 허용 목록(`wake.rs`)에 없다 — 깨우지 않는다.
@@ -32,17 +26,15 @@ use super::model::*;
 use super::store::{human_detail, not_found_run, reason, OrchError, Orchestration};
 use crate::audit::OrchestrationAudit;
 
-/// 병합 한 번의 시한 — 큰 저장소의 작업 폴더 갱신까지 기다린다(읽기 검사는 공용 60초).
+/// 큰 저장소의 작업 폴더 갱신까지 기다린다(읽기 검사는 공용 60초).
 const MERGE_TIMEOUT: Duration = Duration::from_secs(300);
-/// 창 · 답에 싣는 경로 수 상한(수는 따로 센다).
 const PATHS_MAX: usize = 20;
 
-/// 커밋 짧은 표기(장부 · 화면 공통).
 fn short(oid: &str) -> &str {
     &oid[..7.min(oid.len())]
 }
 
-/// `status --porcelain=v1 -z` → 경로들. 이름이 바뀐 줄은 옛 경로가 다음 칸에 온다(건너뛴다). 순수.
+/// 이름이 바뀐 줄은 옛 경로가 다음 칸에 온다(건너뛴다).
 pub(super) fn parse_status_z(out: &str) -> Vec<String> {
     let mut paths = Vec::new();
     let mut it = out.split('\0');
@@ -59,7 +51,7 @@ pub(super) fn parse_status_z(out: &str) -> Vec<String> {
     paths
 }
 
-/// `diff --numstat -z --no-renames` → `(파일 수, 더한 줄, 지운 줄)` — 이진 파일의 `-` 는 0 줄. 순수.
+/// `(파일 수, 더한 줄, 지운 줄)` — 이진 파일의 `-` 는 0 줄.
 pub(super) fn parse_numstat_z(out: &str) -> (u64, u64, u64) {
     let (mut files, mut adds, mut dels) = (0, 0, 0);
     for rec in out.split('\0').filter(|r| !r.is_empty()) {
@@ -72,7 +64,7 @@ pub(super) fn parse_numstat_z(out: &str) -> (u64, u64, u64) {
     (files, adds, dels)
 }
 
-/// 병합이 놓을 경로가 이미 차 있나 — 그 경로 자체 또는 **그 위 어느 자리**에 파일이 있으면(폴더 자리를 파일이 막고 있다) 참.
+/// 그 위 어느 자리에 파일이 있어도(폴더 자리를 파일이 막고 있다) 참.
 fn path_taken(repo: &Path, rel: &str) -> bool {
     let mut at = repo.to_path_buf();
     let parts: Vec<&str> = rel.split('/').collect();
@@ -87,17 +79,14 @@ fn path_taken(repo: &Path, rel: &str) -> bool {
     false
 }
 
-/// 병합 전 검사 결과.
 #[derive(Debug, Clone, Default)]
 pub(super) struct MergeCheck {
     target: Option<String>,
     head: Option<String>,
-    /// 세 줄로 보일 수 없는 까닭(대상 없음 · 낡음 · 신원 · 지원 밖 …)과 그 세부 낱말.
     blocked: Option<&'static str>,
     detail: Option<String>,
-    /// 이미 대상 브랜치에 들어 있다.
     merged: bool,
-    /// 세 줄을 실제로 판정했다(앞에서 막혔으면 거짓 — 창은 그 줄들을 그리지 않는다).
+    /// 앞에서 막혔으면 거짓 — 창은 세 줄을 그리지 않는다.
     checked: bool,
     merge_base: Option<String>,
     commits: u64,
@@ -116,7 +105,7 @@ impl MergeCheck {
         MergeCheck { blocked: Some(word), detail, ..Default::default() }
     }
 
-    /// 병합을 막는 첫 까닭 `(낱말, 세부)` — 없으면 병합할 수 있다. 낱말은 화면 · 장부 · 사람 알림이 함께 쓴다.
+    /// 낱말은 화면 · 장부 · 사람 알림이 함께 쓴다.
     pub(super) fn refusal(&self) -> Option<(&'static str, Option<String>)> {
         if let Some(word) = self.blocked {
             return Some((word, self.detail.clone()));
@@ -172,7 +161,6 @@ fn git_err(line: impl Into<String>) -> OrchError {
     OrchError::new(reason::GIT_FAILED, line)
 }
 
-/// 진행 중인 병합 · cherry-pick · revert · rebase 가 있나(`rev-parse --git-path` — 읽기만).
 fn in_progress(g: &Git<'_>, repo: &Path) -> Result<bool, OrchError> {
     let names = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"];
     let mut args = vec!["rev-parse"];
@@ -186,7 +174,7 @@ fn in_progress(g: &Git<'_>, repo: &Path) -> Result<bool, OrchError> {
     }))
 }
 
-/// **병합 전 검사** — 읽기만 한다(머리말). 블로킹(git) · 잠금 밖에서 부른다.
+/// 읽기만 한다. 블로킹(git) · 잠금 밖에서 부른다.
 pub(super) fn inspect(hand: &dyn IntegrationGit, repo: &Path, integ: &Integration) -> Result<MergeCheck, OrchError> {
     let Some(head) = integ.exported_head.clone() else {
         return Ok(MergeCheck::stop("not-exported", None));
@@ -223,19 +211,16 @@ pub(super) fn inspect(hand: &dyn IntegrationGit, repo: &Path, integ: &Integratio
     let g = Git::new(repo, &hooks, &env, reason::GIT_FAILED)?;
 
     let mut c = at(MergeCheck { checked: true, ..Default::default() });
-    // ① 지금 브랜치.
     c.current = hand.head(repo).map_err(git_err)?.and_then(|(_, b)| b);
     c.on_target = c.current.as_deref() == Some(target.as_str());
-    // ② 진행 중인 병합 · rebase.
     c.in_progress = in_progress(&g, repo)?;
-    // ③ 추적 파일의 변경(머리말의 범위 — 병합이 덮을 미추적 · 무시 파일은 아래 ⑥ 에서 더한다).
+    // 추적 파일의 변경 — 병합이 덮을 미추적 · 무시 파일은 아래에서 더한다.
     let status = g.ok(
         &["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=no", "--ignore-submodules=none"],
         &[],
         None,
     )?;
     c.dirty = parse_status_z(&status);
-    // ④ 숫자 칸.
     let base = g.run(&["merge-base", &target_head, &head], &[], None)?;
     let base = base.stdout.trim().to_string();
     if !super::git::hex40(&base) {
@@ -247,13 +232,12 @@ pub(super) fn inspect(hand: &dyn IntegrationGit, repo: &Path, integ: &Integratio
     let numstat = g.ok(&["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", &base, &head, "--"], &[], None)?;
     (c.files, c.additions, c.deletions) = parse_numstat_z(&numstat);
     c.merge_base = Some(base.clone());
-    // ⑤ 지원 범위 — `merge-tree` 앞이어야 한다(머리말).
+    // 지원 범위 — `merge-tree` 앞이어야 한다(드라이버 실행).
     if let Some(word) = hand.unsupported(repo, &target_head, &head, &base).map_err(git_err)? {
         c.blocked = Some("git-unsupported");
         c.detail = Some(word.to_string());
         return Ok(c);
     }
-    // ⑥ 충돌 예상 · 병합이 덮을 파일.
     let tree = match hand.merge(repo, &base, &target_head, &head).map_err(git_err)? {
         MergeResult::Clean { tree } => tree,
         MergeResult::Conflict(p) => {
@@ -282,14 +266,14 @@ pub(super) fn inspect(hand: &dyn IntegrationGit, repo: &Path, integ: &Integratio
     Ok(c)
 }
 
-/// 병합 실패 — git 의 첫 줄 · 저장소가 시작 때 그대로인가.
 #[derive(Debug, Clone)]
 struct MergeFailure {
     line: String,
+    /// 저장소가 시작 때 그대로인가.
     unchanged: bool,
 }
 
-/// 진짜 병합 — 잠금 밖 · 검사를 지난 뒤에만. 성공이면 병합 커밋.
+/// 잠금 밖 · 검사를 지난 뒤에만.
 fn run_merge(repo: &Path, branch: &str, target: &str, head: &str, target_head: &str) -> Result<String, MergeFailure> {
     let failed = |line: String| MergeFailure { line, unchanged: false };
     let env = child_env(std::env::vars_os());
@@ -317,7 +301,7 @@ fn run_merge(repo: &Path, branch: &str, target: &str, head: &str, target_head: &
         Ok(o) => o.line(),
         Err(e) => e.message,
     };
-    // 되돌리기 — 우리가 넣던 머리일 때만(머리말).
+    // 되돌리기 — `MERGE_HEAD` 가 우리가 넣던 머리일 때만.
     let merge_head = g.run(&["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], &[], None).map(|o| o.stdout.trim().to_string());
     if merge_head.as_deref().ok() == Some(head) {
         let _ = g.run(&["merge", "--abort"], &[], None);
@@ -330,7 +314,6 @@ fn run_merge(repo: &Path, branch: &str, target: &str, head: &str, target_head: &
     })
 }
 
-/// 병합 한 번의 결과.
 enum Outcome {
     Merged { commit: String, target: String, head: String, seq: u64 },
     Already,
@@ -338,11 +321,8 @@ enum Outcome {
     Failed(MergeFailure),
 }
 
-/// 자동 병합 조건 중 **장부만으로** 판정하는 것(병합 전 검사 · 저장소 신원은 따로) — 까닭 낱말 또는 `None`. 순수.
-///
-/// "모든 검증 통과" 는 Job 의 검증 기록으로 본다: 수락의 근거 Job 이 통과 결과를 가졌고 덮어쓰기가 아닐 것. 면제(`waived`)가 있으면 사람이 규칙을
-/// 넘은 것이라 무인으로 잇지 않는다. 수락 규칙은 **지금 구성**으로 다시 센다. 마지막 조건: 내보낸 머리가 검증된 후보여야 한다 — [조정]의
-/// 받아들이기로 사람이 올린 머리에는 검증 기록이 없다.
+/// 자동 병합 조건 중 장부만으로 판정하는 것. 면제가 있으면 사람이 규칙을 넘은 것이라 무인으로 잇지 않고, 수락 규칙은 지금 구성으로 다시 센다.
+/// 내보낸 머리가 검증된 후보여야 한다 — [조정]으로 사람이 올린 머리에는 검증 기록이 없다.
 pub(super) fn auto_merge_blocker(run: &Run, album: &AlbumConfig) -> Option<&'static str> {
     if run.state != RunState::Done {
         return Some("run-state");
@@ -383,7 +363,6 @@ pub(super) fn auto_merge_blocker(run: &Run, album: &AlbumConfig) -> Option<&'sta
 }
 
 impl Orchestration {
-    /// 재료 — 저장소 경로 · 통합 칸(잠금 안에서 복제만).
     fn merge_material(&self, run_id: &str) -> Result<(PathBuf, Integration), OrchError> {
         let g = self.lock();
         let slot = g.runs.get(run_id).ok_or_else(not_found_run)?;
@@ -395,7 +374,7 @@ impl Orchestration {
         Ok((PathBuf::from(&slot.run.repo), integ))
     }
 
-    /// 저장소 신원(`repo-changed` — 앨범 관문과 같은 판정) · 검사. 신원이 다르면 그 저장소의 git 을 읽지 않는다.
+    /// 신원이 다르면 그 저장소의 git 을 읽지 않는다.
     fn merge_inspect(&self, run_id: &str, repo: &Path, integ: &Integration) -> Result<MergeCheck, OrchError> {
         let inputs = self.album_inputs(run_id);
         if let Err(e) = {
@@ -411,13 +390,12 @@ impl Orchestration {
         inspect(hand.as_ref(), repo, integ)
     }
 
-    /// [병합] 확인 창의 재료(op `orchestration_merge_preview` — 사람 · 읽기). **저장소를 바꾸지 않는다.** 블로킹(git).
+    /// 저장소를 바꾸지 않는다. 블로킹(git).
     pub(crate) fn merge_preview(&self, run_id: &str) -> Result<Value, OrchError> {
         let (repo, integ) = self.merge_material(run_id)?;
         Ok(self.merge_inspect(run_id, &repo, &integ)?.to_json(run_id, &integ))
     }
 
-    /// 이 앨범의 병합 자리를 쥔다 — 이미 누가 쥐었으면 거짓.
     fn claim_merge(&self, run_id: &str) -> bool {
         let mut g = self.lock();
         match g.runs.get_mut(run_id) {
@@ -435,7 +413,7 @@ impl Orchestration {
         }
     }
 
-    /// 병합의 몸(자리를 쥔 뒤) — 실행 직전 검사 · 진짜 병합 · 장부. 사람과 서버가 같은 길이다.
+    /// 자리를 쥔 뒤에만 — 사람과 서버가 같은 길이다.
     fn merge_claimed(&self, run_id: &str, repo: &Path, integ: &Integration, actor: Actor) -> Result<Outcome, OrchError> {
         let check = self.merge_inspect(run_id, repo, integ)?;
         if check.merged {
@@ -463,7 +441,6 @@ impl Orchestration {
         }
     }
 
-    /// 병합을 장부 · Run 칸 · 감사에 적는다. 멈춤 기록은 지운다(병합이 섰다).
     fn record_merged(&self, run_id: &str, commit: &str, head: &str, target: &str, actor: Actor) -> u64 {
         let now = self.now();
         let (seq, gen, state) = {
@@ -497,7 +474,7 @@ impl Orchestration {
         seq
     }
 
-    /// 저장 · 알림 — 서버 재시작 뒤의 끝난 앨범(orphaned)도 병합할 수 있어 그 기록을 잃지 않게 쓴다.
+    /// orphaned 도 병합할 수 있어 그 기록을 잃지 않게 따로 저장한다.
     fn persist_merge(&self, g: &super::store::Inner, run_id: &str, state: RunState) {
         if state == RunState::Orphaned {
             self.save_orphaned(g, run_id);
@@ -506,8 +483,7 @@ impl Orchestration {
         }
     }
 
-    /// [병합](op `orchestration_merge` — 사람 · 원격은 재확인). `expect_*` = 창에서 본 값 — 그사이 바뀌었으면 하지 않는다. 답의 `merged` 가 결과이고
-    /// 하지 않은 까닭은 `reason`(그때의 검사 `preview` 를 함께 — 창이 그대로 다시 그린다). 블로킹(git).
+    /// 사람만. `expect_*` = 창에서 본 값 — 그사이 바뀌었으면 하지 않는다. 블로킹(git).
     pub(crate) fn merge_album(&self, run_id: &str, expect_head: &str, expect_target: &str) -> Result<Value, OrchError> {
         let (repo, integ) = self.merge_material(run_id)?;
         if integ.exported_head.as_deref() != Some(expect_head) || integ.base_branch.as_deref() != Some(expect_target) {
@@ -532,7 +508,6 @@ impl Orchestration {
         })
     }
 
-    /// 자동 병합 멈춤 — Run 칸 · 장부 · 사람 알림. 재시도는 없다(머리말).
     fn stop_auto_merge(&self, run_id: &str, word: &'static str, detail: Option<String>) -> Value {
         let now = self.now();
         let (gen, state) = {
@@ -560,8 +535,7 @@ impl Orchestration {
         json!({ "merged": false, "reason": word })
     }
 
-    /// **자동 병합** — 앨범 완료의 내보내기 뒤 한 번(`complete_run_by`). 켬은 **이 순간의 앨범 구성**으로 본다. 꺼져 있으면 `None`(아무 일 없음).
-    /// 답은 `{merged, commit?, reason?}` — 완료를 부른 쪽의 답에 실린다. 블로킹(git) · 잠금 밖.
+    /// 켬은 이 순간의 앨범 구성으로 본다. 블로킹(git) · 잠금 밖.
     pub(super) fn auto_merge_after_complete(&self, run_id: &str, exported: bool) -> Option<Value> {
         let inputs = self.album_inputs(run_id);
         let refused: Option<&'static str> = {
@@ -603,8 +577,7 @@ impl Orchestration {
         })
     }
 
-    /// 터미널에서 직접 병합했나(상세 칸 `mergedOutside` — 사람 보드만). 앱이 적은 병합이 없을 때 내보낸 머리가 대상 브랜치에 들어 있으면 참.
-    /// 아직 아무것도 통합하지 않은 앨범(머리 = 시작 커밋)은 "들어 있다" 가 뜻이 없어 거짓. 블로킹(git 두 번).
+    /// 터미널에서 직접 병합했나 — 아무것도 통합하지 않은 앨범(머리 = 시작 커밋)은 뜻이 없어 거짓. 블로킹(git).
     pub(super) fn merged_outside(&self, run_id: &str) -> bool {
         let material = {
             let g = self.lock();

@@ -20,16 +20,8 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * 스니펫 **추가 · 편집** — 설정 › 스니펫의 하위 화면 (docs/log/2026-10-05-snippets-subview.md).
-   *
-   * 요약(`SnippetsSection`)의 [스니펫 추가 ›] 또는 줄 누르기가 연다. 틀(`SettingsSubView`)은 트리거 · 자동 승인과
-   * 공용이고, 움직임 · Escape · 돌아온 뒤 포커스는 요약이 맡는다. 위에서부터: 칸(이름 · 명령 · 설명 · 범위 · Enter) ·
-   * 미리보기 · 단추.
-   *
-   * - **칸은 이 화면 안에만 산다** — [추가] · [저장] 을 눌러야 목록에 쓴다(그 순간 `snippets.json` 에 디바운스 저장 —
-   *   스니펫은 설정 창의 [저장] 을 기다리지 않는다). [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다.
-   * - **예시 카드는 없다** — 스니펫에는 예시 · 틀 개념이 없다(트리거와 다른 점).
-   * - [삭제] 는 저장 쪽(`deleteSnippet`)이 한 번 묻는다 — 되돌릴 수 없다.
+   * [추가] · [저장] 은 곧바로 `snippets.json` 에 쓴다 — 설정 창의 [저장] 을 기다리지 않는다. [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다.
+   * 예시 카드는 두지 않는다 — 스니펫에는 예시 · 틀 개념이 없다(트리거와 다른 점).
    */
   let {
     id,
@@ -37,11 +29,9 @@
     onsaved,
     ondeleted,
   }: {
-    /** 고칠 스니펫의 id — `null` 이면 추가 */
+    /** `null` 이면 추가 */
     id: string | null;
-    /** [취소] · 뒤로 · Escape — 아무것도 쓰지 않고 요약으로 */
     onback: () => void;
-    /** [추가] · [저장] 뒤 — 넣거나 고친 스니펫의 id */
     onsaved: (id: string) => void;
     ondeleted: () => void;
   } = $props();
@@ -55,7 +45,7 @@
       return cur ? snippetToForm(cur) : emptySnippetForm();
     }),
   );
-  /** [추가]/[저장] 을 한 번 눌렀는가 — 처음 열린 빈 칸에 "이름을 적으세요" 를 띄우지 않는다 */
+  /** 처음 열린 빈 칸에 오류를 띄우지 않게 */
   let tried = $state(false);
 
   const full = $derived(adding && snippets().length >= MAX_SNIPPETS);
@@ -64,10 +54,7 @@
   const nameErr = $derived((tried || !adding) && problems.includes("name-empty"));
   const cmdErr = $derived((tried || !adding) && problems.includes("command-empty"));
 
-  /**
-   * 범위 후보 — 호스트 목록은 **읽기만** 한다(그 캐시를 채우는 자리는 독 · 시작 화면이다). 편집 중인 스니펫의 별칭이
-   * 목록에 없어도 후보에 남는다(`scopeAliasOptions`).
-   */
+  /** 호스트 캐시는 읽기만 한다 — 채우는 자리는 독 · 시작 화면이다 */
   const aliases = $derived(
     scopeAliasOptions(
       hostCache().map((h) => h.name),
@@ -75,7 +62,6 @@
     ),
   );
 
-  /** "명령" 칸 이름의 툴팁 — 자리표시자 문법과, 이 길로 나가는 글자가 무엇뿐인지 */
   const commandTip = $derived(
     tipOf(
       t("settings.snippets.note.syntax.example") + t("settings.snippets.note.syntax.after"),
@@ -83,7 +69,7 @@
     ),
   );
 
-  // 편집 중인 스니펫이 바깥에서 사라지면(팔레트에서 지움 · 호스트 제거 팬아웃) 요약으로 — 없는 줄에 쓰지 않게.
+  // 편집 중인 스니펫이 바깥에서 사라지면 요약으로 — 없는 줄에 쓰지 않게.
   $effect(() => {
     if (id !== null && !snippets().some((s) => s.id === id)) untrack(onback);
   });
@@ -107,7 +93,6 @@
     if (await deleteSnippet(id)) ondeleted();
   }
 
-  /** 한 줄 칸에서 Enter = [추가]/[저장] (설정 화면은 `<form>` 이 아니라 직접 받는다 · 명령 칸은 여러 줄이라 빼고) */
   function onFieldKey(e: KeyboardEvent): void {
     if (e.key !== "Enter" || e.isComposing) return;
     if (!(e.target instanceof HTMLInputElement) || e.target.closest("[data-snippet-preview]")) return;
@@ -209,7 +194,6 @@
 </SettingsSubView>
 
 <style>
-  /* 칸 — 트리거 편집(`TriggerEditor`)의 규칙 칸과 같은 결: 이름 | 칸, 좁으면 이름이 위로 */
   .snip-form {
     container-type: inline-size;
     display: flex;
@@ -229,7 +213,6 @@
     row-gap: 2px;
   }
 
-  /* 여러 줄 칸은 이름을 위에 맞춘다 */
   .ff.top {
     align-items: start;
   }
@@ -264,7 +247,6 @@
     border-color: var(--err);
   }
 
-  /* 명령 칸 — `.value` 의 모양을 그대로 쓰되 여러 줄이라 세로 크기만 열어 둔다 */
   .cmd-input {
     font-family: var(--font-mono);
     resize: vertical;

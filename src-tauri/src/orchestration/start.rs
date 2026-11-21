@@ -7,10 +7,10 @@ use super::store::{bind_seat, coordinates, has_coordinator, reason, unbind_coord
 use crate::server::chat_proc::ProcId;
 use super::tools::{bad, req_text, request_id};
 
-/// 타일 도구(조정자가 되기 **전**에도 부를 수 있다 — 프로듀서 채팅의 목록에 조율 도구와 함께 실린다. 이름은 옛 "타일" 그대로 — MCP 표면).
+/// 조정자가 되기 **전**에도 부를 수 있는 프로듀서 도구(이름은 옛 "타일" 그대로).
 pub(crate) const TILE_TOOLS: &[&str] = &["adopt_run"];
 
-/// 이 프로듀서 채팅은 이미 앨범 하나에 귀속됐다(설계 2-3 — 채팅 하나 = 앨범 하나 · `{runId}`).
+/// 채팅 하나 = 앨범 하나.
 fn already_produced(run_id: &str) -> OrchError {
     OrchError::new(
         reason::ALREADY_PRODUCED,
@@ -18,12 +18,12 @@ fn already_produced(run_id: &str) -> OrchError {
     )
 }
 
-/// 그 자리가 아직 그대로인가(F3 · 설계 2-3 생존 재확인) — 그 세대의 토큰 칸(이 표 잠금 하나 — L1 → L2).
+/// 그 세대의 토큰 칸으로 본다(표 잠금 안에서 — L1 → L2).
 fn seat_alive(seat: &Seat) -> bool {
     crate::chat_token::still_current(&seat.chat, seat.proc)
 }
 
-/// 부른 프로듀서 프로세스가 Run 을 열거나 이어받는 도중 끝났다(프로세스 끝 · 사람의 거두기) — `not-a-tile`(낱말은 옛 이름 그대로).
+/// 낱말 `not-a-tile` 은 옛 이름 그대로다.
 fn caller_gone(what: &str) -> OrchError {
     OrchError::new(
         reason::NOT_A_TILE,
@@ -31,8 +31,7 @@ fn caller_gone(what: &str) -> OrchError {
     )
 }
 
-// 시험 이음매 — 묶음을 세우는 잠금 **바로 앞**(git · 맡기기 조회 뒤 · 통합 ref 를 만든 뒤)에서 한 번 부를 손(경쟁을 결정적으로 끼운다 —
-// [`before_bind`]). 제품 빌드에서는 빈 함수.
+// 시험 이음매 — 묶음을 세우는 잠금 **바로 앞**에서 한 번 부른다(경쟁을 결정적으로 끼운다). 제품 빌드에서는 빈 함수.
 #[cfg(test)]
 thread_local! {
     static BEFORE_BIND: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
@@ -57,7 +56,6 @@ fn already(run_id: &str, gen: u32) -> OrchError {
     )
 }
 
-/// `start_run` · `adopt_run`(타일 도구)의 스키마 — 프로듀서 채팅의 목록에 조율 도구 앞에 실린다.
 pub(crate) fn tile_tool_schemas() -> Vec<Value> {
     vec![
         json!({
@@ -73,7 +71,6 @@ pub(crate) fn tile_tool_schemas() -> Vec<Value> {
     ]
 }
 
-/// 조정자 `complete_run`(Q5) 스키마 — 조정자 도구 목록에 실린다(`tools.rs`).
 pub(crate) fn complete_run_schema() -> Value {
     json!({
         "name": "complete_run",
@@ -87,8 +84,7 @@ pub(crate) fn complete_run_schema() -> Value {
     })
 }
 
-/// 그 폴더의 git toplevel(서버 git 실행기 — 셸 없음 · `GIT_*` 걷기 · 훅 끔). **블로킹**. 프로듀서 채팅의 [오케스트레이션으로 이어 가기]
-/// (`server::producer` 의 갈라 오기 — 그 대화의 기록된 cwd → 스튜디오)가 쓴다.
+/// **블로킹**.
 pub(crate) fn repo_toplevel(dir: &str) -> Result<String, OrchError> {
     use super::git::{child_env, Git};
     let p = std::path::Path::new(dir);
@@ -105,15 +101,13 @@ pub(crate) fn repo_toplevel(dir: &str) -> Result<String, OrchError> {
     if top.is_empty() {
         return Err(OrchError::new(reason::NOT_A_REPO, "git did not name a repository root"));
     }
-    // git 은 `/` 구분자로 말한다 — 맡기기 열쇠 비교(`comparable`)가 구분자를 편다.
+    // git 은 `/` 구분자로 말한다 — 비교하는 쪽(`worktree::comparable`)이 구분자를 편다.
     Ok(top.to_string())
 }
 
 impl Orchestration {
-    /// **프로듀서 채팅의** `start_run` · `adopt_run` · `complete_run` · 조율 도구(설계 2-3 `seat_tool`). 멱등 기록은 역할 판정 앞에서 그 세대의
-    /// 토큰 칸에(`chat_token::with_request` — 프로세스가 바뀐 뒤의 재시도는 `already-produced{runId}` 로 같은 runId 를 안다). 답에는 처음 결과 +
-    /// 그 Run 의 지금 상태(`now` — 기록에는 싣지 않는다)를 붙인다. 호출자의 `(chat, proc)` 은 인증 때 확정한 그대로 — 여기서 지금 세대를 다시
-    /// 읽지 않는다.
+    /// 멱등 기록은 역할 판정보다 **먼저** 그 세대의 토큰 칸에서 찾는다(→ docs/invariants.md 전문 9). `now` 는 기록에 싣지 않는다.
+    /// 호출자의 `(chat, proc)` 은 인증 때 확정한 그대로 — 여기서 지금 세대를 다시 읽지 않는다.
     pub(super) fn producer_tool(&self, chat: &str, proc: ProcId, name: &str, args: Option<&Value>) -> Result<Value, String> {
         let seat = Seat { chat: chat.to_string(), proc };
         if TILE_TOOLS.contains(&name) || name == "complete_run" {
@@ -128,11 +122,10 @@ impl Orchestration {
         Ok(out)
     }
 
-    /// 멱등 기록 안의 몸.
     fn seat_tool_body(&self, seat: &Seat, name: &str, args: Option<&Value>) -> Result<Value, String> {
         let out = match name {
             "adopt_run" => self.adopt_run_seat(seat, args).map_err(|e| e.to_string())?,
-            // 조정자 도구 — 역할(묶음 · runId · gen) 판정은 기록 **안**(성공 뒤 Run 이 끝나 묶음이 풀려도 재시도는 처음 결과).
+            // 역할 판정은 기록 **안** — 성공 뒤 Run 이 끝나 묶음이 풀려도 재시도는 처음 결과.
             _ => {
                 let c = self.seat_coordinator(seat, name, args).map_err(|e| e.to_string())?;
                 self.call_tool(&c, name, args)?
@@ -142,8 +135,7 @@ impl Orchestration {
         Ok(out)
     }
 
-    /// **잠정 커서**(설계 3-3 — seen 의 뜻 = 유효한 조회 응답으로 그 자리에 돌려준 스냅숏 범위): `get_run` · `wait_run` · `start_run` · `adopt_run`
-    /// 의 **성공 응답**만 `pending = max(pending, latestSeq)`. 그 자리가 지금 묶인 자리일 때만(오류 · 풀린 자리 · 취소된 대기는 올리지 못한다).
+    /// 잠정 커서 — 성공 응답으로 그 자리에 돌려준 스냅숏 범위만 올린다(오류 · 풀린 자리 · 취소된 대기는 올리지 못한다).
     fn note_seen(&self, seat: &Seat, name: &str, out: &Value) {
         if !matches!(name, "get_run" | "wait_run" | "adopt_run") {
             return;
@@ -155,7 +147,7 @@ impl Orchestration {
         }
     }
 
-    /// 답에 그 Run 의 지금 상태를 붙인다(`now{state, gen, coordinatorStream}` — 멱등 재시도가 처음 결과와 함께 지금을 본다).
+    /// 멱등 재시도가 처음 결과와 함께 지금 상태를 보게 한다.
     fn with_now(&self, mut out: Value) -> Value {
         let Some(run_id) = out.get("runId").and_then(Value::as_str).map(str::to_string) else { return out };
         let now = {
@@ -175,9 +167,7 @@ impl Orchestration {
         out
     }
 
-    /// `adopt_run`(설계 3-4 · 2단계 2-4) — 대상 판정은 [`adopt_verdict`] 하나(목록 요약의 `adoptable` 과 같은 함수). 그 Run 의 저장소가 부른
-    /// 채팅의 스튜디오여야 하고(`out-of-scope:repo`), 귀속 색인이 **다른** Run 이면 `already-produced` — 통과하면 같은 잠금에서 귀속을 더한다
-    /// (이미 있으면 그대로).
+    /// 대상 판정은 [`adopt_verdict`] 하나(목록 요약의 `adoptable` 과 같은 함수).
     fn adopt_run_seat(&self, seat: &Seat, args: Option<&Value>) -> Result<Value, OrchError> {
         let run_id = req_text(args, "runId", 64)?;
         if crate::chat_token::album_of(&seat.chat, seat.proc).is_some_and(|id| id != run_id) {
@@ -188,14 +178,14 @@ impl Orchestration {
                 return Err(already(&other, gen));
             }
         }
-        // 맡기기는 잠금 밖에서(파일 · git) — 판정은 잠금 안에서 그 Run 의 신원 사본과 함께.
+        // 앨범 구성 조회는 잠금 밖에서(파일 · git) — 판정은 잠금 안에서 그 Run 의 신원 사본과 함께.
         let lookup = self.run_inputs(&run_id);
         let studio = crate::chat_token::repo_of(&seat.chat, seat.proc).ok_or_else(|| caller_gone("taken over"))?;
         let now = self.now();
         before_bind();
         let (result, gen, state) = {
             let mut g = self.lock();
-            // 부른 자리가 아직 그대로인가(F3 — 머리말 · 토큰 칸의 세대) — 이 잠금 안에서 묶는다. 아니면 Run 은 손대지 않는다.
+            // 부른 자리의 생존은 묶는 이 잠금 안에서 다시 본다 — 아니면 Run 은 손대지 않는다.
             if !seat_alive(seat) {
                 return Err(caller_gone("taken over"));
             }
@@ -238,16 +228,14 @@ impl Orchestration {
             lookup.gate(&slot.run)?;
             slot.run.gen += 1;
             let gen = slot.run.gen;
-            // 옛 세대가 요청한 통합 작업 — 커밋 단계 전이면 거둔다(통합 설계 4-4 "세대 교체" — 사람의 [이어 가기]를 걷은 뒤 유일한 세대 교체 길).
+            // 옛 세대가 요청한 통합 작업은 커밋 단계 전이면 거둔다.
             super::integrate::abort_cancellable(slot, now, Actor::Coordinator, "generation");
             unbind_coordinator(slot);
             bind_seat(slot, gen, seat.clone());
-            // 귀속 — 같은 잠금에서(장부가 권위 · 이미 있으면 그대로).
             if !slot.run.producers.contains(&seat.chat) {
                 slot.run.producers.push(seat.chat.clone());
             }
-            // 조정자 CLI 가 끝나 멈춘 Run 만 곧바로 running(`autoResume`). 사람이 멈춘 것(일시정지 · 거두기 · 풀린 보류)은 귀속만 복원하고 paused 와
-            // 그 까닭 그대로 — 사람이 [재개] 해야 돈다(이제 조정자가 있으니 재개가 선다).
+            // 사람이 멈춘 Run 은 귀속만 복원하고 paused 그대로 — 사람이 [재개] 해야 돈다(→ docs/invariants.md 전문 9).
             let resumed = verdict.auto_resume;
             if resumed {
                 slot.run.state = RunState::Running;
@@ -278,14 +266,12 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 조정자 `complete_run`(Q5 — 몸은 `integrate::complete_run_by`).
     pub(super) fn coordinator_complete(&self, run_id: &str, gen: u32, args: Option<&Value>) -> Result<Value, OrchError> {
         self.complete_run_by(run_id, Actor::Coordinator, Some((gen, args)))
     }
 
 }
 
-/// `requestId` 를 뺀 입력(멱등 기록의 입력 해시 — 타일 · 프로듀서 같은 꼴).
 fn without_request_id(args: Option<&Value>) -> Value {
     let mut input = args.cloned().unwrap_or_else(|| json!({}));
     if let Some(o) = input.as_object_mut() {
@@ -294,9 +280,7 @@ fn without_request_id(args: Option<&Value>) -> Value {
     input
 }
 
-/// **이어받기 판정**(2단계 단계 2 — 설계 2-4 · R13): `restore` = 귀속을 이 자리로 복원할 수 있다 · `auto_resume` = 복원하면 곧바로 running
-/// (조정자 CLI 가 끝나 멈춘 Run 만 — 사람 일시정지 · 거두기 · 풀린 보류는 귀속만 복원하고 paused 그대로) · `why` = 거절 낱말. `adopt_run` 과
-/// 목록 요약(`adoptable`)이 **같은 함수**를 부른다. 순수.
+/// 이어받기 판정 — `adopt_run` 과 목록 요약(`adoptable`)이 **같은 함수**를 부른다. `auto_resume` 은 조정자 CLI 가 끝나 멈춘 Run 만이다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AdoptVerdict {
     pub restore: bool,
@@ -309,7 +293,6 @@ impl AdoptVerdict {
         AdoptVerdict { restore: false, auto_resume: false, why: Some(why) }
     }
 
-    /// 목록 요약 칸 `adoptable{restore, autoResume, why?}`.
     pub(crate) fn view(&self) -> Value {
         let mut v = json!({ "restore": self.restore, "autoResume": self.auto_resume });
         if let Some(w) = self.why {

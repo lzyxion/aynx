@@ -1,9 +1,4 @@
 <script lang="ts">
-  // ---------------------------------------------------------------------------
-  // **워크스페이스 목록 + 줄의 우클릭 메뉴** — `Tabs.svelte` 에서 뗀 표시 조각(두 상자는 탭 줄 안 형제 자리 그대로).
-  // 단추 · 열림(`wsMenu`) · 줄 메뉴 상태(`wsCtx`) · 바깥 누르기 · 끌어서 순서 바꾸기(포인터 리스너 · 끌기 상태)는 부모 탭 줄이 쥐고,
-  // 여기는 줄 · 배지를 그리고 줄 위의 키 · 우클릭 메뉴 항목을 menu-runner 통로(스냅샷 → 닫기 → 실행)로 넘긴다.
-  // ---------------------------------------------------------------------------
   import { tick } from "svelte";
   import { isMainWindow, isRemote } from "$lib/app/window.svelte.js";
   import { currentWorkspaceId, workspaceList, workspaceMainWindow } from "$lib/app/workspaces.svelte.js";
@@ -42,16 +37,9 @@
     closeWsMenu: (back?: boolean) => void;
   } = $props();
 
-  /**
-   * 워크스페이스 id → 목록 줄의 배지 — 가장 급한 상태 하나(`sheetBadge`): 기다리는 세션이 있으면 수(강조색), 실패만 있으면
-   * 수(오류색), 도는 것만 있으면 작은 점(성공색), 없으면 `null`. 2026-10-13 에 하단 독의 워크스페이스 칸에서 옮겨 왔다.
-   */
   const wsBadges = $derived(new Map([...wsBuckets].map(([id, b]) => [id, sheetBadge(b)])));
   const wsBadge = (id: string): SheetBadge | null => wsBadges.get(id) ?? null;
-  /**
-   * 이 줄의 워크스페이스가 **다른 창에** 열려 있는가 — 배지가 없을 때만 작은 ↗ 로 말한다. 주 창은 보조 창의 보고로
-   * 안다(`auxWorkspaceWindow`). 보조 창은 다른 창의 보고를 받지 않으므로 제 워크스페이스가 아닌 줄은 모두 주 창의 것이다.
-   */
+  /** 보조 창은 다른 창의 보고를 받지 않는다 — 제 워크스페이스가 아닌 줄은 모두 주 창의 것으로 친다 */
   const wsAway = (id: string): boolean =>
     workspaceMainWindow() ? auxWorkspaceWindow(id) !== null : !isRemote && id !== currentWorkspaceId();
 
@@ -61,7 +49,7 @@
     void tick().then(() => menuRows(wsCtxEl)[0]?.focus());
   }
 
-  /** 우클릭 메뉴만 닫는다 — Escape 로 닫았으면 포커스를 그 줄로 돌려준다(목록은 그대로 떠 있다) */
+  /** 우클릭 메뉴만 닫는다(목록은 남는다) */
   function closeWsCtx(back = false) {
     const id = wsCtx?.id;
     wsCtx = null;
@@ -87,7 +75,6 @@
     }
   }
 
-  /** 우클릭 메뉴 안의 키 — ↑↓ · Home/End 로 줄을 옮기고, Escape 는 이 메뉴만 닫는다(목록은 남는다) */
   function onWsCtxKey(ev: KeyboardEvent) {
     if (ev.key === "Tab") {
       ev.preventDefault();
@@ -100,10 +87,6 @@
   }
 </script>
 
-<!--
-  워크스페이스 목록 — 단추 바로 아래(`position: fixed`, 탭 우클릭 메뉴와 같은 까닭). 줄 = 아이콘 · 이름 · 배지(또는 ↗),
-  지금 것은 ✓(`menuitemradio` 의 `aria-checked`). 항목은 menu-runner 통로를 지난다(스냅샷 → 닫기 → 실행).
--->
 {#if wsMenu}
   <div
     class="menu ws-menu menu-surface md3-list"
@@ -171,10 +154,6 @@
   </div>
 {/if}
 
-<!--
-  워크스페이스 줄의 우클릭 메뉴(주 창만) — 목록 밖의 형제 상자(`position: fixed`, 목록 위 층). 항목은 menu-runner 통로를
-  지나고 목록까지 함께 닫는다. 삭제는 마지막 하나일 때 비활성 + 이유 툴팁(팔레트와 같은 `canDeleteWorkspace`).
--->
 {#if wsCtx}
   <div
     class="menu ws-ctx-menu menu-surface"
@@ -197,11 +176,8 @@
 {/if}
 
 <style>
-  /* 워크스페이스 목록 — 모양은 전역 메뉴 한 벌, 여기는 자리와 줄 안 배치(아이콘 · 이름 · 수 · ✓)뿐이다 */
-  /* 판 · 줄 · 고른 줄 · 구분선은 고르는 목록과 같은 MD3 메뉴(`.md3-list` — theme.css). 넘치면 안쪽 상자가 굴린다(글래스 흐림 층이
-     함께 굴러가지 않게) */
-  /* 층 40 = 다른 떠 있는 메뉴(호스트 · 파일 · DB 메뉴)와 같은 층. 상태바 감싸기(hug)의 캔버스 모서리 조각(30 — `+page.svelte`)보다
-     위여야 왼쪽 위 모서리에 걸친 메뉴 위로 곡선이 그려지지 않는다 */
+  /* 넘치면 안쪽 상자가 굴린다 — 글래스 흐림 층이 함께 굴러가지 않게. 층 40 은 hug 캔버스 모서리 조각(30 — `+page.svelte`)보다 위여야
+     메뉴 위로 곡선이 그려지지 않는다 */
   .menu.ws-menu {
     position: fixed;
     z-index: 40;
@@ -231,7 +207,6 @@
   .ws-row.current .ws-row-name {
     font-weight: var(--fw-semibold);
   }
-  /* 지금 워크스페이스 = secondaryContainer 알약 줄(MD3 — 고르는 목록의 고른 값과 같은 판) */
   .ws-row.current {
     color: var(--control-sel-fg);
     background: var(--control-sel-bg);
@@ -243,10 +218,6 @@
   .ws-row.current .ws-row-check {
     color: inherit;
   }
-  /*
-   * 줄의 배지 — 가장 급한 상태 하나(옛 하단 독 칸의 배지와 같은 뜻 · 같은 색): 기다림 수(강조색) · 실패 수(오류색) ·
-   * 도는 중 점(성공색). 배지가 없고 다른 창에 열려 있으면 흐린 ↗. 뜻은 줄의 툴팁이 말한다(`workspaceRowTip`).
-   */
   .ws-row-badge {
     flex: none;
     min-width: 16px;
@@ -277,7 +248,6 @@
     line-height: 1;
     color: var(--fg-3);
   }
-  /* 끌어서 순서 바꾸기(주 창) — 끄는 줄은 흐리게, 놓을 자리는 줄 사이 강조색 가로선 */
   .ws-row {
     position: relative;
     touch-action: none;
@@ -314,7 +284,7 @@
     color: var(--fg-2);
   }
 
-  /* 키보드 포커스 — 중성 링(`--focus-ring`). 강조색이면 "골라진 것" 과 헷갈린다 */
+  /* 강조색이면 "골라진 것" 과 헷갈린다 */
   button:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;

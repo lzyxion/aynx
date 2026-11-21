@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use super::model::*;
 use super::turn::Grade;
 
-/// 한 턴에 붙일 역할 — 지금 맡기기의 값(CLI · 종류는 첫 턴에 Attempt 사본이 된다). **`Debug` 에도 지침 본문은 보이지 않는다**(길이만).
+/// 한 턴에 붙일 역할 — 지금 앨범 구성의 값(CLI · 종류는 첫 턴에 Attempt 사본으로 고정된다). `Debug` 에 지침 본문을 싣지 않는다(길이만).
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TurnRole {
     pub id: String,
@@ -32,14 +32,12 @@ impl std::fmt::Debug for TurnRole {
     }
 }
 
-/// 못 채운 수락 규칙 하나(3-2a 모양).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Unmet {
     pub role: String,
     pub role_name: Option<String>,
     pub need: u32,
     pub have: u32,
-    /// 그 역할의 마지막 유효 판정 — `none` · `pass` · `changes-requested`.
     pub last: &'static str,
 }
 
@@ -56,7 +54,6 @@ impl Unmet {
     }
 }
 
-/// Task 의 **현재 보고**에 대해 판정형 역할 R 의 유효 판정들(`current` 상태 · 그 보고 · 그 역할 — 옛 보고 · `stale` · `late` 는 세지 않는다).
 fn judgments_of<'r>(run: &'r Run, task: &Task, role: &str) -> Vec<&'r ReviewReport> {
     let Some(cur) = super::review::current_report(run, task) else { return Vec::new() };
     run.review_reports
@@ -72,7 +69,6 @@ fn judgments_of<'r>(run: &'r Run, task: &Task, role: &str) -> Vec<&'r ReviewRepo
         .collect()
 }
 
-/// 수락 규칙의 공통 계산 — 원천 선택은 부르는 쪽에서 끝낸다.
 pub(crate) fn accept_rules_for(
     run: &Run, task: &Task, rules: &crate::orchestration::config::AcceptRules,
     name: impl Fn(&str) -> Option<String>,
@@ -99,7 +95,6 @@ pub(crate) fn accept_rules_for(
     (unmet, judgments)
 }
 
-/// `get_run` 의 `tasks[].roleHistory` — 그 Task 에 띄운 Attempt 마다 역할 · 결과(보드의 "거친 역할 · 판정 이력"과 같은 원천).
 pub(crate) fn role_history(run: &Run, task: &Task) -> Value {
     Value::Array(
         run.attempts
@@ -127,10 +122,8 @@ pub(crate) fn role_history(run: &Run, task: &Task) -> Value {
     )
 }
 
-/// 수락 관문의 규칙 몫 결과.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct AcceptGate {
-    /// 규칙을 채운 판정 id 들.
     pub judgments: Vec<String>,
     /// 사람 수락이 넘은 규칙.
     pub waived: Vec<Waiver>,

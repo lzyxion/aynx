@@ -5,11 +5,7 @@
   import { stripReason } from "$lib/error-reason";
   import SettingsSubView from "./SettingsSubView.svelte";
 
-  /**
-   * **사이드 채팅 지침** 편집(2026-11-01) — 설정 › 지침의 하위 화면. 글은 `<데이터 루트>/sidechat/CLAUDE.md` 하나에 **즉시** 저장한다
-   * (지침 편집기와 같은 규칙 — 설정 창 [저장]/[취소]와 무관 · 빈 글이면 파일을 지운다). 싣는 것은 세션 서버가 채팅을 띄울 때 그 파일을
-   * 직접 읽어서다(Claude 지침 파일 · Codex `developerInstructions`) — 이 화면은 [반영]이 없다.
-   */
+  /** 즉시 저장한다 — 설정 창 [저장] · [취소]와 무관. 세션 서버가 채팅을 띄울 때 파일을 직접 읽으므로 [반영]이 없다. */
   let { text, onback, onsaved }: { text: string; onback: () => void; onsaved: (text: string) => void } = $props();
 
   const uid = $props.id();

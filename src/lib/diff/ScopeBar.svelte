@@ -1,10 +1,5 @@
 <script lang="ts">
-  /**
-   * **diff 타일의 범위 · 보기 줄**(`.tools` — 범위 갈래 · 커밋 고르개 · 범위 글자 · 합계 · 한 줄/나란히 · 좁은 모드 파일 고르개) —
-   * `DiffView.svelte` 에서 뗀 표시 조각. 명세 · 읽기 · 고른 파일과 동작(`setScope` · `pickCommit` · `setView` · `select`)은 부모가 쥔다.
-   * 고르개가 열렸는가(`commitMenu` · `fileMenu`)는 부모 상태(바깥 클릭 · Esc 가 닫는다)를 `bind:` 로 받는다. 메뉴 줄은
-   * `runOnMenu`(스냅샷 → 닫기 → 실행) 통로 그대로.
-   */
+  /** diff 타일의 범위 · 보기 줄 — 상태와 동작은 부모 `DiffView` 가 쥔다. */
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { runOnMenu } from "$lib/browser/menu-runner";
@@ -105,7 +100,6 @@
       {#if files?.wipCount}<span class="badge" data-diff-wip-count>{files.wipCount}</span>{/if}</button
     >
     {#if spec.base && spec.tip}
-      <!-- 오케스트레이션 보고의 범위(기준 … 보고 커밋) — 보드의 [diff 보기]가 연 타일에만 -->
       <button
         type="button"
         aria-pressed={spec.scope === "range"}
@@ -227,7 +221,6 @@
     outline-offset: -1px;
   }
 
-  /* 갈래 단추 — 범위 · 보기 */
   .seg {
     display: inline-flex;
     border: 1px solid var(--border);
@@ -265,7 +258,6 @@
     background: var(--bg-hover);
   }
 
-  /* 고른 갈래 — 이 화면의 선택 표시 */
   .seg button[aria-pressed="true"] {
     background: var(--accent-soft);
     color: var(--fg);
@@ -317,7 +309,6 @@
     font-family: var(--font-mono);
   }
 
-  /* 고르개 — 범위 단추 아래 · 좁은 모드 파일 단추 아래 */
   .pop {
     position: absolute;
     top: calc(100% + 4px);

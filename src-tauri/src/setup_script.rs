@@ -1,39 +1,11 @@
-//! **프로젝트 설정 스크립트** — 새 워크트리를 만들 때 그 타일에서 에이전트보다 먼저 한 번 도는 여러 줄
-//! (docs/log/2026-09-28-project-agent-setup-script.md).
+//! 프로젝트 설정 스크립트 — 새 워크트리 타일에서 에이전트보다 먼저 한 번 도는 여러 줄을, 타일의 셸이 안전하게 돌릴 한 줄로 바꾼다.
 //!
-//! 스크립트 글자는 `projects.json` 의 그 프로젝트 줄에만 산다(`crate::projects::Project::setup_script`). 여기는
-//! 그것을 **타일의 셸이 안전하게 돌릴 한 줄**로 바꾸는 자리다. 프런트는 프로젝트 id 만 넘기고 글자를 싣지 않는다 —
-//! 스크립트는 이 모듈이 파일에서 직접 읽는다([`crate::projects::find_blocking`]). MCP 에는 이 길이 없다.
-//!
-//! ## 왜 여러 줄을 키로 치지 않나
-//!
-//! 여러 줄을 PTY 에 그대로 치면 줄마다 Enter 가 되고, PSReadLine · zsh 의 자동 완성 · 괄호 짝 맞추기 · 여러 줄
-//! 붙여넣기 확인이 끼어든다(사람이 친 것과 다른 것이 돈다). 그래서 **타일에 치는 것은 언제나 한 줄**이고, 여러 줄은
-//! 그 한 줄이 가리키는 곳에 산다:
-//!
-//! | 셸 | 치는 한 줄 | 스크립트가 사는 곳 | 실패 판정 |
-//! | --- | --- | --- | --- |
-//! | PowerShell(pwsh · powershell) | `pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File '<파일>'` | 앱 데이터 폴더의 임시 `.ps1`(BOM UTF-8 — 5.1 이 한글을 읽는다) · 스크립트는 base64 로 그 안에 | **문장마다** — 파서로 최상위 문장을 하나씩 돌리고(`> 문장` 을 먼저 찍는다) cmdlet 오류(`$ErrorActionPreference='Stop'`)나 네이티브 명령의 0 아닌 `$LASTEXITCODE` 에서 멈춘다 |
-//! | cmd | `cmd /d /c "<파일>"` | 임시 `.cmd` 둘(감싸개 + 본문) · 도는 동안만 `chcp 65001` | 본문 **전체의 종료 코드**(마지막 명령) — cmd 에는 줄마다 멈추는 장치가 없다. 멈추려면 줄 끝에 `\|\| exit /b 1` |
-//! | POSIX 로컬(Git Bash · WSL) | `sh '<데이터 폴더>/setup-run/run-<nonce>.sh'`(그 셸이 읽는 꼴 — `/c/…` · `/mnt/c/…`) | 임시 `.sh`(LF · BOM 없음) — 못 쓰면 아래 한 줄 | **줄마다** — `sh -e`(`set -e` 의 규칙) + `set -x`(`PS4='> '`)로 도는 명령을 찍는다 |
-//! | 원격(첫 입력 · [다시 실행]) | `sh "$HOME/.cache/aynx/setup-<nonce>.sh"` | 같은 프로그램을 그 세션의 exec 로 서버 파일에 먼저 쓴다([`RemoteSetup`] — 못 쓰면 아래 한 줄) | 위와 같다 |
-//! | 폴백(파일을 못 썼다) | `sh -c '<프로그램>'` | 그 한 줄 안 — 스크립트는 `printf %b` 의 8진 이스케이프로(치는 글자는 **전부 ASCII**) | 위와 같다 |
-//!
-//! 임시 파일은 스크립트가 끝나며 스스로 지우고, 남은 것(창을 닫아 끊긴 것)은 다음 부름이 하루 지난 것을 걷는다.
-//! PowerShell 은 **자식** 프로세스로 돈다(`-NoProfile` — 프로필의 환경은 타일의 셸에서 이미 물려받았다 · 스크립트의
-//! `exit` 가 타일의 셸을 닫지 않는다). 실행 정책은 이 파일에만 `Bypass` 다.
-//!
-//! ## 끝 신호 — OSC 7717
-//!
-//! 어느 셸이든 마지막에 `ESC ] 7717 ; aynx-setup ; <nonce> ; <종료 코드> BEL` 을 찍는다. 타일(`Terminal.svelte`)이
-//! 그 타일이 기다리는 nonce 일 때만 받아 — 성공이면 에이전트를 띄우고, 실패면 오류 막대를 세운다. 로컬 ConPTY 도
-//! 모르는 OSC 를 그대로 통과시킨다(2026-09-28 실측 — pwsh · cmd 둘 다, BEL · ST 둘 다). 원격은 에이전트가 같은 줄에
-//! `&& <에이전트>` 로 붙어 있어 신호 없이도 성공일 때만 뜬다(신호는 막대와 기록에 쓴다).
-//!
-//! ## 환경
-//!
-//! `AYNX_ROOT_PATH` = 프로젝트의 **주 작업 폴더**(저장소). 스크립트는 그 워크트리 폴더에서 돈다(`cd` 를 먼저 한다).
-//! Git Bash 는 `/c/…`, WSL 은 `/mnt/c/…` 꼴로 옮겨 준다.
+//! - 스크립트 글자는 이 모듈이 `projects.json` 에서 직접 읽는다 — 프런트는 프로젝트 id 만 넘기고, MCP 에는 이 길이 없다.
+//! - 여러 줄을 PTY 에 키로 치지 않는다 — 줄마다 Enter · 자동 완성 · 붙여넣기 확인이 끼어든다. 치는 것은 언제나 한 줄이고, 여러 줄은 임시 파일(못 쓰면 `printf %b` 8진 이스케이프 한 줄 — 전부 ASCII)에 산다.
+//! - 실패 판정: PowerShell 은 최상위 문장마다 · cmd 는 본문 전체의 종료 코드(줄마다 멈추는 장치가 없다) · POSIX 는 `sh -e` 로 줄마다.
+//! - PowerShell 은 자식 프로세스(`-NoProfile`)로 돈다 — 스크립트의 `exit` 가 타일의 셸을 닫지 않는다. 실행 정책은 이 파일에만 `Bypass` 다.
+//! - 끝 신호 `ESC ] 7717 ; aynx-setup ; <nonce> ; <종료 코드> BEL` — 타일(`Terminal.svelte`)이 기다리는 nonce 일 때만 받는다. 로컬 ConPTY 도 모르는 OSC 를 통과시킨다(pwsh · cmd · BEL · ST 실측).
+//! - `AYNX_ROOT_PATH` = 프로젝트의 주 작업 폴더(Git Bash `/c/…` · WSL `/mnt/c/…` 꼴). 스크립트는 워크트리 폴더에서 돈다.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -47,13 +19,10 @@ pub(crate) const SETUP_OSC: u32 = 7717;
 /// 끝 신호의 첫 칸 — 같은 번호를 다른 프로그램이 써도 이 글자가 아니면 타일이 무시한다.
 const SETUP_TAG: &str = "aynx-setup";
 
-/// 임시 파일이 사는 폴더 이름(`<data_root>/setup-run/`).
 const RUN_DIR: &str = "setup-run";
 
-/// 남은 임시 파일을 걷는 나이.
 const STALE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// 스크립트를 돌릴 셸의 모양.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ScriptShell {
     /// 실행 파일 이름 — `pwsh` · `powershell`
@@ -62,18 +31,13 @@ pub(crate) enum ScriptShell {
     Posix(PathStyle),
 }
 
-/// POSIX 셸이 이 PC 의 경로를 읽는 모양.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PathStyle {
-    /// 그대로(원격 · 리눅스·맥의 로컬 셸)
     Native,
-    /// WSL — `C:\x` → `/mnt/c/x`
     Wsl,
-    /// Git Bash(MSYS) — `C:\x` → `/c/x`
     Msys,
 }
 
-/// 타일의 셸 id(`crate::pty::ShellInfo.id`) → 모양. 모르면 OS 의 기본 셸 모양이다([`default_shell`]).
 pub(crate) fn shell_of(id: Option<&str>) -> ScriptShell {
     match id {
         Some("pwsh") => ScriptShell::PowerShell("pwsh"),
@@ -98,13 +62,12 @@ fn default_shell() -> ScriptShell {
 }
 
 // ---------------------------------------------------------------------------
-// 문구 — 스크립트가 찍는 줄들
+// 문구
 // ---------------------------------------------------------------------------
 
 /// 자리표시를 가르는 표지 — 문구 안의 `{secs}` · `{code}` 자리에 끼워 둔 뒤 여기서 앞·뒤로 자른다.
 const CUT: &str = "\u{1}";
 
-/// 스크립트가 찍는 줄들 — 앞·뒤 조각(숫자는 셸이 그 사이에 넣는다).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Labels {
     pub header: String,
@@ -114,9 +77,7 @@ pub(crate) struct Labels {
     pub ok_plain: String,
     pub fail_pre: String,
     pub fail_post: String,
-    /// 성공 줄 꼬리 — `· Claude Code 를 띄웁니다`(띄울 에이전트가 없으면 빈 글자)
     pub ok_tail: String,
-    /// 실패 줄 꼬리 — `· 에이전트를 띄우지 않았습니다`(띄울 에이전트가 없었으면 빈 글자)
     pub fail_tail: String,
 }
 
@@ -127,7 +88,6 @@ fn cut(s: String) -> (String, String) {
     }
 }
 
-/// 문구를 짓는다 — `agent` 는 성공하면 띄울 에이전트의 제품 이름.
 pub(crate) fn labels(project: &str, agent: Option<&str>) -> Labels {
     let (ok_pre, ok_post) = cut(tr!(
         ko: "✓ 설정 스크립트 끝 ({secs}초)",
@@ -159,10 +119,8 @@ pub(crate) fn labels(project: &str, agent: Option<&str>) -> Labels {
 // POSIX — 한 줄 안에 전부 (Git Bash · WSL · 원격)
 // ---------------------------------------------------------------------------
 
-/// `printf %b` 가 읽을 글자로 — **순수 함수**. 영숫자 · 공백 · `-_.,:/@+=%^~#` 는 그대로, 나머지 바이트는 전부
-/// `\0NNN`(8진)이다. 그래서 결과는 **ASCII 뿐**이고 `"` 안에 그대로 넣어도 셸이 건드릴 글자(`$` `` ` `` `"` `\` `!`)가
-/// 없다 — `'` 도 없어서 바깥의 `sh -c '…'` 인용이 한 겹으로 끝난다(fish 의 작은따옴표 규칙으로도 같은 글자다 — 실측 전).
-/// `\\` 도 만들지 않는다(fish 는 작은따옴표 안의 `\\` 를 `\` 로 읽는다) — 역슬래시도 `\0134` 다.
+/// 영숫자 · 공백 · `-_.,:/@+=%^~#` 밖은 전부 `\0NNN`(8진) — 결과가 ASCII 뿐이고 `$` `` ` `` `"` `\` `!` `'` 가 없어 바깥 `sh -c '…'` 인용이 한 겹으로 끝난다.
+/// `\\` 도 만들지 않는다 — fish 는 작은따옴표 안의 `\\` 를 `\` 로 읽는다.
 pub(crate) fn printf_b_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 2);
     for b in s.bytes() {
@@ -176,8 +134,6 @@ pub(crate) fn printf_b_escape(s: &str) -> String {
     out
 }
 
-/// 경로를 `"…"` 식 하나로 — 앞의 `~` 는 `$HOME` 으로 펴고 나머지는 [`printf_b_escape`] 를 지난 글자를 명령 치환으로
-/// 되살린다(**순수 함수**). 예: `~/api` → `"$HOME/$(printf %b "api")"`.
 pub(crate) fn posix_path_expr(path: &str) -> String {
     let p = path.trim();
     if p == "~" {
@@ -189,8 +145,6 @@ pub(crate) fn posix_path_expr(path: &str) -> String {
     format!("\"$(printf %b \"{}\")\"", printf_b_escape(p))
 }
 
-/// 이 PC 의 경로를 그 POSIX 셸이 읽는 꼴로 (**순수 함수**). 드라이브 경로만 옮긴다 — `C:\src\x` →
-/// `/c/src/x`(Git Bash) · `/mnt/c/src/x`(WSL). UNC 는 Git Bash 면 `//srv/share`, WSL 이면 그대로다.
 pub(crate) fn posix_local_path(path: &str, style: PathStyle) -> String {
     let p = path.trim();
     if style == PathStyle::Native {
@@ -220,11 +174,7 @@ pub(crate) fn posix_local_path(path: &str, style: PathStyle) -> String {
     p.to_string()
 }
 
-/// POSIX 프로그램 한 줄 — `sh -c` 에 실린다(**순수 함수**). `cwd`·`root` 는 이미 [`posix_path_expr`] 를 지난 식이다.
-///
-/// 1. 워크트리 폴더로 들어가고(`cd` 가 실패하면 종료 코드 1 로 멈춘다 — 신호는 찍는다) `AYNX_ROOT_PATH` 를 export.
-/// 2. 머리줄 → `sh -e -c "<본문>"`(본문 = `PS4='> '` + `set -x` + 스크립트 — 도는 명령마다 `> 명령` 이 찍힌다).
-/// 3. 결과 줄(성공: 걸린 초 · 실패: 종료 코드) → 끝 신호(OSC 7717) → 그 종료 코드로 끝난다(`&& 에이전트` 가 갈린다).
+/// `cwd`·`root` 는 이미 [`posix_path_expr`] 를 지난 식이다. `cd` 가 실패해도 끝 신호는 찍고, 그 종료 코드로 끝난다 — 원격의 `&& <에이전트>` 가 그것으로 갈린다.
 pub(crate) fn posix_program(
     cwd: &str,
     root: &str,
@@ -263,16 +213,16 @@ pub(crate) fn posix_program(
     )
 }
 
-/// 타일에 칠 한 줄 — `sh -c '<프로그램>'`(**순수 함수**). 프로그램에 `'` 가 없으므로 인용은 한 겹이다.
+/// 프로그램에 `'` 가 없으므로 인용은 한 겹이다.
 pub(crate) fn posix_line(program: &str) -> String {
     format!("sh -c {}", sh_quote(program))
 }
 
 // ---------------------------------------------------------------------------
-// PowerShell — 임시 .ps1 (자식 프로세스)
+// PowerShell — 임시 .ps1
 // ---------------------------------------------------------------------------
 
-/// 표준 base64 (패딩 있음) — 감싸개에 스크립트를 싣는 데만 쓴다(의존성 하나를 들이지 않으려고 여기 짧게 둔다).
+/// 표준 base64(패딩 있음) — 의존성 하나를 들이지 않으려고 여기 짧게 둔다.
 pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -296,13 +246,11 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// PowerShell 작은따옴표 글자 — `'` 는 `''`.
 fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// PowerShell 감싸개 파일의 본문 (**순수 함수**) — 모듈 머리말의 표. 스크립트는 base64(UTF-8)로 싣는다(어떤 글자든
-/// here-string 끝 표지와 부딪치지 않는다).
+/// 스크립트는 base64(UTF-8)로 싣는다 — 어떤 글자든 here-string 끝 표지와 부딪치지 않는다.
 pub(crate) fn powershell_wrapper(
     cwd: &str,
     root: &str,
@@ -395,7 +343,6 @@ exit $aynxCode
     )
 }
 
-/// PowerShell 타일에 칠 한 줄 (**순수 함수**) — 같은 PowerShell 을 자식으로 띄워 그 파일 하나만 돌린다.
 pub(crate) fn powershell_line(exe: &str, file: &Path) -> String {
     format!(
         "{exe} -NoLogo -NoProfile -ExecutionPolicy Bypass -File {}",
@@ -407,7 +354,6 @@ pub(crate) fn powershell_line(exe: &str, file: &Path) -> String {
 // cmd — 임시 .cmd 둘
 // ---------------------------------------------------------------------------
 
-/// cmd 의 `echo` 에 실을 글자 — `^ & | < > %` 를 막는다(**순수 함수**).
 fn cmd_echo(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -423,10 +369,8 @@ fn cmd_echo(s: &str) -> String {
     out
 }
 
-/// cmd 감싸개 파일의 본문 (**순수 함수**) — 본문 파일(`body`)을 `call` 하고 그 종료 코드로 가른다. 한글이 섞인
-/// 줄은 전부 `chcp 65001` **뒤**에 있다(cmd 는 배치 파일을 그 줄을 읽는 순간의 코드 페이지로 읽는다). 끝에서 코드
-/// 페이지를 되돌리고 두 파일을 지운다(`(goto)` — 도는 배치 파일이 자기를 지우는 cmd 의 관용구). ESC 는 파일에
-/// 글자 그대로 넣는다(`echo` 가 그대로 내보낸다 — `prompt $E` 요령보다 곧다).
+/// 한글이 섞인 줄은 전부 `chcp 65001` 뒤에 둔다 — cmd 는 배치 파일을 그 줄을 읽는 순간의 코드 페이지로 읽는다.
+/// 마지막 `(goto)` 줄은 도는 배치 파일이 자기를 지우는 cmd 의 관용구다.
 pub(crate) fn cmd_wrapper(cwd: &str, root: &str, body: &Path, nonce: &str, l: &Labels) -> String {
     let body = body.to_string_lossy();
     let lines = [
@@ -467,16 +411,16 @@ pub(crate) fn cmd_wrapper(cwd: &str, root: &str, body: &Path, nonce: &str, l: &L
     out
 }
 
-/// cmd 타일에 칠 한 줄 (**순수 함수**) — 자식 cmd 로 돌린다(본문의 `exit` 가 타일의 cmd 를 닫지 않게).
+/// 자식 cmd 로 돌린다 — 본문의 `exit` 가 타일의 cmd 를 닫지 않게.
 pub(crate) fn cmd_line(file: &Path) -> String {
     format!("cmd /d /c \"{}\"", file.to_string_lossy())
 }
 
 // ---------------------------------------------------------------------------
-// 조립 — 프로젝트 id 로
+// 조립
 // ---------------------------------------------------------------------------
 
-/// nonce 검사 — 16진 8~64자만(끝 신호 · 파일 이름에 들어간다).
+/// 16진 8~64자만 — 끝 신호 · 파일 이름에 들어간다.
 fn check_nonce(nonce: &str) -> Result<(), String> {
     let ok = (8..=64).contains(&nonce.len()) && nonce.bytes().all(|b| b.is_ascii_hexdigit());
     if ok {
@@ -488,7 +432,6 @@ fn check_nonce(nonce: &str) -> Result<(), String> {
     }
 }
 
-/// 임시 파일 폴더 — 없으면 만들고, 하루 지난 것을 걷는다.
 fn run_dir() -> Result<PathBuf, String> {
     let dir = crate::instance::data_root()
         .ok_or_else(crate::app_state::missing_dir)?
@@ -511,7 +454,6 @@ fn run_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// 스크립트가 있는 프로젝트를 읽는다 — 없거나 스크립트가 비었으면 사람이 읽을 한 줄.
 fn project_with_script(project_id: &str) -> Result<crate::projects::Project, String> {
     let p = crate::projects::find_blocking(project_id).ok_or_else(
         || tr!(ko: "프로젝트를 찾을 수 없습니다", en: "The project could not be found"),
@@ -524,36 +466,27 @@ fn project_with_script(project_id: &str) -> Result<crate::projects::Project, Str
     Ok(p)
 }
 
-/// 원격 첫 입력의 설정 스크립트 재료 — [`remote_start_command`] 가 짓는다. `Debug` 는 일부러 없다(`write_command` ·
-/// `long` 에 스크립트가 인코딩돼 들어 있다 — 로그에 남기지 않는다).
+/// `Debug` 는 일부러 없다 — `write_command` · `long` 에 스크립트가 인코딩돼 들어 있다(로그에 남기지 않는다).
 pub(crate) struct RemoteSetup {
-    /// 서버에 스크립트 파일을 먼저 써 두는 exec 명령([`remote_write_command`]).
     pub write_command: String,
-    /// 파일이 써졌을 때 명령 자리에 설 짧은 줄 — `sh "$HOME/.cache/aynx/setup-<nonce>.sh" && <명령>`.
     pub short: String,
-    /// 쓰지 못했을 때의 명령 자리 — 예전의 긴 한 줄(`sh -c '<프로그램>' && <명령>`).
     pub long: String,
 }
 
-/// 원격 임시 파일 폴더 — 셸 식(`"$HOME/…"`). exec 채널과 타일의 셸이 같은 `$HOME` 을 편다(`XDG_RUNTIME_DIR` ·
-/// `/tmp` 는 exec 세션과 tmux 서버 안에서 같다는 보장이 없어 쓰지 않는다).
+/// `XDG_RUNTIME_DIR` · `/tmp` 는 exec 세션과 tmux 서버 안에서 같다는 보장이 없어 쓰지 않는다 — `$HOME` 은 같다.
 const REMOTE_RUN_DIR: &str = "\"$HOME/.cache/aynx\"";
 
-/// 원격 임시 파일 경로의 셸 식 (**순수 함수**) — nonce 는 [`check_nonce`] 를 지난 16진이다.
+/// nonce 는 [`check_nonce`] 를 지난 16진이다.
 pub(crate) fn remote_file_expr(nonce: &str) -> String {
     format!("\"$HOME/.cache/aynx/setup-{nonce}.sh\"")
 }
 
-/// POSIX 임시 파일(원격 · 로컬 Git Bash · WSL)의 본문 (**순수 함수**) — 첫 줄에서 **자기를 지운다**(`sh <파일>` 이라
-/// `$0` 이 그 경로다 · 이미 연 파일은 지워져도 끝까지 읽힌다 — 도중에 Ctrl+C 로 끊겨도 남지 않는다). 그다음은 한 줄
-/// 판과 같은 프로그램이다. 프로그램이 ASCII 뿐이라 글자는 인코딩과 무관하고, 줄 끝은 LF 다.
+/// 첫 줄에서 자기를 지운다(`$0` 이 그 경로 · 이미 연 파일은 끝까지 읽힌다 — Ctrl+C 로 끊겨도 남지 않는다). 줄 끝은 LF.
 pub(crate) fn posix_file_body(program: &str) -> String {
     format!("rm -f -- \"$0\"\n{program}\n")
 }
 
-/// 로컬 POSIX 셸이 이 파일을 돌리는 짧은 줄 (**순수 함수**) — `path` 는 그 셸이 읽는 꼴([`posix_local_path`]).
-/// 경로가 [`printf_b_escape`] 가 그대로 두는 글자뿐이면 `sh '<경로>'`, 아니면(한글 사용자 이름 등) 치는 글자가
-/// ASCII 로 남도록 `sh "$(printf %b "…")"` 다.
+/// 경로에 [`printf_b_escape`] 가 바꾸는 글자(한글 사용자 이름 등)가 있으면 치는 글자가 ASCII 로 남도록 `printf %b` 식으로 쓴다.
 pub(crate) fn posix_file_line(path: &str) -> String {
     if printf_b_escape(path) == path {
         format!("sh {}", sh_quote(path))
@@ -562,8 +495,7 @@ pub(crate) fn posix_file_line(path: &str) -> String {
     }
 }
 
-/// 이 사용자만 읽는 파일로 쓴다 — 유닉스는 `0o600`(스크립트 글자가 들어 있다). Windows 는 데이터 폴더가 사용자
-/// 프로필 아래라 그 ACL 로 이미 막힌다(`audit::open_append` 와 같은 판단).
+/// 유닉스는 `0o600`(스크립트 글자가 들어 있다). Windows 는 데이터 폴더가 사용자 프로필 아래라 그 ACL 로 이미 막힌다(`audit::open_append` 와 같은 판단).
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     #[cfg(unix)]
@@ -576,9 +508,8 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     options.open(path)?.write_all(bytes)
 }
 
-/// 서버에 파일을 쓰는 exec 명령 (**순수 함수**) — `sh -c '<W>'`. 본문은 [`printf_b_escape`] 를 지나 `'` · `"` · `$` 가
-/// 없으므로 인용이 한 겹이다(로그인 셸이 fish 여도 같은 글자). `umask 077` 이라 파일은 600, 폴더는 700 으로 선다.
-/// 하루 지난 `setup-*.sh`(타일이 치기 전에 닫혀 남은 것)는 같은 자리에서 걷는다 — 실패해도 쓰기는 간다.
+/// 본문은 [`printf_b_escape`] 를 지나 `'` · `"` · `$` 가 없어 인용이 한 겹이다(로그인 셸이 fish 여도). `umask 077` 이라 파일 600 · 폴더 700.
+/// 하루 지난 `setup-*.sh` 걷기는 실패해도 쓰기는 간다.
 pub(crate) fn remote_write_command(nonce: &str, body: &str) -> String {
     let w = format!(
         "umask 077 && mkdir -p {dir} && {{ find {dir} -name \"setup-*.sh\" -mtime +0 -exec rm -f {{}} + 2>/dev/null; \
@@ -590,13 +521,8 @@ pub(crate) fn remote_write_command(nonce: &str, body: &str) -> String {
     format!("sh -c {}", sh_quote(&w))
 }
 
-/// **원격 첫 입력의 명령** — 프로젝트 `project_id` 의 스크립트를 워크트리 `cwd` 에서 돌리고, 성공하면 `command`
-/// (에이전트 — 없으면 셸에 머문다). `crate::ssh` 가 첫 접속의 `SshStart.setup` 을 받으면 부른다 — **블로킹**.
-/// 스크립트가 없어졌으면(그사이 폼에서 지웠다) `None` — 명령은 예전 그대로 간다.
-///
-/// 타일에는 **짧은 줄**이 서도록 스크립트는 exec 채널로 서버 파일에 먼저 쓴다(`crate::ssh` 가 `write_command` 를 돌리고
-/// 성공하면 `short`, 아니면 `long`). 긴 한 줄을 대화형 셸에 치면 에코 + 줄 편집기의 다시 그리기로 수십 줄이 두 번
-/// 찍혔다(2026-09-29 dev-01 실기).
+/// 원격 첫 입력의 명령 — 블로킹. 스크립트가 그사이 지워졌으면 `None`(명령은 예전 그대로 간다).
+/// 긴 한 줄을 대화형 셸에 치면 에코 + 줄 편집기 다시 그리기로 수십 줄이 두 번 찍힌다 — 그래서 exec 로 서버 파일에 먼저 쓰고 짧은 줄을 세운다.
 pub(crate) fn remote_start_command(
     project_id: &str,
     nonce: &str,
@@ -619,7 +545,6 @@ pub(crate) fn remote_start_command(
     Some(remote_setup_of(&program, nonce, command))
 }
 
-/// [`RemoteSetup`] 조립 (**순수 함수**).
 fn remote_setup_of(program: &str, nonce: &str, command: Option<&str>) -> RemoteSetup {
     let tail = |line: String| match command.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("{line} && {c}"),
@@ -632,10 +557,7 @@ fn remote_setup_of(program: &str, nonce: &str, command: Option<&str>) -> RemoteS
     }
 }
 
-/// 로컬 POSIX 셸(Git Bash · WSL)의 줄 — 프로그램을 `<data_root>/setup-run/run-<nonce>.sh` 에 쓰고 그 파일을 가리키는
-/// 짧은 줄([`posix_file_line`]). 못 쓰면(데이터 폴더가 없다 · 쓰기 거절) 예전의 긴 한 줄([`posix_line`])로 간다 —
-/// 긴 줄은 셸의 에코와 줄 편집기의 다시 그리기로 두 번 보일 뿐 도는 것은 같다. 파일은 첫 줄에서 스스로 지우고,
-/// 남은 것은 [`run_dir`] 이 하루 지난 것을 걷는다.
+/// 임시 파일을 못 쓰면 긴 한 줄([`posix_line`])로 간다 — 두 번 보일 뿐 도는 것은 같다.
 fn local_posix_line(program: &str, nonce: &str, style: PathStyle) -> String {
     let wrote = run_dir().and_then(|dir| {
         let file = dir.join(format!("run-{nonce}.sh"));
@@ -651,13 +573,11 @@ fn local_posix_line(program: &str, nonce: &str, style: PathStyle) -> String {
     }
 }
 
-/// [`setup_line_blocking`] 의 답 — 로컬은 칠 줄 그대로, 원격은 exec 쓰기를 거쳐야 하는 재료.
 enum Prepared {
     Line(String),
     Remote(RemoteSetup),
 }
 
-/// 타일이 칠 한 줄을 짓는다 — 블로킹 몸통([`project_setup_line`]).
 fn setup_line_blocking(
     project_id: &str,
     cwd: &str,
@@ -675,8 +595,7 @@ fn setup_line_blocking(
     let p = project_with_script(project_id)?;
     let agent_name = p.agent.as_deref().and_then(crate::agent_args::display_of);
     if p.host.is_some() {
-        // 원격 — 성공하면 같은 줄에서 에이전트(다시 실행 · 첫 입력과 같은 모양). 파일 쓰기는 부르는 쪽이 그 세션의
-        // exec 로 한다(`project_setup_line`).
+        // 원격 — 파일 쓰기는 부르는 쪽이 그 세션의 exec 로 한다(`project_setup_line`).
         let l = labels(&p.name, if launch_agent { agent_name } else { None });
         let program = posix_program(
             &posix_path_expr(cwd),
@@ -724,17 +643,8 @@ fn setup_line_blocking(
     }
 }
 
-/// **설정 스크립트를 돌릴 한 줄** — 타일이 그 셸에 한 번 친다(모듈 머리말의 표).
-///
-/// - `project_id` — 스크립트는 이 명령이 `projects.json` 에서 읽는다(프런트는 글자를 싣지 않는다).
-/// - `cwd` — 워크트리 폴더(이 PC 의 경로 · 원격이면 그 서버의 경로). `shell` — 로컬 타일의 셸 id(원격이면 무시).
-/// - `nonce` — 끝 신호(OSC 7717)에 실릴 16진 글자. 타일이 이것을 들고 기다린다.
-/// - `launch_agent` — 성공하면 에이전트를 띄울 것인가(결과 줄의 꼬리 · 원격이면 줄 끝의 `&& <에이전트>`).
-/// - `session_id` — 원격 타일의 SSH 세션 번호(실패 막대의 [다시 실행]). 오면 첫 입력과 같이 **그 전송로의 exec 로**
-///   서버 파일(`~/.cache/aynx/setup-<nonce>.sh`)에 먼저 쓰고 짧은 줄을 돌려준다. 없거나 · 세션이 사라졌거나 · 쓰기가
-///   실패하면(종료 코드 0 아님 · 시한 5초) 예전의 긴 한 줄이다. 로컬이면 무시한다.
-///
-/// 파일을 쓰므로 async + 블로킹 풀.
+/// 설정 스크립트를 돌릴 한 줄 — 타일이 그 셸에 한 번 친다. 스크립트는 `projects.json` 에서 읽는다(프런트는 글자를 싣지 않는다).
+/// `session_id` 가 오면(원격 [다시 실행]) 그 전송로의 exec 로 서버 파일에 먼저 쓰고 짧은 줄, 세션이 없거나 쓰기가 실패하면 긴 한 줄이다.
 #[tauri::command]
 pub async fn project_setup_line(
     project_id: String,
@@ -753,7 +663,7 @@ pub async fn project_setup_line(
         Prepared::Line(line) => return Ok(line),
         Prepared::Remote(r) => r,
     };
-    // 원격 타일의 세션은 세션 서버에 산다 — 쓰기는 서버 op `ssh_exec`(명령 글자는 위의 고정 조립 함수가 지었다).
+    // 쓰기는 서버 op `ssh_exec` — 명령 글자는 위의 고정 조립 함수가 지었다.
     let Some(handle) = session_id.and_then(crate::server::ssh_ops::handle_of) else {
         return Ok(remote.long);
     };

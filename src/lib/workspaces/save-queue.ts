@@ -1,4 +1,4 @@
-// ACK가 온 스냅숏만 saved로 승격한다. IO를 주입하므로 실패·lease 경쟁을 순수 테스트한다.
+// ACK가 온 스냅숏만 saved로 승격한다.
 import type { LastActive, SavedWorkspaceTab, WorkspaceMutation, WriterScope } from "./schema";
 
 export interface WorkspaceSnapshot {
@@ -67,7 +67,6 @@ export class WorkspaceSaveQueue {
     return next;
   }
 
-  /** Stale만 한 번 reclaim한다. 두 번째 Stale/다른 오류는 다음 변경까지 dirty로 남긴다. */
   private async put(id: string, value: WorkspaceSnapshot): Promise<void> {
     const mutation = (): WorkspaceMutation => ({
       op: "putTabs", workspaceId: id, scope: this.scope,

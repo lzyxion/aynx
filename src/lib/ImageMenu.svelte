@@ -5,15 +5,8 @@
   import type { ImageMenuAction, ImageMenuExtra } from "$lib/image-menu";
 
   /**
-   * **그림 우클릭 메뉴**(2026-10-24) — 문서 보기 타일 · 사이드 채팅의 그림(`MarkdownBlocks` 가 연다) · 이미지 타일 본문(`ImageView` — 앞뒤에
-   * 제 줄을 더 세운다: `before` · `after` · 2026-11-14). 항목 판정은 `image-menu.ts`,
-   * 하는 일은 `image-actions.ts`.
-   *
-   * 상자 모양은 스키마 트리 메뉴(`query/TreeMenu`)와 같은 한 벌(`.menu-*`)이다. 다른 점 하나 — 이 메뉴는 **`document.body` 로 옮겨
-   * 그린다**(`portal`): 부르는 곳이 사이드 채팅 독(글래스 `backdrop-filter`) · 카드 뒤집기(`transform`) · 컨테이너 질의 상자 안이라
-   * 그 안에서는 `position: fixed` 의 기준이 창이 아니라 그 상자가 된다. 독(z 100) 위에 서야 해서 z 도 독 즐겨찾기 메뉴(105 · 106)와 같다.
-   *
-   * 항목 핸들러는 통로 하나를 지난다(`$lib/browser/menu-runner` · docs/conventions.md 의 "메뉴를 닫는 코드"): 스냅샷 → 닫기 → 실행.
+   * 그림 우클릭 메뉴. `document.body` 로 옮겨 그린다(`portal`) — 부르는 곳이 글래스(`backdrop-filter`) · `transform` · 컨테이너 질의 상자 안이라 `position: fixed` 의 기준이 창이 아니게 된다.
+   * 독(z 100) 위에 서야 해서 z 는 독 즐겨찾기 메뉴(105 · 106)와 같다. 항목은 메뉴 통로(`menu-runner`)를 지난다: 스냅샷 → 닫기 → 실행.
    */
   let {
     actions,
@@ -32,8 +25,7 @@
     /** 고른 항목 — 메뉴가 닫힌 **뒤** 불린다(스냅샷은 여기서 뜬다). 부르는 쪽 상태를 읽지 않는 손잡이여야 한다 */
     onpick: (action: ImageMenuAction) => void;
     /**
-     * 그림 줄 **앞 · 뒤에 세울 부르는 쪽의 줄**(2026-11-14 — 이미지 타일 본문: 앞 = 맞춤 · 원래 크기, 뒤 = 기본 앱 · 외부 편집기 · 폴더에서 보기).
-     * 무리 사이에 선이 하나씩 선다. 고른 줄은 같은 통로로 닫힌 **뒤** `onextra(id)` 로 간다. 비면(기본) 예전 그대로다.
+     * 그림 줄 앞 · 뒤에 세울 부르는 쪽의 줄 — 고른 줄은 같은 통로로 닫힌 뒤 `onextra(id)` 로 간다.
      */
     before?: readonly ImageMenuExtra[];
     after?: readonly ImageMenuExtra[];
@@ -60,7 +52,6 @@
     (menuEl?.querySelector('[role="menuitem"]') as HTMLElement | null)?.focus();
   });
 
-  // 커서 자리에 띄우되 화면 밖으로 넘치지 않게(`TreeMenu` 와 같은 클램프)
   $effect(() => {
     if (!menuEl) return;
     const r = menuEl.getBoundingClientRect();

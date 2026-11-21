@@ -1,23 +1,7 @@
 <!--
-  **모바일 키 띠 · 입력 칸**(원격 웹 R5 — 원격 창 · 폭 < 720px). 화면 아래에 선다.
-
-  - **입력 방식**(10-20 — `app/mobile` 의 `inputMode`, 이 브라우저에만 · 폰 설정 › 이 기기의 "입력 방식" 과 같은 값): 띠의 **맨 왼쪽** 고정
-    단추(입력 칸 = '가' · 바로 입력 = 키보드 아이콘)가 둘을 오간다. 안드로이드 키보드(추천 낱말 줄)로 xterm 에 바로 치면 불안정해서
-    **입력 칸이 기본**이다.
-    - 입력 칸(`field`): 칸 줄이 늘 띠 위에 선다. 터미널을 누르면 xterm 대신 이 칸에 포커스가 간다(`Terminal` 의 focusin → `focusLineField`).
-      [넣기] = 글만(Enter 없이 — Tab 완성 · vim 명령 앞) · [보내기](키보드의 Enter · 폼 제출) = 글 + Enter. 둘 다 붙여넣기와 같은 길
-      (`sendText` — 괄호 붙여넣기 모드면 감싼다). 보낸 뒤 칸을 비우고 포커스를 칸에 둔다(키보드가 내려가지 않게). 칸이 빈 채
-      Backspace = 셸에 DEL(이미 보낸 글자 지우기) · 빈 칸의 Enter = Enter 하나. 끈적 Ctrl 이 걸린 채 빈 칸에 글자 하나를 쓰면 곧장
-      Ctrl+글자로 보내고 칸을 비운다(판정은 순수 `mobile/line-field` · 조합 중(`isComposing`)의 키 · 글은 손대지 않는다).
-    - 바로 입력(`direct`): 칸 줄이 없다 — 터미널을 눌러 화면 키보드로 xterm 에 바로 친다(`term/handheld-input`).
-  - 키 띠: (입력 방식) · Ctrl(끈적 — 한 번 누르면 다음 키 하나에 붙는다 · 다시 누르면 푼다) · Esc · Tab · 화살표 · Ctrl+C · Enter. 보내는 곳은
-    지금 보이는 타일(활성 탭의 포커스 타일)의 터미널 — 사람 키 입력과 같은 문(`term-actions` 의 `bandKey` · `sendKeys` · 출처 `keyboard`).
-    입력 방식 단추 뒤의 순서 · 숨김은 폰 설정의 키 띠(`app/mobile` 의 `keyStrip`)가 정한다. 넘치면 띠가 가로로 밀린다.
-  - 단추는 누를 때 포커스를 가져가지 않는다(`pointerdown` 기본 동작 막기) — 칸 · 터미널을 치던 화면 키보드가 내려가지 않게.
-  - **지금 타일이 AI 타일의 대화 면이면 띠 전체가 숨는다**(2026-11-04 사용자 결정 — 목업 YLJE1mCKsE1NJXQzMiDM5c B안): 칸 · 키가 보이지 않는 CLI 로 곧장 들어가고 입력 칸도 둘이 된다.
-    언마운트하지 않고 숨긴다(치던 글 · `registerLineField` 가 그대로 — 터미널로 돌아오면 그 자리). 숨을 때 걸린 끈적 Ctrl 은 푼다 — 안 그러면 대화 입력 칸의 글이 Ctrl 로 나간다.
-    그 사이 터미널은 상자 크기를 따라가지 않는다(`Terminal` 의 `refit` — 넘길 때마다 PTY 크기가 흔들리지 않게).
-    **오케스트레이션 탭에서도 숨는다**(2026-11-09) — 터미널이 없고 프로듀서 채팅이 제 입력 칸을 가져, 흐린 띠가 자리만 차지했다.
+  모바일 키 띠 · 입력 칸. 입력 칸이 기본이다 — 안드로이드 키보드(추천 낱말 줄)로 xterm 에 바로 치면 불안정하다.
+  보내는 곳은 사람 키 입력과 같은 문(`term-actions` · 출처 `keyboard`) 하나다. 지금 타일이 AI 대화 면 · 오케스트레이션 탭이면 띠를 숨긴다 —
+  언마운트하지 않는다(치던 글이 남는다). 숨을 때 끈적 Ctrl 을 푼다 — 안 그러면 대화 입력 칸의 글이 Ctrl 로 나간다.
 -->
 <script lang="ts">
   import { activeTabId, currentWorkspaceTabs, paneOf } from "$lib/app/tabs.svelte.js";
@@ -33,7 +17,6 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { tick } from "svelte";
 
-  /** 지금 보이는 터미널 타일 — 없으면(파일 · 문서 타일 등) 키 띠가 흐리다 */
   const target = $derived.by(() => {
     const tab = currentWorkspaceTabs().find((x) => x.id === activeTabId());
     if (!tab) return null;
@@ -42,9 +25,8 @@
     return pane && hasSession(pane.kind) ? pane.id : null;
   });
 
-  /** 지금 탭이 오케스트레이션 탭이다 — 터미널이 없고 프로듀서 채팅이 제 입력 칸을 가진다(11-09 — 흐린 띠가 아래를 차지하던 것) */
   const orchTab = $derived(!!currentWorkspaceTabs().find((x) => x.id === activeTabId())?.orch);
-  /** 지금 타일이 대화 면이거나 오케스트레이션 탭이다 — 띠를 숨긴다(칸 · 키가 보이지 않는 CLI 로 새지 않게) */
+  /** 칸 · 키가 보이지 않는 CLI 로 새지 않게 */
   const hidden = $derived(orchTab || (target !== null && flipViewOf(target) === "convo"));
   $effect(() => {
     if (hidden && stickyCtrl()) setStickyCtrl(false);
@@ -52,16 +34,13 @@
 
   const fieldMode = $derived(inputMode() === "field");
   let text = $state("");
-  /** 바로 앞 input 사건 때의 글(끈적 Ctrl 판정 — 빈 칸에서 글자 하나가 막 생겼나) */
   let prevText = "";
   let field = $state<HTMLInputElement | null>(null);
 
-  // 터미널이 포커스를 넘길 칸(`app/mobile` 의 `focusLineField`)
   $effect(() => {
     if (field) return registerLineField(field);
   });
 
-  /** 띠에 서는 단추(순서대로 · 숨긴 것 뺌) */
   const strip = $derived(visibleStrip(keyStrip()));
 
   /** 단추가 포커스를 훔치지 않게 — 화면 키보드가 내려가지 않는다 */
@@ -79,21 +58,19 @@
     field?.focus();
   }
 
-  /** [보내기] · 키보드 Enter(폼 제출) — 글 + Enter. 빈 칸이면 Enter 하나 */
   function send() {
     if (!target) return;
     termActionsOf(target)?.sendText(text, true);
     clearField();
   }
 
-  /** [넣기] — 글만(Enter 없이) */
   function insert() {
     if (!target || text === "") return;
     termActionsOf(target)?.sendText(text, false);
     clearField();
   }
 
-  /** 이 키(keydown → keyup 사이)로 이미 DEL 을 보냈다 — 같은 지우기의 beforeinput · input 이 한 번 더 보내지 않게 */
+  /** 같은 지우기의 beforeinput · input 이 DEL 을 한 번 더 보내지 않게 */
   let keySent = false;
 
   function onFieldKey(ev: KeyboardEvent) {
@@ -106,7 +83,7 @@
     termActionsOf(target)?.sendKeys(bytes);
   }
 
-  /** 키보드가 Backspace 키 없이 지우기 입력만 낼 때(빈 칸 — 브라우저는 바꿀 것이 없다) — 셸의 한 글자를 지운다 */
+  /** 키보드가 Backspace 키 없이 지우기 입력만 낼 때 */
   function onFieldBeforeInput(ev: InputEvent) {
     if (!target || keySent || !emptyFieldDelete(ev.inputType, text, ev.isComposing)) return;
     ev.preventDefault();
@@ -119,7 +96,6 @@
     const prev = prevText;
     prevText = text;
     if (!target || ie.isComposing) return;
-    // beforeinput 없이 온 빈 칸의 뒤로 지우기(값이 그대로 빈 채) — 위와 같은 대신
     if (prev === "" && !keySent && emptyFieldDelete(ie.inputType, text, false)) {
       termActionsOf(target)?.sendKeys(DEL);
       return;
@@ -255,7 +231,6 @@
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 14%, var(--surface-raised-solid));
   }
-  /* 입력 방식 — 맨 왼쪽 고정 · 다른 키보다 조금 넓게 */
   .key.mode {
     flex: 0 0 auto;
     display: inline-flex;

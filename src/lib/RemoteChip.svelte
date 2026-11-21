@@ -13,16 +13,8 @@
   import type { StatusBarPosition } from "$lib/settings.svelte.js";
 
   /**
-   * **상태바의 원격 칩**(R1a-5 — 설계 docs/log/2026-10-15-remote-web-client-design.md 9-⑤ · 13절). 두 얼굴이다:
-   *
-   * - **메인 PC 창**: 지금 원격으로 쓰는 기기(열렸고 원격 창이 붙은 기기 — `remoteActive`)가 하나라도 있으면 "원격 접속 중 (N)" 이
-   *   선다. **끌 수 없다**(설정 칸이 없다 — 늘 보여야 하는 사실이다). 누르면 작은 상자: 지금 쓰는 기기(창 수) · [모두 끊기] ·
-   *   최근 기록 · [원격 접속 설정…]. 원격이 열릴 때의 OS 알림은 Rust 가 따로 낸다(`gate::notify_home`).
-   * - **원격 창**(브라우저): 늘 "원격 — <이 기기 이름>" 이 서고, 누르면 이 원격 창을 **잠근다**(`POST /remote/lock` — 잠금 해제 쪽으로
-   *   돌아간다 · 메인 PC 는 그대로).
-   *
-   * 상자 몸짓은 옛 알림 상자(`NotificationCenter` — 2026-10-18 독 알림 칸으로 들어가 걷혔다)와 같다 — 칩 옆에 붙고(`placeNotifyPanel`) · 바깥 누르기·Escape 로 닫히고 · 칩 자신은
-   * 바깥 누르기 감지가 비켜 간다(`data-remote-chip`). 상자를 닫고 다른 화면을 여는 항목은 메뉴 통로(`runAfterClose`)를 지난다.
+   * 메인 PC 창의 "원격 접속 중 (N)" 은 끌 수 없다 — 설정 칸이 없다(늘 보여야 하는 사실이다).
+   * 원격 창의 칩은 이 원격 창만 잠근다(`POST /remote/lock` — 메인 PC 는 그대로). 칩 자신은 바깥 누르기 감지가 비켜 간다(`data-remote-chip`).
    */
   let { position, vertical = false }: { position: StatusBarPosition; vertical?: boolean } = $props();
 
@@ -38,7 +30,7 @@
   let pos = $state<{ left: number; top: number } | null>(null);
   let busy = $state(false);
 
-  // 쓰는 기기가 사라지면(모두 끊김) · 가림막이 내려오면(상자가 가림막보다 위다 — 알림 상자와 같은 규칙) 닫는다
+  // 가림막이 내려오면 닫는다 — 상자가 가림막보다 위다(알림 상자와 같은 규칙)
   $effect(() => {
     if (active.length === 0 || veilVisible()) open = false;
   });
@@ -113,8 +105,7 @@
     aria-label={`${label}, ${t("app.statusbar.remote.lock")}`}
     onclick={() => void lockThisRemote()}
   >
-    <!-- 모바일 배치 — 원격 아이콘 하나(보이는 폭은 작게 · 누르는 자리는 ::after 로 44px) · 기기 이름 · "잠그기" 는 title/aria-label 로만.
-         자물쇠 그림을 쓰지 않는 까닭: 바로 옆 볼트 자물쇠(가림막 + 볼트 잠금 — 메인 PC 까지)와 같은 그림이 둘 서면 무엇을 잠그는지 못 가른다. -->
+    <!-- 자물쇠 그림을 쓰지 않는다 — 바로 옆 볼트 자물쇠(메인 PC 까지 잠근다)와 같은 그림이 둘 서면 무엇을 잠그는지 못 가른다 -->
     <UiIcon name="remote" size={ICON_SIZE} />
     {#if !vertical && !compact}<span class="text">{label}</span><span class="sep" aria-hidden="true"></span><UiIcon
         name="lock"
@@ -195,7 +186,6 @@
 {/if}
 
 <style>
-  /* 칩 — 상태바 글리프(`.glyph`)와 같은 높이 · 고스트 관용구. 가로 띠는 글자까지, 세로 기둥은 아이콘 + 숫자 배지 */
   .rchip {
     position: relative;
     flex: 0 0 auto;
@@ -231,7 +221,7 @@
     outline-offset: -2px;
   }
 
-  /* 지금 누가 들어와 있다 — 경고색 점 하나(깜빡이지 않는다 · 늘 보이는 띠에서 움직임은 시선을 빼앗는다) */
+  /* 깜빡이지 않는다 — 늘 보이는 띠에서 움직임은 시선을 빼앗는다 */
   .live {
     width: 6px;
     height: 6px;
@@ -269,7 +259,7 @@
     color: var(--fg-1);
   }
 
-  /* 모바일 배치 — 원격 아이콘 하나만 보이는 작은 단추. 누르는 자리는 보이지 않는 44px 정사각형(손가락 크기) */
+  /* 모바일 배치 — 누르는 자리는 보이지 않는 44px 정사각형(손가락 크기) */
   .rchip.compact {
     padding: 0 6px;
     gap: 0;
@@ -297,7 +287,6 @@
     background: var(--line);
   }
 
-  /* 상자 — 알림 상자와 같은 뜬 면 */
   .rpanel {
     position: fixed;
     z-index: 121;

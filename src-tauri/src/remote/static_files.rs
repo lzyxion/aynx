@@ -1,21 +1,15 @@
 //! 관문의 **정적 파일** — exe 에 박힌 같은 프런트 빌드를 내고, `tauri.conf.json` 의 CSP 를 헤더로 붙인다.
 //!
-//! - 파일: `AppHandle::asset_resolver().get(path)` 하나(릴리스 = exe 안 자산 · 개발 빌드 = 디스크 `build/` — tauri 가 가른다).
-//!   **경로는 여기서 먼저 걸러 낸다**([`safe_asset_path`]) — 개발 빌드의 tauri 는 `..` 를 걷지 않고 디스크를 읽는다.
-//! - CSP: 출처는 `app.config().app.security.csp` 하나. tauri 가 자기 프로토콜로 낼 때 하는 일 중 우리에게 필요한 것 —
-//!   **인라인 `<script>`(SvelteKit 부트스트랩)의 sha256 해시를 `script-src` 에 붙이기** — 를 [`inline_script_hashes`] 가 직접 한다.
-//!   `Asset::csp_header` 는 쓰지 않는다: 릴리스에서만 오고(개발 빌드는 `None`), tauri 의 웹뷰 초기화 스크립트 해시 100여 개가 섞여
-//!   브라우저에는 뜻이 없다. 해시는 우리가 **실제로 내는 바이트**에서 뽑으므로 릴리스(tauri 가 다시 직렬화한 HTML)·개발 모두 맞는다.
-//!   설정의 `ipc:`·`asset:` 출처는 브라우저에선 닿을 곳이 없어 무해하고, `/ws` 는 같은 출처(`'self'` — CSP3 는 wss 를 포함)다.
+//! - **경로는 여기서 먼저 걸러 낸다**([`safe_asset_path`]) — 개발 빌드의 tauri 자산 해석은 `..` 를 걷지 않고 디스크를 읽는다.
+//! - `Asset::csp_header` 는 쓰지 않는다 — 개발 빌드는 `None` 이고 릴리스는 브라우저에 뜻 없는 웹뷰 초기화 스크립트 해시가 섞인다.
+//!   인라인 스크립트 해시는 **실제로 내는 바이트**에서 뽑는다(릴리스는 tauri 가 HTML 을 다시 직렬화한다).
 
 use std::collections::HashMap;
 
 use sha2::{Digest, Sha256};
 use tauri::utils::config::{Csp, CspDirectiveSources};
 
-/// 요청 경로 → 자산 열쇠. `/` = `index.html`. 허용 글자 밖·빈 조각·`.`·`..`·512자 초과는 `None`(404).
-///
-/// 빌드 산출물의 이름은 `[A-Za-z0-9._~-]` 와 `/` 뿐이다(SvelteKit 해시 이름) — 퍼센트 인코딩·역슬래시·`:` 는 받을 까닭이 없다.
+/// 빌드 산출물의 이름은 `[A-Za-z0-9._~-]` 와 `/` 뿐이다 — 퍼센트 인코딩·역슬래시·`:` 는 받지 않는다.
 pub(crate) fn safe_asset_path(path: &str) -> Option<String> {
     let rest = path.strip_prefix('/')?;
     if rest.is_empty() {
@@ -38,8 +32,7 @@ pub(crate) fn safe_asset_path(path: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-/// HTML 의 인라인 `<script>`(`src` 없는 것, 내용이 빈 것 제외)마다 `'sha256-<base64>'` — 브라우저가 CSP 해시를 재는 것과 같은
-/// 바이트(태그 사이 원문 + 줄 끝 CRLF·CR → LF, tauri `normalize_script_for_csp` 와 같은 규칙).
+/// 해시 바이트는 브라우저가 CSP 해시를 재는 것과 같아야 한다(줄 끝 CRLF·CR → LF — tauri `normalize_script_for_csp` 와 같은 규칙).
 pub(crate) fn inline_script_hashes(html: &str) -> Vec<String> {
     let lower = html.to_ascii_lowercase(); // ASCII 만 바꾸므로 바이트 위치가 같다
     let mut hashes = Vec::new();
@@ -47,7 +40,6 @@ pub(crate) fn inline_script_hashes(html: &str) -> Vec<String> {
     while let Some(found) = lower[at..].find("<script") {
         let tag_start = at + found;
         let after_name = tag_start + "<script".len();
-        // `<scripts>` 같은 다른 이름은 건너뛴다.
         if !lower[after_name..].starts_with(|c: char| c == '>' || c.is_ascii_whitespace() || c == '/') {
             at = after_name;
             continue;
@@ -74,8 +66,7 @@ pub(crate) fn inline_script_hashes(html: &str) -> Vec<String> {
     hashes
 }
 
-/// 설정 CSP + 인라인 스크립트 해시 → 헤더 값. 지시어는 이름순(결정적 — 시험·비교용). `script-src` 가 없으면 `default-src` 를
-/// 물려받아 만든 뒤 해시를 더한다(브라우저가 하는 것과 같은 바닥).
+/// `script-src` 가 없으면 `default-src` 를 물려받아 만든 뒤 해시를 더한다(브라우저가 하는 것과 같은 바닥).
 pub(crate) fn gateway_csp(csp: &Csp, script_hashes: &[String]) -> String {
     let mut map: HashMap<String, CspDirectiveSources> = csp.clone().into();
     if !script_hashes.is_empty() {
@@ -99,7 +90,7 @@ pub(crate) fn gateway_csp(csp: &Csp, script_hashes: &[String]) -> String {
         .join("; ")
 }
 
-/// `Cache-Control` — HTML 은 저장 안 함(CSP·부트스트랩이 빌드마다 바뀐다), 해시 이름 자산은 오래, 나머지는 매번 확인.
+/// HTML 은 CSP 해시·부트스트랩이 빌드마다 바뀌어 저장하지 않는다.
 pub(crate) fn cache_control(path: &str, is_html: bool) -> &'static str {
     if is_html {
         "no-store"
@@ -110,16 +101,13 @@ pub(crate) fn cache_control(path: &str, is_html: bool) -> &'static str {
     }
 }
 
-// ── 원격 창(R1a-3) ──────────────────────────────────────────────────────────
+// ── 원격 창 ──────────────────────────────────────────────────────────
 
-/// 폴리필 경로 — 앱 셸의 첫 스크립트.
 pub(crate) const POLYFILL_PATH: &str = "/remote/polyfill.js";
-/// 원격의 `convertFileSrc` 가 가리키는 경로(`?path=<절대 경로>`).
+/// `ASSET_PATH` · `WS_PATH` 는 `polyfill.js` 가 글자 그대로 쓴다.
 pub(crate) const ASSET_PATH: &str = "/remote/asset";
-/// 원격 창 ws 경로(`?t=<부팅 표>`).
 pub(crate) const WS_PATH: &str = "/remote/ws";
 
-/// HTML 속성 값 이스케이프(`"` `&` `<` `>` `'`).
 fn attr_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -135,8 +123,7 @@ fn attr_escape(s: &str) -> String {
     out
 }
 
-/// 앱 셸에 원격 부팅을 끼운다 — `<head>` 바로 뒤(다른 어떤 스크립트보다 먼저)에 부팅 값(`<meta>` — 스크립트가 아니라 CSP 해시가
-/// 필요 없다)과 폴리필(외부 파일 — `script-src 'self'`). 동기 스크립트라 SvelteKit 의 모듈보다 먼저 돈다. `<head>` 가 없으면 `None`.
+/// `<head>` 바로 뒤 — 폴리필은 다른 어떤 스크립트보다 먼저 돌아야 한다. 부팅 값은 `<meta>` 라 CSP 해시가 필요 없다.
 pub(crate) fn inject_remote_boot(html: &str, boot_json: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase();
     let mut at = 0;
@@ -159,7 +146,6 @@ pub(crate) fn inject_remote_boot(html: &str, boot_json: &str) -> Option<String> 
     Some(out)
 }
 
-/// 이 PC 의 경로 구분자·목록 구분자 — `@tauri-apps/api/path` 의 `sep()`·`delimiter()` 가 폴리필에서 읽는다.
 pub(crate) fn path_separators() -> (&'static str, &'static str) {
     #[cfg(windows)]
     return ("\\", ";");
@@ -167,7 +153,7 @@ pub(crate) fn path_separators() -> (&'static str, &'static str) {
     return ("/", ":");
 }
 
-/// 쿼리 문자열에서 `name` 의 값(퍼센트 디코딩 · UTF-8). 없거나 둘 이상이면 `None`.
+/// 둘 이상이면 `None`.
 pub(crate) fn query_param(query: Option<&str>, name: &str) -> Option<String> {
     let mut found = None;
     for pair in query?.split('&') {
@@ -183,8 +169,8 @@ pub(crate) fn query_param(query: Option<&str>, name: &str) -> Option<String> {
     found
 }
 
-/// `/remote/asset` 의 경로 → 내줄 파일과 내용 종류. **절대 경로 · `..` 없음 · 래스터 그림 확장자**만(월페이퍼가 받는 것 —
-/// `wallpaper.rs` 의 목록과 같다). 스코프 판정(`asset_protocol_scope`)은 부르는 쪽이 이 뒤에 한다. SVG 는 받지 않는다(스크립트).
+/// 래스터 그림 확장자만(`wallpaper.rs` 의 목록과 같다) — SVG 는 스크립트를 품어 받지 않는다.
+/// 스코프 판정(`asset_protocol_scope`)은 부르는 쪽이 이 뒤에 한다.
 pub(crate) fn asset_request(raw: &str) -> Option<(std::path::PathBuf, &'static str)> {
     use std::path::{Component, Path};
     if raw.is_empty() || raw.len() > 4096 || raw.contains('\0') {

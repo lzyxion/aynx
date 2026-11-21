@@ -12,8 +12,7 @@ use super::*;
 // 명령 — 고치기
 // ---------------------------------------------------------------------------
 
-/// 빈 파일을 만든다(파일 타일의 [새 파일…]) — `CREATE | EXCLUDE` 라 이미 있으면 서버가 거절하고 덮어쓰지 않는다. 권한은 서버
-/// 기본(umask). 돌려주는 값은 **만들어진 절대 경로**.
+/// `CREATE | EXCLUDE` 라 이미 있으면 서버가 거절하고 덮어쓰지 않는다. 권한은 서버 기본(umask).
 #[tauri::command]
 pub async fn sftp_create_file(
     app: tauri::AppHandle,
@@ -46,8 +45,6 @@ pub async fn sftp_create_file(
     }
 }
 
-/// 디렉터리를 만든다. 돌려주는 값은 **만들어진 절대 경로** (프런트가 새로고침 뒤 그
-/// 항목을 골라 둘 수 있게).
 #[tauri::command]
 pub async fn sftp_mkdir(
     app: tauri::AppHandle,
@@ -60,8 +57,7 @@ pub async fn sftp_mkdir(
     match sftp.create_dir(full.clone()).await {
         Ok(()) => Ok(full),
         Err(e) => {
-            // SFTP v3 에는 "이미 있음" 코드가 없어 서버는 보통 Failure 만 준다. 실패한
-            // 뒤에만 한 번 더 확인해서(성공 경로에는 왕복이 안 붙는다) 문구를 가른다.
+            // SFTP v3 에는 "이미 있음" 코드가 없다 — 실패한 뒤에만 한 번 더 확인해 문구를 가른다(성공 경로에 왕복이 안 붙는다).
             if sftp.try_exists(full.clone()).await.unwrap_or(false) {
                 return Err(crate::errors::exists(&full));
             }
@@ -75,11 +71,7 @@ pub async fn sftp_mkdir(
     }
 }
 
-/// 이름을 바꾸거나 옮긴다. 돌려주는 값은 **바뀐 뒤의 절대 경로**.
-///
-/// 대상이 이미 있으면 거절한다 — SFTP v3 의 `SSH_FXP_RENAME` 은 덮어쓰기를 정의하지
-/// 않아서(대상이 있으면 실패가 표준이다) 어차피 못 하고, 사용자에게는 "왜 안 됐는지" 가
-/// 서버의 `Failure` 보다 나은 답이다.
+/// 대상이 이미 있으면 거절한다 — SFTP v3 의 `SSH_FXP_RENAME` 은 덮어쓰기를 정의하지 않는다.
 #[tauri::command]
 pub async fn sftp_rename(
     app: tauri::AppHandle,
@@ -115,15 +107,8 @@ pub async fn sftp_rename(
     }
 }
 
-/// 트리 하나를 **아래에서 위로** 지운다.
-///
-/// 재귀 대신 명시적 스택인 이유는 `async fn` 의 재귀가 무한 크기 타입이 되어 박싱이
-/// 필요해지기 때문이다. `(경로, 자식을 이미 훑었는가)` 를 쌓고 자식이 먼저 나오게 두면
-/// 후위 순회가 된다 — 디렉터리는 빈 뒤에야 `rmdir` 된다.
-///
-/// **심링크는 따라가지 않는다.** readdir 이 주는 속성은 `lstat` 이라 디렉터리를 가리키는
-/// 심링크도 `Symlink` 로 오고, 그건 `remove_file` 로 링크만 지운다 — 트리 밖의 남의
-/// 디렉터리를 지우는 사고를 막는 자리가 여기다.
+/// 트리를 아래에서 위로 지운다(명시적 스택 — `async fn` 재귀는 박싱이 필요하다).
+/// 심링크는 따라가지 않는다 — readdir 속성이 `lstat` 이라 링크만 지워진다(트리 밖 남의 디렉터리를 지우는 사고를 막는 자리).
 pub(super) async fn remove_tree(
     session: u32,
     sftp: &SftpSession,
@@ -174,14 +159,7 @@ pub(super) async fn remove_tree(
     Ok(())
 }
 
-/// 파일이나 디렉터리를 지운다.
-///
-/// - 파일·심링크 → `remove_file` (심링크는 **링크만** 지운다).
-/// - 디렉터리 + `recursive: false` → `rmdir`. 비어 있지 않으면 그렇게 말해 준다.
-/// - 디렉터리 + `recursive: true` → 안쪽부터 훑어 지운다 (항목 하나에 왕복 하나다 —
-///   큰 트리는 오래 걸린다).
-///
-/// 루트(`/`)와 홈은 어떤 경우에도 거절한다.
+/// 심링크는 링크만 지운다. `recursive` 는 항목 하나에 왕복 하나라 큰 트리는 오래 걸린다. 루트(`/`)와 홈은 어떤 경우에도 거절한다.
 #[tauri::command]
 pub async fn sftp_remove(
     app: tauri::AppHandle,
@@ -194,10 +172,7 @@ pub async fn sftp_remove(
     remove_at(session, &sftp, &full, &home, recursive).await
 }
 
-/// [`sftp_remove`] 의 알맹이 — 경로가 이미 절대 경로로 풀린 뒤부터.
-///
-/// [`sftp_remove_many`] 가 같은 몸통을 타야 보호 규칙(루트·홈)과 "비어 있지 않다" 문구가
-/// 한 자리에만 산다.
+/// [`sftp_remove_many`] 도 이 몸통을 타야 보호 규칙(루트·홈)과 "비어 있지 않다" 문구가 한 자리에만 산다.
 pub(super) async fn remove_at(
     session: u32,
     sftp: &SftpSession,
@@ -245,8 +220,7 @@ pub(super) async fn remove_at(
     match sftp.remove_dir(full.clone()).await {
         Ok(()) => Ok(()),
         Err(e) => {
-            // v3 에는 ENOTEMPTY 가 없어 서버는 Failure 만 준다. 실패한 뒤에 한 번 들여다보고
-            // "비어 있지 않다" 를 확정한다 — 사용자가 다음에 무엇을 할지 정할 수 있는 문구다.
+            // v3 에는 ENOTEMPTY 가 없다 — 실패한 뒤 한 번 들여다보고 "비어 있지 않다" 를 확정한다.
             let non_empty = sftp
                 .read_dir(full.clone())
                 .await

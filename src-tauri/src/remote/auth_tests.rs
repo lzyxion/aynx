@@ -1,4 +1,4 @@
-//! R1a-2 시험 — 페어링 · 기기 토큰 · 원격 가림막 세션 · 실패 제한 · 쿠키 단계 · POST 문지기 · 관문 쪽.
+//! 페어링 · 기기 토큰 · 원격 가림막 세션 · 실패 제한 · 쿠키 단계 · POST 문지기 · 관문 쪽 시험.
 
 use std::time::{Duration, Instant};
 
@@ -53,14 +53,10 @@ fn pairing_flow_creates_a_device_with_only_a_hash() {
     assert_eq!(notice.tailscale_name.as_deref(), Some("Me"), "제어 문자는 걷는다");
     assert_eq!(notice.expires_in_ms, PAIR_TTL.as_millis() as u64);
     assert_eq!(st.pair_pending(t0), Some(notice.clone()));
-    // 하나가 대기 중이면 다른 요청은 거절
     assert_eq!(st.pair_request(t0, "x".into(), None, None).unwrap_err(), PairError::Busy);
-    // 사람이 답하기 전에는 대기
     assert!(matches!(st.pair_poll(ticket.poll.as_str(), t0, "s"), PairPoll::Pending));
-    // 다른 폴 비밀은 아무것도 모른다
     let other = Secret::generate().unwrap();
     assert!(matches!(st.pair_poll(other.as_str(), t0, "s"), PairPoll::Gone));
-    // 모르는 요청 id 에 답하면 거절
     assert!(st.pair_respond("nope", true, t0).is_err());
     st.pair_respond(&notice.request_id, true, t0).unwrap();
     assert_eq!(st.pair_pending(t0), None, "답한 요청은 더 기다리지 않는다");
@@ -69,7 +65,6 @@ fn pairing_flow_creates_a_device_with_only_a_hash() {
     };
     assert!(secret_shape(token.as_str()));
     assert_eq!(st.device_for(token.as_str()), Some(device_id.clone()));
-    // 한 번 받으면 끝
     assert!(matches!(st.pair_poll(ticket.poll.as_str(), t0 + S, "s"), PairPoll::Gone));
     // 파일에는 해시만 — 토큰 값은 어디에도 없다
     let file = st.snapshot();
@@ -91,7 +86,6 @@ fn pairing_flow_creates_a_device_with_only_a_hash() {
 fn pairing_denied_expired_and_rate_limited() {
     let t0 = Instant::now();
     let mut st = AuthState::new(Vec::new());
-    // 거절
     let (ticket, notice) = st.pair_request(t0, "a".into(), None, None).unwrap();
     st.pair_respond(&notice.request_id, false, t0).unwrap();
     assert!(matches!(st.pair_poll(ticket.poll.as_str(), t0, "s"), PairPoll::Denied));
@@ -139,16 +133,13 @@ fn device_tokens_are_checked_against_every_device() {
     assert_ne!(a, b);
     assert_eq!(st.device_for(&ta), Some(a.clone()));
     assert_eq!(st.device_for(&tb), Some(b.clone()));
-    // 모양이 틀리거나 한 글자 다른 토큰
     let mut flipped = ta.clone().into_bytes();
     flipped[0] = if flipped[0] == b'A' { b'B' } else { b'A' };
     for bad in [String::from_utf8(flipped).unwrap(), String::new(), "x".repeat(43), format!("{ta}="), ta[..42].to_string()] {
         assert_eq!(st.device_for(&bad), None, "{bad}");
     }
-    // 파일 왕복 — 해시만으로 다시 알아본다
     let back = AuthState::new(parse_devices(&st.snapshot()));
     assert_eq!(back.device_for(&tb), Some(b));
-    // 폐기하면 그 토큰은 끝
     assert!(st.revoke(&a));
     assert!(!st.revoke(&a));
     assert_eq!(st.device_for(&ta), None);
@@ -230,7 +221,6 @@ fn pair_refusal_matches_pair_request_without_changing_state() {
     for _ in 0..(5 * 2) {
         assert_eq!(st.pair_refusal(t0), None);
     }
-    // 대기 중
     let (_, n) = st.pair_request(t0, "a".into(), None, None).unwrap();
     assert_eq!(st.pair_refusal(t0), Some(PairError::Busy));
     assert_eq!(st.pair_pending(t0).as_ref().map(|p| p.request_id.as_str()), Some(n.request_id.as_str()), "대기 요청은 그대로");
@@ -244,7 +234,6 @@ fn pair_refusal_matches_pair_request_without_changing_state() {
     assert_eq!(st.pair_refusal(t0 + 10 * S), Some(PairError::RateLimited));
     assert_eq!(st.pair_request(t0 + 10 * S, "x".into(), None, None).unwrap_err(), PairError::RateLimited);
     assert_eq!(st.pair_refusal(t0 + 61 * S), None, "1분이 지나면 다시");
-    // 가득 참
     let mut st = AuthState::new(Vec::new());
     for i in 0..MAX_DEVICES {
         paired(&mut st, t0 + Duration::from_secs(13 * i as u64));
@@ -273,18 +262,14 @@ fn sessions_expire_on_idle_and_absolute_and_die_with_the_device() {
     let ses = st.open_session(&dev, idle, t0).unwrap();
     assert_eq!(st.unlocked_devices(t0), 1);
     assert!(st.session_for(&dev, ses.as_str(), t0 + 9 * S));
-    // 되감겼다 — 18초에도 산다
     assert!(st.session_for(&dev, ses.as_str(), t0 + 18 * S));
-    // 다른 기기의 쿠키와 짝지으면 아니다
     assert!(!st.session_for(&other, ses.as_str(), t0 + 19 * S));
-    // 무입력 만료
     assert!(!st.session_for(&dev, ses.as_str(), t0 + 29 * S));
     assert_eq!(st.unlocked_devices(t0 + 29 * S), 0);
     // 절대 상한 — 계속 되감아도 12시간이면 끝
     let long = st.open_session(&dev, SESSION_MAX * 2, t0).unwrap();
     assert!(st.session_for(&dev, long.as_str(), t0 + SESSION_MAX - S));
     assert!(!st.session_for(&dev, long.as_str(), t0 + SESSION_MAX + S));
-    // 잠그기 · 폐기
     let a = st.open_session(&dev, idle, t0).unwrap();
     assert!(st.close_session(a.as_str()));
     assert!(!st.session_for(&dev, a.as_str(), t0));
@@ -309,14 +294,12 @@ fn unlock_brute_force_locks_out_per_device_and_globally() {
     assert_eq!(st.unlock_failed(&dev, t0).0, Some(60 * S));
     assert_eq!(st.unlock_blocked(&dev, t0 + S).map(Blocked::left), Some(59 * S));
     assert!(matches!(st.unlock_blocked(&dev, t0 + S), Some(Blocked::Device(_))));
-    // 다음 잠김은 두 배
     let t1 = t0 + 61 * S;
     assert_eq!(st.unlock_blocked(&dev, t1), None);
     for _ in 0..4 {
         st.unlock_failed(&dev, t1);
     }
     assert_eq!(st.unlock_failed(&dev, t1).0, Some(120 * S));
-    // 걷으면 기기 셈은 처음으로
     st.open_session(&dev, 60 * S, t1 + 200 * S).unwrap();
     assert_eq!(st.unlock_blocked(&dev, t1 + 200 * S), None);
 
@@ -349,13 +332,10 @@ fn levels_from_cookies() {
     let ses = st.open_session(&dev, 60 * S, Instant::now()).unwrap().as_str().to_string();
     let auth = auth_with(st);
     let now = Instant::now();
-    // 쿠키 없음 · 엉뚱한 토큰 · 세션만
     assert_eq!(level(&auth, &HeaderMap::new(), now), Level::Unpaired);
     assert_eq!(level(&auth, &cookies(&[(DEVICE_COOKIE, &"A".repeat(43))]), now), Level::Unpaired);
     assert_eq!(level(&auth, &cookies(&[(SESSION_COOKIE, &ses)]), now), Level::Unpaired);
-    // 이름이 비슷한 다른 쿠키는 보지 않는다
     assert_eq!(level(&auth, &cookies(&[("pl_dev", &token)]), now), Level::Unpaired);
-    // 페어링됨 · 열림
     assert_eq!(level(&auth, &cookies(&[(DEVICE_COOKIE, &token)]), now), Level::Paired(dev.clone()));
     assert_eq!(level(&auth, &cookies(&[("other", "1"), (DEVICE_COOKIE, &token), (SESSION_COOKIE, &ses)]), now), Level::Open(dev.clone()));
     assert_eq!(level(&auth, &cookies(&[(DEVICE_COOKIE, &token), (SESSION_COOKIE, &"B".repeat(43))]), now), Level::Paired(dev.clone()));
@@ -392,17 +372,13 @@ fn post_only_on_gate_routes_with_a_same_origin() {
         assert_eq!(check_request(&Method::POST, route, &[HOST], None, &a), Err(Reject::Origin), "{route}");
         assert_eq!(check_request(&Method::POST, route, &[HOST], Some("https://evil.example.com"), &a), Err(Reject::Origin));
         assert_eq!(check_request(&Method::POST, route, &[HOST], Some(&format!("http://{HOST}")), &a), Err(Reject::Origin));
-        // 엉뚱한 이름이면 Host 가 먼저
         assert_eq!(check_request(&Method::POST, route, &["evil.example.com"], Some(&origin), &a), Err(Reject::Host));
-        // 다른 메서드는 그 경로에도 안 된다
         assert_eq!(check_request(&Method::PUT, route, &[HOST], Some(&origin), &a), Err(Reject::Method));
     }
-    // 개발 빌드 루프백 출처
     assert_eq!(
         check_request(&Method::POST, "/remote/unlock", &["127.0.0.1:47822"], Some("http://127.0.0.1:47822"), &a),
         Ok(())
     );
-    // 다른 경로의 POST 는 405
     for path in ["/", "/index.html", "/remote/pair", "/remote/unlock/", "/remote/gate.js"] {
         assert_eq!(check_request(&Method::POST, path, &[HOST], Some(&origin), &a), Err(Reject::Method), "{path}");
     }
@@ -441,12 +417,11 @@ fn gate_pages_carry_no_app_and_no_inline_script() {
     assert!(gate_asset("/remote/theme.css").is_some_and(|(_, mime)| mime.starts_with("text/css")));
     assert!(gate_asset("/remote/../gate.js").is_none() && gate_asset("/remote/x.js").is_none());
     assert!(is_shell("/") && is_shell("/index.html") && !is_shell("/_app/x.js"));
-    // JSON 답의 쿠키는 Set-Cookie 로만
     let r = json_response(hyper::StatusCode::OK, serde_json::json!({ "ok": true }), &[session_cookie(&"T".repeat(43))]);
     assert_eq!(r.headers().get_all("set-cookie").iter().count(), 1);
 }
 
-// ── 재확인(R1a-4) ─────────────────────────────────────────────────────────────
+// ── 재확인 ──────────────────────────────────────────────────────────────────
 
 #[test]
 fn reauth_asks_for_the_master_only_when_one_exists() {
@@ -464,7 +439,6 @@ fn reauth_asks_for_the_master_only_when_one_exists() {
     let long = "a".repeat(1025);
     assert_eq!(reauth_check(&master, Some(&long)), ReauthCheck::NeedPassword);
     assert_eq!(reauth_check(&master, Some("pw")), ReauthCheck::Verify("pw"));
-    // 확인의 답.
     assert_eq!(reauth_verdict(Ok(MasterVerdict::Ok)), ReauthVerdict::Issue);
     assert_eq!(reauth_verdict(Ok(MasterVerdict::NoMaster)), ReauthVerdict::Issue);
     assert_eq!(reauth_verdict(Ok(MasterVerdict::NoVault)), ReauthVerdict::Issue);

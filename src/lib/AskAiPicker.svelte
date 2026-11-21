@@ -9,19 +9,7 @@
   import { askPicker, closeAskPicker, runAskRow } from "$lib/app/ask-ai.svelte.js";
   import { veilVisible } from "$lib/app/veil.svelte.js";
 
-  /**
-   * **블록을 AI 타일에 넘기기 — 고르기 상자** (docs/log/2026-09-28-ask-ai-block.md · 목업 경우 2·3).
-   *
-   * 받을 AI 타일이 곧장 정해지지 않을 때(이 탭에 여럿 · 다른 탭에만 있음 · 없음) 뜬다. 상태는
-   * `app/ask-ai.svelte.ts` 에 있고 이 컴포넌트는 `+page` 에 늘 마운트돼 그 상태가 있을 때만 그린다.
-   *
-   * - 줄 순서: **이 탭** → **다른 탭** → 새로 열기(기본 CLI 가 위). 마지막에 포커스했던 AI 타일이 골라진 채 뜬다.
-   * - "답 쓰는 중" 은 표시만 한다(막지 않는다).
-   * - 키: ↑↓ · Home/End 로 고르고 Enter 로 넘긴다. **Esc 는 여기서 끊는다**(뒤 화면의 Escape 사슬로 새지
-   *   않게 — 다른 떠 있는 상자들과 같은 규칙) — 닫고 포커스를 원본 셸 타일로 돌려준다.
-   * - 줄을 고르면 메뉴 통로(`runOnMenu`)로 **값을 스냅샷하고 닫은 뒤** 실행한다(docs/conventions.md).
-   * - 바깥을 누르면 닫는다(포커스는 누른 자리의 것). 가림막이 내려와도 닫는다.
-   */
+  /** 블록을 AI 타일에 넘기기 — 고르기 상자. Esc 는 여기서 끊는다 — 뒤 화면의 Escape 사슬로 새지 않게. */
 
   const picker = $derived(askPicker());
 
@@ -29,7 +17,6 @@
   let sel = $state(0);
   let pos = $state<{ left: number; top: number } | null>(null);
 
-  /** 상자가 새로 뜨면 골라진 줄 · 자리를 처음부터 */
   $effect(() => {
     const p = picker;
     if (!p) return;
@@ -37,7 +24,6 @@
     pos = null;
   });
 
-  /** 자리 — 기준점 아래, 화면 밖이면 기준점 위로 뒤집고 좌우는 안쪽으로 민다 */
   $effect(() => {
     const node = el;
     const p = picker;
@@ -54,12 +40,8 @@
   });
 
   /**
-   * 자리를 잡은 뒤 포커스 — 숨은(측정 전) 상자는 포커스를 받지 않는다 (ShellMenu 와 같은 이유).
-   *
-   * `tick` 이 아니라 **rAF** 인 까닭(`CodeTermPicker` 와 같다): 활성이 아닌 타일의 단추(터미널의 블록 단추 · 쿼리 타일의 [AI에게 묻기])를
-   * 누르면 pointerdown 이 그 타일을 활성으로 바꾸고, 그 활성화가 rAF 안에서 포커스를 준다(터미널 = `Terminal` 의 보임 효과의
-   * `term.focus()` · 세션 없는 타일 = `routeTileFocus`). 그 rAF 가 click 보다 늦게 돌면 상자의 포커스를 빼앗는다 — 이 rAF 는 click 뒤에
-   * 걸리므로 그 뒤에 돈다.
+   * 자리를 잡은 뒤 포커스 — 숨은(측정 전) 상자는 포커스를 받지 않는다. `tick` 이 아니라 rAF 다: 활성이 아닌 타일의 단추를 누르면
+   * 그 타일의 활성화가 rAF 안에서 포커스를 주므로, 이 rAF 가 그 뒤에 돌아야 상자의 포커스를 빼앗기지 않는다(`CodeTermPicker` 와 같다).
    */
   $effect(() => {
     const node = el;
@@ -68,7 +50,6 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  /** 바깥 클릭으로 닫는다 */
   $effect(() => {
     if (!picker) return;
     const onDown = (ev: PointerEvent) => {
@@ -80,12 +61,10 @@
     return () => window.removeEventListener("pointerdown", onDown, true);
   });
 
-  /** 가림막이 내려오면 닫는다 */
   $effect(() => {
     if (picker && veilVisible()) closeAskPicker("none");
   });
 
-  /** 줄 하나를 고른다 — 스냅샷 → 닫기 → 실행 */
   function choose(i: number): void {
     runOnMenu(
       () => {
@@ -134,7 +113,6 @@
     sel = next;
   }
 
-  /** 줄 앞 무리 머리 — 무리가 바뀌는 자리에서만 */
   function groupLabel(rows: readonly AskRow[], i: number, hasTiles: boolean): string | null {
     const row = rows[i];
     const prev = i > 0 ? rows[i - 1] : null;
@@ -144,7 +122,6 @@
     }
     if (row.kind === "sideChat") return null;
     if (prev && prev.kind === "new") return null;
-    // 사이드 채팅 줄 뒤의 새로 열기 줄 — 타일이 없을 때만 "열려 있는 AI 타일이 없습니다"
     if (prev && prev.kind === "sideChat") return hasTiles ? null : t("pane.askai.picker.none");
     return hasTiles ? null : t("pane.askai.picker.none");
   }
@@ -212,7 +189,6 @@
           </span>
         </button>
       {:else if row.kind === "sideChat"}
-        <!-- 사이드 채팅(v2 5단계) — 입력 칸에 채우기만 · 그 타일을 연결 칩에 -->
         <button
           type="button"
           id="askai-row-{i}"
@@ -268,7 +244,7 @@
 {/if}
 
 <style>
-  /* 상자 — 모양은 전역 메뉴 한 벌(`.menu-surface`). 셸 메뉴·알림 상자와 같은 층(121)이다. */
+  /* 셸 메뉴 · 알림 상자와 같은 층(121)이다. */
   .askai {
     position: fixed;
     z-index: 121;
@@ -290,7 +266,7 @@
       transform: none;
     }
   }
-  /* 글래스 — 메뉴의 `opacity` 대신 판 색 · 그림자와 내용만 페이드(theme.css `glass-surface-in` — 움직이는 동안에도 흐림이 선다) */
+  /* 글래스는 `opacity` 대신 판 색 · 내용만 페이드한다 — 움직이는 동안에도 흐림이 선다(theme.css `glass-surface-in`). */
   @media (prefers-reduced-motion: no-preference) {
     :global(:root[data-material="glass"]) .askai {
       --glass-in-from: translateY(-4px);
@@ -352,7 +328,7 @@
     min-height: 32px;
     padding: 0 var(--space-3);
     border: none;
-    border-radius: var(--radius-row); /* 한 줄짜리 줄은 알약(theme.css `--radius-row`) */
+    border-radius: var(--radius-row);
     background: transparent;
     font-family: var(--font-ui);
     font-size: var(--t-sm);
@@ -364,7 +340,6 @@
     grid-template-columns: 16px minmax(0, 1fr) auto;
     color: var(--fg-2);
   }
-  /* 강조색이 서는 자리 — 골라진 줄 하나 */
   .opt.sel {
     background: var(--accent-soft);
   }

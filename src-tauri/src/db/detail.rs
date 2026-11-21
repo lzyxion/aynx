@@ -1,57 +1,43 @@
-//! **테이블 구조**(`db_table_detail` — 스키마 트리에서 테이블 · 뷰를 펼칠 때 한 번 읽는다)의 엔진 공통 꼴과 순수 도우미.
+//! **테이블 구조**(`db_table_detail`)의 엔진 공통 꼴과 순수 도우미.
 //!
-//! 답 = `{columns, indexes, constraints, foreignKeys, referencedBy, triggers, partitions, truncated}` — 트리는 각 칸을 테이블 아래의
-//! 폴더 하나로 그리고 빈 폴더는 숨긴다(엔진에 없는 종류는 늘 빈 칸이다 — 파티션은 PG 분할 테이블만).
-//!
-//! - 질의는 모두 **앱 고정 문장 + 바인드 인자 + 읽기 전용**이다(엔진별 규칙은 `pg` · `mysql` · `sqlite` 의 `table_detail`).
-//! - 칸마다 [`OBJECTS_MAX`](super::OBJECTS_MAX) 줄 상한 — 넘으면 앞 줄만 싣고 그 칸 이름을 `truncated` 에 적는다.
-//! - SQLite 는 체크 제약 · 트리거의 때를 카탈로그로 주지 않는다 — 저장된 `CREATE` 글자를 작은 렉서([`sqlite_checks`] ·
-//!   [`sqlite_trigger_detail`])로 읽는다(표시용 — 실행하지 않는다).
+//! - 질의는 모두 **앱 고정 문장 + 바인드 인자 + 읽기 전용**이다.
+//! - SQLite 의 체크 제약 · 트리거 때는 저장된 `CREATE` 글자를 작은 렉서로 읽는다(표시용 — 실행하지 않는다).
 
 use serde::Serialize;
 use serde_json::Value;
 
 use super::OBJECTS_MAX;
 
-/// 인덱스 하나. `columns` 의 `null` 은 식(SQLite 는 식 글자를 주지 않는다 — PG · MySQL 은 식 글자 그대로).
+/// `columns` 의 `null` 은 식(SQLite 는 식 글자를 주지 않는다).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct IndexOut {
     pub name: String,
     pub columns: Vec<Option<String>>,
     pub unique: bool,
     pub primary: bool,
-    /// 방식(`btree` · `BTREE` · `HASH` …) — 엔진이 쓴 글자.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    /// 부분 인덱스의 조건(PG).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub predicate: Option<String>,
-    /// 정의 글자(PG `pg_get_indexdef` · SQLite 의 `CREATE INDEX`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub definition: Option<String>,
 }
 
-/// 제약 조건 하나 — 기본 키 · 유니크 · 체크 · 제외(PG). 외래 키는 따로([`ForeignKeyOut`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ConstraintOut {
-    /// SQLite 의 기본 키 · 유니크 · 이름 없는 체크는 이름이 없다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// `primary` · `unique` · `check` · `exclude`.
     #[serde(rename = "type")]
     pub ty: &'static str,
     pub columns: Vec<String>,
-    /// 정의 글자(PG `pg_get_constraintdef` · 체크의 `CHECK (…)`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub definition: Option<String>,
 }
 
-/// 외래 키 하나 — `schema.table(columns)` 이 `refSchema.refTable(refColumns)` 를 가리킨다. 외래 키 칸은 이 테이블이 가리키는
-/// 쪽(`schema.table` = 이 테이블), 참조됨 칸은 다른 테이블이 이 테이블을 가리키는 쪽(`refSchema.refTable` = 이 테이블).
+/// 외래 키 칸은 `schema.table` = 이 테이블, 참조됨 칸은 `refSchema.refTable` = 이 테이블.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ForeignKeyOut {
-    /// SQLite 는 외래 키 이름을 주지 않는다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub schema: String,
@@ -60,36 +46,31 @@ pub(crate) struct ForeignKeyOut {
     pub ref_schema: String,
     pub ref_table: String,
     pub ref_columns: Vec<String>,
-    /// `NO ACTION` · `RESTRICT` · `CASCADE` · `SET NULL` · `SET DEFAULT`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_update: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_delete: Option<String>,
 }
 
-/// 트리거 하나 — `detail` = 때 · 사건(`BEFORE INSERT OR UPDATE` — SQL 낱말 그대로, 모르면 빈 글자).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct TriggerOut {
     pub name: String,
     pub detail: String,
-    /// 정의 글자(PG `pg_get_triggerdef` · MySQL 몸 · SQLite `CREATE TRIGGER`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub definition: Option<String>,
 }
 
-/// 파티션 하나(PG 분할 테이블의 자식) — `bound` = 범위 식(`FOR VALUES FROM (…) TO (…)` · `DEFAULT`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct PartitionOut {
     pub schema: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound: Option<String>,
-    /// 자식도 분할 테이블이면 `partitioned`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub: Option<&'static str>,
 }
 
-/// `db_table_detail` 의 답. `columns` 는 `db_objects` 이전의 컬럼 꼴 그대로(`{name, type, notNull, default, pk}`).
+/// `columns` 는 `db_objects` 이전의 컬럼 꼴 그대로(`{name, type, notNull, default, pk}`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TableDetail {
@@ -100,12 +81,10 @@ pub(crate) struct TableDetail {
     pub referenced_by: Vec<ForeignKeyOut>,
     pub triggers: Vec<TriggerOut>,
     pub partitions: Vec<PartitionOut>,
-    /// 상한에서 잘린 칸 이름(`indexes` …).
     pub truncated: Vec<&'static str>,
 }
 
 impl TableDetail {
-    /// 칸마다 상한을 건다 — **순수**. 넘은 칸 이름을 `truncated` 에 더한다.
     pub(crate) fn capped(mut self) -> TableDetail {
         let mut t = Vec::new();
         cap(&mut self.columns, "columns", &mut t);
@@ -131,8 +110,7 @@ fn cap<T>(v: &mut Vec<T>, part: &'static str, truncated: &mut Vec<&'static str>)
     }
 }
 
-/// 정렬된 줄을 열쇠가 같은 이웃끼리 묶는다 — **순수**(MySQL `information_schema` 의 "열 하나 = 줄 하나" → 객체 하나). 열쇠가
-/// 바뀔 때마다 새 묶음(같은 열쇠가 떨어져 다시 오면 다른 묶음이다 — 질의가 열쇠 순으로 정렬한다).
+/// 열쇠가 바뀔 때마다 새 묶음 — 질의가 열쇠 순으로 정렬해야 한다.
 pub(crate) fn group_runs<R, K: PartialEq>(rows: Vec<R>, key: impl Fn(&R) -> K) -> Vec<Vec<R>> {
     let mut out: Vec<Vec<R>> = Vec::new();
     let mut last: Option<K> = None;
@@ -149,7 +127,6 @@ pub(crate) fn group_runs<R, K: PartialEq>(rows: Vec<R>, key: impl Fn(&R) -> K) -
 
 // ── PostgreSQL ────────────────────────────────────────────────────────────
 
-/// `pg_constraint.confupdtype`·`confdeltype` → 낱말 — **순수**.
 pub(crate) fn pg_fk_action(code: &str) -> Option<String> {
     let w = match code {
         "a" => "NO ACTION",
@@ -162,7 +139,6 @@ pub(crate) fn pg_fk_action(code: &str) -> Option<String> {
     Some(w.to_string())
 }
 
-/// `pg_constraint.contype` → 제약 종류 — **순수**(외래 키 `f` 는 따로 읽는다).
 pub(crate) fn pg_constraint_type(code: &str) -> &'static str {
     match code {
         "p" => "primary",
@@ -172,7 +148,7 @@ pub(crate) fn pg_constraint_type(code: &str) -> &'static str {
     }
 }
 
-/// `pg_trigger.tgtype` 비트 → `BEFORE INSERT OR UPDATE` — **순수**(PG 소스 `pg_trigger.h` 의 `TRIGGER_TYPE_*`).
+/// PG 소스 `pg_trigger.h` 의 `TRIGGER_TYPE_*` 비트.
 pub(crate) fn pg_trigger_detail(tgtype: i32) -> String {
     const BEFORE: i32 = 1 << 1;
     const INSERT: i32 = 1 << 2;
@@ -195,11 +171,10 @@ pub(crate) fn pg_trigger_detail(tgtype: i32) -> String {
     format!("{timing} {}", events.join(" OR "))
 }
 
-/// 관계 하나 찾기 — 스키마 · 이름은 **바인드 인자**(`$1` · `$2`). 답 = oid · relkind.
 pub(crate) const PG_REL: &str = "SELECT c.oid, c.relkind::text FROM pg_catalog.pg_class c \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2";
 
-/// 컬럼(`$1` = oid · `$2` = 상한) — `pk` = 기본 키 안의 순번(0 = 아님).
+/// `pk` = 기본 키 안의 순번(0 = 아님).
 pub(crate) const PG_COLUMNS: &str = "SELECT a.attname::text, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, \
      pg_catalog.pg_get_expr(d.adbin, d.adrelid), \
      COALESCE((SELECT k.n FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(att, n) WHERE k.att = a.attnum), 0)::int4 \
@@ -208,8 +183,6 @@ pub(crate) const PG_COLUMNS: &str = "SELECT a.attname::text, pg_catalog.format_t
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = a.attrelid AND i.indisprimary \
      WHERE a.attrelid = $1 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum LIMIT $2";
 
-/// 인덱스(`$1` = oid · `$2` = 상한) — 열 글자는 `pg_get_indexdef(…, k, true)`(식 인덱스는 식 글자). 11+ 는 키 열만
-/// (`indnkeyatts` — `INCLUDE` 열은 정의 글자에 보인다).
 pub(crate) fn pg_index_sql(server_version_num: i32) -> String {
     let natts = if server_version_num >= 110_000 { "indnkeyatts" } else { "indnatts" };
     format!(
@@ -222,7 +195,6 @@ pub(crate) fn pg_index_sql(server_version_num: i32) -> String {
     )
 }
 
-/// 제약(기본 키 · 유니크 · 체크 · 제외 — `$1` = oid · `$2` = 상한).
 pub(crate) const PG_CONSTRAINTS: &str = "SELECT con.conname::text, con.contype::text, \
      ARRAY(SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(att, n) \
      JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.att ORDER BY k.n), \
@@ -230,8 +202,7 @@ pub(crate) const PG_CONSTRAINTS: &str = "SELECT con.conname::text, con.contype::
      FROM pg_catalog.pg_constraint con WHERE con.conrelid = $1 AND con.contype IN ('p', 'u', 'c', 'x') \
      ORDER BY strpos('pucx', con.contype::text), con.conname LIMIT $2";
 
-/// 외래 키(`$1` = oid · `$2` = 상한) — `incoming` 이면 이 테이블을 **가리키는** 쪽(참조됨). 11+ 는 분할 테이블이 파티션마다 복제한
-/// 제약(`conparentid <> 0`)을 뺀다(부모의 제약 하나로 보인다).
+/// 11+ 는 분할 테이블이 파티션마다 복제한 제약(`conparentid <> 0`)을 뺀다.
 pub(crate) fn pg_fk_sql(server_version_num: i32, incoming: bool) -> String {
     let side = if incoming { "confrelid" } else { "conrelid" };
     let parent = if server_version_num >= 110_000 { " AND con.conparentid = 0" } else { "" };
@@ -250,18 +221,15 @@ pub(crate) fn pg_fk_sql(server_version_num: i32, incoming: bool) -> String {
     )
 }
 
-/// 트리거(`$1` = oid · `$2` = 상한) — 내부 트리거(외래 키가 만든 것)는 뺀다.
 pub(crate) const PG_TRIGGERS: &str = "SELECT t.tgname::text, t.tgtype::int4, pg_catalog.pg_get_triggerdef(t.oid, true) \
      FROM pg_catalog.pg_trigger t WHERE t.tgrelid = $1 AND NOT t.tgisinternal ORDER BY t.tgname LIMIT $2";
 
-/// 파티션(`$1` = 분할 테이블 oid · `$2` = 상한) — 바로 아래 자식만(하위 분할은 `sub`).
 pub(crate) const PG_PARTITIONS: &str = "SELECT n.nspname::text, c.relname::text, pg_catalog.pg_get_expr(c.relpartbound, c.oid, true), \
      c.relkind::text FROM pg_catalog.pg_inherits i JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE i.inhparent = $1 ORDER BY c.relname LIMIT $2";
 
-// ── SQLite — 저장된 CREATE 글자 읽기(표시용) ─────────────────────────────
+// ── SQLite ──
 
-/// 렉서의 낱개 — 낱말 · 인용 식별자(풀어 둔 글자) · 글자 리터럴 · 기호 한 바이트.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Tok {
     Word(String),
@@ -270,7 +238,7 @@ enum Tok {
     Punct(u8),
 }
 
-/// `(낱개, 시작, 끝)` — 공백 · 주석은 건너뛴다. 끝나지 않은 인용은 끝까지 하나로 본다.
+/// 끝나지 않은 인용은 끝까지 하나로 본다.
 fn sqlite_tokens(sql: &str) -> Vec<(Tok, usize, usize)> {
     let b = sql.as_bytes();
     let n = b.len();
@@ -332,8 +300,7 @@ fn name_of(t: &Tok) -> Option<String> {
     }
 }
 
-/// `CREATE TRIGGER` 글자 → 때 · 사건(`BEFORE INSERT` · `INSTEAD OF UPDATE` — 때를 안 적었으면 SQLite 기본 `BEFORE`) — **순수**.
-/// 읽지 못하면 빈 글자.
+/// 때를 안 적었으면 SQLite 기본 `BEFORE`. 읽지 못하면 빈 글자.
 pub(crate) fn sqlite_trigger_detail(sql: &str) -> String {
     let t = sqlite_tokens(sql);
     let Some(mut i) = t.iter().position(|(x, _, _)| is_word(x, "TRIGGER")).map(|p| p + 1) else {
@@ -367,7 +334,6 @@ pub(crate) fn sqlite_trigger_detail(sql: &str) -> String {
     }
 }
 
-/// SQLite 체크 제약 하나 — 이름(`CONSTRAINT x CHECK …` 일 때) · 컬럼(컬럼 정의 안의 체크일 때) · 식 글자.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SqliteCheck {
     pub name: Option<String>,
@@ -375,8 +341,6 @@ pub(crate) struct SqliteCheck {
     pub expr: String,
 }
 
-/// `CREATE TABLE` 글자 → 체크 제약 — **순수**. 정의 목록(맨 바깥 괄호) 안의 `CHECK (…)` 를 찾는다(테이블 제약 · 컬럼 제약 모두).
-/// `CREATE TABLE … AS SELECT` 는 없음.
 pub(crate) fn sqlite_checks(sql: &str) -> Vec<SqliteCheck> {
     let t = sqlite_tokens(sql);
     let Some(open) = t.iter().position(|(x, _, _)| *x == Tok::Punct(b'(')) else {
@@ -385,7 +349,6 @@ pub(crate) fn sqlite_checks(sql: &str) -> Vec<SqliteCheck> {
     if t[..open].iter().any(|(x, _, _)| is_word(x, "AS")) {
         return Vec::new();
     }
-    // 정의 하나(쉼표로 갈린 낱개 범위)씩.
     let mut items: Vec<(usize, usize)> = Vec::new();
     let mut depth = 0usize;
     let mut start = open + 1;

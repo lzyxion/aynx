@@ -13,37 +13,19 @@
   import type { Key } from "$lib/i18n/keys";
 
   /**
-   * **설정 › 터미널 "타일 머리줄 칩"** (2026-10-18 — 목업 E5yfAAq5XawDLGCjhSAH4U, 사용자 확정) — 머리줄 모양 막대 하나에 칩 일곱을
-   * 샘플 글자로 늘어놓고, **누르면 켬/끔 · 끌면 순서**를 바꾼다(키보드는 칩에 포커스를 두고 `Alt+←/→`). 모양은 진짜 머리줄 칩
-   * 한 벌(`pane/header-chip.css` 의 `.hchip` · `theme.css` 의 `--chip-*`)이고, 끈 칩은 판을 걷고 흐린 글자로 선다.
-   *
-   * 끌기(HTML5 drag): 끌기 그림이 찍힌 **뒤에**(`setTimeout 0` — 같은 틱에 숨기면 끌기가 취소된다) 원래 칩을 `visibility:hidden`
-   * 으로 비워 자리(폭)만 남긴다. 커서 x 와 다른 칩의 배치상 중심을 비교해 삽입 자리를 정하고, **미리 보기 순서**(`preview`)를
-   * 바꿔 빈자리가 놓일 곳으로 옮겨 간다 — 강조선은 없다. 이웃 칩은 FLIP(`$lib/flip`)으로 밀려나고, 놓으면 그 칩이 내려앉으며
-   * 순서가 저장된다. 줄 밖에 놓거나 Esc 면 drop 없이 dragend 만 오고 원래 순서로 미끄러져 돌아간다.
-   *
-   * `Alt+←/→` 는 전역에서 타일 포커스 이동(`focus-left/right`)이다 — 그 처리는 창의 **버블 단계**라, 칩의 keydown 이 먼저 받아
-   * `stopPropagation` 하면 타일 포커스가 움직이지 않는다. 전역 단축키로 등록하지 않는다(이 줄 안에서만의 뜻이다).
+   * 설정 › 터미널 "타일 머리줄 칩" — 누르면 켬/끔 · 끌면 순서(키보드는 `Alt+←/→`).
+   * 끄는 칩은 끌기 그림이 찍힌 뒤(`setTimeout 0`)에 숨긴다 — 같은 틱에 숨기면 끌기가 취소된다.
+   * `Alt+←/→` 는 전역 타일 포커스 이동(버블 단계)이라 칩의 keydown 이 먼저 받아 `stopPropagation` 한다 — 전역 단축키로 등록하지 않는다.
    */
 
-  /** 칩 묶음의 `id` — 설정 색인 anchor(`settings-index.ts` 의 `header-chips`). `{id}-label` · `{id}-hint` 도 여기서 나온다 */
+  /** 설정 색인 anchor(`header-chips`) — `{id}-label` · `{id}-hint` 도 여기서 나온다 */
   let { id }: { id: string } = $props();
 
   type ChipView = { id: HeaderChipId; icon: string | null; color: string; name: string };
 
-  /**
-   * AI 권한 칩의 샘플 단계 — 승인 후 실행(Ask). 진짜 칩처럼 그림 자리에 **미니 게이지**(`AiGaugeMini`)가 서고, 칩 판 · 글자는 그 자리의 색
-   * (`data-ai-tone` — 막대의 `--ai-c` 도 여기서 나온다)이다.
-   */
   const AI_SAMPLE_AT = gaugeIndex(AI_STAGES, "approve");
 
-  /**
-   * 칩마다의 그림 · 색 — `pane/HeaderChips` 의 그 칩과 같다. 터미널 타일 머리줄(10-20 개편)처럼 칩은 **터미널 글자색**(`--term-fg`)이고,
-   * 단계를 말하는 신호인 AI 권한 칩만 단계 색을 둔다 — 터미널 바탕 기준의 단계 색(`.hc-bar` 가 바꿔 입힌다 · `PaneHeader` 의 `.pane-head.term` 과 같은 규칙). 글자는 실제 값 샘플이 아니라 **칩 이름**이다
-   * (10-18 사용자 — 샘플(`aynx` · `3.2% · 412 MB` …)이면 막대가 넘쳐 가로 스크롤이 생겼다). 그림이 `null` 이면 AI 권한 칩이다 — 그림 자리에
-   * 진짜 칩과 같은 미니 게이지(아래 `AI_SAMPLE_AT`)가 선다(10-23). AI 권한 칩 하나가 원격 · 쿼리 · 로컬 타일을 함께 켜고 끈다
-   * (10-23 — 예전 따로 선 로컬 'AI 읽기' 칩 `ai_read` 를 합쳤다. 옛 설정의 옮기기는 `$lib/header-chips` 의 `migrateLegacyChips`).
-   */
+  /** `pane/HeaderChips` 의 그 칩과 같은 그림 · 색. 글자는 칩 이름이다 — 실제 값 샘플이면 막대가 넘쳐 가로 스크롤이 생겼다 */
   const CHIP_LOOK: Record<HeaderChipId, Omit<ChipView, "id" | "name">> = {
     folder: { icon: "folder", color: "var(--term-fg)" },
     branch: { icon: "git-branch", color: "var(--term-fg)" },
@@ -68,9 +50,7 @@
   const DRAG_TYPE = "application/x-aynx-header-chip";
 
   let groupEl = $state<HTMLElement | null>(null);
-  /** 끄는 동안 보이는 순서(끄는 칩이 들어갈 자리가 이미 비어 있다) — 끌지 않을 때는 `null` */
   let preview = $state<HeaderChipId[] | null>(null);
-  /** 끄는 중인 칩(빈자리로 보인다) */
   let dragId = $state<HeaderChipId | null>(null);
   /** dragstart ~ dragend — `setTimeout 0` 이 dragend 뒤에 와도 빈자리를 세우지 않게 */
   let dragging: HeaderChipId | null = null;
@@ -78,7 +58,6 @@
   const shownOrder = $derived<readonly HeaderChipId[]>(preview ?? settings.headerChipOrder);
   const chips = $derived(shownOrder.map((id): ChipView => ({ id, ...CHIP_LOOK[id], name: t(NAME_KEY[id]) })));
 
-  /** 상태를 바꾸고(`change`) 바뀐 자리로 미끄러지게 — `pop` 은 방금 놓인 칩 */
   async function flip(change: () => void, pop: HeaderChipId | null = null): Promise<void> {
     const g = groupEl;
     const before = g ? measureLefts(g) : null;
@@ -146,7 +125,6 @@
     }, id);
   }
 
-  // 줄 밖에 놓았거나 Esc — drop 없이 끝났으면 원래 순서로 미끄러져 돌아간다
   function onDragEnd(): void {
     dragging = null;
     if (dragId === null) return;
@@ -174,7 +152,7 @@
     onclick={reset}>{t("settings.terminal.header_chips.reset")}</button
   >
   <p class="hint" id="{id}-hint">{t("settings.terminal.header_chips.summary")}</p>
-  <!-- 머리줄 모양 막대 — 칩 묶음만 둔다(10-18 사용자: 타일 이름 샘플 없이). 칩 묶음이 위치 기준(`position: relative`)이라 삽입 자리를 offsetLeft 로 잰다 -->
+  <!-- 칩 묶음이 위치 기준(`position: relative`)이라 삽입 자리를 offsetLeft 로 잰다 -->
   <div class="hc-bar">
     <div
       class="hc-group"
@@ -216,13 +194,11 @@
 </div>
 
 <style>
-  /* [기본값] — 이름 줄 오른쪽 위 */
   .srow > .hc-reset {
     grid-row: 1;
     align-self: start;
   }
 
-  /* 막대는 두 칸을 다 쓰는 셋째 줄 */
   .srow > .hc-bar {
     grid-column: 1 / -1;
     grid-row: 3;
@@ -236,9 +212,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 6px; /* (36 − 테두리 2 − 칩 22) / 2 — 칩 알약이 막대 알약과 같은 중심의 끝을 갖는다 */
-    /* 막대 = 터미널 타일 머리줄 — 터미널 바탕 위에 칩(10-20 개편: 머리줄이 터미널 바탕을 그대로 비춘다) */
     background: var(--term-bg);
-    /* AI 권한 칩의 단계 색도 머리줄처럼 터미널 바탕 기준(`theme.css` 의 `--ai-term-lv*`) — 칩 글자 · 판과 미니 게이지의 찬 막대(`--ai-c`) */
     --chip-ai-approve: var(--ai-term-lv2);
     --chip-ai-auto: var(--ai-term-lv3);
     --chip-ai-all: var(--ai-term-lv4);
@@ -257,7 +231,6 @@
     gap: 6px;
   }
 
-  /* 설정 줄의 칩은 누르고 끄는 손잡이라 머리줄 칩보다 한 치수 크다(목업 22px) */
   .hc-chip {
     /* 머리줄 터미널 칩과 같은 판 짙기(`.pane-head.term` 의 12% · 18%) */
     --chip-tint: 12%;
@@ -273,13 +246,12 @@
     cursor: grabbing;
   }
 
-  /* 끔 — 판을 걷고 흐린 글자. 손을 얹으면 회색 판이 한 단 선다 */
   .hc-chip.off {
     --c: color-mix(in srgb, var(--term-fg) 45%, transparent) !important;
     background: transparent;
   }
 
-  /* 끈 AI 권한 칩 — 게이지의 찬 막대도 흐린 글자색으로(단계 색이 남으면 켜진 칩처럼 읽힌다) */
+  /* 단계 색이 남으면 켜진 칩처럼 읽힌다 */
   .hc-chip.off {
     --ai-c: var(--c);
   }
@@ -288,7 +260,6 @@
     background: color-mix(in srgb, var(--c) var(--chip-tint), transparent);
   }
 
-  /* 끄는 칩 — 자리(폭)만 남긴다. 그 빈자리가 곧 놓일 자리다 */
   .hc-chip.ghost {
     visibility: hidden;
   }

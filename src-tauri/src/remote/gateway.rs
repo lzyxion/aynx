@@ -1,9 +1,5 @@
-//! 관문 리스너 — hyper(http1) 를 tauri 의 tokio 런타임에서 돌린다. 127.0.0.1 하나에만 묶고, 요청마다 문지기
-//! ([`check_request`] — Host · Origin · 메서드)를 지난 요청을 단계(R1a-2 — 쿠키: 미페어링·페어링됨·열림, `gate.rs`)로 가른다:
-//! 열림만 정적 파일(`static_files.rs`), 그 전 단계는 관문이 그리는 페어링·잠금 해제 쪽과 POST 다섯(`gate::POST_ROUTES`).
-//!
-//! 상한(루프백 공용 부품 `loopback_http` 의 값을 그대로): 동시 연결 [`MAX_INFLIGHT`](넘치면 받자마자 닫음) · 머리 읽기 시한
-//! [`READ_TIMEOUT`] · 머리 크기 16KiB · 연결 하나의 수명 2분 · GET 에 본문이 있으면 413 · POST 몸은 4KiB 까지(넘으면 413).
+//! 관문 리스너 — hyper(http1)를 tauri 의 tokio 런타임에서 돌린다. 127.0.0.1 하나에만 묶고, 문지기([`check_request`])를 지난 요청을
+//! 단계로 가른다 — 열림만 앱 파일을 받는다. 상한은 루프백 공용 부품 `loopback_http` 의 값을 그대로 쓴다.
 
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -29,33 +25,29 @@ use super::{ws, Config, Handle};
 use crate::i18n::tr;
 use crate::loopback_http::{MAX_INFLIGHT, READ_TIMEOUT};
 
-/// 연결 하나가 살아 있는 최대 시간 — keep-alive 로 자산 여러 개를 받는 데는 넉넉하고, 붙들고 놓지 않는 연결은 끊는다.
-/// 업그레이드된 `/remote/ws` 는 이 상한 밖이다(HTTP 연결은 업그레이드로 끝나고 ws 는 제 태스크 — 제 시한은 `ws.rs`).
+/// 붙들고 놓지 않는 연결은 끊는다. 업그레이드된 `/remote/ws` 는 이 상한 밖이다(제 시한은 `ws.rs`).
 const CONN_LIFETIME: Duration = Duration::from_secs(120);
-/// 요청 머리 버퍼 상한(hyper 하한 8KiB 위).
+/// hyper 하한 8KiB 위.
 const MAX_HEAD_BYTES: usize = 16 * 1024;
-/// 도는 동안 Funnel 을 다시 보는 간격.
 const FUNNEL_RECHECK: Duration = Duration::from_secs(60);
 
-/// 받을 이름 — 문지기가 보는 것.
 #[derive(Debug, Clone)]
 pub(crate) struct Allowed {
-    /// 설정한 `*.ts.net` 이름(소문자). `None` = 미설정(개발 빌드의 루프백 시험만).
+    /// 소문자. `None` = 미설정(개발 빌드의 루프백 시험만).
     pub host: Option<String>,
-    /// 우리가 듣는 포트 — 루프백 이름은 이 포트까지 같아야 한다.
+    /// 루프백 이름은 이 포트까지 같아야 한다.
     pub port: u16,
-    /// `127.0.0.1:<포트>`·`localhost:<포트>` 를 받는가 — **개발 빌드만**.
+    /// `127.0.0.1:<포트>` · `localhost:<포트>` 를 받는가 — 개발 빌드만.
     pub loopback: bool,
 }
 
-/// 문지기 거절 — 응답 코드가 갈린다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reject {
-    /// `Host` 가 없거나·여럿이거나·설정한 이름이 아님 → 421.
+    /// 없거나 · 여럿이거나 · 설정한 이름이 아님 → 421.
     Host,
-    /// `Origin` 이 같은 출처가 아님(POST 는 없어도) → 403.
+    /// 같은 출처가 아님(POST 는 없어도) → 403.
     Origin,
-    /// GET 이 아님(POST 는 [`gate::POST_ROUTES`] 만) → 405.
+    /// → 405.
     Method,
 }
 
@@ -69,14 +61,9 @@ impl Reject {
     }
 }
 
-/// 요청 하나의 문지기 — **순수 함수**. `hosts` 는 `Host` 헤더 값 전부(둘 이상이면 거절), `origin` 은 `Origin` 헤더.
-///
-/// - `Host`: 설정한 이름(포트는 붙어 있어도 됨 — `tailscale serve --https=<포트>` 면 `이름:<포트>`) → 출처 `https://<Host>`.
-///   개발 빌드면 `127.0.0.1:<우리 포트>`·`localhost:<우리 포트>` 도 → 출처 `http://<Host>`.
-/// - `Origin`: 있으면 위 출처와 글자 그대로(대소문자 무시) 같아야 한다. `null` 도 거절.
-/// - 메서드는 이름 검사 **뒤에** 본다 — 엉뚱한 이름으로 온 요청에는 메서드 정보도 주지 않는다. GET 은 어디든, **POST 는
-///   [`gate::POST_ROUTES`](페어링·잠금 해제·잠그기·재확인) 에만, 그리고 `Origin` 이 반드시 있어야** 한다(R1a-2 — 브라우저의 fetch POST 는
-///   언제나 Origin 을 싣는다. 없으면 브라우저가 아닌 무엇이다 — CSRF 판정을 "없으니 통과" 로 접지 않는다).
+/// 요청 하나의 문지기(순수). `Host` 가 둘 이상이면 거절. `Origin` 이 있으면 출처와 글자 그대로(대소문자 무시) 같아야 하고 `null` 도 거절한다.
+/// 메서드는 이름 검사 뒤에 본다 — 엉뚱한 이름으로 온 요청에는 메서드 정보도 주지 않는다. POST 는 [`gate::POST_ROUTES`] 에만, 그리고 `Origin` 이
+/// 반드시 있어야 한다 — 브라우저의 fetch POST 는 늘 싣는다. CSRF 판정을 "없으니 통과" 로 접지 않는다.
 pub(crate) fn check_request(
     method: &Method,
     path: &str,
@@ -102,7 +89,6 @@ pub(crate) fn check_request(
     Err(Reject::Method)
 }
 
-/// `Host` 값이 받을 이름이면 그 출처의 스킴.
 fn host_scheme(host: &str, allowed: &Allowed) -> Option<&'static str> {
     let (name, port) = match host.rsplit_once(':') {
         Some((n, p)) => (n, Some(p)),
@@ -127,17 +113,16 @@ fn host_scheme(host: &str, allowed: &Allowed) -> Option<&'static str> {
     None
 }
 
-/// 연결마다 공유하는 것.
 struct Ctx {
     app: tauri::AppHandle,
     allowed: Allowed,
     csp: Csp,
     auth: Arc<Auth>,
-    /// 관문 회차의 닫힘 신호 — 업그레이드된 ws 도 이것을 본다.
+    /// 업그레이드된 ws 도 이것을 본다.
     stop: watch::Receiver<bool>,
 }
 
-/// 관문 한 회차: Funnel 확인 → 127.0.0.1 묶기 → 받기 + 60초마다 Funnel 재확인. `stopped` 가 `true` 가 되면 끝난다.
+/// 관문 한 회차 — Funnel 이 켜져 있으면 묶지 않고, 도는 동안 다시 봐 켜지면 닫는다.
 pub(crate) async fn run(handle: Handle, cfg: Config, mut stopped: watch::Receiver<bool>) {
     let fail = |handle: &Handle, error: String, funnel: Option<&Funnel>| {
         eprintln!("[aynx] 원격 관문: {error}");
@@ -188,7 +173,7 @@ pub(crate) async fn run(handle: Handle, cfg: Config, mut stopped: watch::Receive
     });
     let slots = Arc::new(Semaphore::new(MAX_INFLIGHT));
     let mut recheck = tokio::time::interval(FUNNEL_RECHECK);
-    recheck.tick().await; // 첫 틱은 곧바로 — 방금 봤다
+    recheck.tick().await;
     loop {
         tokio::select! {
             changed = stopped.changed() => {
@@ -207,7 +192,7 @@ pub(crate) async fn run(handle: Handle, cfg: Config, mut stopped: watch::Receive
             accepted = listener.accept() => {
                 let Ok((stream, _)) = accepted else { continue };
                 let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
-                    drop(stream); // 동시 상한 — 받자마자 닫는다
+                    drop(stream);
                     continue;
                 };
                 let ctx = Arc::clone(&ctx);
@@ -234,7 +219,6 @@ pub(crate) async fn run(handle: Handle, cfg: Config, mut stopped: watch::Receive
             }
         }
     }
-    // 리스너는 여기서 drop 된다 — 포트를 놓는다.
     handle.update(false, |s| s.listening = false);
 }
 
@@ -294,7 +278,7 @@ async fn handle_request(ctx: &Ctx, req: Request<Incoming>) -> Response<Full<Byte
         };
         return gate::post(&ctx.app, &ctx.auth, &path, &headers, collected.to_bytes()).await;
     }
-    // GET 에 본문은 없다 — 있으면(길이·청크) 읽지 않고 거절한다.
+    // GET 에 본문이 있으면(길이 · 청크) 읽지 않고 거절한다.
     let has_body = req.headers().contains_key(header::TRANSFER_ENCODING)
         || req
             .headers()
@@ -307,7 +291,7 @@ async fn handle_request(ctx: &Ctx, req: Request<Incoming>) -> Response<Full<Byte
     if let Some((body, mime)) = gate::gate_asset(raw_path) {
         return gate::asset_response(body, mime);
     }
-    // 단계(R1a-2): 열림만 앱 파일을 받는다 — 그 전 단계는 셸 자리(`/`)에 관문 쪽, 나머지는 401(앱 HTML·번들을 내지 않는다).
+    // 열림만 앱 파일을 받는다 — 그 전 단계는 셸 자리(`/`)에 관문 쪽, 나머지는 401(앱 HTML · 번들을 내지 않는다).
     let now = Instant::now();
     match gate::level(&ctx.auth, req.headers(), now) {
         Level::Open(_) => {}
@@ -315,7 +299,6 @@ async fn handle_request(ctx: &Ctx, req: Request<Incoming>) -> Response<Full<Byte
         Level::Unpaired if gate::is_shell(raw_path) => return gate::page_response(gate::pair_page()),
         _ => return plain(StatusCode::UNAUTHORIZED, ""),
     }
-    // 원격 창(R1a-3) — 폴리필 · `convertFileSrc` 의 파일.
     if raw_path == POLYFILL_PATH {
         return script_response(POLYFILL, &ctx.csp);
     }
@@ -338,7 +321,7 @@ async fn handle_request(ctx: &Ctx, req: Request<Incoming>) -> Response<Full<Byte
     let Some((bytes, mime)) = asset else {
         return plain(StatusCode::NOT_FOUND, "");
     };
-    // 앱 셸 — 원격 부팅(부팅 표 · 폴리필)을 끼운다. 표는 이 응답에만 실린다(`no-store`).
+    // 부팅 표는 이 응답에만 실린다(`no-store`).
     if path == "index.html" {
         let Some(html) = remote_shell(ctx, req.headers(), now, &bytes) else {
             return plain(StatusCode::UNAUTHORIZED, "");
@@ -348,10 +331,9 @@ async fn handle_request(ctx: &Ctx, req: Request<Incoming>) -> Response<Full<Byte
     asset_response(&path, bytes, mime, &ctx.csp)
 }
 
-/// 원격 창의 폴리필 — `window.__TAURI_INTERNALS__` 를 세운다(`polyfill.js` 머리말).
 const POLYFILL: &str = include_str!("polyfill.js");
 
-/// 앱 셸 + 원격 부팅. 세션의 부팅 표를 하나 뽑는다(라벨·세대가 정해진다).
+/// 세션의 부팅 표를 하나 뽑는다(라벨 · 세대가 정해진다).
 fn remote_shell(ctx: &Ctx, headers: &hyper::HeaderMap, now: Instant, bytes: &[u8]) -> Option<String> {
     let (device, session) = gate::open_session(&ctx.auth, headers, now)?;
     let (ticket, label, gen, name) = {
@@ -366,14 +348,13 @@ fn remote_shell(ctx: &Ctx, headers: &hyper::HeaderMap, now: Instant, bytes: &[u8
         "ticket": ticket.as_str(),
         "sep": sep,
         "delimiter": delimiter,
-        // 재확인 명령(R1a-4) — 폴리필이 이것들 앞에서 `/remote/reauth` 로 표를 받는다(표는 `deny.rs` 하나).
+        // 폴리필이 이것들 앞에서 `/remote/reauth` 로 표를 받는다(표는 `deny.rs` 하나).
         "reauth": super::deny::REAUTH,
-        // 원격 상태바의 "원격 — <기기 이름>"(R1a-5). 속성 값은 `inject_remote_boot` 가 이스케이프한다.
+        // 속성 값은 `inject_remote_boot` 가 이스케이프한다.
         "device": name,
-        // 이 기기의 id(10-20 — 폰 설정의 [이 기기 페어링 해제]가 원격 허용 `remote_device_revoke` 에 넘긴다). 비밀이 아니다 — 기기
-        // 목록(`remote_devices_list`)이 이미 원격에 내보내는 값이다. 페어링 토큰 · 세션 쿠키와 무관.
+        // 비밀이 아니다 — 기기 목록이 이미 원격에 내보내는 값이다(페어링 토큰 · 세션 쿠키와 무관).
         "deviceId": device,
-        // 메인 PC 의 지금 앱 언어 — 앱 모듈이 뜨기 전 폴리필 자신의 문구(작은 암호 칸 · 거절 문구)가 쓴다. 뜬 뒤에는 `<html lang>`.
+        // 앱 모듈이 뜨기 전 폴리필 자신의 문구가 쓴다.
         "lang": match crate::i18n::lang() {
             crate::i18n::Lang::En => "en",
             crate::i18n::Lang::Ko => "ko",
@@ -392,11 +373,10 @@ fn script_response(body: &'static str, csp: &Csp) -> Response<Full<Bytes>> {
     response
 }
 
-/// 그림 한 장의 상한(월페이퍼 받기와 같은 50MB).
+/// 월페이퍼 받기와 같은 50MB.
 const MAX_ASSET_BYTES: u64 = 50 * 1024 * 1024;
 
-/// `GET /remote/asset?path=<절대 경로>` — 원격의 `convertFileSrc`(설계 14.6). 열림만(위에서 걸렀다) · **Tauri asset 스코프와 같은
-/// 판정**(`asset_protocol_scope().is_allowed` — 지금은 월페이퍼 사본 이름만) · 래스터 그림만. 밖이면 404(있는지도 밝히지 않는다).
+/// 원격의 `convertFileSrc`. Tauri asset 스코프와 같은 판정 · 래스터 그림만. 밖이면 404(있는지도 밝히지 않는다).
 async fn remote_asset(ctx: &Ctx, query: Option<&str>) -> Response<Full<Bytes>> {
     use tauri::Manager;
     let Some((path, mime)) = static_files::query_param(query, "path").and_then(|p| static_files::asset_request(&p)) else {
@@ -431,7 +411,7 @@ async fn remote_asset(ctx: &Ctx, query: Option<&str>) -> Response<Full<Bytes>> {
     response
 }
 
-/// `GET /remote/ws?t=<부팅 표>` — 원격 창 업그레이드(`ws.rs` 머리말의 조건 전부). 거절은 짧은 코드뿐.
+/// 원격 창 업그레이드(`ws.rs` 머리말의 조건 전부). 거절은 짧은 코드뿐.
 fn ws_upgrade(ctx: &Ctx, mut req: Request<Incoming>, has_origin: bool) -> Response<Full<Bytes>> {
     if !has_origin {
         return plain(StatusCode::FORBIDDEN, "");
@@ -494,7 +474,7 @@ fn ws_upgrade(ctx: &Ctx, mut req: Request<Incoming>, has_origin: bool) -> Respon
     response
 }
 
-/// 자산 한 장의 응답 — 내용 종류 · 캐시 · **CSP**(HTML 이면 인라인 스크립트 해시까지) · 보안 머리. 순수 조립(시험이 머리를 본다).
+/// HTML 이면 CSP 에 인라인 스크립트 해시까지 넣는다.
 pub(crate) fn asset_response(path: &str, bytes: Vec<u8>, mime: String, csp: &Csp) -> Response<Full<Bytes>> {
     let is_html = mime.starts_with("text/html");
     let csp = if is_html {
@@ -516,7 +496,6 @@ pub(crate) fn asset_response(path: &str, bytes: Vec<u8>, mime: String, csp: &Csp
     response
 }
 
-/// 짧은 글자 응답(거절·없음) — 캐시 안 함.
 fn plain(status: StatusCode, body: &'static str) -> Response<Full<Bytes>> {
     let mut response = Response::new(Full::new(Bytes::from_static(body.as_bytes())));
     *response.status_mut() = status;

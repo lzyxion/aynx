@@ -1,33 +1,22 @@
 <script lang="ts" module>
-  /** 카드를 여는 재료 — `Terminal.svelte` 가 블록 줄 단추에서 짓는다 */
   export interface BlockViewOpen {
     blockId: number;
     command: string;
     exit: number | null;
     durationMs: number | null;
-    /** 출력 전부(버퍼) — 밀려났으면 이력의 발췌 */
+    /** 밀려났으면 이력의 발췌 */
     text: string;
     /** 발췌라 가운데가 빠졌다 */
     partial: boolean;
-    /** 그 블록 줄의 사각형(터미널 상자 기준 px) — 카드가 여기서 커진다 */
+    /** 터미널 상자 기준 px — 카드가 여기서 커진다 */
     row: { top: number; bottom: number; left: number; right: number };
   }
 </script>
 
 <script lang="ts">
   /**
-   * **명령 블록 리치 보기 카드**(2026-10-18 — 목업 ②' "블록이 제자리에서 펼쳐지기"). 블록 줄의 [리치하게 보기] 가 연다
-   * (`shell-integration/decorations.ts` → `Terminal.svelte`). 형식 판정 · 표 · 정렬은 순수 층 `$lib/block-view`.
-   *
-   * - **자리 · 움직임**: 터미널 상자(`.term`) 안에 절대 배치 — 보통은 상자 안쪽 16px 을 남기고 덮고, 출력이 짧으면(`isShortOutput`)
-   *   블록 줄 바로 아래(자리가 모자라면 위)의 작은 카드. 그 블록 줄의 가운데를 `transform-origin` 으로 `scale(0.42)` · 투명에서
-   *   커진다(320ms `cubic-bezier(0.2,0,0,1)`). 닫으면(× · 막 누르기 · Esc) 그 블록의 **지금 자리**로 줄어들며(220ms) 사라진다 —
-   *   그 사이 스크롤로 화면 밖이면 상자 가운데로. 움직임 줄이기면 움직임 없이.
-   * - **뒤 터미널은 그대로**다 — 어두운 막(짧은 카드는 투명 막)이 덮을 뿐 `display:none` 이 아니다(WebGL 유지 · 숨은 터미널의 0 폭
-   *   재기 — `term/hidden-render-gate.ts`). 출력도 계속 받는다.
-   * - **내용**: JSON → 트리(`JsonTree`) · 표(객체 배열이면 — 머리 눌러 정렬 · 칸 눌러 복사) · 원문 / CSV · 줄 맞춘 표(`docker ps` 등) → 표 · 원문 /
-   *   마크다운 → 렌더(`MarkdownBlocks` — 문서 보기 타일과 공용) · 원문 / 그 밖 → 원문. 1MB 를 넘으면 원문만.
-   * - 본문은 이미 화면에 있던 글자뿐이다(버퍼 · 이력) — 새 Tauri 명령 · MCP 길 없음, 로그에 싣지 않는다.
+   * 명령 블록 리치 보기 카드. 뒤 터미널은 막이 덮을 뿐 `display:none` 이 아니다 — 숨기면 WebGL 을 잃고 숨은 터미널 0 폭 재기가 된다.
+   * 본문은 이미 화면에 있던 글자뿐이다(버퍼 · 이력) — 새 Tauri 명령 · MCP 길 없음, 로그에 싣지 않는다.
    */
   import { onMount, tick } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -57,7 +46,7 @@
     onclose,
   }: {
     open: BlockViewOpen;
-    /** 닫을 때 그 블록 줄의 **지금** 가운데(터미널 상자 기준) — 화면 밖이면 `null`(상자 가운데로 줄어든다) */
+    /** 화면 밖이면 `null`(상자 가운데로 줄어든다) */
     originNow: () => { x: number; y: number } | null;
     /** 닫힘 움직임이 끝났다 — 부르는 쪽이 이 카드를 걷는다 */
     onclose: () => void;
@@ -67,7 +56,6 @@
   const CLOSE_MS = 220;
   const EASE = "cubic-bezier(0.2, 0, 0, 1)";
   const START_SCALE = 0.42;
-  /** 상자 가장자리에 남기는 틈 */
   const INSET = 16;
   /** 짧은 카드가 블록 줄 아래에 서려면 필요한 높이 — 모자라면 위로 */
   const SHORT_MIN_ROOM = 160;
@@ -98,7 +86,6 @@
   let scrim = $state<HTMLDivElement | null>(null);
   let closing = false;
 
-  /** 카드 자리(터미널 상자 기준) — 짧으면 블록 줄 아래(모자라면 위), 아니면 안쪽 16px */
   const place = $derived.by(() => {
     const h = host?.clientHeight ?? 0;
     if (!short) return `top:${INSET}px;left:${INSET}px;right:${INSET}px;bottom:${INSET}px`;
@@ -108,7 +95,7 @@
     return `bottom:${h - open.row.top + 4}px;left:${INSET}px;right:${INSET}px;max-height:${Math.max(80, open.row.top - INSET)}px`;
   });
 
-  /** 카드 상자 기준 transform-origin — 상자 기준 점을 카드 안쪽 좌표로 */
+  /** 터미널 상자 기준 점 → 카드 안쪽 좌표의 transform-origin */
   function originIn(p: { x: number; y: number }): string {
     if (!card) return "50% 50%";
     const c = card.getBoundingClientRect();
@@ -138,7 +125,6 @@
     });
   });
 
-  /** 닫기 — 그 블록의 지금 자리로(밖이면 상자 가운데로) 줄어든 뒤 걷힌다 */
   export function close(): void {
     if (closing) return;
     closing = true;
@@ -187,7 +173,6 @@
   };
 </script>
 
-<!-- 막 — 누르면 닫힌다. 짧은 카드는 투명(터미널이 그대로 보인다) -->
 <div
   class="bv-scrim"
   class:clear={short}
@@ -287,7 +272,6 @@
 </div>
 
 <style>
-  /* 막 — 터미널 상자만 덮는다(상자 밖 · 머리줄은 그대로) */
   .bv-scrim {
     position: absolute;
     inset: 0;

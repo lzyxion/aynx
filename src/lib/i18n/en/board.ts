@@ -1,12 +1,8 @@
 import type { board as koBoard } from "$lib/i18n/ko/board";
 
 /**
- * `board` namespace — English. Glossary lives in `en/settings.ts`.
- *
- * Words this file is locked to: 대시보드 = dashboard (formerly 관리뷰/관제판 = control board) ·
- * 작업안 = task plan ·
- * 자동 승인 = auto-approval · 감사 = audit · 승인 = approve · 거부/거절 = reject ·
- * 창 = window · 타일 = tile · 세션 = session · 호스트 = host.
+ * `board` namespace — English (glossary in `en/settings.ts`). Locked words: 대시보드 = dashboard · 작업안 = task plan ·
+ * 자동 승인 = auto-approval · 감사 = audit · 승인 = approve · 거부/거절 = reject · 창 = window · 타일 = tile · 세션 = session · 호스트 = host.
  */
 export const board: Record<keyof typeof koBoard, string> = {
   // ── Dashboard shell (header · sections) ─────────────────────────────────────
@@ -33,7 +29,7 @@ export const board: Record<keyof typeof koBoard, string> = {
   "resources.chartFailed": "Could not load the chart — {reason}",
   "usageView.subtitle": "Tokens · plan limits",
 
-  // ── Sessions cards · plan views (docs/log/2026-09-28-dashboard-session-cards.md) ──
+  // ── Sessions cards · plan views ──
   "view.aria": "Task plan view",
   "view.list": "Active",
   "view.history": "History",
@@ -57,14 +53,14 @@ export const board: Record<keyof typeof koBoard, string> = {
   "card.exit": "exit {n}",
   "card.goto.title": "{name} · {code}",
 
-  // ── AI card times (docs/log/2026-09-25-agent-board.md · `agentTimeLabel`) ────
+  // ── AI card times ──
   "agents.time.asked": "asked {when}",
   "agents.time.turn.now": "just started",
   "agents.time.turn.minutes": "{n} min in",
   "agents.time.turn.hours": "{n} h in",
   "agents.time.active": "last signal {when}",
 
-  // ── Past conversations (docs/log/2026-09-26-agent-sessions.md) ─────────────
+  // ── Past conversations ──
   "convo.resume": "Resume",
   "convo.fork": "Continue in new conversation",
   "convo.fork.title": "Keeps the original",
@@ -83,7 +79,7 @@ export const board: Record<keyof typeof koBoard, string> = {
   "convo.untitled": "Untitled",
   "convo.more": "Show {n} more",
   "convo.loading": "Reading conversations…",
-  // ── Where — source chips for the usage screen ──
+  // ── Where ──
   "source.aria": "Where",
   "source.local": "This PC · {n}",
   "source.localBare": "This PC",
@@ -239,13 +235,13 @@ export const board: Record<keyof typeof koBoard, string> = {
   "usage.tip.cacheWrite": "Cache write",
   "usage.tip.output": "Output",
 
-  // ── Sessions section — host header (docs/log/2026-09-21-console-host-groups.md) ──
+  // ── Sessions section — host header ──
   // Name of the local-shell group — this computer, not a host.
   "group.local": "Local",
   "group.count": "{n} sessions",
   "group.delegation.title": "AI access — {grants}",
 
-  // ── Per-target result (execution view badges + history detail target table)
+  // ── Per-target result ──
   "target.pending": "Waiting",
   "target.running": "Running",
   "target.succeeded": "Succeeded",
@@ -254,7 +250,7 @@ export const board: Record<keyof typeof koBoard, string> = {
   "target.cancelled": "Cancelled",
   "target.unknown": "Unknown",
 
-  // ── Long command expand/collapse (plan cards · execution view) ─────────────
+  // ── Long command expand/collapse ──
   "cmd.expand": "Show all ({chars} chars · {lines} lines)",
   "cmd.collapse": "Collapse",
 
@@ -270,13 +266,13 @@ export const board: Record<keyof typeof koBoard, string> = {
   "plan.expires.title": "Review expiry (Settings › Auto-approval)",
   "plan.reject": "Reject",
 
-  // ── Validate line · warning for risky commands (review card · plan card) ──────
+  // ── Validate line · warning for risky commands ──
   "confirm.validate": "Validate: {command}",
   "confirm.validate.title": "On the canary target after it succeeds · must exit 0 before the rest",
   "confirm.warn":
     "⚠ This command needs attention. It runs on the first target first and continues to the rest only if that succeeds. It may be hard to undo.",
 
-  // ── Execution view (result matrix of approved, running and finished plans) ─
+  // ── Execution view ──
   "exec.heading": "Runs",
   "exec.external": "(run started in another window)",
   "exec.cancel": "Cancel",
@@ -303,7 +299,7 @@ export const board: Record<keyof typeof koBoard, string> = {
   "audit.pill": "Audit {n}",
   "audit.pill.off": "Audit off",
 
-  // ── Task plans › History — the audit log as a ledger ────────────────────────
+  // ── Task plans › History ──
   "history.filters.aria": "History filters",
   "history.filter.period": "Period",
   "history.period.days": "{n} days",

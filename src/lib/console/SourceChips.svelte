@@ -1,11 +1,5 @@
 <script lang="ts">
-  /**
-   * **"어디서" 칩** — 사용량 화면의 출처 (docs/log/2026-09-27-remote-conversations.md "2단계").
-   *
-   * "이 PC · 38" · "⇄ dev-01 · 27" · "모두". 붙은 SSH 타일이 없는 호스트는 **흐리게** 서고 "12분 전 읽음 · 연결 없음" 을 달고
-   * 있다(마지막으로 읽은 값 — 자동으로 접속하지 않는다). 칩이 없으면(원격을 읽은 적이 없다) 아무것도 그리지 않는다. 고르는 일은
-   * 저장소(`app/dashboard-source`)가 하고, 두 칸이 같은 출처를 본다.
-   */
+  /** 사용량 화면의 출처 칩. 붙은 SSH 타일이 없는 호스트는 마지막으로 읽은 값을 흐리게 보인다 — 자동으로 접속하지 않는다. */
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { readMinutes, type SourceChip, type SourceKey } from "$lib/dashboard-source";
 
@@ -27,7 +21,6 @@
     return t("board.source.host", { host: c.alias ?? "", n: c.count ?? 0 });
   }
 
-  /** 흐린 호스트 칩의 꼬리 — "12분 전 읽음 · 연결 없음" */
   function note(c: SourceChip): string | null {
     if (c.kind !== "host") return null;
     if (c.loading) return t("board.source.reading");
@@ -98,14 +91,12 @@
     outline-offset: 1px;
   }
 
-  /* 고른 출처 — 범위 칩과 같은 `--accent-soft` 판 */
   .chip.on {
     color: var(--fg-1);
     background: var(--accent-soft);
     border-color: transparent;
   }
 
-  /* 붙은 SSH 타일이 없는 호스트 — 마지막으로 읽은 값(흐리게) */
   .chip.dim {
     color: var(--fg-3);
     border-style: dashed;

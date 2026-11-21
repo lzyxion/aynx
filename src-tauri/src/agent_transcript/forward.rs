@@ -1,20 +1,12 @@
-//! **전방 증분 읽기**(오케스트레이션 6단계 — 설계 docs/log/2026-10-14-orchestration-design.md C-6). 기록 보기의 거꾸로 읽기
-//! ([`super::read_page_from`])는 그대로 두고, 같은 **줄 파서**([`super::LineEvents`] — 생각 제외 · Claude sidechain 제외)와 같은
-//! 요약 · 발췌 함수로 **앞에서 뒤로** 읽는다. 부르는 곳은 오케스트레이션 하나(`crate::orchestration::progress` — 조정자 `read_worker` ·
-//! 보드 최근 활동)이고, 읽는 파일은 그 Attempt 에 **고정된 대화 파일 하나**다(사용자 전체 색인이 아니다).
+//! **전방 증분 읽기** — 기록 보기와 같은 줄 파서([`super::LineEvents`])로 앞에서 뒤로 읽는다(docs/log/2026-10-14-orchestration-design.md C-6).
+//! 읽는 파일은 오케스트레이션 Attempt 에 **고정된 대화 파일 하나**다(사용자 전체 색인이 아니다).
 //!
-//! 커서 = `{파일 세대(파일 식별 · 크기 · 수정 시각), 바이트 위치}`([`Cursor`] — 글자로 오가는 불투명 값).
-//! - 끝의 **미완성 줄**(줄바꿈이 아직 없다 — CLI 가 쓰는 중)은 읽지 않고 다음 번으로 미룬다(위치는 그 줄의 시작).
-//! - 결과가 늦게 붙는 도구 호출은 같은 호출 id 의 **갱신 항목**(`update: true`)으로 다시 낸다. 같은 쪽 안에서 만나면 한 항목에 붙인다.
-//! - 파일이 **줄거나 교체되면**(식별이 다르다 · 크기가 커서보다 작다 · 수정 시각이 뒤로 갔다 · 커서 앞 바이트가 줄바꿈이 아니다)
-//!   처음부터 다시 읽고 `reset` 을 세운다.
-//!
-//! 크기: 쪽마다 항목 [`ITEMS_MAX`] · 도구 입력/결과 각 [`FIELD_MAX_BYTES`] · 말 하나 [`TEXT_MAX_BYTES`] · 글자 합은 부르는 쪽이 주는
-//! 예산(응답 64 KiB 에서 다른 칸을 뺀 것). 잘렸으면 칸마다 표시(`truncated` · `inputTruncated` · `outputTruncated`), 예산에서
-//! 멈췄으면 `more`.
+//! - 끝의 미완성 줄(줄바꿈이 아직 없다 — CLI 가 쓰는 중)은 읽지 않고 다음 번으로 미룬다.
+//! - 파일이 줄거나 교체되면 처음부터 다시 읽고 `reset` 을 세운다.
+//! - 커서([`Cursor`])는 조정자에게 불투명 값이다.
 //!
 //! **개인정보** — 본문은 사용자 · 에이전트의 글자다. 이 모듈의 자료형은 `Debug` 를 파생하지 않고(패닉 · 로그에 찍히지 않게) 로그 ·
-//! 감사 · 영속 파일에 싣지 않는다(모듈 머리말 — 나가는 곳은 화면과 오케스트레이션 조정자뿐).
+//! 감사 · 영속 파일에 싣지 않는다(나가는 곳은 화면과 오케스트레이션 조정자뿐 — `agent_transcript.rs` 머리말).
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -27,20 +19,15 @@ use serde_json::Value;
 use super::{tool_input_text, tool_summary, Ev, LineEvents, Speaker};
 use crate::agent_sessions::ms_of;
 
-/// 한 쪽의 최대 항목 수(설계 C-6 — 조정자에게 주는 양).
 pub(crate) const ITEMS_MAX: usize = 50;
-/// 도구 입력 · 결과 발췌의 최대 바이트(각각).
+/// 도구 입력 · 결과 발췌 각각의 최대 바이트.
 pub(crate) const FIELD_MAX_BYTES: usize = 1024;
-/// 말(사용자 · 에이전트) 하나의 최대 바이트.
 pub(crate) const TEXT_MAX_BYTES: usize = 4096;
-/// 한 줄의 상한 — 넘는 줄(거대한 도구 결과 등)은 건너뛴다(메모리를 지킨다).
 const LINE_MAX_BYTES: u64 = 16 * 1024 * 1024;
-/// 한 번의 호출이 훑는 최대 바이트 — 넘으면 `more` 로 멈춘다.
 const SCAN_MAX_BYTES: u64 = 32 * 1024 * 1024;
-/// 항목 하나의 겉 무게(키 이름 · 따옴표 등 — 예산 계산의 대강).
+/// 항목 하나의 겉 무게(키 이름 · 따옴표 등) — 예산 계산의 대강.
 const ITEM_OVERHEAD: usize = 96;
 
-/// `n` 바이트 안에서 글자 경계로 자른다 — (자른 글, 잘렸나).
 pub(crate) fn cap_bytes(s: &str, n: usize) -> (String, bool) {
     if s.len() <= n {
         return (s.to_owned(), false);
@@ -56,7 +43,7 @@ pub(crate) fn cap_bytes(s: &str, n: usize) -> (String, bool) {
 // 커서 — 파일 세대 + 바이트 위치
 // ---------------------------------------------------------------------------
 
-/// 파일 세대 — 식별(Windows = 볼륨 일련번호 + 파일 인덱스 · 유닉스 = 장치 + inode · 못 읽으면 빈 글자) · 크기 · 수정 시각(ms).
+/// 식별(Windows = 볼륨 일련번호 + 파일 인덱스 · 유닉스 = 장치 + inode · 못 읽으면 빈 글자) · 크기 · 수정 시각(ms).
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct FileGen {
     pub id: String,
@@ -64,8 +51,7 @@ pub(crate) struct FileGen {
     pub mtime_ms: i64,
 }
 
-/// 전방 커서 — 그 세대에서 다음에 읽을 바이트(늘 줄의 시작)와, 그 줄에서 **이미 낸 사건 수**(`skip` — 리뷰 F8: 한 줄이 항목 50 · 응답
-/// 64 KiB 보다 크면 그 줄을 사건 단위로 나누어 낸다. 0 이면 줄의 처음부터).
+/// `skip` = 그 줄에서 이미 낸 사건 수 — 한 줄이 쪽 하나보다 크면 사건 단위로 나누어 낸다. 0 이면 줄의 처음부터.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Cursor {
     pub gen: FileGen,
@@ -74,7 +60,7 @@ pub(crate) struct Cursor {
 }
 
 impl Cursor {
-    /// 글자로 — `t1.<식별>.<크기>.<수정 시각>.<위치>`(줄 안 자리가 0), 줄 안이면 `t2.<…>.<위치>.<줄 안 사건 수>`(조정자에게는 불투명 값).
+    /// `t1.<식별>.<크기>.<수정 시각>.<위치>`(줄 안 자리가 0) · 줄 안이면 `t2.<…>.<위치>.<줄 안 사건 수>`.
     pub(crate) fn encode(&self) -> String {
         if self.skip == 0 {
             format!("t1.{}.{}.{}.{}", self.gen.id, self.gen.size, self.gen.mtime_ms, self.pos)
@@ -83,7 +69,6 @@ impl Cursor {
         }
     }
 
-    /// [`Cursor::encode`] 의 거꾸로 — 모양이 틀리면 `None`.
     pub(crate) fn decode(s: &str) -> Option<Cursor> {
         let mut it = s.split('.');
         let two = match it.next()? {
@@ -146,7 +131,6 @@ fn file_identity(_f: &File) -> Option<String> {
     None
 }
 
-/// 열린 파일의 지금 세대.
 pub(crate) fn file_gen(f: &File) -> std::io::Result<FileGen> {
     let m = f.metadata()?;
     let mtime_ms = m
@@ -161,9 +145,7 @@ pub(crate) fn file_gen(f: &File) -> std::io::Result<FileGen> {
     })
 }
 
-/// 커서를 지금 파일에 대 본다 — (읽기 시작 위치, `reset`). 처음(커서 없음)이면 0 · `reset` 아님. 파일이 교체됐거나(식별이 다르다)
-/// 줄었거나(크기 · 위치가 지금보다 크다) 수정 시각이 뒤로 갔거나 커서 앞 바이트가 줄바꿈이 아니면 0 · `reset`. **순수 함수** —
-/// 앞 바이트는 부르는 쪽이 읽어 준다.
+/// **순수 함수** — 앞 바이트는 부르는 쪽이 읽어 준다.
 pub(crate) fn resume_at(cur: Option<&Cursor>, now: &FileGen, byte_before: impl FnOnce(u64) -> Option<u8>) -> (u64, bool) {
     let Some(c) = cur else { return (0, false) };
     let replaced = !c.gen.id.is_empty() && !now.id.is_empty() && c.gen.id != now.id;
@@ -186,9 +168,9 @@ pub(crate) fn resume_at(cur: Option<&Cursor>, now: &FileGen, byte_before: impl F
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FwdTool {
-    /// 호출 id — 늦게 붙는 결과(갱신 항목)를 이 id 로 맞춘다. 결과 줄이 없는 도구(웹 검색)는 빈 글자.
+    /// 늦게 붙는 결과(갱신 항목)를 이 id 로 맞춘다. 결과 줄이 없는 도구(웹 검색)는 빈 글자.
     pub id: String,
-    /// 도구 이름 — 갱신 항목에서 같은 쪽에 호출이 없었으면 빈 글자.
+    /// 갱신 항목에서 같은 쪽에 호출이 없었으면 빈 글자.
     pub name: String,
     pub summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,7 +202,7 @@ pub(crate) struct FwdItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<FwdTool>,
     pub at: Option<i64>,
-    /// 앞 쪽에서 이미 낸 도구 호출의 **갱신**(결과가 늦게 붙었다) — 같은 `tool.id`.
+    /// 앞 쪽에서 이미 낸 도구 호출의 갱신 — 같은 `tool.id`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub update: bool,
 }
@@ -232,17 +214,14 @@ fn is_zero(n: &u32) -> bool {
 /// 한 쪽. **`Debug` 없음**.
 pub(crate) struct FwdPage {
     pub items: Vec<FwdItem>,
-    /// 다음에 읽을 바이트(줄의 시작).
+    /// 줄의 시작.
     pub next: u64,
-    /// `next` 줄에서 이미 낸 사건 수(0 = 줄의 처음 — 리뷰 F8).
+    /// `next` 줄에서 이미 낸 사건 수(0 = 줄의 처음).
     pub next_skip: u32,
-    /// 예산 · 훑기 상한에서 멈췄다 — 지금 더 읽을 것이 있다.
     pub more: bool,
-    /// 끝에 쓰는 중인(줄바꿈 없는) 줄이 있어 미뤘다.
     pub partial: bool,
 }
 
-/// 예산 — 항목 수 · 글자 합(바이트, 대강).
 #[derive(Clone, Copy)]
 pub(crate) struct Budget {
     pub items: usize,
@@ -287,7 +266,6 @@ fn tool_item(id: &str, name: &str, input: &Value, at: Option<i64>) -> FwdItem {
             output: None,
             output_truncated: false,
             error: false,
-            // 결과 줄이 없는 도구(빈 id — 웹 검색)는 기다리지 않는다.
             pending: !id.is_empty(),
         }),
         at,
@@ -299,20 +277,17 @@ fn weight(i: &FwdItem) -> usize {
     let t = i.tool.as_ref().map_or(0, |t| {
         t.id.len() + t.name.len() + t.summary.len() + t.input.as_ref().map_or(0, String::len) + t.output.as_ref().map_or(0, String::len)
     });
-    // JSON 이스케이프(따옴표 · 줄바꿈 · 비 ASCII 그대로)로 조금 는다 — 대강 1/8 을 더 친다.
+    // JSON 이스케이프로 조금 는다 — 대강 1/8 을 더 친다.
     let body = i.text.as_ref().map_or(0, String::len) + t;
     ITEM_OVERHEAD + body + body / 8
 }
 
-/// 한 줄 읽기의 결과.
 enum Line {
-    /// 끝(더 읽을 바이트 없음).
     Eof,
-    /// 줄바꿈으로 끝난 줄 — 먹은 바이트 수(줄바꿈 포함).
+    /// 먹은 바이트 수(줄바꿈 포함).
     Complete(u64),
-    /// 줄바꿈 없이 끝에 닿았다 — 쓰는 중인 줄(위치를 옮기지 않는다).
+    /// 쓰는 중인 줄 — 위치를 옮기지 않는다.
     Partial,
-    /// 상한을 넘는 줄 — 건너뛰었다(먹은 바이트 수).
     TooLong(u64),
 }
 
@@ -328,7 +303,6 @@ fn next_line<R: BufRead>(r: &mut R, buf: &mut Vec<u8>) -> std::io::Result<Line> 
     if n <= LINE_MAX_BYTES {
         return Ok(Line::Partial);
     }
-    // 너무 긴 줄 — 줄바꿈까지 버린다(끝까지 줄바꿈이 없으면 쓰는 중인 줄로 미룬다).
     let mut eaten = n;
     let mut sink = Vec::new();
     loop {
@@ -344,7 +318,6 @@ fn next_line<R: BufRead>(r: &mut R, buf: &mut Vec<u8>) -> std::io::Result<Line> 
     }
 }
 
-/// `[start, size)` 를 앞에서 뒤로 — 한 쪽(줄의 처음부터). [`read_forward_from_at`] 의 `skip = 0`.
 #[cfg_attr(not(test), allow(dead_code))] // 시험의 합성 표본.
 pub(crate) fn read_forward_from<R: Read + Seek>(
     f: R,
@@ -356,7 +329,7 @@ pub(crate) fn read_forward_from<R: Read + Seek>(
     read_forward_from_at(f, size, start, 0, parse, budget)
 }
 
-/// 사건 하나를 쪽에 싣는다 — (더한 무게, 새 항목 수). `calls` 는 이 쪽의 도구 호출 id → 항목 번호(같은 쪽 안의 결과는 그 항목에 붙인다).
+/// (더한 무게, 새 항목 수). `calls` = 이 쪽의 도구 호출 id → 항목 번호.
 fn apply_event(page: &mut FwdPage, calls: &mut HashMap<String, usize>, e: &Ev, at: Option<i64>, dry: bool) -> (usize, usize) {
     match e {
         Ev::Text { who, text, images } => {
@@ -378,7 +351,7 @@ fn apply_event(page: &mut FwdPage, calls: &mut HashMap<String, usize>, e: &Ev, a
             }
             (w, 1)
         }
-        // 끊김 · 거절 표지는 기록 보기 화면의 것 — 조정자의 판독(`read_worker`)에는 싣지 않는다(지금 모양 그대로).
+        // 끊김 · 거절 표지는 조정자의 판독(`read_worker`)에 싣지 않는다.
         Ev::Interrupted | Ev::Declined => (0, 0),
         Ev::ToolResult { id, output, error, .. } => {
             let (out, cut) = cap_bytes(output, FIELD_MAX_BYTES);
@@ -398,7 +371,6 @@ fn apply_event(page: &mut FwdPage, calls: &mut HashMap<String, usize>, e: &Ev, a
                 }
                 return (w, 0);
             }
-            // 앞 쪽에서 낸 호출의 갱신 — 같은 id 로 다시 낸다.
             let it = FwdItem {
                 role: "tool",
                 text: None,
@@ -427,12 +399,8 @@ fn apply_event(page: &mut FwdPage, calls: &mut HashMap<String, usize>, e: &Ev, a
     }
 }
 
-/// `[start, size)` 를 앞에서 뒤로 — 한 쪽(몸통 — 시험은 임의의 `Read + Seek` 를 넘긴다). `size` 는 이번에 본 파일 크기이고 그 뒤에
-/// 덧붙은 바이트는 읽지 않는다(다음 번 몫). `skip` 은 `start` 줄에서 이미 낸 사건 수.
-///
-/// **사건 단위로 싣는다**(리뷰 F8) — 한 줄(JSONL 레코드 하나)에 사건이 많거나 커도 항목 수 · 글자 예산을 넘기 직전에 멈추고, 커서를
-/// 그 줄 안의 자리(`next` = 그 줄 · `next_skip` = 낸 사건 수)로 둔다. 쪽이 비어 있을 때의 첫 사건은 예산보다 커도 싣는다(칸마다 이미
-/// 잘렸다 — 말 4 KiB · 도구 입력/결과 각 1 KiB) — 그래서 **커서는 늘 앞으로 간다**.
+/// `size` 뒤에 덧붙은 바이트는 읽지 않는다(다음 번 몫). 쪽이 비어 있을 때의 첫 사건은 예산보다 커도 싣는다 — 그래서 **커서는 늘
+/// 앞으로 간다**.
 pub(crate) fn read_forward_from_at<R: Read + Seek>(
     mut f: R,
     size: u64,
@@ -489,7 +457,6 @@ pub(crate) fn read_forward_from_at<R: Read + Seek>(
         let evs = parse(&v);
         let total = evs.len();
         let at = ms_of(&v["timestamp"]);
-        // 이 줄에서 어디까지 실었나(`None` = 끝까지).
         let mut stop_at: Option<usize> = None;
         for (k, e) in evs.into_iter().enumerate().skip(begin) {
             let (add, new_items) = apply_event(&mut page, &mut calls, &e, at, true);
@@ -501,7 +468,6 @@ pub(crate) fn read_forward_from_at<R: Read + Seek>(
             apply_event(&mut page, &mut calls, &e, at, false);
             bytes += add;
             if over {
-                // 빈 쪽의 첫 사건이 예산보다 컸다 — 싣고 멈춘다.
                 stop_at = Some(k + 1);
                 break;
             }
@@ -526,7 +492,6 @@ pub(crate) fn read_forward_from_at<R: Read + Seek>(
     Ok(page)
 }
 
-/// 파일 하나를 커서에서 앞으로 — (쪽, 새 커서, `reset`). 열어서 [`read_forward_file`].
 #[cfg_attr(not(test), allow(dead_code))] // 시험이 경로로 부른다 — 오케스트레이션은 검증한 손잡이를 넘긴다(`read_forward_file`).
 pub(crate) fn read_forward(
     path: &Path,
@@ -537,8 +502,7 @@ pub(crate) fn read_forward(
     read_forward_file(File::open(path)?, cur, parse, budget)
 }
 
-/// **열린 파일 손잡이**를 커서에서 앞으로 — (쪽, 새 커서, `reset`). 손잡이는 부르는 쪽이 고정 · 검증한 것(`orchestration::progress` —
-/// 검증한 그 손잡이로 읽는다, 리뷰 F7).
+/// 손잡이는 부르는 쪽(`orchestration::progress`)이 고정 · 검증한 것이다 — 검증한 그 손잡이로 읽는다.
 pub(crate) fn read_forward_file(
     mut f: File,
     cur: Option<&Cursor>,
@@ -566,10 +530,10 @@ pub(crate) fn read_forward_file(
 }
 
 // ---------------------------------------------------------------------------
-// 보드의 최근 활동 — 끝에서 거꾸로 한 쪽(기록 보기와 같은 리더)
+// 보드의 최근 활동 — 끝에서 거꾸로 한 쪽
 // ---------------------------------------------------------------------------
 
-/// 최근 활동 — 마지막 에이전트 말 한 줄 · 최근 도구 호출(이름 · 짧은 요약). **`Debug` 없음**.
+/// **`Debug` 없음**.
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Recent {
@@ -587,7 +551,6 @@ pub(crate) struct RecentTool {
     pub pending: bool,
 }
 
-/// 한 줄 글자의 상한(보드).
 const RECENT_LINE_MAX: usize = 160;
 const RECENT_SUMMARY_MAX: usize = 80;
 
@@ -600,7 +563,7 @@ fn one_line(s: &str, n: usize) -> String {
     }
 }
 
-/// 고정 파일의 최근 활동 — 끝에서 거꾸로 한 쪽(기록 보기와 같은 리더 · 같은 짝 맞추기). 손잡이는 부르는 쪽이 검증한 것(리뷰 F7).
+/// 손잡이는 부르는 쪽이 검증한 것이다.
 pub(crate) fn recent(f: File, parse: LineEvents) -> Result<Recent, String> {
     let page = super::page_of_file(f, None, Some(30), parse)?;
     let mut out = Recent {

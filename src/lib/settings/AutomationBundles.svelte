@@ -17,26 +17,17 @@
   import { isRemote } from "$lib/ipc";
 
   /**
-   * **묶음 편집** — 설정 › 자동 승인의 하위 화면 (docs/log/2026-10-05-auto-approve-args.md "세분화").
-   *
-   * 요약(`AutomationSection`)의 [편집 ›] 을 누르면 설정 본문이 이 화면으로 미끄러져 바뀐다(움직임과 Escape 는
-   * 부모가 맡는다). 위에서부터: 뒤로 가기 + 제목(`SettingsSubView` — 허용 패턴 편집과 공용) · **시험 칸**
-   * (`AutomationTester` — 공용) · 소제목 넷 아래 묶음 줄 목록.
-   *
-   * - 시험 칸은 판정을 **Rust 에 묻는다**(`test_auto_approval` — 실행하지 않는다). 보내는 설정은 초안(저장 전)이라,
-   *   묶음·명령 스위치를 바꾸면 결과도 그 자리에서 바뀐다.
-   * - 묶음 스위치·명령 스위치는 다른 설정과 같은 **미리보기 → [저장]/[취소]** 계약이다 — 값은
-   *   `settings.current.automation` 에만 쓰고 파일은 [저장] 이 쓴다.
-   * - 명령 끄기는 좁히기만 한다(`[automation.bundle_off]`). 묶음을 꺼도 명령 스위치는 남아 있다 — 다시 켜면 그대로.
+   * 묶음 편집 — 설정 › 자동 승인의 하위 화면(docs/log/2026-10-05-auto-approve-args.md).
+   * 명령 끄기는 좁히기만 한다(`[automation.bundle_off]`) — 묶음을 꺼도 명령 스위치는 남아 다시 켜면 그대로다.
    */
   let { onback }: { onback: () => void } = $props();
 
   const auto = $derived(settings.current.automation);
   const uid = $props.id();
-  /** 원격 창 — 볼 수만 있다(펼침 · 시험 칸은 그대로, 스위치는 잠긴다 — 요약 `AutomationSection` 의 `lockTip` 과 같은 말) */
+  /** 원격 창은 볼 수만 있다 */
   const lockTip = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
 
-  // ── 묶음 이름·설명 (id → 사전, 없으면 표의 한국어) ──
+  // ── 묶음 이름 · 설명 ──
   function bundleName(b: AutomationBundle): string {
     const k = `settings.automation.bundle.${b.id}.name`;
     const s = t(k as Key);
@@ -48,11 +39,10 @@
     return s === k ? b.description : s;
   }
 
-  // ── 펼침(화면 상태 — 저장하지 않는다) ──
+  // ── 펼침(저장하지 않는다) ──
   let open = $state<Record<string, boolean>>({});
 
-  // ── 명령 줄의 흐린 제약 글자 — 직전 작업의 칩 문구를 그대로 쓴다(`rule-text.ts`, 허용 패턴 편집과 공용) ──
-  /** `[짧은 글자, title 용 전체]` — 같은 키의 줄이 여럿이면 ` / ` 로 잇는다. */
+  // ── 명령 줄의 흐린 제약 글자 ──
   function commandText(c: BundleCommand): [string, string] {
     const one = (full: boolean) =>
       c.rules
@@ -172,7 +162,6 @@
     transform: translateY(2px);
   }
 
-  /* 묶음 줄 목록 — 1px 선의 둥근 판 안에 줄들, 줄 사이도 1px 선 */
   .bundle-rows {
     list-style: none;
     margin: 0;
@@ -252,7 +241,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* 펼친 명령 목록 — 줄 아래 안쪽으로 들인 작은 줄들 */
   .cmd-list {
     list-style: none;
     margin: 0;
@@ -275,15 +263,12 @@
     opacity: 0.6;
   }
 
-  /* 명령 스위치 칸 — 기본 스위치(40×24)가 그대로 들어가는 폭(2026-10-18 — 전엔 큰 스위치를 0.75배로 줄였다) */
   .mini {
     flex: 0 0 auto;
     display: inline-flex;
     width: 40px;
     justify-content: center;
   }
-
-
 
   .cmd-name {
     flex: 0 0 auto;

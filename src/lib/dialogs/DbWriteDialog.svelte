@@ -4,9 +4,7 @@
   import { trapTab } from "$lib/focus-trap";
   import { closeDbWriteConfirm, dbWriteConfirm as prompt } from "$lib/app/query.svelte.js";
 
-  // **쓰기 켜기 확인** (쿼리 타일 10단계, docs/log/2026-10-12-query-tile.md) — 상태는 `app/query.svelte.ts`, Escape 사슬 ·
-  // `anyModalOpen` 은 `app/keys`. 꼴은 `WorkspaceDeleteDialog` 와 같다(Tab 순환 `trapTab` · 바깥 누르기 = 취소). 첫 포커스는
-  // **[취소]** 다 — 위험 쪽 단추가 Enter 한 번에 눌리지 않게.
+  // 쓰기 켜기 확인 — 첫 포커스는 [취소]다(위험 쪽 단추가 Enter 한 번에 눌리지 않게).
   let cancelBtn = $state<HTMLButtonElement | null>(null);
   let modalEl = $state<HTMLElement | null>(null);
   $effect(() => {
@@ -72,7 +70,7 @@
     padding: var(--space-4);
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
     color: var(--fg-1);
   }
@@ -92,7 +90,6 @@
     margin-top: var(--space-3);
   }
 
-  /* 위험 단추 — src/lib/console/PlanList.svelte · WorkspaceDeleteDialog 와 같은 꼴 */
   .btn.danger-solid {
     color: var(--err);
     background: var(--err-soft);

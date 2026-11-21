@@ -1,34 +1,16 @@
-//! **메신저 다리의 Discord 전송**(2026-11-19 · 3b). 게이트웨이(WebSocket — HELLO · 심장 박동 · IDENTIFY · RESUME) 고리 · REST 요청 하나
-//! ([`call`] — `Authorization: Bot <토큰>`) · 보내기 · 바꿔 쓰기 · 누름 받음(지연 갱신 콜백) · 누른 사람에게만 보이는 후속 글 · 토큰 확인
-//! (`GET /users/@me`) · 중립 글([`Text`]) → Discord 글자(마크다운 기호를 모두 걷는다 — 머리 줄만 `**굵게**`). 받은 것은 코어의 중립 값
-//! ([`super::Incoming`] · [`super::ButtonPress`])으로 바꿔 [`super::on_message`] · [`super::on_press`] 로 넘긴다.
+//! 메신저 다리의 Discord 전송 — 게이트웨이 고리 · REST · 누름 받음 · 토큰 확인.
 //!
-//! - **DM 만**(사용자 결정) — `guild_id` 가 있는 글 · 누름은 버린다. 의도(intents)는 `DIRECT_MESSAGES`(1 << 12) 하나 — 특권 의도
-//!   `MESSAGE_CONTENT` 는 쓰지 않는다(앱과의 DM 내용은 그것 없이 온다 — 문서 "Message Content Intent" 의 예외).
+//! - **DM 만** — `guild_id` 가 있는 글 · 누름은 버린다. 의도는 `DIRECT_MESSAGES` 하나 — 특권 의도 `MESSAGE_CONTENT` 는 쓰지 않는다
+//!   (앱과의 DM 내용은 그것 없이 온다 — 문서 "Message Content Intent" 의 예외).
 //! - **PTY · 카드 결정 · 승인으로 가는 길이 없다** — 코어의 입구만 부른다(시험 `pty_writes_have_two_sites` · `bridge_has_no_approval_path` 가
 //!   이 파일도 훑는다).
-//! - 토큰은 코어의 채널 상태에서 꺼낸 [`BotToken`] 으로만 쓰고 로그에는 고정 글자 · 오류 종류([`err_kind`]) · 닫힘 코드 숫자만 싣는다. 누름의
-//!   콜백 토큰(15분 — 그 누름에만 답하는 토큰)도 주소에만 든다(로그 · 오류 문구에 없다).
-//! - **멘션은 늘 막는다** — 보내기 · 바꿔 쓰기 · 후속 글마다 `"allowed_mentions": {"parse": []}`. 링크 미리 보기는 `SUPPRESS_EMBEDS`.
-//! - **IDENTIFY 예산**(24시간에 1000번 — 넘으면 Discord 가 토큰을 바꾼다): RESUME 을 먼저 쓰고, "다시 붙지 말라" 는 닫힘 코드
-//!   ([`FATAL_CLOSE`] — 4004 인증 실패 · 4010–4014)면 상태 `error` 로 두고 고리를 끝낸다(토큰을 다시 등록 · 서버를 다시 띄울 때까지). 갓
-//!   IDENTIFY 한 세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 앞에서 5초부터 두 배씩 5분까지 기다리고, 오래 산 세션 뒤에는 처음으로
-//!   돌린다(`logic::Flap` — Slack 과 함께 쓴다). 그 밖의 방어 기계는 없다(CLAUDE.md "작업 방식"). 연결 실패는 Telegram 과 같은 고정 물러남(`Config::backoff`).
-//!   TCP · TLS · WebSocket 붙기와 받은 것을 코어에 넣는 일꾼은 `sock`(Slack 과 공용 — 4단계에 옮김).
-//! - Telegram 의 409 같은 것은 없다 — 같은 봇을 두 프로그램이 받으면 둘 다 사건을 받는다(상태 `conflict` 를 쓰지 않는다).
-//! - REST 의 429 는 평소 일이다 — `retry_after`(초 · 최대 [`RETRY_CAP`])만큼 쉬고 **한 번만** 다시 보낸다. 큐는 없다.
-//!
-//! Discord 세부(2026-11-19 docs.discord.com/developers 에서 확인): 게이트웨이 `wss://gateway.discord.gg/?v=10&encoding=json` · HELLO(op 10)
-//! `heartbeat_interval`(ms) · 첫 박동은 `interval × jitter(0–1)` 뒤 · 박동(op 1) `d` = 마지막 `s` 또는 `null` · ACK(op 11)가 다음 박동 전까지
-//! 없으면 1000 · 1001 이 아닌 코드로 닫고 RESUME · IDENTIFY(op 2) `{token, intents, properties{os, browser, device}}` · READY 의 `session_id` ·
-//! `resume_gateway_url` · `user` · `application.id` · RESUME(op 6) `{token, session_id, seq}` 은 `resume_gateway_url` 에 같은 `v` · `encoding` 으로 ·
-//! RECONNECT(op 7) → RESUME · INVALID_SESSION(op 9) `d` = 다시 이을 수 있나 · 닫힘 코드표의 "Reconnect false" = 4004 · 4010 · 4011 · 4012 ·
-//! 4013 · 4014 · 4007(잘못된 seq) · 4009(시한)는 새 세션 · 게이트웨이 보내기 60초에 120 · 메시지 `content` 2000자 · `message_reference`
-//! `{message_id, fail_if_not_exists}` · 단추(type 2) `label` 80자 · `custom_id` 1–100자(한 메시지 안에서 겹치지 않게) · 줄(type 1)에 5개 · 누름
-//! (INTERACTION_CREATE `type` 3)은 3초 안에 콜백(`POST /interactions/{id}/{token}/callback` — `DEFERRED_UPDATE_MESSAGE` = 6) · DM 의 누름은
-//! `member` 가 아니라 `user` · 후속 글 `POST /webhooks/{application.id}/{token}` · `EPHEMERAL` = 64 · `SUPPRESS_EMBEDS` = 4 · 429 의 `retry_after`
-//! (초 · 소수) · 스노플레이크 시각 = `(id >> 22) + 1420070400000` ms. **확인하지 못한 것**: `content` 2000자를 무엇으로 세는지(문서에 없다 —
-//! UTF-16 단위로 보수적으로 재고 [`CONTENT_ROOM`] 까지만 쓴다).
+//! - 로그에는 고정 글자 · 오류 종류([`err_kind`]) · 닫힘 코드 숫자만 싣는다. 누름의 콜백 토큰도 주소에만 든다(로그 · 오류 문구에 없다).
+//! - **멘션은 늘 막는다** — 보내기 · 바꿔 쓰기 · 후속 글마다 `"allowed_mentions": {"parse": []}`.
+//! - **IDENTIFY 예산**(24시간에 1000번 — 넘으면 Discord 가 토큰을 바꾼다): RESUME 을 먼저 쓰고, [`FATAL_CLOSE`] 면 고리를 끝낸다. 갓 IDENTIFY 한
+//!   세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 를 물러난다(`logic::Flap`). 그 밖의 방어 기계는 없다(CLAUDE.md "작업 방식").
+//! - Telegram 의 409 같은 것은 없다 — 같은 봇을 두 프로그램이 받으면 둘 다 사건을 받는다.
+//! - REST 의 429 는 평소 일이다 — `retry_after`(최대 [`RETRY_CAP`])만큼 쉬고 **한 번만** 다시 보낸다. 큐는 없다.
+//! - `content` 2000자를 무엇으로 세는지 문서에 없다 — UTF-16 단위로 보수적으로 재고 [`CONTENT_ROOM`] 까지만 쓴다.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,52 +29,43 @@ use crate::server::log;
 
 const CHAN: Channel = Channel::Discord;
 
-/// 릴리스의 REST 바탕 주소 · 게이트웨이 — 이것 하나씩뿐이다(시험만 [`Conf::at`] 으로 루프백을 꽂는다).
+/// 봇 토큰이 나가는 곳은 이 둘뿐이다(시험만 [`Conf::at`] 으로 루프백을 꽂는다 → docs/invariants.md 전문 6).
 pub(crate) const API_BASE: &str = "https://discord.com/api/v10";
 pub(crate) const GATEWAY: &str = "wss://gateway.discord.gg/?v=10&encoding=json";
-/// RESUME 주소에 붙이는 질의(같은 `v` · `encoding`).
 const GATEWAY_QUERY: &str = "?v=10&encoding=json";
-/// `DIRECT_MESSAGES` — DM 의 글 사건만.
+/// `DIRECT_MESSAGES`.
 pub(crate) const INTENTS: u64 = 1 << 12;
-/// 메시지 `content` 상한 · 우리가 쓰는 자리(세는 법을 문서가 밝히지 않아 여유를 둔다 — 머리말).
 pub(crate) const CONTENT_MAX: usize = 2000;
 pub(crate) const CONTENT_ROOM: usize = 1990;
 const _: () = assert!(CONTENT_ROOM < CONTENT_MAX);
-/// 긴 답의 최대 통 수.
 pub(crate) const MAX_PARTS: usize = 5;
-/// 단추 `custom_id` 상한(글자 — 우리 데이터는 ASCII 라 바이트와 같다) · `label` 상한.
+/// 글자 수 — 우리 데이터는 ASCII 라 바이트와 같다.
 pub(crate) const DATA_MAX: usize = 100;
 const LABEL_MAX: usize = 80;
-/// 마크다운 기호 — `messenger.rs` 의 Discord 걷기와 같은 셋.
+/// `messenger.rs` 의 Discord 걷기와 같은 셋.
 const MARKDOWN: &[char] = crate::messenger::DISCORD_MARKDOWN_CHARS;
-/// 메시지 깃발 — 링크 미리 보기 끔 · 누른 사람에게만.
 const SUPPRESS_EMBEDS: u64 = 1 << 2;
 const EPHEMERAL: u64 = 1 << 6;
-/// 누름 콜백 — 지연 갱신(로딩 표시 없음 · 메시지는 뒤에 우리가 바꿔 쓴다).
 const DEFERRED_UPDATE_MESSAGE: u64 = 6;
-/// "다시 붙지 말라" 는 닫힘 코드(문서 표의 Reconnect false) · 새 세션으로 붙으라는 코드.
+/// 문서 표의 "Reconnect false" · 새 세션으로 붙으라는 코드.
 pub(crate) const FATAL_CLOSE: &[u16] = &[4004, 4010, 4011, 4012, 4013, 4014];
 const FRESH_CLOSE: &[u16] = &[4007, 4009];
-/// 우리가 닫을 때의 코드(1000 · 1001 이 아니어야 세션이 살아 RESUME 할 수 있다).
+/// 1000 · 1001 로 닫으면 세션이 죽어 RESUME 할 수 없다.
 const RESUMABLE_CLOSE: u16 = 4000;
-/// 스노플레이크의 기원(2015-01-01 UTC · ms).
 const DISCORD_EPOCH_MS: i64 = 1_420_070_400_000;
-/// 요청 시한 · 429 쉼 상한 · HELLO 시한(연결 시한은 `sock`).
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const RETRY_CAP: Duration = Duration::from_secs(5);
 const HELLO_TIMEOUT: Duration = Duration::from_secs(20);
-/// IDENTIFY 물러남(처음 · 상한) · 이만큼 살면 안정한 세션.
 const IDENTIFY_BACKOFF: Duration = Duration::from_secs(5);
 const IDENTIFY_BACKOFF_MAX: Duration = Duration::from_secs(300);
 const STABLE: Duration = Duration::from_secs(60);
-/// Discord 가 요구하는 `User-Agent` 모양(`DiscordBot ($url, $versionNumber)`).
+/// Discord 가 요구하는 모양(`DiscordBot ($url, $versionNumber)`).
 const USER_AGENT: &str = concat!("DiscordBot (https://github.com/lzyxion/aynx, ", env!("CARGO_PKG_VERSION"), ")");
 
 // ---------------------------------------------------------------------------
 // 설정 · 토큰
 // ---------------------------------------------------------------------------
 
-/// Discord 몫의 설정 — 제품은 [`Conf::release`].
 pub(crate) struct Conf {
     api: String,
     gateway: String,
@@ -112,14 +85,13 @@ impl Conf {
         }
     }
 
-    /// 시험 — 루프백 가짜(`http://127.0.0.1:<포트>` · `ws://127.0.0.1:<포트>/…`).
     #[cfg(test)]
     pub(crate) fn at(api: &str, gateway: &str) -> Conf {
         Conf { api: api.trim_end_matches('/').to_string(), gateway: gateway.to_string(), ..Conf::release() }
     }
 }
 
-/// 봇 토큰 — `<base64 id>.<시각>.<HMAC>` 세 조각. **`Debug` 는 값을 찍지 않는다** · `Display` 없음.
+/// **`Debug` 는 값을 찍지 않는다** · `Display` 없음.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct BotToken(String);
 
@@ -130,7 +102,7 @@ impl std::fmt::Debug for BotToken {
 }
 
 impl BotToken {
-    /// 붙여 넣은 글자 → 토큰. 모양: `.` 으로 나뉜 비지 않은 세 조각 · `[A-Za-z0-9_-]` · 합쳐 50–120자(정확한 길이는 Discord 가 정하므로 넉넉히).
+    /// 정확한 길이는 Discord 가 정하므로 넉넉히 본다.
     pub(crate) fn parse(raw: &str) -> Option<BotToken> {
         let raw = raw.trim();
         let parts: Vec<&str> = raw.split('.').collect();
@@ -149,13 +121,12 @@ pub(crate) fn parse_token(raw: &str) -> Option<BotToken> {
     BotToken::parse(raw)
 }
 
-/// 누름에 답할 손잡이 — 앱 id 와 그 누름의 콜백 토큰(15분). **`Debug` 없음** · 로그에 싣지 않는다.
+/// **`Debug` 없음** · 로그에 싣지 않는다(콜백 토큰).
 pub(crate) struct Ack {
     app: String,
     token: String,
 }
 
-/// 이 세대가 아직 살아 있으면 보낼 손(클라이언트 · 설정 · 토큰).
 fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
     let (client, cfg, token) = super::hands(CHAN, gen)?;
     Some((client, cfg, token.discord()?.clone()))
@@ -165,7 +136,6 @@ fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
 // 글자
 // ---------------------------------------------------------------------------
 
-/// 마크다운 기호 앞에 `\`(줄바꿈은 살린다 — 답 전문은 여러 줄이다).
 pub(crate) fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 8);
     for c in text.chars() {
@@ -177,12 +147,11 @@ pub(crate) fn escape(text: &str) -> String {
     out
 }
 
-/// UTF-16 단위 길이(보수적 — 머리말).
 pub(crate) fn units(text: &str) -> usize {
     text.chars().map(char::len_utf16).sum()
 }
 
-/// 걷은 뒤의 길이 — 글자 하나의 몫.
+/// 걷은 뒤의 길이.
 fn width(c: char) -> usize {
     c.len_utf16() + usize::from(MARKDOWN.contains(&c))
 }
@@ -191,14 +160,13 @@ fn escaped_units(text: &str) -> usize {
     text.chars().map(width).sum()
 }
 
-/// 답 전문 나누기 — 첫 통은 굵은 머리 줄 `head` 와 함께 간다(통마다 같은 자리 = 상한 − (걷은 머리 줄 + `**` 둘 + 줄바꿈 + 여유)). 조각의 길이는
-/// **걷은 뒤**로 잰다(`logic::split_by` — 부르는 쪽이 조각마다 걷는다 · 기호가 많은 답도 한 통 상한 안).
+/// 조각의 길이는 **걷은 뒤**로 잰다 — 부르는 쪽이 조각마다 걷는다(기호가 많은 답도 한 통 상한 안).
 pub(crate) fn split_answer(head: &str, body: &str, more: &str) -> Vec<String> {
     let room = CONTENT_ROOM.saturating_sub(escaped_units(head) + 4 + 1 + 4);
     super::logic::split_by(body, room, MAX_PARTS, more, width)
 }
 
-/// 그린 글을 `max` 단위 안으로 — 걷기 `\` 와 그 짝 사이를 가르지 않고, 열린 `**` 는 닫고 `…` 를 단다.
+/// 걷기 `\` 와 그 짝 사이를 가르지 않는다.
 pub(crate) fn clip(text: &str, max: usize) -> String {
     if units(text) <= max {
         return text.to_string();
@@ -225,8 +193,7 @@ pub(crate) fn clip(text: &str, max: usize) -> String {
     out
 }
 
-/// **중립 글 → Discord 글자**. 평문은 기호를 모두 걷고 머리 줄만 `**굵게**` — 그려 둔 알림 글(`messenger::Channel::Discord.render`)은 이미 걷었으니
-/// 상한 안으로만 자르고, 덧붙일 줄이 있으면 그 자리를 남긴 뒤 한 줄 아래에 단다.
+/// 그려 둔 알림 글(`messenger::Channel::Discord.render`)은 이미 걷었으니 자르기만 한다.
 pub(crate) fn render(t: &Text) -> String {
     match t {
         Text::Lines { head: None, body } => clip(&escape(body), CONTENT_ROOM),
@@ -244,7 +211,7 @@ pub(crate) fn render(t: &Text) -> String {
 // REST
 // ---------------------------------------------------------------------------
 
-/// 요청의 실패 — 문구 없이 종류만(토큰 · 콜백 토큰이 든 주소 · Discord 의 설명 글을 싣지 않는다).
+/// 문구 없이 종류만 — 토큰 · 콜백 토큰이 든 주소 · Discord 의 설명 글을 싣지 않는다.
 #[derive(Debug, PartialEq, Eq)]
 enum CallErr {
     Unauthorized,
@@ -264,7 +231,6 @@ fn err_kind(e: &CallErr) -> String {
     }
 }
 
-/// HTTP 상태 + 몸 → 값(204 · 빈 몸은 `Null`).
 fn parse_response(status: u16, body: &str) -> Result<Value, CallErr> {
     match status {
         200..=299 if body.trim().is_empty() => Ok(Value::Null),
@@ -275,7 +241,7 @@ fn parse_response(status: u16, body: &str) -> Result<Value, CallErr> {
     }
 }
 
-/// 429 의 쉼 — 몸의 `retry_after`(초 · 소수), 없으면 `Retry-After` 머리. [`RETRY_CAP`] 에서 자른다.
+/// `retry_after` 는 초 · 소수다.
 pub(crate) fn retry_after(body: &str, header: Option<&str>) -> Duration {
     let secs = serde_json::from_str::<Value>(body)
         .ok()
@@ -285,7 +251,7 @@ pub(crate) fn retry_after(body: &str, header: Option<&str>) -> Duration {
     Duration::from_secs_f64(secs.clamp(0.0, RETRY_CAP.as_secs_f64()))
 }
 
-/// 요청 하나 — `auth` 면 `Authorization: Bot <토큰>`(콜백 · 후속 글은 그 누름의 토큰이 주소에 들어 봇 토큰을 싣지 않는다). 429 는 한 번만 쉬고 다시.
+/// 콜백 · 후속 글은 그 누름의 토큰이 주소에 들어 봇 토큰을 싣지 않는다(`auth: None`).
 async fn call(client: &reqwest::Client, api: &str, auth: Option<&BotToken>, method: reqwest::Method, path: &str, body: Option<&Value>) -> Result<Value, CallErr> {
     for attempt in 0..2 {
         let mut rq = client.request(method.clone(), format!("{api}{path}")).timeout(SEND_TIMEOUT).header(reqwest::header::USER_AGENT, USER_AGENT);
@@ -308,7 +274,7 @@ async fn call(client: &reqwest::Client, api: &str, auth: Option<&BotToken>, meth
     Err(CallErr::RateLimited)
 }
 
-/// 단추 → 줄(type 1)들 — 다섯 이하면 한 줄에 하나(Telegram 과 같은 모양), 넘치면 줄마다 다섯. 글자 80자 · 데이터 100자 넘는 것은 뺀다.
+/// 다섯 이하면 한 줄에 하나(Telegram 과 같은 모양) — Discord 는 한 줄에 다섯 · 다섯 줄까지다.
 pub(crate) fn components(buttons: &[Button]) -> Value {
     let ok: Vec<Value> = buttons
         .iter()
@@ -323,7 +289,7 @@ pub(crate) fn components(buttons: &[Button]) -> Value {
     Value::Array(rows)
 }
 
-/// 보내기 몸 — 멘션 막기 · 미리 보기 끔 · (있으면) 답장 대상(없어졌어도 보낸다) · 단추.
+/// 멘션은 늘 막는다.
 pub(crate) fn message_body(content: &str, reply_to: Option<i64>, buttons: &[Button]) -> Value {
     let mut v = json!({ "content": content, "allowed_mentions": { "parse": [] }, "flags": SUPPRESS_EMBEDS });
     if let Some(id) = reply_to {
@@ -335,12 +301,10 @@ pub(crate) fn message_body(content: &str, reply_to: Option<i64>, buttons: &[Butt
     v
 }
 
-/// 바꿔 쓰기 몸 — 단추를 걷는다(`components: []`).
 pub(crate) fn edit_body(content: &str) -> Value {
     json!({ "content": content, "allowed_mentions": { "parse": [] }, "flags": SUPPRESS_EMBEDS, "components": [] })
 }
 
-/// 한 통 보낸다 — 보낸 메시지 id(실패면 `None` — 로그 한 줄, 본문 없음).
 pub(crate) async fn send(chat: i64, t: &Text, reply_to: Option<i64>, buttons: &[Button]) -> Option<i64> {
     let (client, cfg, token) = hands(None)?;
     let body = message_body(&render(t), reply_to, buttons);
@@ -353,7 +317,6 @@ pub(crate) async fn send(chat: i64, t: &Text, reply_to: Option<i64>, buttons: &[
     }
 }
 
-/// 보낸 통을 바꿔 쓴다(단추는 걷힌다).
 pub(crate) async fn edit(chat: i64, message_id: i64, t: &Text) {
     let Some((client, cfg, token)) = hands(None) else { return };
     let body = edit_body(&render(t));
@@ -362,7 +325,7 @@ pub(crate) async fn edit(chat: i64, message_id: i64, t: &Text) {
     }
 }
 
-/// 누름을 받았다고 곧바로 알린다(3초 안 — 지연 갱신). 받기 고리가 [`super::on_press`] 앞에서 부른다.
+/// Discord 는 누름에 3초 안의 콜백을 요구한다 — 받기 고리가 [`super::on_press`] 앞에서 부른다.
 async fn ack_press(client: &reqwest::Client, api: &str, id: i64, token: &str) {
     let body = json!({ "type": DEFERRED_UPDATE_MESSAGE });
     if let Err(e) = call(client, api, None, reqwest::Method::POST, &format!("/interactions/{id}/{token}/callback"), Some(&body)).await {
@@ -370,8 +333,7 @@ async fn ack_press(client: &reqwest::Client, api: &str, id: i64, token: &str) {
     }
 }
 
-/// 누름을 마친다 — 누름은 받는 때 이미 알렸다([`ack_press`]). `toast` 는 그 통을 바꿔 쓰지 않을 때만(꺼짐 · 다른 곳이 이미 바꿈) 누른 사람에게만
-/// 보이는 후속 글로 — 바꿔 쓰면 그 결과 줄이 곧 알림이다.
+/// 누름은 받는 때 이미 알렸다([`ack_press`]). 바꿔 쓰면 그 결과 줄이 곧 알림이라 `toast` 는 바꿔 쓰지 않을 때만 보낸다.
 pub(crate) async fn finish_press(ack: &Ack, toast: Option<&str>, rewritten: bool) {
     let Some(text) = toast.filter(|_| !rewritten) else { return };
     let Some((client, cfg, _)) = hands(None) else { return };
@@ -381,14 +343,13 @@ pub(crate) async fn finish_press(ack: &Ack, toast: Option<&str>, rewritten: bool
     }
 }
 
-/// `GET /users/@me` 의 결과 → 봇 사용자 이름(소문자 · 숫자 · `_` · `.` 32자).
 pub(crate) fn parse_me(v: &Value) -> Option<String> {
     let name = v.get("username")?.as_str()?;
     let ok = !name.is_empty() && name.len() <= 32 && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.');
     ok.then(|| name.to_string())
 }
 
-/// 토큰 확인 → 봇 이름. 실패는 이유 코드가 붙은 문구(토큰 없음).
+/// 실패 문구에 토큰을 싣지 않는다.
 pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &BotToken) -> Result<Option<String>, String> {
     match call(client, &cfg.discord.api, Some(token), reqwest::Method::GET, "/users/@me", None).await {
         Ok(v) => Ok(parse_me(&v)),
@@ -401,7 +362,6 @@ pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &
 // 받은 것
 // ---------------------------------------------------------------------------
 
-/// 스노플레이크(문자열 숫자) → `i64` — 들어가지 않으면 `None`.
 pub(crate) fn snowflake(v: &Value) -> Option<i64> {
     let s = v.as_str()?;
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
@@ -410,7 +370,7 @@ pub(crate) fn snowflake(v: &Value) -> Option<i64> {
     s.parse::<i64>().ok()
 }
 
-/// 스노플레이크의 시각(유닉스 초).
+/// 유닉스 초.
 pub(crate) fn snowflake_secs(id: i64) -> i64 {
     ((id >> 22) + DISCORD_EPOCH_MS) / 1000
 }
@@ -421,8 +381,7 @@ fn display_name(user: &Value) -> String {
     raw.chars().filter(|c| !c.is_control()).take(64).collect()
 }
 
-/// `MESSAGE_CREATE` 의 몸 → 받은 글. 버리는 것(`None`): 서버(길드) 글 · 봇 · 웹훅 · 우리 봇 자신 · 글 종류가 보통(0) · 답장(19)이 아닌 것 ·
-/// DM 이 아닌 대화방 종류. 빈 내용(첨부만)은 글 없음.
+/// 서버(길드) 글 · DM 이 아닌 대화방은 버린다(DM 만).
 pub(crate) fn parse_message(d: &Value, me: Option<i64>) -> Option<Incoming> {
     if d.get("guild_id").is_some_and(|g| !g.is_null()) || d.get("webhook_id").is_some_and(|w| !w.is_null()) {
         return None;
@@ -455,7 +414,7 @@ pub(crate) fn parse_message(d: &Value, me: Option<i64>) -> Option<Incoming> {
     })
 }
 
-/// `INTERACTION_CREATE`(단추 — `type` 3 · DM)의 몸 → (상호작용 id, 콜백 토큰, 누름). 그 밖은 `None`(알리지도 않는다).
+/// 단추(`type` 3) · DM 만. 그 밖은 알리지도 않는다.
 pub(crate) fn parse_press(d: &Value) -> Option<(i64, String, ButtonPress)> {
     if d.get("type").and_then(Value::as_u64) != Some(3) || d.get("guild_id").is_some_and(|g| !g.is_null()) {
         return None;
@@ -482,8 +441,7 @@ pub(crate) fn parse_press(d: &Value) -> Option<(i64, String, ButtonPress)> {
 // 게이트웨이
 // ---------------------------------------------------------------------------
 
-/// RESUME 주소 — `resume_gateway_url` 에 같은 질의를 붙인다. **이 주소로 토큰을 다시 보낸다** — `wss` 이고 호스트가 `discord.gg`(또는 그
-/// 아래)일 때만 쓴다(시험은 루프백 `ws`). 아니면 `None` — 부른 쪽이 기본 게이트웨이로 붙는다.
+/// **이 주소로 토큰을 다시 보낸다** — `wss` 이고 호스트가 `discord.gg`(또는 그 아래)일 때만 쓴다(시험 `responses_and_close_codes`).
 fn resume_url(base: &str) -> Option<String> {
     let base = base.trim_end_matches('/');
     let u = reqwest::Url::parse(base).ok()?;
@@ -496,37 +454,30 @@ fn resume_url(base: &str) -> Option<String> {
     (ok && !base.contains('?')).then(|| format!("{base}/{GATEWAY_QUERY}"))
 }
 
-/// 이어 붙을 세션.
 struct Session {
     id: String,
     resume: String,
 }
 
-/// 세션 하나가 끝난 까닭.
 #[derive(Debug, PartialEq, Eq)]
 enum End {
-    /// 다시 붙지 않는다(닫힘 코드)
     Fatal(u16),
-    /// 이어 붙는다(RESUME)
     Resume,
-    /// 새 세션(IDENTIFY)
     Fresh,
 }
 
-/// 게이트웨이 고리 — 세대가 바뀌면(토큰을 다시 등록 · 지움 — 코어가 이 태스크를 걷는다) 끝난다.
 pub(super) async fn gateway_loop(gen: u64) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     tokio::spawn(sock::worker(CHAN, gen, rx));
     let mut session: Option<Session> = None;
     let mut seq: Option<i64> = None;
     let mut me: Option<i64> = None;
-    // 마지막 IDENTIFY 때 · 지금의 물러남
     let mut identified: Option<tokio::time::Instant> = None;
     let mut flap = super::logic::Flap::default();
     loop {
         let Some((client, cfg, token)) = hands(Some(gen)) else { return };
         if session.is_none() {
-            // IDENTIFY 예산 — 갓 IDENTIFY 한 세션이 오래 살지 못했으면 기다린다(5초부터 두 배 · 상한), 오래 살았으면 처음으로.
+            // IDENTIFY 예산(머리말).
             let short = identified.is_some_and(|at| at.elapsed() < cfg.discord.stable);
             if let Some(w) = flap.delay(short, cfg.discord.identify_backoff, cfg.discord.identify_backoff_max) {
                 tokio::time::sleep(w).await;
@@ -571,7 +522,6 @@ pub(super) async fn gateway_loop(gen: u64) {
     }
 }
 
-/// 세션 하나의 몫.
 struct Run<'a> {
     gen: u64,
     client: &'a reqwest::Client,
@@ -589,13 +539,11 @@ async fn send_json(ws: &mut Ws, v: Value) -> bool {
     ws.send(Message::text(v.to_string())).await.is_ok()
 }
 
-/// 우리가 닫는다 — RESUME 할 수 있는 코드로.
 async fn close(ws: &mut Ws) {
     let frame = CloseFrame { code: CloseCode::from(RESUMABLE_CLOSE), reason: "".into() };
     let _ = tokio::time::timeout(Duration::from_secs(2), ws.close(Some(frame))).await;
 }
 
-/// 닫힘 코드 → 까닭.
 fn close_end(code: Option<u16>) -> End {
     match code {
         Some(c) if FATAL_CLOSE.contains(&c) => End::Fatal(c),
@@ -604,7 +552,7 @@ fn close_end(code: Option<u16>) -> End {
     }
 }
 
-/// 0–1 의 흔들림(첫 박동).
+/// 첫 박동은 `interval × jitter(0–1)` 뒤(Discord 문서).
 fn jitter() -> f64 {
     let mut b = [0u8; 4];
     if getrandom::fill(&mut b).is_err() {
@@ -614,7 +562,7 @@ fn jitter() -> f64 {
 }
 
 impl Run<'_> {
-    /// HELLO → IDENTIFY · RESUME → 박동 · 사건. 돌려주는 것: 끝난 까닭과 (이번에 IDENTIFY 했으면) 그때.
+    /// 둘째 값은 이번에 IDENTIFY 한 때.
     async fn go(&mut self, ws: &mut Ws) -> (End, Option<tokio::time::Instant>) {
         let hello = tokio::time::timeout(HELLO_TIMEOUT, next_json(ws)).await.ok().flatten();
         let Some(interval) = hello.as_ref().filter(|v| v.get("op").and_then(Value::as_u64) == Some(10)).and_then(|v| v["d"]["heartbeat_interval"].as_u64()) else {
@@ -688,7 +636,7 @@ impl Run<'_> {
         }
     }
 
-    /// 사건 하나 — 표 갱신 · 일꾼에게 넘기기 · 누름 알림(기다리지 않는다).
+    /// 기다리지 않는다.
     fn dispatch(&mut self, t: &str, d: &Value) {
         match t {
             "READY" => {
@@ -711,7 +659,7 @@ impl Run<'_> {
             }
             "INTERACTION_CREATE" => {
                 if let Some((id, token, press)) = parse_press(d) {
-                    // 3초 안 — 일꾼의 차례를 기다리지 않고 곧바로
+                    // 3초 안 — 일꾼의 차례를 기다리지 않는다
                     let client = self.client.clone();
                     let api = self.cfg.discord.api.clone();
                     tokio::spawn(async move { ack_press(&client, &api, id, &token).await });

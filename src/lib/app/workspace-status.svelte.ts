@@ -1,5 +1,4 @@
 import type { OpenLocation } from "$lib/project-locations";
-// 최소 상태/위치 이벤트. MCP 공유 목록에 의존하지 않는다.
 import { invoke, emit, emitTo, isRemote, listen } from "../ipc";
 import type { AgentStatus } from "$lib/agent-status";
 import type { AgentTileInput } from "$lib/agent-board";
@@ -10,7 +9,6 @@ import type { TabDot } from "$lib/tab-dot";
 import type { ConsoleRowInput } from "$lib/console/console-rows";
 import { requestWindow } from "$lib/workspaces/window-events";
 
-/** 보고에 실리는 타일 하나의 에이전트 — 로고 이름과 지금 점(없으면 `null`). 살아 있는 AI 타일만 싣는다(`isLiveAgentPane`). */
 export interface TileAgent {
   kind: string;
   status: AgentStatus | null;
@@ -34,7 +32,7 @@ export function publishWorkspaceStatus(
   tiles: StatusReport["tiles"],
   locations: OpenLocation[] = [],
 ): void {
-  // 원격 창은 보조 창이 아니다 — 워크스페이스 보고에 끼지 않는다(관문이 이 이벤트를 원격에서 거절한다 · `remote/deny.rs`).
+  // 원격 창은 보조 창이 아니다 — 관문이 이 이벤트를 원격에서 거절한다(`remote/deny.rs`).
   if (workspaceMainWindow() || isRemote) return;
   const report = { label: currentWindowLabel(), dots: rawWorkspaceDots(dots), tiles, locations };
   const json = JSON.stringify(report);
@@ -83,10 +81,6 @@ export function focusAuxTile(paneId: string): boolean {
   }
   return false;
 }
-/**
- * 스트림으로 보조 창의 타일을 찾아 그 창 · 타일로 간다(지난 대화의 "열림" 이 다른 창일 때 — `app/agent-sessions` 의
- * `goToOpenConversation`). 주 창에서만 보고가 있다 — 못 찾으면 거짓.
- */
 export function focusAuxStream(streamId: string): boolean {
   if (!workspaceMainWindow()) return false;
   for (const report of Object.values(reports)) {
@@ -109,20 +103,14 @@ export async function listenWorkspaceStatus(): Promise<() => void> {
 }
 export function requestWorkspaceStatus(): void { if (!isRemote) void emit("workspace-status-request"); }
 
-/**
- * 보조 창 타일(`라벨:paneId` — `auxWindowRows` 의 id) → 그 타일의 워크스페이스 id. 탭 줄 단추 · 목록이 워크스페이스마다
- * 세션을 셀 때 보조 창 타일을 제 워크스페이스에 넣는다(2026-10-07). 주 창에서만 값이 있다.
- */
+/** 보조 창 타일(`라벨:paneId`) → 워크스페이스 id */
 export function auxPaneWorkspaces(): Map<string, string> {
   const owners = new Map<string, string>();
   if (!workspaceMainWindow()) return owners;
   for (const report of Object.values(reports)) for (const tile of report.tiles) owners.set(report.label + ":" + tile.paneId, tile.workspaceId);
   return owners;
 }
-/**
- * 이 워크스페이스를 쥔 보조 창의 라벨 — 없으면 `null`. 보조 창은 한 워크스페이스에만 묶이고(`bootAuxWorkspace`),
- * 그 창의 보고(`dots`)의 열쇠가 곧 그 워크스페이스다. 주 창에서만 값이 있다.
- */
+/** 보조 창은 한 워크스페이스에만 묶이므로 그 창 보고의 `dots` 열쇠가 곧 그 워크스페이스다. */
 export function auxWorkspaceWindow(workspaceId: string): string | null {
   if (!workspaceMainWindow()) return null;
   return Object.values(reports).find((report) => workspaceId in report.dots)?.label ?? null;

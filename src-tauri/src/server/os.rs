@@ -1,24 +1,20 @@
-//! 세션 서버의 OS 원시 — 실행 파일 경로 · 생존 · 자기 잡 · 자식 트리 · 분리 실행.
-//!
-//! 공개 함수마다 **몸통만** `#[cfg]` 로 가르고, 아직 구현하지 않은 OS 는 명시적 `None`/`Err` 스텁이다(CLAUDE.md 원칙 —
-//! 스텁이 곧 문서). Windows 몸통은 ③-0 스파이크(`scripts/lab/session-server-spike/src/win.rs`)에서 옮겼고, 유닉스 모양은
-//! 같은 곳 `unix_sketch.rs` 의 서명이다. Windows 내부 도우미는 아래 `win` 에 모았다.
+//! 세션 서버의 OS 원시. 공개 함수마다 **몸통만** `#[cfg]` 로 가르고, 아직 구현하지 않은 OS 는 명시적 `None`/`Err` 스텁이다(스텁이 곧 문서).
 //!
 //! - exe 비교는 **`QueryFullProcessImageNameW` 끼리**([`image_path`] · [`same_exe`]) — `current_exe()` 는 정션을 실체로
-//!   풀어 같은 파일을 다른 글자로 보일 수 있다(스파이크 보정 4).
-//! - 자기 잡 `KILL_ON_JOB_CLOSE` 는 서버가 죽는 순간(마지막 핸들) 잡 안 자식을 모두 끝낸다. 단 Store(MSIX) pwsh 는 잡에
-//!   들지 않는다(스파이크 2) — 그래서 정상 종료 경로는 [`terminate_descendants`] 도 거친다(크래시는 고아 가능 — 정직한 한계).
+//!   풀어 같은 파일을 다른 글자로 보일 수 있다.
+//! - 자기 잡 `KILL_ON_JOB_CLOSE` 는 서버가 죽는 순간 잡 안 자식을 모두 끝낸다. 단 Store(MSIX) pwsh 는 잡에
+//!   들지 않는다 — 그래서 정상 종료 경로는 [`terminate_descendants`] 도 거친다(크래시는 고아 가능 — 알고 받은 한계).
 
 use std::path::Path;
 
-/// 띄우기 방식 — `server.json`·hello·상태에 그대로 실리는 글자.
+/// `server.json`·hello·상태에 글자 그대로 실린다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpawnMode {
     /// `CREATE_BREAKAWAY_FROM_JOB` — 부모 잡이 `BREAKAWAY_OK` 를 줄 때(바로 가기·Windows Terminal 아래) 또는 잡이 없을 때.
     Breakaway,
     /// 부모를 explorer 로 지정(`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`) — breakaway 가 err 5 일 때(`tauri dev` 의 cargo 잡).
     Explorer,
-    /// 둘 다 실패 — GUI 와 같은 잡에서 돈다. **GUI 를 닫으면 서버(와 ③-2 뒤의 세션)도 닫힌다** — 상태로 밝힌다.
+    /// 둘 다 실패 — GUI 와 같은 잡에서 돈다. **GUI 를 닫으면 서버(와 세션)도 닫힌다** — 상태로 밝힌다.
     SameJob,
 }
 
@@ -32,7 +28,6 @@ impl SpawnMode {
     }
 }
 
-/// pid 의 실행 파일 전체 경로. 열 수 없으면(없음·권한) `None`.
 pub(crate) fn image_path(pid: u32) -> Option<String> {
     #[cfg(windows)]
     {
@@ -46,7 +41,7 @@ pub(crate) fn image_path(pid: u32) -> Option<String> {
     }
 }
 
-/// 이 프로세스 자신의 이미지 경로([`image_path`] 와 같은 API 로 — 비교의 양쪽 글자를 맞춘다).
+/// [`image_path`] 와 같은 API 로 — 비교의 양쪽 글자를 맞춘다.
 pub(crate) fn own_image() -> Option<String> {
     image_path(std::process::id())
 }
@@ -55,19 +50,17 @@ fn norm_path(s: &str) -> String {
     s.trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
 }
 
-/// 두 이미지 경로가 같은 파일인가 — `\\?\` 접두와 대소문자를 무시한다(Windows 경로 규칙).
+/// `\\?\` 접두와 대소문자를 무시한다(Windows 경로 규칙).
 pub(crate) fn same_exe(a: &str, b: &str) -> bool {
     norm_path(a) == norm_path(b)
 }
 
-/// `path` 가 `dir` 아래(자식·손자)에 있는가 — 같은 대소문자 규칙.
 pub(crate) fn exe_under(path: &str, dir: &Path) -> bool {
     let d = norm_path(&dir.to_string_lossy());
     let d = d.trim_end_matches('\\');
     !d.is_empty() && norm_path(path).starts_with(&format!("{d}\\"))
 }
 
-/// pid 가 살아 있는가(열 수 있고 끝나지 않았다).
 pub(crate) fn pid_alive(pid: u32) -> bool {
     #[cfg(windows)]
     {
@@ -80,8 +73,7 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
     }
 }
 
-/// pid 의 **전용 작업 집합**(바이트) — 그 프로세스만 쓰는 실 메모리, 작업 관리자 "메모리" 칸과 같은 기준. 다른 프로세스와
-/// 나눠 쓰는 쪽(DLL · WebView2 공용 코드)은 빠진다. 열 수 없거나(없음 · 권한) OS 가 이 값을 주지 않으면(Windows 10 21H2 전)
+/// pid 의 **전용 작업 집합**(바이트) — 작업 관리자 "메모리" 칸과 같은 기준. OS 가 이 값을 주지 않으면(Windows 10 21H2 전)
 /// `None` — 부르는 쪽이 작업 집합 그대로 둔다. 유닉스는 RSS 그대로라 스텁(`/proc/<pid>/smaps_rollup` 의 Private_* 가 자리).
 pub(crate) fn private_memory(pid: u32) -> Option<u64> {
     #[cfg(windows)]
@@ -95,8 +87,7 @@ pub(crate) fn private_memory(pid: u32) -> Option<u64> {
     }
 }
 
-/// 서버 시작 때 자기 잡(`KILL_ON_JOB_CLOSE`)을 만들어 자신을 넣는다. 반환값은 프로세스 끝까지 쥐는 손잡이다
-/// (마지막 핸들이 닫히는 순간 잡 안 자식 전부 종료). 유닉스는 `PR_SET_CHILD_SUBREAPER`+`PDEATHSIG` 자리 — 스텁.
+/// 반환값은 프로세스 끝까지 쥐는 손잡이다. 유닉스는 `PR_SET_CHILD_SUBREAPER`+`PDEATHSIG` 자리 — 스텁.
 pub(crate) fn create_kill_on_close_job() -> Result<OwnJob, String> {
     #[cfg(windows)]
     {
@@ -114,8 +105,7 @@ pub(crate) fn create_kill_on_close_job() -> Result<OwnJob, String> {
 #[derive(Debug)]
 pub(crate) struct OwnJob(#[allow(dead_code)] usize);
 
-/// 이 프로세스의 자식 트리(손자 포함)를 끝낸다 — 정상 종료 경로. 끝낸 수를 돌려준다(③-1 에서는 늘 0 — 자식이 없다).
-/// ③-2 에서 PTY 자식이 서버 아래로 오면 Store pwsh 처럼 잡에 안 드는 손자를 이것이 거둔다.
+/// 정상 종료 경로 — Store pwsh 처럼 잡에 안 드는 손자를 이것이 거둔다.
 pub(crate) fn terminate_descendants() -> usize {
     #[cfg(windows)]
     {
@@ -128,15 +118,10 @@ pub(crate) fn terminate_descendants() -> usize {
     }
 }
 
-// (3a) 2차 PTY 작업자의 "생성 뒤 pid 로 잡에 넣고 못 넣으면 pid 목록" 대체 경로(`worker_job` · `descendants_of` · `terminate_pids`)는
-// 걷었다 — 헤드리스 턴은 생성과 동시에 잡에 든다([`spawn_in_job`] — 헤드리스 설계 4-3).
 
-/// 서버 진입에서 가장 먼저 — 물려받은 "Ctrl+C 무시" 속성을 걷는다. 이 속성(`SetConsoleCtrlHandler(NULL, TRUE)` ·
-/// `CREATE_NEW_PROCESS_GROUP`)은 PEB 의 프로세스 속성이라 **콘솔이 없는 서버라도 자식에게 상속**된다 — 걷지 않으면 서버가
-/// ConPTY 로 띄운 셸이 Ctrl+C(0x03 → CTRL_C_EVENT)를 무시해 `ping -t`·`Start-Sleep`·루프가 키보드로 안 끊긴다.
-/// 상속 경로는 둘이었다: 예전 [`spawn_server_detached`] 의 `CREATE_NEW_PROCESS_GROUP`(릴리스), 그리고 개발 앱의
-/// node→cargo 사슬(GUI 자신이 이미 무시 상태). 서버 자신은 콘솔이 없어 CTRL_C_EVENT 를 받을 길이 없다 — 걷어도 서버는 안전하다
-/// (docs/log/2026-10-10-ctrl-c-inherit.md).
+/// 서버 진입에서 가장 먼저 — 물려받은 "Ctrl+C 무시" 속성을 걷는다. 이 속성은 PEB 의 프로세스 속성이라 **콘솔이 없는 서버라도
+/// 자식에게 상속**된다 — 걷지 않으면 ConPTY 셸이 키보드 Ctrl+C 로 안 끊긴다(개발 앱의 node→cargo 사슬이 이미 무시 상태). 서버 자신은
+/// 콘솔이 없어 걷어도 안전하다(docs/log/2026-10-10-ctrl-c-inherit.md).
 pub(crate) fn enable_ctrl_c_for_children() {
     #[cfg(windows)]
     unsafe {
@@ -145,8 +130,7 @@ pub(crate) fn enable_ctrl_c_for_children() {
     // 유닉스: 해당 없음 — SIGINT 는 세션의 전경 프로세스 그룹에 pty 가 직접 보낸다(서버의 무시 상태는 `setsid` 자식에 영향 없음).
 }
 
-/// GUI 쪽 — 서버를 **분리 실행**한다. 순서 breakaway → (실패면) explorer 부모 → 같은 잡. 성공한 방식과 pid.
-/// `args_for(mode)` 는 방식마다의 인자(서버가 제 `launch_mode` 를 알도록)를 만든다.
+/// GUI 쪽 — 서버를 **분리 실행**한다. `args_for(mode)` 는 방식마다의 인자(서버가 제 `launch_mode` 를 알도록)를 만든다.
 pub(crate) fn spawn_server_detached(
     exe: &str,
     args_for: &dyn Fn(SpawnMode) -> Vec<String>,
@@ -163,33 +147,30 @@ pub(crate) fn spawn_server_detached(
     }
 }
 
-/// **잡에 생성과 동시에 든 프로세스**(통합 설계 5-3 · R9 · R10 · 헤드리스 설계 4-3) — 맏 프로세스 + 출력 파이프 둘. 수락 전 검증
-/// (`cmd.exe` — [`verify_spawn`])과 오케스트레이션 헤드리스 턴(CLI 하나 — [`spawn_in_job`])이 같은 모양이다. 손잡이를 닫으면(`Drop`) 잡 안에
-/// 남은 것이 모두 끝난다(`KILL_ON_JOB_CLOSE`). 다른 OS 는 [`spawn_in_job`] 이 늘 `Err` 라 서지 않는다.
+/// **잡에 생성과 동시에 든 프로세스**. 손잡이를 닫으면(`Drop`) 잡 안에 남은 것이 모두 끝난다(`KILL_ON_JOB_CLOSE`).
 pub(crate) struct JobProc {
     #[cfg_attr(not(windows), allow(dead_code))]
     job: usize,
     #[cfg_attr(not(windows), allow(dead_code))]
     process: usize,
-    /// 맏 프로세스 pid(잔존 판정 · 로그 — 트리 판정은 잡이 한다).
+    /// 잔존 판정 · 로그용 — 트리 판정은 잡이 한다.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub pid: u32,
-    /// 맏 프로세스의 stdout · stderr 읽는 끝(자식 쪽 끝은 생성 직후 닫았다 — 잡이 비면 EOF 가 선다).
+    /// 자식 쪽 끝은 생성 직후 닫았다 — 잡이 비면 EOF 가 선다.
     pub stdout: Option<std::fs::File>,
     pub stderr: Option<std::fs::File>,
-    /// 맏 프로세스의 stdin 쓰는 끝 — [`Stdin::Pipe`] 일 때만(사이드 채팅). [`Stdin::Eof`] 면 생성 직후 닫아 `None` 이다.
+    /// [`Stdin::Pipe`] 일 때만.
     pub stdin: Option<std::fs::File>,
 }
 
-/// [`spawn_in_job`] 의 표준 입력 — 검증 · 헤드리스 턴은 [`Stdin::Eof`](곧바로 EOF — 사람 입력을 기다리는 명령이 멈추지 않게),
-/// 사이드 채팅(`server::side_chat` — 사람이 보낸 글 · 사람의 권한 결정만 쓴다 · 생성은 공용 코어 `server::chat_proc`)만 [`Stdin::Pipe`](쓰는 끝을 [`JobProc::stdin`] 으로 돌려준다).
+/// 검증 · 헤드리스 턴은 [`Stdin::Eof`](사람 입력을 기다리는 명령이 멈추지 않게). [`Stdin::Pipe`] 는 채팅 프로세스(`server::chat_proc`)만 —
+/// MCP · AI 문자열에서 그 stdin 으로 가는 길은 없다(→ docs/architecture.md `arch-orch-spawn`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Stdin {
     Eof,
     Pipe,
 }
 
-/// 검증 쪽 이름(2차부터의 이름 — 몸은 [`JobProc`] 하나).
 pub(crate) type VerifyProc = JobProc;
 
 impl Drop for JobProc {
@@ -203,7 +184,6 @@ impl Drop for JobProc {
 }
 
 impl JobProc {
-    /// 맏 프로세스가 끝났으면 그 끝 코드(`ms` 만큼 기다린다). 아직이면 `None`.
     pub(crate) fn wait(&self, ms: u32) -> Option<i64> {
         #[cfg(windows)]
         {
@@ -216,13 +196,11 @@ impl JobProc {
         }
     }
 
-    /// 잡 안의 프로세스를 모두 끝낸다(맏이 · 손자 · 고아).
     pub(crate) fn terminate(&self) {
         #[cfg(windows)]
         win::job_terminate(self.job);
     }
 
-    /// 잡 안에 살아 있는 프로세스 수(못 물으면 `None`).
     pub(crate) fn active(&self) -> Option<u32> {
         #[cfg(windows)]
         {
@@ -234,7 +212,6 @@ impl JobProc {
         }
     }
 
-    /// 맏 프로세스가 이 잡에 들어 있나(시험 — 생성과 동시 귀속의 확인). 못 물으면 `false`.
     #[cfg(test)]
     pub(crate) fn in_job(&self) -> bool {
         #[cfg(windows)]
@@ -248,7 +225,7 @@ impl JobProc {
     }
 }
 
-/// 검증을 이 OS 에서 돌릴 수 있나 — 저장소 맡기기 폼이 검증 칸을 끄는 근거(`delegation::repo` 의 `verify_supported`)이자 실행 전 확인. **Windows 만**(다른 OS 는 명시적 스텁 — 목표 OS 의 `sh -c` 는
+/// 검증 실행 전 확인(`orchestration::verify`). **Windows 만**(다른 OS 는 명시적 스텁 — 목표 OS 의 `sh -c` 는
 /// 그 OS 빌드 때 [`verify_spawn`] 몸통과 함께).
 pub(crate) fn verify_supported() -> bool {
     cfg!(windows) && system_cmd().is_some()
@@ -266,15 +243,10 @@ pub(crate) fn system_cmd() -> Option<String> {
     }
 }
 
-/// **잡에 생성과 동시에 넣어 띄운다**(OS 를 타는 몸은 이 함수 하나 — 검증 · 헤드리스 턴 공용, 헤드리스 설계 4-3 · D8) — `app` = 실행 파일
-/// 절대 경로 · `cmdline` = 부르는 쪽이 정한 명령 줄 그대로(검증은 고정 직렬화 — 0b A, 헤드리스 턴은 표준 MSVC 인용 —
-/// `orchestration::turn::quote_argv`) · `env` = 자식 환경 **전부**(이것만 — 부르는 쪽이 정한다: 검증은 허용 목록, 헤드리스 턴은 서버 환경 −
-/// 공용 정화). 잡은 **생성과 동시에 귀속**(`PROC_THREAD_ATTRIBUTE_JOB_LIST` — 0b B)하고, 배정이 안 서면 프로세스를 시작하지 않는다
-/// (`Err`). 상속 핸들은 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` 로 표준 입출력 셋만 · 창 없음(`CREATE_NO_WINDOW`) · 표준 입력은 `stdin` 이 정한다 —
-/// [`Stdin::Eof`] 면 곧바로 EOF(쓰는 끝을 생성 직후 닫은 파이프 — NUL 장치와 같은 즉시 EOF), [`Stdin::Pipe`] 면 쓰는 끝을 돌려준다(상속 안 됨
-/// 그대로 — 자식이 받는 것은 읽는 끝 하나). 상속 가능 핸들을 여는 틈 · `CreateProcessW` 는 **`SPAWN_LOCK` 아래**
-/// (`pty::with_spawn_lock` — 같은 틈에 서는 ConPTY 셸이 이 파이프를 물려받지 않게, D8). 실패는 `(낱말, 문장)` — 낱말은 `job` · `pipe` ·
-/// `create` · `unsupported`.
+/// **잡에 생성과 동시에 넣어 띄운다** — OS 를 타는 몸은 이 함수 하나(검증 · 헤드리스 턴 · 채팅 공용). `env` = 자식 환경 **전부**(부르는 쪽이
+/// 정한다). 배정이 안 서면 프로세스를 시작하지 않는다 — 생성 뒤 pid 로 넣는 대체 경로는 없다(시험 `job_assigned_at_creation_or_turn_not_started`).
+/// 상속 가능 핸들을 여는 틈 · `CreateProcessW` 는 **`SPAWN_LOCK` 아래**(ConPTY 셸이 이 파이프를 물려받지 않게 — 시험
+/// `headless_spawn_holds_spawn_lock`). 실패 낱말은 `job` · `pipe` · `create` · `unsupported`.
 pub(crate) fn spawn_in_job(
     app: &str,
     cmdline: &str,
@@ -311,9 +283,8 @@ pub(crate) fn spawn_in_job(
     }
 }
 
-/// 검증 프로세스를 띄운다 — [`spawn_in_job`] 의 얇은 감싸개(`app` = [`system_cmd`] · `cmdline` = 고정 직렬화된 명령 줄 그대로(`raw_arg` 와
-/// 같은 뜻 — Rust 인자 배열의 인용을 쓰지 않는다, 0b A) · `env` = 허용 목록 환경(이것만 — 서버 환경을 물려주지 않는다)). 다른 OS 는
-/// [`spawn_in_job`] 의 명시적 스텁 그대로 `Err(("unsupported", …))`.
+/// `cmdline` 은 고정 직렬화된 명령 줄 그대로(Rust 인자 배열의 인용을 쓰지 않는다) · `env` 는 허용 목록 환경만(서버 환경을 물려주지 않는다).
+/// 다른 OS 는 명시적 스텁 `Err(("unsupported", …))`.
 pub(crate) fn verify_spawn(
     app: &str,
     cmdline: &str,
@@ -556,7 +527,7 @@ mod win {
         }
     }
 
-    /// 머리말 [`super::spawn_in_job`]. 0b 실측 B 의 `PROC_THREAD_ATTRIBUTE_JOB_LIST` 방식(재개 경쟁 없음 · 서버 잡 아래 겹친 잡).
+    /// 머리말 [`super::spawn_in_job`]. `PROC_THREAD_ATTRIBUTE_JOB_LIST` 방식 — 재개 경쟁이 없다.
     pub(super) fn spawn_in_job(
         app: &str,
         cmdline: &str,
@@ -741,9 +712,8 @@ mod win {
         n
     }
 
-    // `CREATE_NEW_PROCESS_GROUP` 은 넣지 않는다 — `DETACHED_PROCESS` 라 서버엔 콘솔이 없어 그룹 분리는 뜻이 없고, 그 플래그는
-    // 새 프로세스에 "Ctrl+C 무시" 를 켜 **서버가 띄운 셸까지 상속**시켰다(키보드 Ctrl+C 가 셸을 못 끊음 — 10-10).
-    // 서버 진입의 `enable_ctrl_c_for_children` 이 다른 사슬로 물려받은 무시도 걷는다.
+    // `CREATE_NEW_PROCESS_GROUP` 은 넣지 않는다 — 새 프로세스에 "Ctrl+C 무시" 를 켜 **서버가 띄운 셸까지 상속**시킨다(키보드 Ctrl+C 가
+    // 셸을 못 끊는다). `DETACHED_PROCESS` 라 그룹 분리는 뜻도 없다.
     const DETACH_FLAGS: u32 = DETACHED_PROCESS;
 
     /// 우리 인자는 경로·짧은 낱말뿐이다 — 따옴표가 든 인자는 부르는 쪽이 만들지 않는다.

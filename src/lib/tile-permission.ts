@@ -1,13 +1,6 @@
 /**
- * **타일 권한 카드의 순수 층**(2026-11-01 화면 단계 — docs/log/2026-11-01-tile-permission-hook.md 8절 와이어 · 10절 화면).
- *
- * 로컬 AI 타일의 CLI(Claude Code · Codex TUI)가 권한을 물으면 그 프로세스에만 건 훅이 세션 서버에 카드를 세운다. 이 파일은
- * - 와이어의 꼴(카드 · 사건 · 스냅숏 — Rust `tile_permission.rs` 의 `card_of` · `gone` 의 거울),
- * - 사건 · 스냅숏 → 스트림별 카드 목록 상태(`seq` 가 없다 — F5 · 재부착 때 스냅숏으로 다시 그린다),
- * - 카드 → 도구별 본문 모델(명령 · diff · 글 · URL · 검색어 · 경로 · MCP),
- * - Edit 의 `old_string`/`new_string` 줄 diff · apply_patch 원문의 줄 갈래
- * 를 쥔다. DOM · 룬 · 사전이 없다(시험 대상 — tile-permission.test.ts). 상태는 `app/tile-permission.svelte.ts`, 그림은
- * `pane/TilePermissionCard.svelte`.
+ * 타일 권한 카드의 순수 층. 와이어의 꼴은 Rust `tile_permission.rs` 의 `card_of` · `gone` 의 거울이다.
+ * 상태에 `seq` 가 없다 — F5 · 재부착 때 스냅숏으로 다시 그린다.
  */
 
 import { approvalRisk, verdictOf, type Verdict } from "$lib/review-card";
@@ -28,7 +21,7 @@ export type TilePermGoneReason =
   | "no-viewer"
   | "session-ended";
 
-/** 카드 한 장(Rust `card_of`). `input` 은 도구 입력 본문(잘렸을 수 있다 — `truncated`) */
+/** Rust `card_of` 의 거울. `input` 은 잘렸을 수 있다(`truncated`) */
 export interface TilePermCard {
   requestId: string;
   stream: string;
@@ -54,7 +47,7 @@ export type TilePermEv =
   | { t: "request"; card: TilePermCard }
   | { t: "gone"; requestId: string; reason: TilePermGoneReason }
   | { t: "auto"; card: TilePermCard }
-  /** 그 타일의 TUI 가 묻는 중인가(면 규칙 2026-11-02 — 카드 없이 물러났거나 카드가 풀렸다) */
+  /** 그 타일의 TUI 가 묻는 중인가 */
   | { t: "tui"; asking: boolean };
 
 /** Channel 몸 — `windows` 는 그 순간 그 세션을 보는 창들 */
@@ -68,7 +61,7 @@ export interface TilePermBody {
 export interface TilePermSnapshot {
   sessionEpoch: number | null;
   cards: TilePermCard[];
-  /** 그 타일의 TUI 가 묻는 중인가(판 24 · 옛 서버는 없음 = 거짓) */
+  /** 옛 서버는 칸이 없다 = 거짓 */
   tuiAsking?: boolean;
 }
 
@@ -84,7 +77,6 @@ function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** 와이어의 카드 하나를 믿을 만한 꼴로 — 칸이 틀리면 `null`(그리지 않는다) */
 export function parseTilePermCard(v: unknown): TilePermCard | null {
   if (!isObj(v)) return null;
   const s = (k: string) => (typeof v[k] === "string" ? (v[k] as string) : null);
@@ -118,7 +110,6 @@ export function parseTilePermCard(v: unknown): TilePermCard | null {
   };
 }
 
-/** Channel 몸 → 꼴. 모르는 사건이면 `null` */
 export function parseTilePermBody(raw: unknown): TilePermBody | null {
   if (!isObj(raw) || typeof raw.stream !== "string" || typeof raw.sessionEpoch !== "number" || !isObj(raw.ev)) return null;
   const windows = Array.isArray(raw.windows) ? raw.windows.filter((w): w is string => typeof w === "string") : [];
@@ -135,10 +126,6 @@ export function parseTilePermBody(raw: unknown): TilePermBody | null {
   return parsed ? { windows, stream: raw.stream, sessionEpoch: raw.sessionEpoch, ev: parsed } : null;
 }
 
-/**
- * 사건 하나 → 새 상태 + 흔적. `request` = 그 스트림에 카드를 세운다(새 회차면 옛 회차 카드는 버린다 · 같은 id 면 갈음) ·
- * `gone` = 치운다(`terminal` 이면 "터미널에서 답함" 흔적) · `auto` = 카드 없이 흔적만.
- */
 export function applyTilePermEvent(state: TilePermState, body: TilePermBody): { state: TilePermState; trace: TilePermTrace | null } {
   const { stream, ev } = body;
   const cur = state[stream];
@@ -158,7 +145,7 @@ export function applyTilePermEvent(state: TilePermState, body: TilePermBody): { 
   return { state: next, trace: ev.reason === "terminal" ? { kind: "terminal", stream, card: gone } : null };
 }
 
-/** 스냅숏 → 그 스트림을 통째로 다시 그린다(보는 창이 아니면 `sessionEpoch: null` — 비운다) */
+/** 보는 창이 아니면 `sessionEpoch: null` — 비운다 */
 export function applyTilePermSnapshot(state: TilePermState, stream: string, snap: TilePermSnapshot): TilePermState {
   if (snap.sessionEpoch === null) {
     if (!(stream in state)) return state;
@@ -169,14 +156,13 @@ export function applyTilePermSnapshot(state: TilePermState, stream: string, snap
   return { ...state, [stream]: { epoch: snap.sessionEpoch, cards } };
 }
 
-/** 카드 한 장을 치운다(내 결정이 먹었거나 다른 창이 먼저 답했다 — `gone` 이 곧 오지만 기다리지 않는다) */
+/** `gone` 이 곧 오지만 기다리지 않는다 */
 export function dropTilePermCard(state: TilePermState, stream: string, requestId: string): TilePermState {
   const cur = state[stream];
   if (!cur || !cur.cards.some((c) => c.requestId === requestId)) return state;
   return { ...state, [stream]: { epoch: cur.epoch, cards: cur.cards.filter((c) => c.requestId !== requestId) } };
 }
 
-/** 스냅숏 몸 → 꼴 */
 export function parseTilePermSnapshot(raw: unknown): TilePermSnapshot {
   if (!isObj(raw)) return { sessionEpoch: null, cards: [], tuiAsking: false };
   const epoch = typeof raw.sessionEpoch === "number" ? raw.sessionEpoch : null;
@@ -203,9 +189,9 @@ export type CardBody =
   | { kind: "question"; questions: CardQuestion[]; answerable: boolean }
   | { kind: "other"; tool: string; args: string };
 
-// ── 질문 카드(2026-11-02 — Claude `AskUserQuestion` · 실측 7절) ─────────────────────────────────────
+// ── 질문 카드 ──────────────────────────────────────────────────────────────
 
-/** 질문 하나 — `options` 의 이름이 곧 답 글자 */
+/** `options` 의 이름이 곧 답 글자 */
 export interface CardQuestion {
   question: string;
   header: string | null;
@@ -213,13 +199,12 @@ export interface CardQuestion {
   options: { label: string; description: string | null }[];
 }
 
-/** 질문 하나에 사람이 고른 것 — 선택지 이름들 · 직접 쓴 글(`other` — 비면 없음) */
+/** `other` = 직접 쓴 글(비면 없음) */
 export interface QuestionPick {
   labels: readonly string[];
   other: string;
 }
 
-/** 입력 → 질문들(모양이 틀린 질문은 버린다) */
 export function cardQuestions(input: unknown): CardQuestion[] {
   if (!isObj(input) || !Array.isArray(input.questions)) return [];
   const out: CardQuestion[] = [];
@@ -239,7 +224,7 @@ export function cardQuestions(input: unknown): CardQuestion[] {
   return out;
 }
 
-/** 답 글자 하나 — 하나 고르기 = 그 이름(직접 쓴 글이 있으면 그 글) · 여러 개 = 이름들 + 직접 쓴 글을 `, ` 로(Claude TUI 와 같은 꼴 · 실측) */
+/** 여러 개 고르기 = 이름들 + 직접 쓴 글을 `, ` 로 잇는다 — Claude TUI 와 같은 꼴 */
 export function answerText(q: Pick<CardQuestion, "multiSelect">, pick: QuestionPick | undefined): string {
   if (!pick) return "";
   const other = pick.other.trim();
@@ -247,10 +232,7 @@ export function answerText(q: Pick<CardQuestion, "multiSelect">, pick: QuestionP
   return [...pick.labels, ...(other !== "" ? [other] : [])].join(", ");
 }
 
-/**
- * 고른 것 → 서버로 보낼 `answers`(질문 글 → 답) — 모든 질문에 답이 있어야 한다(아니면 `null` — [답하기]를 막는다). 선택지 이름은 그 질문의
- * 선택지에 있는 것만 싣는다(사람이 고른 것뿐).
- */
+/** 모든 질문에 답이 있어야 한다(아니면 `null` — [답하기]를 막는다). 선택지 이름은 그 질문의 선택지에 있는 것만 싣는다 */
 export function cardAnswers(questions: readonly CardQuestion[], picks: Readonly<Record<string, QuestionPick>>): Record<string, string> | null {
   if (questions.length === 0) return null;
   const out: Record<string, string> = {};
@@ -264,32 +246,27 @@ export function cardAnswers(questions: readonly CardQuestion[], picks: Readonly<
   return out;
 }
 
-/** 그 질문에 답이 있는가 — 그 질문의 선택지에 있는 이름 또는 직접 쓴 글(한 장씩 넘기는 카드의 [다음] · 단계 막대) */
 export function questionAnswered(q: CardQuestion, pick: QuestionPick | undefined): boolean {
   if (!pick) return false;
   const known = pick.labels.filter((l) => q.options.some((o) => o.label === l));
   return answerText(q, { labels: known, other: pick.other }).trim() !== "";
 }
 
-/** 아직 답하지 않은 질문의 번호(1부터) — [답하기] 옆 안내 */
 export function missingQuestions(questions: readonly CardQuestion[], picks: Readonly<Record<string, QuestionPick>>): number[] {
   return questions.flatMap((q, i) => (questionAnswered(q, picks[q.question]) ? [] : [i + 1]));
 }
 
-/** 답한 뒤 남기는 요약 한 줄 — 머리(없으면 `Q<n>` — 질문이 하나면 빈 글)와 보낸 답 그대로 */
 export interface QuestionSummaryLine {
   header: string;
   answer: string;
 }
 
-/** 보낸 `answers`(질문 글 → 답) → 요약 줄들 — 질문 순서대로. 사람이 고르거나 친 답만(보낸 것 그대로) */
 export function questionSummary(questions: readonly CardQuestion[], answers: Readonly<Record<string, string>>): QuestionSummaryLine[] {
   return questions
     .filter((q) => typeof answers[q.question] === "string")
     .map((q, i) => ({ header: q.header?.trim() || (questions.length > 1 ? `Q${i + 1}` : ""), answer: answers[q.question] }));
 }
 
-/** 하나 고르기 질문의 선택지를 눌렀다 · 여러 개면 켜고 끈다 — 다음 고른 것(순수) */
 export function togglePick(q: Pick<CardQuestion, "multiSelect" | "options">, pick: QuestionPick | undefined, label: string): QuestionPick {
   const cur = pick ?? { labels: [], other: "" };
   if (!q.multiSelect) return { labels: [label], other: "" };
@@ -303,7 +280,6 @@ function str(o: unknown, k: string): string | null {
   return isObj(o) && typeof o[k] === "string" ? (o[k] as string) : null;
 }
 
-/** 입력 JSON 보기 — 2칸 들여쓰기(빈 객체면 빈 글) */
 export function prettyJson(v: unknown): string {
   if (v === null || v === undefined) return "";
   if (isObj(v) && Object.keys(v).length === 0) return "";
@@ -314,7 +290,6 @@ export function prettyJson(v: unknown): string {
   }
 }
 
-/** `mcp__<서버>__<도구>` → 서버 · 도구(서버 이름은 Claude 의 `mcpServer.name` 이 있으면 그것) */
 export function mcpNames(tool: string, server: TilePermCard["mcpServer"]): { server: string; tool: string } {
   const rest = tool.startsWith("mcp__") ? tool.slice(5) : tool;
   const i = rest.indexOf("__");
@@ -323,7 +298,6 @@ export function mcpNames(tool: string, server: TilePermCard["mcpServer"]): { ser
   return { server: server?.name?.trim() || fromName, tool: name || rest };
 }
 
-/** 줄 diff 의 상한 — 넘으면 앞뒤를 통째로 지우기 · 넣기로(훅 본문은 이미 2 K 글자로 잘려 온다) */
 const DIFF_MAX_LINES = 400;
 
 function splitLines(s: string): string[] {
@@ -333,17 +307,13 @@ function splitLines(s: string): string[] {
   return lines;
 }
 
-/**
- * **두 글의 줄 diff**(Edit 의 `old_string` → `new_string`) — 최장 공통 부분열. 파일의 앞뒤 줄(문맥)은 훅에 없어 그리지 않는다 —
- * 조각만의 diff 다. 순수.
- */
+/** 조각만의 diff 다 — 파일의 앞뒤 문맥은 훅에 없어 그리지 않는다 */
 export function lineDiff(before: string, after: string): DiffRow[] {
   const a = splitLines(before);
   const b = splitLines(after);
   if (a.length > DIFF_MAX_LINES || b.length > DIFF_MAX_LINES) {
     return [...a.map((text) => ({ op: "-" as const, text })), ...b.map((text) => ({ op: "+" as const, text }))];
   }
-  // 앞뒤 같은 줄은 표 없이 걷는다
   let head = 0;
   while (head < a.length && head < b.length && a[head] === b[head]) head++;
   let tail = 0;
@@ -384,7 +354,7 @@ export function lineDiff(before: string, after: string): DiffRow[] {
 
 const PATCH_FILE = ["*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:"];
 
-/** apply_patch 원문의 파일 경로들(Rust `patch_files` 와 같은 규칙 — 정렬 · 중복 없음) */
+/** Rust `patch_files` 와 같은 규칙 — 정렬 · 중복 없음 */
 export function patchFiles(patch: string): string[] {
   const out = new Set<string>();
   for (const l of patch.replace(/\r\n/g, "\n").split("\n")) {
@@ -395,7 +365,6 @@ export function patchFiles(patch: string): string[] {
   return [...out].sort();
 }
 
-/** apply_patch 원문 → 줄 갈래(`*** Begin/End Patch` 는 걷는다) */
 export function patchRows(patch: string): DiffRow[] {
   const rows: DiffRow[] = [];
   for (const l of splitLines(patch)) {
@@ -408,7 +377,6 @@ export function patchRows(patch: string): DiffRow[] {
   return rows;
 }
 
-/** 카드 → 도구별 본문 모델 */
 export function cardBody(card: TilePermCard): CardBody {
   const input = card.input;
   switch (card.kind) {
@@ -453,10 +421,10 @@ export function cardBody(card: TilePermCard): CardBody {
       return { kind: "mcp", server: n.server, tool: n.tool, args: prettyJson(input) };
     }
     case "question": {
-      // Codex `request_user_input` 은 하나 고르기만(여러 개 없음 · "None of the above" 는 직접 입력 칸 — 2026-11-02 A안)
+      // Codex `request_user_input` 은 하나 고르기만
       const codex = card.cli === "codex";
       const questions = cardQuestions(input).map((q) => (codex ? { ...q, multiSelect: false } : q));
-      // 답 길(서버 `answer_output` 과 같은 조건) — Claude `AskUserQuestion` · Codex `request_user_input` 의 잘리지 않은 입력. 아니면 질문만 보이고 [터미널에서 답하기]
+      // 서버 `answer_output` 과 같은 조건이어야 한다 — 아니면 질문만 보이고 [터미널에서 답하기]
       const pair = (card.cli === "claude" && card.tool === "AskUserQuestion") || (codex && card.tool === "request_user_input");
       return { kind: "question", questions, answerable: pair && !card.truncated && questions.length > 0 };
     }
@@ -465,7 +433,6 @@ export function cardBody(card: TilePermCard): CardBody {
   }
 }
 
-/** 한 줄 요약 — 자동 허용 · 터미널에서 답함 흔적에 붙는 대상(80자) */
 export function cardTarget(card: TilePermCard): string {
   const b = cardBody(card);
   let s: string;
@@ -501,19 +468,14 @@ export function cardTarget(card: TilePermCard): string {
   return s.length > 80 ? `${s.slice(0, 79)}…` : s;
 }
 
-/**
- * **명령 카드의 판결 띠** — 작업안 승인 카드와 같은 판정(`verdictOf` · `approvalRisk` — Rust 분석 그대로 · 새 판정 없음). AI 의 효과
- * 선언이 없는 자리라 "· AI 설명과 일치" 는 붙지 않는다.
- */
+/** 작업안 승인 카드와 같은 판정(새 판정 없음). AI 효과 선언이 없는 자리라 "· AI 설명과 일치" 는 붙지 않는다 */
 export function commandVerdict(command: string, analysis: PlanAnalysis): Verdict {
   const op = { command, analysis, effect: null, mismatch: false, db: null } as unknown as Operation;
   return verdictOf(op, approvalRisk(op));
 }
 
-/** 남은 초(0 이하면 0) — 1분 안쪽에서만 화면에 보인다 */
 export function secondsLeft(card: Pick<TilePermCard, "deadlineAt">, now: number): number {
   return Math.max(0, Math.ceil((card.deadlineAt - now) / 1000));
 }
 
-/** 남은 시간을 보일까 — 1분 안쪽만(군더더기 없이) */
 export const SHOW_LEFT_UNDER_S = 60;

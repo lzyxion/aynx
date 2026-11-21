@@ -1,15 +1,13 @@
-//! **서버 집행 git 실행기**(공용 — 설계 2026-10-15-orchestration-integration-design 4-3 머리 · 10절 1단계). `commit_changes`(`commit.rs`)와
-//! 조정자 `get_diff`(`diff.rs`)가 함께 쓴다 — 다음 단계의 통합(`merge-tree` · ref 트랜잭션)도 이 위에 선다.
+//! 서버 집행 git 실행기(공용 — 커밋 · diff · 통합 · 병합).
 //!
 //! 불변식:
 //! - **신뢰된 절대 경로의 git**(PATH 의 절대 폴더에서 찾은 것 · 처음 한 번) · 셸 없음 · 인자 배열.
-//! - 환경은 서버 자기 환경에서 **`GIT_*` 를 모두 걷은 것**(`GIT_CONFIG_PARAMETERS` · `GIT_ATTR_SOURCE` · `GIT_DIR` 류 포함 —
-//!   [`child_env`]) + `GIT_TERMINAL_PROMPT=0`. 고정 `-c`: 빈 훅 폴더 · fsmonitor · 서명 · editor · pager · 자동 정리 끔.
-//! - **종료 코드를 보존한다**(`merge-tree` 의 1 = 충돌처럼 0 이 아닌 코드도 뜻이 있다) — [`Out::code`]. 성공만 보는 쪽은 [`Git::ok`].
-//! - **출력 상한**(바이트) — stdout 은 [`Git::limit`] 까지만 담고 그 뒤는 읽어 버린다(파이프가 막혀 git 이 멈추지 않게 · 끝 코드가
-//!   그대로 서게). 넘었으면 [`Out::truncated`]. 성공을 요구하는 [`Git::ok`] 는 잘린 출력을 `output-too-large` 로 거절한다(잘린 글을
-//!   전부인 척 쓰지 않는다). stderr 는 [`STDERR_MAX`] 까지.
-//! - 시한 하나(기본 [`GIT_TIMEOUT`] — 실행기마다 [`Git::timeout`] 으로 줄일 수 있다) — 넘으면 끝낸다.
+//! - 환경은 서버 자기 환경에서 **`GIT_*` 를 모두 걷은 것**(`GIT_CONFIG_PARAMETERS` · `GIT_ATTR_SOURCE` · `GIT_DIR` 류 포함) +
+//!   `GIT_TERMINAL_PROMPT=0`. 고정 `-c`: 빈 훅 폴더 · fsmonitor · 서명 · editor · pager · 자동 정리 끔.
+//! - **종료 코드를 보존한다**(`merge-tree` 의 1 = 충돌처럼 0 이 아닌 코드도 뜻이 있다). 성공만 보는 쪽은 [`Git::ok`].
+//! - **출력 상한** — stdout 은 상한까지만 담고 그 뒤는 읽어 버린다(파이프가 막혀 git 이 멈추지 않게). [`Git::ok`] 는 잘린 출력을
+//!   `output-too-large` 로 거절한다(잘린 글을 전부인 척 쓰지 않는다).
+//! - 시한을 넘으면 끝낸다.
 
 use std::ffi::OsString;
 use std::io::{Read, Write};
@@ -22,25 +20,23 @@ use std::os::windows::process::CommandExt;
 
 use super::store::{reason, OrchError};
 
-/// git 한 번의 시한.
 pub(crate) const GIT_TIMEOUT: Duration = Duration::from_secs(60);
-/// stdout 기본 상한(바이트) — 큰 저장소의 `ls-files` · `status` 도 담는다.
+/// 바이트 — 큰 저장소의 `ls-files` · `status` 도 담는다.
 pub(crate) const STDOUT_MAX: usize = 32 * 1024 * 1024;
-/// stderr 상한(바이트) — 첫 줄만 쓴다.
+/// 바이트 — 첫 줄만 쓴다.
 pub(crate) const STDERR_MAX: usize = 64 * 1024;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// 자식 git 의 환경 — `GIT_*`(대소문자 무시)를 모두 걷는다. 나머지(PATH · HOME · USERPROFILE · SystemRoot …)는 그대로(전역 설정의
-/// 신원 · 실행에 필요). 순수.
+/// `GIT_*`(대소문자 무시)를 모두 걷는다. 나머지(PATH · HOME …)는 전역 설정의 신원 · 실행에 필요해 그대로.
 pub(crate) fn child_env(vars: impl IntoIterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
     vars.into_iter()
         .filter(|(k, _)| !k.to_string_lossy().to_ascii_uppercase().starts_with("GIT_"))
         .collect()
 }
 
-/// 신뢰된 git 실행 파일 — PATH 의 **절대 폴더**에서 찾은 것(Windows 는 `git.exe` 만), 처음 한 번. 못 찾으면 `None`.
+/// PATH 의 **절대 폴더**에서만 찾는다(Windows 는 `git.exe` 만).
 pub(crate) fn git_exe() -> Option<PathBuf> {
     static EXE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     EXE.get_or_init(|| super::spawn::find_exe("git", std::env::var_os("PATH").as_deref()).filter(|p| p.is_absolute()))
@@ -51,25 +47,22 @@ pub(crate) fn hex40(s: &str) -> bool {
     s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// git 한 번의 결과.
 #[derive(Debug, Clone)]
 pub(crate) struct Out {
-    /// 끝 코드(신호로 죽었으면 `None`).
+    /// 신호로 죽었으면 `None`.
     pub code: Option<i32>,
-    /// stdout(UTF-8 로 못 읽는 바이트는 바꿔 넣는다) — 상한까지.
+    /// 상한까지 — UTF-8 로 못 읽는 바이트는 바꿔 넣는다.
     pub stdout: String,
     pub stderr: String,
-    /// stdout 이 상한을 넘어 잘렸다.
     pub truncated: bool,
 }
 
 impl Out {
-    /// 끝 코드 0 인가.
     pub(crate) fn ok(&self) -> bool {
         self.code == Some(0)
     }
 
-    /// 사람 · 기록용 한 줄(stderr 첫 줄 · 240자까지).
+    /// stderr 첫 줄 · 240자까지.
     pub(crate) fn line(&self) -> String {
         let e = self.stderr.trim();
         let m = if e.is_empty() { "git failed" } else { e };
@@ -77,7 +70,6 @@ impl Out {
     }
 }
 
-/// git 부르기 — 셸 없음 · 인자 배열 · `GIT_*` 없는 환경 · 고정 `-c`.
 pub(crate) struct Git<'a> {
     pub exe: PathBuf,
     pub dir: &'a Path,
@@ -85,16 +77,13 @@ pub(crate) struct Git<'a> {
     pub hooks: String,
     /// [`child_env`] 를 지난 환경.
     pub env: &'a [(OsString, OsString)],
-    /// stdout 상한(바이트).
     pub limit: usize,
-    /// 실패(실행 못 함 · 시한 · 끝 코드 0 아님) 사유 낱말 — 부르는 쪽의 것(`commit-failed` · `git-failed`).
+    /// 실패 사유 낱말 — 부르는 쪽의 것(`commit-failed` · `git-failed`).
     pub fail_code: &'static str,
-    /// 한 번의 시한 — 기본 [`GIT_TIMEOUT`]. 화면이 기다리는 가벼운 읽기(작업자 상세의 작업 중 파일)는 더 짧게 둔다.
     pub timeout: Duration,
 }
 
 impl<'a> Git<'a> {
-    /// 실행기 하나 — 신뢰된 git 이 없으면 `fail_code` 로 거절.
     pub(crate) fn new(
         dir: &'a Path,
         hooks_dir: &Path,
@@ -117,7 +106,7 @@ impl<'a> Git<'a> {
         OrchError::new(self.fail_code, msg)
     }
 
-    /// 한 번 부른다 — 끝 코드가 0 이 아니어도 `Ok`(코드 보존). 실행 못 함 · 시한만 `Err`.
+    /// 끝 코드가 0 이 아니어도 `Ok`(코드 보존). 실행 못 함 · 시한만 `Err`.
     pub(crate) fn run(&self, args: &[&str], extra_env: &[(&str, &str)], stdin: Option<&[u8]>) -> Result<Out, OrchError> {
         let mut cmd = Command::new(&self.exe);
         cmd.env_clear()
@@ -187,7 +176,6 @@ impl<'a> Git<'a> {
         })
     }
 
-    /// 성공만 받는다 — 끝 코드 0 이 아니면 `fail_code`, 출력이 잘렸으면 `output-too-large`.
     pub(crate) fn ok(&self, args: &[&str], extra_env: &[(&str, &str)], stdin: Option<&[u8]>) -> Result<String, OrchError> {
         let o = self.run(args, extra_env, stdin)?;
         if !o.ok() {
@@ -203,10 +191,8 @@ impl<'a> Git<'a> {
     }
 }
 
-/// **꺼낼 트리의 필터 검사**(리뷰 F2 — 검토 · 검증 · 해결 seed 의 checkout/restore 전): `tree` 의 **전체 경로**(`ls-tree -r` — 바뀐
-/// 경로만이 아니다, 그대로인 LFS 파일도 checkout 때 smudge 가 돈다) 중 `filter` 속성이 걸린 것이 있나. 속성 출처는 `attr_sources` 의
-/// 트리마다 고정(`check-attr --source=<트리>` — `info/attributes` · `core.attributesFile` 은 git 이 늘 더해 읽으므로 검사도 같이 본다).
-/// 필터 이름이 설정에 있는지는 보지 않는다(보수적 — merge 검사의 `filters` 와 같은 판정). 읽지 못하면 `Err`(부르는 쪽은 거절로 본다).
+/// 꺼낼 트리의 필터 검사(checkout/restore 전) — 바뀐 경로만이 아니라 **전체 경로**를 본다(그대로인 LFS 파일도 checkout 때 smudge 가 돈다).
+/// 필터 이름이 설정에 있는지는 보지 않는다(보수적). 읽지 못하면 `Err` — 부르는 쪽은 거절로 본다.
 pub(crate) fn tree_has_filters(g: &Git<'_>, tree: &str, attr_sources: &[&str]) -> Result<bool, OrchError> {
     if !hex40(tree) || attr_sources.iter().any(|s| !hex40(s)) {
         return Err(g.failed("the filter check needs full object ids"));
@@ -230,7 +216,7 @@ pub(crate) fn tree_has_filters(g: &Git<'_>, tree: &str, attr_sources: &[&str]) -
     Ok(false)
 }
 
-/// 파이프 하나를 끝까지 읽는다 — `max` 바이트까지만 담고 나머지는 버린다(읽기는 계속 — 자식이 쓰다 막히지 않게). `(담은 것, 잘림)`.
+/// 읽기는 끝까지 계속한다 — 자식이 쓰다 막히지 않게.
 fn pump(pipe: Option<Box<dyn Read + Send>>, max: usize) -> std::thread::JoinHandle<(Vec<u8>, bool)> {
     std::thread::spawn(move || {
         let mut kept: Vec<u8> = Vec::new();

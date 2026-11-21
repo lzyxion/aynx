@@ -5,10 +5,6 @@
   import { toast } from "$lib/toast.svelte.js";
   import { codeSpans, SLACK_MANIFEST } from "$lib/settings/messenger-view";
 
-  /**
-   * **Slack 봇 연결 요령** — 번호 줄 셋(2026-11-19 확정 목업 "Slack 채널 줄" ①). 첫 줄의 [매니페스트 복사] 는 앱 매니페스트
-   * (`SLACK_MANIFEST`)를 OS 클립보드에 쓴다(`writeClipboard` — 성공 · 실패는 토스트). 토큰 칸 밑에 선다(연결 전 몸통 · 웹훅에서 바꾸기 칸).
-   */
   const STEPS: readonly Key[] = [
     "settings.messenger.slack.bot.step1",
     "settings.messenger.slack.bot.step2",

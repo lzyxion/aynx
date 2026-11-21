@@ -1,11 +1,5 @@
 <script lang="ts">
-  /**
-   * **브랜치 삭제 — 상자** (docs/log/2026-10-01-worktree-branch-ops.md).
-   *
-   * 지울 수 있는 브랜치 하나를 고른다. 상태와 실행은 전부 `app/worktree-branch.svelte.ts` 에 있고 이 상자는 그리기만
-   * 한다(`WorktreeRemoveDialog` 와 같은 분담 · 같은 상자 모양). Escape 는 여기서 끊는다(뒤의 독까지 닫지 않게).
-   * 슬롯 "새 브랜치" 갈래는 2026-10-05 에 뺐다(docs/log/2026-10-05-worktree-one-to-one.md).
-   */
+  // Escape 는 여기서 끊는다 — 뒤의 독까지 닫지 않게.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import {
@@ -22,7 +16,6 @@
     if (d) submitEl?.focus();
   });
 
-  /** 모달 뿌리 — Tab 이 모달 뒤로 새지 않게 여기서 되감는다 (`trapTab`) */
   let modalEl = $state<HTMLElement | null>(null);
 
   function onKeydown(ev: KeyboardEvent) {
@@ -100,14 +93,14 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(440px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
+    max-width: calc(440px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -160,7 +153,6 @@
     margin-top: var(--space-2);
   }
 
-  /* 삭제 = 되돌릴 수 없는 확정 — 제거 상자와 같은 처방(채운 `--err`) */
   .danger {
     color: var(--on-accent);
     background: var(--err);

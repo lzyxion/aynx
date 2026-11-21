@@ -3,11 +3,8 @@
   import type { LaunchItem, LaunchRowHandlers } from "$lib/start/launch-item";
 
   /**
-   * 시작 화면 위젯의 **줄 단추 하나** — 세 위젯(호스트 · 프로젝트 · 셸)이 같은 줄을 쓴다(아이콘 · 이름 · 뒷글자는 부르는 쪽의 조각).
-   *
-   * 줄은 **포커스를 받지 않는다**(`tabindex=-1` · 누르는 손도 `mousedown` 기본 동작을 막는다) — 이 화면의 포커스 주인은
-   * `StartPage` 의 숨은 입력칸 하나이고, 고른 줄은 `aria-activedescendant` 가 가리킨다(한글 IME 가 첫 키부터 켜져 있게 —
-   * docs/log/2026-09-25-launcher.md 3절). `data-launch-key` · `data-launch-kind` 는 하니스의 손잡이다.
+   * 줄은 포커스를 받지 않는다(`tabindex=-1` · `mousedown` 기본 동작을 막는다) — 포커스 주인이 `StartPage` 의 숨은 입력칸 하나라야
+   * 한글 IME 가 첫 키부터 켜져 있다(고른 줄은 `aria-activedescendant`). `data-launch-key` · `data-launch-kind` 는 하니스의 손잡이다.
    */
   let {
     item,
@@ -17,7 +14,6 @@
     children,
   }: {
     item: LaunchItem;
-    /** 이 위젯 안의 몇째 줄 — DOM id 를 짓는다 */
     index: number;
     title?: string;
     handlers: LaunchRowHandlers;
@@ -44,7 +40,7 @@
 </button>
 
 <style>
-  /* 줄 = 32(고르는 자리라 메뉴 28 보다 한 숨 넉넉히 — `start-widgets.ts` 의 `WIDGET_ROW_H` 와 같은 값) */
+  /* `start-widgets.ts` 의 `WIDGET_ROW_H` 와 같은 값 */
   .row {
     display: flex;
     align-items: center;
@@ -68,7 +64,7 @@
     background: var(--surface-hover);
   }
 
-  /* 선택은 판(`--accent-soft`)이 말한다 — 이 화면의 유일한 강조. 포커스 링을 겹쳐 그리지 않는다 */
+  /* 선택은 판(`--accent-soft`)이 말한다 — 포커스 링을 겹쳐 그리지 않는다 */
   .row.selected {
     background: var(--accent-soft);
   }
@@ -77,7 +73,7 @@
     outline: none;
   }
 
-  /* 줄 안의 조각(부르는 쪽 위젯이 그린다 — 스코프 밖이라 `:global`) */
+  /* 부르는 쪽 위젯이 그리는 조각 — 스코프 밖이라 `:global` */
   .row :global(.ico) {
     display: flex;
     flex: 0 0 auto;

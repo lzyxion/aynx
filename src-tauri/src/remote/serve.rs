@@ -1,17 +1,12 @@
-//! **Tailscale 연결** — 설정 › 원격 접속의 [연결] · [serve 끄기] 뒤(이름 찾기 → `tailscale serve` 판정 · 실행 → `[remote]` 저장 → 관문 맞추기).
+//! **Tailscale 연결** — 설정 › 원격 접속의 [연결] · [serve 끄기].
 //!
 //! 불변식:
-//! - **메인 PC 전용**이다(`deny.rs` 의 `HOME_ONLY` — 원격 창에서는 세 명령 모두 거절, 화면에도 줄이 없다).
-//! - **실행 인자는 고정이고 포트 숫자 하나만 끼운다**([`serve_on_args`] · [`SERVE_OFF_ARGS`]). 프런트 문자열은 인자에 닿지 않는다 —
-//!   포트는 `u16` 으로 받고, `replace` 는 판정 대상과 견주기만 한다.
-//! - **Funnel 길이 없다** — 여기서 부르는 CLI 인자에 Funnel 을 켜는 것이 없고, 443 이나 이 포트가 Funnel 로 나가 있으면 연결을 거절한다
-//!   (덮어쓰기 확인도 없다 · [`ServeState::Funnel443`]).
-//! - **남의 443 은 사람이 확인해야 덮는다** — 확인한 대상과 지금 대상이 다르면 다시 묻는다([`plan`]). 끄기는 우리 포트일 때만.
-//! - `[remote]` 저장은 serve 가 우리 포트를 가리키는 것을 **확인한 뒤에만** 한다. 저장은 디스크의 설정에서 `[remote]` 한 칸만 바꾼다
-//!   (`settings::set_remote_connected` — 화면의 저장 전 편집은 파일에 실리지 않는다).
+//! - **메인 PC 전용**이다(`deny.rs` 의 `HOME_ONLY` — 원격 창에서는 세 명령 모두 거절).
+//! - **실행 인자는 고정이고 포트 숫자(`u16`) 하나만 끼운다** — 프런트 문자열은 인자에 닿지 않는다(`replace` 는 판정 대상과 견주기만 한다).
+//! - **Funnel 길이 없다** — Funnel 을 켜는 인자가 없고, 443 이나 이 포트가 Funnel 로 나가 있으면 확인으로도 덮지 않고 거절한다.
+//! - **남의 443 은 사람이 확인해야 덮는다** — 확인한 대상과 지금 대상이 다르면 다시 묻는다. 끄기는 우리 포트일 때만.
+//! - `[remote]` 저장은 serve 가 우리 포트를 가리키는 것을 **확인한 뒤에만** 하고, 디스크의 설정에서 `[remote]` 한 칸만 바꾼다.
 //! - 토글과 serve 는 따로다 — [serve 끄기] 는 `[remote]` 를 안 바꾸고, 토글은 serve 를 안 건드린다.
-//!
-//! 판정은 순수 함수([`serve_state`] · [`admin_url`] · [`plan`] · [`classify_failure`])이고 시험은 CLI 를 부르지 않는다.
 
 use std::path::Path;
 use std::time::Duration;
@@ -22,13 +17,11 @@ use tauri::AppHandle;
 use super::funnel::{self, config_funnels, targets_port, CliExit, CliRun};
 use crate::i18n::tr;
 
-/// `serve --bg` 의 시한 — tailnet 에서 serve 가 꺼져 있으면 CLI 가 활성화 주소를 찍고 기다린다(그래서 시한 뒤에도 부분 출력을 본다).
+/// tailnet 에서 serve 가 꺼져 있으면 CLI 가 활성화 주소를 찍고 기다린다 — 그래서 시한 뒤에도 부분 출력을 본다.
 const SERVE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// 443 을 걷는 고정 인자 — 다른 serve 설정은 그대로.
 const SERVE_OFF_ARGS: [&str; 3] = ["serve", "--https=443", "off"];
 
-/// 443 → 이 앱의 관문. 끼우는 것은 포트 숫자뿐이다.
 fn serve_on_args(port: u16) -> [String; 4] {
     [
         "serve".to_string(),
@@ -38,19 +31,15 @@ fn serve_on_args(port: u16) -> [String; 4] {
     ]
 }
 
-/// `serve status --json` 판정.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ServeState {
-    /// 443 또는 이 포트가 공개 인터넷에 나가 있다 — 연결 거절.
+    /// 443 또는 이 포트가 공개 인터넷에 나가 있다.
     Funnel443,
-    /// 443 의 `/` 가 이 포트로 온다.
     Ours,
-    /// 443 을 다른 곳이 쓴다.
     Other { target: String },
     None,
 }
 
-/// `ServeConfig` JSON → 판정. **순수 함수**. 빈 출력 · `{}` · `null` = 설정 없음, 모르는 칸은 무시한다.
 pub(crate) fn serve_state(json: &str, port: u16) -> Result<ServeState, String> {
     let json = json.trim();
     if json.is_empty() {
@@ -75,7 +64,7 @@ pub(crate) fn serve_state(json: &str, port: u16) -> Result<ServeState, String> {
     Ok(other.map_or(ServeState::None, |target| ServeState::Other { target }))
 }
 
-/// `AllowFunnel` 에 `*:443` 이 켜졌나 — `Foreground` 안도(`config_funnels` 와 같은 깊이 제한).
+/// `Foreground` 안도 본다(`config_funnels` 와 같은 깊이 제한).
 fn funnels_443(cfg: &Value, depth: u8) -> bool {
     if depth > 4 {
         return false;
@@ -91,7 +80,6 @@ fn foregrounds(cfg: &Value) -> impl Iterator<Item = &Value> {
     cfg.get("Foreground").and_then(Value::as_object).into_iter().flat_map(|m| m.values())
 }
 
-/// `Web` 의 `*:443` 자리들.
 fn webs_443(cfg: &Value) -> impl Iterator<Item = &Value> {
     cfg.get("Web")
         .and_then(Value::as_object)
@@ -105,7 +93,6 @@ fn tcp_forward_443(cfg: &Value) -> Option<String> {
     cfg.get("TCP")?.get("443")?.get("TCPForward")?.as_str().map(str::to_string)
 }
 
-/// 전경 serve 가 443 을 쥐었으면 그 대상의 표식.
 fn foreground_443(cfg: &Value, depth: u8) -> Option<String> {
     if depth > 4 {
         return None;
@@ -121,7 +108,6 @@ fn foreground_443(cfg: &Value, depth: u8) -> Option<String> {
     })
 }
 
-/// 핸들러 → 화면에 적을 짧은 표식.
 fn handler_label(handler: &Value) -> String {
     let text = |key: &str| handler.get(key).and_then(Value::as_str).filter(|s| !s.is_empty());
     if let Some(proxy) = text("Proxy") {
@@ -135,7 +121,7 @@ fn handler_label(handler: &Value) -> String {
     }
 }
 
-/// CLI 출력에서 tailnet 관리 화면 주소 — `https://login.tailscale.com/` 로 시작하는 첫 토큰만(둘레 구두점은 걷는다). 다른 도메인은 버린다.
+/// `https://login.tailscale.com/` 로 시작하는 토큰만 받는다 — 다른 도메인은 버린다.
 pub(crate) fn admin_url(text: &str) -> Option<String> {
     const PREFIX: &str = "https://login.tailscale.com/";
     text.split_whitespace()
@@ -145,7 +131,6 @@ pub(crate) fn admin_url(text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `remote_serve_connect` 의 답. 그 밖의 실패는 `Err(사용자 문구)`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ServeOutcome {
@@ -153,11 +138,10 @@ pub enum ServeOutcome {
         host: String,
         url: String,
     },
-    /// 443 을 다른 곳이 쓴다 — 사람이 이 `target` 을 `replace` 로 돌려줘야 덮는다.
+    /// 사람이 이 `target` 을 `replace` 로 돌려줘야 덮는다.
     Confirm {
         target: String,
     },
-    /// tailnet 관리 화면에서 켤 것이 있다.
     Admin {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -165,10 +149,8 @@ pub enum ServeOutcome {
     },
 }
 
-/// 판정 → 할 일. **순수 함수**.
 #[derive(Debug, PartialEq, Eq)]
 enum Plan {
-    /// 이미 우리 것 — serve 를 다시 걸지 않고 저장만(멱등).
     SaveOnly,
     Run,
     Confirm(String),
@@ -185,7 +167,6 @@ fn plan(state: &ServeState, replace: Option<&str>) -> Plan {
     }
 }
 
-/// 사람에게 보일 CLI 한 줄 — 표준 오류 첫 줄, 없으면 표준 출력 첫 줄.
 fn first_line(run: &CliRun) -> Option<String> {
     run.stderr
         .lines()
@@ -205,7 +186,6 @@ fn admin_with_url(url: String) -> ServeOutcome {
     }
 }
 
-/// 성공하지 못한 `serve --bg` → 답. 주소가 잡히면 관리 화면, 주소 없는 시한 초과 · HTTPS/not enabled 류는 원인 문구, 그 밖은 실패. **순수 함수**.
 fn classify_failure(run: &CliRun) -> Result<ServeOutcome, String> {
     if let Some(url) = admin_url(&format!("{}\n{}", run.stdout, run.stderr)) {
         return Ok(admin_with_url(url));
@@ -257,7 +237,6 @@ fn read_state(bin: &Path, port: u16) -> Result<ServeState, String> {
     })
 }
 
-/// `remote_serve_status` 의 답.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ServeStatus {
     /// `none` · `ours` · `other` · `funnel` · `unknown`
@@ -335,7 +314,7 @@ fn off_blocking(port_arg: Option<u16>) -> Result<(), String> {
     ))
 }
 
-/// 지금 443 판정 — CLI 가 없거나 못 읽으면 `unknown`. **메인 PC 전용**(`deny.rs`). 아무것도 바꾸지 않는다.
+/// **메인 PC 전용**(`deny.rs`).
 #[tauri::command]
 pub async fn remote_serve_status(port: Option<u16>) -> Result<ServeStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -350,7 +329,7 @@ pub async fn remote_serve_status(port: Option<u16>) -> Result<ServeStatus, Strin
     .map_err(|e| e.to_string())
 }
 
-/// [연결] — 이름 찾기 → serve 판정 · 실행 → `[remote]` 저장 → 관문 맞추기. **메인 PC 전용**(`deny.rs`).
+/// **메인 PC 전용**(`deny.rs`).
 #[tauri::command]
 pub async fn remote_serve_connect(app: AppHandle, port: Option<u16>, replace: Option<String>) -> Result<ServeOutcome, String> {
     tauri::async_runtime::spawn_blocking(move || connect_blocking(&app, port, replace))
@@ -358,7 +337,7 @@ pub async fn remote_serve_connect(app: AppHandle, port: Option<u16>, replace: Op
         .map_err(|e| e.to_string())?
 }
 
-/// [serve 끄기] — 443 이 이 포트일 때만 걷는다. `[remote]` 는 안 바꾼다. **메인 PC 전용**(`deny.rs`).
+/// **메인 PC 전용**(`deny.rs`).
 #[tauri::command]
 pub async fn remote_serve_off(port: Option<u16>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || off_blocking(port))
@@ -370,7 +349,6 @@ pub async fn remote_serve_off(port: Option<u16>) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// 이 PC 에서 실측한 모양.
     const MEASURED: &str = r#"{"TCP":{"443":{"HTTPS":true}},"Web":{"mypc.tail1234.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:47821"}}}}}"#;
 
     fn run(exit: CliExit, stdout: &str, stderr: &str) -> CliRun {
@@ -416,7 +394,6 @@ mod tests {
         assert_eq!(serve_state(other, 47821), Ok(ServeState::Funnel443));
         let off = r#"{"AllowFunnel":{"a.b.ts.net:443":false},"Web":{"a.b.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:47821"}}}}}"#;
         assert_eq!(serve_state(off, 47821), Ok(ServeState::Ours));
-        // 다른 포트로 나가도 이 포트면 거절 — 관문이 어차피 닫는다(`funnel.rs`).
         let port8443 = r#"{"AllowFunnel":{"a.b.ts.net:8443":true},"Web":{"a.b.ts.net:8443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:47821"}}}}}"#;
         assert_eq!(serve_state(port8443, 47821), Ok(ServeState::Funnel443));
         let fg = r#"{"Foreground":{"s1":{"AllowFunnel":{"a.b.ts.net:443":true}}}}"#;
@@ -474,13 +451,11 @@ mod tests {
         assert_eq!(plan(&other, Some("http://127.0.0.1:3000")), Plan::Run);
         assert_eq!(plan(&ServeState::None, None), Plan::Run);
         assert_eq!(plan(&ServeState::Ours, None), Plan::SaveOnly);
-        // Funnel 은 확인으로도 덮지 않는다.
         assert_eq!(plan(&ServeState::Funnel443, Some("anything")), Plan::RefuseFunnel);
     }
 
     #[test]
     fn failures_are_classified() {
-        // 시한 초과 뒤의 부분 출력에서 주소를 찾는다.
         let waiting = run(CliExit::TimedOut, "Serve is not enabled.\nhttps://login.tailscale.com/f/serve?node=x\n", "");
         assert!(matches!(
             classify_failure(&waiting),

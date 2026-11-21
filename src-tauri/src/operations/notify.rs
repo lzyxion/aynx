@@ -1,21 +1,7 @@
-//! 작업안 실행이 끝났다는 **창 밖 알림**(③-4 — 설계 4.4 "결과 알림") — 창이 하나도 없을 때 Rust 가 직접 짓는 한 줄과 메신저.
+//! 창이 없을 때의 작업안 알림(실행 결과 · 승인 대기) — 트레이 GUI 와 세션 서버 둘이 같은 말을 하도록 문구는 이 파일 하나가 짓는다.
 //!
-//! 창이 있으면 알림은 지금처럼 주 창의 프런트가 한다(`app/operation-notify.svelte.ts` — 토스트·알림 센터·OS 알림·메신저). 창이
-//! 없으면 그 모듈이 돌지 않으므로 둘로 나눈다:
-//!
-//! | 어디 | 누가 | 무엇을 |
-//! | --- | --- | --- |
-//! | GUI 가 트레이에만 있다(창 0개 · 연결 있음) | GUI Rust(`tray`) | OS 알림 한 장 · 메신저(켰으면) |
-//! | GUI 가 아예 없다(세션 서버 혼자 · 연결 0) | 세션 서버(`server::auto_approve`) | 메신저(켰으면) · **미전달 큐**에 한 줄 — GUI 가 다시 붙어 주 창이 뜨면 "그동안 끝난 실행 N건" 한 줄로 꺼내 간다 |
-//!
-//! 메신저 웹훅은 볼트와 무관한 파일 하나(`crate::messenger`)라 서버가 그대로 읽는다. 창이 없는 동안은 사람이 자리에 없다고 보아
-//! `[messenger] when` 을 따지지 않는다(`enabled` · `operation_results` 만 본다). 명령 줄은 `include_command` 를 켠 사람에게만
-//! 싣는다 — 아니면 제목, 그것도 없으면 "작업안". 문구는 이 파일 하나가 짓는다(두 프로세스가 같은 말을 한다).
-//!
-//! **승인 대기**(승인 요약 — docs/log/2026-10-21-approval-summary.md)도 같은 세 갈래다: 창이 있으면 프런트가 새 대기를 보고
-//! `messenger_send{operation}` 으로 id 만 넘기고([`pending_from_gui`]), 트레이 GUI · 세션 서버 혼자면 각자 `awaitingApproval` 이벤트에서
-//! 보낸다([`send_pending_messenger`]). 셋 다 [`PENDING_GRACE`] 뒤에 **아직 사람을 기다리는지**([`still_pending`]) 다시 보므로 자동 승인된
-//! 것은 나가지 않는다. 한 통의 글은 [`pending_message`] 하나가 짓는다 — 승인 단추 · 링크는 없다.
+//! - 창이 없는 동안은 자리 비움으로 보아 `[messenger] when` 을 따지지 않는다. 명령 줄은 `include_command` 를 켠 사람에게만 싣는다.
+//! - 승인 대기는 [`PENDING_GRACE`] 뒤에 아직 사람을 기다리는지 다시 본다 — 자동 승인된 것은 나가지 않는다. 승인 단추 · 링크는 없다.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +9,7 @@ use crate::i18n::tr;
 
 use super::*;
 
-/// 끝난 실행 한 건 — 미전달 큐의 줄(op `ops_unseen_take`)이자 알림 문구의 재료. 비밀 없음(명령은 작업안에 이미 평문이다).
+/// 미전달 큐(op `ops_unseen_take`)의 줄 — 비밀 없음(명령은 작업안에 이미 평문이다).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FinishedRun {
@@ -32,20 +18,17 @@ pub(crate) struct FinishedRun {
     pub state: String,
     pub title: Option<String>,
     pub command: String,
-    /// 사전 정책 자동 승인으로 돌았나
     pub auto: bool,
-    /// 사람이 도중에 취소했나(집계는 `partial` 일 수 있다)
+    /// 집계는 `partial` 일 수 있다.
     #[serde(default)]
     pub cancelled_by_user: bool,
     pub finished_at: u64,
 }
 
-/// **미전달 큐** — GUI 가 하나도 붙어 있지 않을 때 끝난 실행(세션 서버가 쥔다). 주 창이 다시 뜨면 op `ops_unseen_take` 로
-/// 꺼내 "그동안 끝난 실행 N건" 한 줄로 알린다. 상한 [`UNSEEN_MAX`](넘으면 오래된 것부터 버린다 — 개수만 틀어질 뿐).
+/// GUI 가 하나도 없을 때 끝난 실행 — 상한을 넘으면 오래된 것부터 버린다(개수만 틀어진다).
 #[derive(Default)]
 pub(crate) struct Unseen(std::sync::Mutex<std::collections::VecDeque<FinishedRun>>);
 
-/// 미전달 큐 상한.
 pub(crate) const UNSEEN_MAX: usize = 100;
 
 impl Unseen {
@@ -60,7 +43,6 @@ impl Unseen {
         q.push_back(run);
     }
 
-    /// 꺼내고 비운다.
     pub(crate) fn take(&self) -> Vec<FinishedRun> {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect()
     }
@@ -71,7 +53,6 @@ impl Unseen {
     }
 }
 
-/// 실행이 끝난 상태인가(성공·일부·실패·취소).
 pub(crate) fn is_finished(state: &OperationState) -> bool {
     matches!(
         state,
@@ -79,7 +60,6 @@ pub(crate) fn is_finished(state: &OperationState) -> bool {
     )
 }
 
-/// 상태 이름(직렬화 모양 그대로).
 fn state_name(state: &OperationState) -> String {
     serde_json::to_value(state)
         .ok()
@@ -100,7 +80,6 @@ impl FinishedRun {
         }
     }
 
-    /// 이름표 — `작업안 «제목»`, 없으면(명령 줄을 싣기로 했으면) 명령 앞부분, 그것도 없으면 "작업안".
     pub(crate) fn label(&self, include_command: bool) -> String {
         if let Some(t) = &self.title {
             return plan_label(Some(t));
@@ -111,7 +90,6 @@ impl FinishedRun {
         plan_label(None)
     }
 
-    /// 메신저 등급 — 성공 = 완료 · 일부 실패 · 실패 = 실패 · 사람이 취소 = 표시 없음.
     pub(crate) fn grade(&self) -> Option<crate::messenger::Grade> {
         if self.cancelled_by_user || self.state == "cancelled" {
             return None;
@@ -122,7 +100,6 @@ impl FinishedRun {
         })
     }
 
-    /// 결과 한 토막 — `실행 성공` · `일부 실패` · `실패` · `취소됨`(+ ` · 자동 승인`).
     pub(crate) fn outcome(&self) -> String {
         let word = if self.cancelled_by_user || self.state == "cancelled" {
             tr!(ko: "실행 취소됨", en: "Run cancelled")
@@ -141,7 +118,6 @@ impl FinishedRun {
     }
 }
 
-/// 메신저 이름표 `작업안 «제목»`(제목이 없으면 "작업안") — 결과 · 승인 대기가 같이 쓴다.
 fn plan_label(title: Option<&str>) -> String {
     match title.map(|t| clip(t, 80)).filter(|t| !t.is_empty()) {
         Some(t) => tr!(ko: "작업안 «{t}»", en: "Task plan «{t}»"),
@@ -160,13 +136,11 @@ fn clip(text: &str, max: usize) -> String {
     }
 }
 
-/// 창이 없을 때 메신저로 보낼까 — 켜진 채널이 있고 이 종류(`operation_results`, 기본 켬)가 켜졌을 때. `when` 은 보지 않는다
-/// (창이 없으면 자리 비움이다 — 머리말).
 pub(crate) fn messenger_wants(prefs: &crate::settings::MessengerPrefs) -> bool {
     !channels(prefs).is_empty() && prefs.operation_results != Some(false)
 }
 
-/// 켜진 채널 — 프런트 `messengerChannels` 와 같은 규칙(안 정하면 켬).
+/// 프런트 `messengerChannels` 와 같은 규칙(안 정하면 켬).
 fn channels(prefs: &crate::settings::MessengerPrefs) -> Vec<crate::messenger::Channel> {
     let mut out = Vec::new();
     if prefs.discord != Some(false) {
@@ -175,15 +149,14 @@ fn channels(prefs: &crate::settings::MessengerPrefs) -> Vec<crate::messenger::Ch
     if prefs.slack != Some(false) {
         out.push(crate::messenger::Channel::Slack);
     }
-    // Telegram 몫은 세션 서버의 다리가 보낸다(봇 · 짝이 없으면 조용히 건너뛴다 — `server::messenger_bridge::notify`).
+    // Telegram 몫은 세션 서버의 다리가 보낸다(봇 · 짝이 없으면 조용히 건너뛴다).
     if prefs.telegram != Some(false) {
         out.push(crate::messenger::Channel::Telegram);
     }
     out
 }
 
-/// 창이 없을 때의 메신저 한 통 — 규칙을 지나면 보낸다. 실패는 로그 한 줄(던지지 않는다 — 알림 하나가 아무것도 막지 않는다).
-/// 설정 파일을 읽으므로 async 문맥에서는 블로킹 풀로 읽는다.
+/// 실패는 로그 한 줄 — 알림 하나가 아무것도 막지 않는다.
 pub(crate) async fn send_messenger(run: FinishedRun, log: impl Fn(String)) {
     let prefs = match tokio::task::spawn_blocking(crate::settings::messenger_prefs).await {
         Ok(p) => p,
@@ -201,24 +174,21 @@ pub(crate) async fn send_messenger(run: FinishedRun, log: impl Fn(String)) {
 }
 
 // ---------------------------------------------------------------------------
-// 승인 대기 알림 — 승인 요약(docs/log/2026-10-21-approval-summary.md)
+// 승인 대기 알림
 // ---------------------------------------------------------------------------
 
-/// 검토 대기에 들어온 뒤 이만큼 기다렸다가 **다시 본다** — 서버의 사전 정책 자동 승인 훑기([`super::auto::SWEEP_EVERY`], 2초)가
-/// 지나갈 시간이다. 자동 승인된 작업안은 그사이 대기를 떠나므로 보내지 않는다.
+/// 자동 승인 훑기(`auto::SWEEP_EVERY`)가 지나갈 시간 — 프런트 `messenger.ts` 에 같은 값이 있다.
 pub(crate) const PENDING_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// 아직 **사람을** 기다리는가 — 검토 대기이고 승인 방식이 찍히지 않았다.
 pub(crate) fn still_pending(op: &Operation) -> bool {
     op.state == OperationState::AwaitingApproval && op.approval_method.is_none()
 }
 
-/// 이 프로세스가 이미 보낸 승인 대기(검토 요청은 멱등이라 같은 `awaitingApproval` 이벤트가 다시 올 수 있다).
+/// 검토 요청은 멱등이라 같은 `awaitingApproval` 이벤트가 다시 올 수 있다.
 static PENDING_SENT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
 
-/// 처음 보내는 작업안인가 — 참이면 이제 보낸 것으로 적는다. 기억은 [`UNSEEN_MAX`] 의 다섯 배에서 비운다(앱이 며칠 켜져 있어도 자라지 않게 —
-/// 작업안 id 는 난수라 비운 뒤 같은 id 가 다시 올 일은 사실상 없다).
+/// 기억이 자라지 않게 가득 차면 비운다 — id 가 난수라 비운 뒤 같은 id 가 다시 올 일은 사실상 없다.
 pub(crate) fn first_pending(id: &str) -> bool {
     let mut set = PENDING_SENT.lock().unwrap_or_else(|e| e.into_inner());
     if set.len() >= UNSEEN_MAX * 5 {
@@ -227,8 +197,7 @@ pub(crate) fn first_pending(id: &str) -> bool {
     set.insert(id.to_string())
 }
 
-/// 승인 대기를 보낼까 — 켜진 채널이 있고 이 종류(`operation_pending`, 기본 켬)가 켜졌을 때. 창이 없을 때는 `when` 을 보지 않는다
-/// (창이 없으면 자리 비움이다 — 머리말). 창이 있을 때의 `when` 은 프런트가 본다.
+/// `when` 은 보지 않는다 — 창이 있을 때의 `when` 은 프런트가 본다.
 pub(crate) fn pending_wants(prefs: &crate::settings::MessengerPrefs) -> bool {
     !channels(prefs).is_empty() && prefs.operation_pending != Some(false)
 }
@@ -250,7 +219,6 @@ fn declared_word(e: Effect) -> String {
     }
 }
 
-/// 앱 분석 한 줄 — `읽기만 · du → sort → head · 선언과 일치` · DB 면 문장마다 `DELETE users · WHERE 있음` + 상한.
 fn analysis_line(op: &Operation) -> Option<String> {
     let a = op.analysis.as_ref()?;
     let mut parts = vec![computed_word(a.effect)];
@@ -296,7 +264,6 @@ fn analysis_line(op: &Operation) -> Option<String> {
     Some(tr!(ko: "앱 분석: {line}", en: "App analysis: {line}"))
 }
 
-/// 어긋남 확인 줄 — `확인해 주세요 — AI 설명은 '읽기'지만 원문에는 삭제(find -delete)`.
 fn mismatch_line(op: &Operation) -> Option<String> {
     if !op.mismatch {
         return None;
@@ -310,7 +277,6 @@ fn mismatch_line(op: &Operation) -> Option<String> {
     Some(tr!(ko: "확인해 주세요 — AI 설명은 '{said}'지만 원문에는 {found}", en: "Please check — the AI said '{said}', but the raw text shows {found}"))
 }
 
-/// 대상 줄 — 원격은 이름(만들 때 붙여 둔 이름표 · 없으면 id) 다섯까지, DB 는 연결 이름 · 엔진 · DB.
 fn targets_line(op: &Operation) -> String {
     if let Some(db) = &op.db {
         let mut s = format!("{} · {}", db.conn_name, db.engine);
@@ -333,7 +299,7 @@ fn targets_line(op: &Operation) -> String {
     tr!(ko: "대상: {s}", en: "Targets: {s}")
 }
 
-/// 만료 토막 — 이 PC 의 시계로 `HH:MM 만료`(만료 없음이면 그렇게). 첫 줄 사건 뒤에 붙는다(2026-11-16 — 덧줄에서 올림).
+/// 이 PC 의 시계로 `HH:MM`.
 fn expiry_part(op: &Operation) -> String {
     match op.expires_at.and_then(chrono::DateTime::from_timestamp_millis) {
         Some(t) => {
@@ -344,11 +310,7 @@ fn expiry_part(op: &Operation) -> String {
     }
 }
 
-/// **승인 대기 한 통** — 평문 구조(서식 · 걷기 · 멘션 막기는 채널이 — `messenger::Channel::render`). 순수(시험 대상).
-///
-/// 첫 줄 `🟡 확인 필요 · 작업안 «제목» — 원격 명령 승인 대기 · 15:35 만료`(2026-11-16 — 등급 · 만료를 첫 줄로), 그 아래 요청 타일 ·
-/// (켰으면) AI 설명 · 앱 분석 한 줄 · (어긋나면) 주의 · 대상 · (명령 줄 싣기를 켰으면) 원문 앞 300자 · 끝줄 "승인은 앱에서만". AI 가 쓴
-/// 글자(제목 · 설명)와 타일 이름은 **남의 글자**라 다른 줄과 똑같이 채널이 걷는다. 승인 단추 · 링크는 없다.
+/// 평문 구조만 짓는다 — AI 가 쓴 글자(제목 · 설명) · 타일 이름은 남의 글자라 서식 · 멘션 걷기는 채널(`render`)이 한다. 승인 단추 · 링크는 없다.
 pub(crate) fn pending_message(op: &Operation, include_summary: bool, include_command: bool, app: &str) -> crate::messenger::Message {
     let what = if op.db.is_some() {
         tr!(ko: "DB 쓰기 승인 대기", en: "Database write awaiting approval")
@@ -386,7 +348,6 @@ pub(crate) fn pending_message(op: &Operation, include_summary: bool, include_com
     crate::messenger::Message::with_lines(app, label, event, lines, op.mismatch).graded(Some(crate::messenger::Grade::Action))
 }
 
-/// 창이 없을 때(트레이 GUI · 세션 서버 혼자)의 승인 대기 한 통 — 규칙을 지나면 보낸다. 실패는 로그 한 줄.
 pub(crate) async fn send_pending_messenger(op: Operation, log: impl Fn(String)) {
     let prefs = match tokio::task::spawn_blocking(crate::settings::messenger_prefs).await {
         Ok(p) => p,
@@ -406,8 +367,7 @@ pub(crate) async fn send_pending_messenger(op: Operation, log: impl Fn(String)) 
     }
 }
 
-/// GUI 의 프런트 길(`messenger_send` 의 `operation`) — 서버 목록에서 아직 사람을 기다리는지 다시 보고, 설정 파일의 칸을 다시 본 뒤
-/// 한 통을 짓는다. 보낼 것이 없으면(대기를 떠났다 · 꺼짐 · 이미 보냄) `None`. `when` 은 프런트가 이미 판정했다.
+/// 프런트가 넘긴 id 만 믿고 서버 목록 · 설정을 다시 본다. `when` 은 프런트가 이미 판정했다.
 pub(crate) async fn pending_from_gui(id: &str, app: &str) -> Option<crate::messenger::Message> {
     let op = crate::server::ai_proxy::pending_operation(id).await?;
     let prefs = tokio::task::spawn_blocking(crate::settings::messenger_prefs).await.ok()?;
@@ -565,8 +525,8 @@ mod tests {
             r.operation_id = format!("op-{i}");
             q.push(r);
         }
-        q.push(run("failed", None, false)); // op-1 은 이미 버려졌다(오래된 것부터) — 다시 들어온다
-        q.push(run("failed", None, false)); // 같은 id 두 번은 한 줄
+        q.push(run("failed", None, false)); // op-1 은 이미 버려졌다 — 다시 들어온다
+        q.push(run("failed", None, false));
         let got = q.take();
         assert_eq!(got.len(), UNSEEN_MAX);
         assert_eq!(got.last().unwrap().operation_id, "op-1");

@@ -1,28 +1,14 @@
-//! **수락 전 검증**(통합 설계 4단계 — docs/log/2026-10-15-orchestration-integration-design.md 1절 D3 · D4 · D5 · N2, 5절, 9절 위험 5,
-//! 0b 실측, 검토 R1 · R8 · R9 · R10 · R14).
-//!
-//! 흐름: 통합 후보 커밋 C 가 서면(`accept.rs` 의 `drive_job` → [`Orchestration::after_candidate`]) —
-//! - Run 에 검증 명령이 없으면 곧바로 올리기(`commit_job`).
-//! - **기본 = 후보마다 사람 확인**: Job `awaiting-approval` + 알림 `verify-approval`. 사람이 보드 [검증 실행](Tauri 명령 →
-//!   op `orchestration_approve_verify`)을 누르면 승인은 `{jobId, 후보 C, 명령 해시, 통합 머리 old}` 에 묶인다(하나라도 다르면
-//!   `approval-stale` — 다시 확인). 30분이면 `approval-expired` → Task reported.
-//! - Run 옵션 '검증 자동 실행'(사람이 시작 대화에서 위험 확인과 함께 켬)이면 확인 없이 곧바로.
-//! - 검증([`Orchestration::run_verify`]): Run 전용 검증 worktree(분리 HEAD)에서 `checkout --detach --force C` → `clean -ffdx`(보존 폴더만
-//!   `-e`) → 깨끗한지 → **추적 symlink 대상이 자리 안인지**(하나라도 밖이면 그 후보 거절 `symlink-outside` + 사람 알림) →
-//!   `cmd.exe /d /s /v:off /c "<사람 글자>"`(잡 선귀속 · 허용 목록 env) → 잡 비움 · 파이프 EOF 확인 → 추적 파일 변경 검사 → 결과.
-//!   통과면 올리기, 아니면 Job 거둠 · Task reported · 알림 `verify-failed`(조정자 수락 거절 — `verify-failed`).
-//! - 사람 덮어쓰기([`Orchestration::override_verify`]) — **실패한 그 Job** 의 `{후보, 실패 검증 id, 그때 머리}` 에 묶인 새 Job 으로 올린다.
-//!   실패 결과는 실패로 남는다.
+//! 수락 전 검증 — 통합 후보 커밋을 Run 전용 검증 worktree 에서 사람이 정한 명령으로 돌리고, 통과해야 올린다.
+//! 설계: docs/log/2026-10-15-orchestration-integration-design.md
 //!
 //! 불변식:
-//! - **명령 글자는 사람만**(Run 시작 op — Tauri 대화 하나, `ops.rs` 의 `validate_start`) 정한다. MCP 스키마 · 조정자 · 작업자 인자 어디에도
-//!   없고 Run 도중 바꾸는 길도 없다. 실행 글자는 `Run.verify.command` 에서만 온다(시험 `server_spawns_only_turns_and_verify`).
-//! - 검증은 **위임된 실행**이다 — 실행 대상 코드(테스트 · scripts)는 작업자 AI 가 바꿀 수 있고 사용자 권한 · 샌드박스 없이 돈다. 그래서
-//!   실행은 사람 확인(후보별) 또는 사람이 켠 자동 실행 범위 안에서만. 승인 손은 Tauri 명령뿐(MCP 도구 없음 — AI 자가 승인 금지).
-//! - 프로세스: 신뢰된 `GetSystemDirectoryW()\cmd.exe` · `raw_arg` 와 같은 **고정 직렬화**(인자 배열 인용은 거짓 pass — 0b A) · 보간 없음 ·
-//!   잡 **생성과 동시에** 귀속(실패면 시작 안 함) · 허용 목록 env(차단 목록 아님) · 출력은 바이트 고리 버퍼(끝 16 KiB) · 시한 하나가
-//!   checkout ~ 파이프 배출을 덮는다 · 맏이가 끝나도 잡을 끝내고 활성 0 · EOF 확인 뒤에만 결과(아니면 `stop-unconfirmed`).
-//! - OS 를 타는 몸은 `server::os::verify_spawn` 하나(비Windows 는 명시적 스텁 — 저장소 맡기기 폼이 검증 칸을 끈다).
+//! - 명령 글자는 사람만 정한다([새 앨범] 구성 — `album_start.rs`). MCP · 조정자 · 작업자 인자에 없고 Run 도중 바꾸는 길도 없다 —
+//!   실행 글자는 `Run.verify.command` 에서만 온다(시험 `server_spawns_only_turns_and_verify`).
+//! - 검증은 위임된 실행이다 — 실행 대상 코드는 작업자 AI 가 바꿀 수 있고 사용자 권한 · 샌드박스 없이 돈다. 그래서 사람 확인(후보별 —
+//!   `{jobId, 후보, 명령 해시, 통합 머리}` 에 묶임) 또는 사람이 켠 자동 실행 범위 안에서만. 승인 · 덮어쓰기는 Tauri 명령뿐(MCP 도구 없음 — AI 자가 승인 금지).
+//! - 프로세스: 신뢰된 `GetSystemDirectoryW()\cmd.exe` · 고정 직렬화(인자 배열 인용은 거짓 pass) · 보간 없음 · 잡 **생성과 동시에** 귀속
+//!   (실패면 시작 안 함) · 허용 목록 env(차단 목록 아님) · 잡 비움 · 파이프 EOF 확인 뒤에만 결과(아니면 `stop-unconfirmed`).
+//! - OS 를 타는 몸은 `server::os::verify_spawn` 하나(비Windows 는 명시적 스텁 — `validate_input` 이 `verify-unsupported` 로 거절한다).
 //! - 출력 꼬리 본문은 **메모리만**(`Slot.verify_tails`) — 영속 · 감사에는 바이트 수 · 해시만. 꼬리는 조정자(모델 제공자)와 보드에 간다.
 
 use std::ffi::OsString;
@@ -48,24 +34,18 @@ use super::store::{
 use crate::audit::OrchestrationAudit;
 use crate::server::{log, os};
 
-/// 명령 글자 상한(글자 수).
+/// 글자 수.
 pub(crate) const COMMAND_MAX: usize = 1000;
-/// 시한 기본 · 상한(분).
+/// 분.
 pub(crate) const TIMEOUT_DEFAULT_MINUTES: u32 = 10;
 pub(crate) const TIMEOUT_MAX_MINUTES: u32 = 60;
-/// 사람 확인 대기 시한.
 pub(crate) const APPROVAL_TTL_MS: u64 = 30 * 60 * 1000;
-/// 같은 보고당 검증 횟수(첫 + 재 2 — R14).
+/// 같은 보고당 검증 횟수(첫 + 재 2).
 pub(crate) const VERIFY_PER_REPORT: usize = 3;
-/// Run 당 검증 횟수.
 pub(crate) const VERIFY_PER_RUN: usize = 50;
-/// 서버 전체 동시 검증.
 const SERVER_VERIFY_MAX: usize = 2;
-/// 출력 고리 버퍼(바이트 — 개행 없는 출력도 이 단위로 자른다).
 pub(crate) const RING_BYTES: usize = 16 * 1024;
-/// 조정자 · 보드에 보이는 꼬리(바이트).
 pub(crate) const TAIL_VIEW_BYTES: usize = 8 * 1024;
-/// 잡 비움 · 파이프 EOF 확인의 상한.
 const STOP_CONFIRM: Duration = Duration::from_secs(5);
 const KEEP_MAX: usize = 8;
 const KEY_FILES_MAX: usize = 8;
@@ -75,8 +55,8 @@ const REL_MAX: usize = 200;
 /// 허용 목록 판(결과의 `envPolicy` 머리).
 const ENV_POLICY: &str = "allow-v1";
 
-/// 허용 목록 환경(통합 설계 5-3 — 차단 목록이 아니다). 깨지는 최소는 `PATH` 하나고, 나머지는 도구가 캐시 · 설정 · 임시를 **어디에** 쓰는지를
-/// 정한다(0b C — `LOCALAPPDATA` 가 빠지면 npm 이 홈에 캐시를 새로 만든다). `ComSpec` · `TEMP` · `TMP` · `CI` 는 서버가 따로 정한다.
+/// 허용 목록 환경 — 차단 목록이 아니다. `LOCALAPPDATA` 가 빠지면 npm 이 홈에 캐시를 새로 만든다.
+/// `ComSpec` · `TEMP` · `TMP` · `CI` 는 서버가 따로 정한다.
 pub(crate) const ENV_ALLOW: &[&str] = &[
     "SystemRoot",
     "SystemDrive",
@@ -105,10 +85,9 @@ pub(crate) const ENV_ALLOW: &[&str] = &[
 const ENV_SERVER_SET: &[&str] = &["ComSpec", "TEMP", "TMP", "CI"];
 
 // ---------------------------------------------------------------------------
-// 검증 칸의 입력 — 순수
+// 검증 칸의 입력
 // ---------------------------------------------------------------------------
 
-/// 검증 칸 — 저장소 맡기기(`delegation::repo`)가 이 꼴로 넘기고 `start_run` 이 Run 사본을 만들 때 쓴다(3차 6단계에 사람의 시작 대화 op 는 걷었다).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct VerifyInput {
@@ -137,7 +116,6 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     d.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// 저장소 안 상대 경로 하나(보존 폴더 · 캐시 키 파일) — `/` 로 편다. 절대 · 드라이브 · `..` · `.` · 빈 낱말 · 와일드카드 · `.git` 거절.
 fn rel_path(s: &str, what: &str) -> Result<String, OrchError> {
     let t = s.trim().replace('\\', "/");
     let t = t.trim_end_matches('/').to_string();
@@ -160,8 +138,7 @@ fn env_name_ok(n: &str) -> bool {
         && n.len() <= 64
 }
 
-/// 시작 대화의 검증 칸 검사(사람의 Run 시작 op 만 부른다). 명령이 비면 `None`(검증 없음). 자동 실행은 위험 확인(`confirmed_risk`)이
-/// 없으면 `risk-not-confirmed`. 이 OS 가 검증을 못 돌리면 `verify-unsupported`.
+/// 사람의 앨범 시작(`album_start.rs`)만 부른다 — 검증 글자를 정하는 길은 이것 하나다. 명령이 비면 `None`(검증 없음).
 pub(crate) fn validate_input(input: VerifyInput, confirmed_risk: bool) -> Result<Option<VerifyConfig>, OrchError> {
     let command = input.command.trim().to_string();
     if command.is_empty() {
@@ -242,17 +219,15 @@ pub(crate) fn validate_input(input: VerifyInput, confirmed_risk: bool) -> Result
 }
 
 // ---------------------------------------------------------------------------
-// 명령 줄 · 환경 — 순수
+// 명령 줄 · 환경
 // ---------------------------------------------------------------------------
 
-/// **고정 직렬화**(0b A) — `"<cmd.exe>" /d /s /v:off /c "<사람 글자>"`. `/d` AutoRun 끔 · `/v:off` 지연 확장 끔 · `/s` = 바깥 따옴표 한 쌍만
-/// 걷는다. Rust 인자 배열의 일반 인용(`\"` 넣기 · 끝 역슬래시 겹치기)을 쓰지 않는다 — 그것은 `node -e "process.exit(7)"` 를 0 으로 만든다.
+/// 고정 직렬화 — `/d` AutoRun 끔 · `/v:off` 지연 확장 끔 · `/s` = 바깥 따옴표 한 쌍만 걷는다. Rust 인자 배열의 일반 인용
+/// (`\"` 넣기 · 끝 역슬래시 겹치기)을 쓰지 않는다 — 그것은 `node -e "process.exit(7)"` 를 0 으로 만든다.
 pub(crate) fn cmd_line(cmd_exe: &str, command: &str) -> String {
     format!("\"{cmd_exe}\" /d /s /v:off /c \"{command}\"")
 }
 
-/// 허용 목록 환경 — 서버 환경에서 [`ENV_ALLOW`] + 사람이 고른 추가 이름(대소문자 무시)만 옮기고, `ComSpec`(= 신뢰된 cmd) · `TEMP`/`TMP`
-/// (= Run 전용 임시 폴더) · `CI=1` 을 서버가 정한다. 순수.
 pub(crate) fn build_env(
     vars: impl IntoIterator<Item = (OsString, OsString)>,
     extra: &[String],
@@ -280,7 +255,6 @@ pub(crate) fn build_env(
     out
 }
 
-/// 환경 정책 표지 — 허용 목록 판 + 추가 이름(정렬 · 대문자)의 해시 앞 16.
 pub(crate) fn env_policy(extra: &[String]) -> String {
     let mut names: Vec<String> = extra.iter().map(|n| n.to_ascii_uppercase()).collect();
     names.sort();
@@ -289,10 +263,9 @@ pub(crate) fn env_policy(extra: &[String]) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 출력 — 바이트 고리 버퍼 · 꼬리
+// 출력
 // ---------------------------------------------------------------------------
 
-/// stdout · stderr 두 펌프가 함께 쓰는 고리 버퍼(끝 [`RING_BYTES`] 바이트) + 총 바이트.
 #[derive(Default)]
 pub(crate) struct Ring {
     buf: Vec<u8>,
@@ -323,8 +296,7 @@ impl Ring {
     }
 }
 
-/// 보기용 꼬리 — 끝 [`TAIL_VIEW_BYTES`] 바이트를 손실 허용으로 읽고(cmd 내장은 ANSI 코드 페이지 · node 류는 UTF-8 — 0b A) 제어 문자를 걷는다
-/// (TAB · LF 만 남김). 순수.
+/// cmd 내장은 ANSI 코드 페이지 · node 류는 UTF-8 이라 손실 허용으로 읽는다.
 pub(crate) fn tail_view(bytes: &[u8]) -> String {
     let start = bytes.len().saturating_sub(TAIL_VIEW_BYTES);
     String::from_utf8_lossy(&bytes[start..])
@@ -334,11 +306,10 @@ pub(crate) fn tail_view(bytes: &[u8]) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// symlink 밖 검사 — 순수
+// symlink 밖 검사
 // ---------------------------------------------------------------------------
 
-/// 추적 symlink 하나(`rel` = 자리 기준 상대 경로 `/` 구분)의 대상이 자리 **밖**인가 — 글자로만 편다(대상이 없어도 판정한다). 절대 경로 ·
-/// 드라이브 · 루트로 시작하면 밖, `..` 가 자리 위로 올라가면 밖.
+/// 대상을 따라가지 않고 글자로만 편다 — 대상이 없어도 판정한다.
 pub(crate) fn link_outside(rel: &str, target: &Path) -> bool {
     let mut stack: Vec<String> = rel.split('/').filter(|p| !p.is_empty()).map(str::to_string).collect();
     stack.pop(); // 링크 자신 — 대상은 링크가 든 폴더 기준이다.
@@ -357,7 +328,6 @@ pub(crate) fn link_outside(rel: &str, target: &Path) -> bool {
     false
 }
 
-/// `git ls-files -s -z` 의 출력에서 symlink(모드 120000) 경로들. 순수.
 pub(crate) fn tracked_links(ls: &str) -> Vec<String> {
     ls.split('\0')
         .filter_map(|e| {
@@ -367,7 +337,6 @@ pub(crate) fn tracked_links(ls: &str) -> Vec<String> {
         .collect()
 }
 
-/// `git status --porcelain=v2 --ignored -z` 가 "깨끗한가"(보존 폴더 안의 무시된 것만 남았나). 순수.
 pub(crate) fn clean_status(status: &str, keep: &[String]) -> bool {
     status.split('\0').filter(|e| !e.is_empty()).all(|e| match e.strip_prefix("! ") {
         Some(p) => {
@@ -383,10 +352,9 @@ pub(crate) fn clean_status(status: &str, keep: &[String]) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// 프로세스 — 실행 하나
+// 프로세스
 // ---------------------------------------------------------------------------
 
-/// 진행 중 검증의 손잡이 — 중단 · 취소 · 세대 교체가 깃발을 세우면 실행 고리가 잡을 끝낸다.
 #[derive(Default)]
 pub(crate) struct VerifyCtl {
     cancel: AtomicBool,
@@ -394,7 +362,6 @@ pub(crate) struct VerifyCtl {
 }
 
 impl VerifyCtl {
-    /// 취소를 건다(처음 사유만 남는다).
     pub(crate) fn signal(&self, why: &str) {
         let mut w = self.why.lock().unwrap_or_else(|e| e.into_inner());
         if w.is_none() {
@@ -415,25 +382,20 @@ impl VerifyCtl {
     }
 }
 
-/// 실행 하나의 결과.
 #[derive(Debug, Clone)]
 pub(crate) struct Exec {
     pub exit_code: Option<i64>,
     pub outcome: VerifyOutcome,
     pub reason: Option<String>,
     pub out_bytes: u64,
-    /// 고리 버퍼의 끝(바이트).
     pub tail: Vec<u8>,
-    /// 잡 비움 · 파이프 EOF 를 확인했다(아니면 `outcome` 이 `stop-unconfirmed`).
     #[cfg_attr(not(test), allow(dead_code))]
     pub confirmed: bool,
-    /// 종료를 확인하지 못한 트리의 손잡이(리뷰 F8) — 닫지 않고 넘긴다(Run 이 쥐고 서버 시계가 다시 끝내고 다시 확인한다).
     pub leftover: Option<Leftover>,
 }
 
-/// **종료 미확인 검증 트리의 손잡이**(리뷰 F8) — 잡 핸들을 쥔 채 Run(`Slot::verify_leftovers`)에 남는다. 그동안 그 검증은 **살아 있는
-/// 자원**이다(`verify_trees` 를 내리지 않는다 — 재검증 · 자리 재사용 · Run 종료 · [Run 완료]가 막힌다). 서버 시계가 [`Leftover::reconfirm`]
-/// 으로 다시 끝내고 잡이 비면 내려놓는다. 서버가 끝나면 핸들이 닫혀 잡 안의 것이 끝난다(`KILL_ON_JOB_CLOSE`).
+/// 종료 미확인 검증 트리의 손잡이 — 잡 핸들을 쥔 채 Run(`Slot::verify_leftovers`)에 남고, 그동안 `verify_trees` 를 내리지 않는다
+/// (재검증 · 자리 재사용 · Run 종료가 막힌다). 서버가 끝나면 핸들이 닫혀 잡 안의 것이 끝난다(`KILL_ON_JOB_CLOSE`).
 #[derive(Clone)]
 pub(crate) struct Leftover(Arc<os::VerifyProc>);
 
@@ -444,13 +406,11 @@ impl std::fmt::Debug for Leftover {
 }
 
 impl Leftover {
-    /// 시험 — 진짜 검증 프로세스 손잡이로 "종료 미확인" 자리를 만든다.
     #[cfg(test)]
     pub(crate) fn from_proc(p: os::VerifyProc) -> Self {
         Leftover(Arc::new(p))
     }
 
-    /// 잡을 다시 끝내고 비었는지 본다(못 물으면 거짓).
     pub(crate) fn reconfirm(&self) -> bool {
         self.0.terminate();
         self.0.active() == Some(0)
@@ -486,9 +446,7 @@ fn pump(mut f: std::fs::File, ring: Arc<Mutex<Ring>>, done: mpsc::Sender<()>) {
     });
 }
 
-/// 검증 명령 하나를 돌린다 — 블로킹. `deadline` 이 실행 · 배출을 덮는다(넘으면 잡 종료 → `timeout`), `cancel` 이 서면 잡 종료 →
-/// `cancelled`. 맏이가 끝나도 **잡을 끝내고**(남은 손자 · 고아) 활성 0 · 두 파이프 EOF 를 확인한 뒤 돌아온다 — 확인이 안 서면
-/// `stop-unconfirmed`.
+/// 블로킹. 맏이가 끝나도 잡을 끝내고 활성 0 · 두 파이프 EOF 를 확인한 뒤 돌아온다 — 확인이 안 서면 `stop-unconfirmed`.
 pub(crate) fn execute(command: &str, cwd: &Path, env: &[(String, String)], deadline: Instant, cancel: &AtomicBool) -> Exec {
     let Some(cmd_exe) = os::system_cmd() else {
         return Exec::not_started(VerifyOutcome::SpawnFailed, "cmd");
@@ -522,7 +480,7 @@ pub(crate) fn execute(command: &str, cwd: &Path, env: &[(String, String)], deadl
             break if c == 0 { VerifyOutcome::Pass } else { VerifyOutcome::Fail };
         }
     };
-    // 잔여 자식 정리 — 맏이가 끝났어도 잡 안의 손자 · 고아를 끝낸다(그들이 파이프를 쥐고 있으면 EOF 가 서지 않는다).
+    // 맏이가 끝났어도 잡 안의 손자 · 고아를 끝낸다 — 그들이 파이프를 쥐고 있으면 EOF 가 서지 않는다.
     proc.terminate();
     let until = Instant::now() + STOP_CONFIRM;
     let mut gone = false;
@@ -547,7 +505,6 @@ pub(crate) fn execute(command: &str, cwd: &Path, env: &[(String, String)], deadl
     if !confirmed {
         reason = Some(outcome.as_str().to_string());
         outcome = VerifyOutcome::StopUnconfirmed;
-        // 리뷰 F8 — 손잡이를 닫지 않고 넘긴다(다시 끝내고 다시 확인할 길).
         leftover = Some(Leftover(Arc::new(proc)));
     } else {
         drop(proc);
@@ -565,10 +522,9 @@ pub(crate) fn execute(command: &str, cwd: &Path, env: &[(String, String)], deadl
 }
 
 // ---------------------------------------------------------------------------
-// 자리 준비 — 블로킹(git)
+// 자리 준비
 // ---------------------------------------------------------------------------
 
-/// 서버 전체 동시 검증 셈.
 static RUNNING: AtomicUsize = AtomicUsize::new(0);
 
 struct Permit;
@@ -592,12 +548,10 @@ fn permit() -> Option<Permit> {
     }
 }
 
-/// 준비된 자리.
 struct Prep {
     dir: PathBuf,
     temp: PathBuf,
     hermetic: bool,
-    /// 이번 캐시 키(보존 폴더가 있을 때).
     key: Option<String>,
 }
 
@@ -607,7 +561,7 @@ fn run8(run_id: &str) -> String {
     run_id.strip_prefix("run-").unwrap_or(run_id).chars().take(8).collect()
 }
 
-/// 링크면 링크만 걷고, 폴더면 안의 링크 · 정션을 링크만 걷은 뒤 지운다(대상을 따라가지 않는다 — 노트 저장소 사고와 같은 원리).
+/// 링크 · 정션은 링크만 걷는다 — 대상을 따라가 지우지 않는다(노트 저장소 사고와 같은 원리).
 pub(super) fn remove_no_follow(p: &Path) -> Result<(), String> {
     let Ok(md) = std::fs::symlink_metadata(p) else { return Ok(()) };
     // 정션도 std 에서는 링크로 보인다(이름 대리 재분석 지점).
@@ -627,8 +581,6 @@ fn common_dir(g: &Git) -> Option<String> {
     Some(crate::worktree::comparable(o.trim()))
 }
 
-/// 검증 자리를 깨끗한 후보 C 로 맞춘다(통합 설계 5-2) — Run 전용 worktree(분리 HEAD · 훅 끔)를 만들거나 다시 쓰고, 캐시 키가 바뀌었으면
-/// 보존 폴더를 지우고, `checkout --detach --force C` · `clean -ffdx`(보존만 `-e`) · 깨끗한지 · 추적 symlink 대상 검사.
 #[allow(clippy::too_many_arguments)]
 fn prepare(
     repo: &Path,
@@ -662,7 +614,7 @@ fn prepare(
     if !super::worktree::inside(&wt_root, &dir_asked) || !super::worktree::inside(&wt_root, &temp_asked) {
         return Err(fail(VerifyOutcome::SpawnFailed, "place"));
     }
-    // 리뷰 F4 — 자리 이름이 링크(정션 · symlink)면 따라가지 않는다: 검증 자리는 거절, 임시 폴더는 링크만 걷는다(대상은 그대로).
+    // 자리 이름이 링크(정션 · symlink)면 따라가지 않는다.
     let is_link = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
     if is_link(&dir_asked) {
         return Err(fail(VerifyOutcome::SpawnFailed, "place"));
@@ -678,8 +630,8 @@ fn prepare(
     let hooks = super::worktree::empty_hooks_dir();
     let rg = Git::new(repo, &hooks, &env, reason::VERIFY_FAILED).map_err(|_| fail(VerifyOutcome::SpawnFailed, "git"))?;
     check()?;
-    // 리뷰 F2 — checkout 이 smudge · process 필터(LFS 포함)를 검증 잡 밖 · 서버 권한으로 돌리지 않게, **꺼낼 후보 트리 전체**에 필터가
-    // 걸리면 실행 전에 거절한다(바뀐 경로만 본 통합 검사로는 그대로인 필터 파일을 못 잡는다 — 속성 출처 = 후보). 못 읽어도 거절.
+    // checkout 이 smudge · process 필터(LFS 포함)를 검증 잡 밖 · 서버 권한으로 돌리지 않게, 꺼낼 후보 트리 전체에 필터가 걸리면 거절한다
+    // (바뀐 경로만 본 통합 검사로는 그대로인 필터 파일을 못 잡는다). 못 읽어도 거절.
     match super::git::tree_has_filters(&rg, candidate, &[candidate]) {
         Ok(false) => {}
         Ok(true) => return Err(fail(VerifyOutcome::SpawnFailed, reason::FILTERS_CONFIGURED)),
@@ -695,7 +647,7 @@ fn prepare(
             log::line(format!("orchestration — {run_id}: verify worktree add failed: {}", e.message));
             fail(VerifyOutcome::SpawnFailed, "checkout")
         })?;
-        // 소유 기록(통합 설계 6-2 — 곁 파일 `role: verify`) — 폐기 정책이 이 줄로 "이 Run 의 서버 임시 자리" 를 안다.
+        // 소유 기록(곁 파일 `role: verify`) — 폐기 정책이 이 줄로 "이 Run 의 서버 임시 자리" 를 안다.
         if let Some(side) = sidecar {
             if let Err(e) = crate::worktree::record_server_place(side, &d, repo, run_id, super::cleanup::ROLE_VERIFY) {
                 log::line(format!("orchestration — {run_id}: worktrees.json not written for the verify folder: {e}"));
@@ -703,12 +655,11 @@ fn prepare(
         }
     }
     let vg = Git::new(&dir, &hooks, &env, reason::VERIFY_FAILED).map_err(|_| fail(VerifyOutcome::SpawnFailed, "git"))?;
-    // 우리 자리인가 — 같은 저장소의 worktree 여야 한다(다른 폴더에서 checkout · clean 을 돌리지 않는다).
+    // 같은 저장소의 worktree 여야 한다 — 다른 폴더에서 checkout · clean 을 돌리지 않는다.
     if !dir.join(".git").is_file() || common_dir(&vg).is_none() || common_dir(&vg) != common_dir(&rg) {
         return Err(fail(VerifyOutcome::SpawnFailed, "place"));
     }
     check()?;
-    // 캐시 키(N2) — 바뀌었거나 처음이면 보존 폴더를 지운다.
     let mut key = None;
     if !cfg.keep_dirs.is_empty() {
         let mut k = String::new();
@@ -722,7 +673,6 @@ fn prepare(
             for d in &cfg.keep_dirs {
                 let p = dir.join(d);
                 if !super::worktree::inside(&dir, &p) && std::fs::symlink_metadata(&p).is_ok() {
-                    // 보존 폴더 자리가 링크로 밖을 가리킨다 — 링크만 걷는다.
                     let _ = std::fs::remove_dir(&p).or_else(|_| std::fs::remove_file(&p));
                     continue;
                 }
@@ -752,7 +702,6 @@ fn prepare(
     if !clean_status(&st, &cfg.keep_dirs) {
         return Err(fail(VerifyOutcome::SpawnFailed, "not-clean"));
     }
-    // 추적 symlink 의 대상(9절 위험 5 확정) — 하나라도 자리 밖이면 이 후보의 검증을 거절한다. 못 읽은 링크도 밖으로 본다(보수적).
     let ls = vg.ok(&["ls-files", "-s", "-z"], &[], None).map_err(|_| fail(VerifyOutcome::SpawnFailed, "git"))?;
     for rel in tracked_links(&ls) {
         let full = dir.join(&rel);
@@ -768,12 +717,11 @@ fn prepare(
             return Err(fail(VerifyOutcome::SymlinkOutside, "symlink-outside"));
         }
     }
-    // Run 전용 임시 폴더(TEMP · TMP) — 매번 비운다.
     if let Err(e) = remove_no_follow(&temp) {
         log::line(format!("orchestration — {run_id}: could not reset the verify temp folder: {e}"));
     }
     std::fs::create_dir_all(&temp).map_err(|_| fail(VerifyOutcome::SpawnFailed, "temp"))?;
-    // 소유 기록(리뷰 F4) — 폐기 정책은 이름만이 아니라 이 줄(`role: temp`)이 있어야 이 폴더를 지운다.
+    // 폐기 정책은 이름만이 아니라 이 줄(`role: temp`)이 있어야 이 폴더를 지운다.
     if let Some(side) = sidecar {
         let t = temp.to_string_lossy();
         if let Err(e) = crate::worktree::record_server_place(side, &t, repo, run_id, super::cleanup::ROLE_TEMP) {
@@ -789,21 +737,19 @@ fn prepare(
     })
 }
 
-/// Run 전용 검증 자리 · 임시 폴더의 이름(`orch-<run8>-verify` · `orch-<run8>-tmp` — Run 자리 바로 아래). 폐기 정책(`cleanup.rs`)이 같은 이름을 쓴다.
+/// 폐기 정책(`cleanup.rs`)이 같은 이름을 쓴다.
 pub(super) fn place_names(run_id: &str) -> (String, String) {
     let r8 = run8(run_id);
     (format!("orch-{r8}-verify"), format!("orch-{r8}-tmp"))
 }
 
-/// 검증 Job 끝마다 **쉬는 상태**(통합 설계 6-2) — `checkout --detach --force <C>` + `clean -ffdx`(보존 폴더만 `-e`). 폐기 정책은 이 상태와
-/// 비교해 "예상 밖 변경" 을 가른다. 최선이다(실패는 로그 — 다음 Job 의 `prepare` 가 어차피 다시 맞추고, 폐기는 비교가 어긋나면 남긴다).
-/// 우리 자리(같은 저장소의 worktree · Run 자리 안)일 때만 손댄다. 블로킹(git).
+/// 검증 Job 끝마다 쉬는 상태로 — 폐기 정책은 이 상태와 비교해 "예상 밖 변경" 을 가른다. 최선이다(실패는 로그 — 다음 `prepare` 가 다시 맞춘다).
 fn rest(repo: &Path, wt_dir: &str, run_id: &str, cfg: &VerifyConfig, candidate: &str) {
     if !hex40(candidate) {
         return;
     }
     let asked = PathBuf::from(wt_dir).join(place_names(run_id).0);
-    // 리뷰 F4 — 자리 이름이 링크면 따라가 checkout · clean 하지 않는다.
+    // 자리 이름이 링크면 따라가 checkout · clean 하지 않는다.
     let link = std::fs::symlink_metadata(&asked).is_ok_and(|m| m.file_type().is_symlink());
     if link || !asked.join(".git").is_file() {
         return;
@@ -837,9 +783,8 @@ fn rest(repo: &Path, wt_dir: &str, run_id: &str, cfg: &VerifyConfig, candidate: 
     }
 }
 
-/// 끝난 뒤 검사한 것이 승인 후보 그대로가 아닌가(통합 설계 5-2 · 리뷰 F5) — **HEAD 가 후보 `candidate` 이고 index 가 그 트리와 같고**
-/// 작업 트리의 추적 파일이 index 와 같아야 거짓. 명령이 `reset` · 새 커밋 · `checkout` 으로 다른 커밋을 검사하게 만들었거나 index 를
-/// 바꿨으면 참. 읽지 못해도 참(보수적).
+/// HEAD 가 후보이고 index 가 그 트리와 같고 추적 파일이 index 와 같아야 거짓 — 명령이 다른 커밋을 검사하게 만들었거나 index 를 바꿨으면 참.
+/// 읽지 못해도 참(보수적).
 fn tracked_modified(dir: &Path, candidate: &str) -> bool {
     let env = child_env(std::env::vars_os());
     let hooks = super::worktree::empty_hooks_dir();
@@ -848,7 +793,6 @@ fn tracked_modified(dir: &Path, candidate: &str) -> bool {
     if head.as_deref().map(str::trim) != Some(candidate) {
         return true;
     }
-    // index ↔ 후보 트리(작업 트리를 보지 않는다 — `--cached`). 끝 코드 0 = 같다 · 1 = 다르다.
     match g.run(&["diff-index", "--cached", "--quiet", "--no-ext-diff", candidate, "--"], &[], None) {
         Ok(o) if o.code == Some(0) => {}
         _ => return true,
@@ -863,8 +807,7 @@ fn tracked_modified(dir: &Path, candidate: &str) -> bool {
 // 잠금 안의 조각
 // ---------------------------------------------------------------------------
 
-/// 올리기 관문(`commit_job` 이 잠금 안에서) — Run 에 검증이 있으면 **이 후보 · 이 명령 해시 · 이 머리**에 묶인 통과 결과, 또는 실패한 Job 에
-/// 묶인 사람 덮어쓰기가 있어야 한다. 없으면 그 까닭 낱말.
+/// 올리기 관문 — 검증이 있는 Run 은 이 후보 · 이 명령 해시 · 이 머리에 묶인 통과 결과, 또는 실패한 Job 에 묶인 사람 덮어쓰기가 있어야 한다.
 pub(super) fn commit_gate(run: &Run, job: &IntegrationJob) -> Option<&'static str> {
     let cfg = run.verify.as_ref()?;
     if let Some(o) = &job.override_ {
@@ -886,12 +829,10 @@ pub(super) fn commit_gate(run: &Run, job: &IntegrationJob) -> Option<&'static st
     (!bound).then_some("verify-required")
 }
 
-/// 같은 보고로 이미 돈 검증 수(허락이 선 Job — 재검증 한도 R14).
 pub(super) fn verifies_of_report(run: &Run, report_id: &str) -> usize {
     run.jobs.iter().filter(|j| j.report_id == report_id && j.approval.is_some()).count()
 }
 
-/// 수락 관문 보탬(`integrate::begin_in`) — 검증이 있는 Run 에서 같은 보고의 검증을 다 썼으면 `verify-failed`, Run 한도면 `verify-limit`.
 pub(super) fn begin_gate(run: &Run, report_id: &str) -> Result<(), OrchError> {
     if run.verify.is_none() {
         return Ok(());
@@ -913,13 +854,12 @@ pub(super) fn begin_gate(run: &Run, report_id: &str) -> Result<(), OrchError> {
     Ok(())
 }
 
-/// `candidate` → `verifying`(잠금 안) — 허락을 묶고 손잡이를 세운다. Run 한도면 `Err`.
 fn begin_verifying_in(slot: &mut Slot, ji: usize, by: VerifyApprover, now: u64) -> Result<Arc<VerifyCtl>, OrchError> {
     let Some(cfg) = slot.run.verify.clone() else {
         return Err(OrchError::new(reason::INVALID_STATE, "this run has no verification"));
     };
     if !slot.verify_leftovers.is_empty() {
-        // 리뷰 F8 — 종료를 확인하지 못한 앞 검증이 같은 자리를 아직 쓸 수 있다(checkout · clean 하지 않는다).
+        // 종료를 확인하지 못한 앞 검증이 같은 자리를 아직 쓸 수 있다 — checkout · clean 하지 않는다.
         return Err(OrchError::new(
             reason::VERIFY_FAILED,
             "the previous verification's process tree is not confirmed ended yet — try again later",
@@ -951,8 +891,7 @@ fn begin_verifying_in(slot: &mut Slot, ji: usize, by: VerifyApprover, now: u64) 
     Ok(ctl)
 }
 
-/// 종료 미확인 검증 트리를 다시 끝내고 다시 확인한다(서버 시계 — 잠금 안, 리뷰 F8). 확인된 것은 내려놓고 `verify_trees` 를 내린다.
-/// 하나라도 내려놓았으면 참(부른 쪽이 `settle_stopping` · 알림).
+/// 하나라도 내려놓았으면 참 — 부른 쪽이 `settle_stopping` · 알림을 한다.
 pub(super) fn reconfirm_leftovers(slot: &mut Slot) -> bool {
     if slot.verify_leftovers.is_empty() {
         return false;
@@ -967,7 +906,6 @@ pub(super) fn reconfirm_leftovers(slot: &mut Slot) -> bool {
     freed > 0
 }
 
-/// 사람 확인 대기 시한이 지난 Job 을 거둔다(서버 시계 — 잠금 안). 거둔 Job 의 Attempt id(알림용).
 pub(super) fn approval_timeouts(slot: &mut Slot, now: u64) -> Vec<String> {
     let idx: Vec<usize> = slot
         .run
@@ -985,7 +923,7 @@ pub(super) fn approval_timeouts(slot: &mut Slot, now: u64) -> Vec<String> {
         .collect()
 }
 
-/// 취소 · 중단 · 세대 교체가 검증 중인 Job 을 만났다 — 손잡이가 있으면 깃발만 세우고(트리 종료 확인 뒤 실행 쪽이 거둔다) 참.
+/// 깃발만 세운다 — Job 은 트리 종료 확인 뒤 실행 쪽이 거둔다.
 pub(super) fn signal_cancel(slot: &Slot, job_id: &str, why: &str) -> bool {
     match slot.verify_runs.get(job_id) {
         Some(c) => {
@@ -996,7 +934,6 @@ pub(super) fn signal_cancel(slot: &Slot, job_id: &str, why: &str) -> bool {
     }
 }
 
-/// 보기 — Task 마다 마지막 검증 결과 + 꼬리(메모리 — 끝 8 KiB).
 pub(super) fn last_verify_view(slot: &Slot) -> Value {
     let mut out = serde_json::Map::new();
     for j in &slot.run.jobs {
@@ -1052,7 +989,6 @@ fn job_index(run: &Run, job_id: &str) -> Result<usize, OrchError> {
 // 흐름
 // ---------------------------------------------------------------------------
 
-/// 후보 뒤 갈래.
 enum Next {
     Commit,
     Verify,
@@ -1061,10 +997,8 @@ enum Next {
 }
 
 impl Orchestration {
-    /// 후보가 선 뒤(⑤ — `drive_job` 이 부른다): 검증 없음 → 올리기, 자동 실행 → 검증 → 올리기, 기본 → 사람 확인 대기 + 알림. 블로킹.
-    /// **무인 검증 권한을 실행 직전 지금 맡기기로 다시 판정**한다(헤드리스 설계 2-4 · D5 — 명령 글자의 사본 고정과 실행 권한 회수는 별개):
-    /// 블록 · 받아들인 판 · 신원(Run 사본과도) · 지금 블록의 검증 명령 해시 = Run 사본 해시 · `verify_confirm` 꺼짐. 하나라도 어긋나면 무인으로
-    /// 돌리지 않는다(사람 확인으로 내려간다 — 그 까닭 낱말). **블로킹**(파일 · git) — 잠금 밖에서.
+    /// 무인 검증 권한을 실행 직전 지금 앨범 구성 · 신원으로 다시 판정한다(명령 글자의 사본 고정과 실행 권한 회수는 별개).
+    /// 어긋나면 사람 확인으로 내려간다. 블로킹(파일 · git) — 잠금 밖에서.
     pub(super) fn unattended_verify_ok(&self, run_id: &str) -> Result<(), &'static str> {
         let inputs = self.run_inputs(run_id);
         let g = self.lock();
@@ -1076,7 +1010,6 @@ impl Orchestration {
     pub(super) fn after_candidate(&self, run_id: &str, job_id: &str) {
         let now = self.now();
         let mut audits: Vec<(&'static str, OrchestrationAudit)> = Vec::new();
-        // 자동 실행 Run 이면 무인 권한을 지금 맡기기로 다시 판정한다(잠금 밖 — 2-4 · D5).
         let wants_auto = self
             .lock()
             .runs
@@ -1094,7 +1027,6 @@ impl Orchestration {
             let wants_auto = slot.run.verify.as_ref().map(|c| slot.run.album.as_ref().map_or(c.auto_run, |a| a.verify_auto));
             let auto = wants_auto.map(|auto| auto && unattended.is_ok());
             if let (Some(true), Err(why)) = (wants_auto, unattended) {
-                // 무인 권한이 거둬졌거나 바뀌었다 — 사람 확인으로(`verify-needs-human{reason}` — 2차 동작).
                 let attempt = slot.run.jobs[ji].attempt_id.clone();
                 let task_id = slot.run.jobs[ji].task_id.clone();
                 slot.run.bump(now, Actor::Server, "verify_needs_human", Some(&task_id), why);
@@ -1140,7 +1072,6 @@ impl Orchestration {
         }
     }
 
-    /// 검증 → (통과면) 올리기. 블로킹.
     fn verify_then_commit(&self, run_id: &str, job_id: &str) {
         if self.run_verify(run_id, job_id) {
             if let Err(e) = self.commit_job(run_id, job_id) {
@@ -1149,7 +1080,7 @@ impl Orchestration {
         }
     }
 
-    /// 검증을 따로 스레드에서(사람 확인 뒤 — op 를 오래 붙들지 않게). 자기 참조가 없으면(시험) 부른 스레드에서 끝까지.
+    /// op 를 오래 붙들지 않게 따로 스레드에서. 자기 참조가 없으면(시험) 부른 스레드에서 끝까지.
     fn launch_verify(&self, run_id: &str, job_id: &str) {
         let me = self.me.read().unwrap_or_else(|e| e.into_inner()).upgrade();
         if let Some(me) = me {
@@ -1165,9 +1096,8 @@ impl Orchestration {
         self.verify_then_commit(run_id, job_id);
     }
 
-    /// 검증 하나(`verifying` Job) — 블로킹. 통과 · 취소 없음이면 참(부른 쪽이 올린다). 결과는 장부에 적고, 실패면 Job 을 거둔다.
+    /// 블로킹. 통과 · 취소 없음이면 참(부른 쪽이 올린다).
     pub(super) fn run_verify(&self, run_id: &str, job_id: &str) -> bool {
-        // ① 잠금 안 — 재료 · 묶음 재대조(실행 직전 — 5-1).
         let snap = {
             let g = self.lock();
             g.runs.get(run_id).filter(|s| s.run.state != RunState::Orphaned).and_then(|s| {
@@ -1221,7 +1151,7 @@ impl Orchestration {
                         key = p.key.clone();
                         let comspec = os::system_cmd().unwrap_or_default();
                         let env = build_env(std::env::vars_os(), &cfg.extra_env_names, &comspec, &p.temp);
-                        // 자동 권한이 후보 예약 뒤 거둬질 수 있다. 실행 직전에도 지금 앨범과 신원을 본다.
+                        // 자동 권한이 후보 예약 뒤 거둬질 수 있다 — 실행 직전에도 지금 앨범과 신원을 본다.
                         let mut e = match self.album_verify_preflight(run_id, ap.by == VerifyApprover::Auto) {
                             Ok(()) => execute(&cfg.command, &p.dir, &env, deadline, ctl.flag()),
                             Err(why) => Exec::not_started(VerifyOutcome::SpawnFailed, why),
@@ -1234,7 +1164,6 @@ impl Orchestration {
                 },
             }
         };
-        // 쉬는 상태로(통합 설계 6-2) — 트리는 이미 끝났다(잡 비움 · EOF 확인 뒤). 자리를 만들지 못했으면 아무것도 안 한다.
         // 트리 종료를 확인하지 못했으면(`stop-unconfirmed`) 손대지 않는다 — 폐기 정책도 그 자리를 "아직 쓰는 중" 으로 본다.
         if bound && exec.outcome != VerifyOutcome::StopUnconfirmed {
             rest(&repo, &wt_dir, run_id, &cfg, &ap.candidate);
@@ -1260,7 +1189,6 @@ impl Orchestration {
         self.finish_verify(run_id, job_id, result, tail, key, exec.leftover)
     }
 
-    /// 검증 결과를 적는다(잠금 안) — 손잡이를 내리고(트리는 이미 끝났다) 결과 · 꼬리를 남긴다. 통과 · 취소 없음이면 참.
     fn finish_verify(
         &self,
         run_id: &str,
@@ -1276,7 +1204,7 @@ impl Orchestration {
             let mut g = self.lock();
             let Some(slot) = g.runs.get_mut(run_id) else { return false };
             let ctl = slot.verify_runs.remove(job_id);
-            // 리뷰 F8 — 종료를 확인하지 못했으면 트리를 살아 있는 자원으로 남긴다(`verify_trees` 그대로 · 손잡이를 Run 이 쥔다).
+            // 종료를 확인하지 못했으면 트리를 살아 있는 자원으로 남긴다(`verify_trees` 그대로 · 손잡이를 Run 이 쥔다).
             match (ctl.is_some(), leftover) {
                 (true, Some(l)) => slot.verify_leftovers.push((job_id.to_string(), l)),
                 (true, None) => slot.verify_trees = slot.verify_trees.saturating_sub(1),
@@ -1289,7 +1217,7 @@ impl Orchestration {
             let Ok(ji) = job_index(&slot.run, job_id) else { return false };
             let outcome = result.outcome;
             if outcome == VerifyOutcome::StopUnconfirmed {
-                // 정리(통합 설계 6-2)는 이 서버 수명 동안 검증 자리를 "아직 쓰는 중" 으로 본다(트리가 남았을 수 있다).
+                // 정리는 이 서버 수명 동안 검증 자리를 "아직 쓰는 중" 으로 본다(트리가 남았을 수 있다).
                 slot.verify_unconfirmed = true;
             }
             let (exit, dur, vid) = (result.exit_code, result.duration_ms, result.verify_id.clone());
@@ -1343,9 +1271,8 @@ impl Orchestration {
         pass
     }
 
-    /// 사람 [검증 실행](op `orchestration_approve_verify` — Tauri 명령만, MCP 도구 없음). 승인은 `{jobId, candidate, commandSha, old}` 에
-    /// 묶인다 — 지금 Job 의 후보 · Run 의 명령 해시 · 서버가 아는 통합 머리 · **실제 통합 ref** 가 모두 그것과 같을 때만. 다르면
-    /// `approval-stale`(다시 보고 확인), 30분이 지났으면 `approval-expired`. 검증은 따로 스레드에서 돈다.
+    /// 사람 [검증 실행] — Tauri 명령만, MCP 도구 없음. 승인은 지금 Job 의 후보 · Run 의 명령 해시 · 서버가 아는 통합 머리 ·
+    /// **실제 통합 ref** 가 모두 그것과 같을 때만 묶인다.
     pub(crate) fn approve_verify(
         &self,
         run_id: &str,
@@ -1411,7 +1338,7 @@ impl Orchestration {
                 ));
             }
             if current.as_deref() != Some(old) {
-                // 통합 ref 가 앱 밖에서 움직였다 — 이 후보는 낡았다(4-5 보류).
+                // 통합 ref 가 앱 밖에서 움직였다 — 이 후보는 낡았다.
                 abort_job_in(slot, ji, now, Actor::Server, "moved");
                 self.hold_diverged(slot, "verify-approval", now);
                 self.after_change(&g, run_id);
@@ -1436,9 +1363,8 @@ impl Orchestration {
         Ok(view)
     }
 
-    /// 사람 [검증 실패인데 수락](op `orchestration_override_verify` — Tauri 명령만). 대상은 **실패한 그 Job**(`jobId` · 실패 `verifyId` ·
-    /// 후보 `candidate`) — 그 Task 의 마지막 Job 이고, Task 가 여전히 같은 보고로 reported 이며, 통합 머리가 그 Job 의 `old` 그대로일 때만.
-    /// 같은 후보로 새 Job 을 세워 곧바로 올린다(덮어쓰기 기록은 새 Job 에 · 실패 결과는 실패로 남는다). 블로킹(git).
+    /// 사람 [검증 실패인데 수락] — Tauri 명령만. 대상은 실패한 그 Job 이고, 그 Task 의 마지막 Job · 같은 보고로 reported ·
+    /// 통합 머리가 그 Job 의 `old` 그대로일 때만. 실패 결과는 실패로 남는다.
     pub(crate) fn override_verify(&self, run_id: &str, job_id: &str, verify_id: &str, candidate: &str) -> Result<Value, OrchError> {
         if !hex40(candidate) {
             return Err(invalid("candidate must be a 40-hex object id"));
@@ -1554,10 +1480,10 @@ impl Orchestration {
                     by: Reviewer::Human,
                     at: now,
                 }),
-                // 검토(5단계) — 실패한 Job 의 검토 칸을 이어받는다(사람의 수락 — 필수 검토에 pass 가 없으면 면제).
+                // 실패한 Job 의 검토 칸을 이어받는다(사람의 수락 — 필수 검토에 pass 가 없으면 면제).
                 review_id: failed.review_id.clone(),
                 review_waived: failed.review_waived || (slot.run.legacy_require_review() && failed.review_id.is_none()),
-                // 수락 규칙(3a) — 실패한 Job 이 관문에서 판정한 것을 그대로 이어받는다(사람의 덮어쓰기 수락).
+                // 실패한 Job 이 관문에서 판정한 것을 그대로 이어받는다(사람의 덮어쓰기 수락).
                 waived: failed.waived.clone(),
                 judgments: failed.judgments.clone(),
             };
@@ -1571,7 +1497,7 @@ impl Orchestration {
             (new_id_, base, d)
         };
         self.audit("human_override_verify", run_id, detail);
-        // 새 Job 의 후보 ref 를 이 후보로 세운다(Job 마다 따로 — 올리기 트랜잭션이 `delete <ref> <C>` 로 함께 지운다).
+        // 후보 ref 는 Job 마다 따로 — 올리기 트랜잭션이 `delete <ref> <C>` 로 함께 지운다.
         let keep = RefOp::Update { name: refs::candidate(&base, &new_job), new: candidate.to_string(), old: None };
         if !matches!(git.update_refs(&repo, &[keep]), Ok(TxOutcome::Committed)) {
             log::line(format!("orchestration — {run_id}: could not re-pin the candidate ref for an override"));

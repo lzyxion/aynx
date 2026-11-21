@@ -9,13 +9,8 @@ import { stripReason } from "$lib/error-reason";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { SideChat } from "$lib/side-chat";
 
-/**
- * **사이드 채팅을 그리는 자리들의 공용 몸**(2026-11-01 — docs/log/2026-11-01-remote-side-chat.md 화면 단계). 자리는 둘이다: 데스크톱 폭의
- * 채팅 독(`ChatDock` — 메인 PC 주 창 · 원격 데스크톱 폭 창)과 원격 폰 배치의 전체 화면 덮개(`mobile/MobileChat`). 둘 다 서는 순간 서버 표에
- * 살아 있는 채팅(뒤에서 도는 턴 · 권한 대기)에 붙어 점을 세우고, 폰 상태줄의 말풍선은 같은 점을 읽는다.
- */
+/** 사이드 채팅을 그리는 두 자리(채팅 독 · 폰 덮개)의 공용 몸 */
 
-/** 서버 표에 살아 있는 채팅 가운데 **이 창의 목록에 있는 것**에 붙는다(구독 → attach — 띄우지 않는다) */
 export function joinListedSideChats(): Promise<void> {
   return joinLiveSideChats((id) => {
     const c = sideChats().find((x) => x.id === id);
@@ -23,15 +18,12 @@ export function joinListedSideChats(): Promise<void> {
   });
 }
 
-/** 모든 채팅 중 가장 급한 점(권한 > 새 답 > 답하는 중) — 독 머리줄 ▾ · 폰 상태줄 말풍선. 반응형 */
 export function sideChatsHeadDot(): Dot {
   return mostUrgentDot(sideChats().map((c) => sideChatDot(c.id)));
 }
 
 /**
- * 채팅 지우기(독 · 폰 덮개 공용 — 목록 줄의 우클릭 · 호버 단추 · 독 머리줄 ⋯) — 확인 뒤 서버의 프로세스를 닫고(`side_chat_close`) 그 채팅이
- * 쥔 대화들(`links` — 갈라 온 원본은 빼고)을 CLI 의 기록에서 영구히 지운 뒤 목록에서 빼고 폴더를 지운다. 대화를 못 지우면 채팅을 남긴다
- * (다시 지울 수 있게 — 지난 대화 줄의 삭제는 사이드 채팅 대화를 막는다).
+ * 갈라 온 원본 대화는 지우지 않는다. 대화를 못 지우면 채팅을 남긴다 — 지난 대화 줄의 삭제는 사이드 채팅 대화를 막아 여기서만 다시 지울 수 있다.
  */
 export async function removeSideChat(chat: SideChat): Promise<void> {
   const title = chat.title || t("app.chatDock.untitled");

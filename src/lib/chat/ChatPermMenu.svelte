@@ -1,12 +1,5 @@
 <script lang="ts">
-  /**
-   * **권한 모드 메뉴**(2026-11-20 — 모드 칩이 연다 · 권한 모드 목업). 라디오 둘(`Manual` — 카드로 묻기 /
-   * `Auto` — 묻지 않기) + 허용 목록이 비지 않았으면 "이 채팅에서 허용한 것" 머리와 항목 칩들(각 × = 그 종류 다시 묻기). 모양은 전역 메뉴 한 벌
-   * (`.menu-*`), 몸짓은 `ToolbarMenu` 와 같다: 뜨면 지금 모드 줄에 포커스 · ↑↓ Home End 로 돌고 · Esc 는 칩으로 포커스를 돌려주고 · 바깥 누르기 ·
-   * Tab · 창 크기 바뀜은 그냥 닫는다. 고르기의 몸은 `SideChatControls`(메뉴 통로 `runOnMenu` — 모드는 닫고 실행 · × 는 닫지 않고 실행)이고 이 상자는
-   * 누름만 넘긴다. 자리는 칩을 담은 **입력 칸 상자의 오른쪽 끝**에 맞추고 폭은 `min(320px, 상자 폭)`(2026-11-20 실기 — 칩 끝에 맞추면 독 왼쪽
-   * 밖으로 나갔다 · 상자를 못 찾으면 칩 오른쪽 끝 · 내용 폭) · 아래로 넘치면 위로(입력 칸은 독 아래쪽이라 대개 위) · 창 안으로 당긴다. 폰(`touch`)은 줄 44px.
-   */
+  /** 고르기의 몸은 `SideChatControls` 의 `runOnMenu` 통로다 — 모드는 닫고 실행, × 는 닫지 않고 실행 */
   import { untrack } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import { nextMenuIndex } from "$lib/browser/toolbar-tools";
@@ -20,16 +13,14 @@
   let el = $state<HTMLElement | null>(null);
   let left = $state(0);
   let top = $state(0);
-  /** 입력 칸 상자에 맞춘 폭(px) — 상자를 못 찾으면 null(내용 폭 · 칩 오른쪽 끝 정렬) */
   let width = $state<number | null>(null);
-  /** 메뉴 폭 상한 — 상자가 더 넓어도 이만큼 */
   const MAX_W = 320;
 
   function place(): void {
     const node = el;
     if (!node) return;
     const r = trigger.getBoundingClientRect();
-    // 칩을 담은 입력 칸 상자(`FlipComposer` 의 `.wrap`) — 오른쪽 끝을 그 상자에 맞추고 폭은 상자 안쪽(2026-11-20 실기 — 칩 끝 정렬이면 독 왼쪽 밖으로 나갔다)
+    // 오른쪽 끝을 칩을 담은 입력 칸 상자(`FlipComposer` 의 `.wrap`)에 맞춘다 — 칩 끝에 맞추면 독 왼쪽 밖으로 나간다
     const box = trigger.closest("[data-flip-composer] .wrap")?.getBoundingClientRect() ?? null;
     if (box) width = Math.min(MAX_W, box.width, window.innerWidth - 2 * EDGE);
     const w = box && width !== null ? width : node.offsetWidth;
@@ -98,7 +89,7 @@
     if (next >= 0) buttons[next]?.focus();
   }
 
-  /** × 로 지운 뒤 포커스가 사라진 단추에 남지 않게 — 남은 첫 항목(없으면 지금 모드 줄)으로 */
+  /** × 로 지운 뒤 포커스가 사라진 단추에 남지 않게 */
   function forget(kind: string): void {
     ctl.forgetAllow(kind);
     requestAnimationFrame(() => {
@@ -166,14 +157,13 @@
   .pmm {
     position: fixed;
     z-index: 41;
-    /* 인라인 `width`(입력 칸 상자에 맞춘 폭)가 테두리 · 패딩까지 든 폭이게 — content-box 면 그만큼(10px) 상자 오른쪽 밖으로 나간다(2026-11-20 실기) */
+    /* content-box 면 인라인 `width` 에 테두리 · 패딩만큼 상자 오른쪽 밖으로 나간다 */
     box-sizing: border-box;
     width: max-content;
     min-width: 240px;
     max-width: min(340px, calc(100vw - 16px));
   }
 
-  /* 두 줄 라디오(낱말 + 설명) — 전역 줄 한 벌의 28px 를 풀어 준다 */
   .pmm-mode {
     display: flex;
     align-items: center;
@@ -222,7 +212,6 @@
     font-size: var(--t-xs);
     color: var(--fg-2);
     white-space: normal;
-    /* 한국어는 낱말 가운데서 끊지 않는다(끝 글자 하나만 다음 줄로 넘어가지 않게) */
     word-break: keep-all;
   }
 

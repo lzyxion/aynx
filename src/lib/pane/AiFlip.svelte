@@ -1,100 +1,10 @@
 <script lang="ts">
   /**
-   * **AI 타일 안에서 [터미널 | 대화] 넘기기** (2026-10-17 — 사용자 승인 목업 ①'). 터미널 타일의 몸(`PaneHost` 의 `<Terminal>`)을
-   * **언제나** 이 상자가 감싼다 — AI 가 아닌 타일에서도(감싸개가 AI 판정에 따라 생겼다 사라지면 `<Terminal>` 이 재마운트되고, 그
-   * 언마운트가 곧 세션 종료다). AI 타일이 아니면 대화 면을 그리지 않고 키도 보지 않는다 — 감싸개는 상자 하나일 뿐이다.
-   *
-   * ## 두 층, 같은 크기, `display:none` 없음
-   *
-   * 터미널 층과 대화 층은 같은 상자(`inset: 0`)이고, 쉴 때는 안 보이는 쪽이 옆으로 밀려 나 있다(터미널 왼쪽 · 대화 오른쪽 —
-   * 상자가 `clip`). 넘기면 **타일 한 장(머리줄 + 본문 — `.pane-box`)이 세로축으로 뒤집힌다**(2026-10-20 사용자 선택 — 앞면 터미널 ·
-   * 뒷면 대화, `pane/flip-motion.ts` · 셈은 `pane/flip-card.ts`): 지금 면이 가장자리까지 돌아 사라지는 프레임에 두 층의 자리와 머리줄
-   * 색이 바뀌고 반대 가장자리에서 돌아온다(뒷면을 그리지 않는다). 시간 약 450ms · ease-in-out, 도중에 다시 누르면 지금 각도에서
-   * 짧게 되돌아가고, 움직임 줄이기면 그냥 바뀐다. **터미널 층은 숨기지 않는다** — `transform` 으로 밀어 둘 뿐이라 크기가 그대로고(refit 없음), WebGL 을
-   * 떼지 않으며(숨은 터미널의 0 폭 재기 — `term/hidden-render-gate.ts`), 출력도 버퍼에 계속 쌓인다. 밀려 난 터미널 층은 포인터를
-   * 받지 않는다. 상자는 `overflow: clip` 이라 밖으로 밀린 층이 비치지 않고, 포커스 · 캐럿이 상자를 스크롤시킬 수도 없다.
-   *
-   * ## 키보드 — 대화 면의 집은 입력 칸
-   *
-   * 대화 면 아래 줄에 **입력 칸**(`FlipComposer` — 사이드 채팅과 같은 두 줄 상자 · 아래 줄 끝 둥근 보내기 단추(Enter 와 같은 길) · Enter 보내기 ·
-   * Shift+Enter 줄바꿈 · IME 조합 중 Enter 무시 · 에이전트가 일하는 동안 보내기 옆 [중지] = Esc 키 하나 — 2026-11-02)이 있고, 넘기면 포커스를
-   * 거기 준다. 편집 요소라 한글 IME 가 첫 글자부터 켜져 있다(편집 요소가 아닌 곳에 포커스가 있으면 첫 글자가 조합 없이 로마자로
-   * 들어간다). 보내기는 그 타일 터미널의 **사람 입력 문**(`TermActions.submitText` — 한 줄 = 친 글자, 여러 줄 = 괄호 붙여넣기, 뒤에
-   * Enter 키)이라 새 쓰기 길 · Tauri 명령이 없다. 보낸 글은 기록에 나타날 때까지 흐린 "보내는 중" 말풍선(`TranscriptBody` 의
-   * `pending` — 20초 안에 안 나타나면 조용히 걷는다). 에이전트가 **권한을 묻는 중**이면 칸 대신 "터미널에서 답하기 →".
-   *
-   * **첨부**(2026-10-24): 대화 면이 보이는 동안 타일에 놓은 파일(OS 파일 · 파일 타일 짐 — `app/transfer` 의 `pasteAttachment`)과 칸에
-   * 붙여 넣은 그림은 터미널 입력 줄이 아니라 칸 위 **칩**(`pane/composer-attachments.svelte.ts` — 열쇠 = 타일 id)으로 선다. 사본 · 업로드는
-   * 터미널 면과 같은 `stageAgentFiles` · `stageFsPaths`(원격 타일은 그 서버로). 보내면 그 경로들을 터미널 면 끌어 놓기와 같은 괄호
-   * 붙여넣기로 글보다 먼저 넣고(`submitText` 의 `attach`) 칩을 비운다. 터미널 면의 놓기는 예전 그대로(입력 줄에 경로).
-   *
-   * **입력 칸 = 글 줄 + 아래 줄 `[+] … [로고 모델 게이지 ⌄] [보내기]`**(2026-11-13 — 사이드 채팅과 같은 부품 · 목업 E2 · E3 · E4 → 2026-11-20 한 줄
-   * 알약을 두 줄 상자로 — 두 줄 상자 목업 · 사용자 결정):
-   * - `[+]` = 메뉴 없이 곧바로 파일 고르기 창(아무 파일) — 고른 것은 붙여 넣은 그림과 같은 `attach` 길(`stageAgentFiles` · 칩).
-   * - 모델 키워드(`chat/ChatModelKeyword` 의 `view`) — 값은 **그 대화 기록의 마지막 답**(최신 쪽의 `TranscriptPage.last` — 로컬 · 원격
-   *   같은 쪽 읽기 · 새 명령 없음). 첫 답 전에는 로고만. 메뉴로 바꾼 값은 CLI 가 화면에 확인 문구를 띄운 뒤에만 곧바로(`pane/flip-model-ack.ts` — 기록에 그 뒤의 새 답이 남으면 다시 기록을 따른다 · 거절 · 시간 초과 · 전환 확인 화면이면 그대로).
-   * - 누르면 메뉴(`pane/FlipModelMenu` — 2026-11-14 넓힘): Claude 는 Default + 별칭 목록 · Default 고리 + Effort 게이지 → `/model <별칭|default>` ·
-   *   `/effort <단계|auto>`(새 세션 기본값도 바뀐다 — 메뉴 안내), Codex 는 그 PC 의 Codex 모델 목록(`codex_models` — 원격 SSH 타일이면 그 서버
-   *   목록을 몰라 게이지만) + 그 모델이 받는 단계 → `/model <slug> --reasoning=<단계>` · `/model --reasoning=<단계>`(이 세션에만). 보내는 글은
-   *   `pane/flip-model.ts` 의 **고정 허용 목록 낱말로만** 짓고(기록의 글 · AI 출력이 섞이지 않는다 — "AI 문자열→PTY 길은 없다") 사람 입력 문
-   *   (`submitText` — 보내기와 같은 길)으로 간다. 메뉴는 고른 뒤 닫는다(`runOnMenu`).
-   * - 일하는 중 · 권한을 묻는 중 · 폴더 신뢰 질문 중이면 키워드가 흐리게 잠긴다(⌄ 없음 — [중지] · 권한 판정과 같은 출처). 보내기 직전에
-   *   TUI 입력 줄에 사람이 치다 만 글이 보이면(흐리지 않은 글 — `tuiInputLeftover`) 보내지 않고 알린다. 대화 면 입력 칸의 글은 보낼 때 곧바로
-   *   친 글자 + Enter 로 나가므로 TUI 입력 줄에 남지 않는다 — 칸에 글이 있어도 메뉴는 막지 않는다.
-   * - **Claude 모델 전환 확인 카드**(2026-11-14 · 목업 E5 — `pane/FlipModelSwitchCard`): 대화가 지금 모델로 캐시돼 있으면 Claude 가 TUI 에
-   *   "Switch model?" 을 띄운다 — 대화 면이 보이는 동안 화면을 1초마다 읽어(메뉴로 보낸 직후는 확인 기다리기가 150ms 로) 대화 끝에 카드를 세우고 입력 칸 ·
-   *   키워드를 잠근다. [전환] · [취소] = 고정 키 `1` · `2`(사람 입력 문 `sendKeys` — 보내기 직전에 확인이 아직 떠 있는지 다시 본다), 화면에서 사라지면 걷는다.
-   *   `/effort` 의 "Change effort level?" 도 같은 카드(Effort 제목 · 2026-11-14 실기 "두 번 눌러야 바뀐다").
-   * - **Codex 가 Enter 를 삼키면 하나 더**(2026-11-14 실측 — 새로 뜬 Codex 는 첫 입력 묶음 뒤 Enter 를 먹지 않는다): 메뉴 줄 · 입력 칸 한 줄을 보낸 뒤
-   *   0.7초에 입력 줄이 보낸 글 그대로면 Enter 키 하나를 더(`retryEnter` · 판정 `flip-model.ts` 의 `tuiInputHolds` — 확실할 때만).
-   *
-   * 이 상자의 **캡처 단계** keydown 이 xterm · 입력 칸보다 먼저 본다(판정은 순수 층 `pane/ai-flip-keys.ts`): 입력 칸이면 Escape(터미널로
-   * — CLI 로 보내지 않는다) · PageUp/Down(기록) 만 가로챈다. 칸 **밖**이면(기록을 눌러 글을 고른 뒤) 글자 · IME · 붙여넣기는 칸으로
-   * 포커스를 옮기며 흘려보내고(권한 대기라 칸이 없으면 터미널로 넘긴다), ↑↓ · PageUp/Down · Home/End 는 기록을 밀고, 나머지(Enter ·
-   * Ctrl+C(고른 글 없음) · Ctrl+D …)는 보이지 않는 CLI 로 새지 않게 삼킨다. 전역 단축키는 그대로 지나간다. 기록을 누르기만 했으면
-   * (고른 글 없음) 칸으로 포커스를 돌려준다. 터미널 층에는 `inert` 를 달지 않는다(밀려 나 포인터를 받지 않을 뿐) — 대화 면인 동안
-   * xterm 이 포커스를 받으면(타일 포커스 이동 · 탭 복귀) 입력 칸으로 옮긴다.
-   *
-   * ## 대화 면 = 그 타일의 지금 대화
-   *
-   * 타일 ↔ 대화 연결(`app/agent-sessions` 의 `agentLinkOf` — 훅 신호가 실어 온 대화 id · 재개로 연 타일의 autorun)을 읽어 기록
-   * 보기의 몸(`TranscriptBody`)으로 그린다 — 지난 대화 시트와 같은 쪽 읽기 · 같은 그림이고 새 Tauri 명령이 없다. 로컬은 이 PC 의 대화
-   * 파일, 원격은 **이 타일의 SSH 세션**으로 서버의 파일(시트의 원격 대화와 같은 명령 · 같은 범위 — 그 별칭의 목록 캐시에 없는 새
-   * 대화면 목록을 한 번 다시 읽는다). 원격은 설정의 SSH 타일만(빠른 접속 타일은 목록 캐시의 열쇠가 없어 넘기지 않는다 — 단추도 없다).
-   * 연결을 아직 모르면(첫 메시지 전) 빈 면 + 입력 칸뿐이다(10판 훅은 `SessionStart` 로 CLI 가 뜨자마자 잇는다 — Claude 만. Codex 는
-   * 첫 질문의 `start` 가 잇는다: 그래서 새 CLI 를 띄우는 셸 명령 · 입력 칸으로 보낸 `/new` · `/resume` 류가 옛 연결을 먼저 걷는다 — 2026-10-20).
-   * Claude 는 잇는 순간 대화 파일이 아직 없다(첫 사람 말에서 생긴다) — 그 사이의 "찾지 못함" 은 오류가 아니라 빈 면이다(2026-11-02 · `pane/flip-convo.ts`). 대화 면이 보이는 동안만 따라가기(로컬 1.5초 · 원격 3초)가 돈다. 대화 층은 처음 넘길 때
-   * 섰다가 AI 타일인 동안 남는다(위로 올려 읽던 자리가 다음 넘김에도 그대로다).
-   *
-   * 에이전트 말의 ```mermaid · ```svg 는 그림으로(`TranscriptBody` 의 `diagrams`), `![alt](경로)` · 그림 파일 링크는 이 면이 쥔
-   * `DocImageCache` 하나가 읽는다(2026-10-24 — 사이드 채팅과 같은 `doc-images` 규칙 · 네트워크 경로 안 읽음 · 그림 우클릭 메뉴 · 새 Tauri
-   * 명령 없음). 로컬은 로컬 백엔드, 원격은 **이 타일의 SSH 세션**의 SFTP(세션이 없으면 오프라인 대체 글자). 상대 경로의 기준은 CLI 의
-   * cwd ≈ 그 타일 셸이 마지막으로 알린 폴더(로컬 `localReportedFolder` · 원격 `reportedCwd`) — 모르면 절대 경로만 읽는다.
-   * 사람 말에 **바로 실린** 그림(Claude 붙여넣기 · 끌어 놓은 파일의 base64 · Codex 첨부의 데이터 URL — 경로가 없다)은 쪽이 자리만 싣고
-   * `ConvImageCache` 가 한 장씩 받는다(`agent_conversation_image` · 원격 `…_remote` — 쪽과 같은 색인 · 같은 전송로 · 10 MB · png/jpeg/gif/webp).
-   * 에이전트 말의 **파일 경로**(구분자나 줄 꼬리가 있는 코드 조각 · 평문 속 경로 · 경로 주소의 링크 — `MarkdownBlocks` 의 `paths`)는 그냥 클릭에 문서 타일로 연다
-   * (2026-11-11). 자리는 터미널 글자의 경로와 같은 `pathLinkPlace`(로컬 · SSH · WSL), 폴더는 그 타일 셸이 마지막으로 알린 값(`reportedCwd` —
-   * 터미널의 `shell.cwd()` 와 같은 값의 반응형 사본), 여는 길도 같은 `onopenpath` → `openPathFromTerminal`(파일일 때만 · 꼬리 줄로).
-   * 에이전트 말의 **코드 블록**에는 머리 띠 [복사] · (셸 계열 언어면) [터미널에 넣기](2026-11-12 사용자 결정 — `TranscriptBody` 의
-   * `codeActions` → `app/code-to-term` 의 `codeToTerminal`, 문서 타일 · 사이드 채팅과 같은 상자 · 같은 규칙 · 입력 줄에 넣기만 · Enter 는 사람).
-   * 누른 곳은 이 타일이라 `sourcePaneId = pane.id` — 상자의 새 터미널은 **이 타일 오른쪽**에 서고(`openShellPaneBeside`), Esc 는 단추 또는
-   * 이 타일로 돌아간다. 받는 쪽은 이 창의 셸 타일들(로컬 · SSH — AI 타일은 빠진다, 이 타일 자신도)이고 원격 AI 타일이어도 같다.
-   * 폰도 덮개가 아니라 타일 안이라 넣은 뒤 할 일(`ondone`)이 없다 — 받는 타일로 가는 것은 `focusTile` 이 한다.
-   *
-   * 넘김 상태는 `pane/ai-flip.svelte.ts`(화면 상태 — 저장 안 함). AI 타일이 아니게 되면(CLI 가 끝났다) 터미널 면으로 돌아온다.
-   * **신뢰 안내 말풍선**(2026-11-04 · 옅게 누런 면 + 꼬리 — docs/log/2026-11-04-trust-bubble.md): Codex 훅 신뢰는 닫으면 이 기기에서 다시 안 뜨고, Claude 폴더 신뢰는 터미널에 질문이 떠 있는
-   * 동안만 뜬다(질문 동안 훅이 오지 않아 화면을 읽는다 — `pane/claude-trust.ts`). 그 질문 동안 입력 칸은 막힌다(`FlipComposer` 의 `gate.quiet`).
-   * **폰 배치는 AI 타일을 처음 볼 때 대화 면으로 연다**(2026-11-04 · 이 기기 값 — `flip-convo.ts` 의 `phoneOpensConvo` · CLI 한 번에 한 번 · 사람이 돌리면 그대로) —
-   * 뒤집는 움직임 없이, **포커스도 주지 않는다**(입력 칸에 주면 화면 키보드가 올라와 기록을 가린다 — 칸을 누르면 그때). 그래서 폰의 대화 면에서는 xterm 이 받은 포커스도
-   * 칸으로 옮기지 않고 놓는다(`onTermFocusIn`).
-   *
-   * ## 대화 기록 안 찾기 (2026-10-19)
-   *
-   * 대화 면에서 `find` 키(`Ctrl+F` · 팔레트 — `app/tile-find.ts`)는 밀려 난 터미널의 버퍼가 아니라 **대화 기록**을 찾는다: 대화 층 맨 위에
-   * 찾기 띠(`DomFindBar` — 문서 타일과 같은 띠 · 같은 규칙)가 서고 말풍선 글자를 칠한다. `Enter` · `F3` 다음, `Shift+Enter` · `Shift+F3`
-   * 이전, `Esc` 닫고 입력 칸으로. 받아 온 쪽 안에서만 찾는다(더 오래된 것은 "이전 메시지 더 보기" 로 받은 뒤). 따라가기가 새 말을
-   * 붙이면 다시 찾는다. 입력 칸 안의 `Ctrl+F` 는 전역 처리기의 입력 칸 가드에 걸리므로 위 캡처 단계가 먼저 잡고, 띠 안의 키는 모두
-   * 띠에 맡긴다(`ai-flip-keys.ts` 의 `inFind` · `findCombo`). 터미널 면이면 이 타일의 찾기는 없다(`false` — 예전처럼 그 터미널 범위 검색).
+   * AI 타일 안에서 [터미널 | 대화] 넘기기 — 터미널 타일의 몸을 언제나 감싼다(감싸개가 AI 판정에 따라 생겼다 사라지면 `<Terminal>` 이 재마운트되고,
+   * 그 언마운트가 곧 세션 종료다). 터미널 층은 숨기지 않는다 — `transform` 으로 밀어 둘 뿐이라 refit 이 없고 WebGL 을 떼지 않으며 출력도 계속 쌓인다.
+   * 보내기는 그 타일 터미널의 사람 입력 문(`TermActions.submitText` · `sendKeys` · `sendEscape`)뿐이라 새 쓰기 길 · Tauri 명령이 없다.
+   * 모델 메뉴 · 전환 확인 카드 · [중지] 가 보내는 것은 고정 허용 목록 낱말 · 고정 키뿐이고 화면 · 기록에서 읽은 글자는 표시에만 쓴다 — "AI 문자열→PTY 길은 없다"(불변식 4).
+   * 코드 블록의 [터미널에 넣기] 는 입력 줄에 넣기만 한다 — Enter 는 사람.
    */
   import { onDestroy, tick, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
@@ -209,23 +119,16 @@
     children,
   }: {
     pane: PaneSpec;
-    /** 이 타일이 지금 물고 있는 세션 id — 원격 대화를 읽는 길 */
     sessionId?: number | null;
-    /** 이 타일이 화면에 보이는가(숨은 탭이면 따라가기를 멈춘다) */
     shown?: boolean;
-    /** 대화 면의 파일 경로를 눌렀다 — 터미널의 `onopenpath` 와 같은 손잡이(이미 풀린 경로 · 꼬리 줄) */
     onopenpath?: (target: NonNullable<ResolvedPath>, line?: number) => void;
-    /** 터미널 */
     children: Snippet;
   } = $props();
 
-  /** 한 쪽의 항목 수 — 시트와 같다 */
   const PAGE = 40;
   const FOLLOW_LOCAL_MS = 1500;
   const FOLLOW_REMOTE_MS = 3000;
-  /** 원격 세션이 없어 더 읽지 못했다는 표식 */
   const GONE = "\u0000remote-gone";
-  /** 대화 면의 화살표 한 번 */
   const LINE_PX = 40;
 
   const flippable = $derived(canFlipPane(pane));
@@ -235,14 +138,13 @@
   const convKey = $derived(
     link ? `${remoteAlias !== null ? `${remoteAlias.toLowerCase()}|` : ""}${link.agent}:${link.id}` : null,
   );
-  /** 대화 층을 세웠나 — 처음 넘길 때 서고 AI 타일인 동안 남는다 */
+  /** 처음 넘길 때 서고 AI 타일인 동안 남는다 — 읽던 자리가 다음 넘김에도 그대로다 */
   let mounted = $state(false);
   $effect(() => {
     if (view === "convo") mounted = true;
     else if (!flippable) mounted = false;
   });
 
-  /** CLI 가 끝나 AI 타일이 아니게 되면 터미널 면으로 */
   $effect(() => {
     if (!flippable && untrack(() => flipViewOf(pane.id)) === "convo") setFlipView(pane.id, "term");
   });
@@ -253,31 +155,26 @@
   let convoEl = $state<HTMLDivElement | null>(null);
   let bodyEl = $state<HTMLElement | null>(null);
   let composerEl = $state<HTMLTextAreaElement | null>(null);
-  /** 대화 기록 안 찾기 띠 */
   let finder = $state<ReturnType<typeof DomFindBar> | null>(null);
 
-  /** 에이전트가 권한을 묻는 중(훅 신호 — 상태 점과 같은 값) — 입력 칸 대신 "터미널에서 답하기" */
   const permission = $derived(flippable && agentStatusOf(pane) === "permission");
-  // ── 타일 권한 카드(2026-11-01 — docs/log/2026-11-01-tile-permission-hook.md 10절) ─────────────────────────────
-  // 로컬 AI 타일의 CLI 에만 건 훅이 세운 카드를 대화 면 입력 칸 자리에 그린다. 카드가 있으면 입력 칸 대신 카드(답이 먼저다), 없으면
-  // 예전 그대로(권한 신호만 있으면 "터미널에서 답하기 →" — 훅이 없는 원격 · 신뢰 전 Codex). 스트림 = `AYNX_STREAM`.
+  // ── 타일 권한 카드 ────────────────────────────────
 
   const stream = $derived(pane.historyStreamId ?? pane.id);
-  /** 카드를 받는 타일 — 훅은 로컬 AI 타일에만 실린다(원격 SSH 타일은 2단계) */
+  /** 훅은 로컬 AI 타일의 CLI 에만 실린다 */
   const permTile = $derived(flippable && pane.kind === "local");
   const permCards = $derived(permTile ? tilePermCardsOf(stream) : []);
   const permTraces = $derived(permTile ? tilePermTracesOf(stream) : []);
-  // 그 타일이 서거나 세션에 다시 붙을 때(F5 · 재부착 — `seq` 가 없다) 스냅숏으로 다시 그린다
+  // F5 · 재부착에는 `seq` 가 없다 — 스냅숏으로 다시 그린다
   $effect(() => {
     if (!permTile) return;
     const s = stream;
     void sessionId;
     untrack(() => void watchTilePermissions(s));
   });
-  // ── 면 규칙(2026-11-02 사용자 승인 — 대화 면에서는 카드로, 터미널 면에서는 TUI 로) ─────────────────────────────
-  // 이 창이 이 타일을 대화 면으로 두었는가(탭이 보이는지와 무관)를 서버에 알린다 — 대화 면으로 보는 창이 하나도 없으면 서버가 카드 없이 TUI 가
-  // 묻게 하고, 카드가 선 동안 모두 터미널 면으로 넘기면 풀어 TUI 로 넘긴다. 세션이 바뀌면(새 회차 · 서버 재시작) 다시 알린다. 정리 함수로 거짓을
-  // 보내지 않는다(면이 바뀔 때마다 거짓 → 참이 가면 그 틈에 카드가 풀린다) — 타일이 사라질 때만 거짓.
+  // ── 면 규칙 ────────────────────────────────
+  // 대화 면으로 보는 창이 하나도 없으면 서버가 카드 없이 TUI 가 묻게 한다. 정리 함수로 거짓을 보내지 않는다 — 면이 바뀔 때마다
+  // 거짓 → 참이 가면 그 틈에 카드가 풀린다(타일이 사라질 때만 거짓).
   const faceConvo = $derived(view === "convo");
   $effect(() => {
     if (!permTile) return;
@@ -289,17 +186,14 @@
   onDestroy(() => {
     if (permTile) reportTileFace(stream, false);
   });
-  /** 답한 질문의 요약("답을 보냈습니다") — 이 타일 · 지금 대화의 것. 대화 기록 사이 그 자리에 선다(`TranscriptBody` 의 `notes`) */
   const qaSummaries = $derived(permTile ? questionSummariesOf(stream, link?.id ?? null) : []);
-  // 사람의 답이라 사람 말풍선 판에(A안 — 오른쪽 · 같은 배경 · 모서리 · 최대 폭)
   const qaNotes = $derived(qaSummaries.map((s) => ({ key: s.id, at: s.at, user: true })));
 
-  /** TUI 가 묻는 중(카드 없이 물러났거나 카드가 풀렸다) — 대화 면은 입력 칸 대신 "터미널에서 답하기"(턴이 끝났으면 걷는다) */
+  /** 카드 없이 물러났거나 카드가 풀렸다 — 턴이 끝났으면 걷는다 */
   const tuiAsking = $derived(
     permTile && permCards.length === 0 && tileTuiAskingOf(stream) && agentStatusOf(pane) !== "finished",
   );
 
-  /** 카드의 남은 시간 시계(카드가 있을 때만 1초) */
   let permNow = $state(Date.now());
   $effect(() => {
     if (permCards.length === 0) return;
@@ -308,15 +202,13 @@
     return () => clearInterval(h);
   });
   const phone = $derived(handheld());
-  /** Codex 는 기다리는 동안 TUI 에 창이 없다 — 터미널 면이면 띠로 대화 면을 가리킨다(Claude 는 TUI 창이 함께 떠 있어 띄우지 않는다) */
+  /** Codex 는 기다리는 동안 TUI 에 창이 없다 — Claude 는 TUI 창이 함께 떠 있어 띄우지 않는다 */
   const codexBand = $derived(view === "term" && permCards.some((c) => c.cli === "codex"));
-  /** Codex 첫 실행 신뢰 안내 — 훅이 실린 로컬 Codex 타일의 대화 면 입력 칸 바로 위 말풍선(닫으면 다시 안 뜸 · 2026-11-02 위 → 아래) */
+  /** 닫으면 다시 안 뜬다 */
   const trustHint = $derived(permTile && agentKindOf(pane) === "codex" && codexTrustHintShown());
 
-  // ── Claude 폴더 신뢰 질문(2026-11-04 · 판정 `pane/claude-trust.ts` · docs/log/2026-11-04-trust-bubble.md) ─────────────────────────
-  // 질문 동안에는 훅이 하나도 오지 않아(실측) 터미널 화면을 읽는다 — 대화 면 · 보이는 동안 · 그 CLI 의 훅을 아직 못 받았고 사람이 아직 말하지 않았을 때만 1초마다.
-  // 그동안 입력 칸을 막는다(Enter 가 그 질문의 답이 된다 — 기본 선택은 "No, exit" 라 CLI 가 끝난다). ✕ 는 말풍선만 숨긴다 — 칸은 계속 막힌다.
-  /** 이 CLI 가 훅을 보냈거나 사람이 이미 말했다 — 질문을 지났다 */
+  // ── Claude 폴더 신뢰 질문 (docs/log/2026-11-04-trust-bubble.md) ────────────────────────────────
+  // 질문 동안 훅이 오지 않아 화면을 읽는다. 그동안 입력 칸을 막는다 — Enter 가 그 답이 되고 기본 선택이 "No, exit" 라 CLI 가 끝난다. ✕ 는 말풍선만 숨긴다.
   let cliPastTrust = $state(false);
   const unhook = onAgentHookSignal((id) => {
     if (id === pane.id) cliPastTrust = true;
@@ -333,7 +225,7 @@
     return !sig || (sig.signalRunningAt === null && sig.signalStopAt === null && sig.signalPermissionAt === null);
   });
   let trustAsked = $state(false);
-  /** ✕ — 이번 질문에서만(저장 안 함). 질문이 사라지면 풀린다 */
+  /** 이번 질문에서만(저장 안 함) */
   let trustHidden = $state(false);
   function readTrustPrompt(): boolean {
     return isClaudeTrustPrompt(termActionsOf(pane.id)?.screenLines() ?? []);
@@ -356,15 +248,11 @@
   });
   const trustGate = $derived(trustAsked ? { text: t("pane.flip.trust.gate"), quiet: true } : null);
 
-  // ── Claude 의 모델 전환 확인 카드(2026-11-14 — 목업 E5 · 판정 `pane/flip-model-ack.ts` 의 `claudeSwitchAsk` · 카드 `FlipModelSwitchCard`) ─────────
-  // 대화가 그 모델로 캐시돼 있으면 Claude 는 다른 모델로의 `/model` 에 TUI 확인("Switch model?")을 띄운다 — 메뉴에서 보냈든 사람이 터미널에서 쳤든. 대화
-  // 면이 보이는 동안 그 타일 화면을 1초마다 읽어(xterm 버퍼 한 화면 — 서버 · IPC 없음) 떠 있으면 대화 끝에 카드를 세우고 입력 칸 · 키워드를 잠근다.
-  // 화면에서 사라지면(터미널에서 답함 · Esc) 걷는다. 메뉴로 보낸 직후에는 확인 기다리기(`watchAck` — 150ms)가 먼저 알아본다.
-  // [전환] · [취소] 는 **고정 키** `SWITCH_YES_KEY`("1") · `SWITCH_NO_KEY`("2") 하나를 사람 입력 문(`TermActions.sendKeys`)으로 보낸다(실측 — 번호가
-  // 그 줄을 바로 고른다 · Esc 도 물러나지만 번호가 대칭이다). 화면에서 읽은 모델 이름은 카드 제목 **표시에만** 쓰고 보내는 키에 싣지 않는다(불변식 4).
+  // ── Claude 의 모델 전환 확인 카드 ────────────────────────────────
+  // [전환] · [취소] 는 고정 키(`SWITCH_YES_KEY` · `SWITCH_NO_KEY`)만 사람 입력 문으로 보낸다 — 화면에서 읽은 모델 이름은 카드 제목 표시에만 쓴다(불변식 4).
   let switchAsk = $state<SwitchAsk | null>(null);
   const SWITCH_POLL_MS = 1000;
-  /** 답을 보낸 뒤 CLI 가 화면을 다시 그릴 틈 — 그동안 남은 확인 화면을 새 확인으로 보지 않는다(카드가 다시 서거나 확인 기다리기가 멈추지 않게) */
+  /** 답을 보낸 뒤 CLI 가 다시 그릴 틈 — 남은 확인 화면을 새 확인으로 보지 않게 */
   const SWITCH_GRACE_MS = 1500;
   let switchQuietUntil = 0;
   function readSwitch(): SwitchAsk | null {
@@ -378,7 +266,6 @@
     const check = () => {
       if (Date.now() < switchQuietUntil) return;
       const a = readSwitch();
-      // 같은 화면이면 그대로(카드가 다시 그려지지 않게)
       if (a?.kind !== switchAsk?.kind || a?.name !== switchAsk?.name) switchAsk = a;
     };
     untrack(check);
@@ -386,7 +273,7 @@
     return () => clearInterval(h);
   });
   const switchGate = $derived(switchAsk ? { text: t("pane.flip.switch.gate"), quiet: true } : null);
-  /** 카드의 답 — 보내기 직전에 그 확인이 아직 떠 있는지 다시 본다(아니면 보내지 않고 카드만 걷는다) */
+  /** 보내기 직전에 그 확인이 아직 떠 있는지 다시 본다 — 아니면 보내지 않고 카드만 걷는다 */
   function answerSwitch(yes: boolean): void {
     const id = pane.id;
     const now = readSwitch();
@@ -397,32 +284,27 @@
       showNotice(t("pane.flip.composer.closed"));
       return;
     }
-    // [전환] 뒤 "Set model to …" · "Set effort level to …" 로 키워드가 곧바로 바뀐다
     switchQuietUntil = Date.now() + SWITCH_GRACE_MS;
     acts.sendKeys(yes ? SWITCH_YES_KEY : SWITCH_NO_KEY);
     if (yes) watchAck(id, "claude", { kind: now.kind, line: null });
     focusComposer();
   }
 
-  /** 카드의 [터미널에서 답하기] — 풀었으니 터미널 면으로 */
   function permToTerminal(): void {
     setFlipView(pane.id, "term");
     focusTerm();
   }
 
-  /** 대화 면 안의 작업 중 표시(스피너 · 쓰는 중 점 셋) — 머리줄에는 아무것도 띄우지 않는다 */
   const activity = $derived.by((): "running" | "permission" | "idle" => {
     const s = flippable ? agentStatusOf(pane) : null;
     return s === "running" ? "running" : s === "permission" ? "permission" : "idle";
   });
 
-  // ── [중지] — 지금 턴 끊기(2026-11-02 · 판정은 `pane/flip-convo.ts`) ─────────────────────────────
-  // 사람이 누른 단추가 그 타일 TUI 에 **고정 키 Esc 하나**를 사람 키로 보낸다(`TermActions.sendEscape` — 키보드로 Esc 를 친 것과 같은 문 ·
-  // 원격 웹 창도 같은 `writeInput` → `write_session{source:"keyboard"}`). AI 문자열이 아니라 "AI 문자열→PTY 길은 없다" 와 부딪치지 않는다.
-  // 일하는 중(`running`)에만 서고, 권한을 묻는 중 · 카드가 서 있으면 숨는다(카드 · "터미널에서 답하기" 가 그 자리의 답).
+  // ── [중지] ────────────────────────────────
+  // 고정 키 Esc 하나를 사람 키와 같은 문(`TermActions.sendEscape`)으로 보낸다 — AI 문자열이 아니라 "AI 문자열→PTY 길은 없다" 와 부딪치지 않는다.
 
   const stoppable = $derived(flippable && stopShown({ status: agentStatusOf(pane), cards: permCards.length }));
-  /** 마지막으로 Esc 를 보낸 때 — Claude 의 Esc 두 번(되감기 메뉴)이 되지 않게 한 번만 */
+  /** Claude 의 Esc 두 번(되감기 메뉴)이 되지 않게 한 번만 */
   let stopAt: number | null = null;
   function stopTurn(): void {
     const now = Date.now();
@@ -433,13 +315,12 @@
       return;
     }
     stopAt = now;
-    // 서버 표에 "사람이 끊음" — Claude 는 Esc 에 훅이 없어(실측) 실행 표시 · 탭 점이 다음 신호까지 남았다. 다음 신호면 다시 실행
+    // Claude 는 Esc 에 훅이 없어 실행 표시 · 탭 점이 다음 신호까지 남는다 — 서버 표에 "사람이 끊음" 을 적는다
     noteAgentInterrupted(pane);
   }
 
   // ── 입력 칸 — 보내기 · 보내는 중 말풍선 ───────────────────────────────────────────────
 
-  /** 기록에 안 나타나도 말풍선을 걷는 시간 */
   const PENDING_MS = 20_000;
   let pending = $state<{ id: number; text: string; files?: readonly string[]; pics?: readonly SentPic[] }[]>([]);
   let pendingSeq = 0;
@@ -449,16 +330,14 @@
     const timer = pendingTimers.get(id);
     if (timer !== undefined) clearTimeout(timer);
     pendingTimers.delete(id);
-    // 막 보낸 그림(입력 칸 미리보기)은 말풍선과 함께 거둔다 — 기록에 들면 그 줄의 `pictures` 가 그린다
+    // 기록에 들면 그 줄의 `pictures` 가 그린다
     revokeSentPics(pending.find((p) => p.id === id)?.pics);
     if (pending.some((p) => p.id === id)) pending = pending.filter((p) => p.id !== id);
   }
 
-  // 첨부 칩(2026-10-24) — 대화 면이 보일 때 타일에 놓은 파일(`app/transfer`) · 칸에 붙여 넣은 그림. 열쇠 = 타일 id
   const attachments = $derived(composerAttachmentsOf(pane.id));
   onDestroy(() => clearComposerAttachments(pane.id));
 
-  /** 칸에 그림을 붙여 넣었다 — 터미널 면 끌어 놓기와 같은 자리로 사본 · 업로드(`stageAgentFiles` — 원격 타일은 그 서버로) */
   function attach(files: File[]): void {
     const sid = sessionId;
     const kind = pane.kind;
@@ -474,10 +353,7 @@
     );
   }
 
-  /**
-   * 그 타일 터미널의 사람 입력 문으로 보낸다 — 보냈으면 참(칸을 비운다). 첨부 칩이 있으면 그 경로들을 터미널 면 끌어 놓기와 같은 괄호
-   * 붙여넣기로 먼저 넣는다(`submitText` 의 `attach` — CLI 가 그림으로 바꾼다).
-   */
+  /** 보냈으면 참 — 첨부 경로는 괄호 붙여넣기로 글보다 먼저 넣는다(`submitText` 의 `attach`) */
   function send(text: string): boolean {
     // 시계 사이에 질문이 떴을 수 있다 — 보내기 직전에 한 번 더 본다(Enter 가 질문의 답이 되면 안 된다)
     if (trustWatch && readTrustPrompt()) {
@@ -496,13 +372,11 @@
       showNotice(t("pane.drop.attach.notready"));
       return false;
     }
-    // 그림 칩의 미리보기는 보내는 중 말풍선이 이어 쓴다(말풍선을 세우지 않으면 곧바로 거둔다)
     const pics = takeComposerPictures(pane.id);
     if (files.length === 0) retryEnter(pane.id, agentKindOf(pane) ?? link?.agent ?? "", text.trim());
     cliPastTrust = true; // 사람이 말했다 — 그 뒤로 화면을 읽을 까닭이 없다
-    // 대화를 바꾸는 Codex 명령(`/new` · `/resume` …)이면 옛 연결을 버린다 — 새 대화는 첫 질문의 신호가 잇는다(빈 면). 말풍선은 띄우지 않는다
+    // 대화를 바꾸는 Codex 명령(`/new` · `/resume` …)이면 옛 연결을 버린다 — 새 대화는 첫 질문의 신호가 잇는다
     if (agentPromptSent(pane.id, text) || text.trim() === "") {
-      // 대화를 바꾸는 명령 · 그림만 보냈으면 말풍선 없음(맞댈 글이 없다 — 기록이 곧 그린다)
       revokeSentPics(pics);
       return true;
     }
@@ -516,9 +390,8 @@
     for (const p of untrack(() => pending)) revokeSentPics(p.pics);
   });
 
-  // ── 입력 칸의 [+] · 모델 키워드(2026-11-13 — 이 파일 머리말 · 판정 `pane/flip-model.ts`) ───────────────────────────
+  // ── 입력 칸의 [+] · 모델 키워드 ────────────────────────────────
 
-  /** `[+]` 의 숨은 파일 고르기 — 아무 파일 · 여럿 */
   let pickEl = $state<HTMLInputElement | null>(null);
   function onPicked(ev: Event): void {
     const input = ev.currentTarget as HTMLInputElement;
@@ -527,19 +400,15 @@
     if (files.length > 0) attach(files);
   }
 
-  /** 지금 대화의 마지막 답의 모델 · 강도(최신 쪽이 실어 온 값 — 대화가 바뀌면 지운다). **표시 전용** — 터미널로 보내지 않는다 */
+  /** 표시 전용 — 터미널로 보내지 않는다 */
   let recordModel = $state<LastModel | null>(null);
-  /**
-   * 메뉴로 보낸 뒤 **CLI 가 받았다고 화면에 알린 값**(2026-11-14 — `pane/flip-model-ack.ts`) — 기록에 그 뒤의 새 답이 남을 때까지 키워드를 덮는다.
-   * 같은 대화에서만(대화가 바뀌면 걷는다). 화면에서 읽은 글자라 **표시 전용** — 보내는 줄에는 쓰지 않는다(불변식 4).
-   */
+  /** 화면에서 읽은 글자라 표시 전용 — 보내는 줄에는 쓰지 않는다(불변식 4). 대화가 바뀌면 걷는다 */
   let modelOverride = $state<ModelOverride | null>(null);
   /** 최신 쪽의 `last` 가 실린 줄 자리(`null` = 기록에 아직 값이 없다 · `undefined` = 이 대화의 쪽을 아직 못 받았다) */
   let recordLastAt: number | null | undefined = undefined;
   const lastModel = $derived(shownModel(recordModel, modelOverride));
-  /** 그 타일의 CLI(보낼 명령의 갈래) */
   const modelCli = $derived(flippable ? (agentKindOf(pane) ?? link?.agent ?? null) : null);
-  /** 일하는 중 · 권한을 묻는 중([중지] · 권한 카드 · "터미널에서 답하기" 와 같은 출처) · 폴더 신뢰 질문 중(Enter 가 그 답이 된다) */
+  /** 폴더 신뢰 질문 중에도 잠근다 — Enter 가 그 답이 된다 */
   const modelLocked = $derived(
     trustAsked || switchAsk !== null || flipModelLocked({ status: flippable ? agentStatusOf(pane) : null, cards: permCards.length, tuiAsking }),
   );
@@ -549,10 +418,7 @@
     if (modelLocked || view !== "convo" || modelCli === null) modelOpen = false;
   });
 
-  /**
-   * Codex 모델 목록 — 사이드 채팅과 같은 출처(`codex_models` — 이 PC 의 Codex 캐시 파일 · 프로세스 없음). 이 PC 에서 도는 타일(`local` —
-   * 원격 웹 창에서 보는 메인 PC 타일도)만 읽는다. SSH 타일의 Codex 는 그 서버의 목록을 몰라 `null` — 메뉴는 게이지만.
-   */
+  /** SSH 타일의 Codex 는 그 서버의 목록을 몰라 `null` — 메뉴는 게이지만 */
   let codexList = $state<CodexModels | null>(null);
   const codexLocal = $derived(modelCli === "codex" && pane.kind === "local");
   $effect(() => {
@@ -582,16 +448,12 @@
       onopen: (el) => {
         modelBtn = el;
         modelOpen = !modelOpen;
-        // 열 때마다 새로 읽는다(파일 둘 — 사이드 채팅 메뉴와 같다)
         if (modelOpen && codexLocal) void loadCodexModels().then((v) => (codexList = v));
       },
     };
   });
 
-  /**
-   * 메뉴의 내용 — CLI 마다(이 파일 머리말). Claude 의 Default 줄은 기록으로 고르지 않는다(기록에는 실제로 쓴 모델만 있다 — 고정 없음과
-   * 구별되지 않는다 · `flip-model.ts` 머리말). Effort 는 기록의 값이 단계면 그 칸, 모르면 Default 고리.
-   */
+  /** Claude 의 Default 줄은 기록으로 고르지 않는다 — 기록에는 실제로 쓴 모델만 있어 고정 없음과 구별되지 않는다 */
   const menu = $derived.by((): { models: FlipModelRow[]; levels: readonly string[]; effort: string; ring: boolean; note: string } | null => {
     const cli = modelCli;
     const last = lastModel;
@@ -627,13 +489,7 @@
     if (back) modelBtn?.focus({ preventScroll: true });
   }
 
-  /**
-   * 메뉴에서 고른 **고정 줄**을 그 타일 터미널의 사람 입력 문으로(대화 면 보내기와 같은 `submitText` — 친 글자 + Enter). 불변식 4
-   * ("AI 문자열→PTY 길은 없다"): `line` 은 `flip-model.ts` 의 허용 목록 낱말로만 지은 것이다(`slashModelLine` · `slashEffortLine` ·
-   * `codexModelLine` — slug 는 이 PC 의 Codex 모델 목록 원소 · `codexEffortLine` — 목록 밖이면 `null` 이라 여기 오지 않는다). 기록에서 읽은
-   * 모델 이름 · 강도는 키워드 표시와 "목록의 어느 줄 · 어느 단계 상수인가" 비교에만 쓰고 그 글자가 이 줄에 실리지 않으며, 누름은 사람이 메뉴에서
-   * 한 것이다. 보내는 중 말풍선은 띄우지 않는다(대화 말이 아니다).
-   */
+  /** `line` 은 `flip-model.ts` 의 허용 목록 낱말로만 지은 것이다 — 기록에서 읽은 모델 이름 · 강도는 이 줄에 실리지 않는다(불변식 4) */
   function sendFixedLine(paneId: string, line: string, cli: string | null): boolean {
     const r = termActionsOf(paneId)?.submitText(line) ?? "closed";
     if (r === "closed") showNotice(t("pane.flip.composer.closed"));
@@ -642,10 +498,8 @@
   }
 
   /**
-   * **Codex 가 Enter 를 삼켰으면 하나 더**(2026-11-14 실기 — `flip-model.ts` 의 `tuiInputHolds`): 새로 뜬 Codex 는 첫 입력 묶음 뒤의 Enter 를 먹지 않아
-   * 보낸 글이 입력 줄에 남는다(그 뒤 메뉴는 "치다 만 글" 로 막혔다). 보낸 뒤 `ENTER_RETRY_MS` 에 그 타일 화면의 입력 줄이 **보낸 한 줄 그대로**면 Enter
-   * 키 하나(고정 키 · 사람 입력 문 `sendKeys`)를 더 보낸다 — 한 번만. 입력 줄이 비었거나(먹었다) 다르면 아무것도 안 한다. 화면 글자는 비교에만 쓰고
-   * 보내는 것은 늘 `\r` 하나다(불변식 4). 실측: 그 시점(글 뒤 약 0.7초)의 Enter 는 먹는다. Claude 는 이 일이 없어(실측) Codex 만.
+   * 새로 뜬 Codex 는 첫 입력 묶음 뒤의 Enter 를 먹지 않는다 — 입력 줄이 보낸 한 줄 그대로면 Enter 하나를 한 번만 더 보낸다.
+   * 화면 글자는 비교에만 쓰고 보내는 것은 늘 `\r` 하나다(불변식 4).
    */
   const ENTER_RETRY_MS = 700;
   function retryEnter(paneId: string, cli: string, sent: string): void {
@@ -658,11 +512,8 @@
     }, ENTER_RETRY_MS);
   }
 
-  // ── 보낸 뒤 CLI 의 확인 문구 기다리기(2026-11-14 — 판정 `pane/flip-model-ack.ts`) ─────────────────────────────
-  // 보낸 뒤 짧은 간격으로 최대 `ACK_WAIT_MS` 동안 그 타일 화면을 읽어 **맨 아래의 확인이 보낸 것의 답인가**(`latestAck` — Claude 는 보낸 명령의
-  // 되울림 바로 아래 확인, Codex 는 맨 아래 확인 줄의 값)를 본다(줄 수 비교는 화면이 차면 놓쳤다 — 2026-11-14 실기). 받았으면 키워드를 덮고,
-  // 거절 · 물러남 · 시간 초과면 그대로 둔다. 새로 보내면 앞의 기다림은 걷는다(빠른 연속 변경은 마지막 값). Claude 의 모델 전환 확인 화면이 보이면 확인 대기라 멈춘다(그동안 바꾸지 않는다).
-  // 화면 글자는 **표시에만** 쓴다 — 보내는 줄은 위 고정 줄뿐이고 여기서 읽은 것은 어떤 줄에도 실리지 않는다(불변식 4).
+  // ── 보낸 뒤 CLI 의 확인 문구 기다리기 ────────────────────────────────
+  // 화면 글자는 표시에만 쓴다 — 여기서 읽은 것은 어떤 줄에도 실리지 않는다(불변식 4).
   const ACK_WAIT_MS = 3000;
   const ACK_POLL_MS = 150;
   let ackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -684,7 +535,7 @@
       const lines = screenOf(paneId);
       if (cli === "claude") {
         const ask = claudeSwitchAsk(lines);
-        // 확인 대기 — 바꾸지 않고 카드를 곧바로 세운다(대화 면이 보이는 동안 — 1초 시계를 기다리지 않게)
+        // 확인 대기 — 바꾸지 않고 카드를 곧바로 세운다
         if (ask !== null && Date.now() >= switchQuietUntil) {
           if (view === "convo" && shown) switchAsk = ask;
           return;
@@ -705,13 +556,10 @@
     ackTimer = setTimeout(step, ACK_POLL_MS);
   }
 
-  /** TUI 입력 줄을 볼 화면 줄 수 — 화면 전체(스냅숏 상한 60 줄 · 넘으면 아래쪽). 인라인으로 그리는 CLI 는 입력 줄이 바닥에 붙어 있지 않을 수 있다 */
+  /** 인라인으로 그리는 CLI 는 입력 줄이 바닥에 붙어 있지 않을 수 있어 화면 전체를 본다 */
   const INPUT_SCAN_ROWS = 60;
 
-  /**
-   * 보내도 되는 순간인가 — 잠기지 않았고, 시계 사이에 폴더 신뢰 질문이 뜨지 않았고(Enter 가 그 답이 되면 안 된다), TUI 입력 줄에 사람이
-   * 치다 만 글이 보이지 않는다(그 뒤에 이어 치면 명령이 아니라 말이 된다 — `tuiInputLeftover` · 입력 줄을 못 찾으면 막지 않는다).
-   */
+  /** 사람이 치다 만 글이 TUI 입력 줄에 보이면 보내지 않는다 — 이어 치면 명령이 아니라 말이 된다(입력 줄을 못 찾으면 막지 않는다) */
   function modelSendable(cli: string): boolean {
     if (modelLocked) return false;
     if (trustWatch && readTrustPrompt()) {
@@ -726,7 +574,6 @@
     return true;
   }
 
-  /** 메뉴에서 고른 고정 줄을 보내고 CLI 의 확인을 기다린다 */
   function sendPicked({ id, cli, line, sent }: { id: string; cli: string; line: string; sent: SentKind }): void {
     if (sendFixedLine(id, line, cli)) watchAck(id, cli, { kind: sent, line });
     focusComposer();
@@ -757,21 +604,14 @@
     );
   }
 
-  // ── 쪽 받기 — 시트(`ConversationViewer`)와 같은 명령 · 같은 범위 ─────────────────────────
+  // ── 쪽 받기 ────────────────────────────────
 
-  /**
-   * 목록 캐시를 다시 읽은 때(대화 열쇠 → 시각) — 원격의 새 대화는 별칭 캐시에 없어 다시 읽는다. 처음 한 번, 그 뒤로는 쪽을 아직 못 받은
-   * 대화(파일이 곧 생긴다 — 아래 "아직 없음")만 틈마다 한 번(`mayRefreshRemote`).
-   */
+  /** 원격의 새 대화는 별칭 캐시에 없어 목록을 다시 읽는다 */
   const refreshed = new Map<string, number>();
 
-  // ── "대화가 아직 없음"(2026-11-02 — `pane/flip-convo.ts` 의 `convoNotYet`) ─────────────────────────────
-  // Claude 의 `SessionStart` 훅은 CLI 가 뜨자마자 대화 id 를 잇지만 대화 파일은 첫 사람 말에서 생긴다 — 그 사이의 "찾지 못했습니다" 는 빈
-  // 면이다(따라가기가 계속 다시 본다). 쪽을 한 번이라도 받았거나 턴 하나가 끝났는데 못 받으면 그때는 오류로 보인다.
+  // ── "대화가 아직 없음" ────────────────────────────────
 
-  /** 쪽을 한 번이라도 받은 대화 열쇠 */
   const loadedConvs = new Set<string>();
-  /** 일하는 것을 본 대화 · 턴 하나가 끝난 대화 */
   const ranConvs = new Set<string>();
   const turnEndedConvs = new Set<string>();
   $effect(() => {
@@ -781,7 +621,6 @@
     if (a !== "idle") ranConvs.add(k);
     else if (ranConvs.has(k)) turnEndedConvs.add(k);
   });
-  /** 지금 대화가 "아직 없음" 으로 비어 있다 — 빈 면 문구도 걷는다 */
   let convoPending = $state(false);
   $effect(() => {
     void convKey;
@@ -792,13 +631,12 @@
     stopAck();
   });
 
-  // ── 그림 — 사이드 채팅(`SideChatFace`)과 같은 캐시 · 같은 규칙 ─────────────────────────────
+  // ── 그림 ────────────────────────────────
 
   const imageCache = new DocImageCache();
   onDestroy(() => imageCache.dispose());
-  /** CLI 의 cwd ≈ 그 타일 셸이 마지막으로 알린 폴더(로컬 = 이 PC 경로 · 원격 = POSIX) — 상대 경로의 기준 */
+  /** 상대 경로의 기준 — CLI 의 cwd ≈ 그 타일 셸이 마지막으로 알린 폴더 */
   const imageFolder = $derived(remoteAlias !== null ? reportedCwd(pane.id) : localReportedFolder(pane));
-  /** 대화 면의 경로 링크 — 터미널 글자의 경로와 같은 자리 · 같은 풀기(이 파일 머리말). 손잡이가 없거나 자리가 없으면 걸지 않는다 */
   const pathLinks = $derived.by(() => {
     const open = onopenpath;
     const place = open ? pathLinkPlace(pane, reportedCwd(pane.id)) : null;
@@ -816,7 +654,6 @@
       },
     };
   });
-  /** 에이전트 말 코드 블록의 [터미널에 넣기] — 상자는 단추 아래 · 오른쪽 맞춤, 새 터미널은 이 타일 오른쪽(이 파일 머리말) */
   const codeActions = {
     onterm: (code: string, button: HTMLElement) => {
       const r = button.getBoundingClientRect();
@@ -836,12 +673,10 @@
       noNetwork: true,
     };
   });
-  /** 마지막으로 받은 그림 주소들 — 폴더 · 세션이 바뀌면 그때 다시 맞춘다 */
   let imageSrcs: readonly string[] = [];
   $effect(() => {
     const ctx = imageCtx;
     void ctx.backend.online;
-    // 대화를 모르게 되면(기록 몸이 걷힌다) 그 그림들도 거둔다
     if (convKey === null) imageSrcs = [];
     untrack(() => imageCache.sync(imageSrcs, ctx));
   });
@@ -855,10 +690,9 @@
     },
   };
 
-  // 사람 말에 바로 실린 그림(Claude 붙여넣기 · 끌어 놓은 파일 · Codex 첨부) — 쪽에는 자리만, 바이트는 한 장씩(같은 색인 · 같은 전송로)
   const picCache = new ConvImageCache();
   onDestroy(() => picCache.dispose());
-  /** 그림 캐시의 열쇠 — 원격은 세션까지(재접속하면 못 읽은 것도 다시) */
+  /** 원격은 세션까지 — 재접속하면 못 읽은 것도 다시 */
   const picConv = $derived(convKey === null ? null : `${convKey}|${remoteAlias !== null ? (sessionId ?? "") : ""}`);
   function fetchPicture(p: TranscriptPicture): Promise<ArrayBuffer> {
     const l = link;
@@ -882,7 +716,6 @@
     },
   };
 
-  /** 쪽 받기 — 받으면 그 대화를 "받은 적 있음" 으로 적는다 */
   async function fetchPage(before: number | null): Promise<TranscriptPage> {
     const key = convKey;
     const page = await fetchPageRaw(before);
@@ -927,7 +760,7 @@
     const msg = e instanceof Error ? e.message : String(e);
     const gone = msg === GONE && remoteAlias !== null;
     const k = convKey;
-    // 대화 파일이 아직 없다(첫 말 전) — 오류가 아니라 빈 면(빈 글 → 기록 몸은 빈 면 갈래로 그리고 따라가기가 다시 본다)
+    // 대화 파일이 아직 없다(첫 말 전) — 오류가 아니라 빈 면
     if (k !== null && convoNotYet({ loaded: loadedConvs.has(k), turnEnded: turnEndedConvs.has(k), gone })) {
       convoPending = true;
       return "";
@@ -939,13 +772,11 @@
 
   // ── 움직임 — 카드 뒤집기 ──────────────────────────────────────────────────────────
 
-  /** 타일 한 장을 뒤집는 움직임(`pane/flip-motion.ts` — 상자 회전 · 두 층 · 머리줄 색이 같은 시간 · 같은 곡선) */
   const motion = new FlipMotion();
   onDestroy(() => motion.stop());
 
   async function flip(from: "term" | "convo", to: "term" | "convo"): Promise<void> {
     await tick(); // 대화 층이 막 섰을 수 있다
-    // AI 타일이 아니게 됐으면(CLI 가 끝났다 — 대화 층 · 머리줄 단추가 걷힌다) 뒤집지 않고 터미널 면 그대로
     if (!flippable) {
       motion.stop();
       return;
@@ -954,7 +785,7 @@
   }
 
   let lastView: "term" | "convo" | null = null;
-  /** 다음 면 바뀜이 폰의 자동 열기다 — 뒤집지 않고 포커스도 옮기지 않는다 */
+  /** 폰의 자동 열기 — 뒤집지 않고 포커스도 주지 않는다(입력 칸에 주면 화면 키보드가 올라와 기록을 가린다) */
   let autoOpening = false;
   $effect(() => {
     const v = view;
@@ -969,7 +800,7 @@
     });
   });
 
-  /** 폰의 첫 화면 — 이번 CLI 에서 이미 열었는가(CLI 가 끝나면 지운다 · 새 CLI = 다시 기본). 반응형이 아니다 */
+  /** 반응형이 아니다 */
   let phoneOpened = false;
   $effect(() => {
     const f = flippable;
@@ -987,22 +818,17 @@
     });
   });
 
-  /** xterm 의 숨은 textarea — 키보드의 집 */
   function focusTerm(): void {
     termEl?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
   }
 
-  /** 대화 면의 키보드 집 — 입력 칸(권한 대기면 없다 — 거짓) */
   function focusComposer(): boolean {
     if (!composerEl || permCards.length > 0) return false;
     composerEl.focus({ preventScroll: true });
     return true;
   }
 
-  /**
-   * 넘긴 뒤 포커스 — 이 타일 안(머리줄 단추 · 대화 면 · 터미널)이거나 잃어버린 채면 그 면의 집으로(대화 면 = 입력 칸, 없으면 기록 ·
-   * 터미널 = xterm). 다른 곳(모달 · 다른 타일)이면 건드리지 않는다. 대화 층이 막 섰을 수 있어 한 틱 뒤에 본다.
-   */
+  /** 다른 곳(모달 · 다른 타일)에 포커스가 있으면 건드리지 않는다 · 대화 층이 막 섰을 수 있어 한 틱 뒤에 본다 */
   async function settleFocus(to: "term" | "convo"): Promise<void> {
     await tick();
     const box = root?.closest<HTMLElement>("[data-pane]") ?? null;
@@ -1013,10 +839,9 @@
     else if (!focusComposer()) bodyEl?.focus({ preventScroll: true });
   }
 
-  /** 대화 면인 동안 xterm 이 포커스를 받으면(타일 포커스 이동 · 탭 복귀 — 터미널이 스스로 `focus()`) 입력 칸으로 */
   function onTermFocusIn(ev: FocusEvent): void {
     if (view !== "convo") return;
-    // 폰 — 타일이 활성화되며 xterm 이 받은 포커스다. 칸으로 옮기면 화면 키보드가 올라온다 — 놓기만 한다(칸은 사람이 누를 때)
+    // 폰 — 칸으로 옮기면 화면 키보드가 올라온다. 놓기만 한다
     if (mobileLayout()) {
       if (ev.target instanceof HTMLElement) ev.target.blur();
       return;
@@ -1026,28 +851,22 @@
 
   // ── 대화 기록 안 찾기 ──────────────────────────────────────────────────────────
 
-  /**
-   * `find` 액션의 이 타일 몫 — 대화 면이면 띠를 연다(대화를 아직 몰라 기록이 없어도 `true`: 보이지 않는 터미널을 찾지 않는다).
-   * 터미널 면이면 `false`(그 터미널 범위 검색).
-   */
+  /** 대화를 아직 몰라 기록이 없어도 `true` — 보이지 않는 터미널을 찾지 않는다 */
   function openFind(): boolean {
     if (view !== "convo") return false;
     finder?.show();
     return true;
   }
 
-  // `find` 액션의 문 — 제 타일 id 로 적는다
   $effect(() => {
     const id = pane.id;
     return untrack(() => registerTileFind(id, openFind));
   });
 
-  // 터미널 면으로 돌아가면 띠를 닫는다(칠도 걷는다)
   $effect(() => {
     if (view !== "convo") untrack(() => finder?.close());
   });
 
-  /** 띠를 닫았다 — 키보드는 입력 칸으로(권한 대기라 없으면 기록으로) */
   function onFindClose(): void {
     if (!focusComposer()) bodyEl?.focus({ preventScroll: true });
   }
@@ -1070,8 +889,7 @@
   function onKeydownCapture(ev: KeyboardEvent): void {
     if (view !== "convo") return;
     const target = ev.target instanceof Element ? ev.target : null;
-    // 입력 칸 · 대화 면 안의 다른 글 칸(권한 카드의 거절 사유 · 질문 카드의 직접 입력 — 2026-11-02)은 제 키를 다 쓴다(Backspace · 화살표를
-    // 기록 스크롤로 삼키지 않게). 찾기 띠의 칸은 그대로 찾기 갈래(`inFind`)로.
+    // 대화 면 안의 다른 글 칸도 제 키를 다 쓴다 — Backspace · 화살표를 기록 스크롤로 삼키지 않게
     const inComposer =
       target !== null &&
       (target === composerEl ||
@@ -1091,10 +909,9 @@
     });
     if (action === "pass") return;
     if (action === "type") {
-      // 키는 그대로 흘려보내고 포커스만 지금 옮긴다(이 keydown 의 글자는 새 포커스로 간다) — 입력 칸으로. 칸이 없으면(권한 대기)
-      // 터미널로 넘긴다(답은 거기서)
+      // 키는 흘려보내고 포커스만 옮긴다(이 keydown 의 글자는 새 포커스로 간다)
       if (focusComposer()) return;
-      // 권한 카드가 서 있으면 터미널로 넘기지 않는다(Claude 의 TUI 창은 낱자 키가 곧 답이다) — 답은 카드 단추로
+      // 권한 카드가 서 있으면 터미널로 넘기지 않는다 — Claude 의 TUI 창은 낱자 키가 곧 답이다
       if (permCards.length > 0) return;
       setFlipView(pane.id, "term");
       if (inConvo) focusTerm();
@@ -1131,7 +948,7 @@
     }
   }
 
-  /** 대화 면을 눌렀다 놓음 — 고른 글이 없고 단추 · 칸이 아니면 키보드를 입력 칸으로 돌려준다(IME 가 첫 글자부터 켜져 있게) */
+  /** IME 가 첫 글자부터 켜져 있게 키보드를 입력 칸으로 돌려준다 */
   function onConvoPointerUp(ev: PointerEvent): void {
     const target = ev.target instanceof Element ? ev.target : null;
     if (target?.closest("button, input, textarea, select, a[href], [data-path-link], [data-find-bar]")) return;
@@ -1140,16 +957,12 @@
     });
   }
 
-  /** 권한 대기의 "터미널에서 답하기" */
   function toTerminal(): void {
     setFlipView(pane.id, "term");
     focusTerm();
   }
 
-  /**
-   * 타일 상자(`.pane-box` — `overflow: hidden` 이라 스크롤 상자다)가 밀리면 되돌린다. 이 상자는 `clip` 이라 스스로는 밀리지
-   * 않지만, 밖으로 밀린 터미널 층의 캐럿을 브라우저가 보이게 하려고 **조상**을 밀 수 있다(넘어가는 도중의 IME 조합 등) — 그 그물.
-   */
+  /** 밖으로 밀린 터미널 층의 캐럿을 보이게 하려고 브라우저가 조상 `.pane-box` 를 밀 수 있다(IME 조합 등) — 그 그물 */
   $effect(() => {
     const box = root?.closest<HTMLElement>(".pane-box");
     if (!box || !flippable) return;
@@ -1167,7 +980,6 @@
 {#snippet qaNote(key: string)}
   {@const s = qaSummaries.find((x) => x.id === key)}
   {#if s}
-    <!-- 질문 카드에서 보낸 답(A안 — 사람 말풍선 안): 흐린 머리 줄(체크 + 질문 N개에 답함) · 2열 격자(흐린 머리 | 답) — 사람이 고르거나 친 글 그대로 -->
     <div class="qa-sent" role="note" data-tile-qa-summary>
       <span class="qa-title"
         ><UiIcon name="check" size={12} />{s.lines.length > 1
@@ -1184,7 +996,6 @@
 {/snippet}
 
 {#snippet attachPlus()}
-  <!-- [+] — 메뉴 없이 곧바로 파일 고르기(사이드 채팅 [+] 와 같은 32 원) -->
   <button
     type="button"
     class="plus"
@@ -1212,7 +1023,6 @@
     {@render children()}
   </div>
   {#if codexBand}
-    <!-- Codex 가 권한을 기다린다 — 터미널에는 창이 없다(`Running hook`) · 누르면 대화 면으로 -->
     <button type="button" class="perm-band" class:phone data-tile-perm-band onclick={() => setFlipView(pane.id, "convo")}>
       <UiIcon name="shield-check" size={14} />
       <span>{t(permCards.some((c) => c.cli === "codex" && c.kind === "question") ? "pane.perm.bandQuestion" : "pane.perm.band")}</span>
@@ -1232,7 +1042,6 @@
     >
       <DomFindBar bind:this={finder} root={bodyEl} scroller={() => bodyEl} label={t("pane.flip.find")} onclose={onFindClose} />
       {#if convKey === null}
-        <!-- 대화를 아직 모른다(첫 메시지 전) — 빈 면 + 입력 칸만(문구 없음) · 답한 질문의 요약은 아래쪽에 -->
         <div class="blank" data-flip-blank>
           {#each qaSummaries as s (s.id)}<div class="qa-bubble">{@render qaNote(s.id)}</div>{/each}
         </div>
@@ -1270,7 +1079,6 @@
         </div>
       {/if}
       {#if trustHint}
-        <!-- Codex 첫 실행 신뢰 안내 — 입력 칸 바로 위 말풍선(입력 칸과 같은 760 단 · 닫으면 다시 안 뜸) -->
         <div class="trust-row">
           <div class="trust-hint" role="note" data-codex-trust-hint>
             <span class="trust-text">{t("pane.perm.trustHint")}</span>
@@ -1286,7 +1094,6 @@
         </div>
       {/if}
       {#if trustAsked && !trustHidden}
-        <!-- Claude 폴더 신뢰 질문 — 질문이 떠 있는 동안만(답하면 스스로 사라진다) · ✕ 는 이번 질문에서만 -->
         <div class="trust-row">
           <div class="trust-hint" role="note" data-claude-trust-hint>
             <span class="trust-text">{t("pane.flip.trust.ask")}</span>
@@ -1316,7 +1123,7 @@
           {/each}
         </div>
       {/if}
-      <!-- 카드가 서 있는 동안 입력 칸은 숨기기만 한다(친 글 · 첨부를 잃지 않게 — 답이 먼저다) -->
+      <!-- 숨기기만 한다 — 친 글 · 첨부를 잃지 않게 -->
       <div class="composer-slot" class:held={permCards.length > 0} class:bottom={mobileLayout()}>
       <FlipComposer
         permission={permission || tuiAsking}
@@ -1359,7 +1166,6 @@
 </div>
 
 <style>
-  /* `[+]` — 입력 칸 아래 줄 왼쪽 끝(사이드 채팅 `SideChatFace` 의 `.plus` 와 같은 32 원 · 낮은 면 — 메뉴가 없어 돌지 않는다) */
   .plus {
     position: relative;
     width: 32px;
@@ -1384,7 +1190,6 @@
     outline-offset: 1px;
   }
 
-  /* 폰 — 보이는 크기는 그대로, 누르는 자리만 44px */
   .plus.touch::after {
     content: "";
     position: absolute;
@@ -1395,7 +1200,7 @@
     display: none;
   }
 
-  /* 상자 — 두 층이 같은 크기로 겹친다. `clip`: 밖으로 밀린 층이 비치지 않고, 스크롤 상자도 아니다(포커스 · 캐럿이 못 민다) */
+  /* `clip` — 밖으로 밀린 층이 비치지 않고 스크롤 상자도 아니다(포커스 · 캐럿이 못 민다) */
   .flip {
     position: absolute;
     inset: 0;
@@ -1407,16 +1212,12 @@
     inset: 0;
   }
 
-  /* 터미널 층 — 쉴 때는 `transform` 없음(평소 타일과 같은 그림). 대화 면이면 왼쪽 밖에 밀어 둔다 — 숨기지 않는다 */
+  /* 숨기지 않는다 — 밀어 둘 뿐이다 */
   .term.off {
     transform: translateX(-100%);
     pointer-events: none;
   }
 
-  /*
-   * 대화 층 — 글을 읽는 면이라 불투명(`--surface-raised-solid` — 시트와 같은 면 · 터미널 테마 색과 상관없이 읽힌다).
-   * 터미널 면이면 오른쪽 밖에 있다.
-   */
   .talk {
     display: flex;
     flex-direction: column;
@@ -1440,10 +1241,6 @@
     padding: var(--space-3) var(--space-5);
   }
 
-  /*
-   * 답한 질문의 요약(A안 — 사람 말풍선 안). 판은 `TranscriptBody` 의 사람 말풍선(`.body.chat .item.user`)이 그린다 — 여기는 안쪽만. 대화를 아직
-   * 몰라 기록 몸이 없을 때(빈 면)만 같은 값의 판(`.qa-bubble`)을 따로 두른다.
-   */
   .qa-sent {
     display: flex;
     flex-direction: column;
@@ -1479,7 +1276,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* 빈 면의 말풍선 — 기록 몸의 사람 말풍선과 같은 값(오른쪽 · 최대 78% · 강조색의 옅은 판 · 오른쪽 아래 모서리만 작게) */
   .qa-bubble {
     align-self: flex-end;
     max-width: 78%;
@@ -1488,8 +1284,6 @@
     border-radius: 12px 12px 4px 12px;
   }
 
-  /* 권한 카드들 — 입력 칸 자리(길면 이 칸만 스크롤 · 기록이 위에 남는다) */
-  /* 권한 · 질문 카드 — 기록 · 입력 칸(`FlipComposer` 의 `.composer`)과 같은 가운데 760 단 · 같은 좌우 여백(2026-11-03 — 넓은 타일에서 카드만 끝까지 늘던 것) */
   .perms {
     flex: 0 1 auto;
     box-sizing: border-box;
@@ -1508,12 +1302,11 @@
     display: none;
   }
 
-  /* 폰의 대화 면 — 키 띠가 숨어(`mobile/MobileKeys`) 입력 칸이 화면 맨 아래다. 띠가 맡던 아래 안전 여백을 여기서 */
+  /* 키 띠(`mobile/MobileKeys`)가 숨어 그 띠가 맡던 아래 안전 여백을 여기서 */
   .composer-slot.bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  /* 흔적 한 줄(자동 허용 · 터미널에서 답함) — 흐리게 잠깐 */
   .perm-traces {
     display: flex;
     flex-direction: column;
@@ -1529,7 +1322,6 @@
     text-overflow: ellipsis;
   }
 
-  /* Codex 첫 실행 신뢰 안내 — 입력 칸 바로 위 말풍선. 줄은 입력 칸(`FlipComposer` 의 `.composer`)과 같은 760 단 · 같은 좌우 여백 */
   .trust-row {
     flex: 0 0 auto;
     box-sizing: border-box;
@@ -1537,12 +1329,11 @@
     max-width: calc(760px + 2 * var(--space-5));
     margin: 0 auto;
     padding: var(--space-2) 0 0;
-    /* 좁은 타일의 말풍선 여백(아래 `@container` — 이 줄 자신이 그릇이다. 대화 층에 걸면 그 층이 고정 위치 자식의 기준 상자가 된다) */
+    /* 이 줄 자신이 그릇이다 — 대화 층에 걸면 그 층이 고정 위치 자식의 기준 상자가 된다 */
     container: trust-row / inline-size;
   }
 
-  /* 안내 말풍선 — 옅게 누런 면 + 입력 칸을 가리키는 꼬리(목업 ECxt7kCXrca2NqrTJU93jf · Codex · Claude 공용).
-     사이드 채팅 독의 안내 말풍선(`ChatDock.svelte` 의 `.link-note` · `.link-go`)이 같은 값을 적는다 — 바꾸면 함께 */
+  /* `ChatDock.svelte` 의 `.link-note` · `.link-go` 가 같은 값을 적는다 — 바꾸면 함께 */
   .trust-hint {
     position: relative;
     display: flex;
@@ -1572,7 +1363,6 @@
     transform: rotate(45deg);
   }
 
-  /* 글 · ✕ 아래 줄 — 글이 그 줄을 채운다 */
   .trust-go {
     order: 3;
     margin-right: auto;
@@ -1591,7 +1381,6 @@
     outline-offset: 1px;
   }
 
-  /* 좁은 타일(폰 · 나란히 나뉜 칸) — 말풍선 여백을 줄인다(글 폭이 먼저) */
   @container trust-row (max-width: 420px) {
     .trust-hint {
       gap: var(--space-1);
@@ -1627,11 +1416,7 @@
     background: var(--control-ghost-hover);
   }
 
-  /*
-   * Codex 터미널 면의 띠 — 터미널 위쪽(입력 줄은 아래라 가리지 않는다). 터미널 층은 쌓임 맥락을 만들지 않아 그 안의 겹(배너 4 · 토스트 5 ·
-   * xterm 데코레이션 6~8 · 스크롤 막대 11 · 트리거 팁 20 · 블록 보기 20/21)이 이 띠와 같은 층에서 겨룬다 — 2026-11-02 실기에서 z-index 2 띠가
-   * 실제 앱에서는 보이지 않았다. 그 위로 올린다.
-   */
+  /* 터미널 층은 쌓임 맥락을 만들지 않아 그 안의 겹(데코레이션 · 스크롤 막대 · 팁 20/21)과 같은 층에서 겨룬다 — 그 위로 올린다 */
   .perm-band {
     position: absolute;
     top: var(--space-2);

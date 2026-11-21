@@ -1,13 +1,7 @@
-//! **지금의 PATH**(2026-11-03 첫 설치 점검) — 앱이 뜬 뒤 깐 프로그램을 찾을 때.
-//!
-//! 프로세스의 PATH 는 켜질 때 물려받은 값에 머문다. 앱을 켜 둔 채 Claude Code · Codex 를 깔면 설치 프로그램은
-//! 사용자 · 기기 환경 변수(레지스트리)의 PATH 만 바꾸므로, 앱의 `claude --version` 감지가 다시 켤 때까지
-//! "찾을 수 없음" 이었다. 감지할 때만 OS 가 지금 들고 있는 PATH 를 다시 읽는다 — 앱 프로세스 자신의 환경은 바꾸지 않는다.
-//!
-//! OS 를 타는 것은 [`current`] 하나 — Windows 는 기기(`HKLM\…\Session Manager\Environment`) + 사용자(`HKCU\Environment`)
-//! 의 `Path` 를 그 순서로 잇는다(탐색기가 새 프로세스에 주는 것과 같은 순서). 다른 OS 는 아직 `None` — 물려받은 PATH 그대로다.
+//! 지금의 PATH — 프로세스의 PATH 는 켜질 때 물려받은 값에 머물러, 앱을 켜 둔 채 깐 CLI 를 못 찾는다.
+//! 감지할 때만 OS 가 지금 들고 있는 PATH 를 다시 읽는다 — 앱 프로세스 자신의 환경은 바꾸지 않는다.
 
-/// 지금 OS 가 새 프로세스에 줄 PATH — 읽지 못하면 `None`(호출자는 물려받은 PATH 를 그대로 쓴다).
+/// 기기 → 사용자 순서로 잇는다(탐색기가 새 프로세스에 주는 것과 같은 순서). 읽지 못하면 `None` — 호출자는 물려받은 PATH 를 쓴다.
 #[cfg(windows)]
 pub(crate) fn current() -> Option<std::ffi::OsString> {
     use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -35,7 +29,7 @@ mod reg {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
-    /// 문자열 값 하나 — `REG_EXPAND_SZ` 는 `%USERPROFILE%` 같은 자리를 펼쳐서 돌려준다. 길이를 먼저 묻고 그만큼 받는다.
+    /// `REG_EXPAND_SZ` 는 `%USERPROFILE%` 같은 자리를 펼쳐서 돌려준다.
     pub(super) fn string(root: HKEY, key: &str, name: &str) -> Option<String> {
         let (key, name) = (wide(key), wide(name));
         let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
@@ -61,7 +55,6 @@ mod reg {
 
 #[cfg(test)]
 mod tests {
-    /// 이 PC 의 PATH 를 읽는다 — Windows 면 기기 PATH 에 늘 System32 가 있다.
     #[cfg(windows)]
     #[test]
     fn reads_machine_path_with_system32() {

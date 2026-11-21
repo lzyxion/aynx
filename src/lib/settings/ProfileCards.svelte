@@ -19,48 +19,27 @@
   import { revealOriginFrom, revealTheme } from "$lib/theme-reveal";
 
   /**
-   * **모양 프로필 카드** — 설정 › 앱 테마의 첫 묶음 (docs/log/2026-09-28-profile-cards-wallpapers.md).
-   *
-   * 예전의 select + 버튼 셋을 대신한다. 카드 한 장 = 프로필 한 벌이고, 미리 보기는 **그 프로필의
-   * 월페이퍼**(어둡게·줄인 블러 그대로) — 사진이 없으면 그 프로필의 바탕색이다. 그 위에 창 모형은
-   * 그리지 않는다(사용자 결정 2026-09-28). 아래는 이름 한 줄뿐이다(색 견본 없음, 2026-10-03). 누르면 입힌다
-   * (`applyProfile` — 명령 팔레트와 같은 함수이고, 미저장 편집이 있으면 앞질러 저장하지 않는 규칙도
-   * 그 함수 안에 있다).
-   *
-   * 조작은 카드마다 ⋯ 메뉴 하나로 모았다 — 덮어쓰기 · 이름 변경 · 삭제. 항목은 전부 `runOnMenu`
-   * 통로를 지난다(스냅샷 → 닫기 → 실행, docs/conventions.md). 저장은 목록 끝의 점선 카드다.
-   *
-   * 규칙(같은 이름 덮어쓰기 되묻기 · 이름 유일 · 삭제 되묻기)은 전부 `theme-profiles.svelte.ts`
-   * 에 있고, 여기서는 **어느 카드가 이름 칸을 열었나** 같은 화면 상태만 든다. 카드의 얼굴(사진 · 배지 · 이름 줄)은 위에서 내려오는 빠른 전환 줄과 같은 `ProfileCardFace` 다 (docs/log/2026-09-28-profile-switcher.md).
+   * 모양 프로필 카드 — ⋯ 메뉴 항목은 전부 `runOnMenu` 통로를 지난다(스냅샷 → 닫기 → 실행, docs/conventions.md).
+   * 규칙(같은 이름 덮어쓰기 되묻기 · 이름 유일 · 삭제 되묻기)은 `theme-profiles.svelte.ts` 에 있고, 여기는 화면 상태만 든다.
    */
 
   const profiles = $derived(themeProfiles());
   const activeId = $derived(activeProfileId());
-  /** 고른 벌이 있고 지금 모양이 그것과 다른가 — 배지 "수정됨" */
   const modified = $derived(isModified());
 
-  // ── 적용 ────────────────────────────────────────────────────────────────
+  // ── 적용 ──
 
-  /**
-   * 카드를 눌렀다. 이미 고른 벌이고 **손대지 않았으면** 아무 일도 없다 (예전 select 도 같은 값을
-   * 다시 고르면 `change` 가 안 났다). 고친 뒤라면 다시 입혀 저장된 벌로 되돌린다.
-   */
+  /** 이미 고른 벌이고 손대지 않았으면 아무 일도 없다 — 고친 뒤라면 다시 입혀 저장된 벌로 되돌린다 */
   function pick(id: string, ev: Event) {
     if (id === activeId && !modified) return;
-    // 누른 카드에서 원으로 퍼진다(`theme-reveal.ts`) — 그 프로필의 월페이퍼를 먼저 디코딩한다
     void revealTheme(revealOriginFrom(ev), () => applyProfile(id), { preload: profileWallpaperSrc(id) });
   }
 
-  // ── ⋯ 메뉴 ─────────────────────────────────────────────────────────────
+  // ── ⋯ 메뉴 ──
 
-  /** 지금 ⋯ 메뉴가 열린 카드의 id (`null` = 닫힘) */
   let menuId = $state<string | null>(null);
   let menuEl = $state<HTMLElement | null>(null);
-  /**
-   * 메뉴 자리 — **창 좌표**(`position: fixed`). 카드 안 `absolute` 였을 때는 카드(약 150px)보다 넓은 메뉴가 왼쪽으로 삐져
-   * 나가 설정 본문 칸(`overflow: auto`)에 잘리고 왼쪽 메뉴 밑으로 숨었다(10-17 — 카드를 줄인 뒤 첫 열에서). ⋯ 단추 오른쪽 끝에
-   * 맞추되 창 안으로 당기고, 아래가 모자라면 단추 위로 연다. 자리를 재기 전에는 숨긴다.
-   */
+  /** 창 좌표(`position: fixed`) — 카드 안 `absolute` 면 카드보다 넓은 메뉴가 설정 본문(`overflow: auto`)에 잘린다 */
   let menuPos = $state<{ top: number; left: number } | null>(null);
   const MENU_MARGIN = 8;
 
@@ -92,7 +71,6 @@
     menuPos = { top, left };
   }
 
-  /** ⋯ 를 연다 — 첫 항목에 포커스를 줘 ↑↓·Enter 가 바로 닿게 한다 (셸 메뉴와 같은 규칙) */
   async function openMenu(id: string) {
     naming = null;
     menuId = menuId === id ? null : id;
@@ -103,7 +81,6 @@
     menuEl?.querySelector<HTMLButtonElement>("button[role='menuitem']")?.focus({ preventScroll: true });
   }
 
-  /** 닫고 그 카드의 ⋯ 로 포커스를 돌린다 (Escape — 키보드가 길을 잃지 않게) */
   function closeMenuToTrigger() {
     const id = menuId;
     menuId = null;
@@ -113,7 +90,7 @@
       ?.focus({ preventScroll: true });
   }
 
-  /** ↑↓·Home/End 로 돌고 Escape 로 닫는다 — Escape 는 여기서 끊는다(설정 독까지 닫지 않게) */
+  /** Escape 는 여기서 끊는다 — 설정 독까지 닫지 않게 */
   function onMenuKey(ev: KeyboardEvent) {
     const node = menuEl;
     if (!node) return;
@@ -142,7 +119,6 @@
     buttons[next]?.focus({ preventScroll: true });
   }
 
-  /** 바깥을 누르면 떠 있는 ⋯ 를 닫는다 (메뉴·⋯ 자신은 제 카드 안이라 걸리지 않는다) */
   function onWindowPointerDown(ev: PointerEvent) {
     if (menuId === null) return;
     const node = ev.target;
@@ -150,25 +126,17 @@
     menuId = null;
   }
 
-  /** "현재 모양으로 덮어쓰기" — 같은 이름으로 저장하는 길 그대로다 (한 번 되묻고, id 는 유지) */
   function overwrite(p: ThemeProfile) {
     void saveCurrentAs(p.name);
   }
 
-  // ── 이름 칸 (저장 · 이름 변경) ────────────────────────────────────────────
-  //
-  // 레이아웃 독의 이름 변경과 같은 규칙: Enter·포커스 아웃이 확정, Escape 가 취소 (치다가 다른
-  // 곳을 누른 손의 뜻은 "취소" 가 아니라 "이만하면 됐다").
+  // ── 이름 칸 (저장 · 이름 변경) ──
+  // 포커스 아웃도 확정이다 — 치다가 다른 곳을 누른 손의 뜻은 "취소" 가 아니라 "이만하면 됐다".
 
-  /** 열린 이름 칸 — 새로 저장(`add`) 또는 그 id 의 이름 변경 */
   let naming = $state<{ kind: "add" } | { kind: "rename"; id: string } | null>(null);
   let nameValue = $state("");
   let nameInput = $state<HTMLInputElement | null>(null);
 
-  /**
-   * 저장 칸의 초깃값은 **고른 벌의 이름**이다 — 대개 방금 손본 그 벌을 갱신하려는 것이고
-   * (그때는 한 번 되묻는다), 새 벌을 만들려면 통째로 갈아 치면 된다. 열자마자 전체 선택.
-   */
   function startAdd() {
     menuId = null;
     naming = { kind: "add" };
@@ -208,7 +176,6 @@
     nameInput?.select();
   });
 
-  /** 카드 위의 F2 · Delete — 목록들(레이아웃 독)과 같은 두 키 */
   function onCardKey(ev: KeyboardEvent, p: ThemeProfile) {
     if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
     if (ev.key === "F2") {
@@ -304,7 +271,6 @@
     </div>
   {/each}
 
-  <!-- 끝 카드 — 지금 모양을 새 벌로 (같은 이름이면 한 번 되묻고 덮어쓴다) -->
   <div class="card add" role="listitem">
     {#if naming?.kind === "add"}
       <div class="add-in">
@@ -336,8 +302,7 @@
 {/if}
 
 <style>
-  /* 카드 최소 폭 — 설정 모달의 내용 열(최대 640px)에서 한 줄에 넷이 선다(10-17 사용자: 카드가 커 보인다 —
-     예전 168px 은 셋). `min(100%, …)` 은 그보다 좁은 칸에서 가로 스크롤 대신 한 장으로 접히게 한다. */
+  /* `min(100%, …)` 은 좁은 칸에서 가로 스크롤 대신 한 장으로 접히게 한다 */
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 132px), 1fr));
@@ -382,8 +347,7 @@
     outline-offset: 2px;
   }
 
-  /* 미리 보기 · 배지 · 이름 줄은 `ProfileCardFace` 가 그린다 (빠른 전환 줄과 한 벌).
-     사진 위에 얹는 ⋯ 는 배지와 같은 **사진 쪽 대비**(검은 반투명 판 + 흰 글자)를 쓴다. */
+  /* 사진 위의 ⋯ 는 배지와 같은 사진 쪽 대비(검은 반투명 판 + 흰 글자)를 쓴다 */
   .more {
     position: absolute;
     top: 6px;
@@ -417,14 +381,12 @@
     outline-offset: 1px;
   }
 
-  /* ⋯ 메뉴 — 모양은 전역 메뉴 한 벌(`theme.css` 의 `.menu-surface`·`.menu-row`), 여기는 자리만 */
   .menu {
     position: fixed;
     z-index: 20;
     min-width: 170px;
   }
 
-  /* 이름 변경 칸 — 이름 줄 자리를 덮는다 */
   .name-edit {
     position: absolute;
     right: 8px;
@@ -453,7 +415,7 @@
     outline-offset: 1px;
   }
 
-  /* ── 끝 카드: + 현재 모양 저장 ─────────────────────────────────────────── */
+  /* ── 끝 카드 ── */
 
   .card.add {
     display: grid;

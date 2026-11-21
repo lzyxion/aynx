@@ -14,20 +14,8 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * 값 여럿을 고르는 Dropdown — 손잡이·목록의 모양과 토큰은 Dropdown.svelte 와 같다.
-   * 토글은 닫으면서 실행하는 항목이 아니므로 목록을 닫는 runOnMenu 를 쓰지 않는다.
-   *
-   * 자리는 position: fixed: 여는 순간 손잡이 좌표를 재고 폭을 맞추며, 아래가 모자라면
-   * dropdown.ts 의 placeBelowOrAbove · dropdownMaxHeight 로 위에 놓는다.
-   * 조상 스크롤·리사이즈에는 닫는다. 목록 자신의 스크롤은 긴 목록을 고르기 위해 남긴다.
-   *
-   * 손잡이의 ↑↓·Enter·Space 로 열고, 목록에서 ↑↓(끝에서 멈춤)·Home/End 로 옮긴다.
-   * 글자 점프·반복 글자 순환은 Dropdown 과 같은 typeaheadIndex 를 쓰고 비활성 줄은 뺀다.
-   * 클릭·Enter·Space 는 토글만 한다. Escape·바깥 클릭·Tab 은 닫고 손잡이로 돌아온다.
-   * Escape 는 창의 닫기 사슬로 새지 않게 끊는다. 포커스가 밖으로 옮겨 가면 닫는다.
-   *
-   * bind:values 는 options 순서로 정규화한다. 둘까지는 라벨을 잇고 셋부터는
-   * placeholderMany(개수), 없으면 흐린 placeholder. V extends string 은 호출부 타입을 지킨다.
+   * 값 여럿을 고르는 Dropdown. 토글은 닫으면서 실행하는 항목이 아니므로 목록을 닫는 runOnMenu 를 쓰지 않는다.
+   * Escape 는 창의 닫기 사슬로 새지 않게 끊는다.
    */
   let {
     id,
@@ -52,7 +40,6 @@
     labelledby?: string;
     describedby?: string;
     ariaInvalid?: boolean;
-    /** 사람이 토글했을 때만 부른다. */
     onchange?: (values: V[]) => void;
   } = $props();
 
@@ -63,9 +50,9 @@
   let wrapEl = $state<HTMLElement | null>(null);
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let listEl = $state<HTMLElement | null>(null);
-  /** 안쪽 스크롤 상자 — 바깥(`listEl`, 판 · 흐림 층)은 굴리지 않는다(글래스의 흐림 층이 내용과 함께 굴러가지 않게, 10-18) */
+  /** 굴리는 것은 안쪽 상자다 — 바깥 판(흐림 층)이 내용과 함께 굴러가지 않게 */
   let scrollEl = $state<HTMLElement | null>(null);
-  /** 바깥 판의 위아래 안쪽 여백 합(`.menu-surface.md3-list` 의 padding 6px × 2) — 안쪽 상자의 최대 높이에서 뺀다 */
+  /** `.menu-surface.md3-list` 의 padding 6px × 2 와 맞춘다 */
   const LIST_PAD = 12;
   let rect = $state<{ left: number; top: number; bottom: number; width: number } | null>(null);
   const selected = $derived(normalizeMultiValues(options, values));
@@ -127,7 +114,7 @@
 
   $effect(() => { if (open) listEl?.focus({ preventScroll: true }); });
 
-  // 조상 패널의 스크롤은 캡처에서 받는다(버블하지 않는다).
+  // 조상 패널의 스크롤은 버블하지 않으니 캡처에서 받는다
   $effect(() => {
     if (!open) return;
     const bail = () => close(!gone());
@@ -231,10 +218,6 @@
     min-width: 0;
   }
 
-  /*
-   * 닫힌 손잡이 — MD3 filled 면(2026-10-18): `--field-height` · surfaceContainerHighest(`--field-bg`) · `--field-radius` · 테두리 없음.
-   * 다른 것은 오른쪽 끝의 `▾` 하나뿐이고, 그것은 네이티브가 스스로 그리던 자리다.
-   */
   .trigger {
     display: flex;
     align-items: center;
@@ -260,7 +243,6 @@
     background: var(--control-bg-hover);
   }
 
-  /* 포커스는 중성 링 — 둥근 모양을 따른다 (docs/log/2026-09-25-finish-menus.md) */
   .trigger:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
@@ -271,7 +253,6 @@
     cursor: default;
   }
 
-  /* 고른 값 한 줄 — 길면 말줄임으로 끊는다 (`▾` 를 밀어내지 않는다) */
   .cur {
     display: flex;
     align-items: center;
@@ -288,7 +269,6 @@
     white-space: nowrap;
   }
 
-  /* 줄: 체크 칸 · 이름 · 선택적 보조 글자 */
   .row {
     display: flex;
     align-items: center;
@@ -324,7 +304,7 @@
     color: var(--fg-3);
   }
 
-  /* 바깥 클릭을 받는 투명 백드롭 — 모달 오버레이(z-100)보다 위다 */
+  /* 모달 오버레이(z-100)보다 위다 */
   .menu-backdrop {
     position: fixed;
     inset: 0;
@@ -335,11 +315,7 @@
     cursor: default;
   }
 
-  /*
-   * 상자·줄은 전역 메뉴 한 벌(`theme.css` 의 `.menu-surface` · `.menu-row` · 골라진 줄이 하나인
-   * `.menu-keyed`)이다 — 앱 안의 "고르는 목록" 이 서로 다르게 생기면 같은 종류라는 사실이 사라진다.
-   * 폭은 손잡이와 같게 인라인으로 온다(네이티브 `<select>` 와 같은 몸짓).
-   */
+  /* 상자 · 줄은 전역 메뉴 한 벌(`theme.css` 의 `.menu-surface` · `.menu-row`)이다 — 고르는 목록이 서로 다르게 생기지 않게 */
   .suggest {
     position: fixed;
     z-index: 111;

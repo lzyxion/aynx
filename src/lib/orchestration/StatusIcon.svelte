@@ -1,7 +1,5 @@
 <script lang="ts">
-  // **상태 낱말 앞의 작은 그림**(2026-10-30 실기 다듬기) — 낱말 → 그림 표는 `model/status-icon.ts` 머리말 하나(여기는 그리기만).
-  // 재생 · 검토는 움직이는 `EqBars`(움직임 줄이기면 멈춘다), 나머지는 인라인 획 SVG(이모지 없음) — 색만이 아니라 모양이 다르다.
-  // 글자 옆 장식이라 `aria-hidden`(뜻은 바로 뒤의 상태 낱말이 말한다).
+  // 상태 낱말 앞의 장식 그림 — 뜻은 바로 뒤의 상태 낱말이 말한다(`aria-hidden`). 색만이 아니라 모양이 다르다.
   import type { StatusIcon } from "./model/status-icon";
   import EqBars from "./EqBars.svelte";
 

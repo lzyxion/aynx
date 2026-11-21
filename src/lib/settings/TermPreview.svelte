@@ -2,13 +2,6 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { ITheme } from "@xterm/xterm";
 
-  /**
-   * **터미널 미리보기** — 지금 고른 팔레트·글꼴·커서 모양을 그대로 입힌 작은 가짜 터미널.
-   *
-   * 진짜 xterm 을 띄우지 않고 팔레트를 *눈으로* 확인하기 위한 장식이다: 색은 전부 `theme`
-   * 에서 인라인으로 꺼내 쓰고(토큰이 아니라 터미널 팔레트라서), 아래 컨트롤을 만지면 props 가
-   * 반응적으로 다시 흘러 들어와 즉시 바뀐다. 순수 장식이라 `aria-hidden`·비선택이다.
-   */
   let {
     theme,
     fontFamily,
@@ -20,9 +13,6 @@
     fontSize: number;
     cursorStyle: string;
   } = $props();
-
-  // 글꼴은 설정값 그대로 쓴다(8~32px) — 미리보기 안에서 글자가 실제로 커졌다 작아진다.
-  // **상자 크기는 고정**이라(아래 CSS 의 `height`), 글자가 커지면 넘치는 줄은 잘려 보인다.
 </script>
 
 <div
@@ -75,11 +65,8 @@
 
 <style>
   .preview {
-    /* 아래 옵션 줄과 붙지 않게 여백을 둔다 (미리보기는 리드 문단과 컨트롤 사이에 뜬다) */
     margin-bottom: 16px;
-    /* **상자 크기는 고정** — 글꼴을 키워도 상자가 커지지 않고, 넘치는 줄은 잘린다
-       (`overflow: hidden`). 패딩·높이는 px 라 글꼴에 안 딸려 온다. box-sizing 으로 높이에
-       테두리·패딩을 포함시킨다. */
+    /* 상자 크기는 고정 — 글꼴을 키우면 넘치는 줄은 잘린다 */
     box-sizing: border-box;
     height: 148px;
     padding: var(--space-3) var(--space-4);
@@ -98,7 +85,7 @@
     height: 1.1em;
     vertical-align: text-bottom;
   }
-  /* `.bar` 가 아니라 `.beam` — 브라우저 툴바의 전역 `.bar`(flex · 패딩 · 아래 선)가 묻어 세로선 커서가 L 자로 커지고 줄이 벌어졌다(10-17). */
+  /* `.bar` 로 두지 않는다 — 브라우저 툴바의 전역 `.bar` 가 묻어 세로선 커서가 L 자로 커진다 */
   .cursor.beam {
     width: 0;
     border-left: 2px solid;

@@ -1,27 +1,10 @@
 /**
  * `files` 영역의 문구 — 한국어가 기준 사전이다 (규칙은 `ko/settings.ts` 머리말).
- *
- * 다루는 화면은 **파일 타일**(로컬·SFTP) · 그 우클릭 메뉴 · 전송 · **호스트 목록과 그
- * 우클릭 메뉴**다. 영역(`<area>`)은 여섯이다:
- *
- * | 영역 | 어디 |
- * | --- | --- |
- * | `browser` | 파일 타일의 몸통 (`SftpBrowser.svelte` · `FileList`) |
- * | `tree` · `view` · `col` | 자세히 보기의 펼침 · 보기 셋 단추 · 칸 머리 (docs/log/2026-10-07-file-tile-dolphin.md) |
- * | `toolbar` · `location` | 파일 타일의 툴바 한 줄 (`BrowserToolbar.svelte`) · 경로 칸 (`LocationBar.svelte`) |
- * | `menu` | 파일 타일의 우클릭 메뉴 (`FileMenu.svelte`) |
- * | `transfer` | 전송 막대 · 충돌 확인 · 업로드/포워딩/원격 편집 (`fs-transfer` · `app/transfer`) |
- * | `drag` | 앱 안 드래그와 탐색기로 끌어내기 (`drag-controller` · `native-drag`) |
- * | `host` / `hostmenu` | 호스트 목록과 그 우클릭 메뉴 (`HostList` · `HostMenu` · `app/hosts`) |
- * | `ops` | 순수 모듈이 돌려주는 검증 문구 (`fs-backend` 의 `nameError`) |
- * | `doc` | 문서 보기 — 마크다운 조각 (`MarkdownBlocks.svelte`) · 문서 타일 (`DocView.svelte`) · 파일 메뉴의 "미리 보기" |
- *
- * **순수 모듈은 말을 만들지 않는다.** `fs-route` · `fs-backend` · `native-drag` ·
- * `host-folders` 는 룬을 들일 수 없어(vitest 가 그대로 들여온다) **문구 키**를 돌려주고,
+ * 순수 모듈(`fs-route` · `fs-backend` · `native-drag` · `host-folders`)은 룬을 들일 수 없어(vitest 가 그대로 들여온다) 문구 키를 돌려주고,
  * `t()` 로 푸는 것은 컴포넌트·룬 모듈의 몫이다.
  */
 export const files = {
-  // ── 파일 타일의 몸통 (SftpBrowser · FileList) ──────────────────
+  // ── 파일 타일의 몸통 ──────────────────
   "browser.path.aria": "경로",
   "browser.path.placeholder": "경로 입력 후 Enter",
   "browser.path.placeholder.posix": "/경로 입력 후 Enter",
@@ -43,7 +26,7 @@ export const files = {
   "tree.empty": "비어 있음",
   "tree.more": "{count}개 더 보기",
   "tree.target": "대상: {dir}",
-  // 보기 셋 (docs/log/2026-10-07-file-tile-dolphin.md) — 툴바의 단추 무리 · 자세히 보기의 칸 머리
+  // 보기 셋 (docs/log/2026-10-07-file-tile-dolphin.md)
   "view.group": "보기",
   "view.icons": "아이콘",
   "view.compact": "간단히",
@@ -71,17 +54,17 @@ export const files = {
     "터미널이 연결되어 있지 않습니다 — 연결되면 자동으로 이어집니다 ({alias}).",
   "browser.retry": "재시도",
 
-  // ── 툴바 한 줄 (BrowserToolbar) ─────────────────────────────────────────────
+  // ── 툴바 한 줄 ─────────────────────────────────────────────
   "toolbar.back": "뒤로",
   "toolbar.back.title": "뒤로 (Backspace)",
   "toolbar.forward": "앞으로",
   "toolbar.forward.title": "앞으로 (Shift+Backspace)",
   "toolbar.refresh": "새로고침",
-  // 좁은 타일에서 오른쪽 단추들을 접은 ⋯ (BrowserToolbar)
+  // 좁은 타일에서 오른쪽 단추들을 접은 ⋯
   "toolbar.more": "도구 더 보기",
-  // 경로 칸 (LocationBar) — 빈 곳을 누르면 입력 칸이 된다
+  // 경로 칸
   "location.edit.title": "빈 곳을 눌러 경로 입력",
-  // 장소 패널 (PlacesPanel · docs/log/2026-10-07-file-tile-dolphin.md)
+  // 장소 패널 (docs/log/2026-10-07-file-tile-dolphin.md)
   "places.aria": "장소",
   "places.section.places": "장소",
   "places.section.projects": "프로젝트",
@@ -91,13 +74,13 @@ export const files = {
   "places.documents": "문서",
   "places.downloads": "다운로드",
   "places.root": "루트",
-  // 필터 줄 (FilterBar — `Ctrl+I`)
+  // 필터 줄
   "filter.toggle": "찾기",
   "filter.placeholder": "폴더에서 찾기",
   "filter.count": "{count}개 맞음",
   "filter.none": "'{query}' 와(과) 맞는 항목이 없습니다.",
   "filter.close": "찾기 닫기 (Esc)",
-  // 미리 보기 패널 (PreviewPanel — `F11`)
+  // 미리 보기 패널
   "places.toggle": "장소 패널",
   "preview.toggle": "미리 보기 패널",
   "preview.aria": "미리 보기",
@@ -107,7 +90,7 @@ export const files = {
   "preview.items": "항목 {count}개",
   "preview.toolarge": "너무 커서 미리 보지 않습니다 ({limit} 넘음)",
   "preview.broken": "그림을 그리지 못했습니다",
-  // 상태 줄 (FileStatusBar)
+  // 상태 줄
   "status.folders": "폴더 {count}개",
   "status.files": "파일 {count}개 ({size})",
   "status.hidden": "숨김 {count}개",
@@ -117,7 +100,7 @@ export const files = {
   // 남은 공간 — 장소 패널의 드라이브 말풍선 · 상태 줄
   "space.of": "{free} 남음 / {total}",
 
-  // ── 파일 타일의 우클릭 메뉴 (FileMenu) ──────────────────────────────────────
+  // ── 파일 타일의 우클릭 메뉴 ──────────────────────────────────────
   "menu.close.aria": "메뉴 닫기",
   "menu.entry.aria": "항목 메뉴",
   "menu.dir.aria": "폴더 메뉴",
@@ -147,12 +130,12 @@ export const files = {
   "menu.download.busy": "다운로드 (전송 중)",
   "menu.export": "탐색기로 내보내기…",
   "menu.export.busy": "탐색기로 내보내기… (전송 중)",
-  // 원격 창에서만 — 메인 PC 창의 [다운로드] · [탐색기로 내보내기…] 자리에 선다
+  // 원격 창에서만
   "menu.todevice": "이 기기로 다운로드",
   "menu.todevice.busy": "이 기기로 다운로드 (전송 중)",
   "menu.enter": "들어가기",
   "menu.open": "열기",
-  // 원격 파일을 받아 로컬 편집기로 열고 저장하면 올린다 — 앱 안 편집(문서 타일의 [편집])과 가르려고 "외부" 를 적는다
+  // 원격 파일을 로컬 편집기로 여는 줄 — 앱 안 편집(문서 타일의 [편집])과 가르려고 "외부" 를 적는다
   "menu.edit.external": "외부 편집기로 편집",
   "menu.openexternal": "기본 앱으로 열기",
   "menu.reveal": "탐색기에서 보기",
@@ -164,7 +147,7 @@ export const files = {
   "menu.cdhere": "터미널에서 여기로 cd",
   "menu.copypath": "경로 복사",
 
-  // ── 전송 — 막대 · 충돌 확인 · 업로드/포워딩/원격 편집 ───────────────────────
+  // ── 전송 ───────────────────────
   "transfer.cancel": "취소",
   "transfer.canceling": "취소 중…",
   "transfer.canceled": "전송을 취소했습니다.",
@@ -196,9 +179,7 @@ export const files = {
   "transfer.forward.localport": "로컬 포트는 1–65535 사이의 정수여야 합니다",
   "transfer.forward.remoteport": "원격 포트는 1–65535 사이의 정수여야 합니다",
   "transfer.forward.remotehost": "원격 호스트를 입력하세요 (예: localhost)",
-  // 호스트 프리셋 자동 열기의 실패만 알린다 — 성공은 조용하다 (머리줄 칩이 말한다)
   "transfer.forward.preset.failed": "포워딩 {n}개를 열지 못했습니다: {list}",
-  // 호스트 폼에서 줄을 지웠는데 살아 있는 세션의 터널을 못 닫았다 (저장 자체는 이미 성공)
   "transfer.forward.preset.closefailed": "포워딩 {n}개를 닫지 못했습니다: {list}",
   "transfer.drop.loading": "아직 목록을 읽는 중입니다 — 잠시 뒤에 다시 놓아 주세요.",
   "transfer.drop.root": "드라이브 안으로 들어간 뒤에 놓아 주세요 — '내 PC' 에는 놓을 자리가 없습니다.",
@@ -206,8 +187,7 @@ export const files = {
   "transfer.drop.connecting": "아직 접속 중입니다 — 연결이 끝난 뒤에 다시 놓아 주세요.",
   "transfer.upload.offline": "터미널이 연결되어 있지 않습니다 — 연결된 뒤에 다시 시도하세요.",
   "transfer.upload.sessiongone": "세션이 끊겨 업로드 창을 닫았습니다.",
-  // 업로드/가져오기 모달 — 목적지가 말을 정한다 (`sftp.ts` 의 `uploadVerb`).
-  // `UploadItem.state` 는 언어를 타지 않는 값이고(`waiting`…) 여기서만 글자가 된다.
+  // 업로드/가져오기 모달 — 목적지가 말을 정한다(`uploadVerb`) · `UploadItem.state` 는 언어를 타지 않는 값이고 여기서만 글자가 된다.
   "transfer.verb.remote.title": "파일 업로드",
   "transfer.verb.remote.go": "올리기",
   "transfer.verb.local.title": "파일 가져오기",
@@ -224,13 +204,13 @@ export const files = {
   "transfer.toobig.upload": "파일이 너무 큽니다 ({size}) — 업로드는 {max} 까지만 지원합니다",
   "transfer.toobig.device": "파일이 너무 큽니다 ({size}) — 원격 창에서는 {max} 까지 받을 수 있습니다",
   "transfer.toobig.device.many": "{count}개는 너무 커서 받지 않았습니다 — 원격 창에서는 {max} 까지 받을 수 있습니다",
-  // 원격 창의 올리기(메인 PC 파일 타일 · SFTP 타일) — 원시 본문이 ws 프레임 하나라 상한이 줄어든다(`sftp.ts` 의 `rawUploadTooBig`)
+  // 원격 창의 올리기 — 원시 본문이 ws 프레임 하나라 상한이 줄어든다(`sftp.ts` 의 `rawUploadTooBig`)
   "transfer.toobig.device.upload": "파일이 너무 큽니다 ({size}) — 원격 창에서는 {max} 까지 올릴 수 있습니다",
   "transfer.edit.sshonly": "SSH 세션에서만 원격 파일을 편집할 수 있습니다.",
   "transfer.edit.path": "원격 경로를 입력하세요 (예: ~/nginx.conf)",
   "transfer.edit.opened": "{name} 을(를) 로컬 편집기로 열었습니다 — 저장하면 자동 업로드됩니다.",
 
-  // ── 드래그 — 앱 안과 탐색기로 끌어내기 ─────────────────────────────────────
+  // ── 드래그 ─────────────────────────────────────
   "drag.count": "{count}개",
   "drag.remote.otherwindow": "다른 창에서 끌어온 원격 파일은 아직 지원하지 않습니다.",
   "drag.source.gone": "끌어온 곳을 찾을 수 없습니다.",
@@ -243,7 +223,7 @@ export const files = {
     "드라이브 절대 경로만 탐색기로 끌어낼 수 있습니다 — 우클릭 [탐색기로 내보내기…]를 쓰세요.",
   "drag.blocked.long": "경로가 너무 깁니다({limit}자 초과) — 우클릭 [탐색기로 내보내기…]를 쓰세요.",
 
-  // ── 호스트 목록 (HostList · app/hosts) ──────────────────────────────────────
+  // ── 호스트 목록 ──────────────────────────────────────
   "host.top": "최상위",
   "host.loading": "불러오는 중…",
   "host.empty.nohosts": "호스트가 없습니다",
@@ -252,15 +232,13 @@ export const files = {
   "host.jump": "{jump} 을 거쳐 접속",
   "host.tmux": "tmux 로 접속",
   "host.forwards": "포워딩 {n}개 저장됨",
-  // 볼트 표식 — 이 호스트의 **비밀번호가 담겨 있다**(docs/log/2026-09-19-vault.md ③).
-  // 앞의 셋과 같은 성격이라 같은 자리·같은 톤이고, 넷째로 선다.
+  // 볼트 표식 — 이 호스트의 비밀번호가 담겨 있다 (docs/log/2026-09-19-vault.md).
   "host.vault": "비밀번호 저장됨",
   // 호스트 줄 말풍선의 접속 이력 (docs/log/2026-09-23-host-history.md)
   "host.history.ok": "마지막 접속 {when} · {count}회",
   "host.history.fail": "마지막 실패 {when}",
   "host.history.failWith": "마지막 실패 {when} · {reason}",
-  // AI 권한 표식 (docs/log/2026-09-21-fleet-delegation-ui.md · 2026-10-07 단계로) — 다섯째로 선다.
-  // 단계가 끔이 아니면 서고, `{grants}` 는 단계 이름 + 켜진 헤드리스 칸이다(`$lib/delegation` 의 `grantSummary`).
+  // AI 권한 표식 — 단계가 끔이 아니면 서고, `{grants}` 는 단계 이름 + 켜진 헤드리스 칸이다(`$lib/delegation` 의 `grantSummary`).
   "host.delegation.tip": "AI 권한 — {grants}",
   "host.quick.connect": "빠른 접속으로 연결 —",
   "host.open.none": "열 호스트가 없습니다",
@@ -271,9 +249,7 @@ export const files = {
   "host.adhoc.save": "호스트로 저장",
   "host.inherited": "상속: {value}",
   "host.identity.pick.title": "개인키 파일 선택",
-  // 별칭·호스트 주소는 브라우저의 `required` 가 막던 것이다 — 폼이 탭으로 갈리면서
-  // 그 길이 막혔고(`<form novalidate>`), 같은 규칙을 앱이 직접 본다
-  // (docs/log/2026-09-20-host-form-tabs.md 의 함정).
+  // 별칭·호스트 주소의 필수 검사는 앱이 직접 본다 — 폼이 `<form novalidate>` 라 브라우저의 `required` 가 막지 않는다 (docs/log/2026-09-20-host-form-tabs.md).
   "host.form.name": "별칭을 입력하세요",
   "host.form.hostname": "호스트 주소를 입력하세요",
   "host.form.port": "포트는 1–65535 사이의 정수여야 합니다",
@@ -293,9 +269,7 @@ export const files = {
   "host.rename.place.history": "접속 이력",
   "host.rename.place.projects": "프로젝트",
   "host.rename.place.dbconns": "DB 연결",
-  // 제거 팬아웃 (docs/log/2026-09-17-host-remove-fanout.md). 앞의 넷은 **확인 대화상자**의
-  // 한 줄을 이루는 조각이고(0 인 칸은 아예 적지 않는다), `partial` 은 실패했을 때만 뜬다.
-  // 자리 이름은 위 `host.rename.place.*` 를 그대로 쓴다 — 같은 넷이다.
+  // 제거 팬아웃 (docs/log/2026-09-17-host-remove-fanout.md) — 앞의 넷은 확인 대화상자 한 줄의 조각이다(0 인 칸은 적지 않는다) · 자리 이름은 `host.rename.place.*` 를 그대로 쓴다.
   "host.remove.refs.favorites": "즐겨찾기 {n}",
   "host.remove.refs.snippets": "스니펫 {n}",
   "host.remove.refs.tiles": "열린 타일 {n} (세션은 유지)",
@@ -324,7 +298,7 @@ export const files = {
   "host.keygen.done": "키를 만들었습니다: {path}",
   "host.keygen.install": "이 호스트에 공개키 설치…",
 
-  // ── 호스트 목록의 우클릭 메뉴 (HostMenu) ────────────────────────────────────
+  // ── 호스트 목록의 우클릭 메뉴 ────────────────────────────────────
   "hostmenu.close.aria": "메뉴 닫기",
   "hostmenu.group.aria": "그룹 메뉴",
   "hostmenu.bg.aria": "폴더 메뉴",
@@ -362,26 +336,20 @@ export const files = {
   "hostmenu.forgetkey": "호스트 키 잊기…",
   "hostmenu.forgetkey.title": "known_hosts 에서 이 서버 기록 삭제",
   "hostmenu.installkey": "공개키 설치…",
-  // 쿼리 타일 — 그 호스트의 DB 연결 프리셋(2026-10-12)
+  // 쿼리 타일 — 그 호스트의 DB 연결 프리셋
   "hostmenu.opendb": "DB 열기",
   "hostmenu.opendb.back": "뒤로",
   "hostmenu.adddb": "DB 연결 추가…",
   "hostmenu.installkey.title": "비밀번호로 한 번 접속해 공개키를 심습니다",
 
-  // ── 순수 모듈이 돌려주는 검증 문구 (fs-backend 의 `nameError`) ──────────────
+  // ── 순수 모듈이 돌려주는 검증 문구 (`nameError`) ──────────────
   "ops.name.windows": '이름에 \\ / : * ? " < > | 를 쓸 수 없습니다',
   "ops.name.posix": "이름에 / 를 쓸 수 없습니다",
   "ops.session.gone": "세션을 찾을 수 없습니다 — 터미널이 연결되어 있지 않습니다",
 
-  // ── `errorOf` 의 **폴백** 문구 (sftp-browser · fs-backend · fs-ops · sftp · agent) ──
-  //
-  // 여기 있는 줄들은 **거의 닿지 않는다**: 백엔드는 실패를 언제나 문자열 하나로 주므로
-  // (`Result<_, String>`, 그 문구는 이미 Rust 의 `tr!` 을 지났다) `errorOf` 는 그것을 그대로
-  // 싣는다. 이 폴백이 쓰이는 것은 거절값이 문자열도 `Error` 도 아닐 때뿐이다 — 그래도
-  // 한국어 리터럴로 남겨 두면 **닿는 날 화면 한 줄만 언어가 튄다**.
-  //
-  // 푸는 자리가 `t()` 가 아니라 `translateNow` 인 이유: 이 문구는 곧바로 `Error.message` 가
-  // 되므로 키를 들고 화면까지 갈 그릇이 없다 (`i18n/dict.ts` 의 `translateNow` 머리말).
+  // ── `errorOf` 의 폴백 문구 ──
+  // 거의 닿지 않는다(백엔드 실패는 이미 Rust `tr!` 을 지난 문자열이다) — 그래도 한국어 리터럴로 두면 닿는 날 화면 한 줄만 언어가 튄다.
+  // `t()` 가 아니라 `translateNow` 로 푼다 — 곧바로 `Error.message` 가 되어 키를 들고 화면까지 갈 그릇이 없다.
   "ops.fail.home": "홈 디렉터리를 알아내지 못했습니다",
   "ops.fail.roots": "드라이브 목록을 읽지 못했습니다",
   "ops.fail.list": "{path} 목록을 읽지 못했습니다",
@@ -442,7 +410,7 @@ export const files = {
   // ```mermaid 블록을 그리지 못했을 때 원문 위 한 줄 — {reason} 은 오류 메시지 첫 줄(`MermaidView.svelte`)
   "doc.md.mermaid.fail": "다이어그램을 그리지 못했습니다 — {reason}",
   "doc.md.mermaid.fail.bare": "다이어그램을 그리지 못했습니다 — 원문을 보여 줍니다",
-  // mermaid 다이어그램 오른쪽 위 확대 · 축소 단추 무리(`MermaidView.svelte`) — 가운데 단추는 배율 % 글자, 툴팁은 "맞춤"
+  // mermaid 다이어그램의 확대 · 축소 단추 무리 — 가운데 단추는 배율 % 글자, 툴팁은 "맞춤"
   "doc.md.mermaid.zoom": "다이어그램 배율",
   "doc.md.mermaid.zoomin": "확대",
   "doc.md.mermaid.zoomout": "축소",
@@ -455,11 +423,11 @@ export const files = {
   // 수식(`MathView.svelte`)을 그리지 못했을 때 — 인라인은 원문의 툴팁, 블록은 원문 위 한 줄. {reason} 은 KaTeX 오류 첫 줄
   "doc.md.math.fail": "수식을 그리지 못했습니다 — {reason}",
   "doc.md.math.fail.bare": "수식을 그리지 못했습니다 — 원문을 보여 줍니다",
-  // 판 있는 코드 블록(`CodeView` framed — 마크다운 펜스 · 기록 보기 · mermaid 원문)의 오른쪽 위 복사 단추 툴팁
+  // 판 있는 코드 블록의 복사 단추 툴팁
   "doc.md.code.copy": "복사",
   "doc.md.code.copied": "복사했습니다",
   "doc.md.code.copyfail": "복사하지 못했습니다",
-  // 문서 타일 · AI 타일 대화 면 · 사이드 채팅 코드 블록의 [터미널에 넣기](`DocCodeBlock` · `CodeTermPicker` · `app/code-to-term`) — 셸 타일 입력 줄에 넣기만
+  // 문서 타일 · AI 타일 대화 면 · 사이드 채팅 코드 블록의 [터미널에 넣기] — 셸 타일 입력 줄에 넣기만
   "doc.codeterm.button": "터미널에 넣기",
   "doc.codeterm.button.title": "터미널 입력 줄에 넣기",
   "doc.codeterm.picker.aria": "넣을 셸 타일 고르기",
@@ -489,28 +457,25 @@ export const files = {
   "doc.task.conflict": "파일이 그사이 바뀌어 체크하지 않았습니다 — 다시 읽었습니다",
   "doc.task.missing": "체크하지 못했습니다 — 원본 파일이 없습니다(지워졌거나 옮겨졌습니다)",
   "doc.task.failed": "체크하지 못했습니다 — {message}",
-  // ── 문서 보기 타일 (`DocView.svelte` · docs/log/2026-09-27-doc-tile.md) ─────────
-  // 파일 타일 우클릭 메뉴의 여는 줄 — 글자로 읽을 수 있는 백엔드(`canView`)의 파일에만 선다
+  // ── 문서 보기 타일 (docs/log/2026-09-27-doc-tile.md) ─────────
   "doc.preview": "미리 보기",
   "doc.refresh": "새로고침",
-  // [고정] — 미리 보기 문서(머리줄 이름이 기울어진 것)를 붙박이로. 미리 보기일 때만 선다.
   // 도구줄 단추는 아이콘만이고 이 이름들이 툴팁 · aria-label 이다 — 부연 설명은 두지 않는다(비활성 까닭만 따로)
   "doc.keep": "고정",
   "doc.unkeep": "고정 해제",
-  // 새로고침 단추 툴팁의 흐린 뒤쪽(data-tip-sub) — 마지막으로 읽은 때(상대 시각). 멈춘 까닭(끊김 · 원본 없음 · 오류)은
-  // 배너 · 띠가 이미 말한다
+  // 새로고침 툴팁의 흐린 뒤쪽 — 마지막으로 읽은 때(상대 시각)만 · 멈춘 까닭은 배너 · 띠가 이미 말한다
   "doc.autoinfo.now": "방금 읽음",
   "doc.autoinfo.secs": "{n}초 전 읽음",
   "doc.autoinfo.mins": "{n}분 전 읽음",
   "doc.autoinfo.hours": "{n}시간 전 읽음",
   "doc.autoinfo.off": "자동 새로고침 멈춤",
-  // 글자 크기(본문 위 Ctrl+휠) — 100% 가 아닐 때만 도구줄에 "120%" 글자 단추. 툴팁은 이름만, aria 는 지금 값까지
+  // 글자 크기 — 툴팁은 이름만, aria 는 지금 값까지
   "doc.zoom.reset": "100%로",
   "doc.zoom.aria": "글자 크기 {pct}% — 100%로",
-  // 원문 ↔ 미리 보기 토글 — 마크다운 파일에만. 툴팁·그림은 **누르면 갈 보기**다
+  // 원문 ↔ 미리 보기 토글 — 툴팁·그림은 누르면 갈 보기다
   "doc.mode.source": "원문 보기",
   "doc.mode.rendered": "미리 보기",
-  // 목차 — 그린 마크다운에만. 넓은 타일은 곁 패널([목차] 토글), 좁은 타일은 도구줄의 "지금 절 ▾" 드롭다운
+  // 목차
   "doc.find": "문서에서 찾기",
   "doc.outline": "목차",
   "doc.outline.none": "제목이 없는 문서라 목차가 없습니다",
@@ -519,8 +484,7 @@ export const files = {
   "doc.outline.nomatch": "맞는 제목이 없습니다",
   "doc.outline.count": "제목 {n}개",
   "doc.outline.count.at": "제목 {n}개 · 지금 {i} / {n}",
-  // 파일 칸(`doc/DocFiles.svelte`) — 넓은 타일은 왼쪽 곁 패널, 좁은 타일은 이름 뒤 단추의 드롭다운. 찾기는 하위 폴더까지
-  // (원격은 두 층 — 팔레트 "파일 열기…" 와 같다). {folder} 는 지금 폴더 이름
+  // 파일 칸 — {folder} 는 지금 폴더 이름
   "doc.files": "파일",
   "doc.files.drop.title": "파일 — {folder}",
   "doc.files.find": "파일 찾기",
@@ -543,7 +507,7 @@ export const files = {
   "doc.truncated": "앞 {shown} 만 표시 · 전체 {size}",
   "doc.lossy": "UTF-8 이 아닌 바이트가 있어 일부를 대체 문자(�)로 보여 줍니다.",
   "doc.plain": "파일이 커서 구문 강조를 껐습니다.",
-  // ── 문서 편집 E1 (`DocView.svelte` · `DocEditor.svelte` · docs/log/2026-09-27-doc-edit.md) ──
+  // ── 문서 편집 (docs/log/2026-09-27-doc-edit.md) ──
   "doc.edit": "편집",
   "doc.menu.find": "찾기…",
   "doc.menu.findReplace": "찾기 · 바꾸기…",
@@ -569,7 +533,7 @@ export const files = {
   "doc.menu.fmt.codeblock": "코드 블록",
   "doc.menu.paste.fail": "클립보드를 읽지 못했습니다",
   "doc.menu.copy.fail": "클립보드에 복사하지 못했습니다",
-  // 문서 타일의 [새 문서…](타일 ⋯ · 본문 우클릭 — `doc-new.ts` · `app/new-doc` · `doc/NewDocBox`) — 지금 문서의 폴더에 빈 파일을 만들고 편집으로 연다
+  // 문서 타일의 [새 문서…]
   "doc.new": "새 문서…",
   "doc.new.title": "새 문서 · {dir}",
   "doc.new.aria": "새 문서 이름",
@@ -588,7 +552,7 @@ export const files = {
   "doc.dirty": "저장하지 않은 변경이 있습니다",
   "doc.revert": "되돌리기",
   "doc.done": "편집 종료",
-  // 편집 중 보기 — 마크다운만. 넓은 타일은 세 칸 묶음, 좁은 타일은 두 칸 탭
+  // 편집 중 보기
   "doc.editview": "편집 보기",
   "doc.editview.source": "원문만",
   "doc.editview.split": "나란히",
@@ -619,7 +583,7 @@ export const files = {
   "doc.compare.fold": "… {n}줄 같음",
   "doc.compare.back": "편집으로 돌아가기",
   "doc.band.dismiss": "닫기",
-  // 다른 창에서 옮겨 온 저장 안 한 글(초안) — 편집기에 들이기 전 띠(`DocView` · `app/doc-drafts`)
+  // 다른 창에서 옮겨 온 저장 안 한 글(초안) — 편집기에 들이기 전 띠
   "doc.draft.wait": "옮겨 온 글을 여는 중…",
   "doc.draft.read": "옮겨 온 글 — 파일을 읽지 못했습니다",
   "doc.draft.noedit": "옮겨 온 글 — 이 파일은 편집할 수 없습니다",
@@ -651,7 +615,7 @@ export const files = {
   "doc.editor.go": "이동",
   "host.rename.place.workspaces": "워크스페이스",
   "host.remove.refs.workspaces": "저장된 워크스페이스 타일 {n}",
-  // ── 이미지 타일 (ImageView.svelte — 2026-11-14) ─────────────────────────────
+  // ── 이미지 타일 ─────────────────────────────
   "image.aria": "그림 보기",
   "image.prev": "이전 그림",
   "image.next": "다음 그림",

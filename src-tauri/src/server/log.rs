@@ -1,5 +1,4 @@
-//! 서버 로그 `instance::data_root()/server.log` — 분리 실행이라 콘솔이 없다. 1 MiB 를 넘으면 `server.log.1` 로 밀고
-//! 새로 연다(두 장 — 최대 약 2 MiB). **비밀을 적지 않는다**(파이프 이름·pid·exe 경로·사유만).
+//! 서버 로그 — 분리 실행이라 콘솔이 없다. **비밀을 적지 않는다**(파이프 이름·pid·exe 경로·사유만).
 //! 경로를 걸지 않았으면(시험·GUI 쪽) 아무것도 쓰지 않는다.
 
 use std::io::Write;
@@ -21,7 +20,6 @@ pub(crate) fn init(path: PathBuf) {
 #[cfg(test)]
 pub(crate) static CAPTURED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// 한 줄 — `시각 [pid] 내용`.
 pub(crate) fn line(msg: impl std::fmt::Display) {
     #[cfg(test)]
     CAPTURED.lock().unwrap_or_else(|e| e.into_inner()).push(msg.to_string());

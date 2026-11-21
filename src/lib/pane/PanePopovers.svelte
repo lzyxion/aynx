@@ -1,9 +1,7 @@
 <script lang="ts">
   /**
-   * **타일 상자 밖의 메뉴 · 호버 카드 층** — `PaneHost.svelte` 에서 뗀 표시 조립(2026-10-26 분할 3차): 타일 ⋯ 메뉴 · tmux 세션 ·
-   * 포워딩 목록 · AI 권한(원격 · 쿼리) · "+N" 칩 메뉴 · 이름 카드 · tmux 카드 · 포워딩 카드. 새 상태는 없다 — 열림 · 자리 · 줄 실행은
-   * `PaneHost` 가 만든 컨트롤러(`tmc` · `tm` · `fm` · `ai` · `dbm` · `cm`)를 그대로 받아 읽고, 카드 값은 부모의 `$state` 를 프롭으로 받는다.
-   * 감싸개 없음 — `PaneHost` 의 `.host` 안, 분할선 층 뒤에 그대로 선다(바깥 누름 · Esc 는 각 그림의 몫).
+   * 타일 상자 밖의 메뉴 · 호버 카드 층 — 상자마다 `isolation: isolate` 라 안에서 그리면 이웃 타일 · 분할선 층에 덮인다.
+   * 새 상태는 없다 — 컨트롤러와 카드 값은 `PaneHost` 가 만들어 넘긴다.
    */
   import PaneMenu from "$lib/pane/PaneMenu.svelte";
   import TmuxMenu from "$lib/pane/TmuxMenu.svelte";
@@ -59,13 +57,7 @@
   } = $props();
 </script>
 
-<!--
-  타일 ⋯ 메뉴 — **타일 상자 밖**에 그린다 (상자마다 `isolation: isolate` 라 안에서는
-  `position: fixed` 여도 이웃 타일·분할선 층에 덮인다). 한 번에 하나만 열리므로 목록이
-  하나뿐이어도 된다. 제목(아래 tmux · 포워딩 팝오버도)은 `paneName`(안정된 정체성)이 아니라
-  `displayName` — 머리줄 · 폰 위 띠와 같은 이름이다(2026-10-20: 로컬 AI 타일의 머리줄은
-  "Claude Code" 인데 메뉴 제목은 셸 라벨 "PowerShell 7" 이라고 말했다).
--->
+<!-- 제목은 `paneName` 이 아니라 `displayName` — 머리줄 · 폰 위 띠와 같은 이름이다(아래 tmux · 포워딩도) -->
 {#if tmc.tileMenu && tmc.menuBox}
   <PaneMenu
     title={displayName(tmc.menuBox.pane)}
@@ -77,10 +69,6 @@
   />
 {/if}
 
-<!--
-  tmux 세션 팝오버 — ⋯ 메뉴와 **같은 자리, 같은 이유**로 타일 상자 밖에 그린다.
-  둘은 동시에 뜨지 않는다 (메뉴 항목이 메뉴를 닫고 이것을 연다).
--->
 {#if tm.tmuxMenu && tm.tmuxBox}
   <TmuxMenu
     title={displayName(tm.tmuxBox.pane)}
@@ -95,10 +83,6 @@
   />
 {/if}
 
-<!--
-  포워딩 목록 메뉴 — ⋯ 메뉴·tmux 팝오버와 **같은 자리, 같은 이유**로 타일 상자 밖에 그린다. 줄의 값(포워드 · 주소)은
-  마크업이 인자로 올리고, 대상 타일의 스냅샷 → 닫기 → 실행은 `fm.runForwardMenu`(`runOnMenu`)가 든다.
--->
 {#if fm.forwardMenu && fm.forwardBox}
   <ForwardMenu
     title={displayName(fm.forwardBox.pane)}
@@ -112,10 +96,6 @@
   />
 {/if}
 
-<!--
-  AI 권한 팝오버 — ⋯ 메뉴·tmux 팝오버와 **같은 자리, 같은 이유**로 타일 상자 밖에 그린다. 단계·헤드리스
-  값은 앱의 권한 표(`delegation-changed` 로 다시 읽는다)에서 온다 — 고르면 저장 → 표 → 이 상자 순으로 맞는다.
--->
 {#if ai.aiMenu && ai.aiBox && ai.aiAlias}
   {@const aiAlias = ai.aiAlias}
   {@const aiStageNow = paneAiStage(ai.aiBox.pane) ?? "off"}
@@ -139,10 +119,6 @@
   />
 {/if}
 
-<!--
-  쿼리 타일의 AI 권한 팝오버 (10-14) — 위와 **같은 상자**. 단계는 앱의 DB 권한 사본(`app/db-ai`)에서 온다 — 고르면 저장 → 사본 →
-  이 상자 · 머리줄 칩 · 독 · 폼 · 설정 › 보안 표가 함께 맞는다. 풀린 권한(대상이 바뀜)은 어느 줄도 고른 표시 없이 안내 줄로 말한다.
--->
 {#if dbm.at && dbm.box && dbm.conn}
   {@const dbConn = dbm.conn}
   {@const dbNow = queryAiOf(dbm.box.pane)}
@@ -162,10 +138,6 @@
   />
 {/if}
 
-<!--
-  "+N" 칩 메뉴 (2026-10-23) — 넘쳐서 숨은 칩들. ⋯ 메뉴 · tmux 팝오버와 **같은 자리, 같은 이유**로 타일 상자 밖에 그린다. 고른 줄은
-  마크업이 인자로 올리고, 대상 타일의 스냅샷 → 닫기 → 실행은 `cm.run`(`runOnMenu`)이 든다.
--->
 {#if cm.at && cm.box}
   <ChipMoreMenu
     title={displayName(cm.box.pane)}
@@ -177,7 +149,6 @@
   />
 {/if}
 
-<!-- SSH 이름 카드 — 같은 자리·같은 이유(상자 밖). 커서를 먹지 않는 시각 층이다 -->
 {#if infoCard}
   <SessionInfoCard
     name={infoCard.name}
@@ -190,12 +161,10 @@
   />
 {/if}
 
-<!-- tmux 칩 호버 카드 — 같은 자리·같은 이유(상자 밖). 커서를 먹지 않는 시각 층이다 -->
 {#if tmuxCard}
   <TmuxSessionsCard sessions={tmuxCard.sessions} current={tmuxCard.current} anchor={tmuxCard.anchor} />
 {/if}
 
-<!-- 포워딩 칩 호버 카드 — 같은 자리·같은 이유(상자 밖). 커서를 먹지 않는 시각 층이다 -->
 {#if forwardsCard}
   <ForwardsCard forwards={forwardsCard.forwards} anchor={forwardsCard.anchor} />
 {/if}

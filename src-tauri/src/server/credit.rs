@@ -1,19 +1,11 @@
-//! **ACK 크레딧** — 세션 서버가 파이프로 내보낸 출력과 클라이언트가 화면에 반영했다고 돌려준 오프셋(ACK)의 차이로
-//! 생산자(PTY 읽기 스레드 — `crate::output::Gate`)를 멈추고 푼다(설계 4.2 "흐름 제어" · ③-2).
+//! **ACK 크레딧** — 내보낸 출력과 클라이언트가 돌려준 소비 오프셋(ACK)의 차이로 생산자(PTY 읽기 스레드)를 멈추고 푼다.
 //!
-//! 예전(같은 프로세스)에는 프런트가 미소비 바이트를 세다 `pause_*`/`resume_*` 를 불렀다. 파이프 너머에서는 그 신호가
-//! 순서 없이 늦게 닿을 수 있어, 대신 **소비 오프셋(`consumed`)** 을 돌려받는다 — 값 하나라 늦게 와도 뜻이 같다.
-//!
-//! - 임대마다 [`Credit`] 하나: `sent_end`(이 임대로 내보낸 끝) · `acked`(받은 ACK). 송신 − ACK > [`SESSION_BUDGET`] 이면
-//!   수문을 닫고, [`RESUME_BELOW`] 이하로 내려오면 연다.
+//! - pause/resume 신호 대신 **소비 오프셋**을 돌려받는다 — 파이프 너머에서 늦게 · 순서 없이 와도 값 하나라 뜻이 같다.
 //! - **ACK 규칙**: 단조 증가(같거나 작은 값은 무시) · 송신 상한 이하(넘으면 거부 — 축이 어긋났다). 옛 임대의 ACK 는
-//!   [`Credit`] 에 닿기 전에 서버가 버린다(`server::sessions` — 세션 코어의 임대 검사).
-//! - **전체 예산**([`Budget`]): 모든 임대의 미확인 합이 [`GLOBAL_BUDGET`] 을 넘으면 새로 보내는 임대도 멈춘다. 합이
-//!   [`GLOBAL_RESUME_BELOW`] 아래로 내려오는 순간 멈춰 있던 임대를 모두 다시 본다([`Budget::wake`]) — 자기 몫은 0 인데
-//!   전체 때문에 멈춘 임대는 제 ACK 가 오지 않으므로 누군가 깨워야 한다.
-//!
-//! - **시청자**(원격 웹 R2-A): 시청자마다 [`ViewerCredit`] — 장부만 있고 수문·전체 예산과 무관하다. 생산자를 세우는 것은 **주 임대의
-//!   크레딧뿐**이고, 시청자가 [`VIEWER_BUDGET`] 을 넘으면 그 시청자만 떼어(재동기화) 느린 폰이 메인 PC 화면을 멈추지 못한다.
+//!   [`Credit`] 에 닿기 전에 서버가 버린다(`server::sessions`).
+//! - 전체 예산 때문에 멈춘 임대는 제 ACK 가 오지 않는다 — 합이 내려오는 순간 [`Budget::wake`] 가 모두 다시 본다.
+//! - **시청자**(원격 웹)의 [`ViewerCredit`] 은 수문 · 전체 예산과 무관하다 — 생산자를 세우는 것은 주 임대의 크레딧뿐이고,
+//!   예산을 넘은 시청자만 떼어 느린 폰이 메인 PC 화면을 멈추지 못한다.
 //!
 //! 잠금 순서: 슬롯(`output`) → 장부([`Credit`]) → 예산([`Budget`]) → 수문(`Gate`). 두 장부를 겹쳐 쥐지 않는다.
 
@@ -21,32 +13,28 @@ use std::sync::{Arc, Mutex, Weak};
 
 use crate::output::Gate;
 
-/// 임대 하나가 ACK 없이 내보낼 수 있는 양.
 pub(crate) const SESSION_BUDGET: u64 = 1 << 20;
-/// 멈춘 임대를 다시 여는 수위(히스테리시스 — 경계에서 진동하지 않게).
+/// 히스테리시스 — 경계에서 진동하지 않게.
 pub(crate) const RESUME_BELOW: u64 = SESSION_BUDGET / 2;
-/// 모든 임대의 미확인 합의 상한.
 pub(crate) const GLOBAL_BUDGET: u64 = 16 << 20;
 pub(crate) const GLOBAL_RESUME_BELOW: u64 = GLOBAL_BUDGET / 2;
 
-/// ACK 를 받지 않은 이유.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AckRefusal {
-    /// 보낸 적 없는 오프셋 — 축이 어긋났다(무시하고 로그 한 줄).
+    /// 보낸 적 없는 오프셋 — 축이 어긋났다.
     Ahead { consumed: u64, sent_end: u64 },
 }
 
-/// 장부 — 순수 자료(시험 대상).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Ledger {
     pub sent_end: u64,
     pub acked: u64,
-    /// 첫 송신 전이면 거짓 — 붙기의 재생 시작점은 싱크가 처음 보내는 오프셋이라 그때 정한다([`Ledger::sent`]).
+    /// 첫 송신 전이면 거짓 — 붙기의 재생 시작점은 싱크가 처음 보내는 오프셋이라 그때 정한다.
     pub started: bool,
 }
 
 impl Ledger {
-    /// 임대가 시작되는 오프셋 — 그 앞은 이미 화면에 있다. 채널 터널의 크레딧(`server::tunnel` — 0 부터)도 이 장부다.
+    /// 그 앞은 이미 화면에 있다. 채널 터널의 크레딧(`server::tunnel` — 0 부터)도 이 장부다.
     pub(crate) fn starting_at(offset: u64) -> Self {
         Ledger {
             sent_end: offset,
@@ -55,7 +43,6 @@ impl Ledger {
         }
     }
 
-    /// 시작점을 아직 모르는 장부 — 첫 송신의 오프셋이 시작점이 된다.
     pub(crate) fn unstarted() -> Self {
         Ledger {
             sent_end: 0,
@@ -68,7 +55,7 @@ impl Ledger {
         self.sent_end.saturating_sub(self.acked)
     }
 
-    /// `[offset, end)` 를 보냈다 — 늘어난 미확인 양. 첫 송신이면 `offset` 이 시작점이다(그 앞은 이미 화면에 있다).
+    /// 늘어난 미확인 양을 돌려준다.
     pub(crate) fn sent(&mut self, offset: u64, end: u64) -> u64 {
         if !self.started {
             self.started = true;
@@ -83,7 +70,7 @@ impl Ledger {
         self.outstanding() - before
     }
 
-    /// ACK — 줄어든 미확인 양. 같거나 작은 값은 0(늦게 온 옛 ACK), 보낸 끝을 넘으면 거부.
+    /// 줄어든 미확인 양을 돌려준다.
     pub(crate) fn ack(&mut self, consumed: u64) -> Result<u64, AckRefusal> {
         if consumed > self.sent_end {
             return Err(AckRefusal::Ahead {
@@ -100,7 +87,6 @@ impl Ledger {
     }
 }
 
-/// 전체 예산 — 미확인 합과 살아 있는 임대들(깨우기용).
 #[derive(Default)]
 pub(crate) struct Budget {
     total: Mutex<u64>,
@@ -113,7 +99,7 @@ impl Budget {
         *self.total.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// 전체 합이 내려왔다 — 멈춰 있을 수 있는 임대를 모두 다시 본다(장부를 쥐지 않은 채 부른다).
+    /// 장부를 쥐지 않은 채 부른다.
     fn wake(&self) {
         let live: Vec<Arc<Credit>> = {
             let mut list = self.credits.lock().unwrap_or_else(|e| e.into_inner());
@@ -126,7 +112,6 @@ impl Budget {
     }
 }
 
-/// 임대 하나의 크레딧 — 장부 + 그 세션의 수문 + 전체 예산.
 pub(crate) struct Credit {
     ledger: Mutex<Ledger>,
     gate: Arc<Gate>,
@@ -139,7 +124,7 @@ impl Credit {
         Self::with_ledger(gate, budget, Ledger::starting_at(start))
     }
 
-    /// 시작점을 첫 송신으로 정하는 크레딧(붙기·이관 — 재생 시작점을 싱크가 안다).
+    /// 붙기·이관 — 재생 시작점을 싱크가 안다.
     pub(crate) fn new_lazy(gate: Arc<Gate>, budget: Arc<Budget>) -> Arc<Self> {
         Self::with_ledger(gate, budget, Ledger::unstarted())
     }
@@ -162,7 +147,7 @@ impl Credit {
         self.ledger.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// `[offset, offset+len)` 을 내보냈다 — 넘치면 수문을 닫는다(장부 → 예산 → 수문 순서로 한 번에).
+    /// 장부 → 예산 → 수문 순서로 한 번에.
     pub(crate) fn on_send(&self, offset: u64, len: usize) {
         let mut l = self.ledger();
         let add = l.sent(offset, offset + len as u64);
@@ -173,7 +158,6 @@ impl Credit {
         }
     }
 
-    /// ACK 를 받는다 — 줄었으면 이 임대를 열어 보고, 전체가 내려왔으면 다른 임대도 깨운다.
     pub(crate) fn on_ack(&self, consumed: u64) -> Result<(), AckRefusal> {
         let wake_all = {
             let mut l = self.ledger();
@@ -192,7 +176,6 @@ impl Credit {
         Ok(())
     }
 
-    /// 전체 예산이 내려왔을 때 — 제 몫도 낮으면 연다.
     fn maybe_resume(&self) {
         let l = self.ledger();
         let total = self.budget.total.lock().unwrap_or_else(|e| e.into_inner());
@@ -201,7 +184,7 @@ impl Credit {
         }
     }
 
-    /// 임대가 끝났다(떨어짐·이관·닫기) — 제 미확인 몫을 전체에서 뺀다. 수문은 부른 쪽이 다룬다(`unlease`·`release`).
+    /// 수문은 부른 쪽이 다룬다(`unlease`·`release`).
     pub(crate) fn retire(&self) {
         let wake_all = {
             let mut l = self.ledger();
@@ -219,13 +202,10 @@ impl Credit {
 
 }
 
-/// 시청자 하나가 ACK 없이 받을 수 있는 양(원격 웹 R2-A). 넘으면 **그 시청자만 뗀다**(재동기화) — 생산자를 세우지 않는다.
-/// 주 임대([`SESSION_BUDGET`])보다 넉넉하다: 주가 수문을 세우는 동안 따라오는 폭(주의 예산)과 원격 왕복 지연을 함께 덮는다.
+/// 주 임대([`SESSION_BUDGET`])보다 넉넉해야 한다 — 주가 수문을 세우는 동안 따라오는 폭과 원격 왕복 지연을 함께 덮는다.
 pub(crate) const VIEWER_BUDGET: u64 = 4 << 20;
 
-/// **시청자의 크레딧**(R2-A — 설계 4절 "크레딧은 시청자마다 따로") — 장부만 있고 수문·전체 예산과 무관하다. 느린 폰 하나가 메인 PC
-/// 화면(주)을 멈추지 못하게: 예산을 넘으면 [`ViewerCredit::on_send`] 가 거짓을 돌려주고 부른 쪽(시청자 싱크)이 그 시청자를 뗀다
-/// — 그 시청자는 다시 붙어 링·체크포인트로 재동기화한다(`output::attach_viewer_output`).
+/// 예산을 넘으면 부른 쪽(시청자 싱크)이 그 시청자를 떼고, 시청자는 다시 붙어 재동기화한다.
 pub(crate) struct ViewerCredit {
     ledger: Mutex<Ledger>,
     budget: u64,
@@ -247,7 +227,7 @@ impl ViewerCredit {
         self.ledger.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// `[offset, offset+len)` 을 보내려 한다 — 보낸 뒤에도 예산 안이면 `true`(적는다), 넘으면 `false`(적지 않는다 — 떼라).
+    /// `false` = 적지 않았다 — 떼라.
     pub(crate) fn on_send(&self, offset: u64, len: usize) -> bool {
         let mut l = self.ledger();
         let mut probe = *l;
@@ -273,7 +253,6 @@ impl ViewerCredit {
 mod tests {
     use super::*;
 
-    /// 시청자 크레딧은 예산 안에서는 적고, 넘는 송신은 거절한다(적지 않는다 — 떼라는 뜻). ACK 로 다시 내려오면 받는다. 수문은 없다.
     #[test]
     fn viewer_credit_refuses_past_its_budget_without_a_gate() {
         let c = ViewerCredit::with_budget(100);

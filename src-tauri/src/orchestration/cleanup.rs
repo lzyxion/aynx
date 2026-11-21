@@ -1,30 +1,22 @@
-//! **정리 — 서버 임시 자리 폐기 · ref 회수 · Run 끝 [정리]**(통합 설계 6단계 — docs/log/2026-10-15-orchestration-integration-design.md
-//! 1절 D10, 6-2 · 6-3, 4-1 보존 ref, 검토 R12 · R13).
+//! 정리 — 서버 임시 자리 폐기 · ref 회수 · Run 끝 [정리](docs/log/2026-10-15-orchestration-integration-design.md).
 //!
-//! 셋:
-//! - **서버 임시 자리 폐기**([`Orchestration::sweep_temps`]) — 검증 worktree(`orch-<run8>-verify`) · 검증 임시(`orch-<run8>-tmp`) · 검토 worktree
-//!   (`orch-<task8>-<att8>-rv`) · 검토자 빈 cwd(`<데이터>/orchestration/<run>/review-<att8>`). 끝난 Run(done · stopped)과 orphaned(재시작 뒤)를
-//!   서버 시계가 **서버 수명마다 한 번** 정리한다(재시작 = 재정리). [Run 완료]는 그 자리에서, orphaned [닫기]는 정리가 깨끗할 때만 닫는다.
-//! - **ref 회수**([`Orchestration::reclaim_refs`]) — `candidate/<job>`(끝난 Job 의 것 — 그 기록의 OID 로) · `conflict/<task>`(그 Task 가 종결된
-//!   뒤). 서버 시계가 "끝난 Job 수 · 종결 Task 수" 가 바뀐 Run 만 본다. 통합 성공의 candidate 는 올리기 트랜잭션이 이미 함께 지운다.
-//! - **Run 끝 [정리]**(사람 — op `orchestration_cleanup_preview` · `orchestration_cleanup` · `orchestration_discard_temp`) — 작업자 worktree
-//!   (통합된 것은 기본 체크, 반려 · 취소 · 충돌 미해결 · 열린 채 끝난 Task 는 기본 해제 · 미커밋이면 거절 · 브랜치는 기본 남김) · 보존 ref(`done/` · `accepted/` ·
-//!   `diverged/` — 기본 남김) · 통합 ref `int`(내보낸 브랜치가 그것을 품거나 시작 커밋 그대로일 때만 — 잃을 커밋이 없다) · 남긴 서버 임시 자리 [그래도 지우기].
+//! - **서버 임시 자리 폐기**(검증 · 검증 임시 · 검토 worktree · 검토자 빈 cwd) — 끝난 Run 과 orphaned 를 서버 시계가 **서버 수명마다 한 번**
+//!   정리한다(재시작 = 재정리). orphaned [닫기]는 정리가 깨끗할 때만 닫는다.
+//! - **ref 회수** — 끝난 Job 의 `candidate/<job>` · 종결된 Task 의 `conflict/<task>`, 그 기록의 OID 일 때만(CAS).
+//! - **Run 끝 [정리]**(사람) — 작업자 worktree(미커밋이면 거절) · 보존 ref · 통합 ref `int`(내보낸 브랜치가 품거나 시작 커밋 그대로일 때만 —
+//!   잃을 커밋이 없다) · 남긴 서버 임시 자리 [그래도 지우기].
 //!
-//! 서버 임시 자리 폐기 규칙(6-2 — 작업자 worktree 와 **다른 정책**):
-//! ① 소유 — 곁 파일(`worktrees.json`) 줄의 `role`(verify · temp · review) + `run` 이 이 Run 이거나, Run 장부가 아는 자리(검토 Attempt 의
-//!   `reviewOf.place/cwd`)만. 서버가 지은 이름(검증 · 검증 임시)은 **곁 파일 소유 줄이 있을 때만**(리뷰 F4 — 예상 이름만으로는 아니다).
-//! ② 원래 경로가 뿌리 아래에서 링크(정션 · symlink)를 지나지 않는다 — 자리 자신이 링크면 **링크만** 걷고 대상은 지우지 않는다(리뷰 F4).
-//!   실제 경로(링크 풀어)가 Run 자리(검토 cwd 는 서버 데이터의 그 Run 폴더) 안. ③ 그 자리를 쓰는
-//!   프로세스 0 — 검증 트리 0(`stop-unconfirmed` 가 있었으면 쓰는 중으로 본다) · 검토자 Attempt 종료(orphaned 는 지금 남은 프로세스로).
-//! ④ **쉬는 상태와 비교** — 검증: 보존 폴더 밖 무엇이든(무시 파일 포함) 남았으면 · 검토: 분리 HEAD 가 보고 커밋이 아니거나 무엇이든 남았으면 ·
-//!   빈 cwd: 무엇이든 있으면 → **지우지 않고 남긴다**(`Run.tempPending` · 알림 `cleanup-pending` · 끝난 Run 은 보류 `cleanup-pending` 표시).
-//! ⑤ 지울 때는 **안의 정션 · 심볼릭 링크를 링크만 먼저 걷고**(`worktree::unlink_links` — 추적 링크까지 전부: `--force` 라 git 이 그것을 변경으로
-//!   보지 않는다) `git worktree remove --force`. `git worktree remove` 는 정션을 따라가 대상 내용을 지운다(10-15 노트 저장소 사고) — 이 순서를
-//!   바꾸지 않는다. 실패하면 걷은 링크를 되돌리고 남긴다.
+//! 서버 임시 자리 폐기 규칙(작업자 worktree 와 **다른 정책**):
+//! ① 소유 — 곁 파일(`worktrees.json`) 줄의 `role` + `run` 이 이 Run 이거나 Run 장부가 아는 자리만. 서버가 지은 이름은 **곁 파일 소유 줄이 있을 때만**
+//!   (예상 이름만으로는 아니다).
+//! ② 원래 경로가 뿌리 아래에서 링크(정션 · symlink)를 지나지 않는다 — 자리 자신이 링크면 **링크만** 걷고 대상은 지우지 않는다. 실제 경로가 Run 자리 안.
+//! ③ 그 자리를 쓰는 프로세스 0(`stop-unconfirmed` 가 있었으면 쓰는 중 · orphaned 는 지금 남은 프로세스로).
+//! ④ **쉬는 상태와 비교** — 무엇이든 예상 밖으로 남았으면 **지우지 않고 남긴다**(`Run.tempPending` · 알림 `cleanup-pending`).
+//! ⑤ 지울 때는 **안의 정션 · 심볼릭 링크를 링크만 먼저 걷고** `git worktree remove --force`. `git worktree remove` 는 정션을 따라가 대상 내용을
+//!   지운다(실제로 노트 저장소가 지워진 사고) — 이 순서를 바꾸지 않는다. 실패하면 걷은 링크를 되돌리고 남긴다.
 //!
 //! 불변식: 사람의 worktree · 다른 Run 의 자리 · Run 자리 밖은 건드리지 않는다. 경로는 감사 · 알림에 싣지 않는다(수만). 보존 ref(`done` ·
-//! `accepted` · `diverged`)와 통합 ref 는 **사람의 [정리] 에서만** 지운다(서버 시계로 지우지 않는다 — R13).
+//! `accepted` · `diverged`)와 통합 ref 는 **사람의 [정리] 에서만** 지운다(서버 시계로 지우지 않는다).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -40,20 +32,18 @@ use crate::audit::OrchestrationAudit;
 use crate::server::log;
 use crate::worktree as wt;
 
-/// 곁 파일 `role` — 검증 worktree.
+/// 곁 파일 `role` 값 — 파일에 글자 그대로 남는다.
 pub(crate) const ROLE_VERIFY: &str = "verify";
-/// 곁 파일 `role` — 검토 worktree.
 pub(crate) const ROLE_REVIEW: &str = "review";
 const ROLE_REVIEW_CWD: &str = "review-cwd";
-/// 곁 파일 `role` — 검증 임시 폴더(TEMP · TMP — 검증 `prepare` 가 만들 때 적는다).
+/// 검증 `prepare` 가 만들 때 적는다.
 pub(crate) const ROLE_TEMP: &str = "temp";
 
-/// [정리] · 서버 임시 자리 폐기를 할 수 있는 Run 상태 — 끝난 Run(done · stopped) · orphaned.
 pub(super) fn cleanable_state(s: RunState) -> bool {
     matches!(s, RunState::Done | RunState::Stopped | RunState::Orphaned)
 }
 
-/// 이 Run 의 작업자 worktree 경로(잠금 안 — 검토 자리 제외 · 같은 글자는 한 번). 보관 판정 · 라이브러리 줄의 재료.
+/// 잠금 안 — 검토 자리 제외 · 같은 글자는 한 번.
 pub(super) fn worker_worktree_paths(run: &Run) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for w in run.attempts.iter().filter(|a| a.role != AttemptRole::Reviewer).filter_map(|a| a.worktree.as_ref()) {
@@ -64,18 +54,16 @@ pub(super) fn worker_worktree_paths(run: &Run) -> Vec<String> {
     out
 }
 
-/// 그중 지금 디스크에 남은 수(잠금 밖 — 파일 시스템을 본다 · 같은 실제 경로는 한 번).
+/// 잠금 밖 — 파일 시스템을 본다.
 pub(super) fn worktrees_left(paths: &[String]) -> usize {
     paths.iter().filter(|p| Path::new(p).is_dir()).map(|p| super::worktree::wt_key(p)).collect::<HashSet<_>>().len()
 }
 
-/// 서버 임시 자리 폐기의 결과(수만).
+/// 수만 — 경로는 싣지 않는다.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Swept {
     pub removed: usize,
-    /// 예상 밖 변경 · 지우기 실패로 남긴 것.
     pub kept: usize,
-    /// 아직 쓰는 프로세스가 있을 수 있어 손대지 않은 것.
     pub busy: usize,
 }
 
@@ -85,33 +73,29 @@ impl Swept {
     }
 }
 
-/// 서버 임시 자리 하나(재료).
 #[derive(Debug, Clone)]
 struct Place {
     path: PathBuf,
     role: &'static str,
     /// 검토 자리의 쉬는 상태 — 분리 HEAD 가 이 커밋.
     expect_head: Option<String>,
-    /// 쓰는 프로세스가 있을 수 있다.
     busy: bool,
-    /// 이름만으로 고른 자리(검증 · 검증 임시) — 곁 파일에 서버가 만든 소유 줄(`run` · `role`)이 있어야 대상이다(리뷰 F4).
+    /// 이름만으로 고른 자리 — 곁 파일에 서버가 만든 소유 줄이 있어야 대상이다.
     needs_record: bool,
 }
 
-/// 잠금 안에서 모은 재료.
 struct Snap {
     repo: PathBuf,
     wt_dir: PathBuf,
-    /// 검토자 빈 cwd 의 뿌리(`<데이터>/orchestration/<run>`) — 영속 폴더가 없으면(시험) `None`.
+    /// 영속 폴더가 없으면(시험) `None`.
     cwd_root: Option<PathBuf>,
     keep_dirs: Vec<String>,
     places: Vec<Place>,
-    /// 곁 파일에서 더 찾을 때의 기본 "쓰는 중"(검토자 중 자리를 모르는 산 Attempt 가 있으면 참).
+    /// 검토자 중 자리를 모르는 산 Attempt 가 있으면 참.
     unknown_review_busy: bool,
     verify_busy: bool,
 }
 
-/// 하나의 판정.
 enum Verdict {
     Gone,
     Removed,
@@ -123,9 +107,7 @@ fn same(a: &Path, b: &Path) -> bool {
     super::worktree::wt_key(&a.to_string_lossy()) == super::worktree::wt_key(&b.to_string_lossy())
 }
 
-/// Attempt 가 자리(worktree · 검토 자리 · cwd)를 아직 쓰나 — orphaned 는 영속 상태가 아니라 지금 남은 프로세스로(리뷰 F12).
-/// 술어 `owns_worktree`(헤드리스 설계 4-5 표 — `cleanup.rs` 의 자원 판정: 3차 `idle` 도 자기 worktree 를 쥔다). orphaned 의 잔존 판정은
-/// 판마다 갈린다(`attempts::leftover_process_alive`).
+/// orphaned 는 영속 상태가 아니라 지금 남은 프로세스로 본다. `idle` 도 자기 worktree 를 쥔다.
 fn attempt_alive(state: RunState, a: &Attempt) -> bool {
     if state == RunState::Orphaned {
         super::attempts::leftover_process_alive(a)
@@ -134,12 +116,11 @@ fn attempt_alive(state: RunState, a: &Attempt) -> bool {
     }
 }
 
-/// 잠금 안 — 이 Run 의 서버 임시 자리 재료.
 fn collect_places(slot: &Slot, data_dir: Option<&Path>) -> Snap {
     let r = &slot.run;
     let wt_dir = PathBuf::from(&r.worktree_dir);
     let orphaned = r.state == RunState::Orphaned;
-    // 검증 트리 — orphaned 는 옛 서버의 잡이 닫히며 끝났다(잡 선귀속 · KILL_ON_JOB_CLOSE).
+    // 검증 트리 — orphaned 는 옛 서버의 잡이 닫히며 끝났다(KILL_ON_JOB_CLOSE).
     let verify_busy = !orphaned && (slot.verify_trees > 0 || slot.verify_unconfirmed);
     let (vname, tname) = super::verify::place_names(&r.id);
     let mut places = vec![
@@ -166,7 +147,7 @@ fn collect_places(slot: &Slot, data_dir: Option<&Path>) -> Snap {
             places.push(Place { path: PathBuf::from(c), role: ROLE_REVIEW_CWD, expect_head: None, busy: alive, needs_record: false });
         }
     }
-    // 남긴 자리(지난 정리) — 위에서 다시 만나지 않은 것도 다시 본다.
+    // 남긴 자리(지난 정리)도 다시 본다.
     for p in &r.temp_pending {
         let role = match p.role.as_str() {
             ROLE_VERIFY => ROLE_VERIFY,
@@ -192,8 +173,8 @@ fn collect_places(slot: &Slot, data_dir: Option<&Path>) -> Snap {
     }
 }
 
-/// 잠금 밖 — 곁 파일 · 서버 데이터 폴더에서 더 찾는다(장부에 없는 자리 — 자리를 적기 전에 멈춘 검토 등). 이름만으로 고른 자리(검증 ·
-/// 검증 임시)는 곁 파일에 이 Run 의 같은 역할 줄이 있을 때만 남긴다(리뷰 F4 — 예상 이름이라는 것만으로 남의 폴더를 지우지 않는다).
+/// 잠금 밖 — 장부에 없는 자리(자리를 적기 전에 멈춘 검토 등)를 더 찾는다. 이름만으로 고른 자리는 곁 파일에 이 Run 의 같은 역할 줄이 있을 때만
+/// 남긴다(예상 이름이라는 것만으로 남의 폴더를 지우지 않는다).
 fn discover(snap: &mut Snap, run_id: &str, sidecar: Option<&Path>) {
     let mut owned: Vec<(PathBuf, &'static str)> = Vec::new();
     if let Some(side) = sidecar {
@@ -247,7 +228,6 @@ fn common_dir(g: &Git) -> Option<String> {
     Some(wt::comparable(o.trim()))
 }
 
-/// 이 폴더가 그 저장소의 worktree 인가(`.git` 파일 · 같은 공용 git 폴더).
 fn is_worktree_of(dir: &Path, repo: &Path) -> bool {
     if !dir.join(".git").is_file() {
         return false;
@@ -259,7 +239,7 @@ fn is_worktree_of(dir: &Path, repo: &Path) -> bool {
     a.is_some() && a == b
 }
 
-/// 쉬는 상태와 같은가(④) — 다르면 그 까닭 낱말.
+/// 다르면 그 까닭 낱말.
 fn rest_mismatch(place: &Place, real: &Path, repo: &Path, keep: &[String]) -> Option<&'static str> {
     match place.role {
         ROLE_TEMP => None,
@@ -292,7 +272,7 @@ fn rest_mismatch(place: &Place, real: &Path, repo: &Path, keep: &[String]) -> Op
     }
 }
 
-/// 자리 하나를 지운다 — **링크 · 정션을 링크만 먼저 걷고**(⑤) worktree 는 `git worktree remove --force`, 그 밖은 링크를 따라가지 않는 재귀 삭제.
+/// **링크 · 정션을 링크만 먼저 걷는다** — worktree 는 `git worktree remove --force`, 그 밖은 링크를 따라가지 않는 재귀 삭제.
 fn remove_place(place: &Place, real: &Path, repo: &Path) -> Result<(), String> {
     match place.role {
         ROLE_VERIFY | ROLE_REVIEW if is_worktree_of(real, repo) => {
@@ -310,7 +290,7 @@ fn remove_place(place: &Place, real: &Path, repo: &Path) -> Result<(), String> {
                 }
                 return Err(e);
             }
-            // git 이 남긴 빈 껍데기(있으면) — 링크를 따라가지 않는다.
+            // 링크를 따라가지 않는다.
             if std::fs::symlink_metadata(real).is_ok() {
                 super::verify::remove_no_follow(real)?;
             }
@@ -320,7 +300,7 @@ fn remove_place(place: &Place, real: &Path, repo: &Path) -> Result<(), String> {
     }
 }
 
-/// 소유 자리 판정(②) — 실제 경로가 허용 뿌리 안. 검토 cwd 는 서버 데이터의 그 Run 폴더, 나머지는 Run 자리.
+/// 검토 cwd 는 서버 데이터의 그 Run 폴더, 나머지는 Run 자리 안이어야 한다.
 fn inside_root(place: &Place, snap: &Snap) -> bool {
     match place.role {
         ROLE_REVIEW_CWD => snap.cwd_root.as_deref().is_some_and(|root| super::worktree::inside(root, &place.path)),
@@ -328,8 +308,7 @@ fn inside_root(place: &Place, snap: &Snap) -> bool {
     }
 }
 
-/// `path` 의 조상을 `root`(글자 그대로 또는 실제 경로)에 닿을 때까지 거슬러 오르며 링크(정션 · symlink)인 구성요소가 있나 — `root`
-/// 아래가 아니면(닿지 못하면) 참(보수적). `path` 자신은 보지 않는다(부르는 쪽이 따로 본다).
+/// `root` 아래가 아니면(닿지 못하면) 참(보수적). `path` 자신은 보지 않는다(부르는 쪽이 따로 본다).
 fn linked_between(root: &Path, path: &Path) -> bool {
     let mut roots = vec![wt::comparable(&root.to_string_lossy())];
     if let Some(r) = super::worktree::real_path(root) {
@@ -348,13 +327,12 @@ fn linked_between(root: &Path, path: &Path) -> bool {
     true
 }
 
-/// 자리 하나 — ②~⑤. `force` 면 ④(쉬는 상태 비교)를 건너뛴다(사람의 [그래도 지우기]).
+/// `force` 면 쉬는 상태 비교만 건너뛴다(사람의 [그래도 지우기]).
 fn judge(place: &Place, snap: &Snap, force: bool) -> Verdict {
     let Ok(md) = std::fs::symlink_metadata(&place.path) else {
         return Verdict::Gone;
     };
-    // 리뷰 F4 — 원래 경로의 재분석 지점(정션 · symlink). 뿌리와 자리 사이의 구성요소가 링크면 손대지 않는다(실제 대상이 뿌리 안이어도
-    // 우리가 만든 모양이 아니다). 자리 자신이 링크면 **링크만** 걷는다 — 실제 대상은 지우지 않는다.
+    // 뿌리와 자리 사이의 구성요소가 링크면 손대지 않는다(실제 대상이 뿌리 안이어도 우리가 만든 모양이 아니다). 자리 자신이 링크면 링크만 걷는다.
     let root = match place.role {
         ROLE_REVIEW_CWD => snap.cwd_root.as_deref(),
         _ => Some(snap.wt_dir.as_path()),
@@ -376,7 +354,7 @@ fn judge(place: &Place, snap: &Snap, force: bool) -> Verdict {
         };
     }
     if !inside_root(place, snap) {
-        // 링크로 밖을 가리키거나 뿌리 밖 — 손대지 않는다(남긴 목록에 싣지도 않는다: 우리 자리가 아니다).
+        // 우리 자리가 아니다 — 손대지 않고 남긴 목록에도 싣지 않는다.
         log::line("orchestration — a server temp folder record points outside its root — left alone");
         return Verdict::Kept("outside");
     }
@@ -395,7 +373,6 @@ fn judge(place: &Place, snap: &Snap, force: bool) -> Verdict {
     }
 }
 
-/// 끝난 Job 수 · 종결 Task 수 — ref 회수의 판.
 fn ref_sig(run: &Run) -> (usize, usize) {
     (
         run.jobs.iter().filter(|j| !j.phase.live()).count(),
@@ -403,7 +380,6 @@ fn ref_sig(run: &Run) -> (usize, usize) {
     )
 }
 
-/// [정리] 의 작업자 worktree 한 줄(판정).
 #[derive(Debug, Clone)]
 struct WtRow {
     path: String,
@@ -415,15 +391,13 @@ struct WtRow {
     exists: bool,
     in_use: bool,
     integrated: bool,
-    /// 이 worktree 의 Attempt 가 낸, 이 Run 이 통합한 보고 커밋(유효한 수락 · 통합 커밋 있음) — [정리]의 브랜치 판정(E2E 10-16 #9).
+    /// 이 Run 이 통합한 보고 커밋 — 브랜치 판정의 재료.
     integrated_report: Option<String>,
     dirty: Option<bool>,
-    /// Run 이 끝났다(done · stopped · orphaned — [`cleanable_state`]) — 열린 Task 도 더는 진행되지 않는다(E2E 10-16 #6).
     run_ended: bool,
 }
 
 impl WtRow {
-    /// 지울 수 있나 — 그렇지 않으면 그 까닭 낱말.
     fn blocker(&self) -> Option<&'static str> {
         if !self.exists {
             return Some("missing");
@@ -436,8 +410,7 @@ impl WtRow {
             Some(true) => return Some("dirty"),
             None => return Some("unreadable"),
         }
-        // 끝난 Run 의 열린 Task(보고됨 · 진행 중이던 것)는 더 진행되지 않는다 — 막지 않고 사람이 고른다(기본 체크는 통합된 것만 — `to_json`).
-        // 진행 중 Run(running · paused · stopping)은 열린 Task 를 막는다(지금은 [정리] 자체가 끝난 Run 만 받지만 판정은 스스로 지킨다).
+        // 끝난 Run 의 열린 Task 는 막지 않고 사람이 고른다(기본 해제). 진행 중 Run 은 열린 Task 를 막는다.
         let decided =
             self.run_ended || self.integrated || self.task_state.terminal() || self.task_state == TaskState::Conflict;
         (!decided).then_some("task-open")
@@ -458,13 +431,13 @@ impl WtRow {
             "integrated": self.integrated,
             "eligible": blocker.is_none(),
             "blocker": blocker,
-            // 통합된 Task 의 것만 기본 체크(6-3) — 반려 · 취소 · 충돌 미해결 · 끝난 Run 의 열린 Task 는 기본 해제.
+            // 통합된 Task 의 것만 기본 체크.
             "defaultChecked": blocker.is_none() && self.integrated,
         })
     }
 }
 
-/// 잠금 안 — 작업자 worktree 줄들(경로 하나에 한 줄 — 이어 쓴 Attempt 들은 묶는다). git 상태는 잠금 밖에서 채운다.
+/// 잠금 안 — 경로 하나에 한 줄(이어 쓴 Attempt 들은 묶는다). git 상태는 잠금 밖에서 채운다.
 fn worktree_rows(slot: &Slot) -> Vec<WtRow> {
     let r = &slot.run;
     let mut out: Vec<WtRow> = Vec::new();
@@ -502,7 +475,7 @@ fn worktree_rows(slot: &Slot) -> Vec<WtRow> {
     out
 }
 
-/// 잠금 밖 — 폴더가 있나 · 미커밋 변경(추적 안 된 파일 포함 · 무시 파일 제외)이 있나.
+/// 잠금 밖 — 미커밋 변경은 추적 안 된 파일 포함 · 무시 파일 제외.
 fn fill_git(rows: &mut [WtRow]) {
     for row in rows.iter_mut() {
         row.exists = Path::new(&row.path).is_dir();
@@ -516,13 +489,12 @@ fn fill_git(rows: &mut [WtRow]) {
     }
 }
 
-/// ref 한 줄의 종류(`refs/aynx/orch/<run16>/<종류>[/…]`).
+/// `refs/aynx/orch/<run16>/<종류>[/…]`.
 fn ref_kind(prefix: &str, name: &str) -> String {
     name.strip_prefix(prefix).unwrap_or(name).split('/').next().unwrap_or_default().to_string()
 }
 
 impl Orchestration {
-    /// 곁 파일 자리를 꽂는다(서버 시작 — `serve::run`, 시험은 임시 파일).
     pub(crate) fn set_sidecar(&self, path: Option<PathBuf>) {
         *self.sidecar.write().unwrap_or_else(|e| e.into_inner()) = path;
     }
@@ -531,8 +503,7 @@ impl Orchestration {
         self.sidecar.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// 서버 시계(`tick`)의 정리 몫 — ref 회수가 필요한 Run(판이 바뀐 것) · 서버 임시 자리를 아직 정리하지 않은 끝난 Run · orphaned 를 골라
-    /// 따로 스레드에서(자기 참조가 없으면 — 시험 — 이 자리에서) 정리한다.
+    /// 따로 스레드에서 정리한다(자기 참조가 없으면 — 시험 — 이 자리에서).
     pub(super) fn cleanup_tick(&self) {
         let (refs_due, temps_due) = {
             let mut g = self.lock();
@@ -579,14 +550,13 @@ impl Orchestration {
             {
                 return;
             }
-            // 스레드를 못 세웠다 — 다음 시계에 다시(표시를 되돌리지는 않는다: 재시작이 다시 정리한다).
+            // 표시는 되돌리지 않는다 — 재시작이 다시 정리한다.
             return;
         }
         work(self);
     }
 
-    /// **ref 회수**(6-2) — `candidate/<job>`(**끝난 Job 의 것만** — 그 Job 기록의 후보 OID 로, 리뷰 F6) · `conflict/<task>`(그 Task 가
-    /// 종결됐을 때). 둘 다 그 OID 일 때만 지운다(CAS). 새 Job 의 후보 ref 는 이름이 달라 건드리지 않는다. 블로킹(git). 지운 수.
+    /// 새 Job 의 후보 ref 는 이름이 달라 건드리지 않는다. 블로킹(git). 지운 수.
     pub(crate) fn reclaim_refs(&self, run_id: &str) -> usize {
         let Some(git) = self.integrator() else { return 0 };
         let (repo, base, ended_jobs, conflict_tasks, gen, state) = {
@@ -605,7 +575,6 @@ impl Orchestration {
                 .collect();
             tasks.sort();
             tasks.dedup();
-            // 끝난 Job → 기록된 후보 OID(계산 중 거둬져 후보를 적지 못했으면 `None`).
             let ended_jobs: Vec<(String, Option<String>)> =
                 s.run.jobs.iter().filter(|j| !j.phase.live()).map(|j| (j.job_id.clone(), j.candidate.clone())).collect();
             (PathBuf::from(&s.run.repo), run_base(&s.run), ended_jobs, tasks, s.run.gen, s.run.state)
@@ -615,9 +584,8 @@ impl Orchestration {
             let prefix = refs::candidate_prefix(&base);
             for (name, oid) in git.list_refs(&repo, &prefix).unwrap_or_default() {
                 let job = name.strip_prefix(&prefix).unwrap_or_default();
-                // ref 꼬리는 Job id 의 짧은 이름이다(`refs::short`).
                 match ended_jobs.iter().find(|(j, _)| refs::short(j) == job) {
-                    // 기록된 후보가 있으면 그 OID 일 때만 · 없으면(후보를 적기 전에 끝남) 지금 OID 로 — 끝난 Job 은 다시 쓰지 않는다.
+                    // 후보를 적기 전에 끝났으면 지금 OID 로 — 끝난 Job 은 다시 쓰지 않는다.
                     Some((_, Some(c))) if *c != oid => {}
                     Some(_) => dels.push((name, oid)),
                     None => {}
@@ -651,8 +619,7 @@ impl Orchestration {
         n
     }
 
-    /// **서버 임시 자리 폐기**(6-2 — 머리말 ①~⑤). 끝난 Run · orphaned 만(살아 있는 Run 은 아무것도 안 한다). 남긴 것은 `Run.tempPending` 에
-    /// 적고(지난번 목록은 이번 판정으로 갈아 끼운다) 새로 남긴 것이 있으면 알림 `cleanup-pending`. 블로킹(git · 디스크).
+    /// 끝난 Run · orphaned 만. 지난번 남긴 목록은 이번 판정으로 갈아 끼운다. 블로킹(git · 디스크).
     pub(crate) fn sweep_temps(&self, run_id: &str) -> Swept {
         let data_dir = self.dir.clone();
         let mut snap = {
@@ -686,7 +653,7 @@ impl Orchestration {
                 }
             }
         }
-        // 검토 cwd 의 뿌리(`<데이터>/orchestration/<run>`) — 비었으면 걷는다(비지 않았으면 그대로 — `remove_dir` 는 빈 폴더만).
+        // 비었을 때만 걷힌다(`remove_dir` 는 빈 폴더만).
         if let Some(root) = &snap.cwd_root {
             let _ = std::fs::remove_dir(root);
         }
@@ -694,7 +661,6 @@ impl Orchestration {
         out
     }
 
-    /// 폐기 결과를 장부에 적는다(잠금 안) — 남긴 목록 갈아 끼우기 · 알림 · 보류 표시 · 감사.
     fn record_sweep(&self, run_id: &str, out: Swept, kept: Vec<(PathBuf, &'static str, &'static str)>, event: &str, actor: Actor) {
         let now = self.now();
         let detail = {
@@ -721,7 +687,7 @@ impl Orchestration {
             slot.run.bump(now, actor, event, None, &format!("removed {} · kept {}", out.removed, out.kept + out.busy));
             if fresh > 0 {
                 if ended && slot.run.hold.is_none() {
-                    // 끝난 Run 의 보류는 표시만(통합 설계 6-2).
+                    // 끝난 Run 의 보류는 표시만.
                     set_hold(slot, HoldReason::CleanupPending, None, now);
                 }
                 self.raise(slot, "cleanup-pending", None, Some(&fresh.to_string()));
@@ -748,8 +714,7 @@ impl Orchestration {
         self.audit(event, run_id, detail);
     }
 
-    /// 사람의 [그래도 지우기](op `orchestration_discard_temp`) — **남긴 목록에 있는** 서버 임시 자리 하나를 쉬는 상태 비교 없이 지운다. 소유 ·
-    /// 실제 경로 · 쓰는 프로세스 0 · 링크 먼저 걷기는 그대로(⑤). 블로킹.
+    /// 남긴 목록에 있는 자리만 — 쉬는 상태 비교만 건너뛰고 소유 · 실제 경로 · 프로세스 0 · 링크 먼저 걷기는 그대로. 블로킹.
     pub(crate) fn discard_temp(&self, run_id: &str, path: &str) -> Result<Value, OrchError> {
         let data_dir = self.dir.clone();
         let mut snap = {
@@ -776,7 +741,6 @@ impl Orchestration {
             Some(p) => judge(p, &snap, true),
             None => Verdict::Kept("outside"),
         };
-        // 남긴 목록에서 이 자리만 판정대로 고친다(나머지는 그대로).
         let (kept_rest, now_kept): (Vec<TempPending>, Option<&'static str>) = {
             let g = self.lock();
             let rest = g
@@ -829,8 +793,7 @@ impl Orchestration {
         }
     }
 
-    /// [정리] 재료(op `orchestration_cleanup_preview` — 사람). 끝난 Run · orphaned 만. 작업자 worktree(지울 수 있나 · 기본 체크) · 이 Run 의
-    /// ref(종류 · 기본 체크) · 남긴 서버 임시 자리. 블로킹(git 읽기).
+    /// 끝난 Run · orphaned 만. 블로킹(git 읽기).
     pub(crate) fn cleanup_preview(&self, run_id: &str) -> Result<Value, OrchError> {
         let (mut rows, repo, integ, pending, state) = {
             let g = self.lock();
@@ -855,17 +818,16 @@ impl Orchestration {
         }))
     }
 
-    /// 이 Run 의 ref 줄들 — `{name, kind, oid, eligible, blocker?, defaultChecked}`.
     fn ref_rows(&self, run_id: &str, repo: &Path, integ: &Integration) -> Result<Vec<Value>, OrchError> {
         let git = self
             .integrator()
             .ok_or_else(|| OrchError::new(reason::INTEGRATION_FAILED, "this server has no integration git"))?;
-        // 저장된 통합 ref 의 뿌리를 따른다 — 개명 전에 선 Run 이면 그 옛 뿌리의 머리를 훑는다([`refs::base_of`]).
+        // 개명 전에 선 Run 이면 그 옛 뿌리의 머리를 훑는다([`refs::base_of`]) — 옛 Run 파일 호환.
         let prefix = refs::base_of(run_id, &integ.work_ref).as_str().to_string();
         let listed = git
             .list_refs(repo, &prefix)
             .map_err(|e| OrchError::new(reason::GIT_FAILED, e.chars().take(240).collect::<String>()))?;
-        // 통합 ref 는 내보낸 브랜치가 그 머리를 품을 때만(통합 결과가 브랜치에 남는다 — 6-2). 시작 커밋 그대로면 내보내지 않아도 된다(잃을 커밋이 없다).
+        // 통합 ref 는 내보낸 브랜치가 그 머리를 품거나 시작 커밋 그대로일 때만 — 잃을 커밋이 없다.
         let branch = format!("refs/heads/{}", integ.export_branch);
         let exported = git.read_ref(repo, &branch).ok().flatten();
         let mut out = Vec::new();
@@ -886,17 +848,15 @@ impl Orchestration {
                 "oid": oid,
                 "eligible": blocker.is_none(),
                 "blocker": blocker,
-                // 서버 임시 ref(남은 것)만 기본 체크 — 완료 증거 · 보존 · 되돌린 머리 · 통합 ref 는 기본 남김(R13).
+                // 서버 임시 ref 만 기본 체크 — 완료 증거 · 보존 · 되돌린 머리 · 통합 ref 는 기본 남김.
                 "defaultChecked": blocker.is_none() && matches!(kind.as_str(), "candidate" | "conflict"),
             }));
         }
         Ok(out)
     }
 
-    /// [정리](op `orchestration_cleanup` — 사람). 고른 작업자 worktree(지금 다시 판정 — 지울 수 없으면 그 줄만 거절) · 고른 ref(지금 목록 ·
-    /// 그 OID 로 CAS) · 그 앞에 서버 임시 자리 폐기를 한 번 더(재정리). `deleteBranches` 면 worktree 를 지우며 병합이 확인됐거나
-    /// 끝이 보존 ref 가 지키는 통합된 보고 커밋인 브랜치만 지운다(`worktree::BranchRule::Lenient` — 못 지운 브랜치는 남기고 줄의 `branchKept`
-    /// 에 까닭, 실패 아님 · 기본 남김). 통합 ref 를 지웠으면 장부에 남긴다(`integration.workRefRemoved`). 블로킹.
+    /// 고른 줄을 지금 다시 판정한다(지울 수 없으면 그 줄만 거절 · ref 는 CAS). 브랜치는 병합이 확인됐거나 끝이 보존 ref 가 지키는 통합된
+    /// 보고 커밋일 때만 지운다(못 지우면 남기고 까닭을 싣는다 — 실패 아님). 블로킹.
     pub(crate) fn cleanup_run(
         &self,
         run_id: &str,
@@ -942,9 +902,8 @@ impl Orchestration {
                     continue;
                 }
             };
-            // 브랜치(E2E 10-16 #9): 못 지우면 worktree 정리의 실패가 아니다 — 남기고 까닭을 싣는다(`BranchRule::Lenient`). 통합은 squash 라
-            // 작업자 브랜치는 통합 ref 의 조상이 될 수 없다 — 끝이 이 Run 이 통합한 보고 커밋이고 그것을 보존 ref 가 지금 지키면 지운다.
-            // 같은 정리에서 그 보존 ref 를 지우면 커밋을 지킬 것이 없으니 남긴다.
+            // 통합은 squash 라 작업자 브랜치는 통합 ref 의 조상이 될 수 없다 — 끝이 이 Run 이 통합한 보고 커밋이고 보존 ref 가 지키면 지운다.
+            // 같은 정리에서 그 보존 ref 를 지우면 지킬 것이 없으니 남긴다.
             let preserve_ref = refs::accepted(&refs::base_of(run_id, integ.as_ref().map_or("", |i| i.work_ref.as_str())), &row.task_id);
             let preserve_dropped = ref_names.contains(&preserve_ref);
             let preserved = match (&row.integrated_report, delete_branches && !preserve_dropped) {
@@ -959,7 +918,7 @@ impl Orchestration {
             } else {
                 super::worktree::BranchRule::Keep
             };
-            // 줄은 Run 장부에서 왔다 — 곁 기록 줄이 빠진 worktree 도 장부 근거로 지운다(`LedgerClaim` · 11-09).
+            // 곁 기록 줄이 빠진 worktree 도 장부 근거로 지운다(`LedgerClaim`).
             let ledger = super::worktree::LedgerClaim { worktree_dir: &wt_dir, branch: row.branch.as_deref() };
             let r = super::worktree::remove_with(&repo, &row.path, rule, run_id, sidecar.as_deref(), Some(ledger));
             if r.is_ok() {
@@ -1007,7 +966,7 @@ impl Orchestration {
         {
             let mut g = self.lock();
             if let Some(slot) = g.runs.get_mut(run_id) {
-                // 사람이 지운 통합 ref 는 장부에 남긴다 — 재시작 복구 · 내보내기가 그 부재를 기대한 상태로 본다(E2E 10-16 #10).
+                // 장부에 남긴다 — 재시작 복구 · 내보내기가 그 부재를 기대한 상태로 본다.
                 if let Some(i) = slot.run.integration.as_mut() {
                     if done_refs.contains(&i.work_ref) {
                         i.work_ref_removed = true;
@@ -1049,7 +1008,7 @@ impl Orchestration {
     }
 }
 
-/// 곁 파일에서 그 자리 줄을 걷는다(지웠거나 이미 없을 때) — 서버 임시 자리 줄만(`role` 이 있는 줄).
+/// 서버 임시 자리 줄(`role` 이 있는 줄)만 걷는다.
 fn forget(sidecar: Option<&Path>, path: &Path) {
     let Some(side) = sidecar else { return };
     let key = wt::path_key(&path.to_string_lossy());
@@ -1083,7 +1042,7 @@ mod tests {
         }
     }
 
-    /// E2E 10-16 #6 — 끝난 Run 의 열린 Task worktree 는 고를 수 있되 기본 해제 · 진행 중 Run 은 `task-open` 그대로 · 다른 막음은 그대로.
+    /// 끝난 Run 의 열린 Task worktree 는 고를 수 있되 기본 해제 · 진행 중 Run 은 `task-open` 그대로.
     #[test]
     fn open_task_blocks_only_while_the_run_lives() {
         for s in [TaskState::Reported, TaskState::Active, TaskState::Todo] {

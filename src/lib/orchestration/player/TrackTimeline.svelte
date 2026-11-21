@@ -1,5 +1,4 @@
 <script lang="ts">
-  // 트랙 플레이어의 가사 칸 — 고정 대화 꼬리·필터·따라가기를 쥔다.
   import { tick, untrack, onDestroy } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import type { TranscriptItem } from "$lib/context";
@@ -52,14 +51,10 @@
     now: number;
     visible: boolean;
     titles: Map<string, string>;
-    /** 보고 파일 목록 캐시(보고 id → 목록 · 읽는 중 · 오류 — 부모의 [파일 목록] 과 같은 것) */
     ensureFiles: (taskId: string, reportId: string) => void;
     stateKey: TrackPresentationKey;
-    /** 트랙 화면 순번(머리 "TRACK n") */
     trackNo?: number;
-    /** 이 트랙에서 몇 번째 시도인가(부제 "시도 n") */
     attemptNo?: number;
-    /** 이 시도의 아티스트 프로필(이름 · 아이콘 — 없으면 띄울 때의 이름 사본 · CLI) */
     profile?: ArtistProfile | null;
     items: TranscriptItem[];
   } = $props();
@@ -67,11 +62,9 @@
   const judge = $derived(isReviewer(a) || a.kind === "judge");
   const art = $derived(artistOf(a.cli));
   const playing = $derived(detail.state !== "orphaned" && turnRunning(a));
-  /** 아티스트 이름 — 지금 프로필 → 띄울 때의 이름 사본 → CLI 캐릭터 */
   const artistName = $derived(profile?.name || a.roleName?.trim() || (judge ? t("orch.attempt.role.reviewer") : art.name));
   const lastTurnOf = $derived((a.turns ?? []).length > 0 ? a.turns![a.turns!.length - 1] : null);
   const roleOf = $derived((detail.roles ?? []).find((r) => r.id === a.roleId) ?? null);
-  /** 한 줄 부제(목업 "구현가 · Claude sonnet · 편집 자동 · 시도 2 · 턴 1") — 종류 · 강도는 툴팁 */
   const subParts = $derived.by(() => {
     const last = lastTurnOf;
     const model = last?.model ?? last?.args?.model ?? (roleOf?.model || null);
@@ -88,14 +81,13 @@
     const kind = t(judge ? "orch.kind.judge" : "orch.kind.write");
     return effort ? `${kind} · ${t("orch.artist.effort", { effort: effortLabel(effort) })}` : kind;
   });
-  /** 곁 카드의 보고 — 판정형은 검토 대상, 쓰기형은 제 보고(늦은 것은 뒤로) */
   const report = $derived.by<ReportView | null>(() => {
     const reports = detail.reports ?? [];
     if (judge) return reports.find((r) => r.reportId === a.reviewOf?.reportId) ?? null;
     return reports.find((r) => r.attemptId === a.id && !r.late) ?? reports.find((r) => r.attemptId === a.id) ?? null;
   });
 
-  // ── 가사(대화 끝 쪽) ───────────────────────────────────────────────────────
+  // ── 가사 ──
   let alive = true;
   onDestroy(() => { alive = false; });
   let older = $state(false);
@@ -137,7 +129,6 @@
     }
   }
 
-  /** 신호가 몰려도 0.5초 모아 한 번 · 앞 읽기에서 1.5초 뒤까지는 미룬다 */
   function schedule(): void {
     if (!alive || readLater !== null) return;
     const wait = Math.max(500, 1500 - (Date.now() - readAt));
@@ -147,7 +138,7 @@
     }, wait);
   }
 
-  // 아티스트가 바뀌면 가사를 비우고 곧바로 읽는다(보일 때만). 판을 다시 읽으면 `a` 는 새 객체다 — id 값이 바뀔 때만(파생 값 비교).
+  // 판을 다시 읽으면 `a` 는 새 객체다 — id 값이 바뀔 때만 다시 읽는다.
   const aid = $derived(a.id);
   $effect(() => {
     void aid;
@@ -161,7 +152,7 @@
     });
   });
 
-  // 다시 읽기 신호 — 판이 이미 받는 것만(F4 진행 칸 · 대화 증가 시각 · 최근 활동의 증가 시각 · 턴 수 · 대화 고정). 새 타이머 없음.
+  // 판이 이미 받는 신호만 쓴다 — 새 타이머 없음.
   const signal = $derived.by(() => {
     const turns = a.turns ?? [];
     const last = turns.length > 0 ? turns[turns.length - 1] : null;
@@ -189,7 +180,6 @@
     });
   });
 
-  // 숨었다 보이면 한 번(가려진 동안 놓친 증가).
   let wasVisible = untrack(() => visible);
   $effect(() => {
     const v = visible;
@@ -205,7 +195,6 @@
     };
   });
 
-  // 보고 파일 목록(쓰기형 보고 뒤 · 판정형 검토 대상) — 부모 캐시로 한 번.
   $effect(() => {
     const r = report;
     if (r) untrack(() => ensureFiles(r.taskId, r.reportId));
@@ -215,10 +204,8 @@
   const shown = $derived(filterLyrics(lines, filter));
   const doing = $derived(playing ? nowDoing(lines, a, now) : null);
   const lastLine = $derived(shown.length > 0 ? shown[shown.length - 1] : null);
-  /** 마지막 줄이 곧 지금 도구면 아래 줄은 경과만 */
   const doingSame = $derived(!!doing && !!lastLine && lastLine.kind === "tool" && lastLine.pending && lastLine.text === doing.text);
 
-  // 따라가기 — 맨 아래를 지키다가 사람이 위로 굴리면 멈춘다.
   function onScroll(): void {
     const el = scroller;
     if (!el) return;
@@ -263,8 +250,6 @@
         <span class="sub" data-artist-sub title={subTitle}>{subParts.join(" · ")}</span>
       </div>
     </div>
-
-    <!-- 걸러 보기 — 목업에 없는 기능이라 가사 칸 오른쪽 위의 흐린 글자 단추로 -->
 
     <div class="filters" role="group" aria-label={t("orch.artist.lyrics.filter")}>
       {#each FILTERS as f (f)}
@@ -424,10 +409,7 @@
     line-height: 1.45;
     animation: lyric-in 0.28s ease-out;
   }
-  /*
-   * (⑤ 다듬기) 위로 갈수록 작고 흐리게 — 목업 `WorkerDetail` 의 단계(지금 줄 28px 굵게 · 바로 위 17 · 16 · 15 · 15px, 색은 한 단계마다 옅게).
-   * 가장 옛 단계는 글자색을 판 쪽으로 섞어(투명 섞기) 밝은 · 어두운 테마 모두 배경으로 가라앉는다. 정적 스타일이라 움직임 줄이기와 무관.
-   */
+  /* 가장 옛 단계는 글자색을 판 쪽으로 섞어 밝은 · 어두운 테마 모두 배경으로 가라앉는다 */
   .line[data-step="4"] {
     font-size: 15px;
     color: color-mix(in srgb, var(--fg-3) 55%, transparent);
@@ -532,7 +514,6 @@
       animation: none;
     }
   }
-  /* 좁은 판 — 곁 카드를 아래로(판 `.board` 가 크기 컨테이너) */
   @container (max-width: 720px) {
     .face :global(.avatar) {
       width: 72px !important;

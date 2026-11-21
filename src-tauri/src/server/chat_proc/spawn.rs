@@ -1,5 +1,4 @@
-//! 띄우기 — 이 폴더의 유일한 생성(잡 생성 · stdin 파이프 — `SPAWN_LOCK` · 생성과 동시에 Job · `CREATE_NO_WINDOW` — 검증 ·
-//! 헤드리스 턴과 같은 몸)과 세 스레드. 무엇을 · 어디서 · 어떤 환경으로 띄울지는 주인이 지은 [`Launch`] 그대로다.
+//! 띄우기 — 이 폴더의 유일한 생성(`os::spawn_in_job` 하나)과 세 스레드. 무엇을 · 어디서 · 어떤 환경으로 띄울지는 주인이 지은 [`Launch`] 그대로다.
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -12,14 +11,12 @@ use crate::orchestration::turn;
 use crate::server::os;
 use crate::side_chat::{Adapter, Ev};
 
-/// stdout 한 줄 상한(바이트 — 넘은 줄은 그 자리에서 버린다). 헤드리스 턴의 1 MiB(`turn::LINE_MAX`)가 아닌 까닭: Codex 의
-/// `item/completed{imageGeneration}` 이 그림 바이트(base64 `result` — 10-24 실측 1.3 MB)를 한 줄에 품어, 1 MiB 면 그 끝 줄이 통째로
-/// 버려져 카드가 영영 돈다. 그림은 큰 것도 몇 MB 라 넉넉히 32 MiB(항목마다 한 줄씩만 쥔다 · 바이트는 어댑터가 버린다).
+/// 헤드리스 턴의 1 MiB(`turn::LINE_MAX`)로 줄이지 않는다 — Codex 의 `item/completed{imageGeneration}` 이 그림 바이트를 한 줄에
+/// 품어(MB 단위) 끝 줄이 버려지면 카드가 영영 돈다.
 const STDOUT_LINE_MAX: usize = 32 * 1024 * 1024;
-/// 프로세스가 끝난 뒤 stdout 이 EOF 에 닿기를 기다리는 시간.
 const DRAIN_WAIT: Duration = Duration::from_secs(5);
 
-/// 서버 임시 자리 — 우리가 쓴 파일만 지우고 폴더를 지운다(재귀 삭제 없음 — 정션을 따라가지 않게).
+/// 우리가 쓴 파일만 지우고 폴더를 지운다 — 재귀 삭제는 정션을 따라가므로 쓰지 않는다.
 pub(crate) struct Spot {
     dir: PathBuf,
     files: Vec<PathBuf>,
@@ -48,9 +45,8 @@ impl Drop for Spot {
     }
 }
 
-/// 실행 재료(주인이 짓는다) — **`Debug` 를 파생하지 않는다**(인자에 파일 경로 · 환경에 사용자 값 · 토큰).
+/// **`Debug` 를 파생하지 않는다**(인자에 파일 경로 · 환경에 사용자 값 · 토큰).
 pub(crate) struct Launch {
-    /// CLI 이름(실패 문구 — `claude` · `codex`).
     pub name: &'static str,
     pub exe: String,
     pub argv: Vec<String>,
@@ -59,13 +55,11 @@ pub(crate) struct Launch {
     pub env: Vec<(String, String)>,
     pub adapter: Box<dyn Adapter>,
     pub spot: Spot,
-    /// 띄운 뒤 곧바로 낼 알림(실린 외부 MCP 이름 · 뺀 서버).
     pub notices: Vec<Ev>,
 }
 
-/// **프로세스를 띄운다** — 세대 `proc`(주인이 [`ProcId::next`] 로 뽑아 토큰 · 임시 자리 이름에 이미 썼다)으로. 부르는 쪽이 주인 잠금을
-/// 쥐고 있다 — 스레드들은 그 잠금이 풀린 뒤에야 줄을 반영한다(세대 · 프로세스 칸이 먼저 선다). 성공이면 맏 프로세스 pid, 실패면
-/// `(이유 낱말, 문구)` — 그 세대의 토큰은 부르는 쪽이 거둔다.
+/// 부르는 쪽이 주인 잠금을 쥐고 있다 — 스레드들은 그 잠금이 풀린 뒤에야 줄을 반영한다(세대 · 프로세스 칸이 먼저 선다).
+/// 실패면 그 세대의 토큰은 부르는 쪽이 거둔다.
 pub(crate) fn start<H: Host>(h: &Arc<H>, st: &mut H::St, proc: ProcId, l: Launch) -> Result<u32, (&'static str, String)> {
     let mut job = os::spawn_in_job(&l.exe, &turn::quote_argv(&l.argv), &l.cwd, &l.env, os::Stdin::Pipe)
         .map_err(|(w, m)| (w, format!("could not start {}: {m}", l.name)))?;
@@ -74,7 +68,7 @@ pub(crate) fn start<H: Host>(h: &Arc<H>, st: &mut H::St, proc: ProcId, l: Launch
         return Err(("pipe", "the process pipes are missing".into()));
     };
     let job = Arc::new(job);
-    // 쓰기 스레드 — stdin 줄을 순서대로(막혀도 주인 잠금을 쥐지 않는다).
+    // 쓰기가 막혀도 주인 잠금을 쥐지 않게 따로 스레드에서.
     let (tx, rx) = mpsc::channel::<String>();
     std::thread::spawn(move || {
         let mut f = input;
@@ -84,7 +78,6 @@ pub(crate) fn start<H: Host>(h: &Arc<H>, st: &mut H::St, proc: ProcId, l: Launch
             }
         }
     });
-    // stderr — 끝 8 KiB 만.
     let ring = Arc::new(Mutex::new(turn::TailRing::new(turn::STDERR_TAIL)));
     {
         let ring = Arc::clone(&ring);
@@ -101,7 +94,6 @@ pub(crate) fn start<H: Host>(h: &Arc<H>, st: &mut H::St, proc: ProcId, l: Launch
             }
         });
     }
-    // stdout — 줄 → 어댑터.
     let (done_tx, done_rx) = mpsc::channel::<()>();
     {
         let h = Arc::clone(h);
@@ -128,7 +120,6 @@ pub(crate) fn start<H: Host>(h: &Arc<H>, st: &mut H::St, proc: ProcId, l: Launch
             let _ = done_tx.send(());
         });
     }
-    // 감시 — 끝을 기다리며 모은 조각을 제때 낸다 → 끝나면 남은 것을 거두고 끝 사건 하나.
     {
         let (h, job) = (Arc::clone(h), Arc::clone(&job));
         std::thread::spawn(move || {

@@ -1,22 +1,17 @@
-/**
- * 앨범 병합 — 앨범 줄 판정 · 확인 창의 검사 줄 · 멈춘 까닭 문구(서버 `orchestration/album_merge.rs`). 판정은 서버가 하고 여기는 보기만 짓는다.
- */
+/** 앨범 병합의 보기 — 판정은 서버(`orchestration/album_merge.rs`)가 한다. */
 
 import type { Key } from "$lib/i18n/keys";
 import { keyOf, type Tr } from "./text";
 import type { LogEntry, RunDetail } from "./types";
 
-/** `orchestration_merge_preview` 의 답 */
 export interface MergePreview {
   runId: string;
   branch: string;
   target?: string | null;
   head?: string | null;
   state: "ready" | "blocked" | "merged";
-  /** 세 줄로 보일 수 없는 까닭(낡음 · 대상 없음 · 지원 밖 …) */
   reason?: string | null;
   detail?: string | null;
-  /** 세 줄을 실제로 판정했다 */
   checked: boolean;
   mergeBase?: string | null;
   commits: number;
@@ -30,7 +25,6 @@ export interface MergePreview {
   conflicts: { count: number; paths: string[] };
 }
 
-/** `orchestration_merge` 의 답 */
 export interface MergeResult {
   merged: boolean;
   already?: boolean;
@@ -42,7 +36,7 @@ export interface MergeResult {
   preview?: MergePreview;
 }
 
-/** 까닭 낱말 → 문구(서버 낱말 전부 — 시험이 지킨다). 모르는 낱말은 그대로 보인다 */
+/** 서버 낱말 전부(시험이 지킨다) */
 export const MERGE_WHY_KEY: Record<string, Key> = {
   dirty: "orch.merge.why.dirty",
   "in-progress": "orch.merge.why.in-progress",
@@ -72,19 +66,18 @@ export const MERGE_WHY_KEY: Record<string, Key> = {
   "role-invalid": "orch.merge.why.role-invalid",
 };
 
-/** 까닭 한 문장(끝 온점 없음) — 분리 HEAD 는 세부가 비어 있다 */
+/** 분리 HEAD 는 세부가 비어 있다 */
 export function mergeWhyText(reason: string, detail: string | null | undefined, tr: Tr): string {
   if (reason === "wrong-branch" && !detail) return tr("orch.merge.why.detached");
   const key = keyOf(MERGE_WHY_KEY, reason);
   return key ? tr(key, { detail: detail ?? "" }) : reason;
 }
 
-/** 커밋 짧은 표기(서버 장부와 같은 길이) */
+/** 서버 장부와 같은 길이 */
 export function shortCommit(oid: string): string {
   return oid.slice(0, 7);
 }
 
-/** 앨범의 내보낸 브랜치 줄 */
 export type MergeRow =
   | { kind: "hidden" }
   | { kind: "merged"; target: string; commit: string | null; auto: boolean }
@@ -105,18 +98,15 @@ export function mergeRow(run: Pick<RunDetail, "integration" | "merge" | "mergedO
   return { kind, branch: i.exportBranch, canMerge, stale, stop };
 }
 
-/** 확인 창의 검사 줄 하나 */
 export interface MergeCheckRow {
   id: "clean" | "progress" | "branch" | "conflict" | "blocked";
   ok: boolean;
   text: string;
-  /** 막혔을 때 — 까닭 · 해결 방법 */
   fix?: string;
 }
 
 const pathList = (paths: readonly string[], count: number): string => (count > paths.length ? `${paths.join(", ")} …` : paths.join(", "));
 
-/** 검사 줄 — 세 줄(목업)에 진행 중인 병합 · rebase 줄과 세 줄로 못 보이는 까닭을 더한다 */
 export function mergeCheckRows(p: MergePreview, tr: Tr): MergeCheckRow[] {
   const rows: MergeCheckRow[] = [];
   const target = p.target ?? "";
@@ -154,7 +144,6 @@ export function mergeCheckRows(p: MergePreview, tr: Tr): MergeCheckRow[] {
   return rows;
 }
 
-/** 확인 창의 트랙 줄 — 수락된 트랙의 제목 + `수락 · 검증 통과 · 검토 통과` 식 상태 */
 export function mergeTracks(run: Pick<RunDetail, "tasks" | "accepted" | "jobs">, tr: Tr): { id: string; title: string; status: string }[] {
   const valid = (run.accepted ?? []).filter((a) => !a.revokedAt && !!a.integrationCommit);
   return valid.map((a) => {
@@ -168,7 +157,7 @@ export function mergeTracks(run: Pick<RunDetail, "tasks" | "accepted" | "jobs">,
   });
 }
 
-/** 타임라인의 병합 줄 — `main에 병합` · `자동 병합`. 대상 브랜치가 문장에 들어가 대상 칸은 따로 그리지 않는다. 다른 사건은 `null` */
+/** 대상 브랜치가 문장에 들어가 대상 칸은 따로 그리지 않는다 */
 export function mergeTimelineWhat(e: Pick<LogEntry, "action" | "target">, tr: Tr): string | null {
   if (e.action === "integration_merged") return tr("orch.merge.timeline.to", { branch: e.target ?? "" });
   if (e.action === "integration_auto_merged") return tr("orch.action.integration_auto_merged");

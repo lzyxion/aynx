@@ -5,34 +5,17 @@
   import { nextMenuIndex, type ToolbarMenuRow } from "$lib/browser/toolbar-tools";
 
   /**
-   * **파일 타일 도구줄의 접힌 메뉴** — 좁은 타일에서 보기 셋(▦ ▾)과 오른쪽 단추들(⋯)이 여는 작은 목록 (2026-10-11).
-   *
-   * 줄 = [그림][이름 ……… 단축키][✓]. 그림 칸은 단추에 있던 그 그림이고, ✓ 는 **오른쪽 끝 칸**이다(워크스페이스 목록과
-   * 같은 자리 — 앞자리는 이미 그림이 차지한다). 토글은 `menuitemcheckbox`, 보기는 `menuitemradio` 다.
-   *
-   * 모양은 전역 메뉴 한 벌(`theme.css` 의 `.menu-*`), 몸짓은 `AiPermMenu` · `PaneMenu` 와 같다: 뜨면 지금 것(없으면
-   * 첫 줄)에 포커스 · ↑↓ Home End 로 돌고 · Enter/Space 는 단추가 받고 · Escape 와 고르기는 단추로 포커스를 돌려주고 ·
-   * 바깥을 누르면 그냥 닫는다. 이 컴포넌트는 고른 **열쇠**만 올린다 — 스냅샷 → 닫기 → 실행 순서는 부르는 쪽의
-   * `runOnMenu` 가 든다 (docs/conventions.md "메뉴를 닫는 코드").
-   *
+   * 고른 열쇠만 올린다 — 스냅샷 → 닫기 → 실행 순서는 부르는 쪽의 `runOnMenu` 가 든다(docs/conventions.md "메뉴를 닫는 코드").
    * 다룬 키는 전파를 끊는다 — 창 전역의 파일 타일 키(`file-keys.ts`)가 같은 ↑↓ 로 목록 선택을 움직이지 않게.
-   *
-   * 하위 갈래(2026-11-13 — 사이드 채팅 `[+]`): `more` 가 있는 줄은 오른쪽 끝에 흐린 글자 + `›` 이고 → 로도 고른다. ← 는 `onback` 을 부른다
-   * (부르는 쪽이 줄을 바꾼다 — 갈래마다 이 메뉴를 다시 세우면 포커스가 새 줄로 간다). `touch`(폰)는 줄 높이 44px.
-   *
-   * 타일 고르는 줄(2026-11-18 — 사이드 채팅 타일 연결): `pane` 이면 그림 칸이 그 타일의 `PaneIcon`(머리줄 · 탭과 같은 그림 — 컬러 로고 ·
-   * AI 아바타), `code` 면 이름 뒤에 흐린 작은 코드. 둘 다 선택 칸이라 안 주면 예전 줄 그대로다.
    */
 
   let {
     label,
     rows,
-    /** 연 단추 — 자리를 재는 기준이자, 바깥 클릭 판정에서 비켜 갈 곳이다(다시 누르면 닫히는 토글) */
     trigger,
-    /** 단추의 어느 쪽 끝에 맞출까 — 왼쪽 무리의 보기 고르개는 왼쪽, 오른쪽 끝의 ⋯ 는 오른쪽 */
     align,
     onpick,
-    /** 닫아 달라 — `true` 면 단추로 포커스를 돌려준다 */
+    /** `true` 면 단추로 포커스를 돌려준다 */
     onclose,
     onback,
     touch = false,
@@ -43,23 +26,16 @@
     align: "left" | "right";
     onpick: (key: string) => void;
     onclose: (back: boolean) => void;
-    /** ← — 하위 갈래에서 뿌리로(없으면 ← 는 아무 일도 없다) */
     onback?: () => void;
-    /** 터치 화면(폰) — 줄 44px */
     touch?: boolean;
   } = $props();
 
-  /** 화면 가장자리와 띄울 틈 */
   const EDGE = 8;
 
   let el = $state<HTMLElement | null>(null);
   let left = $state(0);
   let top = $state(0);
 
-  /**
-   * 자리 — 단추 바로 아래, `align` 쪽 끝을 맞춘다. 그려진 폭을 재야 오른쪽 맞춤이 되므로 붙은 뒤에 한 번 잰다.
-   * 창 밖으로 넘치면 안으로 당긴다(아래로 넘치면 단추 위로 올린다).
-   */
   $effect(() => {
     const node = el;
     if (!node) return;
@@ -77,7 +53,7 @@
     }
   });
 
-  /** 바깥을 누르면 닫는다 — 연 단추만 비켜 간다(그 단추의 click 이 닫기를 맡는다). 창 크기가 바뀌어도 닫는다 */
+  /** 연 단추만 비켜 간다 — 그 단추의 click 이 닫기를 맡는다 */
   $effect(() => {
     const onDown = (ev: PointerEvent) => {
       const t = ev.target;
@@ -198,7 +174,6 @@
 </div>
 
 <style>
-  /* 상자·줄·구분선은 전역 메뉴 한 벌 — 자리와 폭만 여기. 타일 우클릭 메뉴(`FileMenu`)와 같은 층 */
   .tb-menu {
     position: fixed;
     z-index: 41;
@@ -218,14 +193,12 @@
     text-overflow: ellipsis;
   }
 
-  /* 타일 앞자리 아이콘(`pane`) — 원격 AI 타일은 로고 둘이라 16px 칸을 넘는다 */
+  /* 원격 AI 타일은 로고 둘이라 16px 칸을 넘는다 */
   .tb-pane {
     width: auto;
     min-width: 16px;
   }
 
-  /* 이름 + 흐린 코드(`code`) — 이름 카드 머리줄(`SessionInfoCard` 의 `.s-title` · `.s-code`)과 같은 사이 · 글꼴 · 색 · 크기.
-     좁으면 이름만 말줄임되고 코드는 남는다 */
   .tb-named {
     display: flex;
     align-items: baseline;
@@ -244,7 +217,6 @@
     white-space: nowrap;
   }
 
-  /* 하위 갈래 줄의 오른쪽 흐린 글자(지금 연결 이름 · MCP 수) — 길면 말줄임 */
   .tb-more {
     min-width: 0;
     max-width: 50%;
@@ -253,12 +225,11 @@
     white-space: nowrap;
   }
 
-  /* 폰 — 손가락 크기(44px) */
   .tb-menu.touch .tb-row {
     height: 44px;
   }
 
-  /* ✓ 칸 — 비어 있어도 폭을 차지한다(켜진 줄과 안 켜진 줄의 단축키가 같은 x 에 선다) */
+  /* 비어 있어도 폭을 차지한다 — 켜진 줄과 안 켜진 줄의 단축키가 같은 x 에 선다 */
   .tb-check {
     display: inline-flex;
     flex: none;

@@ -1,27 +1,21 @@
-//! 자동 승인 **묶음 프리셋**(bundle) — 순수 데이터 한 장의 **백엔드 쌍둥이**
-//! (docs/log/2026-09-16-auto-approval-bundles.md).
+//! 자동 승인 **묶음 프리셋**(bundle) — 순수 데이터 한 장의 **백엔드 쌍둥이**(docs/log/2026-09-16-auto-approval-bundles.md).
 //!
-//! ## 왜 Rust 에도 같은 표가 있나 (경계는 백엔드다)
+//! ## 경계는 백엔드다
 //!
-//! 승인은 Tauri 명령 하나(`approve_operation`)로 들어오고, 자동 경로는 [`crate::policy`] 가
-//! **독립적으로 다시** 판정한다. 그 판정이 보는 allowlist 는 사용자가 적은 `[[automation.allow]]`
-//! **와 켜진 묶음이 펼친 규칙의 합집합**이다 — 즉 백엔드가 묶음을 스스로 펼칠 수 있어야 한다.
-//! 프런트가 펼쳐서 보내 주는 구조였다면 프런트 버그·조작이 곧 범위 확장이 된다.
+//! 자동 경로는 [`crate::policy`] 가 사용자 `[[automation.allow]]` 와 켜진 묶음이 펼친 규칙의 합집합으로 **독립적으로 다시** 판정한다
+//! — 프런트가 펼쳐서 보내 주는 구조였다면 프런트 버그 · 조작이 곧 범위 확장이 된다.
 //!
 //! ## 불변 (바닥은 그대로다)
 //!
-//! 묶음은 **기본 거부를 넓히지 않는다**. `[automation] bundles` 에 id 를 적는 것은 사람이고
-//! (MCP 는 읽기 전용이라 AI 는 이 값을 바꿀 수 없다), 켠 뒤에도 규칙은 여전히 위험 배제 ·
-//! 구획 분해 · 상한 · 빈도 한도라는 같은 문을 통과해야 한다. 묶음 안의 **명령 끄기**
-//! (`[automation.bundle_off]`)는 좁히기만 한다 — 그 칸이 무엇을 적든 묶음보다 넓어지지 않는다.
+//! 묶음은 **기본 거부를 넓히지 않는다**. `[automation] bundles` 에 id 를 적는 것은 사람이고(MCP 는 읽기 전용이라 AI 는 이 값을
+//! 바꿀 수 없다), 켠 뒤에도 규칙은 위험 배제 · 구획 분해 · 상한 · 빈도 한도라는 같은 문을 통과해야 한다. 묶음 안의 명령 끄기
+//! (`[automation.bundle_off]`)는 좁히기만 한다.
 //!
 //! ## ⚠️ 묶음을 더하거나 규칙을 넓히는 것은 **보안 검토**다
 //!
-//! 여기 한 줄이 늘면 그 묶음을 켠 모든 사용자의 무인 실행 범위가 늘어난다. 새 항목은 세
-//! 질문을 전부 통과해야 한다: ①읽기·관찰 전용인가 ②인자 하나로 쓰기가 되지 않는가
-//! ③비밀을 뱉지 않는가. 그래서 **뺀 것들**: `find`(`-delete`·`-exec` 가 인자다) ·
-//! `env`/`printenv`(토큰·비밀번호를 찍는다) · `top`(대화형이라 무인 경로에서 화면만 잡는다).
-//!
+//! 새 항목은 ①읽기 · 관찰 전용인가 ②그 서브커맨드 뒤에 무엇이 와도 읽기인가(아니면 인자 제약을 단다) ③비밀을 뱉지 않는가를
+//! 전부 통과해야 한다(docs/log/2026-10-05-auto-approve-args.md). 그래서 **뺀 것들**: `find`(`-delete` · `-exec` 가 인자다) ·
+//! `env`/`printenv`(토큰 · 비밀번호를 찍는다) · `top`(대화형이라 무인 경로에서 화면만 잡는다).
 //! ## 드리프트 잠금
 //!
 //! `src/lib/automation-presets.ts` 의 `BUNDLES` 와 **id·이름·설명·규칙·순서까지 같다**.
@@ -32,34 +26,15 @@
 //! 리터럴 — 상수 이름을 쓰면 파서가 못 읽는다, 문자열은 한 줄짜리 리터럴). 표에 `#[rustfmt::skip]`
 //! 이 붙은 이유도 이것이다.
 //!
-//! ## 인자 제약 (2026-10-05)
-//!
-//! 규칙은 exec+서브커맨드에 더해 **인자까지** 말한다(`AllowRule` 문서 "인자 제약"). 표에 새 줄을
-//! 넣을 때는 ②번 질문을 "그 서브커맨드 뒤에 무엇이 와도 읽기인가" 로 읽고, 아니면 제약을 단다
-//! (docs/log/2026-10-05-auto-approve-args.md).
-//!
-//! ## 세분화 (2026-10-05)
-//!
-//! 예전 두 묶음(`diag-readonly`·`git-readonly`)을 열 개로 나눴다 — 한 명령은 한 묶음에만 있다.
-//! 묶음 안의 규칙은 **명령 키**([`PresetRule::command_key`])로 묶이고, 사용자는 묶음을 켠 채
-//! 명령 하나만 끌 수 있다(`[automation.bundle_off]`). 옛 id 는 읽을 때 새 id 로 옮기되 **넓어지지
-//! 않게** 옛 묶음에 없던 명령은 꺼 둔 채로 옮긴다([`migrate_legacy_bundles`]).
-//!
-//! **서브커맨드는 exec 바로 뒤** — 묶음 규칙은 서브커맨드가 있으면 그 낱말이 exec 바로 다음이어야
-//! 한다(`sub_first`). 앞 플래그의 **값**이 서브커맨드로 위장하는 꼴(`git -C status push` = `status`
-//! 디렉터리에서 `git push` · `kubectl -n describe delete pod x` · `docker -c ps rm x`)을 막는다.
-//! 허용 플래그가 값 없는 출력 모양뿐인 `ip` 만 `.any_order()` 로 예외다(`ip -br addr`).
+//! **서브커맨드는 exec 바로 뒤**(`sub_first`) — 앞 플래그의 **값**이 서브커맨드로 위장하는 꼴(`git -C status push` = `status`
+//! 디렉터리에서 `git push` · `kubectl -n describe delete pod x`)을 막는다. 허용 플래그가 값 없는 출력 모양뿐인 `ip` 만 `.any_order()`
+//! 로 예외다. 한 명령은 한 묶음에만 있다. 옛 묶음 id 는 읽을 때 새 id 로 옮기되 **넓어지지 않게** 옮긴다([`migrate_legacy_bundles`]).
 
 use std::collections::BTreeMap;
 
 use crate::settings::{AllowRule, AutomationPrefs};
 
-/// 묶음이 얹는 규칙 하나 — 사용자 규칙([`AllowRule`])과 **같은 칸**의 정적 쌍둥이.
-///
-/// `subcommands` 가 비면 서브커맨드 개념이 없다는 뜻이고, 나머지 다섯 칸(인자 제약)은 비어 있으면
-/// 제약이 없다(`matches_structured_allow` · `AllowRule` 문서 "인자 제약"). 표에서는
-/// [`rule`] + 체인(`.deny(…)` · `.allow(…)` · `.require(…)` · `.first_arg(…)` · `.max_args(n)` ·
-/// `.key(…)` · `.any_order()`)으로 적는다.
+/// 사용자 규칙([`AllowRule`])과 **같은 칸**의 정적 쌍둥이. 인자 제약 칸은 비어 있으면 제약이 없다.
 #[derive(Clone, Copy)]
 pub(crate) struct PresetRule {
     pub exec: &'static str,
@@ -71,11 +46,10 @@ pub(crate) struct PresetRule {
     pub max_args: Option<u32>,
     /// 명령 키를 직접 정할 때만 — 없으면 [`command_key`](Self::command_key) 의 기본 규칙.
     pub key: Option<&'static str>,
-    /// 서브커맨드 앞에 플래그가 와도 되는가 — 기본 `false`(서브커맨드는 exec 바로 뒤).
+    /// 기본 `false` — 서브커맨드는 exec 바로 뒤.
     pub any_order: bool,
 }
 
-/// 제약 없는 규칙 — 표의 한 줄은 여기서 시작한다.
 pub(crate) const fn rule(
     exec: &'static str,
     subcommands: &'static [&'static str],
@@ -94,7 +68,6 @@ pub(crate) const fn rule(
 }
 
 impl PresetRule {
-    /// 어디에든 있으면 불허하는 플래그들.
     pub(crate) const fn deny(self, flags: &'static [&'static str]) -> Self {
         Self {
             deny_flags: flags,
@@ -108,7 +81,6 @@ impl PresetRule {
             ..self
         }
     }
-    /// 반드시 있어야 하는 플래그들.
     pub(crate) const fn require(self, flags: &'static [&'static str]) -> Self {
         Self {
             require_flags: flags,
@@ -129,14 +101,14 @@ impl PresetRule {
             ..self
         }
     }
-    /// 명령 키를 직접 정한다(같은 명령의 다른 꼴을 한 스위치로 묶을 때).
+    /// 같은 명령의 다른 꼴을 한 스위치로 묶을 때.
     pub(crate) const fn key(self, key: &'static str) -> Self {
         Self {
             key: Some(key),
             ..self
         }
     }
-    /// 서브커맨드 앞 플래그를 받는다 — 허용 플래그가 값 없는 것뿐일 때만 쓴다(`ip`).
+    /// 허용 플래그가 값 없는 것뿐일 때만 쓴다(`ip`).
     pub(crate) const fn any_order(self) -> Self {
         Self {
             any_order: true,
@@ -144,11 +116,7 @@ impl PresetRule {
         }
     }
 
-    /// **명령 키** — `[automation.bundle_off]` 에 적히는 안정된 이름. **바뀌면 안 된다**.
-    ///
-    /// `.key("…")` 가 있으면 그것, 없으면 서브커맨드가 **하나**일 때 `exec sub`(`docker logs` ·
-    /// `ip addr`), 아니면 `exec`(`tail` · `systemctl` · `apt`). 같은 키의 규칙이 여럿이면 한 스위치다.
-    /// TS `commandKey` 와 같은 규칙이다.
+    /// `[automation.bundle_off]` 에 적히는 안정된 이름 — **바뀌면 안 된다**. TS `commandKey` 와 같은 규칙이다.
     pub(crate) fn command_key(&self) -> String {
         if let Some(k) = self.key {
             return k.to_string();
@@ -159,8 +127,6 @@ impl PresetRule {
         }
     }
 
-    /// 판정·내보내기용 [`AllowRule`] 로 펼친다. 서브커맨드가 있고 `.any_order()` 가 아니면
-    /// `sub_first` 가 선다(모듈 머리말 "서브커맨드는 exec 바로 뒤").
     pub(crate) fn to_allow_rule(self) -> AllowRule {
         let own = |xs: &[&str]| xs.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
         AllowRule {
@@ -176,21 +142,16 @@ impl PresetRule {
     }
 }
 
-/// 묶음 하나 — 이름으로 말하는 위임 범위.
 pub(crate) struct Bundle {
     /// `settings.toml` 의 `[automation] bundles` 에 적히는 키 — **바뀌면 안 된다**.
     pub id: &'static str,
-    /// 설정 화면에 보이는 이름.
     pub name: &'static str,
-    /// 한 줄 설명 — 무엇을 위임하는지 사람 말로.
     pub description: &'static str,
-    /// 이 묶음이 허용 목록에 얹는 규칙들. 같은 exec 이 여러 줄이면 OR 이다(서브커맨드마다
-    /// 제약이 달라서 — `git branch` 와 `git log` 는 다른 줄이다).
+    /// 같은 exec 이 여러 줄이면 OR 이다.
     pub rules: &'static [PresetRule],
 }
 
 impl Bundle {
-    /// 이 묶음의 명령 키들 — 표 순서, 중복 없이.
     pub(crate) fn command_keys(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for r in self.rules {
@@ -203,10 +164,7 @@ impl Bundle {
     }
 }
 
-/// 내장 묶음 표 — **TS `automation-presets.ts` 의 `BUNDLES` 와 행·순서까지 같다**.
-///
-/// 2026-10-05 인자 제약으로 좁혔고(docs/log/2026-10-05-auto-approve-args.md), 같은 날 열 개로
-/// 나눴다(그 문서 "세분화"). 한 명령은 한 묶음에만 있다.
+/// **TS `automation-presets.ts` 의 `BUNDLES` 와 행 · 순서까지 같다**.
 #[rustfmt::skip]
 pub(crate) const BUNDLES: &[Bundle] = &[
     Bundle {
@@ -409,11 +367,7 @@ pub(crate) const BUNDLES: &[Bundle] = &[
     },
 ];
 
-/// 옛 묶음 id → 옮겨 갈 새 묶음들과 **옛 묶음이 담고 있던 명령 키**.
-///
-/// 옮길 때 새 묶음의 키 가운데 여기 없는 것은 `bundle_off` 에 넣어 꺼 둔다 — 그래서 옮긴 뒤의
-/// 허용 범위는 옛 묶음(2026-10-05 인자 제약으로 좁힌 판)과 **같거나 좁다**(새 규칙이 같은 키에서
-/// 옛 규칙보다 넓지 않다는 것은 `policy/tests.rs` 의 공유 표 시험이 잡는다).
+/// 옮길 때 새 묶음의 키 가운데 여기 없는 것은 `bundle_off` 에 넣어 꺼 둔다 — 옮긴 뒤의 허용 범위는 옛 묶음과 **같거나 좁다**.
 pub(crate) const LEGACY_BUNDLES: &[(&str, &[&str], &[&str])] = &[
     (
         "diag-readonly",
@@ -436,14 +390,7 @@ pub(crate) const LEGACY_BUNDLES: &[(&str, &[&str], &[&str])] = &[
     ),
 ];
 
-/// 옛 묶음 id 를 새 id 로 옮긴다 — **읽을 때마다** 부르고(멱등), 결과는 넓어지지 않는다. **순수**.
-///
-/// 규칙:
-/// - 옛 id 자리에 새 id 들이 그 순서로 선다(옛 id 는 사라진다).
-/// - 새 묶음이 **이미 켜져 있었으면** 그대로 둔다(이미 그만큼 열려 있었다 — 손대면 좁힐 뿐 뜻이 없다).
-/// - 아니면 켜되, 그 묶음의 키 가운데 옛 묶음에 없던 것을 `bundle_off` 에 더해 꺼 둔다.
-///
-/// 저장할 때 새 형식으로 쓰이므로 대개 한 번만 일한다. 옛 버전이 다시 옛 id 를 적어도 다음에 또 옮긴다.
+/// **읽을 때마다** 부른다(멱등) — 결과는 넓어지지 않는다. 새 묶음이 이미 켜져 있었으면 그대로 둔다.
 pub(crate) fn migrate_legacy_bundles(
     bundles: &mut Vec<String>,
     bundle_off: &mut BTreeMap<String, Vec<String>>,
@@ -486,7 +433,7 @@ pub(crate) fn migrate_legacy_bundles(
                 .filter(|k| !keys.contains(&k.as_str()))
                 .collect();
             if fresh.is_empty() {
-                continue; // 전부 옛 명령 — 빈 칸을 지어내지 않는다.
+                continue;
             }
             let off = bundle_off.entry(target).or_default();
             for k in fresh {
@@ -498,22 +445,18 @@ pub(crate) fn migrate_legacy_bundles(
     }
 }
 
-/// id → 묶음. 모르는 id 는 `None`(파일에 적힌 채로 무시된다 — [`expand_bundles`]).
+/// 모르는 id 는 `None` — 파일에 적힌 채로 무시된다.
 pub(crate) fn bundle_by_id(id: &str) -> Option<&'static Bundle> {
     BUNDLES.iter().find(|b| b.id == id)
 }
 
-/// 이 묶음에서 이 키를 꺼 두었는가.
 pub(crate) fn is_off(bundle_off: &BTreeMap<String, Vec<String>>, bundle: &str, key: &str) -> bool {
     bundle_off
         .get(bundle)
         .is_some_and(|keys| keys.iter().any(|k| k == key))
 }
 
-/// 켜진 묶음 id 들을 **규칙 목록**으로 펼친다 — 꺼 둔 명령은 뺀다. **순수**.
-///
-/// 모르는 id 는 **조용히 건너뛴다** — 새 버전에서 생긴 묶음을 켜 둔 `settings.toml` 을 옛
-/// 버전이 읽어도 값이 지워지지 않게(설정은 보존하고 해석만 안 한다). 모르는 키의 끄기도 같다.
+/// 모르는 id · 키는 **조용히 건너뛴다** — 새 버전의 묶음을 켜 둔 `settings.toml` 을 옛 버전이 읽어도 값이 지워지지 않게.
 /// TS `expandBundles` 와 같은 의미다.
 pub(crate) fn expand_bundles(
     ids: &[String],
@@ -534,12 +477,7 @@ pub(crate) fn expand_bundles(
     out
 }
 
-/// 자동 승인 판정이 실제로 보는 **구조적 규칙 전부** = 사용자가 직접 적은 `allow` + 켜진
-/// 묶음이 펼친 규칙(꺼 둔 명령 제외). **순수**.
-///
-/// 순서는 사용자 규칙이 먼저다(매칭은 OR 이라 결과는 같고, 디버깅에 낫다).
-/// [`crate::policy::command_passes_auto_policy`] 가 이 합집합을 본다 — 즉 **묶음의 효력은
-/// 백엔드에서 난다**. TS `effectiveAllowRules` 와 같은 의미다.
+/// 사용자 `allow` + 켜진 묶음이 펼친 규칙(꺼 둔 명령 제외) — **묶음의 효력은 백엔드에서 난다**. TS `effectiveAllowRules` 와 같은 의미다.
 pub(crate) fn effective_allow_rules(prefs: &AutomationPrefs) -> Vec<AllowRule> {
     let mut out = prefs.allow.clone();
     out.extend(expand_bundles(&prefs.bundles, &prefs.bundle_off));
@@ -554,7 +492,6 @@ mod tests {
         BTreeMap::new()
     }
 
-    /// 표의 위생 — id 는 유일하고, 이름·설명·규칙이 비지 않는다. 한 명령 키는 한 묶음에만 있다.
     #[test]
     fn bundle_table_is_well_formed() {
         let mut seen = std::collections::HashSet::new();
@@ -606,7 +543,6 @@ mod tests {
         }
     }
 
-    /// 옛 묶음의 옮김 표 — 새 id 는 실제로 있고, 옛 키는 그 새 묶음들 어딘가에 있다.
     #[test]
     fn legacy_table_points_at_real_bundles_and_keys() {
         for (old, targets, keys) in LEGACY_BUNDLES {
@@ -621,8 +557,7 @@ mod tests {
         }
     }
 
-    /// **보안 검토의 못** — 묶음에 절대 들어오면 안 되는 실행 파일들. 목록을 넓히다 실수로
-    /// 넣으면 여기서 깨진다(모듈 머리말의 "뺀 것들" 과 파괴적 동사).
+    /// **보안 검토의 못** — 묶음에 절대 들어오면 안 되는 실행 파일들(모듈 머리말의 "뺀 것들" 과 파괴적 동사).
     #[test]
     fn bundles_never_contain_the_excluded_execs() {
         const FORBIDDEN: &[&str] = &[
@@ -638,9 +573,7 @@ mod tests {
         }
     }
 
-    /// 묶음 규칙은 **위험 분류기를 통과하는 형태**여야 한다 — `exec` 만으로도, 서브커맨드를
-    /// 붙여도 `Dangerous` 로 분류되면 자동 승인이 절대 안 나므로 목록에 둘 이유가 없다
-    /// (죽은 규칙을 표에 남기지 않는다).
+    /// 위험 분류기가 `Dangerous` 로 보는 규칙은 자동 승인이 절대 안 나므로 표에 두지 않는다.
     #[test]
     fn bundle_rules_are_not_self_defeating() {
         for b in BUNDLES {
@@ -666,7 +599,6 @@ mod tests {
         }
     }
 
-    /// 명령 키 — `.key()` · 서브커맨드 하나 · 여럿/없음.
     #[test]
     fn command_keys_follow_the_rule() {
         assert_eq!(rule("tail", &[]).command_key(), "tail");
@@ -674,12 +606,10 @@ mod tests {
         assert_eq!(rule("systemctl", &["status", "cat"]).command_key(), "systemctl");
         assert_eq!(rule("hostnamectl", &["status"]).key("hostnamectl").command_key(), "hostnamectl");
         let sys = bundle_by_id("system").unwrap().command_keys();
-        // 같은 키의 두 줄(timedatectl)은 한 스위치다.
         assert_eq!(sys.iter().filter(|k| *k == "timedatectl").count(), 1);
         assert!(!sys.iter().any(|k| k == "timedatectl status"));
     }
 
-    /// 모르는 id 는 조용히 무시되고, 아는 id 는 규칙으로 펼쳐진다.
     #[test]
     fn expand_bundles_skips_unknown_ids() {
         assert!(expand_bundles(&["nope".to_string()], &none()).is_empty());
@@ -689,22 +619,18 @@ mod tests {
         assert_eq!(rules[0].exec, "git");
         assert_eq!(rules[0].subcommands, ["status"]);
         assert!(rules[0].sub_first, "묶음 규칙은 서브커맨드가 exec 바로 뒤");
-        // 인자 제약도 함께 펼쳐진다(branch 줄은 인자 없이 · 목록형 플래그만).
         let branch = rules
             .iter()
             .find(|r| r.subcommands == ["branch"])
             .expect("git branch 줄");
         assert_eq!(branch.max_args, Some(0));
         assert!(branch.allow_flags.iter().any(|f| f == "-a"));
-        // ip 는 예외(값 없는 출력 플래그만이라 앞에 와도 된다).
         let ip = expand_bundles(&["network".to_string()], &none());
         assert!(ip.iter().filter(|r| r.exec == "ip").all(|r| !r.sub_first));
-        // 아는 id 와 모르는 id 가 섞여도 아는 것만 나온다(설정은 보존하고 해석만 안 한다).
         let mixed = expand_bundles(&["nope".to_string(), "git".to_string()], &none());
         assert_eq!(mixed.len(), n);
     }
 
-    /// 꺼 둔 명령은 펼치기에서 빠진다 — 같은 키의 줄은 함께, 다른 묶음의 같은 이름은 그대로.
     #[test]
     fn expand_bundles_drops_commands_turned_off() {
         let mut off = none();
@@ -713,11 +639,9 @@ mod tests {
         let rules = expand_bundles(&["docker".to_string()], &off);
         assert!(!rules.iter().any(|r| r.subcommands == ["compose"]), "두 줄 모두 빠진다");
         assert!(rules.iter().any(|r| r.subcommands == ["ps"]));
-        // files 의 끄기는 docker 에 영향이 없다(그리고 files 는 꺼져 있다).
         assert_eq!(rules.len(), bundle_by_id("docker").unwrap().rules.len() - 2);
     }
 
-    /// 사용자 규칙 + 묶음 규칙의 합집합이고, **사용자 규칙이 앞**이다.
     #[test]
     fn effective_allow_rules_is_user_plus_bundles() {
         let prefs = AutomationPrefs {
@@ -731,7 +655,6 @@ mod tests {
         let rules = effective_allow_rules(&prefs);
         assert_eq!(rules[0].exec, "mytool", "사용자 규칙이 먼저");
         assert!(rules.iter().any(|r| r.exec == "git"), "묶음 규칙이 얹힌다");
-        // 묶음이 없으면 사용자 규칙 그대로다(기본 거부는 그대로 — 묶음은 켜야 생긴다).
         let none = AutomationPrefs {
             allow: prefs.allow.clone(),
             ..Default::default()
@@ -739,7 +662,6 @@ mod tests {
         assert_eq!(effective_allow_rules(&none).len(), 1);
     }
 
-    /// 옮기기 — 옛 id 자리에 새 id 들, 옛 묶음에 없던 명령은 꺼진 채로, 두 번 해도 같다.
     #[test]
     fn migrate_legacy_bundles_replaces_ids_and_turns_new_commands_off() {
         let mut ids = vec!["diag-readonly".to_string(), "git-readonly".to_string(), "future".to_string()];
@@ -756,20 +678,17 @@ mod tests {
         assert!(!sys.iter().any(|x| x == "df"), "옛 묶음에 있던 명령은 켜진 채로");
         assert_eq!(off["services"], ["systemctl list-timers", "systemctl cat", "nginx", "crontab"]);
         assert!(!off.contains_key("logs"), "logs 는 전부 옛 명령이다");
-        // 10-10 조회 추가분은 옛 묶음에 없었다 — 꺼진 채로.
         assert_eq!(off["git"], ["git ls-files", "git blame", "git shortlog", "git tag"]);
         let net = &off["network"];
         for k in ["ip address", "ip neigh"] {
             assert!(net.iter().any(|x| x == k), "{k} 는 꺼진 채로 옮겨진다: {net:?}");
         }
         assert!(!net.iter().any(|x| x == "ip addr"), "옛 묶음에 있던 명령은 켜진 채로");
-        // 멱등 — 다시 불러도 같다.
         let (ids2, off2) = (ids.clone(), off.clone());
         migrate_legacy_bundles(&mut ids, &mut off);
         assert_eq!((ids, off), (ids2, off2));
     }
 
-    /// 이미 켜져 있던 새 묶음은 손대지 않는다(이미 그만큼 열려 있었다).
     #[test]
     fn migrate_legacy_bundles_keeps_explicit_new_bundles() {
         let mut ids = vec!["files".to_string(), "diag-readonly".to_string()];

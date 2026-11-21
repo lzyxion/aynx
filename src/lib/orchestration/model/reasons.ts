@@ -1,12 +1,8 @@
-/**
- * 이유 코드(서버 `orchestration::store::reason` · MCP 와 같은 낱말) — 목록 · 문구 키 표 · 실패 문자열 해석.
- */
-
 import type { Key } from "$lib/i18n/keys";
 import type { Tr } from "./text";
 
 // ---------------------------------------------------------------------------
-// 이유 코드(서버 `orchestration::store::reason` · MCP 와 같은 낱말)
+// 이유 코드 — 서버 `orchestration::store::reason` · MCP 와 같은 낱말
 // ---------------------------------------------------------------------------
 
 export const ORCH_REASONS = [
@@ -70,10 +66,8 @@ export const ORCH_REASONS = [
   "symlink-outside",
   "cleanup-pending",
   "not-cleanable",
-  // 앨범 보관함
   "worktrees-left",
   "archive-unreadable",
-  // 3차 3a — 맡기기 · 역할 · 수락 규칙 · 헤드리스 턴
   "unknown-role",
   "role-invalid",
   "role-removed",
@@ -83,15 +77,12 @@ export const ORCH_REASONS = [
   "busy",
   "conversation-broken",
   "turn-limit",
-  // 사람 [재개] — 조정자 없는 Run(AI 타일의 adopt_run 으로 이어받거나 중단)
   "no-coordinator",
-  // F6 — 같은 Run 의 같은 requestId 를 다른 도구 · 다른 입력이 썼다(타일 단위 기록과 같은 낱말)
   "request-id-reused",
 ] as const;
 
 export type OrchReason = (typeof ORCH_REASONS)[number];
 
-/** 이유 → 문구 키(`orch.reason.<code>`) */
 export const ORCH_REASON_KEY: Record<OrchReason, Key> = {
   "not-found": "orch.reason.not-found",
   "run-paused": "orch.reason.run-paused",
@@ -168,17 +159,13 @@ export const ORCH_REASON_KEY: Record<OrchReason, Key> = {
   "request-id-reused": "orch.reason.request-id-reused",
 };
 
-/** 실패 문구(`[이유] 사람 문구`)의 이유 코드 — 모르는 코드 · 코드 없음이면 `null` */
 export function orchReasonOf(message: string): OrchReason | null {
   const m = /\[([a-z-]+)\]/.exec(message);
   if (!m) return null;
   return (ORCH_REASONS as readonly string[]).includes(m[1]) ? (m[1] as OrchReason) : null;
 }
 
-/**
- * 실패를 사람 문구로 — 서버가 이미 표시 언어로 만든 문구(`[이유] …`)면 대괄호만 떼어 그대로, 이유 코드뿐이거나 문구가 비면
- * 표의 문구. 이유가 없는 실패(서버에 닿지 못함 등)는 받은 글자 그대로.
- */
+/** 서버가 이미 표시 언어로 만든 문구면 대괄호만 떼어 그대로 쓴다 */
 export function orchReasonText(message: string, tr: Tr): string {
   const reason = orchReasonOf(message);
   if (reason === null) return message.trim();

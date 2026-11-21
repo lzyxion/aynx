@@ -1,51 +1,17 @@
-//! **DB 연결의 AI 권한**(쿼리 타일 3단계 3a — docs/log/2026-10-13-db-write-mcp-design.md B-2 · D4) — `delegation.toml` 의
-//! `[[database]]` 블록.
-//!
-//! ```toml
-//! [[database]]
-//! id              = "Qp9-pg-dev01"        # db-connections.json 의 id(= 볼트 db_password 의 열쇠)
-//! ai              = "read"                # "schema"(구조만) · "read"(읽기 전용) · "approve"(승인 후 실행) · "all"(모두 승인) — 끔 = 블록 없음
-//! headless        = false                 # 타일 없이 AI 접속(볼트의 비밀번호 사용) — 칸 없음 = 켬(옛 블록 · 아래 불변식)
-//! expect_engine   = "postgres"            # ── 신원 스냅샷(아래) ──
-//! expect_via      = "web-01"              # 경유 호스트 별칭(직접이면 없음)
-//! expect_via_target = "deploy@10.0.0.5:22" # 그 별칭이 적는 순간 가리키던 SSH 서버(user@host:port)
-//! expect_host     = "localhost"
-//! expect_port     = 5432
-//! expect_database = "app"
-//! expect_user     = "readonly"
-//! # expect_path   = "C:\\data\\app.db"   # SQLite 만
-//! ```
+//! `delegation.toml` 의 `[[database]]` 블록 — DB 연결의 AI 권한. `id` 는 `db-connections.json` 의 id(= 볼트 `db_password` 의 열쇠).
 //!
 //! ## 불변식
 //!
-//! - **단계는 누적 다섯**: 끔(블록 없음 · 기본) < 구조만 < 읽기 전용 < 승인 후 실행 < 모두 승인. **허용 목록으로 고르는 'Auto'
-//!   은 없다**(10-14 사용자 결정 D4 — SQL 은 셸 허용 목록으로 범위를 말할 수 없다). 그 대신 **모두 승인**(`all` — 2026-10-23 사용자 결정,
-//!   docs/log/2026-10-23-approve-all.md)은 범위를 "이 연결 전부" 로 명시한다 — 이 연결 하나만 대상인 쓰기 작업안은 사람 없이 승인된다
-//!   (실행 직전 재판정 · 따로 연 쓰기 연결 · 한 트랜잭션 · `maxAffected` 되돌림은 그대로). 모르는 글자(`ai = "auto"` 같은 손 편집)는
-//!   **끔**으로 읽는다(넓히지 않는다 — 옛 판은 `"all"` 을 끔으로 읽는다).
-//! - **신원 스냅샷이 어긋나면 끔이다**([`Delegation::db_level`]) — 연결을 다른 서버로 고쳐 가리키거나(주소 · 포트 · DB · 사용자 ·
-//!   엔진 · 파일), 경유 호스트를 바꾸거나, 그 별칭이 `~/.ssh/config` 에서 다른 서버를 가리키게 되면 권한이 풀린다(테스트 DB 에
-//!   준 권한이 운영 DB 로 새지 않게 — 호스트 위임의 `expect_user/host/port` 와 같은 그물). 스냅샷은 **Rust 가 적는 순간**
-//!   `db-connections.json`(+ `~/.ssh/config`)에서 계산한다 — 프런트는 단계 하나만 보낸다.
-//! - **쓰는 길은 Tauri 명령뿐**([`db_ai_set`] · [`db_ai_remove`]) + 연결 목록 · 호스트 편집의 따라가기([`forget_databases`] ·
-//!   [`follow_via_rename`]) + 설정 가져오기(`crate::settings_transfer` — 블록을 스냅샷째 옮겨 대상이 다르면 끔으로 읽힌다). **MCP 에는 이 블록을 고치는 도구가 없다**(호스트 위임과 같은 규칙 — AI 는 자기 권한을 넓힐 표면이 없다).
-//! - **판정은 세션 서버에서**(MCP 도구 호출마다 파일을 새로 읽는다 — `mcp::db`). GUI 의 [`db_ai_list`] 는 화면용 사본이다.
-//! - **헤드리스(`headless`) = 타일 없이 AI 가 볼트의 비밀번호로 새로 여는 것**(2026-11-09 사용자 결정 — SSH 호스트 위임의 헤드리스 접속과 같은
-//!   원칙: 사람이 연 세션 위의 일은 붙은 접근, 사람 없이 새로 여는 것은 명시적 위임). 단계와 따로인 칸이고, 단계가 끔이거나 신원 스냅샷이
-//!   어긋나면 함께 꺼진다([`Delegation::db_headless`]). 판정 자리는 AI 연결의 비밀번호 차례(`db::ai::open_with`) 하나 — 빌린 값(사람 타일이
-//!   열린 동안)은 이 칸과 무관하다. **SQLite 도 이 칸을 따른다**(같은 날 — 비밀번호가 없어도 사람 없이 여는 것은 위임): 그 연결의 사람 타일이
-//!   세션 서버 표에 없으면 켠 연결만 AI 가 파일을 연다(`db::ai::sqlite_gate` — 읽기 · 쓰기 작업안 공통). **이관**: 칸이 없는 블록(이 칸 전에 적힌 것)은 **켬**으로 읽는다(그때까지의 동작 — 읽기 해석이라 파일을
-//!   고치지 않는다). 새로 만드는 블록 · 스냅샷이 바뀌어 다시 적는 블록은 `headless = false` 를 **명시**한다([`upsert_database_in_doc`]).
-//!   편집은 [`db_ai_set`] 의 `headless` 인자뿐(같은 Tauri 명령 — 원격 재확인 등급도 같다).
-//!
-//! ## 따라가기
-//!
-//! | 사건 | 블록 |
-//! |---|---|
-//! | 연결 삭제(목록 저장에서 빠짐 · 경유 호스트 삭제로 함께 지워짐) | 지운다([`forget_databases`]) |
-//! | 연결 이름 변경 | 그대로(열쇠는 id · 이름은 스냅샷이 아니다) |
-//! | 경유 호스트 **별칭 이름** 변경(`config_edit::edit_host`) | `expect_via` 만 새 이름으로([`follow_via_rename`] — 같은 서버다. `expect_via_target` 이 그 증거) |
-//! | 연결의 대상 · 경유를 바꿈 | 그대로 두되 **끔으로 읽힌다**(화면이 "다시 고르세요" 를 보인다 · 폼은 대상이 바뀌면 AI 칸을 끔으로 되돌린다) |
+//! - 단계는 누적 `off(블록 없음) < schema < read < approve < all`. **허용 목록 'Auto' 는 없다** — SQL 은 셸 허용 목록으로 범위를 말할 수 없다.
+//!   `all` 은 이 연결 하나만 대상인 쓰기 작업안을 사람 없이 승인한다(실행 직전 재판정 · 따로 연 쓰기 연결 · 한 트랜잭션 · `maxAffected` 되돌림은 그대로).
+//!   모르는 글자는 끔으로 읽는다 — 넓히지 않는다.
+//! - **신원 스냅샷이 어긋나면 끔이다**(엔진 · 주소 · 포트 · DB · 사용자 · 파일 · 경유 별칭 · 그 별칭이 가리키는 SSH 서버) — 테스트 DB 의 권한이 운영 DB 로 새지 않게.
+//!   스냅샷은 Rust 가 적는 순간 계산한다 — 프런트는 단계만 보낸다.
+//! - 쓰는 길은 Tauri 명령 · 연결 목록 · 호스트 편집의 따라가기 · 설정 가져오기뿐 — **MCP 에는 이 블록을 고치는 도구가 없다**(→ docs/invariants.md 전문 8).
+//! - 판정은 세션 서버가 MCP 호출마다 파일을 새로 읽어 한다 — [`db_ai_list`] 는 화면용 사본이다.
+//! - `headless` = 타일 없이 AI 가 볼트 비밀번호로 새로 여는 것(SQLite 도 사람 타일이 없으면 이 칸을 따른다). 단계가 끔이거나 스냅샷이 어긋나면 함께 꺼지고,
+//!   빌린 값(사람 타일이 열린 동안)과는 무관하다. 칸이 없는 옛 블록은 켬으로 읽고, 새 블록 · 대상이 바뀐 블록은 `false` 를 명시한다.
+//! - 연결 이름 변경 · 경유 별칭 이름 변경은 권한을 지키고(`expect_via_target` 이 같은 서버의 증거), 대상 · 경유를 바꾸면 블록은 남되 끔으로 읽힌다.
 
 use std::path::Path;
 
@@ -60,20 +26,19 @@ use crate::db::conns::{self, DbConn, DbEngine};
 use crate::i18n::tr;
 use crate::sessions_meta::match_line_endings;
 
-/// DB 연결의 AI 권한 단계 — 누적(아래가 위를 포함). 글자는 파일 · 프런트 · MCP 에 그대로(`"off"` · `"schema"` · `"read"` · `"approve"`).
+/// 글자는 파일 · 프런트 · MCP 에 그대로 남는다 — 바꾸지 않는다. 변형 순서가 곧 누적 비교(`Ord`)다.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DbAiLevel {
-    /// 연결이 AI 목록에도 안 보인다(기본 · 블록 없음).
     #[default]
     Off,
-    /// 스키마 · 객체 · 테이블 구조 · DDL 만(행이 밖으로 나가지 않는다).
+    /// 구조 · DDL 만 — 행이 밖으로 나가지 않는다.
     Schema,
-    /// + 조회 문장(행 상한) — **결과 행이 모델 제공자로 간다**.
+    /// 결과 행이 모델 제공자로 간다.
     Read,
-    /// + 쓰기 작업안(사람 승인 — 3b). 3a 에서는 읽기 전용과 같이 동작한다(쓰기 도구가 아직 없다).
+    /// 쓰기 작업안(사람 승인).
     Approve,
-    /// + 쓰기 작업안을 **사람 없이 승인**(모두 승인 — 2026-10-23). 전체 스위치 `[automation] auto_approve` 가 꺼져 있으면 사람을 기다린다.
+    /// 쓰기 작업안을 사람 없이 승인 — 전체 스위치 `[automation] auto_approve` 가 꺼져 있으면 사람을 기다린다.
     All,
 }
 
@@ -88,7 +53,7 @@ impl DbAiLevel {
         }
     }
 
-    /// 화면 · MCP 문구의 단계 이름 — **모든 언어에서 같은 영어 낱말**(2026-10-23 — 프런트 `app.ai.stage.*` · `app.dbai.level.schema` 와 같은 글자).
+    /// 모든 언어에서 같은 영어 낱말 — 프런트 `app.ai.stage.*` · `app.dbai.level.schema` 와 같은 글자.
     pub fn name(self) -> &'static str {
         match self {
             DbAiLevel::Off => "Off",
@@ -99,7 +64,7 @@ impl DbAiLevel {
         }
     }
 
-    /// 파일의 글자 → 단계. **모르는 글자는 끔**(손 편집의 `"auto"` 같은 것 — 넓히지 않는다).
+    /// 모르는 글자(손 편집의 `"auto"` 등)는 끔 — 넓히지 않는다.
     pub fn parse(s: &str) -> DbAiLevel {
         match s.trim() {
             "schema" => DbAiLevel::Schema,
@@ -111,13 +76,13 @@ impl DbAiLevel {
     }
 }
 
-/// `[[database]]` 블록 하나(읽기). 스냅샷 칸이 없으면(손 편집) 스냅샷 비교가 어긋나 끔이 된다.
+/// 스냅샷 칸이 없으면(손 편집) 스냅샷 비교가 어긋나 끔이 된다.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct DatabaseTarget {
     pub id: String,
     #[serde(default)]
     pub ai: String,
-    /// 타일 없이 AI 접속(볼트의 비밀번호) — `None` = 칸이 없는 옛 블록(켬으로 읽는다 — [`DatabaseTarget::headless`]).
+    /// `None` = 칸이 없는 옛 블록(켬으로 읽는다).
     #[serde(default)]
     pub headless: Option<bool>,
     #[serde(default)]
@@ -143,7 +108,7 @@ impl DatabaseTarget {
         DbAiLevel::parse(&self.ai)
     }
 
-    /// 파일의 헤드리스 칸 — **칸이 없으면 켬**(이관: 이 칸 전에 적힌 블록은 타일 없이도 볼트로 열렸다 — 그 동작을 깨지 않는다).
+    /// 칸이 없으면 켬 — 이 칸 전에 적힌 블록은 타일 없이도 볼트로 열렸다. 그 동작을 깨지 않는다.
     pub fn headless(&self) -> bool {
         self.headless.unwrap_or(true)
     }
@@ -162,9 +127,7 @@ impl DatabaseTarget {
     }
 }
 
-/// 연결의 **신원 스냅샷** — 이 값이 같아야 같은 DB 다(B-2). 이름 · TLS 모드 · CA 는 들지 않는다(같은 서버에 붙는 방법이지 다른 서버가
-/// 아니다). `via_target` = 경유 별칭이 지금 가리키는 SSH 서버(`user@host:port`) — 별칭 이름은 같은데 `~/.ssh/config` 가 다른 서버로
-/// 바뀐 경우를 가른다.
+/// 이름 · TLS 모드 · CA 는 들지 않는다(붙는 방법이지 다른 서버가 아니다). `via_target` = 경유 별칭이 가리키는 `user@host:port`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DbIdentity {
     engine: String,
@@ -177,7 +140,7 @@ pub(crate) struct DbIdentity {
     path: Option<String>,
 }
 
-/// 엔진의 파일 글자(`db-connections.json` 과 같은 소문자).
+/// `db-connections.json` 과 같은 글자 — 파일에 남는다.
 pub(crate) fn engine_str(e: DbEngine) -> &'static str {
     match e {
         DbEngine::Postgres => "postgres",
@@ -188,7 +151,6 @@ pub(crate) fn engine_str(e: DbEngine) -> &'static str {
 }
 
 impl DbIdentity {
-    /// 연결 한 줄 + 경유 별칭이 지금 가리키는 곳 → 스냅샷 — **순수**.
     pub(crate) fn of(conn: &DbConn, via_target: Option<String>) -> DbIdentity {
         DbIdentity {
             engine: engine_str(conn.engine).to_string(),
@@ -202,7 +164,7 @@ impl DbIdentity {
         }
     }
 
-    /// 같은 DB 인가 — 경유 별칭만 대소문자를 무시한다(ssh config 별칭 비교와 같은 눈 — `conns::same_alias`).
+    /// 경유 별칭만 대소문자를 무시한다(ssh config 별칭 비교와 같은 눈).
     pub(crate) fn same(&self, other: &DbIdentity) -> bool {
         let via_same = match (&self.via, &other.via) {
             (None, None) => true,
@@ -220,26 +182,22 @@ impl DbIdentity {
     }
 }
 
-/// `user@host:port` — [`identity_snapshot`] 의 글자 꼴(경유 별칭의 신원).
+/// 글자 꼴은 파일의 `expect_via_target` 에 남는다 — 바꾸면 적힌 블록이 모두 끔이 된다.
 fn via_target_text(alias: &str) -> Result<String, String> {
     let s = identity_snapshot(alias)?;
     Ok(format!("{}@{}:{}", s.user, s.host, s.port))
 }
 
-/// 경유 별칭이 **지금** 가리키는 SSH 서버 — 못 읽으면 `None`(스냅샷이 어긋나 끔이 된다 · 닫힌 쪽으로 실패). 세션 서버의 MCP 판정과 GUI
-/// 의 화면 사본이 같은 함수를 지난다.
+/// 못 읽으면 `None` — 스냅샷이 어긋나 끔이 된다(닫힌 쪽으로 실패). MCP 판정과 화면 사본이 이 함수 하나를 지난다.
 pub(crate) fn current_via_target(alias: &str) -> Option<String> {
     via_target_text(alias).ok()
 }
 
 impl Delegation {
-    /// 연결 id 의 블록(정확히 같은 id).
     pub fn database(&self, id: &str) -> Option<&DatabaseTarget> {
         self.databases.iter().find(|d| d.id == id)
     }
 
-    /// 이 연결의 **AI 권한 단계** — 블록이 없거나 신원 스냅샷이 어긋나면 [`DbAiLevel::Off`]. `via_target` = 경유 별칭이 지금 가리키는
-    /// 곳([`current_via_target`] — 직접 연결이면 무시). **순수**(파일 · 설정은 부르는 쪽이 읽는다).
     pub(crate) fn db_level(&self, conn: &DbConn, via_target: Option<&str>) -> DbAiLevel {
         let Some(t) = self.database(&conn.id) else {
             return DbAiLevel::Off;
@@ -250,21 +208,16 @@ impl Delegation {
         t.level()
     }
 
-    /// 이 연결에 **타일 없이 AI 접속**(볼트의 비밀번호)이 위임됐나 — 단계가 끔이 아니고(스냅샷 포함 — [`Delegation::db_level`]) 칸이 켜졌을
-    /// 때만. **순수.**
     pub(crate) fn db_headless(&self, conn: &DbConn, via_target: Option<&str>) -> bool {
         self.db_level(conn, via_target) != DbAiLevel::Off && self.database(&conn.id).is_some_and(DatabaseTarget::headless)
     }
 
-    /// 블록 전부(파일 순서).
     pub(crate) fn databases(&self) -> &[DatabaseTarget] {
         &self.databases
     }
 }
 
-// ---------------------------------------------------------------------------
-// 쓰기 — `[[database]]` 국소 편집(호스트 블록 `[[target]]` 과 같은 규칙: 아는 키만 · 주석 · 순서 보존)
-// ---------------------------------------------------------------------------
+// ── 쓰기 — `[[database]]` 국소 편집 ──
 
 const KEY: &str = "database";
 
@@ -287,7 +240,7 @@ fn index_of(arr: &ArrayOfTables, id: &str) -> Option<usize> {
     arr.iter().position(|t| t.get("id").and_then(Item::as_str).is_some_and(|a| a == id))
 }
 
-/// 값이 있으면 적고 없으면 키를 지운다(스냅샷의 빈칸 — 직접 연결로 바뀌면 `expect_via` 가 남지 않게).
+/// 없으면 키를 지운다 — 직접 연결로 바뀌면 `expect_via` 가 남지 않게.
 fn put_opt(table: &mut Table, key: &str, v: Option<Value>) {
     match v {
         Some(v) => put(table, key, v),
@@ -312,7 +265,6 @@ fn write_database(table: &mut Table, id: Option<&str>, ident: &DbIdentity, level
     put_opt(table, "expect_path", ident.path.as_deref().map(Value::from));
 }
 
-/// 연결들의 블록을 걷어낸 문서 전체와 지운 개수 — **순수**. 걸리는 것이 없으면 입력 그대로.
 pub(crate) fn remove_databases_in_doc(content: &str, ids: &[String]) -> Result<(String, usize), String> {
     if ids.is_empty() {
         return Ok((content.to_string(), 0));
@@ -340,9 +292,7 @@ pub(crate) fn remove_databases_in_doc(content: &str, ids: &[String]) -> Result<(
     Ok((match_line_endings(content, with_rescued(doc.to_string(), &carry)), removed))
 }
 
-/// 연결 하나의 권한을 적거나(단계 + 스냅샷 + 헤드리스) 지운다(끔) — **순수**. `headless`: `Some` = 그 값을 적는다 · `None` = 그대로 두되
-/// **새 블록이거나 스냅샷이 바뀐 블록이면 `false` 를 명시**한다(새 대상에 옛 위임을 옮기지 않는다 · 옛 블록의 "칸 없음 = 켬" 이 새 블록에
-/// 번지지 않게).
+/// `headless` 가 `None` 이어도 새 블록 · 스냅샷이 바뀐 블록은 `false` 를 명시한다 — 옛 위임 · "칸 없음 = 켬" 이 새 대상에 번지지 않게.
 pub(crate) fn upsert_database_in_doc(
     content: &str,
     id: &str,
@@ -357,7 +307,7 @@ pub(crate) fn upsert_database_in_doc(
     if level == DbAiLevel::Off {
         return Ok(remove_databases_in_doc(content, &[id.to_string()])?.0);
     }
-    // 지금 블록이 같은 대상을 가리키나(파일을 읽는 눈 그대로 — 못 읽으면 다른 대상으로 본다 · 닫힌 쪽).
+    // 못 읽으면 다른 대상으로 본다(닫힌 쪽).
     let same_target = Delegation::parse(content)
         .ok()
         .and_then(|d| d.database(id).map(|t| t.identity().same(ident)))
@@ -389,7 +339,6 @@ pub(crate) fn upsert_database_in_doc(
     Ok(match_line_endings(content, doc.to_string()))
 }
 
-/// 경유 별칭 이름 변경을 따라간다 — `expect_via` 가 `from`(대소문자 무시)인 블록을 `to` 로. 고친 수 — **순수**.
 pub(crate) fn rename_via_in_doc(content: &str, from: &str, to: &str) -> Result<(String, usize), String> {
     let (from, to) = (from.trim(), to.trim());
     if from.is_empty() || to.is_empty() || from == to {
@@ -414,11 +363,9 @@ pub(crate) fn rename_via_in_doc(content: &str, from: &str, to: &str) -> Result<(
     Ok((match_line_endings(content, doc.to_string()), n))
 }
 
-// ---------------------------------------------------------------------------
-// 파일 입출력
-// ---------------------------------------------------------------------------
+// ── 파일 입출력 ──
 
-/// 지금 연결 줄의 스냅샷(경유 별칭의 신원까지) — 적는 순간의 값. 경유 별칭을 못 펴면 오류(적지 않는다).
+/// 경유 별칭을 못 펴면 오류 — 적지 않는다.
 fn identity_now(conn: &DbConn) -> Result<DbIdentity, String> {
     let via_target = match &conn.via {
         Some(alias) => Some(via_target_text(alias)?),
@@ -445,8 +392,7 @@ fn remove_at(path: &Path, ids: &[String]) -> Result<usize, String> {
     Ok(n)
 }
 
-/// **연결이 사라졌다**(목록 저장에서 빠짐 · 경유 호스트 삭제) — 그 블록을 지운다. 실패는 경고 문구(이미 끝난 저장을 되돌리지 않는다).
-/// 블로킹(디스크) — 부르는 쪽이 블로킹 풀에서.
+/// 블로킹(디스크) — 부르는 쪽이 블로킹 풀에서. 실패는 경고로만 — 이미 끝난 연결 저장을 되돌리지 않는다.
 pub(crate) fn forget_databases(ids: &[String]) -> Result<usize, String> {
     if ids.is_empty() {
         return Ok(0);
@@ -454,7 +400,7 @@ pub(crate) fn forget_databases(ids: &[String]) -> Result<usize, String> {
     remove_at(&path_or_err()?, ids)
 }
 
-/// **경유 호스트 별칭 이름이 바뀌었다**(`config_edit::edit_host`) — `expect_via` 를 따라 적는다(같은 서버 — `expect_via_target` 은 그대로).
+/// `expect_via_target` 은 그대로 둔다 — 같은 서버다.
 pub(crate) fn follow_via_rename(from: &str, to: &str) -> Result<usize, String> {
     let path = path_or_err()?;
     let (before, existed) = read_or_empty(&path)?;
@@ -463,46 +409,35 @@ pub(crate) fn follow_via_rename(from: &str, to: &str) -> Result<usize, String> {
     Ok(n)
 }
 
-// ---------------------------------------------------------------------------
-// 명령(GUI) — 화면의 사본 · 쓰기. 판정은 세션 서버(MCP)가 같은 파일을 다시 읽어 한다.
-// ---------------------------------------------------------------------------
+// ── 명령(GUI) ──
 
-/// 화면이 보는 한 줄 — **스냅샷 값은 내보내지 않는다**(호스트 위임의 `DelegationTargetView` 와 같은 까닭 — 프런트가 쥐면 고칠 수 있는
-/// 칸으로 보인다). 대신 지금 연결과 맞는지(`identityOk`)만 말한다.
+/// 스냅샷 값은 내보내지 않는다 — 프런트가 쥐면 고칠 수 있는 칸으로 보인다. 맞는지(`identityOk`)만 말한다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbAiView {
     pub id: String,
-    /// 파일에 적힌 단계(스냅샷이 어긋나도 그대로 — 실제 효력은 `identityOk` 와 함께 읽는다).
+    /// 파일에 적힌 단계 — 효력은 `identityOk` 와 함께 읽는다.
     pub level: DbAiLevel,
-    /// 타일 없이 AI 접속(볼트의 비밀번호) — 파일의 칸(칸이 없는 옛 블록은 켬 — [`DatabaseTarget::headless`]). 효력은 `level` 과 같이 `identityOk` 와 함께.
     pub headless: bool,
-    /// 지금 연결 줄과 스냅샷이 같다(거짓 = 권한이 풀려 끔으로 동작한다 — "다시 고르세요").
     pub identity_ok: bool,
-    /// 그 id 의 연결이 목록에 있다(거짓 = 고아 블록 — [제거]).
+    /// 거짓 = 고아 블록.
     pub conn_known: bool,
-    /// 연결 이름(있을 때 — 설정 › 보안의 표가 쓴다).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
-/// [`db_ai_list`] 의 답.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbAiList {
     pub targets: Vec<DbAiView>,
-    /// 붙은 세션 서버가 DB MCP 도구를 아는 판인가(판 11 — `server::ipc::frame::DB_AI_PROTOCOL`). 거짓이면 화면이 "세션 서버를 다시
-    /// 시작해야 AI 가 DB 를 봅니다" 를 밝힌다(권한 저장 자체는 된다 — 파일은 GUI 가 쓴다).
+    /// 붙은 세션 서버가 DB MCP 도구를 아는 판인가 — 권한 저장 자체는 된다(파일은 GUI 가 쓴다).
     pub server_ready: bool,
-    /// 붙은 세션 서버가 AI 의 DB 쓰기 작업안을 아는 판인가(판 12 — `server::ipc::frame::DB_WRITE_PLAN_PROTOCOL`, 3b). 거짓이면 'Ask'
-    /// 단계가 "세션 서버를 다시 시작해야 쓰기 작업안이 섭니다" 를 밝힌다(그때까지는 읽기 전용과 같다).
+    /// 붙은 세션 서버가 DB 쓰기 작업안을 아는 판인가 — 모르면 'Ask' 가 읽기 전용과 같다.
     pub write_plans: bool,
-    /// 붙은 세션 서버가 DB 연결 폼의 [연결 테스트](op `db_test`)를 아는 판인가(판 28 — `server::ipc::frame::DB_TEST_PROTOCOL`). 거짓이면
-    /// 폼이 그 단추를 숨긴다(이 목록은 폼이 열릴 때 이미 다시 읽힌다 — 판 표지를 한곳에서 받으려고 여기 싣는다).
+    /// 붙은 세션 서버가 op `db_test` 를 아는 판인가.
     pub conn_test: bool,
 }
 
-/// 블록들 + 지금 연결 목록 → 화면 줄 — **순수**(경유 신원은 `via_target` 이 답한다).
 pub(crate) fn views(d: &Delegation, list: &[DbConn], via_target: impl Fn(&str) -> Option<String>) -> Vec<DbAiView> {
     d.databases()
         .iter()
@@ -524,7 +459,6 @@ pub(crate) fn views(d: &Delegation, list: &[DbConn], via_target: impl Fn(&str) -
         .collect()
 }
 
-/// DB 연결의 AI 권한 전부(화면 사본). **오류가 없다** — 파일이 없거나 깨졌으면 권한이 없는 것이다.
 #[tauri::command]
 pub async fn db_ai_list() -> DbAiList {
     let targets = tauri::async_runtime::spawn_blocking(|| {
@@ -543,9 +477,7 @@ pub async fn db_ai_list() -> DbAiList {
     }
 }
 
-/// 연결 하나의 AI 권한을 저장한다(끔 = 블록을 지운다). 스냅샷은 여기서 `db-connections.json`(+ `~/.ssh/config`)으로 계산한다.
-/// `headless` = 타일 없이 AI 접속(볼트의 비밀번호) — 없으면 그대로(새 블록 · 대상이 바뀐 블록은 끔 — [`upsert_database_in_doc`]). 이 칸을
-/// 바꾸는 길은 이 명령 하나다(원격 창에서는 단계와 같은 재확인 — `remote::deny` 의 REAUTH).
+/// `headless` 를 바꾸는 길은 이 명령 하나다(원격 창에서는 단계와 같은 재확인 — `remote::deny` 의 REAUTH).
 #[tauri::command]
 pub async fn db_ai_set(app: tauri::AppHandle, id: String, level: DbAiLevel, headless: Option<bool>) -> Result<(), String> {
     let out = tauri::async_runtime::spawn_blocking(move || set_at(&path_or_err()?, &id, level, headless))
@@ -554,7 +486,6 @@ pub async fn db_ai_set(app: tauri::AppHandle, id: String, level: DbAiLevel, head
     announce_on_ok(&app, out)
 }
 
-/// 블록들을 지운다(설정 › 보안 표의 [제거] — 고아 블록 포함). 지운 수.
 #[tauri::command]
 pub async fn db_ai_remove(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
     let out = tauri::async_runtime::spawn_blocking(move || remove_at(&path_or_err()?, &ids))
@@ -602,8 +533,6 @@ mod tests {
         assert!(DbAiLevel::Schema < DbAiLevel::Read && DbAiLevel::Read < DbAiLevel::Approve && DbAiLevel::Approve < DbAiLevel::All);
     }
 
-    /// 시험 `db_permission_follows_identity_snapshot`(B-9) — 연결의 host · database · user · port · via · engine 을 바꾸거나 경유 별칭이 다른
-    /// 서버를 가리키면 권한이 끔으로 읽힌다. 이름 · TLS 는 바뀌어도 그대로.
     #[test]
     fn db_permission_follows_identity_snapshot() {
         let c = pg("Qp9-pg-dev01");
@@ -639,9 +568,6 @@ mod tests {
         assert_eq!(d.db_level(&pg("Other_conn01"), Some(VIA)), DbAiLevel::Off);
     }
 
-    /// 시험 `db_headless_migration`(2026-11-09) — 칸이 없는 옛 블록은 **켬**으로 읽고(그때까지의 동작) 파일은 고치지 않는다 · 새로 만드는
-    /// 블록은 `headless = false` 를 명시 · 단계만 바꾸면(`None`) 칸을 그대로 둔다(옛 블록의 칸 없음도) · 값을 주면 그 값 · 스냅샷이 바뀐 다시
-    /// 적기는 `false` 로 되돌린다 · 단계가 끔이거나 스냅샷이 어긋나면 헤드리스도 꺼진다 · 끔 = 블록째 지움.
     #[test]
     fn db_headless_migration() {
         let c = pg("Qp9-pg-dev01");

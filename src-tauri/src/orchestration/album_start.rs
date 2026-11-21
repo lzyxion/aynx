@@ -1,4 +1,4 @@
-//! 사람이 첫 말로 여는 앨범(설계 3-1). 파일 · git은 잠금 밖, Run · 묶음 · 귀속만 한 잠금에서 확정한다.
+//! 사람이 첫 말로 여는 앨범 — Run 이 열리는 유일한 길. 파일 · git은 잠금 밖, Run · 묶음 · 귀속만 한 잠금에서 확정한다.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -95,7 +95,7 @@ pub(crate) fn empty_album() -> AlbumConfig {
 }
 
 impl AlbumInput {
-    /// ① 순수 모양 · 위험 검사. 검증 글자는 이 사람 입력에서만 사본이 된다.
+    /// 검증 글자는 이 사람 입력에서만 사본이 된다.
     pub(crate) fn validate(&self, now: u64) -> Result<(AlbumConfig, Limits, Option<VerifyConfig>), OrchError> {
         if self.members.len() > repo::ROLES_MAX || self.wake_max > 200 || self.accept.max_rework > repo::REWORK_MAX {
             return Err(bad("앨범 멤버 · 깨움 · 되돌림 한도가 올바르지 않습니다"));
@@ -127,7 +127,7 @@ impl AlbumInput {
             changed_at: now,
             auto_merge: self.auto_merge,
         };
-        // 자동 병합의 조건이 "검증 통과" 다 — 검증 명령이 없으면 켤 수 없다(서버 판정 — 화면의 비활성은 거울).
+        // 자동 병합의 조건이 "검증 통과" 다 — 판정은 서버가 한다(화면의 비활성은 거울).
         if album.auto_merge && self.verify.command.trim().is_empty() {
             return Err(OrchError::new("no-verify-command", "자동 병합은 검증 명령이 있어야 켤 수 있습니다"));
         }
@@ -147,7 +147,7 @@ impl AlbumInput {
     }
 }
 
-/// ⑤에서 만든 ref의 소유자. 확정 전 어느 반환 길로 나가도 ref를 거둔다.
+/// 통합 ref 의 소유자 — 확정 전 어느 반환 길로 나가도 ref 를 거둔다.
 pub(crate) struct PreparedAlbum {
     owner: Arc<Orchestration>,
     pub id: String,
@@ -169,7 +169,7 @@ impl Drop for PreparedAlbum {
 }
 
 impl PreparedAlbum {
-    /// ⑦ 채팅 잠금을 놓고 부른다. 생존 · 상한 · 귀속을 확정 잠금에서 다시 본다.
+    /// 채팅 잠금을 놓고 부른다. 생존 · 상한 · 귀속을 확정 잠금에서 다시 본다.
     pub(crate) fn commit(&mut self, seat: &Seat) -> Result<(), OrchError> {
         super::start::before_bind();
         checkpoint("bind")?;
@@ -199,7 +199,7 @@ impl Orchestration {
         source(repo)
     }
 
-    /// ③~⑤ 서버가 읽은 저장소와 프로필로 구성 사본을 완성하고 통합 ref만 만든다.
+    /// 서버가 읽은 저장소와 프로필로 구성 사본을 완성하고 통합 ref 만 만든다.
     pub(crate) fn prepare_album(self: &Arc<Self>, start: StartRun, mut album: AlbumConfig, producer: ProducerConfig) -> Result<PreparedAlbum, OrchError> {
         let inputs = self.album_start_inputs(&start.repo);
         let identity = inputs.identity.as_ref().map_err(|e| OrchError::new("not-a-repo", e.text()))?;
@@ -302,7 +302,6 @@ impl Orchestration {
             .into_iter()
             .filter(|r| r.album.is_some() && crate::worktree::comparable(&r.repo) == crate::worktree::comparable(repo))
             .max_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        // 화면의 "지난번에 고른 구성" 문구는 같은 저장소의 지난 Run 이 있을 때만(없으면 씨앗 기본).
         let from_last = latest.is_some();
         let (mut album, limits, verify, producer) = match latest {
             Some(r) => (r.album.unwrap(), r.limits, r.verify, r.origin.producer_config),

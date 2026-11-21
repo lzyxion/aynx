@@ -1,12 +1,5 @@
-// **diff 타일의 줄 코멘트 상태** — `DiffView.svelte` 에서 그대로 옮긴 컨트롤러(2026-10-27 분할 5차).
-// `DiffView` 가 하나 만들고(`createDiffComments` — 지금 파일 · 자리 · 고른 줄 · 명세는 게터로) 값은 게터로 읽는다.
-//
-// 쥐는 것: 코멘트(타일 메모리에만 — 명세 · 배치 파일 · 디스크에 싣지 않는다) · 쓰는 중인 코멘트(`composer` — 연 순간의 파일 · 줄 ·
-// 자리(범위 · 커밋 · 묶음)를 들고 있어 그사이 범위를 바꿔도 대상이 그대로다) · 입력 글 · 받을 곳(AI 타일) 고르개 · 넘기기.
-// 넘기기는 **붙여 넣기만**이다(Enter 없음 — `app/diff-view` 의 `pasteDiffText`). AI 타일이 없으면 복사.
-//
-// `$effect` · 리스너는 없다. 줄 고르기(시작 · 끝 줄 · 끄는 중) · 칩 → 그 줄로 가기(`jumpTo`) · 카드 · 입력 칸의 자리(`cardsAt` ·
-// `composerAt` — 보기마다 다른 짝 줄 자리)는 `DiffView` 에 있다.
+// diff 타일의 줄 코멘트 상태 — 코멘트는 타일 메모리에만 산다(명세 · 배치 파일 · 디스크에 싣지 않는다).
+// 넘기기는 붙여 넣기만이다(Enter 없음).
 import { tick } from "svelte";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { copyDiffText, diffHostLabel, diffTargets, pasteDiffText } from "$lib/app/diff-view.svelte.js";
@@ -21,37 +14,29 @@ import {
 import type { Project } from "$lib/projects";
 import type { DiffEntry, DiffFiles, DiffLine, DiffSpec } from "$lib/diff-view";
 
-/** 쓰는 중인 코멘트 — 그 파일 · 그 줄들 아래에 선다(`editing` = 고치는 코멘트 id) */
+/** 연 순간의 파일 · 줄 · 자리를 들고 있어 그사이 범위를 바꿔도 대상이 그대로다(`editing` = 고치는 코멘트 id) */
 export type DiffComposer = { path: string; keys: string[]; lines: DiffLine[]; label: string; editing: number | null } & DiffCommentWhere;
 
-/** `DiffView` 가 넘기는 값 — **게터**라 그때그때의 값이다(생성 시점 사본이 아니다). */
+/** 게터라 그때그때의 값이다(생성 시점 사본이 아니다) */
 export interface DiffCommentsHost {
   readonly paneId: string;
   readonly spec: DiffSpec;
   readonly project: Project | null;
-  /** 읽은 파일 목록(답) — 붙여 넣을 글의 main · 끝 커밋 */
   readonly files: DiffFiles | null;
   readonly branch: string | null;
   readonly worktree: string | null;
-  /** 지금 보는 파일 */
   readonly current: DiffEntry | null;
-  /** 지금 보는 파일의 자리 — 범위 · 커밋 · 묶음 */
   readonly here: DiffCommentWhere | null;
-  /** 고른 줄 열쇠(차례대로) */
   readonly selKeys: string[];
-  /** 지금 파일의 모든 줄 */
   readonly allLines: DiffLine[];
-  /** 타일 뿌리 — 입력 칸을 닫으면 포커스를 돌려준다 */
   readonly rootEl: HTMLDivElement | null;
-  /** 줄 고르기를 걷는다(시작 · 끝 줄) */
   clearSelection(): void;
 }
 
-/** 줄 코멘트 하나를 만든다 — 상태는 이 안에 살고 읽기는 게터로 */
 export function createDiffComments(h: DiffCommentsHost) {
   let comments = $state<DiffComment[]>([]);
   let nextCommentId = 1;
-  /** 쓰는 중인 코멘트 — 그 파일 · 그 줄들 아래에 선다(`editing` = 고치는 코멘트 id) */
+  /** 연 순간의 파일 · 줄 · 자리를 들고 있어 그사이 범위를 바꿔도 대상이 그대로다(`editing` = 고치는 코멘트 id) */
   let composer = $state<DiffComposer | null>(null);
   let draft = $state("");
   let composerEl = $state<HTMLTextAreaElement | null>(null);
@@ -111,7 +96,7 @@ export function createDiffComments(h: DiffCommentsHost) {
     h.rootEl?.focus({ preventScroll: true });
   }
 
-  /** 입력 칸의 키 — Ctrl+Enter 추가 · Esc 취소(전파를 끊어 타일 · 창의 Esc 가 같이 돌지 않게) */
+  /** Esc 는 전파를 끊는다 — 타일 · 창의 Esc 가 같이 돌지 않게 */
   function onComposerKey(ev: KeyboardEvent): void {
     if (ev.isComposing || ev.keyCode === 229) return;
     if (ev.code === "Enter" && ev.ctrlKey && !ev.altKey && !ev.shiftKey) {
@@ -135,7 +120,6 @@ export function createDiffComments(h: DiffCommentsHost) {
     if (composer?.editing === c.id) composer = null;
   }
 
-  /** 붙여 넣을 글 — 넘기지 않은 코멘트만 */
   function pasteText(list: readonly DiffComment[]): string {
     const p = h.project;
     const spec = h.spec;
@@ -154,7 +138,7 @@ export function createDiffComments(h: DiffCommentsHost) {
     );
   }
 
-  /** AI 타일에 넘기기 — 붙여 넣기만(Enter 없음). 넣었으면 그 코멘트들을 "넘김" 으로. AI 타일이 없으면 복사 */
+  /** 붙여 넣기만(Enter 없음) */
   async function handOver(): Promise<void> {
     const list = unsent;
     if (list.length === 0) return;
@@ -183,21 +167,18 @@ export function createDiffComments(h: DiffCommentsHost) {
     get composer() {
       return composer;
     },
-    /** 입력 칸의 글(`CommentComposer` 가 묶는다) */
     get draft() {
       return draft;
     },
     set draft(v: string) {
       draft = v;
     },
-    /** 입력 칸(`CommentComposer` 가 묶는다) */
     get composerEl() {
       return composerEl;
     },
     set composerEl(v: HTMLTextAreaElement | null) {
       composerEl = v;
     },
-    /** 받을 곳 고르개가 열렸나(`CommentTray` 가 묶고, 바깥 누르기 · Esc 가 닫는다) */
     get targetMenu() {
       return targetMenu;
     },

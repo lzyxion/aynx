@@ -1,36 +1,7 @@
 <script lang="ts">
   /**
-   * **에이전트 알림 배너** — 창 위 가운데에 쌓이는 카드 (docs/log/2026-09-27-agent-banners.md).
-   *
-   * 에이전트의 턴 끝 · 권한 물음만 여기 선다 — AI 타일의 것과 **사이드 채팅**의 것(끝남 · 권한 · 실패 — 2026-11-13, 카드에 타일 대신
-   * 채팅 칩). 복사됨·저장됨 같은 일반 알림은 오른쪽 위 토스트 그대로다(`Toasts.svelte`). 상태·규칙은 밖에 있다 — 규칙은 순수 `$lib/agent-banners`, 상태와
-   * 타이머는 `app/agent-banners.svelte.ts`. 이 컴포넌트가 하는 일은 넷뿐이다: **그리기 · 누름 받기 ·
-   * 호버 멈춤 · "그 타일로 갔다 · 그 채팅을 봤다" 감지**.
-   *
-   * `+page` 의 `.body`(탭 바·위 상태바 **아래**의 기준 상자) 안에 **한 번만** 마운트한다 — 그 상자의
-   * 위 가운데에 붙으므로 탭 바 높이를 숫자로 적을 자리가 없고, 창 제어 단추와도 겹치지 않는다.
-   *
-   * ## "그 타일로 갔다" — 어떤 길로든
-   *
-   * 창이 앞에 있고(`focus`/`blur`/`visibilitychange` 로 따라가는 `$state`) 그 타일이 **활성 탭의
-   * 포커스된 타일**(`focusedPane()`)이 되는 순간 해결한다. 탭 클릭 · `Alt+화살표` · 마우스 · 탭 점 ·
-   * 대시보드 행 — 길이 무엇이든 끝은 이 두 값이라 길마다 손댈 것이 없다. 창이 뒤에 있는 동안 선 항목
-   * (OS 알림 갈래)은 돌아와 창이 앞에 서는 순간 그 타일이 포커스돼 있으면 곧바로 풀린다.
-   *
-   * 예외 하나 — **보고 있는 타일에서 선 항목**(긴 턴 · `bornFocused`)은 이미 그 타일에 있으니 이 길로 풀지
-   * 않는다. 그 타일 안의 키·누름(`PaneHost` → `touchAgentBanner`)이 푼다(docs/log/2026-09-27-agent-banners.md
-   * "보고 있는 타일도").
-   *
-   * ## "그 채팅을 봤다"
-   *
-   * 사이드 채팅 항목은 창이 앞에 있고 **그 채팅이 보이는**(채팅 독의 채팅 갈래 · 폰 덮개 — `app/side-chat-live` 의 `shownSideChat`,
-   * 알릴지 정하는 `chatShown` 과 같은 사실) 순간 풀린다. 타일과 같은 결이다 — 창이 뒤에 있던 동안 선 항목은 창이 앞에 서는 순간
-   * 그 채팅이 보이고 있으면 곧바로 풀린다. 채팅이 지워지면(어느 창에서든 — 목록에서 빠지면) 그 항목은 저절로 해결로 접는다.
-   *
-   * ## 층
-   *
-   * z-index 105 — 독(100) 위, 팔레트(110)·가림막(115)·토스트(120) 아래. 가림막 아래인 것이 요점이다:
-   * 카드에 탭 이름이 적혀 있다(가림막이 내려오면 덮인다).
+   * 에이전트 알림 배너 — `+page` 의 `.body` 안에 한 번만 마운트한다(그 상자 위 가운데에 붙어 탭 바 높이를 숫자로 적지 않는다).
+   * z-index 105 는 가림막(115) 아래여야 한다 — 카드에 탭 이름이 적혀 있다.
    */
   import AiGlyph from "$lib/AiGlyph.svelte";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -62,11 +33,9 @@
   import { untrack } from "svelte";
   import type { TransitionConfig } from "svelte/transition";
 
-  /** "+N개 더" 를 눌러 전부 펼쳐 보는 중 */
   let showAll = $state(false);
   const view = $derived(bannerView(agentBannerState(), showAll));
 
-  // 넘침이 없어지면 "전부 보기" 도 저절로 접는다 — 다음에 넘칠 때 처음부터 셋만.
   $effect(() => {
     if (showAll && view.more === 0 && !view.canFold) showAll = false;
   });
@@ -76,9 +45,7 @@
     if (view.shown.length === 0) untrack(releaseAgentBanners);
   });
 
-  // ---------------------------------------------------------------------------
-  // 창이 앞에 있나 — `windowFocused()` 는 반응형이 아니라 사건으로 따라간다
-  // ---------------------------------------------------------------------------
+  // `windowFocused()` 는 반응형이 아니라 사건으로 따라간다
   let winFocused = $state(windowFocused());
   $effect(() => {
     const sync = () => (winFocused = windowFocused());
@@ -92,11 +59,7 @@
     };
   });
 
-  /**
-   * 그 타일로 갔다 → 해결 (머리말). 항목이 늘 때도 다시 본다(창이 뒤에 있던 동안 선 것).
-   * 보고 있는 타일에서 선 항목(`bornFocused`)은 여기서 풀리지 않는다 — 포커스가 다른 타일로 옮겨 가면
-   * 표식을 벗고(`focusMovedTo`), 그 뒤 돌아오면 풀린다. 그 자리에서는 타일을 만지면 풀린다(`PaneHost`).
-   */
+  /** 보고 있는 타일에서 선 항목(`bornFocused`)은 여기서 풀리지 않는다 — 그 타일을 만지면(`PaneHost`) 풀린다 */
   $effect(() => {
     const pane = focusedPane()?.id ?? null;
     void agentBannerItems().length;
@@ -105,7 +68,6 @@
     untrack(() => resolveVisited(pane));
   });
 
-  /** 그 채팅을 봤다 → 해결 (머리말). 항목이 늘 때도 다시 본다(창이 뒤에 있던 동안 선 것) */
   $effect(() => {
     const chat = shownSideChat();
     void agentBannerItems().length;
@@ -113,16 +75,12 @@
     untrack(() => resolveVisitedSideChat(chat));
   });
 
-  /** 지워진 채팅의 항목 — 저절로 해결(타일의 `dropAgentBanner` 와 같은 결) */
   $effect(() => {
     const ids = new Set(sideChats().map((c) => c.id));
     const gone = agentBannerItems().flatMap((b) => (b.sideChatId !== undefined && !ids.has(b.sideChatId) ? [b.sideChatId] : []));
     if (gone.length > 0) untrack(() => gone.forEach(dropSideChatBanner));
   });
 
-  // ---------------------------------------------------------------------------
-  // "방금" 이 저 혼자 흐르게 — 보이는 카드가 있을 때만 도는 시계
-  // ---------------------------------------------------------------------------
   let now = $state(Date.now());
   $effect(() => {
     if (view.shown.length === 0) return;
@@ -131,15 +89,10 @@
     return () => clearInterval(id);
   });
 
-  // ---------------------------------------------------------------------------
-  // 몸짓 — 새 카드는 위에서 내려앉고(살짝 커지며) 있던 것들은 `flip` 으로 한 칸 밀려 내려간다
-  // ---------------------------------------------------------------------------
   const reducedMotion = () =>
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /** `translate`·`scale` 속성으로 민다 — `transform` 칸은 `flip` 과 떠나는 항목의 보정이 쓴다(`Toasts` 머리말).
-   *  투명도는 칸(`.slot`)이 아니라 **카드 자신**이 받는다(`--banner-fade` → `.slot > *`) — 칸의 `opacity` 가 1 아래면 칸이 배경 뿌리가
-   *  되어 카드의 `backdrop-filter` 가 창 뒤를 못 보고 움직이는 동안 흐림이 꺼진다(theme.css 모달 등장 절 · 10-28) */
+  /** `transform` 칸은 `flip` 이 쓴다 — `translate`·`scale` 로 민다. 투명도를 칸(`.slot`)에 주면 카드의 `backdrop-filter` 가 움직이는 동안 꺼진다 */
   function bannerIn(_node: Element): TransitionConfig {
     if (reducedMotion()) return { duration: 0 };
     return {
@@ -156,9 +109,7 @@
 
   const flipMs = () => (reducedMotion() ? 0 : 240);
 
-  // ---------------------------------------------------------------------------
-  // 호버·포커스 멈춤 — 머무는 동안 접지 않는다
-  // ---------------------------------------------------------------------------
+  // ── 호버·포커스 멈춤 ──
   let stack = $state<HTMLElement | null>(null);
 
   function onFocusOut(ev: FocusEvent): void {
@@ -171,7 +122,6 @@
     if (!stack?.contains(document.activeElement)) releaseAgentBanners();
   }
 
-  /** Escape = × (포커스가 그 카드·알약 안에 있을 때) */
   function onKey(ev: KeyboardEvent, item: BannerItem): void {
     if (ev.key !== "Escape") return;
     ev.preventDefault();
@@ -179,7 +129,7 @@
     hide(item.id);
   }
 
-  /** × — 누른 단추가 사라지므로 포커스를 다음 카드로 넘긴다(없으면 놓아 준다) */
+  /** 누른 단추가 사라지므로 포커스를 다음 카드로 넘긴다 */
   function hide(id: number): void {
     hideAgentBanner(id);
     requestAnimationFrame(() => {
@@ -189,7 +139,6 @@
     });
   }
 
-  /** 둘째 줄 — 채팅의 끝남은 "답변이 끝났습니다"(타일은 "작업이 끝났습니다") · 실패는 채팅에만 */
   const message = (item: BannerItem) =>
     t(
       item.kind === "permission"
@@ -210,7 +159,6 @@
       { name: item.label },
     );
 
-  /** [보기]·[확인하러 가기] 툴팁 — 같은 일을 하는 단축키(`go-to-alert`). 안 걸었으면 툴팁 없음 */
   const goKeyTip = $derived.by(() => {
     const combo = effectiveCombo("go-to-alert", settings.keybindings);
     return combo ? t("app.agent.banner.key", { key: displayCombo(combo) }) : undefined;
@@ -243,7 +191,6 @@
         animate:flip={{ duration: flipMs() }}
       >
         {#if item.collapsed}
-          <!-- 알약 — 누르면(Enter 도) 다시 펼친다. Escape 는 × 와 같다. -->
           <button
             type="button"
             class="pill"
@@ -282,7 +229,6 @@
               <span class="line1">
                 <strong class="title">{bannerTitle(item)}</strong>
                 {#if item.sideChatId !== undefined}
-                  <!-- 채팅 칩 — 타일이 아니라 사이드 채팅에서 온 알림이다. 좁은 기둥에서는 아이콘만(이름은 title · aria-label) -->
                   <span
                     class="where"
                     data-banner-chat-chip
@@ -351,8 +297,7 @@
 {/if}
 
 <style>
-  /* 기둥 — `.body` 의 위 가운데. 폭은 한 장 430 (좁은 창이면 양옆 16px 을 남기고 줄어든다).
-     기둥 자신은 클릭을 받지 않는다 — 카드 사이·옆의 빈 곳은 뒤 타일로 지나간다. */
+  /* 기둥 자신은 클릭을 받지 않는다 — 카드 사이·옆의 빈 곳은 뒤 타일로 지나간다 */
   .agent-banners {
     position: absolute;
     top: var(--space-2);
@@ -363,7 +308,6 @@
     align-items: center;
     gap: var(--space-2);
     width: min(430px, calc(100% - 32px));
-    /* 폭을 재는 컨테이너 — 좁으면(폰) 채팅 칩이 글자를 접는다(아래 `@container agent-banners`). 폭은 위 식이 정하므로 내용이 폭을 바꾸지 않는다 */
     container: agent-banners / inline-size;
     translate: -50% 0;
     font-family: var(--font-ui);
@@ -381,15 +325,11 @@
     opacity: var(--banner-fade, 1);
   }
 
-  /* 카드 — 떠 있는 반투명 면 + 흐림 + 강한 그림자. 모서리 16px 은 승인된 목업의 값이다(작업면의 두 단
-     `--radius-sm/md` 보다 크다 — 창 위에 뜨는 알림 한 장만의 예외). */
   .card,
   .pill {
     pointer-events: auto;
     box-sizing: border-box;
     color: var(--fg-1);
-    /* 재질 글래스면 중 층 유리(가장자리 · 그림자 — theme.css 재질 절). 평면은 원래의 86% + 16px 흐림 그대로.
-       이 면은 `.glass-*` 를 달지 않고 상자 자신이 흐린다 */
     background: var(--glass-float, color-mix(in srgb, var(--surface-raised-solid) 86%, transparent));
     backdrop-filter: var(--glass-filter-raised, blur(16px) saturate(1.2));
     border: 1px solid var(--line-strong);
@@ -405,13 +345,11 @@
     border-radius: var(--radius-surface);
   }
 
-  /* 권한 물음 — 테두리에 강조색을 옅게. 강조색은 "입력 대기" 의 부름이라 허락된다 */
   .card.permission,
   .pill.permission {
     border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
   }
-  /* 재질 글래스 — 가장자리 선(`--glass-rim`)과 테두리 안쪽만 칠하는 판(theme.css 재질 절의 뜬 면 규칙과 같은 수). 권한 물음의
-     강조색 선은 뜻이 있어 그대로 둔다 */
+  /* 권한 물음의 강조색 선은 뜻이 있어 글래스에서도 그대로 둔다 */
   :global(:root[data-material="glass"]) :is(.card, .pill, .chip):not(.permission) {
     border-color: var(--glass-rim);
     background-clip: padding-box;
@@ -433,7 +371,6 @@
     height: 22px;
   }
 
-  /* 상태 표식 — 로고 오른쪽 아래의 점. 끝남 = `--ok`, 권한 = `--accent` */
   .status {
     position: absolute;
     right: -2px;
@@ -455,7 +392,6 @@
   .status.permission {
     background: var(--accent);
   }
-  /* 사이드 채팅의 답변 실패 — 모양은 끝남과 같고 점만 오류색 */
   .status.failed {
     background: var(--err);
   }
@@ -475,7 +411,6 @@
     min-width: 0;
   }
 
-  /* 제목은 내용만큼(넘치면 말줄임) — 채팅 칩이 제목 바로 옆에 붙고, 시각은 오른쪽 끝(`margin-left: auto`) */
   .title {
     flex: 0 1 auto;
     min-width: 0;
@@ -486,7 +421,6 @@
     text-overflow: ellipsis;
   }
 
-  /* 채팅 칩 — 제목 옆의 작은 출처 표지(타일 알림에는 없다) */
   .where {
     display: inline-flex;
     flex: none;
@@ -501,7 +435,6 @@
     border-radius: 999px;
   }
 
-  /* 좁은 기둥(폰 — 한 장 430 이 다 못 서는 폭) — 칩은 아이콘만. 제목(채팅 이름)이 칩 글자에 밀려 잘리지 않게 */
   @container agent-banners (max-width: 400px) {
     .where-txt {
       display: none;
@@ -549,7 +482,6 @@
     background: var(--surface-hover);
   }
 
-  /* 알약 — 한 줄, 끝까지 둥글게. 폭은 내용만큼(기둥 폭을 넘으면 말줄임) */
   .pill {
     display: inline-flex;
     align-items: center;
@@ -579,7 +511,6 @@
     outline-offset: 1px;
   }
 
-  /* 칩 둘 — "+N개 더"/"접기" · "모두 지우기" */
   .chips {
     display: flex;
     gap: var(--space-2);

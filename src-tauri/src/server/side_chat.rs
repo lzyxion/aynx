@@ -1,149 +1,62 @@
-//! **사이드 채팅 프로세스 표**(v2 2단계 — 설계 docs/log/2026-10-23-side-chat-v2-design.md 1절 · 2절 · 4절) — 세션 서버 프로세스에 한 벌.
-//! 열쇠는 채팅 id(`side_chat::store::id_ok` 모양 — 그 채팅 폴더 이름), 값은 보는 창들(창 · 연결 — 2026-11-01 여럿) · 대화 id · 연결 · 그리고 **프로세스
-//! 칸**([`chat_proc::Core`] — 세대 `ProcId` · 잡에 든 CLI 하나 · 그 stdin · 어댑터(`side_chat::{claude,codex}`) · 상태 · 사건 번호(`seq`) ·
-//! 지금 턴 꼬리 · 기다리는 권한 요청). 프로세스 몸(띄우기 · 세 스레드 · 걸음 · 끝)은 공용 코어 `server::chat_proc`(오케스트레이션 2단계
-//! 단계 1 에서 이 파일에서 옮겨 감 — 프로듀서 레지스트리가 같은 코어를 쓴다)이고, 이 파일은 그 주인([`chat_proc::Host`])이다.
-//! **세션 코어(`session_core`)에 오르지 않는다** — 떨어진 세션 목록 · MCP 에 섞이지 않고,
-//! 출력 프레임 · ACK 크레딧도 쓰지 않는다(그것은 세션 임대의 바이트 흐름). 본보기는 `db::table`(같은 꼴의 자원 표).
+//! 사이드 채팅 프로세스 표 — 세션 서버에 한 벌. 프로세스 몸은 공용 코어 `server::chat_proc` 이고 이 파일은 그 주인([`chat_proc::Host`])이다.
+//! 세션 코어에 오르지 않는다 — 떨어진 세션 목록 · MCP 에 섞이지 않고 출력 프레임 · ACK 크레딧도 쓰지 않는다.
 //!
-//! ## op(`serve` 가 블로킹 풀 태스크로 — 판 21 · [`super::ipc::frame::SIDE_CHAT_VIEWERS_PROTOCOL`])
+//! ## 보는 창 여럿
 //!
-//! | op | 등급 | 몸 → 답 |
-//! | --- | --- | --- |
-//! | `side_chat_open` | 쓰기 | `{chat, cli, model, effort?, mode: {kind: fresh} \| {kind: resume, conv, project?} \| {kind: fork, from}, window}` → 스냅숏(아래) · **띄우지 않는다**(뜻만 적는다) · 같은 채팅 · 같은 CLI 면 다시 붙기 · `fork` · `project` 는 아래 "타일 대화 이어 가기" |
-//! | `side_chat_send` | 쓰기 | `{chat, epoch, text, clientId?, linkNames?: {스트림: 칩 이름}, images?, files?}` → `{epoch, link: null \| {labels, unlinked}}`(판 33) · 프로세스가 없으면 **여기서 띄운다**(악수 · 준비를 기다려 — `turn::START_MS`) · `images` = 붙인 그림 경로(첨부 자리 안만 — `chat_images`) · `files` = 그림 밖 첨부(판 32 — 첨부 자리 안만 · 서버가 채팅 자기 폴더의 `attachments/` 에 사본 — `chat_files`) |
-//! | `side_chat_interrupt` | 쓰기 | `{chat, epoch}` → bool(끊기를 보냈나 — 도는 턴이 없으면 false) |
-//! | `side_chat_set_model` | 쓰기 | `{chat, epoch, model}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기에 쓴다) |
-//! | `side_chat_set_effort` | 쓰기 | `{chat, epoch, effort: 낱말 \| null}` → bool(산 프로세스에 보냈나 — 없으면 다음 띄우기의 `--effort` · 첫 `turn/start`) · `null` = CLI 기본 · 악수가 알린 목록 밖이면 `[bad-effort]` |
-//! | `side_chat_decide` | 쓰기 | `{chat, epoch, requestId, decision: allow\|deny, message?, remember?}` → true · 기다리는 요청이 아니면 `[unknown-request]` · `remember`(판 37 — [이 채팅에서 허용]) = 허용 + 그 요청의 종류를 허용 목록에(종류는 서버가 pending 에서 읽는다 · 거절과 함께면 `[bad-decision]`) |
-//! | `side_chat_set_perm_mode` | 쓰기 | `{chat, mode: manual\|auto}` → `{mode, allow}`(판 37 — 저장 · "마지막 모드" · 사건 `permPolicy` · Auto 면 기다리는 카드도 허용) |
-//! | `side_chat_forget_allow` | 쓰기 | `{chat, kind}` → `{mode, allow}`(판 37 — 허용 목록에서 그 종류를 뺀다 · 빼기만) |
-//! | `side_chat_close` | 쓰기 | `{chat}` → bool(표에 있었나) · 프로세스는 잡째 끝낸다 |
-//! | `side_chat_attach` | 읽기 | `{chat, window}` → 스냅숏 · 그 창을 보는 창에 **덧붙인다**(F5 · 웹뷰 크래시 뒤 새 페이지 · 다른 창) · 없으면 `[session-gone]` |
-//! | `side_chat_list` | 읽기 | `{}` → `[{chat, cli, model, effort, epoch, status, conversationId, viewers, detached}]`(`viewers` = 보는 창 **수** — 남의 창 라벨은 돌려주지 않는다) |
-//! | `side_chat_link` | 쓰기 | `{chat, epoch?, streams: [스트림]}` → `{links: [연결 보기], changed}`(판 33) · 묶음을 통째로 놓는다(준 순서 · 같은 스트림은 처음 것만 · 빈 배열 = 모두 끊기) · 하나라도 서버 거울의 창 타일이 아니면 `[bad-link]` · `chat_token::LINKS_MAX` 를 넘으면 `[too-many-links]`(둘 다 아무것도 바꾸지 않는다) · 바뀌면 다음 보내기에 연결 머리글(5단계 — 아래 "연결") |
-//! | `side_chat_seen` | 쓰기 | `{chat, epoch, seq}` → `{sent}` · 어느 창에서 사람이 그 채팅의 턴 끝(사건 `turnEnded` 의 `epoch` · `seq`)을 봤다 — 표는 그대로 · 그 채팅이 표에 있고 세대가 같고 번호가 앞서지 않으면 `side-chat-seen{chat, epoch, seq}` 방송(판 31 — 아래 "완료 확인 공유") |
+//! - `open` · `attach` 는 보는 창 목록에 덧붙인다(덮어쓰면 원격 창이 붙을 때 주 창이 소리 없이 끊긴다). 떼어 둠(TTL)은 보는 창이 0 이 된 순간부터다.
+//! - 두 창이 같은 권한 카드에 답하면 먼저 온 것만 먹고 둘째는 `[unknown-request]` 다.
+//! - `epoch` 은 프로세스 세대 [`chat_proc::ProcId`] — 서버 전역 단조 증가 · 재사용 없음(0 = 아직 안 띄움). 옛 `epoch` 는 `[stale-chat]`.
+//! - 완료 확인(`side_chat_seen`)은 표를 바꾸지 않고 방송만 한다 — 몸이 채팅 id · 세대 · 번호뿐이라 `client::RELAYED` 로 모든 창에 간다.
 //!
-//! 스냅숏 = `{links, chat, cli, model, effort, epoch, leaseEpoch, seq, status, conversationId, cwd, forkFrom, mcpServers, permMode, permAllow, liveTurn: [Ev], pending: [Ev]}`
-//! (`links` = 연결 순서의 `[{stream, code, label, kind, readable, closed}]`(판 33 — 없으면 빈 배열) · `cwd` = CLI 가 도는 폴더(`null` = 채팅 자기 폴더) — 화면의 이름표일
-//! 뿐 다시 받지 않는다) — 그 뒤 사건은
-//! `side-chat-event{windows, chat, epoch, seq, ev}`(`windows` = 지금 보는 창 라벨들 · `seq` 는 채팅마다 1씩 — 빈틈이면 다시 attach). 옛 `epoch` 는
-//! `[stale-chat]`. `leaseEpoch` 는 그 채팅에 창이 붙을 때마다 +1.
+//! ## 띄우기
 //!
-//! ## 보는 창 여럿(2026-11-01 — 원격 웹 창의 사이드 채팅 · docs/log/2026-11-01-remote-side-chat.md)
+//! - 게으르게 — `side_chat_send` 에서만 [`spawn`] 한다. 생성은 코어의 잡 생성 하나다(`SPAWN_LOCK` · 생성과 동시에 Job — 검증 · 헤드리스 턴과 같은 몸).
+//! - 실행 파일은 PATH 의 `.exe` 만 · 인자는 어댑터의 고정 배열 · 사용자 추가 인자 없음 · 환경은 `turn::headless_env` 정화.
+//! - 서버 임시 자리 `<데이터 루트>/sidechat/.run/<id>-<epoch>/` 는 `.` 이 든 이름이라 채팅 id 와 겹치지 않는다. 사용자 CLI 설정 · CLAUDE.md 는 읽기만 한다.
+//! - 대화 id 는 턴이 한 번 선 뒤에만 이어 가기 대상으로 적는다 — 첫 턴 전에 죽은 새 대화는 CLI 에 아직 없다.
 //!
-//! 예전에는 임대 하나(창 · 연결)를 `open` · `attach` 가 덮어써, 원격 창이 붙으면 주 창이 소리 없이 끊겼다. 이제 **보는 창 목록**(창 라벨 +
-//! 연결 · 같은 라벨은 하나)이고 `open` · `attach` 는 덧붙인다. 사건 몸의 `windows` 에 그 라벨을 모두 싣고 GUI 가 그 창들의 통로로만 보낸다.
-//! [`detach_window`] 는 그 창 하나만 뗀다 · [`conn_gone`] 은 그 연결의 창들을 뗀다. **떼어 둠(TTL)은 보는 창이 0 이 된 순간부터**다(프로듀서
-//! `server::producer` 의 구독 0 → TTL 과 같은 꼴). 두 창이 같은 권한 카드에 답하면 먼저 온 것만 먹고 둘째는 `[unknown-request]` 다.
-//! `userAccepted` 사건에는 사람이 보낸 글(연결 머리글 없는 본문)과 붙인 그림의 파일 이름을 얹는다(`Host::shape` — 다른 창이 보낸 글을 곧바로
-//! 그리게 · 로그 · `Debug` 에는 없다).
-//! `epoch` 은 프로세스 세대 [`chat_proc::ProcId`] — **서버 전역 단조 증가 · 재사용 없음**(0 = 아직 안 띄움). 닫고 다시 연 같은 채팅도 옛
-//! 세대와 겹치지 않는다(오케스트레이션 2단계 단계 1 — 예전에는 채팅마다 1부터 다시 셌다).
+//! ## 타일 대화 이어 가기
 //!
-//! ## 완료 확인 공유(2026-11-13 — 판 31 · `src/lib/app/agent-seen.svelte.ts`)
+//! - `fork{from}` 은 대화 id 하나만 받는다(경로 없음) — cwd 는 서버가 대화 색인의 기록된 시작 cwd 로 정한다(`[conversation-not-found]` ·
+//!   `[conversation-folder-missing]`). 갈라 오기라 원본 파일 · 도는 타일은 그대로다. 경로는 어디에도 저장하지 않는다.
+//! - 타일의 대화를 그냥 이어 가는 길은 없다 — Claude 는 쓰기 잠금이 없어 도는 타일과 한 파일에 둘이 쓰면 대화가 갈라진다.
 //!
-//! 배너(끝남 · 실패)는 창마다 산다 — 메인 PC 에서 그 채팅을 봐도 원격 창의 배너가 남았다(거꾸로도). AI 타일의 `agent_state_seen` 과 같은 결로,
-//! 사람이 본 창이 `side_chat_seen{chat, epoch, seq}` 를 보내고 서버는 **표를 바꾸지 않고** 방송만 한다. 몸은 채팅 id · 세대 · 사건 번호뿐이라
-//! (본문 · 토큰 없음) 사건(`side-chat-event`)과 달리 `client::RELAYED` 로 모든 창에 간다. 낡음(그 뒤 다음 턴이 섰다)은 받는 창이 제 사본의
-//! 마지막 턴 끝 번호와 견줘 버린다 — 서버는 없는 채팅 · 다른 세대 · 아직 없는 번호만 거른다.
+//! ## stdin — 사람의 글과 사람의 결정뿐
 //!
-//! ## 띄우기(설계 2절 · CLAUDE.md "③ 사이드 채팅 프로세스")
+//! stdin 에 줄을 넣는 것은 코어의 쓰기 스레드 하나이고(이 파일은 `chat_proc::apply` 로만 넘긴다) 줄을 짓는 것은 어댑터뿐이다: 악수 · CLI 물음에 대한
+//! 고정 답 · 사람 글(op `side_chat_send` 에서만 — 연결 머리글 · 서버가 확인한 첨부 그림 포함) · 끊기 · 모델 · 강도 바꾸기(사람의 op 에서만) ·
+//! 권한 결정(사람의 그 자리 결정은 op `side_chat_decide` 에서만, 그 밖은 사람이 그 채팅에 정한 모드 · 허용 목록에 따라 서버가 대신 내는 허용뿐).
+//! MCP · 오케스트레이션 · AI 문자열에서 여기로 오는 길은 없다(시험 `side_chat_stdin_only_human` → docs/invariants.md 전문 4).
 //!
-//! - **게으르게** — `side_chat_send` 에서만 [`spawn`] 한다(고르기 · 부팅 · `open` 은 안 띄움). 그 안의 `chat_proc::start` 가 코어의
-//!   잡 생성(stdin 파이프) 하나로 띄운다(`SPAWN_LOCK` · 생성과 동시에 Job · `CREATE_NO_WINDOW` — 검증 · 헤드리스 턴과 같은 몸).
-//! - 실행 파일은 PATH 의 `.exe` 만 · 인자는 어댑터의 고정 배열(`claude::argv` · `codex::argv` — 모델 · 강도 · 대화 id 를 Rust 가 다시 본다)
-//!   을 `turn::quote_argv` 로 · 사용자 추가 인자 없음 · 환경은 `turn::headless_env`(= `pty::scrub_env_names` 공용 정화).
-//! - cwd = `<데이터 루트>/sidechat/<id>/`(`side_chat::store`) — 갈라 온 채팅만 그 대화의 기록된 폴더(아래). 서버 임시 자리 `<데이터 루트>/sidechat/.run/<id>-<epoch>/`(`.` 이 든 이름이라
-//!   채팅 id 와 겹치지 않는다)에 Claude 의 `--settings`(훅 끔) · `--mcp-config`(빈 것) · `--append-system-prompt-file`(검색 지침 + 전역 CLAUDE.md +
-//!   `sidechat/CLAUDE.md` — **읽기만**)을 쓰고 프로세스가 끝나면 지운다. Codex 는 `~/.codex/config.toml` 을 **읽기만** 해 MCP 서버 이름을
-//!   얻는다(`codex::mcp_server_names` — 하나씩 끈다).
-//! - 대화 id 는 **턴이 한 번 선 뒤에만** 이어 가기 대상으로 적는다(첫 턴 전에 죽은 새 대화는 CLI 에 아직 없다 — 다음 보내기는 새 대화).
+//! ## 권한 모드(`side_chat::perm`)
 //!
-//! ## 타일 대화 이어 가기(6단계 — 설계 2절 · spike "2차")
+//! - 저장은 `<sidechat>/.perm/<id>.json` — 채팅 폴더(= CLI cwd) 밖이어야 한다.
+//! - 바꾸는 길은 사람의 op 셋(`side_chat_set_perm_mode` · `side_chat_forget_allow` · `side_chat_decide{remember}`)뿐 — `remember` 의 종류는 몸이 아니라
+//!   서버의 pending 에서 읽는다. CLI 쪽 제한(Claude `--tools` · Codex `read-only` + `on-request`)은 그대로이고, 어댑터가 카드 없이 거절하는 요청은 Auto 여도 거절이다.
 //!
-//! - `open{mode: fork{from}}` — `from` 은 **그 CLI 의 대화 id 하나**(화면은 타일의 `agentLink` 에서 `{agent, id}` 만 준다 — 경로 없음). cwd 는
-//!   서버가 대화 색인(`agent_sessions::recorded_cwd_in` — 목록 · 재개와 같은 판정)의 **기록된 시작 cwd** 로 정한다: 색인에 없으면
-//!   `[conversation-not-found]`, 그 폴더가 없거나 절대 경로가 아니면 `[conversation-folder-missing]`. 첫 띄우기는 **갈라 오기**(Claude
-//!   `--resume <from> --fork-session --session-id <새 id>` · Codex `thread/fork{excludeTurns}`) — 원본 파일 · 도는 타일은 그대로다.
-//! - 턴이 한 번 선 뒤의 다시 띄우기는 그 채팅 **자신의 새 대화**를 잇는다(보통 이어 가기 — 같은 cwd). 서버 표를 잃은 뒤(재시작 · TTL)
-//!   화면은 `resume{conv, project: true}` 로 다시 열고, 서버는 그 cwd 를 **새 대화의 색인**에서 다시 얻는다(갈라 온 대화는 그 폴더로
-//!   기록된다 — 경로를 어디에도 저장하지 않는다). `project` 없는 이어 가기는 늘 채팅 자기 폴더다.
-//! - **타일의 대화를 그냥 이어 가는 길은 없다** — Claude 는 쓰는 이 잠금이 없어 도는 타일과 한 파일에 둘이 쓰면 대화가 갈라진다(spike
-//!   함정 2). `fork` 만 원본 id 를 받고, 이어 가기의 id 는 화면이 이 채팅 프로세스의 `turnStarted` 에서 받은 것뿐이다.
+//! ## 연결 · 채팅 MCP 토큰
 //!
-//! ## stdin — 사람의 글과 사람의 결정뿐(설계 2절 ③ · 4절)
+//! - 채팅 토큰은 [`prepare`] 가 그 세대로 뽑고 끝 정리 · 띄우기 실패가 거둔다. 값은 Claude 임시 `--mcp-config` · Codex 프로세스 환경에만 — 로그 · 이벤트 · 스냅숏에 없다.
+//! - 연결은 op `side_chat_link` 만 바꾼다. 읽기 판정은 MCP 호출마다 서버가 한다. 연결 머리글에는 값 · 출력을 붙이지 않는다(AI 가 도구로 읽는다).
 //!
-//! stdin 에 줄을 넣는 것은 코어의 쓰기 스레드 하나(순서대로 — 이 파일은 `chat_proc::apply` 로만 넘긴다)이고, 그 줄을 짓는 것은 어댑터뿐이다:
-//! 악수 · CLI 가 물은 것에 대한 고정 답(`on_line`
-//! 의 `Step.stdin`) · 사람 글(`encode_user` — op `side_chat_send` 에서만 · 연결이 바뀐 뒤 첫 글은 앞에 앱 고정 연결 머리글 · 사람이 붙인 그림은
-//! 그 글의 일부 — 서버가 첨부 자리 안의 그림 파일인지 본 것만) · 끊기 · 모델 바꾸기 · 강도 바꾸기(`encode_set_effort` — op
-//! `side_chat_set_effort` 에서만 · 사람이 칩에서 고른 낱말) · 권한 결정(`encode_decision` — 사람의 그 자리 결정은 op
-//! `side_chat_decide` 에서만, 그 밖은 사람이 그 채팅에 정한 모드 · 허용 목록에 따라 서버가 대신 내는 **허용**뿐 — `policy_answer` · 아래
-//! "권한 모드"). MCP · 오케스트레이션 · AI 문자열에서 여기로 오는 길은 없다(시험 `side_chat_stdin_only_human`).
+//! ## 외부 MCP
 //!
-//! ## 권한 모드(2026-11-20 — `side_chat::perm` · 권한 모드 목업)
-//!
-//! - 채팅마다 **모드**(`Manual` 기본 · `Auto`)와 **허용 목록**(Manual 의 [이 채팅에서 허용] 이 올린 종류 — 채팅 폴더 밖 읽기 · 파일 바꾸기 ·
-//!   샌드박스 밖 명령 · MCP 서버 하나). 저장은 `<sidechat>/.perm/<id>.json`(채팅 폴더 = CLI cwd 밖) · 표에 새로 세울 때 읽는다 · 새 채팅은
-//!   사람이 마지막에 고른 모드.
-//! - 어댑터가 `permission` 을 내면 `Host::on_event` 가 모드 · 목록을 보고(`perm::answer_by`) **허용**으로 대신 답한다 — 카드 대신 그 번호의
-//!   몸은 `permissionAuto`(끝난 한 줄) · 뒤이어 `permissionResolved{by: auto | remembered}`. Auto 로 바꾼 순간 · [이 채팅에서 허용] 뒤에는 이미
-//!   기다리는 카드도 같은 판정으로 답한다(`answer_waiting`).
-//! - 바꾸는 길은 사람의 op 셋(`side_chat_set_perm_mode` · `side_chat_forget_allow` · `side_chat_decide{remember}`)뿐 — 몸에 종류를 넓히는 칸이
-//!   없다(`remember` 의 종류는 서버의 pending 에서). CLI 쪽 제한(Claude `--tools` 다섯 · Codex `read-only` + `on-request`)은 그대로다.
-//!   대화형 도구 · 그 밖 서버 요청은 어댑터가 카드 없이 거절하므로 Auto 여도 거절이다.
-//! - 바뀌면 보는 창에 사건 `permPolicy{mode, allow}`(지금 턴 꼬리에는 들지 않는다 — 스냅숏의 `permMode` · `permAllow` 가 맞춘다).
-//!
-//! ## 연결 · 채팅 MCP 토큰(5단계 — v1 결정 10 · 설계 8절 1 (a))
-//!
-//! - **채팅 토큰**(`crate::chat_token`)은 [`spawn`] 의 [`prepare`] 가 그 세대로 뽑고(세션 서버에 MCP 포트가 있을 때) 끝 정리(코어 끝 →
-//!   `Host::on_ending` — 끝 사건 전) ·
-//!   띄우기 실패가 거둔다. 값은 Claude 임시 자리의 `--mcp-config`(Aynx 서버 하나 · `--strict-mcp-config` 그대로) · Codex 프로세스 환경
-//!   (`bearer_token_env_var` · 사용자 MCP 는 그대로 끈다)에만 — 로그 · 이벤트 · 스냅숏에 없다. 읽기 도구 일곱은 CLI 에 미리 허용한다(판정은 서버).
-//! - **연결**은 op `side_chat_link` 만 바꾸고 채팅과 함께 산다(닫기 · TTL · 모두 닫기에서 잊는다 — 프런트가 `chats.json` 에서 다시 건다).
-//!   채팅마다 **사람이 고른 세션들**(최대 `chat_token::LINKS_MAX` — 읽기 권한은 연결된 타일마다 따로 · 판정은 MCP 호출마다 `mcp/chat_read.rs`).
-//!   묶음이 바뀌면 `link_note` → [`op_send`] 가 사람 글 앞에 **앱 고정 머리글**(`side_chat::event::link_headers` — 연결 순서로 타일마다 한 조각:
-//!   타일 표시 이름(입력 칸 칩이 보낼 때 실은 `linkNames` 의 그 스트림 이름 · 없으면 거울 이름 — 타일 코드 없음) · 스트림 id 만)을 지금 묶음
-//!   전체로 한 번 붙인다. 값 · 출력은 붙이지 않는다(AI 가 도구로 읽는다).
-//!
-//! ## 외부 MCP(2026-10-25)
-//!
-//! - 사람이 설정 › MCP 에서 **사이드 채팅**을 고른 외부 서버만 싣는다(`agent_mcp::side_chat_servers` — **이 프로세스가 저장된 설정을 직접
-//!   읽는다** · op 몸에 서버 목록 칸이 없다: 프런트가 서버를 끼워 넣을 길이 없다 — 시험 `side_chat_ops_take_no_server_list`). 범위는 AI 타일과
-//!   같다(채팅 cwd 의 프로젝트 — 갈라 온 채팅만 있을 수 있다 · 같은 이름은 프로젝트 항목). 사용자 CLI 설정의 서버는 여전히 싣지 않는다
-//!   (Claude `--strict-mcp-config` · Codex 하나씩 끄기 — 같은 이름의 외부 서버는 Codex 에 싣지 않고 `mcp-name-taken`).
-//! - 비밀 값은 AI 타일과 같은 브로커(`mcp_launch` — stdio 도우미 · HTTP 헤더 프록시)가 티켓으로 — 인자 · 파일 · 프런트에 값이 없다. 볼트가
-//!   잠겼으면 비밀 값이 있는 서버만 빼고 `mcp-locked` 로 알린다(채팅은 뜬다).
-//! - **이름은 첫 보내기 전에도**(2026-11-13): 프로세스는 첫 보내기에 뜨지만 `open` 이 띄우지 않고 실을 예정 이름(`planned_mcp` — 같은
-//!   빼기 규칙 · 이름만)을 스냅숏 `mcpServers` 에 싣는다 — 입력 칸 `[+]` › MCP 가 새 채팅에서도 선다. 띄우면 실린 목록이 갈음한다.
-//! - 외부 서버의 도구는 **CLI 에 미리 허용하지 않는다** — 부를 때마다 권한 요청(`permission{kind: mcpTool}` — Claude `can_use_tool` · Codex
-//!   MCP 승인 elicitation · `prompt`)이 오고, 묻지 않기는 위 "권한 모드"(Auto · 허용 목록의 `mcp:<서버>`)가 정한다(2026-11-20 — 설정의
-//!   `side_chat_no_ask` 를 걷었다).
+//! - 사람이 설정에서 사이드 채팅에 고른 외부 서버만 싣는다 — 이 프로세스가 저장된 설정을 직접 읽고 op 몸에 서버 목록 칸이 없다(시험
+//!   `side_chat_ops_take_no_server_list`). 사용자 CLI 설정의 서버는 싣지 않는다.
+//! - 비밀 값은 AI 타일과 같은 브로커 티켓으로 — 인자 · 파일 · 프런트에 값이 없다. 볼트가 잠겼으면 비밀 값이 있는 서버만 뺀다.
+//! - 외부 서버의 도구는 CLI 에 미리 허용하지 않는다 — 묻지 않기는 권한 모드(Auto · 허용 목록의 `mcp:<서버>`)만 정한다.
 //!
 //! ## 사건 · 중계
 //!
-//! (코어 `chat_proc`) stdout 은 스레드 하나가 `turn::LineSplitter`(32 MiB)로 줄을 나눠 `adapter.on_line` 에 넣고, stderr 는 `turn::TailRing`(8 KiB — 준비 전에
-//! 끝났을 때 마지막 줄만 `notice{stderr}` 로). `textDelta` 는 같은 item 끼리 50ms 모아 하나로 낸다(감시 스레드가 그 틈마다 비운다).
-//! 사건은 이 파일의 `Host::on_event` 가 `hub::emit` 으로 GUI 연결에 내고 몸에 **보는 창 이름들**(`windows`)을 싣는다 — 몸에 대화 본문이 있어 GUI 는 모든 창에
-//! 방송하지 않고 그 창들에만 중계한다(3단계 — `client.rs` 의 `RELAYED` 에 **넣지 않는다**: 넣으면 모든 창으로 샌다 · GUI 는 그 창이 건
-//! Tauri `Channel` 하나로만 보낸다 — `server::side_chat_proxy` 머리말). 서버 → GUI 연결은
-//! 지금도 GUI 프로세스 하나라 연결별로 가르는 새 길은 만들지 않았다.
+//! 사건 몸에는 대화 본문이 있어 `client.rs` 의 `RELAYED` 에 넣지 않는다 — 넣으면 모든 창으로 샌다. 몸의 `windows` 창의 통로로만 간다.
 //!
-//! ## 수명(설계 1절 표 — `db::table` 과 같은 꼴)
+//! ## 수명
 //!
-//! | 사건 | 프로세스 |
-//! |---|---|
-//! | F5 · 웹뷰 크래시 · 창 파괴(원격 창 끝 포함 — `detach_window` · `close_window`) | 그 창만 뗌(남은 창이 없으면 떼어 둠) → 새 페이지의 `side_chat_attach` 가 다시 붙는다 |
-//! | GUI 재시작 · kill(`conn_gone`) | 그 연결의 창을 뗌 → 떼어 둠 →[`DETACH_TTL`] 안에 다시 붙으면 그대로 · **도는 턴은 끝까지** · TTL 뒤 쉬는 순간 닫음(권한 요청을 기다리는 턴은 사람이 없어 끝나지 않으니 TTL 에 닫는다) |
-//! | 마지막 창 → 트레이 | 산다(연결 그대로) · 권한 요청은 기다림 |
-//! | 트레이 [모든 세션 종료](`close_all`) · 서버 끝 | 닫음([`close_all`]) |
-//! | 프로세스가 끝남 · 다시 뜸 | 기다리던 권한 요청은 `permissionResolved{by: closed}`(`adapter.close_pending`) + `exited{code, reason}` |
+//! - F5 · 웹뷰 크래시 · 창 파괴는 그 창만 뗀다. GUI 재시작 · kill 은 그 연결의 창을 떼고 [`DETACH_TTL`] 안에 다시 붙으면 그대로 · 도는 턴은 끝까지 ·
+//!   TTL 뒤 쉬는 순간 닫는다(권한 요청을 기다리는 턴은 TTL 에 닫는다). 트레이 [모든 세션 종료] · 서버 끝은 [`close_all`].
+//! - 서버 고아 자진 종료(`serve::Busy`)는 사이드 채팅을 세지 않는다 — 붙은 채팅은 GUI 연결로 이미 세이고, 떼어 둔 것의 TTL 은 고아 시계와 같이 시작한다.
 //!
-//! **서버 고아 자진 종료(`serve::Busy`)는 사이드 채팅을 세지 않는다** — `db::table` 과 같은 근거(붙은 채팅은 GUI 연결이 `clients` 로 이미
-//! 세이고, 떼어 둔 것의 TTL 은 고아 시계와 같은 순간에 시작한다 · 끝날 때 [`close_all`]).
-//!
-//! **로그**: 채팅 id · 세대 · pid · 끝 코드 · 버린 줄 수만. 글 · 모델 답 · 도구 출력 · 경로는 남기지 않는다.
+//! 로그: 채팅 id · 세대 · pid · 끝 코드 · 버린 줄 수만. 글 · 모델 답 · 도구 출력 · 경로는 남기지 않는다.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Read;
@@ -164,23 +77,16 @@ use crate::side_chat::event::{model_ok, uuid_ok, word_ok, Mode, ResolvedBy};
 use crate::side_chat::perm::{self, ChatPerm, PermMode};
 use crate::side_chat::{claude, codex, store, Adapter, Cli, Decision, Ev};
 
-/// 사건 이벤트 이름(서버 → GUI). 몸 `{windows, chat, epoch, seq, ev}`.
 pub(crate) const EVENT: &str = "side-chat-event";
-/// 완료 확인 방송 이름(op `side_chat_seen` — 머리말 "완료 확인 공유"). 몸 `{chat, epoch, seq}` — 본문 · 토큰 없음, GUI 가 모든 창에 중계한다.
+/// 몸이 채팅 id · 세대 · 번호뿐이라(본문 · 토큰 없음) GUI 가 모든 창에 중계한다.
 pub(crate) const SEEN_EVENT: &str = "side-chat-seen";
-/// op 실패 코드.
 pub(crate) const SIDE_CHAT: &str = "side-chat";
-/// 옛 프로세스 세대(`epoch`)의 호출 — 화면은 다시 attach 한다.
 pub(crate) const STALE_CHAT: &str = "stale-chat";
-/// 떼어 둔 채팅을 살려 두는 시간(설계 8절 4 — `db::table::DETACH_TTL` 과 같은 10분).
 pub(crate) const DETACH_TTL: Duration = Duration::from_secs(600);
-/// 보낸 글 하나의 상한(바이트).
 const TEXT_MAX: usize = 256 * 1024;
-/// 받아들여지기를 기다리는 사람 글 장부의 상한(`userAccepted` 에 본문을 얹는 데만 쓴다 — 넘으면 오래된 것부터 버린다).
 const SENT_MAX: usize = 32;
-/// 사용자 문서(CLAUDE.md · config.toml) 읽기 상한.
 const DOC_MAX: u64 = 1024 * 1024;
-// 사이드 채팅 지침 저장 상한(`store::INSTRUCTIONS_MAX`)은 읽기 상한과 같다 — 저장한 글이 읽기에서 잘리지 않게.
+// 지침 저장 상한은 읽기 상한과 같아야 한다 — 저장한 글이 읽기에서 잘리지 않게
 const _: () = assert!(DOC_MAX as usize == store::INSTRUCTIONS_MAX);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -191,7 +97,6 @@ fn fail(reason: &str, message: impl Into<String>) -> WireError {
     WireError::new(SIDE_CHAT, with_reason(reason, message.into()))
 }
 
-/// 이 파일이 받는 op 인가.
 pub(crate) fn is_side_chat_op(op: &str) -> bool {
     matches!(
         op,
@@ -215,13 +120,12 @@ pub(crate) fn is_side_chat_op(op: &str) -> bool {
 // 표
 // ---------------------------------------------------------------------------
 
-/// 보는 창 하나 — 사건을 받을 창 라벨 · 끊기면 뗄 연결(같은 라벨은 하나 — 머리말 "보는 창 여럿").
 struct Viewer {
     window: String,
     conn: u64,
 }
 
-/// 보냈지만 아직 받아들여지지 않은 사람 글(`userAccepted` 에 얹는다 — `Host::shape`). **`Debug` 를 파생하지 않는다**(본문).
+/// `Debug` 를 파생하지 않는다(본문).
 struct Sent {
     client_id: Option<String>,
     text: String,
@@ -232,45 +136,37 @@ struct State {
     cli: Cli,
     model: String,
     effort: Option<String>,
-    /// 이어 갈 대화(턴이 한 번 선 것만 — 머리말).
+    /// 턴이 한 번 선 것만.
     conversation: Option<String>,
-    /// 갈라 올 원본 대화(6단계 — `conversation` 이 서기 전의 첫 띄우기만 쓴다).
+    /// `conversation` 이 서기 전의 첫 띄우기만 쓴다.
     fork_from: Option<String>,
-    /// CLI 가 도는 폴더 — `None` = 채팅 자기 폴더 · 갈라 온 채팅은 그 대화의 기록된 폴더(머리말 "타일 대화 이어 가기").
+    /// `None` = 채팅 자기 폴더.
     cwd: Option<PathBuf>,
-    /// 지금 프로세스가 알린 대화 id(준비 · 바뀜 알림) — 턴이 서면 `conversation` 으로 옮긴다.
+    /// 턴이 서면 `conversation` 으로 옮긴다.
     conv_seen: Option<String>,
-    /// 보는 창들(머리말 "보는 창 여럿").
     viewers: Vec<Viewer>,
-    /// 창이 붙을 때마다 +1(스냅숏의 `leaseEpoch`).
     lease_epoch: u64,
-    /// 받아들여지기를 기다리는 사람 글(차례대로 — [`SENT_MAX`]).
     sent: VecDeque<Sent>,
-    /// 떼어 둔 시각(`None` = 붙어 있다 — 보는 창이 0 이 된 순간부터).
+    /// 보는 창이 0 이 된 순간부터.
     detached: Option<Instant>,
-    /// 프로세스 칸(공용 코어 — 세대 · 상태 · `seq` · 꼬리 · 기다리는 요청 · 산 프로세스).
     core: Core,
-    /// 연결(`crate::chat_token`)이 서거나 바뀌었다 — 사람의 다음 글 앞에 연결 머리글을 붙인다(`op_send` — 붙인 뒤 내린다).
+    /// 사람의 다음 글 앞에 연결 머리글을 붙인다(붙인 뒤 내린다).
     link_note: bool,
-    /// 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름(`Ev::McpServers` — 스냅숏의 `mcpServers`). 프로세스가 없을 때 연 채팅은 실을 예정
-    /// 이름([`planned_mcp`] — `op_open`).
     mcp: Vec<String>,
-    /// 그 채팅의 **권한 모드 · 허용 목록**(2026-11-20 — `side_chat::perm` · 머리말 "권한 모드"). 표에 새로 세울 때 저장에서 읽고, 사람의 op 가
-    /// 바꿀 때마다 저장한다. 서버가 권한 요청에 대신 답할지는 이것만 본다(`Host::on_event`).
+    /// 서버가 권한 요청에 대신 답할지는 이것만 본다 — 사람의 op 가 바꿀 때마다 저장한다.
     perm: ChatPerm,
 }
 
 struct Chat {
     id: String,
     st: Mutex<State>,
-    /// 상태가 바뀌었다(준비 기다리기 — `side_chat_send`).
     cv: Condvar,
 }
 
 #[derive(Default)]
 struct Table {
     chats: HashMap<String, Arc<Chat>>,
-    /// 지금 살아 있는 서버 연결 — 끊긴 뒤에 끝난 열기 · 붙기는 곧바로 떼어 둔다(`db::table` 과 같은 구멍 막기).
+    /// 끊긴 뒤에 끝난 열기 · 붙기는 곧바로 떼어 둔다.
     conns: HashSet<u64>,
 }
 
@@ -296,12 +192,10 @@ fn check_epoch(st: &State, epoch: u64) -> Result<(), WireError> {
 // 코어의 주인 — 사건 내보내기 · 끝 정리
 // ---------------------------------------------------------------------------
 
-/// 보는 창 라벨들(붙은 차례).
 fn windows_of(st: &State) -> Vec<String> {
     st.viewers.iter().map(|v| v.window.clone()).collect()
 }
 
-/// 사건 몸 — **순수**(시험이 모양을 본다).
 fn event_body(windows: &[String], chat: &str, proc: ProcId, seq: u64, ev: &Ev) -> Value {
     json!({ "windows": windows, "chat": chat, "epoch": proc, "seq": seq, "ev": ev })
 }
@@ -317,8 +211,7 @@ impl chat_proc::Host for Chat {
         &mut st.core
     }
 
-    /// `userAccepted` 에 그 글의 본문 · 그림 이름을 얹는다 — `clientId` 가 있으면 그 글(앞의 것은 버린다 — 받아들여지지 않고 끝난 글),
-    /// 없으면 가장 오래된 글.
+    /// `clientId` 앞의 글은 버린다 — 받아들여지지 않고 끝난 글이다.
     fn shape(&self, st: &mut State, ev: &mut Ev) {
         if let Ev::UserAccepted { client_id, text, files } = ev {
             let at = match client_id.as_deref() {
@@ -332,8 +225,7 @@ impl chat_proc::Host for Chat {
         }
     }
 
-    /// 주인 칸(대화 id · 외부 MCP 이름 · 준비 기다리기)에 반영하고 내보낸다 — 몸에 보는 창 이름들을 싣는다(머리말 "사건 · 중계"). 보는 창이
-    /// 없으면 `windows: []`(GUI 가 아무 창에도 보내지 않는다 — 다시 붙는 창은 스냅숏으로 맞춘다).
+    /// 보는 창이 없으면 `windows: []` — 다시 붙는 창은 스냅숏으로 맞춘다.
     fn on_event(&self, st: &mut State, proc: ProcId, seq: u64, ev: &Ev) {
         match ev {
             Ev::Ready { conversation_id, .. } => {
@@ -355,8 +247,7 @@ impl chat_proc::Host for Chat {
             }
             Ev::McpServers { names } => st.mcp = names.clone(),
             Ev::Exited { .. } => self.cv.notify_all(),
-            // **권한 모드 · 허용 목록**(2026-11-20 — 머리말 "권한 모드") — 사람이 그 채팅에 Auto 를 골랐거나 이 종류를 [이 채팅에서 허용] 했으면
-            // 카드를 띄우지 않고 서버가 허용으로 답한다. 이 번호의 몸은 `permissionAuto`(끝난 한 줄 — 알림 없음), 곧이어 `permissionResolved{by}`.
+            // 사람이 그 채팅에 정한 모드 · 허용 목록이 허용하면 카드 없이 서버가 허용으로 답한다
             Ev::Permission { request_id, kind, title, tool_name, .. } => {
                 let key = perm::key_of(*kind, tool_name, &st.mcp);
                 if let Some(by) = perm::answer_by(&st.perm, key.as_deref()) {
@@ -377,8 +268,7 @@ impl chat_proc::Host for Chat {
         hub::emit(EVENT, event_body(&windows_of(st), &self.id, proc, seq, ev));
     }
 
-    /// 끝 사건 전 — 이 세대의 채팅 토큰을 거두고(정확히 이 세대만 — 늦은 끝 정리가 새 세대의 칸을 건드리지 않는다), 그 대화를 놓았다고
-    /// 서버 장부에 적는다(채팅 지우기가 곧바로 그 대화를 지울 때 "방금 쓰임"(2분)에 막히지 않게 — 타일이 쥐었으면 그대로).
+    /// 토큰은 정확히 이 세대만 거둔다 — 늦은 끝 정리가 새 세대의 칸을 건드리지 않게. 대화를 놓았다고 적어야 채팅 지우기가 "방금 쓰임"에 막히지 않는다.
     fn on_ending(&self, st: &mut State, proc: ProcId) {
         crate::chat_token::revoke(&self.id, proc);
         let agent = cli_name(st.cli);
@@ -408,7 +298,7 @@ fn read_capped(p: &Path) -> Option<String> {
     (!s.trim().is_empty()).then_some(s)
 }
 
-/// 지침 파일 본문 — 답변 · 검색 지침(`side_chat::fixed_guide` — 늘) + 전역 CLAUDE.md · `sidechat/CLAUDE.md`(둘 다 **읽기만** · 없으면 뺀다).
+/// CLAUDE.md 둘은 읽기만 한다.
 fn instructions(root: &Path) -> String {
     let global = turn::global_claude_md(std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(), dirs::home_dir()).and_then(|p| read_capped(&p));
     let local = read_capped(&root.join(store::INSTRUCTIONS_FILE));
@@ -422,7 +312,7 @@ fn instructions(root: &Path) -> String {
     turn::instructions_text(&crate::side_chat::fixed_guide(), None, &docs).expect("고정 글이 있어 늘 Some")
 }
 
-/// 사용자 Codex 설정의 MCP 서버 이름 — `$CODEX_HOME/config.toml`(없으면 `~/.codex`) 을 **읽기만**.
+/// 사용자 Codex 설정은 읽기만 한다.
 fn codex_mcp_names() -> codex::McpNames {
     let home = match std::env::var_os("CODEX_HOME").filter(|v| !v.is_empty()) {
         Some(h) => PathBuf::from(h),
@@ -441,7 +331,6 @@ fn cli_name(cli: Cli) -> &'static str {
     }
 }
 
-/// `<데이터 루트>/sidechat` — 시험은 임시 폴더로 바꾼다.
 fn sidechat_root() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(f) = lock(&FAKE).as_ref() {
@@ -450,14 +339,13 @@ fn sidechat_root() -> Option<PathBuf> {
     store::root()
 }
 
-/// 채팅 MCP 재료 — **`Debug` 를 파생하지 않는다**(토큰).
+/// `Debug` 를 파생하지 않는다(토큰).
 struct ChatMcp {
     name: &'static str,
     url: String,
     token: String,
 }
 
-/// 세션 서버의 MCP 포트(시험은 가짜 CLI 의 값).
 fn mcp_port() -> Option<u16> {
     #[cfg(test)]
     if let Some(f) = lock(&FAKE).as_ref() {
@@ -466,7 +354,7 @@ fn mcp_port() -> Option<u16> {
     hub::signal_port()
 }
 
-/// 이 세대의 채팅 토큰을 뽑는다(포트가 없거나 난수를 못 얻으면 `None` — 그 프로세스는 Aynx MCP 없이 뜬다).
+/// `None` 이면 그 프로세스는 Aynx MCP 없이 뜬다.
 fn chat_mcp(id: &str, proc: ProcId) -> Option<ChatMcp> {
     let port = mcp_port()?;
     let token = crate::chat_token::issue(id, proc)?;
@@ -477,8 +365,7 @@ fn chat_mcp(id: &str, proc: ProcId) -> Option<ChatMcp> {
     })
 }
 
-/// 사람이 사이드 채팅에 고른 외부 서버 — **저장된 설정을 이 프로세스가 직접 읽는다**(`agent_mcp::side_chat_servers` — op 몸 · 프런트
-/// 인자에서 받지 않는다). 시험은 [`set_fake_servers_for_test`] 의 목록.
+/// 저장된 설정을 이 프로세스가 직접 읽는다 — op 몸 · 프런트 인자에서 받지 않는다.
 fn picked_servers(cwd: &str) -> Vec<crate::agent_mcp::McpServer> {
     #[cfg(test)]
     {
@@ -489,10 +376,8 @@ fn picked_servers(cwd: &str) -> Vec<crate::agent_mcp::McpServer> {
     crate::agent_mcp::side_chat_servers(Some(cwd))
 }
 
-/// **외부 MCP 서버의 실행 모양**(2026-10-25 — 머리말 "외부 MCP") — 고른 서버마다 비밀 값이 있으면 브로커가 티켓을 박은 모양(stdio = `aynx
-/// mcp-run` 도우미 · HTTP = 헤더 프록시 URL — 값은 볼트에서 그 자식 · 프록시로만)으로 바꾼다. 빼는 것과 알림(이름만):
-/// 볼트가 잠겼는데 비밀 값이 있다 `mcp-locked`(채팅은 그 서버 없이 뜬다) · Codex 의 사용자 `config.toml` 과 같은 이름 `mcp-name-taken`
-/// (표가 합쳐져 그쪽 칸이 섞인다) · 준비 실패 · 인자에 못 싣는 모양 `mcp-failed`.
+/// 비밀 값이 있는 서버는 브로커가 티켓을 박은 모양으로 바꾼다 — 값은 볼트에서 그 자식 · 프록시로만 간다. Codex 사용자 설정과 같은 이름은
+/// 싣지 않는다(표가 합쳐져 그쪽 칸이 섞인다).
 fn external_mcp(cli: Cli, cwd: &str, user_names: &[String], notices: &mut Vec<Ev>) -> Vec<crate::agent_mcp::McpServer> {
     let picked = picked_servers(cwd);
     if picked.is_empty() {
@@ -528,11 +413,9 @@ fn external_mcp(cli: Cli, cwd: &str, user_names: &[String], notices: &mut Vec<Ev
     out
 }
 
-/// 고른 외부 서버를 싣지 않을 까닭(띄우기 [`external_mcp`] 와 열기의 예정 이름 [`planned_mcp`] 이 같은 규칙을 쓴다).
+/// [`external_mcp`] 와 [`planned_mcp`] 가 같은 규칙을 써야 한다.
 enum Skip {
-    /// Codex 사용자 `config.toml` 에 같은 이름(`mcp-name-taken`)
     Taken,
-    /// 비밀 값이 있는데 볼트가 잠겼다(`mcp-locked`)
     Locked,
 }
 
@@ -546,10 +429,7 @@ fn mcp_skip(s: &crate::agent_mcp::McpServer, cli: Cli, user_names: &[String], va
     None
 }
 
-/// **열 때의 예정 이름**(2026-11-13 — 첫 보내기 전에도 `[+]` › MCP 가 보이게) — 프로세스는 첫 보내기에 뜨므로(머리말 "게으르게") 그 전에는
-/// 실린 목록(`Ev::McpServers`)이 없다. 띄우지 않고 [`external_mcp`] 와 같은 고르기 · 빼기 규칙([`mcp_skip`] — 같은 이름 · 볼트 잠김)만 적용한
-/// **이름**을 스냅숏의 `mcpServers` 에 싣는다(값 · 티켓 · 토큰 없음). 띄우면 실제로 실린 목록이 이것을 갈음한다(준비 실패만 그때 빠진다).
-/// 블로킹(설정 · 프로젝트 판정 · Codex 설정 파일 읽기) — 표 · 채팅 잠금 **앞**에서 부른다.
+/// 첫 보내기 전의 예정 이름만(값 · 티켓 · 토큰 없음). 블로킹이라 표 · 채팅 잠금 앞에서 부른다.
 fn planned_mcp(cli: Cli, cwd: &str) -> Vec<String> {
     let picked = picked_servers(cwd);
     if picked.is_empty() {
@@ -560,8 +440,6 @@ fn planned_mcp(cli: Cli, cwd: &str) -> Vec<String> {
     picked.into_iter().filter(|s| mcp_skip(s, cli, &user, vault_open).is_none()).map(|s| s.name).collect()
 }
 
-/// **그 채팅 CLI 가 도는 폴더** — 채팅 자기 폴더(없으면 만든다) · 갈라 온 채팅은 열 때 색인에서
-/// 정한 폴더(그 사이 지워졌으면 `[conversation-folder-missing]`).
 fn run_cwd(root: &Path, id: &str, forked: Option<&Path>) -> Result<PathBuf, WireError> {
     let own = store::chat_dir(root, id).ok_or_else(|| fail("bad-chat", "invalid side chat id"))?;
     std::fs::create_dir_all(&own).map_err(|e| fail("chat-dir", e.to_string()))?;
@@ -572,7 +450,7 @@ fn run_cwd(root: &Path, id: &str, forked: Option<&Path>) -> Result<PathBuf, Wire
     }
 }
 
-/// 실행 재료([`chat_proc::Launch`])를 짓는다(파일을 쓰지만 아무것도 띄우지 않는다).
+/// 파일을 쓰지만 아무것도 띄우지 않는다.
 fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
     let root = sidechat_root().ok_or_else(|| fail("no-data-root", "the app data folder is unknown"))?;
     let cwd = run_cwd(&root, id, st.cwd.as_deref())?;
@@ -597,13 +475,10 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
     } else {
         None
     };
-    // 채팅 MCP(5단계) — 서버의 MCP 포트가 있으면 **이 세대의** 채팅 토큰을 뽑는다(`crate::chat_token` — 값은 이 프로세스의 실행 재료에만:
-    // Claude 는 임시 자리의 `--mcp-config` 파일 · Codex 는 환경 변수). 실패한 띄우기는 부르는 쪽([`spawn`])이 거둔다.
+    // 채팅 토큰 값은 이 프로세스의 실행 재료에만 싣는다. 실패한 띄우기는 부르는 쪽(`spawn`)이 거둔다
     let mcp = chat_mcp(id, proc);
     let cwd_s = cwd.to_string_lossy().replace('\\', "/");
-    // Codex 사용자 설정의 MCP 이름(하나씩 끈다 · 같은 이름의 외부 서버는 싣지 않는다)
     let user_names = if st.cli == Cli::Codex { codex_mcp_names() } else { codex::McpNames::default() };
-    // 외부 MCP(2026-10-25) — 사람이 사이드 채팅에 고른 서버만(저장된 설정 · 이 프로세스가 읽는다). 이름은 머리줄 칩으로(`mcpServers`).
     let ext = external_mcp(st.cli, &cwd_s, &user_names.names, &mut notices);
     let names: Vec<String> = ext.iter().map(|s| s.name.clone()).collect();
     if !names.is_empty() || !st.mcp.is_empty() {
@@ -617,15 +492,13 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
                 None => claude::MCP_CONFIG_EMPTY.to_string(),
             };
             let mcp_file = spot.write("mcp.json", &claude::mcp_config_with(&body, &ext)).map_err(|e| fail("temp-file", e))?;
-            // 읽기 도구는 묻지 않는다 — 판정(연결 · AI 읽기 허용 · 호스트 권한)은 호출마다 서버가 한다(`mcp/chat_read.rs`).
+            // 읽기 도구는 묻지 않는다 — 판정은 호출마다 서버가 한다(`mcp/chat_read.rs`)
             let mut allowed: Vec<String> = match &mcp {
                 Some(m) => crate::chat_token::READ_TOOLS.iter().map(|t| format!("mcp__{}__{t}", m.name)).collect(),
                 None => Vec::new(),
             };
-            // 외부 서버의 도구는 미리 허용하지 않는다 — 늘 `can_use_tool` 로 오고 묻지 않기는 이 서버가 채팅의 모드 · 허용 목록으로 답한다
-            // (2026-11-20 — 설정의 '묻지 않기' 를 걷었다 · 머리말 "권한 모드").
-            // 파일 첨부(판 32) — 사본은 늘 채팅 자기 폴더의 `attachments/`(`chat_files`). 갈라 온 채팅은 cwd 가 다른 폴더라 그 폴더 **하나의 읽기**만
-            // 더한다(`--add-dir` + `Read(//…/**)` — 쓰기 · 실행 도구는 `--tools` 에 없다). 자기 폴더가 cwd 인 채팅은 `Read(./**)` 에 이미 든다.
+            // 외부 서버의 도구는 미리 허용하지 않는다 — 묻지 않기는 이 서버가 채팅의 모드 · 허용 목록으로 답한다
+            // 갈라 온 채팅은 cwd 가 다른 폴더라 첨부 폴더 하나의 읽기만 더한다(쓰기 · 실행 도구는 `--tools` 에 없다)
             let attach_dir = if st.cwd.is_some() { attach_read(id) } else { None };
             if let Some((_, rule)) = &attach_dir {
                 allowed.push(rule.clone());
@@ -633,7 +506,6 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
             let append = Some(spot.write("instructions.md", &instructions(&root)).map_err(|e| fail("temp-file", e))?);
             let (mode, session_id) = match (st.conversation.as_deref(), fresh.as_deref()) {
                 (Some(c), _) => (Mode::Resume { conv: c }, c),
-                // 갈라 오기 — 새 대화가 이 id 로 선다(원본은 그대로)
                 (None, Some(n)) => match st.fork_from.as_deref() {
                     Some(from) => (Mode::Fork { from }, n),
                     None => (Mode::Fresh, n),
@@ -687,16 +559,14 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
                 add.push((crate::tile_env::MCP_TOKEN_ENV.to_string(), m.token.clone()));
             }
             let mut argv = codex::argv(&o).map_err(bad)?;
-            // Codex 실행 환경(Windows — 스토어 pwsh 를 뺀 PATH 등 · 작업자 턴과 같은 재료).
             let launch = crate::codex_launch::codex_launch_env();
             crate::codex_launch::apply_tile_path(&mut add, launch.as_ref());
             argv.extend(crate::codex_launch::codex_extra_args(launch.as_ref()));
-            // 사이드 채팅 지침(사람이 설정 › 지침에서 쓴 글) — Claude 와 같은 파일을 이 프로세스가 직접 읽는다(op 몸으로 받지 않는다).
+            // 지침은 이 프로세스가 파일에서 직접 읽는다 — op 몸으로 받지 않는다
             let person = read_capped(&root.join(store::INSTRUCTIONS_FILE));
             (argv, Box::new(codex::Codex::new(&o).person_instructions(person.as_deref())))
         }
     };
-    // 시험 — 인자는 위에서 검사만 하고 가짜 CLI(시험 실행 파일 자신)의 것으로 바꾼다.
     #[cfg(test)]
     let argv = match lock(&FAKE).as_ref() {
         Some(f) => {
@@ -709,12 +579,10 @@ fn prepare(id: &str, st: &State, proc: ProcId) -> Result<Launch, WireError> {
     Ok(Launch { name, exe, argv, cwd, env, adapter, spot, notices })
 }
 
-/// **프로세스를 띄운다** — `side_chat_send` 에서만(머리말 "게으르게"). 새 세대([`ProcId::next`] — 서버 전역 · 재사용 없음)를 뽑아 실행
-/// 재료를 짓고 공용 코어(`chat_proc::start`)가 띄운다. 부르는 쪽이 채팅 잠금을 쥐고 있다 — 코어의 스레드들은 그 잠금이 풀린 뒤에야 줄을
-/// 반영한다(세대 · 프로세스 칸이 먼저 선다).
+/// `side_chat_send` 에서만. 부르는 쪽이 채팅 잠금을 쥐고 있어 코어의 스레드들은 세대 · 프로세스 칸이 선 뒤에야 줄을 반영한다.
 fn spawn(chat: &Arc<Chat>, st: &mut State) -> Result<(), WireError> {
     let proc = ProcId::next();
-    // 띄우지 못하면 이 세대의 채팅 토큰을 곧바로 거둔다(뽑은 것은 `prepare` — 5단계).
+    // 띄우지 못하면 이 세대의 채팅 토큰을 곧바로 거둔다
     let revoke = |e: WireError| {
         crate::chat_token::revoke(&chat.id, proc);
         e
@@ -737,7 +605,7 @@ enum ModeBody {
     Fresh,
     Resume {
         conv: String,
-        /// 갈라 온 채팅 자신의 대화 — cwd 를 그 대화의 색인에서 다시 얻는다(머리말 "타일 대화 이어 가기").
+        /// 갈라 온 채팅 자신의 대화 — cwd 를 그 대화의 색인에서 다시 얻는다.
         #[serde(default)]
         project: bool,
     },
@@ -764,13 +632,13 @@ struct SendBody {
     text: String,
     #[serde(default)]
     client_id: Option<String>,
-    /// 입력 칸 연결 칩들의 지금 이름 — 스트림 id → 이름(머리글을 붙일 때만 쓴다 — `link_header_now`). 없는 스트림은 거울의 타일 이름.
+    /// 스트림 id → 칩 이름 — 머리글을 붙일 때만 쓴다.
     #[serde(default)]
     link_names: Option<HashMap<String, String>>,
-    /// 사람이 이 글에 붙인 그림의 경로(입력 칸 칩 — 앱 첨부 자리의 사본). 서버가 다시 본다(`chat_images`).
+    /// 서버가 첨부 자리 안의 그림인지 다시 본다.
     #[serde(default)]
     images: Vec<String>,
-    /// 사람이 이 글에 붙인 그림 밖 파일의 경로(판 32 — 앱 첨부 자리의 사본). 서버가 다시 보고 채팅 자기 폴더로 옮겨 적는다(`chat_files`).
+    /// 서버가 다시 보고 채팅 자기 폴더로 옮겨 적는다.
     #[serde(default)]
     files: Vec<String>,
 }
@@ -817,7 +685,7 @@ struct DecideBody {
     decision: String,
     #[serde(default)]
     message: Option<String>,
-    /// [이 채팅에서 허용](판 37) — 허용 + **그 요청의 종류**를 허용 목록에 올린다. 종류는 서버가 기다리는 요청에서 읽는다(몸에 종류 칸이 없다).
+    /// [이 채팅에서 허용] — 종류는 서버가 기다리는 요청에서 읽는다(몸에 종류 칸이 없다).
     #[serde(default)]
     remember: bool,
 }
@@ -826,7 +694,6 @@ struct DecideBody {
 #[serde(rename_all = "camelCase")]
 struct PermModeBody {
     chat: String,
-    /// `manual` · `auto`.
     mode: String,
 }
 
@@ -834,7 +701,7 @@ struct PermModeBody {
 #[serde(rename_all = "camelCase")]
 struct ForgetBody {
     chat: String,
-    /// 허용 목록에서 뺄 종류 열쇠(`side_chat::perm` — 빼기만 한다 · 넓히는 길이 아니다).
+    /// 빼기만 한다 — 넓히는 길이 아니다.
     kind: String,
 }
 
@@ -852,11 +719,11 @@ struct AttachBody {
 }
 
 fn body<T: for<'de> Deserialize<'de>>(v: Value) -> Result<T, WireError> {
-    // serde 문구는 몸(사람 글)을 되풀이할 수 있다 — 싣지 않는다.
+    // serde 문구는 몸(사람 글)을 되풀이할 수 있다 — 싣지 않는다
     serde_json::from_value(v).map_err(|_| WireError::new(super::ipc::frame::code::BAD_BODY, "bad side chat request body"))
 }
 
-/// op 하나(블로킹 — `serve` 가 블로킹 풀에서 부른다). `conn` 은 부른 서버 연결(임대).
+/// 블로킹 — 블로킹 풀에서 부른다.
 pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> {
     match op {
         "side_chat_open" => op_open(body(b)?, conn),
@@ -879,7 +746,7 @@ pub(crate) fn handle(op: &str, b: Value, conn: u64) -> Result<Value, WireError> 
     }
 }
 
-/// 스냅숏 — `links` 는 [`link_views`](부르는 쪽이 채팅 잠금 **앞**에서 — 권한 파일 읽기를 잠금 위에서 하지 않게).
+/// `links` 는 부르는 쪽이 채팅 잠금 앞에서 짓는다 — 권한 파일 읽기를 잠금 위에서 하지 않게.
 fn snapshot(chat: &Chat, st: &State, links: Value) -> Value {
     json!({
         "links": links,
@@ -902,8 +769,7 @@ fn snapshot(chat: &Chat, st: &State, links: Value) -> Value {
     })
 }
 
-/// 보는 창을 **덧붙인다** — 같은 라벨이면 연결만 갈음 · 회차 +1 · 떼어 둠 풀기. 연결이 이미 끊겼으면 덧붙이지 않는다(보는 창이 없으면
-/// 곧바로 떼어 둔다). 모은 조각은 먼저 낸다(스냅숏 뒤 사건이 이어지게).
+/// 연결이 이미 끊겼으면 덧붙이지 않는다. 모은 조각은 먼저 낸다 — 스냅숏 뒤 사건이 이어지게.
 fn add_viewer(chat: &Chat, st: &mut State, window: String, conn: u64, conn_alive: bool) {
     st.lease_epoch += 1;
     if conn_alive {
@@ -916,11 +782,9 @@ fn add_viewer(chat: &Chat, st: &mut State, window: String, conn: u64, conn_alive
     chat_proc::flush(chat, st);
 }
 
-/// 갈라 올 대화의 폴더가 없다(색인의 기록된 cwd 가 지금 폴더가 아니거나 절대 경로가 아니다).
 pub(crate) const FOLDER_MISSING: &str = "conversation-folder-missing";
 
-/// 그 CLI 의 대화 id → **기록된 시작 cwd**(6단계 — 머리말 "타일 대화 이어 가기"). 색인(`agent_sessions` — 목록 · 재개와 같은 판정)에서만
-/// 고르고 화면이 준 경로는 없다. 블로킹(파일을 찾는다) — op 는 블로킹 풀에서 돈다.
+/// 대화 색인에서만 고른다 — 화면이 준 경로는 없다.
 fn recorded_cwd(cli: Cli, id: &str) -> Result<PathBuf, WireError> {
     use crate::agent_sessions::{recorded_cwd_in, target, CwdMiss};
     let t = target(cli_name(cli)).map_err(|_| fail("bad-cli", "unknown side chat CLI"))?;
@@ -932,7 +796,6 @@ fn recorded_cwd(cli: Cli, id: &str) -> Result<PathBuf, WireError> {
     }
 }
 
-/// 그 에이전트의 대화 루트(시험은 가짜 색인).
 fn conv_roots(t: &'static crate::agent_sessions::SessionTarget) -> Vec<PathBuf> {
     #[cfg(test)]
     if let Some(f) = lock(&FAKE).as_ref() {
@@ -945,7 +808,7 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     if !store::id_ok(&b.chat) {
         return Err(fail("bad-chat", "invalid side chat id"));
     }
-    // 프로듀서 채팅 id(`pc-` — `server::producer`)는 이 표가 받지 않는다(표가 달라 섞일 일은 없지만 낱말을 밝힌다 — 설계 1-2 · 리뷰 F11).
+    // 프로듀서 채팅 id(`pc-`)는 이 표가 받지 않는다
     if b.chat.starts_with("pc-") {
         return Err(fail("wrong-chat-kind", "that id belongs to a producer chat — use producer_chat_*"));
     }
@@ -954,11 +817,11 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
         "codex" => Cli::Codex,
         _ => return Err(fail("bad-cli", "unknown side chat CLI")),
     };
-    // 빈 모델 = CLI 기본(`event::model_ok`)
+    // 빈 모델 = CLI 기본
     if !model_ok(&b.model) || b.effort.as_deref().is_some_and(|e| !word_ok(e)) {
         return Err(fail("bad-model", "invalid model"));
     }
-    // 대화 · 갈라 올 원본 · 폴더 — 폴더는 색인에서만(파일을 찾는다 — 표 잠금 앞에서)
+    // 폴더는 색인에서만 — 파일을 찾으므로 표 잠금 앞에서
     let (conversation, fork_from, cwd) = match b.mode {
         ModeBody::Fresh => (None, None, None),
         ModeBody::Resume { conv, project } if uuid_ok(&conv) => {
@@ -974,18 +837,17 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
             return Err(fail("bad-conversation", "invalid conversation id"))
         }
     };
-    // 첫 보내기 전에도 보일 외부 MCP 이름(띄울 폴더 = 갈라 온 대화의 폴더, 아니면 채팅 폴더 — [`prepare`] 와 같은 자리) — 잠금 앞에서
+    // 띄울 폴더는 `prepare` 와 같은 자리여야 한다 — 잠금 앞에서
     let plan_cwd = cwd.clone().or_else(|| sidechat_root().and_then(|r| store::chat_dir(&r, &b.chat)));
     let planned = plan_cwd.map(|p| planned_mcp(cli, &p.to_string_lossy().replace('\\', "/"))).unwrap_or_default();
-    // 권한 모드 · 허용 목록(2026-11-20) — 저장에서(없으면 새 채팅: 마지막 모드). 표에 새로 세울 때만 쓴다(다시 붙기는 표의 것이 최신) — 잠금 앞에서
+    // 표에 새로 세울 때만 쓴다(다시 붙기는 표의 것이 최신) — 잠금 앞에서
     let perm0 = sidechat_root().map(|r| perm::load_or_init(&r, &b.chat)).unwrap_or_default();
     let (chat, alive, old) = {
         let mut t = lock(&TABLE);
         let alive = t.conns.contains(&conn);
         let old = t.chats.get(&b.chat).cloned();
         let reuse = old.as_ref().filter(|c| lock(&c.st).cli == cli).cloned();
-        // 새 항목의 세대는 아직 없음(0) — CLI 를 바꾼 같은 채팅 · 닫고 다시 연 같은 채팅도 다음 띄우기가 서버 전역의 새 `ProcId` 를 받으니
-        // 옛 프로세스의 늦은 끝 정리가 새 세대의 채팅 토큰을 거두지 않는다(예전의 "세대를 이어 세기"가 막지 못한 닫기 → 열기도 함께 닫힌다).
+        // 새 항목의 세대는 0 — 다음 띄우기가 서버 전역의 새 `ProcId` 를 받아야 옛 프로세스의 늦은 끝 정리가 새 세대의 토큰을 거두지 않는다
         let chat = match reuse {
             Some(c) => c,
             None => {
@@ -1004,7 +866,6 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
                         sent: VecDeque::new(),
                         detached: None,
                         core: Core::new(),
-                        // 이미 걸린 연결(같은 채팅 — CLI 를 바꿈)은 새 프로세스의 첫 글에 다시 알린다.
                         link_note: !crate::chat_token::links_of(&b.chat).is_empty(),
                         mcp: Vec::new(),
                         perm: perm0,
@@ -1018,13 +879,12 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
         let replaced = old.filter(|o| !Arc::ptr_eq(o, &chat));
         (chat, alive, replaced)
     };
-    // CLI 가 바뀐 같은 채팅 — 옛 프로세스를 닫는다.
     if let Some(o) = old {
         lock(&o.st).core.kill("closed");
     }
     let links = link_views(&chat.id);
     let mut st = lock(&chat.st);
-    // 다시 붙기 — 프로세스가 없을 때만 띄울 뜻(모델 · 이어 갈 대화)을 바꾼다(도는 프로세스는 그대로).
+    // 프로세스가 없을 때만 띄울 뜻을 바꾼다 — 도는 프로세스는 그대로
     if !st.core.has_proc() {
         st.model = b.model;
         st.effort = b.effort;
@@ -1056,8 +916,7 @@ fn op_attach(b: AttachBody, conn: u64) -> Result<Value, WireError> {
     Ok(snapshot(&chat, &st, links))
 }
 
-/// **사람이 보낸 글** — 이 함수가 `encode_user` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`). 프로세스가 없으면 여기서
-/// 띄우고 준비를 기다린다.
+/// 사람이 보낸 글 — 이 함수가 `encode_user` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`).
 fn op_send(b: SendBody) -> Result<Value, WireError> {
     if (b.text.trim().is_empty() && b.images.is_empty() && b.files.is_empty()) || b.text.len() > TEXT_MAX {
         return Err(fail("bad-text", "the message is empty or too long"));
@@ -1066,8 +925,7 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
         return Err(fail("too-many-attachments", "too many attachments in one message"));
     }
     let chat = find(&b.chat)?;
-    // 그림 · 파일 — 파일을 읽고 쓰는 일이라 채팅 잠금 앞에서(CLI 는 채팅마다 고정 — 바꾸면 `open` 이 새 채팅을 세운다). Claude 만 그림
-    // 바이트를 싣는다.
+    // 파일을 읽고 쓰는 일이라 채팅 잠금 앞에서 — CLI 는 채팅마다 고정이다
     let cli = lock(&chat.st).cli;
     let images = chat_images(&b.images, cli == Cli::Claude)?;
     let attached = chat_files(&chat.id, &b.files)?;
@@ -1086,18 +944,16 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
         st = chat.cv.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
     }
     let epoch = st.core.id();
-    // 연결 묶음이 서거나 바뀐 뒤의 첫 글 — 앱 고정 연결 머리글을 앞에 붙인다(5단계 · 서버가 아는 연결 · 칩 이름이나 거울의 타일 이름으로만 짓는다).
+    // 연결 머리글은 서버가 아는 연결 · 칩 이름이나 거울의 타일 이름으로만 짓는다
     let text = if st.link_note { format!("{}{}", link_header_now(&chat.id, b.link_names.as_ref()), b.text) } else { b.text.clone() };
     let text = with_file_refs(&text, &attached);
     let Some(a) = st.core.adapter() else {
         return Err(fail("exited", "the side chat CLI exited before it was ready"));
     };
     let step = a.encode_user(&text, &images, b.client_id.as_deref()).map_err(|w| fail(w, "the message was not sent"))?;
-    // 붙인 머리글이 알린 연결(화면의 칩 — 기록 보기가 같은 글을 같은 함수로 읽는다). 붙이지 않았으면 없음.
     let link = if st.link_note { crate::side_chat::event::parse_link_note(&text).map(|(l, _)| l) } else { None };
     st.link_note = false;
-    // 다른 창이 그 글을 곧바로 그리게 — 사람이 친 본문(머리글 없이) · 그림 파일 이름만 적어 둔다(`Host::shape` 가 `userAccepted` 에 얹는다).
-    // 사건을 내는 읽기 스레드는 이 잠금이 풀린 뒤에야 반영하므로 apply 앞이든 뒤든 같다.
+    // 읽기 스레드는 이 잠금이 풀린 뒤에야 반영하므로 apply 앞이든 뒤든 같다
     let files = images
         .iter()
         .map(|im| im.path.as_str())
@@ -1112,15 +968,11 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
     Ok(json!({ "epoch": epoch, "link": link }))
 }
 
-/// 사람 글 하나에 붙이는 그림 수 상한.
 const IMAGES_MAX: usize = 8;
-/// 그림 한 장의 상한 — 기록 그림(`agent_transcript::IMAGE_MAX_BYTES`)과 같은 10 MB.
+/// 기록 그림(`agent_transcript::IMAGE_MAX_BYTES`)과 같은 값.
 const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
-/// **보내기에 붙인 그림을 다시 본다**(2026-10-24) — 화면이 준 경로는 앱 첨부 자리(`agent_attachments::attachments_root` — 끌어 놓기 ·
-/// 붙여넣기의 사본 자리) 안의 실제 파일만 받는다. 실패는 이유 코드 하나: `too-many-images`(8장 넘음) · `image-missing`(없음 · 못 엶) ·
-/// `image-outside`(실제 경로가 첨부 자리 밖 — 링크로 빠져나가도 같다) · `image-not-file` · `image-type`(png · jpg · jpeg · gif · webp 밖) ·
-/// `image-too-big`(10 MB 넘음). 블로킹(파일을 읽는다) — op 는 블로킹 풀에서 돈다.
+/// 앱 첨부 자리 안의 실제 파일만 받는다 — 링크로 빠져나가도 같다.
 fn chat_images(paths: &[String], bytes: bool) -> Result<Vec<crate::side_chat::UserImage>, WireError> {
     if paths.is_empty() {
         return Ok(Vec::new());
@@ -1170,7 +1022,7 @@ fn images_in(root: &Path, paths: &[String], bytes: bool) -> Result<Vec<crate::si
         .collect()
 }
 
-/// `canonicalize` 의 Windows 확장 머리(`\\?\C:\…`)를 걷은 글 — CLI 에 넘기는 경로(UNC 는 그대로).
+/// `canonicalize` 의 Windows 확장 머리(`\\?\`)를 걷는다(UNC 는 그대로).
 fn plain_path(p: &Path) -> String {
     let s = p.to_string_lossy();
     match s.strip_prefix(r"\\?\") {
@@ -1179,22 +1031,16 @@ fn plain_path(p: &Path) -> String {
     }
 }
 
-/// 그림 밖 첨부 한 개의 상한 — 그림과 같은 10 MB(사용자 결정 2026-11-14).
 const FILE_MAX_BYTES: u64 = IMAGE_MAX_BYTES;
-/// 채팅 자기 폴더 안 사본 자리의 이름(`sidechat/<id>/attachments/`).
 const FILES_DIR: &str = "attachments";
 
-/// 채팅 자기 폴더로 옮겨 적은 첨부 하나 — CLI 가 읽을 경로(확장 머리 없음).
 #[derive(Debug, PartialEq)]
 pub(super) struct AttachedFile {
     path: String,
 }
 
-/// **보내기에 붙인 그림 밖 파일**(판 32 · 2026-11-14) — 화면이 준 경로는 그림과 같이 **앱 첨부 자리 안의 실제 파일만** 받고, 서버가
-/// **늘 그 채팅 자기 폴더**(`<데이터 루트>/sidechat/<id>/`) 안 `attachments/` 에 사본을 둔다 — 갈라 온 채팅도 기록된 cwd(사용자 저장소)에는
-/// 쓰지 않는다(사용자 결정). 자기 폴더가 cwd 인 채팅은 Claude 의 미리 허용 `Read(./**)`(`side_chat::claude::ALLOWED`)에 들고, 갈라 온 Claude
-/// 채팅은 띄울 때 그 폴더 하나의 읽기를 더한다([`attach_read`]). 채팅을 지우면 폴더째 지워진다(`store::remove_chat_dir`). 사본 자리는
-/// 서버가 정한다 — 화면은 경로를 보내지 않는다. 블로킹(파일을 읽고 쓴다).
+/// 앱 첨부 자리 안의 실제 파일만 받고, 사본은 늘 그 채팅 자기 폴더의 `attachments/` 에 둔다 — 갈라 온 채팅도 기록된 cwd(사용자 저장소)에는
+/// 쓰지 않는다(사용자 결정). 사본 자리는 서버가 정한다.
 fn chat_files(id: &str, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
     if paths.is_empty() {
         return Ok(Vec::new());
@@ -1206,10 +1052,8 @@ fn chat_files(id: &str, paths: &[String]) -> Result<Vec<AttachedFile>, WireError
     files_in(&root, &own, paths)
 }
 
-/// **갈라 온 Claude 채팅의 첨부 폴더 읽기**(판 32 · 2026-11-14) — 채팅 자기 폴더의 `attachments/` 를 지금 만들고(없으면 `--add-dir` 가 실패한다 ·
-/// 링크 · 정션이면 [`files_dir`] 가 거절 → 더하지 않는다) → (`--add-dir` 경로, `--allowedTools` 규칙). 규칙은 오케스트레이션과 같은
-/// [`crate::orchestration::spawn::claude_read_rule`](`C:\a\b` → `Read(//c/a/b/**)` — Claude Code 의 절대 경로 규칙은 `//` + POSIX 드라이브
-/// 경로 · 1b 실측 형식). 경로에 규칙 문법 글자가 있으면 `None`(허용 없이 띄운다 — 그 읽기는 권한 카드).
+/// 갈라 온 Claude 채팅의 첨부 폴더 읽기 — 폴더를 지금 만든다(없으면 `--add-dir` 가 실패한다). `(--add-dir 경로, --allowedTools 규칙)`.
+/// 경로에 규칙 문법 글자가 있으면 `None`(허용 없이 띄운다 — 그 읽기는 권한 카드).
 fn attach_read(id: &str) -> Option<(String, String)> {
     let own = store::chat_dir(&sidechat_root()?, id)?;
     let dir = plain_path(&files_dir(&own).ok()?);
@@ -1217,10 +1061,7 @@ fn attach_read(id: &str) -> Option<(String, String)> {
     Some((dir, rule))
 }
 
-/// [`chat_files`] 의 몸(시험이 자리를 준다). 실패는 이유 코드 하나: `too-many-attachments` · `file-missing` · `file-outside`(실제 경로가 첨부
-/// 자리 밖 — 링크 · `..` 로 빠져나가도 같다) · `file-not-file` · `file-too-big`(10 MB 넘음) · `file-dest`(사본 자리가 cwd 안의 실제 폴더가
-/// 아니다 — `attachments` 가 링크 · 정션이거나 만들 수 없다) · `file-copy`. **모두 확인한 뒤에 옮긴다**(하나라도 틀리면 아무것도 쓰지 않는다).
-/// 같은 이름은 덮지 않고 ` (2)` · ` (3)` … 를 붙인다(`create_new`).
+/// 모두 확인한 뒤에 옮긴다 — 하나라도 틀리면 아무것도 쓰지 않는다. 같은 이름은 덮지 않는다(`create_new`).
 pub(super) fn files_in(root: &Path, cwd: &Path, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
     if paths.len() > IMAGES_MAX {
         return Err(fail("too-many-attachments", "too many attachments in one message"));
@@ -1248,7 +1089,7 @@ pub(super) fn files_in(root: &Path, cwd: &Path, paths: &[String]) -> Result<Vec<
     picked.into_iter().map(|(real, name)| copy_unique(&real, &dest, Path::new(&name))).collect()
 }
 
-/// `<채팅 폴더>/attachments` — 없으면 만들고, **링크 · 정션이 아닌 그 폴더 바로 아래 실제 폴더**인지 본다(밖으로 쓰지 않게).
+/// 링크 · 정션이 아닌 그 폴더 바로 아래 실제 폴더인지 본다 — 밖으로 쓰지 않게.
 fn files_dir(cwd: &Path) -> Result<PathBuf, WireError> {
     let bad = || fail("file-dest", "the attachment folder in the chat folder is not usable");
     let cwd = std::fs::canonicalize(cwd).map_err(|_| bad())?;
@@ -1265,7 +1106,7 @@ fn files_dir(cwd: &Path) -> Result<PathBuf, WireError> {
     Ok(dir)
 }
 
-/// `dir` 에 `name`(차면 `이름 (2).확장` …)으로 새로 만들어 옮겨 적는다 — 있는 파일은 덮지 않는다.
+/// 있는 파일은 덮지 않는다.
 fn copy_unique(src: &Path, dir: &Path, name: &Path) -> Result<AttachedFile, WireError> {
     use std::io::{Read, Write};
     let copy_err = || fail("file-copy", "an attached file could not be copied");
@@ -1297,13 +1138,8 @@ fn copy_unique(src: &Path, dir: &Path, name: &Path) -> Result<AttachedFile, Wire
     Err(copy_err())
 }
 
-/// **사람 글 끝에 붙인 파일의 경로** — 빈 줄 하나 뒤 한 줄에 하나 `Attached file: <절대 경로>`. **순수**.
-///
-/// 형식을 고른 이유: Claude 의 `@경로` 는 대화형 TUI 입력 칸이 펼치는 기능이고, 사이드 채팅이 쓰는 stream-json 입력 · Codex app-server
-/// `turn/start` 의 글은 CLI 가 펼치지 않고 모델에 그대로 간다. 두 CLI 모두 모델이 이 글을 읽고 Read · 셸 읽기로 연다 — 그래서 CLI 문법에
-/// 기대지 않는 **꾸밈 없는 꼬리표 + 절대 경로**(Claude Read 는 절대 경로를 받는다 · cwd 안이라 `Read(./**)` 미리 허용에 든다)로 둔다.
-/// 영어 고정 — 모델에 가는 앱 고정 글이다(연결 머리글과 같은 결). 재료는 서버가 지은 사본 경로뿐(이름은 사람이 붙인 파일의 이름) — AI 문자열이
-/// 끼지 않는다.
+/// 꾸밈 없는 꼬리표 + 절대 경로로 둔다 — Claude 의 `@경로` 는 대화형 TUI 만 펼치고 stream-json · Codex app-server 의 글은 모델에 그대로 간다.
+/// 재료는 서버가 지은 사본 경로뿐이라 AI 문자열이 끼지 않는다.
 fn with_file_refs(text: &str, files: &[AttachedFile]) -> String {
     if files.is_empty() {
         return text.to_string();
@@ -1313,11 +1149,11 @@ fn with_file_refs(text: &str, files: &[AttachedFile]) -> String {
     if text.trim().is_empty() {
         return refs.join("\n");
     }
-    // 끝 줄바꿈만 걷는다(머리글만 있는 글의 `] ` 는 남긴다 — 기록 보기가 머리글 · 꼬리를 둘 다 떼어 읽는다: `parse_file_refs`)
+    // 끝 줄바꿈만 걷는다 — 머리글만 있는 글의 `] ` 는 남아야 기록 보기(`parse_file_refs`)가 둘 다 떼어 읽는다
     format!("{}\n\n{}", text.trim_end_matches(['\n', '\r']), refs.join("\n"))
 }
 
-/// **완료 확인 공유**(머리말) — 낡지 않았으면 방송하고 `{sent}`. 채팅이 없어도 오류가 아니다(이미 닫힌 채팅의 늦은 확인).
+/// 채팅이 없어도 오류가 아니다(이미 닫힌 채팅의 늦은 확인).
 fn op_seen(b: SeenBody) -> Value {
     let payload = find(&b.chat).ok().and_then(|chat| {
         let st = lock(&chat.st);
@@ -1330,7 +1166,6 @@ fn op_seen(b: SeenBody) -> Value {
     json!({ "sent": sent })
 }
 
-/// 방송할 몸 — **순수**. 세대가 다르거나(다시 떴다 · CLI 를 바꿨다) 서버가 아직 내지 않은 번호면 `None`.
 fn seen_payload(chat: &str, cur_epoch: u64, cur_seq: u64, epoch: u64, seq: u64) -> Option<Value> {
     if epoch != cur_epoch || seq > cur_seq {
         return None;
@@ -1366,8 +1201,7 @@ fn op_set_model(b: ModelBody) -> Result<Value, WireError> {
     Ok(json!(true))
 }
 
-/// **추론 강도 바꾸기** — 이 함수가 `encode_set_effort` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`). 다음 띄우기의
-/// 재료로 적고, 산 프로세스면 다시 띄우지 않고 곧바로(Claude 제어 요청 · Codex 다음 턴).
+/// 이 함수가 `encode_set_effort` 를 부르는 유일한 곳이다(시험 `side_chat_stdin_only_human`).
 fn op_set_effort(b: EffortBody) -> Result<Value, WireError> {
     if b.effort.as_deref().is_some_and(|e| !word_ok(e)) {
         return Err(fail("bad-effort", "invalid reasoning effort"));
@@ -1385,11 +1219,8 @@ fn op_set_effort(b: EffortBody) -> Result<Value, WireError> {
     Ok(json!(true))
 }
 
-/// **사람의 권한 결정** — 사람의 결정이 `encode_decision` 에 닿는 유일한 곳이다(MCP · 오케스트레이션에 이 길이 없다 — 시험). 그 밖에
-/// `encode_decision` 을 부르는 곳은 사람이 정한 모드 · 허용 목록으로 서버가 **허용**만 내는 [`policy_answer`] 하나다.
-///
-/// `remember`([이 채팅에서 허용] — 판 37)면 허용과 함께 **그 기다리는 요청의 종류**(서버가 pending 에서 읽는다 — `perm::key_of`)를 그 채팅의
-/// 허용 목록에 올리고 저장한 뒤, 같은 종류로 기다리는 다른 카드도 대신 허용한다. 거절과 함께는 받지 않는다(`[bad-decision]`).
+/// 사람의 결정이 `encode_decision` 에 닿는 유일한 곳이다(MCP · 오케스트레이션에 이 길이 없다). 그 밖에 부르는 곳은 사람이 정한 모드 ·
+/// 허용 목록으로 서버가 허용만 내는 [`policy_answer`] 하나다. `remember` 의 종류는 서버의 pending 에서 읽는다.
 fn op_decide(b: DecideBody) -> Result<Value, WireError> {
     let decision = match b.decision.as_str() {
         "allow" => Decision::Allow,
@@ -1405,7 +1236,7 @@ fn op_decide(b: DecideBody) -> Result<Value, WireError> {
     if !st.core.is_pending(&b.request_id) {
         return Err(fail("unknown-request", "no such permission request is waiting"));
     }
-    // 기억할 종류 — 그 기다리는 요청에서(화면이 보낸 글자는 없다)
+    // 기억할 종류는 그 기다리는 요청에서 — 화면이 보낸 글자는 없다
     let key = if b.remember { pending_key(&st, &b.request_id) } else { None };
     let Some(a) = st.core.adapter() else {
         return Err(fail("unknown-request", "no such permission request is waiting"));
@@ -1431,7 +1262,6 @@ fn op_decide(b: DecideBody) -> Result<Value, WireError> {
     Ok(json!(true))
 }
 
-/// 기다리는 그 요청의 종류 열쇠(`perm::key_of` — 서버의 pending 에서).
 fn pending_key(st: &State, request_id: &str) -> Option<String> {
     st.core.pending().into_iter().find_map(|ev| match ev {
         Ev::Permission { request_id: id, kind, tool_name, .. } if id == request_id => perm::key_of(*kind, tool_name, &st.mcp),
@@ -1440,11 +1270,10 @@ fn pending_key(st: &State, request_id: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// 권한 모드 · 허용 목록(2026-11-20 — 머리말 "권한 모드")
+// 권한 모드 · 허용 목록
 // ---------------------------------------------------------------------------
 
-/// **서버가 대신 낸 허용** — 사람이 그 채팅에 정한 모드 · 허용 목록(`perm::answer_by`)이 그렇다고 할 때만 부른다(`Host::on_event` ·
-/// [`answer_waiting`]). 늘 **허용**이고 글이 없다 · 답한 쪽은 `by`(`Auto` · `Remembered`)로 남는다. 기다리는 요청이 아니면 아무것도 하지 않는다.
+/// 서버가 대신 낸 허용 — 사람이 그 채팅에 정한 모드 · 허용 목록(`perm::answer_by`)이 그렇다고 할 때만 부른다. 늘 허용이고 글이 없다.
 fn policy_answer(chat: &Chat, st: &mut State, request_id: &str, by: ResolvedBy) {
     let Some(a) = st.core.adapter() else { return };
     let Ok(mut step) = a.encode_decision(request_id, Decision::Allow, None) else { return };
@@ -1456,7 +1285,6 @@ fn policy_answer(chat: &Chat, st: &mut State, request_id: &str, by: ResolvedBy) 
     chat_proc::apply(chat, st, step);
 }
 
-/// 지금 기다리는 카드 가운데 모드 · 허용 목록이 허용하는 것을 서버가 대신 허용한다(Auto 로 바꾼 순간 · [이 채팅에서 허용] 뒤).
 fn answer_waiting(chat: &Chat, st: &mut State) {
     let waiting: Vec<(String, ResolvedBy)> = st
         .core
@@ -1475,19 +1303,17 @@ fn answer_waiting(chat: &Chat, st: &mut State) {
     }
 }
 
-/// 보는 창들에 지금 모드 · 허용 목록을 알린다(사건 `permPolicy` — 칩이 맞춘다 · 지금 턴 꼬리에는 들지 않는다).
+/// 지금 턴 꼬리에는 들지 않는다 — 스냅숏의 `permMode` · `permAllow` 가 맞춘다.
 fn note_policy(chat: &Chat, st: &mut State) {
     let ev = Ev::PermPolicy { mode: st.perm.mode, allow: st.perm.allow.clone() };
     chat_proc::push(chat, st, ev);
 }
 
-/// 답의 몸 — `{mode, allow}`.
 fn perm_view(p: &ChatPerm) -> Value {
     json!({ "mode": p.mode, "allow": p.allow })
 }
 
-/// **모드 바꾸기**(사람이 칩 메뉴에서 — Tauri 명령 `side_chat_set_perm_mode` · 주 창 · 원격 창). 도는 턴 중에도 · 프로세스를 다시 띄우지 않고
-/// 다음 요청부터 듣는다. 저장하고(채팅 · "마지막 모드") 보는 창에 알린 뒤, Auto 면 **이미 기다리는 카드**도 허용으로 답한다. → `{mode, allow}`.
+/// 프로세스를 다시 띄우지 않고 다음 요청부터 듣는다. Auto 면 이미 기다리는 카드도 허용으로 답한다.
 fn op_set_perm_mode(b: PermModeBody) -> Result<Value, WireError> {
     let mode = match b.mode.as_str() {
         "manual" => PermMode::Manual,
@@ -1508,8 +1334,7 @@ fn op_set_perm_mode(b: PermModeBody) -> Result<Value, WireError> {
     Ok(perm_view(&st.perm))
 }
 
-/// **허용 목록에서 빼기**(칩 메뉴 항목의 × — 그 종류는 다시 묻는다). 빼기만 한다 — 넓히는 길은 [이 채팅에서 허용](`op_decide` 의 `remember`)
-/// 하나다. → `{mode, allow}`.
+/// 빼기만 한다 — 넓히는 길은 `op_decide` 의 `remember` 하나다.
 fn op_forget_allow(b: ForgetBody) -> Result<Value, WireError> {
     if !perm::key_ok(&b.kind) {
         return Err(fail("bad-kind", "unknown permission kind"));
@@ -1527,7 +1352,7 @@ fn op_forget_allow(b: ForgetBody) -> Result<Value, WireError> {
 }
 
 // ---------------------------------------------------------------------------
-// 연결(5단계 — 세션 연결 칩 · `crate::chat_token`)
+// 연결
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -1536,31 +1361,27 @@ struct LinkBody {
     chat: String,
     #[serde(default)]
     epoch: Option<u64>,
-    /// 연결할 타일들의 스트림 id(`historyStreamId`) — 연결 순서 · 빈 배열 = 모두 끊기.
+    /// 빈 배열 = 모두 끊기.
     streams: Vec<String>,
 }
 
-/// 연결해도 되는 스트림인가 — **순수**: 모양이 맞고, 서버 거울에 있는 **창 타일**의 세션이다(헤드리스 · 모르는 스트림은 아니다). 읽기
-/// 권한은 여기서 보지 않는다 — 꺼진 타일도 걸 수 있고(칩이 그 사실을 말한다) 판정은 MCP 호출마다(`mcp/chat_read.rs`).
+/// 서버 거울에 있는 창 타일만(헤드리스 아님). 읽기 권한은 여기서 보지 않는다 — 판정은 MCP 호출마다(`mcp/chat_read.rs`).
 pub(crate) fn link_target_ok(map: &HashMap<String, crate::context::SessionContext>, stream: &str) -> bool {
     crate::tile_env::stream_ok(stream)
         && map.get(stream).is_some_and(|c| c.owner_kind == crate::session_owner::SessionOwnerKind::Window)
 }
 
-/// 거울의 그 세션 — (코드 · 이름 · 종류 · 권한 판정용 칸).
 fn mirror_of(stream: &str) -> Option<(String, String, String, crate::context::SessionContext)> {
     let plane = hub::ai()?;
     let m = plane.ctx().lock().unwrap_or_else(|e| e.into_inner());
     m.get(stream).map(|c| (c.code.clone(), c.label.clone(), c.kind.clone(), crate::context::permission_view(c)))
 }
 
-/// 그 채팅의 연결들 — 화면용 [`link_view`] 배열(연결 순서 · 없으면 빈 배열).
 fn link_views(chat: &str) -> Value {
     let delegation = crate::delegation::Delegation::load_default();
     Value::Array(crate::chat_token::links_of(chat).iter().map(|s| link_view(s, &delegation)).collect())
 }
 
-/// 연결 하나 — 화면용(`closed` = 거울에 없음 — 타일이 닫혔다 · `readable` = 지금 AI 가 읽을 수 있나).
 fn link_view(stream: &str, delegation: &crate::delegation::Delegation) -> Value {
     match mirror_of(stream) {
         Some((code, label, kind, view)) => {
@@ -1571,8 +1392,7 @@ fn link_view(stream: &str, delegation: &crate::delegation::Delegation) -> Value 
     }
 }
 
-/// 지금 연결 묶음의 머리글(`side_chat::event::link_headers` — 연결 순서로 타일마다 한 조각) — 이름은 화면이 보낼 때 실은 그 스트림의 칩 이름
-/// (`hints`), 없으면 거울의 타일 이름(`link_display_name` — 타일 코드는 넣지 않는다). 스트림은 늘 서버가 아는 연결이다(화면이 고를 수 없다).
+/// 스트림은 늘 서버가 아는 연결이다(화면이 고를 수 없다) — 화면은 칩 이름만 준다.
 fn link_header_now(chat: &str, hints: Option<&HashMap<String, String>>) -> String {
     let links = crate::chat_token::links_of(chat);
     let names: Vec<String> = links
@@ -1587,7 +1407,7 @@ fn link_header_now(chat: &str, hints: Option<&HashMap<String, String>>) -> Strin
     crate::side_chat::event::link_headers(&pairs)
 }
 
-/// 연결 묶음 정리 — **순수**: 준 순서 그대로 · 같은 스트림은 처음 것만.
+/// 프런트 `side_chat_proxy::dedup` 과 같은 규칙이어야 한다.
 pub(crate) fn dedup_streams(streams: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(streams.len());
     for s in streams {
@@ -1598,9 +1418,7 @@ pub(crate) fn dedup_streams(streams: Vec<String>) -> Vec<String> {
     out
 }
 
-/// **연결 묶음을 놓는다**(사람이 칩에서 — Tauri 명령 `side_chat_link` · 주 창 · 원격 창). 스트림은 모두 서버 거울에 있는 창 타일이어야
-/// 하고([`link_target_ok`] — 하나라도 아니면 `[bad-link]`) 수는 `chat_token::LINKS_MAX` 까지(`[too-many-links]`) — 거절이면 아무것도 바꾸지
-/// 않는다. 바뀌었으면 다음 보내기에 머리글을 붙인다. → `{links, changed}`.
+/// 연결을 바꾸는 유일한 길이다(사람의 칩). 거절이면 아무것도 바꾸지 않는다.
 fn op_link(b: LinkBody) -> Result<Value, WireError> {
     let chat = find(&b.chat)?;
     if let Some(e) = b.epoch {
@@ -1627,14 +1445,13 @@ fn op_link(b: LinkBody) -> Result<Value, WireError> {
     Ok(json!({ "links": link_views(&b.chat), "changed": changed }))
 }
 
-/// 그 채팅의 **지금 산 프로세스 세대**(채팅 토큰 판정 — `crate::chat_token::authenticate`). 프로세스가 없거나 닫는 중이면 `None`.
+/// 채팅 토큰 판정에 쓴다 — 닫는 중이면 `None`.
 pub(crate) fn live_proc(id: &str) -> Option<ProcId> {
     let chat = lock(&TABLE).chats.get(id).cloned()?;
     let live = lock(&chat.st).core.live();
     live
 }
 
-/// 닫는다(표에서 빼고 프로세스를 잡째 끝낸다). 표에 있었나.
 fn close(id: &str) -> bool {
     let Some(chat) = lock(&TABLE).chats.remove(id) else { return false };
     lock(&chat.st).core.kill("closed");
@@ -1669,12 +1486,11 @@ fn list() -> Value {
 // 수명 — 떼어 두기 · TTL · 모두 닫기
 // ---------------------------------------------------------------------------
 
-/// 서버 연결이 섰다(`sessions::conn_opened`).
 pub(crate) fn conn_opened(conn: u64) {
     lock(&TABLE).conns.insert(conn);
 }
 
-/// 고른 보는 창을 뗀다 — 남은 창이 없으면 그 순간부터 떼어 둔다(TTL). 창을 뗀 채팅 수.
+/// 남은 창이 없으면 그 순간부터 떼어 둔다(TTL).
 fn detach_where(pick: impl Fn(&Viewer) -> bool) -> usize {
     let chats: Vec<Arc<Chat>> = lock(&TABLE).chats.values().cloned().collect();
     let now = Instant::now();
@@ -1697,19 +1513,16 @@ fn detach_where(pick: impl Fn(&Viewer) -> bool) -> usize {
     n
 }
 
-/// 서버 연결이 끊겼다(GUI 종료 · kill) — 그 연결의 보는 창을 뗀다(남은 창이 없으면 떼어 둔다 — TTL). 창을 뗀 채팅 수.
 pub(crate) fn conn_gone(conn: u64) -> usize {
     lock(&TABLE).conns.remove(&conn);
     detach_where(|v| v.conn == conn)
 }
 
-/// 페이지 리로드 · 웹뷰 크래시 · 트레이로 가는 창 파괴 · 창 파괴(원격 창의 ws 끝 포함 — `close_window`) — **그 창 하나만** 뗀다(다른 창은
-/// 계속 받는다 · 남은 창이 없으면 떼어 둔다 — 새 페이지가 `side_chat_attach`). 창을 뗀 채팅 수.
+/// 그 창 하나만 뗀다 — 다른 창은 계속 받는다.
 pub(crate) fn detach_window(window: &str) -> usize {
     detach_where(|v| v.window == window)
 }
 
-/// 시험 전용 — 그 채팅의 (보는 창 라벨들, 떼어 둠 여부).
 #[cfg(test)]
 pub(crate) fn viewers_for_test(id: &str) -> Option<(Vec<String>, bool)> {
     let chat = lock(&TABLE).chats.get(id).cloned()?;
@@ -1717,7 +1530,6 @@ pub(crate) fn viewers_for_test(id: &str) -> Option<(Vec<String>, bool)> {
     Some((windows_of(&st), st.detached.is_some()))
 }
 
-/// 모두 닫는다 — 트레이 [모든 세션 종료](`sessions` `close_all`) · 서버 끝. 닫은 수.
 pub(crate) fn close_all() -> usize {
     let chats: Vec<Arc<Chat>> = lock(&TABLE).chats.drain().map(|(_, c)| c).collect();
     for c in &chats {
@@ -1727,12 +1539,11 @@ pub(crate) fn close_all() -> usize {
     chats.len()
 }
 
-/// 표에 있는 채팅 수(붙었거나 떼어 둔) — `status` 의 진단 칸.
 pub(crate) fn live_count() -> usize {
     lock(&TABLE).chats.len()
 }
 
-/// 떼어 둔 채팅을 살려 두는 시간 — 시험이 짧게 바꾼다(ms · 0 = [`DETACH_TTL`]).
+/// ms · 0 = [`DETACH_TTL`].
 static TTL_OVERRIDE_MS: AtomicU64 = AtomicU64::new(0);
 
 fn ttl() -> Duration {
@@ -1742,15 +1553,13 @@ fn ttl() -> Duration {
     }
 }
 
-/// 시험 전용 — TTL 을 바꾼다(`None` = 원래대로).
 #[cfg(test)]
 pub(crate) fn set_detach_ttl_for_test(d: Option<Duration>) {
     TTL_OVERRIDE_MS.store(d.map_or(0, |d| d.as_millis().max(1) as u64), Ordering::SeqCst);
     REAPER_WAKE.notify_one();
 }
 
-/// TTL 이 지난 떼어 둔 채팅 중 **쉬는 것**(턴이 돌지 않거나 · 사람이 없어 끝날 수 없는 권한 요청을 기다리는 것)을 닫는다. 닫은 수와 다음
-/// 볼 시각.
+/// 도는 턴은 끝까지 두지만, 사람이 없어 끝날 수 없는 권한 요청을 기다리는 턴은 TTL 에 닫는다.
 fn expire(now: Instant) -> (usize, Option<Instant>) {
     let ttl = ttl();
     let mut t = lock(&TABLE);
@@ -1763,7 +1572,6 @@ fn expire(now: Instant) -> (usize, Option<Instant>) {
         if due > now {
             next = Some(next.map_or(due, |n| n.min(due)));
         } else if st.core.status() == Status::Running && !st.core.has_pending() {
-            // 도는 턴은 끝까지 — 턴이 끝나면(감시 · 끝 사건) 다시 본다. 혹시 몰라 1초 뒤에도.
             let again = now + Duration::from_secs(1);
             next = Some(next.map_or(again, |n| n.min(again)));
         } else {
@@ -1782,7 +1590,7 @@ fn expire(now: Instant) -> (usize, Option<Instant>) {
 static REAPER_WAKE: LazyLock<tokio::sync::Notify> = LazyLock::new(tokio::sync::Notify::new);
 static REAPER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// 시계를 깨운다 — 없으면(처음 · 시험 런타임이 바뀌었다) 지금 런타임에 띄운다(런타임 밖 스레드면 깨우기만).
+/// 시계가 없으면(처음 · 시험 런타임이 바뀌었다) 지금 런타임에 띄운다 — 런타임 밖 스레드면 깨우기만.
 fn wake_reaper() {
     if !REAPER_RUNNING.swap(true, Ordering::SeqCst) {
         match tokio::runtime::Handle::try_current() {
@@ -1803,7 +1611,6 @@ impl Drop for ReaperFlag {
     }
 }
 
-/// **TTL 시계** — 표 하나에 태스크 하나(`db::table::reaper` 와 같은 꼴).
 async fn reaper() {
     let _flag = ReaperFlag;
     loop {
@@ -1827,16 +1634,16 @@ async fn reaper() {
 // 시험 — 가짜 CLI
 // ---------------------------------------------------------------------------
 
-/// 시험 전용 — 실행 파일 · 인자 · 더할 환경 · 채팅 루트를 바꾼다(모델을 부르지 않는 가짜 CLI — `tests_side_chat.rs`).
+/// 모델을 부르지 않는 가짜 CLI.
 #[cfg(test)]
 pub(crate) struct FakeCli {
     pub exe: String,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
     pub root: PathBuf,
-    /// 세션 서버 MCP 포트 대신(`None` = MCP 없음 — 채팅 토큰을 뽑지 않는다).
+    /// `None` = MCP 없음(채팅 토큰을 뽑지 않는다).
     pub mcp_port: Option<u16>,
-    /// 대화 색인의 루트 대신(`(에이전트 id, 루트)` — 6단계 갈라 오기의 기록된 cwd).
+    /// `(에이전트 id, 루트)`
     pub conv_roots: Vec<(&'static str, PathBuf)>,
 }
 
@@ -1848,7 +1655,7 @@ pub(crate) fn set_fake_for_test(f: Option<FakeCli>) {
     *lock(&FAKE) = f;
 }
 
-/// 시험 전용 — 저장된 설정 대신 읽을 외부 서버 목록(시험 빌드는 진짜 설정을 읽지 않는다 — `None` = 없음).
+/// 시험 빌드는 진짜 설정을 읽지 않는다.
 #[cfg(test)]
 static FAKE_SERVERS: Mutex<Option<Vec<crate::agent_mcp::McpServer>>> = Mutex::new(None);
 
@@ -1865,7 +1672,6 @@ mod image_tests {
         e.message
     }
 
-    /// 그림 판정 — 첨부 자리 안의 그림 파일만 · 이유 코드 하나씩(2026-10-24).
     #[test]
     fn images_only_from_the_attachment_folder() {
         let base = std::env::temp_dir().join(format!("aynx-sidechat-img-{}", crate::token::generate_token().unwrap()));
@@ -1907,7 +1713,6 @@ mod image_tests {
         std::fs::remove_dir_all(base).unwrap();
     }
 
-    /// 파일 첨부(판 32) — 첨부 자리 안의 실제 파일만 · 사본은 채팅 자기 폴더의 `attachments/` · 같은 이름은 번호 · 이유 코드 하나씩.
     #[test]
     fn files_only_from_the_attachment_folder_into_the_chat_cwd() {
         let base = std::env::temp_dir().join(format!("aynx-sidechat-file-{}", crate::token::generate_token().unwrap()));
@@ -1957,7 +1762,6 @@ mod image_tests {
         std::fs::remove_dir_all(base).unwrap();
     }
 
-    /// 글 끝의 경로 꼬리 — 빈 줄 하나 뒤 한 줄에 하나 · 파일이 없으면 글 그대로.
     #[test]
     fn file_refs_append_after_the_text() {
         let f = |p: &str| AttachedFile { path: p.to_string() };

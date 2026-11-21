@@ -1,5 +1,4 @@
 <script lang="ts">
-  // 선택 시도의 실행 세부 정보와 작업 자원. 트랙 없는 시도는 앨범 판에 남는다.
   import { t } from "$lib/i18n/i18n.svelte.js";
   import {
     KIND_KEY,
@@ -53,7 +52,6 @@
     stopAttempt: (a: AttemptView) => void;
     removeWorktree: (a: AttemptView) => void;
     editDelegation: (role?: string | null) => void;
-    /** 같은 트랙 화면에서 이 시도를 선택한다. */
     openDetail: (attemptId: string) => void;
     viewTranscript?: (a: AttemptView) => void;
   } = $props();
@@ -101,7 +99,6 @@
     {/if}
   </div>
   {#if why}<p class="attention" role="status" data-attempt-attention={a.attention ?? a.state}>{t(why)}</p>{/if}
-  <!-- 마지막 커밋 거절(10-15) — 사유 낱말 · 사람이 해야 하면 할 일 한 줄. 커밋이 서면 서버가 걷는다 -->
   {#if a.lastCommitRejection}
     {@const cr = a.lastCommitRejection}
     {@const hint = commitRejectionHint(cr)}
@@ -110,14 +107,12 @@
       {t("orch.commitRejected.line")} <span class="chip faint mono">{cr.reason}</span>{#if hint} — {t(hint)}{/if}
     </p>
   {/if}
-  <!-- blocked · 대화 끊김 띠(3b — 설계 4-6 · 4-4): need 글(그대로 · 줄임 · 펼침) · 맡기기를 넓히면 조정자가 이어 간다 -->
   {#if wb}
     <div class="wband" role="status" data-attempt-band={wb.blocked ? "blocked" : "broken"}>
       {#if wb.blocked}
         {@const need = clipText(wb.blocked.need)}
         <p class="wband-head">{t("orch.blocked.head")}</p>
         {#if need.clipped}
-          <!-- 긴 사유는 줄인 글 + ⓘ(전문은 팝오버 — 판 뿌리의 `NotePopover` 가 그린다) -->
           <div class="need-text" data-attempt-blocked-need>
             <InfoNote id="need-{a.id}" label={t("orch.blocked.full")} plain>
               {#snippet summary()}<span>{need.short}</span>{/snippet}
@@ -139,7 +134,6 @@
       {/if}
     </div>
   {/if}
-  <!-- 턴(3b — 설계 4-4): 턴 번호 · 도는 턴의 마지막 도구 · 거절 수 · 실효 모델 · 경과 · 실효 인자 요약 -->
   {#if wl.headless && wl.turnNo > 0}
     <p class="meta turn-row" data-attempt-turn={wl.turnNo} data-turn-running={wl.turnRunning ? "1" : "0"}>
       <span class="chip faint">{t("orch.turn.no", { n: wl.turnNo })}</span>
@@ -151,7 +145,6 @@
     {#if wl.args}<p class="meta mono" data-attempt-turn-args title={t("orch.turn.args.title")}>{wl.args}</p>{/if}
   {/if}
   {#if trows.length > 0}
-    <!-- 턴 이력 — 접지 않는다(목록은 칸 높이 상한 안에서 스크롤) -->
     <div class="notes" data-attempt-turns={trows.length}>
       <p class="meta notes-head">{t("orch.turn.history", { n: trows.length })}</p>
       <ul class="file-list">
@@ -168,7 +161,6 @@
       </ul>
     </div>
   {/if}
-  <!-- 최근 활동(6단계) — 고정 대화의 마지막 말 · 최근 도구 · 변경 파일 수 · 경고(기록은 작업자 상세의 [대화 기록 전체]) -->
   {#if act}
     <div class="activity" data-attempt-activity={a.id}>
       {#if act.warnings.length > 0}
@@ -308,7 +300,6 @@
     gap: var(--space-1) var(--space-2);
   }
 
-  /* 사람 필요(권한 대기 · 첫 화면 · 종료 미확인) — 의미색 판(새 색 없음): 경고 바탕 띠 */
   .worker.alert {
     padding-left: var(--space-2);
     border-left: 3px solid var(--warn);
@@ -359,7 +350,7 @@
     font-family: var(--font-mono);
   }
 
-  /* 3b — 작업자 줄: 역할 이름 · 턴 줄 · blocked 띠 */
+  /* 작업자 줄 */
   .role-name {
     font-size: var(--t-sm);
     font-weight: var(--fw-semibold);
@@ -433,7 +424,7 @@
     margin: 2px 0 0;
   }
 
-  /* 6단계 — 최근 활동 */
+  /* 최근 활동 */
   .activity {
     display: flex;
     flex-direction: column;

@@ -1,6 +1,3 @@
-/**
- * 앨범 표지의 얼굴 — 앨범 머리와 재생 막대가 같이 쓴다. 참여 아티스트(앨범 구성 · 없으면 Run 에 나온 CLI), 아무도 없으면 프로듀서 · 둘까지.
- */
 import { albumArtists, type RunDetail } from "../model";
 import { artistOf } from "../artists";
 
@@ -12,7 +9,6 @@ export interface AlbumMember<P> {
   profile: P | undefined;
 }
 
-/** 이 앨범의 아티스트 줄 — 프로필이 지워졌으면 앨범에 남은 이름 · 역할의 CLI 로 */
 export function albumMembers<P extends { id: string; cli: string; name: string; kind: string }>(
   detail: RunDetail,
   profiles: readonly P[],
@@ -32,7 +28,7 @@ export function albumMembers<P extends { id: string; cli: string; name: string; 
   return albumArtists(detail).map((a) => ({ id: a.cli, cli: a.cli, name: artistOf(a.cli).name, judge: false, profile: undefined }));
 }
 
-/** 표지 얼굴 둘까지 — 왼쪽 위 큰 얼굴 · 오른쪽 아래 작은 얼굴 */
+/** 둘까지 — [0] = 왼쪽 위 큰 얼굴 · [1] = 오른쪽 아래 작은 얼굴 */
 export function albumFaces<P>(members: readonly AlbumMember<P>[], producerCli: string | null): AlbumMember<P>[] {
   const list = [...members];
   if (list.length === 0 && producerCli) {

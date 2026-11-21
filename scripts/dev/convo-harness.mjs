@@ -5,7 +5,7 @@
 // 대시보드 에이전트 칸의 "지난 대화" 덩어리(범위 목록 · 오른쪽 줄 · 호버 단추 · 경로 없음 · 열림 · 거르개 · 키보드 · 줄의 토큰 ·
 // 풀이 · 머리줄 합)는 4dda594(2026-09-28 — docs/log/2026-09-28-dashboard-session-cards.md)에 빠졌다. 지난 대화는 이제
 // 팔레트 `대화 ` · 프로젝트 시작 화면 · 기록 시트가 맡는다(시작 화면 · 시트는 `project-start-harness.mjs`). 대시보드 자체는
-// 2026-10-07 에 세션 목록 판 · 작업안으로 나뉘어 걷혔다(`app/console.svelte.ts` 머리말) — 사용량 화면은 상태바 고리 · 팔레트 줄로 연다.
+// 2026-10-07 에 세션 목록 판 · 작업안으로 나뉘어 걷혔다 —사용량 화면은 상태바 고리 · 팔레트 줄로 연다.
 //
 //   npx vite --port 1434 --strictPort
 //   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new \

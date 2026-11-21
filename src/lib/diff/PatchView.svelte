@@ -1,13 +1,5 @@
 <script lang="ts">
-  /**
-   * **diff 타일의 패치 본문**(줄 그리기 — 한 줄 보기 / 나란히 · 덩어리 · 줄 고르기 단추 · "+ 코멘트" · 줄 아래 입력 칸 · 코멘트 카드) —
-   * `DiffView.svelte` 에서 뗀 표시 조각(2026-10-27 분할 8차). 감싸개 없음 — `.dbody` 안에 예전 그대로의 원소만 그린다.
-   *
-   * 상태는 하나도 쥐지 않는다: 읽기 · 그린 덩어리 수(`shownChunks`) · 줄 고르기(`selSet` · 누름/끌기 `onNoDown` · `onNoEnter`) ·
-   * "+ 코멘트" 자리(`selbarAt` · `selbarTop`) · 카드 · 입력 칸 자리(`cardsAt` · `composerAt`)는 부모 `DiffView` 가, 코멘트 · 입력 칸 ·
-   * 받을 곳은 `diff/comments-controller.svelte.ts`(`cm`)가 쥔다. 줄 묶음 원소(`rowsEl` — 찾기 띠의 뿌리 · "+ 코멘트" 재기)만 `bind:`.
-   * 문서 머리 · 이진 · 빈 파일 · 잘림 안내는 부모에 남는다.
-   */
+  /** diff 타일의 패치 본문 — 상태는 하나도 쥐지 않는다(부모 `DiffView` · `cm`). 감싸개 없이 `.dbody` 안에 그린다. */
   import type { Snippet } from "svelte";
   import Keys from "$lib/Keys.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -39,23 +31,18 @@
     narrow: boolean;
     uChunks: UnifiedRow[][];
     sChunks: SplitRow[][];
-    /** 지금 그린 덩어리 수 — 부모가 프레임마다 늘린다 */
     shownChunks: number;
-    /** 고른 줄 열쇠들 */
     selSet: Set<string>;
-    /** "+ 코멘트" 가 설 자리(줄 · 짝 줄 열쇠 — 없으면 `null`) */
     selbarAt: string | null;
-    /** 그 세로 자리(줄 묶음 기준 px — 부모가 잰다) */
+    /** 줄 묶음 기준 px */
     selbarTop: number | null;
-    /** 자리 → 그 아래 카드들(지금 파일의 코멘트만) */
     cardsAt: Map<string, { c: DiffComment; n: number }[]>;
-    /** 입력 칸이 설 자리 */
     composerAt: string | null;
     cm: DiffCommentsController;
     noOf: (l: DiffLine) => number | null;
     onNoDown: (ev: PointerEvent, key: string) => void;
     onNoEnter: (key: string) => void;
-    /** 줄 묶음(`.rows`) — 찾기 띠의 뿌리 · "+ 코멘트" 재기(부모) */
+    /** 찾기 띠의 뿌리 · "+ 코멘트" 재기에 부모가 쓴다 */
     rowsEl: HTMLDivElement | null;
   } = $props();
 </script>
@@ -64,9 +51,7 @@
   <span class="tx">{l.text}{#if l.noNewline}<span class="nonl" data-find-skip title={t("app.diff.file.noNewline")}>⏎̸</span>{/if}</span>
 {/snippet}
 
-<!--
-  줄 번호 칸 = 줄 고르기 단추. 누르면 한 줄 · Shift+클릭 · 끌기로 여러 줄(포인터 — 탭 순회에는 넣지 않는다: 5천 줄이면 5천 번이다).
--->
+<!-- 줄 고르기 단추는 탭 순회에 넣지 않는다 — 5천 줄이면 5천 번이다 -->
 {#snippet nos(key: string, children: Snippet)}
   <button
     type="button"
@@ -79,10 +64,7 @@
   >
 {/snippet}
 
-<!--
-  고른 범위 끝 줄 바로 아래에 **떠 있는** "+ 코멘트" — 자리를 차지하면 뒤 줄이 밀려 끄는 손 아래가 바뀐다. 줄 덩어리는
-  `content-visibility`(paint 격리)라 그 안에 두면 덩어리 끝에서 잘린다 — 그래서 줄 묶음(.rows) 위에 하나만 둔다.
--->
+<!-- 떠 있어야 한다 — 자리를 차지하면 뒤 줄이 밀려 끄는 손 아래가 바뀐다. 덩어리(`content-visibility`) 안에 두면 끝에서 잘려 .rows 위에 둔다 -->
 {#snippet selbar()}
   {#if selbarAt && selbarTop !== null}
     <span class="selbar" style:top="{selbarTop}px" data-diff-selbar data-find-skip>
@@ -228,7 +210,6 @@
     grid-template-columns: 40px 16px max-content;
   }
 
-  /* 줄 번호 칸 = 고르기 단추(한 줄 보기는 옛 · 새 두 칸, 좁으면 하나 · 나란히는 하나) */
   .nos {
     display: grid;
     grid-template-columns: 44px 44px;
@@ -251,7 +232,6 @@
     color: var(--fg);
   }
 
-  /* 고른 줄 — 강조색 판 + 왼쪽 막대(이 화면의 선택 표시) */
   .selrow {
     background: var(--accent-soft) !important;
     box-shadow: inset 3px 0 0 var(--accent);
@@ -302,14 +282,14 @@
     color: var(--fg-3);
   }
 
-  /* 나란히 — 짝 한 줄 = 두 칸. 긴 줄은 칸 안에서 접는다(두 칸의 줄 높이가 함께 자라 짝이 어긋나지 않는다) */
+  /* 나란히 — 긴 줄은 칸 안에서 접는다(두 칸의 줄 높이가 함께 자라 짝이 어긋나지 않는다) */
   .sides-head {
     display: grid;
     grid-template-columns: 1fr 1fr;
     position: sticky;
     top: 0;
     z-index: 1;
-    /* 끈끈한 머리 — 밑으로 줄이 지나가니 글래스 크롬 타일에서는 불투명(`--tile-sticky` · `PaneHost`) */
+    /* 밑으로 줄이 지나가니 글래스 크롬 타일에서는 불투명 */
     background: var(--tile-sticky, var(--surface-raised));
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
@@ -346,7 +326,6 @@
     grid-template-columns: 1fr;
   }
 
-  /* 맞은편에 줄이 없는 칸 — 빗금 */
   .fill {
     background: repeating-linear-gradient(
       135deg,
@@ -355,7 +334,6 @@
     );
   }
 
-  /* 고른 범위 아래 "+ 코멘트" 한 줄 */
   .rows {
     position: relative;
   }
@@ -392,7 +370,6 @@
     border-color: var(--accent);
   }
 
-  /* 쓰는 중 · 단 코멘트 — 범위 바로 아래, 줄 번호 칸만큼 들여(가로 스크롤해도 왼쪽에 붙어 있다) */
   .card {
     position: sticky;
     left: 0;
@@ -421,7 +398,6 @@
     flex: 0 0 auto;
     padding: 0 7px;
     border-radius: 999px;
-    /* 코멘트 번호는 "무엇인지"(표지)라 제3색 채움 */
     background: var(--tertiary);
     color: var(--on-tertiary);
     font-size: 11px;

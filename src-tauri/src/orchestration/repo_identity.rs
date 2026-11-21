@@ -2,29 +2,22 @@
 use crate::i18n::tr;
 use std::path::Path;
 
-/// 지금 그 경로의 저장소 신원.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RepoIdentity {
-    /// `git rev-parse --path-format=absolute --git-common-dir` 를 [`crate::worktree::comparable`] 로 편 것.
     pub git_dir: String,
     /// `<작업 폴더 식별>/<공통 .git 식별>` — 식별을 못 재는 OS(스텁)면 `None`.
     pub repo_id: Option<String>,
 }
 
-/// 신원을 못 쟀다 — 화면 상태(`missing` · `identity-changed`)와 저장 거절 문구를 가른다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IdentityError {
-    /// 폴더가 없다(옮겼거나 지웠다).
     Missing,
-    /// 절대 경로가 아니다.
     NotAbsolute,
-    /// `.git` 이 없다.
     NotRepo,
-    /// `.git` 이 파일이다(보조 worktree — 주 저장소만 맡긴다).
+    /// `.git` 이 파일이다(보조 worktree — 주 저장소만 받는다).
     Secondary,
-    /// 폴더 또는 `.git` 이 정션 · 심볼릭 링크다(따라가지 않는다 — S16).
+    /// 폴더 또는 `.git` 이 정션 · 심볼릭 링크다(따라가지 않는다).
     Link,
-    /// git 이 공통 폴더를 말하지 못했다.
     Git(String),
 }
 
@@ -53,8 +46,7 @@ impl IdentityError {
     }
 }
 
-/// 실체 식별 두 개를 이어 붙인다 — 식별을 재는 OS 에서 하나라도 못 재면(링크) `Err(Link)`, 스텁 OS 면 `Ok(None)`. `id` 는 OS 함수
-/// (시험이 바꿔 끼운다).
+/// 식별을 재는 OS 에서 하나라도 못 재면(링크) `Err(Link)`, 스텁 OS 면 `Ok(None)`. `id` 는 시험이 바꿔 끼운다.
 fn repo_id_of(
     repo: &Path,
     git_dir: &Path,
@@ -70,7 +62,7 @@ fn repo_id_of(
     }
 }
 
-/// 지금 그 경로의 신원 — **블로킹**(git 한 번). 주 저장소(`.git` 이 폴더)만.
+/// **블로킹**(git 한 번) — 잠금 밖에서 부른다.
 pub(crate) fn identity_now(path: &Path) -> Result<RepoIdentity, IdentityError> {
     if !path.is_absolute() {
         return Err(IdentityError::NotAbsolute);
@@ -110,8 +102,7 @@ pub(crate) fn identity_now(path: &Path) -> Result<RepoIdentity, IdentityError> {
     })
 }
 
-/// 적어 둔 신원과 지금 신원이 같은가 — 공통 폴더는 비교용 글자로, 실체 식별은 둘 다 있을 때 같아야 하고 한쪽만 있으면 어긋남(손 편집 ·
-/// OS 가 바뀜 — 닫힌 쪽). 둘 다 없으면(스텁 OS) 경로 · 공통 폴더만. 순수.
+/// 실체 식별이 한쪽에만 있으면 어긋남이다(손 편집 · OS 가 바뀜 — 닫힌 쪽).
 pub(crate) fn identity_matches(expected: &RepoIdentity, now: &RepoIdentity) -> bool {
     let git_ok = Some(expected.git_dir.as_str()).is_some_and(|g| {
         crate::worktree::comparable(g) == crate::worktree::comparable(&now.git_dir)
@@ -124,10 +115,8 @@ pub(crate) fn identity_matches(expected: &RepoIdentity, now: &RepoIdentity) -> b
     git_ok && id_ok
 }
 
-/// **디렉터리의 실체 식별**(저장소 맡기기의 신원 — 헤드리스 설계 2-6 · 실측 S16). 같은 경로에 지우고 다시 만든 폴더 · 이름 바꾸고 원래
-/// 이름에 새로 만든 폴더는 다른 값이 된다(경로 스냅샷만으로는 못 가린다). 마지막 낱말이 정션 · 심볼릭 링크면 **따라가지 않고 `None`**
-/// (부르는 쪽이 거절 — 따라가면 대상의 식별이 나와 바꿔치기가 같은 것으로 보인다). Windows = 볼륨 일련번호 + 64비트 파일 인덱스
-/// (`vvvvvvvv-hhhhhhhhllllllll`).
+/// **디렉터리의 실체 식별** — 같은 경로에 다시 만든 폴더는 다른 값이 된다(경로만으로는 못 가린다). 정션 · 심볼릭 링크면 **따라가지 않고
+/// `None`**(따라가면 대상의 식별이 나와 바꿔치기가 같은 것으로 보인다).
 ///
 /// 아직 구현하지 않은 OS 는 **명시적 `None` 스텁**이다 — 그 OS 에서는 경로 + git 공통 폴더 스냅샷만으로 신원을 본다([`dir_identity_supported`]
 /// 가 거짓). 유닉스의 몸은 `symlink_metadata` 의 `dev` · `ino`(링크면 `None`)가 될 자리다.

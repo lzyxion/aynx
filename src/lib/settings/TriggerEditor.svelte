@@ -28,17 +28,8 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * 트리거 **추가 · 편집** — 설정 › 트리거의 하위 화면 (docs/log/2026-10-05-trigger-examples.md "하위 화면으로").
-   *
-   * 요약(`TriggersSection`)의 [트리거 추가 ›] 또는 줄 누르기가 연다. 틀(`SettingsSubView`)은 자동 승인과 공용이고,
-   * 움직임 · Escape · 돌아온 뒤 포커스는 요약이 맡는다. 위에서부터: (추가만) 예시 카드 · 규칙 칸 · 시험 칸 · 단추.
-   *
-   * - **칸은 이 화면 안에만 산다** — [추가] · [저장] 을 눌러야 초안(`settings.current.triggers`)에 쓴다. 자동 승인의
-   *   허용 패턴 편집처럼 칸마다 그 자리에서 쓰지 않는 이유: 트리거는 즉시 반영이라(터미널이 초안을 구독) 정규식을
-   *   치는 도중의 반쪽 패턴이 열린 터미널마다 칠해진다. [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다.
-   * - 예시 카드는 **틀**이다 — 고르면 규칙 칸이 그 예시로, 시험 칸이 그 예시의 샘플 줄로 채워진다. 같은 패턴이 이미
-   *   목록에 있으면 ✓ 만 달고 고를 수는 있다.
-   * - 종류(하이라이트 · 링크 · 툴팁)는 칸의 값이다 — 색 둘 다 지우면 하이라이트 없음, 링크 · 툴팁 칸이 비면 그 종류 없음.
+   * 칸은 이 화면 안에만 산다 — [추가] · [저장] 때만 초안에 쓴다. 칸마다 쓰면 터미널이 초안을 구독해 치는 도중의 반쪽 정규식이
+   * 열린 터미널마다 칠해진다. [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다.
    */
   let {
     index,
@@ -46,11 +37,9 @@
     onsaved,
     ondeleted,
   }: {
-    /** 고칠 항목의 위치 — `null` 이면 추가 */
+    /** `null` 이면 추가 */
     index: number | null;
-    /** [취소] · 뒤로 · Escape — 아무것도 쓰지 않고 요약으로 */
     onback: () => void;
-    /** [추가] · [저장] 뒤 — 넣거나 고친 항목의 위치 */
     onsaved: (index: number) => void;
     ondeleted: () => void;
   } = $props();
@@ -58,7 +47,7 @@
   const uid = $props.id();
   const adding = $derived(index === null);
 
-  /** 편집 시작 시점의 켜짐 — [저장] 은 켜고 끄기를 건드리지 않는다(그건 요약 줄의 스위치다) */
+  /** [저장] 은 켜고 끄기를 건드리지 않는다 — 그건 요약 줄의 스위치다 */
   const startEnabled = untrack(() => (index === null ? true : (settings.current.triggers[index]?.enabled ?? true)));
   let form = $state<TriggerForm>(
     untrack(() => {
@@ -67,9 +56,9 @@
     }),
   );
   let testText = $state("");
-  /** 고른 예시 카드 — `"blank"` = 빈 트리거 */
+  /** `"blank"` = 빈 트리거 */
   let picked = $state<string>("blank");
-  /** 패턴 칸을 한 번이라도 만졌는가 — 처음 열린 빈 칸에 "패턴을 적으세요" 를 띄우지 않는다 */
+  /** 처음 열린 빈 칸에 오류를 띄우지 않게 */
   let touched = $state(false);
 
   const triggers = $derived(settings.current.triggers);
@@ -119,10 +108,9 @@
     ondeleted();
   }
 
-  /** 한 줄 칸에서 Enter = [추가]/[저장] (설정 화면은 `<form>` 이 아니라 직접 받는다) */
   function onFieldKey(e: KeyboardEvent): void {
     if (e.key !== "Enter" || e.isComposing) return;
-    // 글자 칸에서만 — 단추(색 지우기)의 Enter 는 그 단추 몫이다.
+    // 단추(색 지우기)의 Enter 는 그 단추 몫이다.
     if (!(e.target instanceof HTMLInputElement) || e.target.type === "color") return;
     e.preventDefault();
     commit();
@@ -361,7 +349,6 @@
     margin-top: 0;
   }
 
-  /* 예시 카드 — 좁으면 한 줄에 하나, 넓으면 서넛 */
   .ex-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -397,7 +384,6 @@
     outline-offset: 1px;
   }
 
-  /* 색 견본 — 요약 줄 · 표본(`.trg-sample`)과 같은 결. 색이 없는 예시(링크 · 툴팁만)는 점선 빈 칸 */
   .ex-swatch {
     flex: 0 0 auto;
     box-sizing: border-box;
@@ -457,7 +443,6 @@
     white-space: nowrap;
   }
 
-  /* 규칙 칸 — 허용 패턴 편집(`AutomationAllow`)의 폼과 같은 결: 이름 | 칸, 좁으면 이름이 위로 */
   .rule-form {
     container-type: inline-size;
     display: flex;
@@ -542,7 +527,7 @@
     gap: var(--space-1);
   }
 
-  /* 안 쓰는 색 — 고르개는 기본값을 보여 주지만 흐리게(지금은 칠하지 않는다는 뜻) */
+  /* 고르개는 기본값을 보여 주지만 칠하지 않는 색이다 */
   .swatch.unset {
     opacity: 0.4;
   }

@@ -1,27 +1,14 @@
-// 원격 창의 **배치 바꾸기 요청**(원격 웹 R3 — 설계 5절 · 15.3). 순수 모듈 — 상태 저장소 · invoke 를 모른다.
-//
-// 원격 창은 제 탭을 바꾸지 않는다(R2-B 의 거울). 배치를 바꾸는 조작(새 탭 · 분할 · 타일 열기 · 닫기 · 옮기기 · 이름 바꾸기)은 이 모양의
-// **요청**이 되어 GUI(`mirror_request` — `src-tauri/src/remote/mirror.rs`)를 거쳐 메인 PC **주 창**에만 가고, 주 창이 제 함수로 적용한 결과가
-// 거울 방송으로 돌아온다(쓰기 주인은 늘 주 창 하나).
-//
-// - 종류는 [`LAYOUT_OPS`] 하나로 고정이다 — GUI 의 `LayoutRequest`(serde enum · 모르는 칸 거절)와 짝이고, 주 창도 받은 것을
-//   [`parseLayoutRequest`] 로 다시 거른다.
-// - 대상은 **메인 PC 의 열쇠**다: 타일 = 거울 환원의 타일 열쇠(`k:<tileKey>` · 없으면 `i:<메인 PC id>`), 탭 = 같은 꼴의 탭 열쇠.
-//   원격의 id 는 원격 창 안에서만 뜻이 있어 보내기 전에 [`toWire`] 가 바꾼다(모르는 id 면 보내지 않는다). 주 창은
-//   [`findTileByKey`] · [`findTabByKey`] 로 지금 트리에서 찾고, 없으면 거절한다.
-// - 새로 여는 타일의 명세는 [`requestPane`] 이 거른다 — 거울과 같은 허용 칸(`sanitizePane`)에 여는 재료 셋(`cwd` · `autorun` ·
-//   `injectMcpToken` — 원격 창은 메인 PC 창과 같은 권한(B)이고 원격은 이미 그 셸에 칠 수 있다)만 더한다. 세션 열쇠(`historyStreamId`) ·
-//   타일 열쇠 · id 는 싣지 않는다(메인 PC 가 새로 매긴다). 워크트리 만들기 · 설정 스크립트 · 조정자 Run · 이관 재시작 · 화면 버퍼는 싣지 않는다.
-// - 새 탭은 **설 워크스페이스**(`workspace` — 원격 창이 보는 것)를 싣는다. 메인 PC 가 보는 것과 다르면 메인 PC 는 그 워크스페이스에 넣기만
-//   하고 화면을 옮기지 않는다. 그 밖의 대상 조작은 메인 PC 가 **지금 보는 워크스페이스**에서만 한다(그 조작들은 메인 PC 의 지금 탭 · 타일을
-//   옮겨 겨누므로 — 다른 워크스페이스면 `elsewhere`). 닫기 · 이름 바꾸기만 어느 워크스페이스에서나 된다(화면을 옮기지 않는다).
+// 원격 창의 배치 바꾸기 요청 — 순수 모듈. 원격 창은 제 탭을 바꾸지 않는다: 요청은 GUI(`remote/mirror.rs` 의 `mirror_request`)를 거쳐
+// 메인 PC 주 창에만 가고, 결과는 거울 방송으로 돌아온다(쓰기 주인은 늘 주 창 하나).
+// 새로 여는 타일의 명세는 거울과 같은 허용 칸(`sanitizePane`)에 `cwd` · `autorun` · `injectMcpToken` 만 더한다 — 원격 창은 메인 PC 창과
+// 같은 권한(B)이다. 세션 열쇠(`historyStreamId`) · 타일 열쇠 · id 는 싣지 않는다(메인 PC 가 새로 매긴다).
 
 import { clampFileZoom, isFileView, type FileUiPatch, type FileView, type PaneNode, type PaneSpec, type SplitDir, type TabSpec } from "$lib/session/spec";
 import type { PaneSide } from "$lib/session/tree-edit";
 import type { FocusDir } from "$lib/layout";
 import { sanitizePane } from "./snapshot";
 
-/** 요청 종류 — GUI `LayoutRequest` 와 같은 목록(시험이 짝을 본다). */
+/** GUI `LayoutRequest`(serde enum · 모르는 칸 거절)와 같은 목록(시험이 짝을 본다) */
 export const LAYOUT_OPS = [
   "newTab",
   "openPane",
@@ -44,9 +31,7 @@ export const LAYOUT_OPS = [
 
 export type LayoutOp = (typeof LAYOUT_OPS)[number];
 
-/**
- * 요청 한 장. 원격 창 안에서는 `tab` · `tile` · `target` · `before` · `near` 가 원격 id 이고, 보낼 때([`toWire`]) 메인 PC 열쇠가 된다.
- */
+/** 원격 창 안에서는 대상 칸이 원격 id 이고, 보낼 때([`toWire`]) 메인 PC 열쇠(`k:<tileKey>` · `i:<id>`)가 된다 */
 export type LayoutRequest =
   | { op: "newTab"; pane?: PaneSpec; title?: string; projectFolder?: string; projectId?: string; workspace?: string }
   | { op: "openPane"; tab?: string; near?: string; pane: PaneSpec; title?: string; projectId?: string }
@@ -63,21 +48,19 @@ export type LayoutRequest =
   | { op: "mergeTab"; tab: string; target: string; dir: SplitDir; side: PaneSide }
   | { op: "swapTile"; tile: string; dir: FocusDir }
   | { op: "expandTile"; tile: string; dir: FocusDir }
-  /** (오케스트레이션 탭 마무리) 원격 창에 그 탭이 없을 때 — 메인 PC 가 `openAlbumTab(runId)` · `openOrchHome()` 을 돈다(새 Tauri 명령 아님) */
   | { op: "openOrchTab"; runId?: string; workspace?: string }
-  /** 파일 타일의 보기 설정(2026-11-04) — 원격 창의 토글을 메인 PC 배치에 적는다. 없으면 다음 거울 갱신에 되돌아간다. 거절돼도 안내하지 않는다(`app/mirror-requests`) */
+  /** 없으면 원격 창의 보기 토글이 다음 거울 갱신에 되돌아간다 */
   | ({ op: "fileUi"; tile: string; view?: FileView } & FileUiPatch);
 
-/** 상한 — GUI 도 같은 값을 본다(`remote/mirror.rs`). */
+/** GUI 도 같은 값을 본다(`remote/mirror.rs`) */
 export const MAX_KEY = 256;
 export const MAX_NAME = 200;
 export const MAX_TABS = 64;
 
-/** 거절 사유(주 창 · GUI 가 돌려주는 머리) — 원격이 사람 말로 바꾼다(`app.mirror.refuse.*`). */
+/** 주 창 · GUI 가 돌려주는 `[mirror-<사유>]` 머리와 맞춘다 */
 export const REFUSALS = ["no-home", "missing", "elsewhere", "cold", "unsaved", "dbtx", "start", "rate", "timeout", "invalid", "busy"] as const;
 export type Refusal = (typeof REFUSALS)[number];
 
-/** 오류 글자 → 거절 사유. `[mirror-<사유>]` 로 시작하지 않으면 `null`(그대로 보인다). */
 export function refusalOf(err: unknown): Refusal | null {
   const s = typeof err === "string" ? err : err instanceof Error ? err.message : "";
   const m = /^\[mirror-([a-z-]+)\]/.exec(s);
@@ -85,27 +68,17 @@ export function refusalOf(err: unknown): Refusal | null {
   return (REFUSALS as readonly string[]).includes(m[1]) ? (m[1] as Refusal) : null;
 }
 
-/**
- * **어느 워크스페이스의 대상이든 되는 요청인가**(10-20) — 화면을 옮기지 않는 닫기 · 이름 바꾸기 · 파일 타일 보기 설정. 나머지 대상 조작은 메인 PC 의 지금 탭 ·
- * 타일을 그 대상으로 옮겨 겨누므로 메인 PC 가 지금 보는 워크스페이스에서만 한다(다른 워크스페이스면 `elsewhere`).
- */
+/** 나머지 대상 조작은 메인 PC 의 지금 탭 · 타일을 그 대상으로 옮겨 겨누므로 메인 PC 가 지금 보는 워크스페이스에서만 한다(아니면 `elsewhere`) */
 export function anyWorkspace(req: LayoutRequest): boolean {
   return req.op === "closeTile" || req.op === "closeTabs" || req.op === "renameTab" || req.op === "fileUi";
 }
 
-/** 세션을 끝내는 요청인가(원격이 보내기 전에 묻는다 · 메인 PC 가 안내를 남긴다). */
 export function isClosing(req: LayoutRequest): req is Extract<LayoutRequest, { op: "closeTile" | "closeTabs" }> {
   return req.op === "closeTile" || req.op === "closeTabs";
 }
 
-// ---------------------------------------------------------------------------
-// 타일 명세
-// ---------------------------------------------------------------------------
+// ── 타일 명세 ──
 
-/**
- * **새로 여는 타일의 명세 → 요청에 싣는 명세** — 순수 · 명시 목록(머리말). `sourceKey` 는 짝 터미널(SFTP · 파일 타일이 세션을 빌리는
- * 원본)의 id 를 열쇠로 바꾼다 — 모르면 그 칸을 뺀다.
- */
 export function requestPane(p: PaneSpec, sourceKey: (id: string) => string | null): PaneSpec {
   const out = sanitizePane(p);
   out.id = "";
@@ -123,9 +96,6 @@ export function requestPane(p: PaneSpec, sourceKey: (id: string) => string | nul
   return out;
 }
 
-/**
- * **받은 명세 → 메인 PC 가 세울 명세**(주 창) — 한 번 더 거르고 새 id 를 단다. `sourceId` 는 열쇠 → 메인 PC id(없으면 그 칸을 뺀다).
- */
 export function homePane(p: PaneSpec, id: string, sourceId: (key: string) => string | null): PaneSpec {
   const out = requestPane(p, () => null);
   out.id = id;
@@ -136,19 +106,13 @@ export function homePane(p: PaneSpec, id: string, sourceId: (key: string) => str
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// 원격 id → 메인 PC 열쇠
-// ---------------------------------------------------------------------------
+// ── 원격 id → 메인 PC 열쇠 ──
 
 export interface KeyLookup {
   tile(id: string): string | null;
   tab(id: string): string | null;
 }
 
-/**
- * **원격 창의 요청 → 보낼 요청** — 순수. 대상 id 를 열쇠로 바꾸고 명세를 거른다. 모르는 대상이 하나라도 있으면 `null`
- * (거울에 없는 것 — 원격이 혼자 연 타일 등). `closeTabs` 는 아는 탭만 남기고, 하나도 없으면 `null`.
- */
 export function toWire(req: LayoutRequest, keys: KeyLookup): LayoutRequest | null {
   const tile = (id: string) => keys.tile(id);
   const pane = (p: PaneSpec) => requestPane(p, tile);
@@ -231,9 +195,7 @@ export function toWire(req: LayoutRequest, keys: KeyLookup): LayoutRequest | nul
   }
 }
 
-// ---------------------------------------------------------------------------
-// 받는 쪽(주 창) — 모양 검사 · 열쇠 찾기
-// ---------------------------------------------------------------------------
+// ── 받는 쪽(주 창) ──
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const key = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= MAX_KEY;
@@ -246,9 +208,7 @@ const paneShape = (v: unknown): v is PaneSpec => isObj(v) && typeof v.kind === "
 const optBool = (v: unknown): boolean => v === undefined || typeof v === "boolean";
 const FILE_UI_KEYS = new Set(["op", "tile", "view", "zoom", "places", "preview", "hidden"]);
 
-/**
- * **받은 요청을 읽는다** — 순수. 모르는 종류 · 모양이 틀린 것은 `null`(주 창은 `invalid` 로 거절). GUI 가 이미 걸렀지만 한 번 더.
- */
+/** GUI 가 이미 걸렀지만 주 창이 한 번 더 거른다 */
 export function parseLayoutRequest(v: unknown): LayoutRequest | null {
   if (!isObj(v) || typeof v.op !== "string") return null;
   const r = v as Record<string, unknown>;
@@ -299,7 +259,6 @@ export function parseLayoutRequest(v: unknown): LayoutRequest | null {
       if (!key(r.tile) || Object.keys(r).some((k) => !FILE_UI_KEYS.has(k))) return null;
       if ((r.view !== undefined && !isFileView(r.view)) || (r.zoom !== undefined && clampFileZoom(r.zoom) === null)) return null;
       if (!optBool(r.places) || !optBool(r.preview) || !optBool(r.hidden)) return null;
-      // 바꾸는 칸이 하나는 있어야 한다
       if ([r.view, r.zoom, r.places, r.preview, r.hidden].every((f) => f === undefined)) return null;
       return v as LayoutRequest;
     default:
@@ -316,7 +275,6 @@ function leavesOf(node: PaneNode, out: PaneSpec[] = []): PaneSpec[] {
   return out;
 }
 
-/** 타일 열쇠(`k:<tileKey>` · `i:<id>`) → 지금 트리의 그 타일(탭 id · 타일 id). 없으면 `null`. */
 export function findTileByKey(tabs: readonly TabSpec[], k: string): { tabId: string; paneId: string } | null {
   const byKey = k.startsWith("k:") ? k.slice(2) : null;
   const byId = k.startsWith("i:") ? k.slice(2) : null;
@@ -329,7 +287,6 @@ export function findTileByKey(tabs: readonly TabSpec[], k: string): { tabId: str
   return null;
 }
 
-/** 탭 열쇠 → 지금 탭 id. 없으면 `null`. */
 export function findTabByKey(tabs: readonly TabSpec[], k: string): string | null {
   if (k.startsWith("k:")) return tabs.find((t) => t.tabKey === k.slice(2))?.id ?? null;
   if (k.startsWith("i:")) return tabs.find((t) => t.id === k.slice(2))?.id ?? null;

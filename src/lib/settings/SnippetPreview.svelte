@@ -2,20 +2,12 @@
   import { previewSnippet } from "$lib/settings/model/snippet-form";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
-  /**
-   * 스니펫 **미리보기** — 추가 · 편집 하위 화면(`SnippetEditor`)의 칸 아래, 트리거의 시험 칸 자리
-   * (docs/log/2026-10-05-snippets-subview.md).
-   *
-   * 지금 명령이 넣을 때 **무엇을 묻고 무엇이 나가는가**를 바로 보인다: 물어볼 칸마다 값 칸이 기본값으로 채워진 채
-   * 서고(넣을 때 열리는 묻는 화면과 같은 시작), 거기 시험 삼아 적으면 아래 줄이 터미널에 나갈 글자로 바뀐다. 계산은
-   * `previewSnippet`(순수)이 삽입 경로와 같은 `placeholdersOf` · `defaultValuesOf` · `renderSnippet` 으로 한다.
-   * 시험 값은 이 화면에만 산다 — 저장하지도, 아무 터미널에 보내지도 않는다.
-   */
+  /** 시험 값은 이 화면에만 산다 — 저장하지도, 아무 터미널에 보내지도 않는다. */
   let { command, enter }: { command: string; enter: boolean } = $props();
 
   const uid = $props.id();
 
-  /** 시험 삼아 적은 값 — 칸 이름 → 값 (지운 칸은 빈 값으로 남아 기본값을 되살리지 않는다) */
+  /** 칸 이름 → 값 (지운 칸은 빈 값으로 남아 기본값을 되살리지 않는다) */
   let typed = $state<Record<string, string>>({});
 
   const result = $derived(previewSnippet(command, typed));
@@ -63,7 +55,6 @@
 </div>
 
 <style>
-  /* 트리거 시험 칸(`TriggerTester`)과 같은 필드 우물 판 */
   .preview {
     display: flex;
     flex-direction: column;
@@ -125,7 +116,6 @@
     color: var(--fg-3);
   }
 
-  /* 나갈 글자 — 터미널처럼 고정폭, 여러 줄 명령은 줄 그대로 */
   .out {
     overflow-x: auto;
     padding: var(--space-2);

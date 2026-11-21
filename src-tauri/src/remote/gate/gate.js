@@ -1,5 +1,4 @@
-// Aynx 원격 관문의 페어링·잠금 해제 쪽(R1a-2) — 관문이 직접 내는 작은 쪽의 유일한 스크립트(CSP: script-src 'self').
-// 앱 번들과 무관하다. 쿠키는 HttpOnly 라 여기서 보지 못한다 — 결과는 관문의 응답 코드·JSON 으로만 안다.
+// 원격 관문의 페어링 · 잠금 해제 쪽 스크립트(CSP: script-src 'self' — 인라인 없음). 쿠키는 HttpOnly 라 여기서 보지 못한다.
 "use strict";
 (() => {
   const page = document.body.dataset.page;

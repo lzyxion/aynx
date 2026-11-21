@@ -1,6 +1,5 @@
 <script lang="ts">
   // 공개키 설치의 키 선택 — ↑↓·Enter 는 상자의 `onKeyPickKeydown`(`app/prompts`)이 다룬다.
-  // (2026-09-30 `+page.svelte` 에서 마크업을 그대로 옮겼다 — id·클래스·`bind:`·i18n 키·주석 불변. 스타일은 스코프라 베껴 왔다.)
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import {
@@ -14,7 +13,7 @@
   } from "$lib/app/prompts.svelte.js";
 
   const keyPickCur = $derived(keyPickPrompt());
-  /** 두 무리 + "새 키 만들기…" 를 평평하게 편 목록 — ↑↓ 의 줄 번호가 이 배열의 index 다 */
+  /** ↑↓ 의 줄 번호가 이 배열의 index 다 */
   const keyRows = $derived(keyPickCur === null ? [] : keyPickRows(keyPickCur));
 
   $effect(() => {
@@ -24,11 +23,6 @@
   });
 </script>
 
-<!--
-  공개키 설치의 **키 선택** — 이 흐름이 새로 만드는 유일한 모달이다
-  (docs/log/2026-09-03-copy-id-ui.md). ssh-agent 에 키가 둘 이상일 때만 뜨고, 하나면
-  물어볼 것이 없어 곧바로 비밀번호 단계로 간다.
--->
 {#if keyPickVisible() && keyPickCur}
   <div class="overlay">
     <div
@@ -53,12 +47,7 @@
         >{t("app.keypick.lead.4")}
       </p>
 
-      <!--
-        목록은 **세 무리**다 (docs/log/2026-09-17-keygen.md): ssh-agent · 파일(~/.ssh) ·
-        맨 아래 "새 키 만들기…". 소제목은 무리의 첫 줄 위에만 그리고, ↑↓ 는 그 경계를
-        모른다 — 사람이 보기에 목록은 하나이고 무리는 그 안의 구획이다.
-        줄 번호의 뜻은 `keyPickRows` 한 곳에서 정해진다.
-      -->
+      <!-- 소제목은 줄이 아니다 — ↑↓ 는 무리 경계를 모르고 줄 번호의 뜻은 `keyPickRows` 한 곳에서 정해진다 -->
       <ul class="keylist">
         {#each keyRows as row, i (row.id)}
           {#if row.first}
@@ -102,10 +91,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    /* 모달은 언제나 최상층 — 패널 안 요소들(재연결 배너 z-5 등)이 전역 층위로 새어
-       나와 모달을 투명하게 덮으면 "보이는데 클릭·입력이 안 되는" 증상이 된다 (실기 발견).
-       패널 쪽은 pane-box 의 isolation 으로 새는 것 자체도 막지만, 모달의 최상층 보장은
-       여기서 독립적으로 지킨다. */
+    /* 모달은 언제나 최상층 — 패널 안 요소(재연결 배너 등)가 새어 나와 덮으면 보이는데 클릭·입력이 안 된다 */
     z-index: 100;
     display: flex;
     align-items: center;
@@ -117,16 +103,14 @@
   .modal {
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(420px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
-    /* 호스트 폼은 칸이 10개라 작은 창에서 화면을 넘긴다 — 모달 안에서 스크롤한다
-       (overlay 의 padding 16px 을 빼 준다) */
+    max-width: calc(420px + 2 * var(--space-4) + 2px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -141,11 +125,7 @@
     color: var(--fg-1);
   }
 
-  /*
-    `display:block` 그대로 둔다 — 다른 `.lead` 들은 <code>·<strong> 이 섞인 평범한 문단이라
-    flex 로 바꾸면 그 인라인 요소 하나하나가 flex 아이템이 되어 줄바꿈이 깨진다. 접힌 안내를
-    담은 `.lead` 는 안쪽 `.note-head`(flex) 가 블록 상자라 알아서 두 줄로 쌓인다.
-  */
+  /* flex 로 바꾸지 않는다 — <code>·<strong> 이 섞인 문단의 인라인 요소가 flex 아이템이 되어 줄바꿈이 깨진다 */
   .lead {
     margin: 0 0 var(--space-4);
     font-size: var(--t-sm);
@@ -157,7 +137,6 @@
     font-family: var(--font-mono);
   }
 
-  /* 공개키 선택 목록 — `.fact` 상자와 같은 바탕/테두리를 써서 모달 안에서 같은 층으로 읽힌다 */
   .keylist {
     margin: 0 0 var(--space-4);
     padding: var(--space-1);
@@ -169,7 +148,6 @@
     border-radius: var(--radius-sm);
   }
 
-  /* 줄 = 메뉴 줄과 같은 결 (최소 28px · 13px) */
   .keyitem {
     display: flex;
     align-items: baseline;
@@ -188,16 +166,10 @@
     cursor: pointer;
   }
 
-  /* 마우스 hover 와 ↑↓ 하이라이트가 **같은 표시**다 (선택 줄은 언제나 하나뿐이다) */
   .keyitem.sel {
     background: var(--surface-hover);
   }
 
-  /*
-    무리 소제목 (ssh-agent · 파일 · 새로 만들기). 줄이 아니라 **구획의 이름**이라 클릭 대상이
-    아니고, ↑↓ 도 여기서 멈추지 않는다 — `aria-hidden` 인 이유가 그것이다(스크린 리더에게는
-    아래 버튼들의 라벨이 이미 무엇인지 말한다).
-  */
   .keygroup {
     padding: var(--space-2) var(--space-2) var(--space-1);
     font-size: var(--t-xs);
@@ -208,7 +180,6 @@
     padding-top: var(--space-1);
   }
 
-  /* "새 키 만들기…" 는 목록의 항목이 아니라 **비상구**라 결을 달리한다 — 강조색 대신 한 단 흐리게 */
   .keyitem.makenew {
     color: var(--fg-2);
   }
@@ -227,12 +198,7 @@
     color: var(--fg-3);
   }
 
-  /*
-    버튼 — 전역 `.btn` 세 종류 (docs/log/2026-09-25-finish-menus.md · 토큰층 "버튼 세 종류"):
-    취소 = 보조(`.btn-secondary`), 확정 = 주(`.btn-primary`, 이 상자의 하나뿐인 강조색).
-    옛 `.ghost`/`.primary` 규칙은 지웠다 — 스코프 규칙이 전역 클래스를 이긴다. 두 이름은
-    표식으로만 남는다(검증 도구가 `.actions .primary` 로 찾는다).
-  */
+  /* `.ghost`/`.primary` 는 표식으로만 남는다 — 검증 도구가 `.actions .primary` 로 찾는다 */
   .actions {
     display: flex;
     justify-content: flex-end;

@@ -1,26 +1,9 @@
-//! GUI 쪽 **DB 평면 껍데기**(쿼리 타일 5단계) — 연결 표·엔진은 세션 서버에 산다(`server::db_ops` · `crate::db`). 여기 있는
-//! 것은 같은 이름의 Tauri 명령(전부 `async fn`)이고, 몸은 서버 op 하나씩이다.
+//! GUI 쪽 **DB 평면 껍데기** — 연결 표·엔진은 세션 서버에 산다. 같은 이름의 Tauri 명령이 서버 op 하나씩을 부른다.
 //!
-//! | Tauri 명령 | 서버 op | 인자 → 답 |
-//! | --- | --- | --- |
-//! | [`db_open`] | `db_open` | `stream, conn: {id}, password?, ssh?` → `{handle, lease, dialect, serverVersion, writable, reattached}` (창 라벨은 부른 창) · 실패는 **글자** 또는 경유 SSH 관문의 `SshOpenError` 객체(`{kind, …}` — 터미널 열기와 같은 꼴) |
-//! | [`db_test`] | `db_test` | `stream("dbtest-…"), conn: <DbConn 초안 한 줄>, password?, ssh?` → `{dialect, serverVersion, via?, elapsedMs}`(DB 연결 폼의 [연결 테스트] — 판 28 · 낮은 판 서버면 보내지 않고 `[server-outdated]`) · 실패는 `db_open` 과 같은 꼴 |
-//! | [`db_query`] | `db_query` | `handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?, readOnly?` → `{columns, rows, truncated, cellTruncated, affected?, elapsedMs}` · `readOnly`(데이터 탭 — 판 30, 낮은 판 서버면 보내지 않고 `[server-outdated]`) |
-//! | [`db_cancel`] | `db_cancel` | `handle, queryId` → bool |
-//! | [`db_schema`] · [`db_objects`] · [`db_table_detail`] | 같은 이름 | `handle, lease(, schema?(, table))` → 목록(스키마 이름 · 스키마의 객체 · 테이블 구조) |
-//! | [`db_definition`] | `db_definition` | `handle, lease, schema?, kind, name, table?, args?` → `{sql, reconstructed, truncated}`(정의 읽기 전용 보기) |
-//! | [`db_set_write`] | `db_set_write` | `handle, lease, on, autoCommit?` → `{writable, autoCommit?}`(자동 커밋 토글 — 판 13, 낮은 판 서버면 `autoCommit` 을 보내지 않고 `[server-outdated]`) |
-//! | [`db_close`] | `db_close` | `handle, lease?` → bool |
-//! | [`db_script`] | `db_script` | `handle, lease, sql, queryId, maxRows?, timeoutMs?, txId?` → `{outcome, total, results, failed?, …}`(스크립트 실행 — 판 10) |
-//! | [`db_tx`] | `db_tx` | `handle, lease, action, txId?` → `{tx}`(트랜잭션 작업 — 판 9) |
-//!
-//! - **판**: 붙은 서버가 판 8 미만이면 보내지 않고 `[server-outdated]` 문구로 끝낸다(셸·SSH 는 그 서버에서 그대로 돈다 — 판 7
-//!   서버와도 협상이 서기 때문이다. `ipc::frame::DB_PROTOCOL`).
+//! - **판**: 붙은 서버의 판이 낮으면 보내지 않고 `[server-outdated]` 로 끝낸다 — 판 7 서버와도 협상이 서므로 셸·SSH 는 그대로 돈다.
 //! - `password`(DB) · `ssh`(경유 SSH 관문의 답 — 비밀번호·암호구 포함)는 이 호출 한 번의 몸에만 싣는다(로그·`Debug` 없음).
-//! - 경로·주소·경유를 보내지 않는다 — 서버가 `db-connections.json` 에서 다시 읽는다(`db::conns`). **예외 하나 — [`db_test`]** 는
-//!   저장 전 폼 값(초안 한 줄)을 싣는다: 시험할 것이 바로 그 값이다. 서버는 그 줄을 저장과 같은 검사로 다시 보고, 볼트 비밀번호로
-//!   물러날지는 저장된 줄과 대상을 견줘 **서버가** 정한다(`db::table::test` — 이 몸에는 그 판단이 없다). 그 목록의 편집 명령은
-//!   `db::conns::db_conn_list`·`db_conn_save`(GUI 가 파일을 직접 — 비밀이 없다).
+//! - 경로·주소·경유를 보내지 않는다 — 서버가 `db-connections.json` 에서 다시 읽는다. **예외 하나 — [`db_test`]** 는 저장 전 초안 한 줄을
+//!   싣는다. 볼트 비밀번호로 물러날지는 저장된 줄과 대상을 견줘 **서버가** 정한다 — 이 몸에는 그 판단이 없다.
 
 use std::time::Duration;
 
@@ -43,7 +26,6 @@ fn check_protocol() -> Result<(), String> {
     }
 }
 
-/// 판 9 미만 서버면 트랜잭션 작업만 보내지 않는다(쿼리 타일의 나머지는 판 8 서버에서 그대로 선다).
 fn check_tx_protocol() -> Result<(), String> {
     match client::negotiated_protocol() {
         Some(p) if p < DB_TX_PROTOCOL => Err(with_reason(
@@ -57,7 +39,6 @@ fn check_tx_protocol() -> Result<(), String> {
     }
 }
 
-/// 판 10 미만 서버면 스크립트 실행만 보내지 않는다(쿼리 타일의 나머지는 그대로 선다).
 fn check_script_protocol() -> Result<(), String> {
     match client::negotiated_protocol() {
         Some(p) if p < DB_SCRIPT_PROTOCOL => Err(with_reason(
@@ -71,7 +52,6 @@ fn check_script_protocol() -> Result<(), String> {
     }
 }
 
-/// 판 13 미만 서버면 자동 커밋 토글만 보내지 않는다(쿼리 타일의 나머지는 그대로 선다).
 fn check_autocommit_protocol() -> Result<(), String> {
     match client::negotiated_protocol() {
         Some(p) if p < DB_AUTOCOMMIT_PROTOCOL => Err(with_reason(
@@ -85,7 +65,7 @@ fn check_autocommit_protocol() -> Result<(), String> {
     }
 }
 
-/// 판 28 미만 서버면 연결 테스트만 보내지 않는다(폼은 `db_ai_list` 의 `connTest` 로 단추를 숨긴다 — 이것은 그 사이 서버가 바뀐 틈).
+/// 폼은 `db_ai_list` 의 `connTest` 로 단추를 숨긴다 — 이것은 그 사이 서버가 바뀐 틈을 막는다.
 fn check_test_protocol() -> Result<(), String> {
     match client::negotiated_protocol() {
         Some(p) if p < DB_TEST_PROTOCOL => Err(with_reason(
@@ -99,8 +79,7 @@ fn check_test_protocol() -> Result<(), String> {
     }
 }
 
-/// 판 30 미만 서버면 읽기 전용 조회(데이터 탭)를 보내지 않는다 — 옛 서버는 `readOnly` 칸을 버리고 타일 모드대로 돌린다(쓰기 모드면
-/// 사람이 친 WHERE 글이 쓰기 길로 간다). 그래서 깃발을 버릴 서버에는 아예 보내지 않는다.
+/// 옛 서버는 `readOnly` 칸을 버리고 타일 모드대로 돌린다(쓰기 모드면 사람이 친 WHERE 글이 쓰기 길로 간다) — 그런 서버에는 보내지 않는다.
 fn check_read_query_protocol() -> Result<(), String> {
     match client::negotiated_protocol() {
         Some(p) if p < DB_READ_QUERY_PROTOCOL => Err(with_reason(
@@ -122,7 +101,7 @@ fn reach_error(e: super::ipc::WireError) -> String {
             code = e.code,
             msg = e.message
         ),
-        // 판 7 서버가 모르는 op 라고 답했다(협상 뒤 서버가 바뀐 틈) — 같은 안내.
+        // 협상 뒤 서버가 바뀐 틈 — 같은 안내.
         "unknown-op" | "protocol-mismatch" => outdated(),
         _ => e.message,
     }
@@ -150,8 +129,7 @@ async fn dcall(kind: Grade, op: &str, mut body: Value, limit: Option<Duration>) 
     r.map_err(reach_error)
 }
 
-/// 연다 — 같은 `stream`·같은 참조면 서버가 다시 붙는다(`reattached`). 실패는 사람 문구(글자) 또는 경유 SSH 관문의
-/// `SshOpenError`(객체 — 프런트의 `runSshGates` 가 묻고 다시 부른다).
+/// 실패는 사람 문구(글자) 또는 경유 SSH 관문의 `SshOpenError` 객체(프런트의 `runSshGates` 가 묻고 다시 부른다).
 #[tauri::command]
 pub async fn db_open(
     webview: tauri::Webview,
@@ -175,11 +153,10 @@ pub async fn db_open(
     });
     match client::request(Grade::Write, "db_open", body).await {
         Ok(mut v) => {
-            // 판 14 표지 — 서버의 작업 판정이 Codex 검토 반영 1 규칙인가(`[db-needs-work]` 를 내는가). 칸은 GUI 가 얹는다(서버 답 모양 그대로).
+            // 서버가 `[db-needs-work]` 를 내는 판인가 — 칸은 GUI 가 얹는다(서버 답 모양 그대로).
             if let Some(o) = v.as_object_mut() {
                 let ready = client::negotiated_protocol().is_none_or(|p| p >= DB_TX_VERDICT_PROTOCOL);
                 o.insert("txVerdicts".into(), Value::Bool(ready));
-                // 판 15 표지 — 연결별 조정 장치(실행 중 [커밋] 거절 · 방치 되돌리기 재시도)가 선 서버인가.
                 let serial = client::negotiated_protocol().is_none_or(|p| p >= DB_TX_SERIAL_PROTOCOL);
                 o.insert("txSerial".into(), Value::Bool(serial));
             }
@@ -193,8 +170,7 @@ pub async fn db_open(
     }
 }
 
-/// **연결 테스트**(판 28 — DB 연결 폼) — 저장 안 한 초안(`conn` — `db_conn_save` 의 한 줄 꼴)으로 한 번 붙고 닫는다. `password` ·
-/// `ssh` 는 [`db_open`] 과 같다(이 호출 한 번의 몸에만). 실패도 같은 꼴(글자 또는 경유 SSH 관문 객체 — 프런트의 같은 고리가 묻는다).
+/// 저장 안 한 초안(`db_conn_save` 의 한 줄 꼴)으로 한 번 붙고 닫는다. 비밀 · 실패의 꼴은 [`db_open`] 과 같다.
 #[tauri::command]
 pub async fn db_test(stream: String, conn: Value, password: Option<String>, ssh: Option<Value>) -> Result<Value, Value> {
     let password = password.map(zeroize::Zeroizing::new);
@@ -217,7 +193,6 @@ pub async fn db_test(stream: String, conn: Value, password: Option<String>, ssh:
     }
 }
 
-/// 문장 하나 — GUI 쪽 요청 시한은 다듬은 `timeoutMs` + 15초. `readOnly`(데이터 탭)는 판 30 서버에만 보낸다.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // 인자 이름 = 프런트 invoke 계약
 pub async fn db_query(
@@ -261,7 +236,7 @@ pub async fn db_objects(handle: u64, lease: u64, schema: Option<String>) -> Resu
     dcall(Grade::Read, "db_objects", json!({ "handle": handle, "lease": lease, "schema": schema }), None).await
 }
 
-/// 객체 하나의 정의(DDL) — 읽기 전용 보기(실행하지 않는다).
+/// 실행하지 않는다.
 #[tauri::command]
 pub async fn db_definition(
     handle: u64,
@@ -294,7 +269,7 @@ pub async fn db_table_detail(handle: u64, lease: u64, schema: Option<String>, ta
 
 #[tauri::command]
 pub async fn db_set_write(handle: u64, lease: u64, on: bool, auto_commit: Option<bool>) -> Result<Value, String> {
-    // 자동 커밋 토글(판 13)을 판 12 서버에 보내면 서버가 모르는 칸을 버려 **끈 줄 알고 친 문장이 곧바로 커밋된다** — 보내지 않는다.
+    // 옛 서버는 모르는 칸을 버려 **끈 줄 알고 친 문장이 곧바로 커밋된다** — 보내지 않는다.
     if auto_commit.is_some() {
         check_autocommit_protocol()?;
     }
@@ -312,7 +287,7 @@ pub async fn db_close(handle: u64, lease: Option<u64>) -> Result<bool, String> {
         .map(|v| v.as_bool().unwrap_or(false))
 }
 
-/// 트랜잭션 작업(판 9) — `action` = `begin` · `commit` · `rollback` · `extend` · `state`. `txId` 는 화면이 아는 작업(끝내기 · 연장).
+/// `action` = `begin` · `commit` · `rollback` · `extend` · `state`.
 #[tauri::command]
 pub async fn db_tx(handle: u64, lease: u64, action: String, tx_id: Option<u64>) -> Result<Value, String> {
     check_tx_protocol()?;
@@ -325,8 +300,6 @@ pub async fn db_tx(handle: u64, lease: u64, action: String, tx_id: Option<u64>) 
     .await
 }
 
-/// 스크립트 실행(판 10) — 문장 목록을 한 요청으로(서버가 나누고 전부 검증한 뒤 한 트랜잭션으로 돈다 — `db::script`). GUI 쪽 요청 시한은
-/// 서버의 전체 시한 + 커밋 대기 + 여유(`client` 의 `db_script`).
 #[tauri::command]
 pub async fn db_script(
     handle: u64,

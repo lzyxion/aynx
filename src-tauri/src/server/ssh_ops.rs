@@ -1,31 +1,11 @@
-//! **SSH 평면의 원격 실행 · 헤드리스 · 터널 op**(③-3b2 · 사용자 결정 3 "git·실행기 = `ssh_exec`").
-//!
-//! 위는 **서버**(op 몸 — [`is_ssh_op`] · [`handle`]), 아래는 **GUI**(같은 op 를 부르는 Rust 껍데기 — `ExecHandle::Server` 의 몸 ·
-//! 헤드리스의 거울·라우팅 · Tauri 명령 `open_headless_session`·`close_headless_session`).
-//!
-//! | op | 등급 | 몸 → 답 |
-//! | --- | --- | --- |
-//! | `ssh_exec` | 쓰기 | `{session, command, timeoutMs, execId?, collect?, maxStdout?}` → `ExecOutcome`(글자) 또는 바이트 모드(`collect`)의 `{exitCode, stderr, overflow, timedOut, error}` — stdout 은 응답 **앞서** `Channel{collect}` 프레임으로 |
-//! | `ssh_exec_cancel` | 쓰기 | `{execId}` → — (협력적 취소 — 이미 시작된 원격 명령은 계속 돌 수 있다) |
-//! | `ssh_alias` | 읽기 | `{session}` → `{alias, tile}`? |
-//! | `ssh_find` | 읽기 | `{alias}` → 그 호스트의 열린 타일 세션 id? |
-//! | `headless_open` | 쓰기 | `{alias}` → `{stream}`(③-3c — 거울·라우팅까지 서버가 잇는다) · 실패면 코드 `ssh-open` + `SshOpenError` JSON |
-//! | `headless_close` | 쓰기 | `{stream}` → — (전송로 · 라우팅 · 거울) |
-//! | `chan_open` | 쓰기 | `{session, subsystem: "sftp"}` → `{chan}` (`server::tunnel`) |
-//! | `chan_close` | 쓰기 | `{chan}` → — |
-//! | `ssh_copy_id` | 쓰기 | `{alias, password, line, acceptNewHostKey, verify}` → `InstallReport` · 실패면 `ssh-open` |
+//! SSH 평면의 원격 실행 · 헤드리스 · 터널 op — 위는 서버(op 몸), 아래는 같은 op 를 부르는 GUI 껍데기.
 //!
 //! ## `ssh_exec` 는 원시 `send_command` 가 아니다
 //!
-//! CLAUDE.md 의 불변 "원시 `send_command`(AI 문자열→PTY)는 만들지 않는다" 와의 관계:
-//! - **대상**은 서버 표의 세션 id 하나다(대화형 타일의 전송로 또는 헤드리스 위임 전송로). PTY 를 요청하지 않는 **별도 exec
-//!   채널**이라 사용자의 대화형 셸(PTY)에 글자를 넣지 않는다.
-//! - **부르는 쪽**은 GUI 프로세스의 Rust — 그것도 **명령 글자를 스스로 조립하는 고정 함수들**뿐이다(`worktree`·`commit_graph`·
-//!   `diff_view`·`git_repo`·`worktree_branch`·`worktree_changes`·`merge_detect`·`agent_sessions_remote`·`agent_hooks`(원격)·
-//!   `setup_script`·`ssh::commands`·`agent_instructions::remote`, 그리고 **사람이 승인한 작업안만 돌리는** 실행기
-//!   `operations`). 이 op 로 가는 Tauri 명령은 **없다**(시험 `ssh_exec_has_no_frontend_command` 가 명령 등록 목록을 본다) —
-//!   프런트·MCP 에서 임의 문자열이 오는 길이 없다. 파이프의 상대는 같은 exe 로 확인된 GUI 뿐이다(`serve::peer_trusted`).
-//! - 서버는 명령 글자를 로그에 남기지 않는다(세션 번호·길이만).
+//! - PTY 를 요청하지 않는 별도 exec 채널이라 사용자의 대화형 셸에 글자를 넣지 않는다.
+//! - 부르는 쪽은 명령 글자를 스스로 조립하는 GUI 의 고정 함수들과 사람이 승인한 작업안만 돌리는 실행기(`operations`)뿐이다.
+//!   이 op 로 가는 Tauri 명령은 없다(시험 `ssh_exec_has_no_frontend_command`) — 프런트 · MCP 에서 임의 문자열이 오는 길이 없다.
+//! - 서버는 명령 글자를 로그에 남기지 않는다(세션 번호 · 길이만).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -40,11 +20,9 @@ use super::ipc::{Grade, WireError};
 use super::sessions::ConnCtx;
 use crate::ssh::{ExecBytes, ExecHandle, ExecOutcome};
 
-/// 바이트 모드 한 판의 stdout 상한(서버가 지킨다 — GUI 가 더 크게 청해도 여기서 자른다).
+/// GUI 가 더 크게 청해도 서버가 여기서 자른다.
 const EXEC_BYTES_MAX: usize = 64 * 1024 * 1024;
-/// 바이트 모드의 stdout 을 나르는 채널 프레임 하나의 크기.
 const COLLECT_CHUNK: usize = 1024 * 1024;
-/// exec 시한의 상한(실행기의 대상별 시한도 이 안이다).
 const EXEC_TIMEOUT_MAX: Duration = Duration::from_secs(600);
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -55,7 +33,6 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 // 서버 쪽
 // ---------------------------------------------------------------------------
 
-/// 이 파일이 받는 op 인가(`serve::serve_conn` 이 가른다 — 기다림이 있어 태스크로 돈다).
 pub(crate) fn is_ssh_op(op: &str) -> bool {
     matches!(
         op,
@@ -71,7 +48,7 @@ pub(crate) fn is_ssh_op(op: &str) -> bool {
     )
 }
 
-/// `(연결, execId)` → 취소 깃발.
+/// `(연결, execId)` → 취소 깃발
 type CancelMap = HashMap<(u64, u64), Arc<AtomicBool>>;
 
 static CANCELS: LazyLock<Mutex<CancelMap>> = LazyLock::new(Default::default);
@@ -99,7 +76,7 @@ struct Exec {
     timeout_ms: u64,
     #[serde(default)]
     exec_id: Option<u64>,
-    /// 바이트 모드 — stdout 을 이 번호의 채널 프레임으로 먼저 보낸다(GUI 의 수집기).
+    /// 바이트 모드 — stdout 을 이 번호의 채널 프레임으로 먼저 보낸다.
     #[serde(default)]
     collect: Option<u64>,
     #[serde(default)]
@@ -138,7 +115,7 @@ struct Chan {
     chan: u64,
 }
 
-/// `ssh_copy_id` 몸 — **`Debug` 를 파생하지 않는다**(비밀번호).
+/// `Debug` 를 파생하지 않는다(비밀번호).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CopyId {
@@ -149,7 +126,6 @@ struct CopyId {
     verify: bool,
 }
 
-/// op 하나(서버).
 pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireError> {
     if let Some(l) = b.get("lang").and_then(Value::as_str).and_then(crate::i18n::parse) {
         crate::i18n::set_lang(l);
@@ -183,7 +159,6 @@ pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Valu
             );
             Ok(json!(id))
         }
-        // 헤드리스 위임(③-3c — 거울·라우팅도 서버에 산다): 관문·접속·인증 → 거울(가시성은 위임의 `read`)·라우팅을 잇는다.
         "headless_open" => {
             let a: Alias = body(b)?;
             let plane = super::hub::ai().ok_or_else(|| serr("ai plane is not running"))?;
@@ -219,7 +194,7 @@ pub(crate) async fn handle(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Valu
     }
 }
 
-/// `ssh_exec` — 서버 표의 세션 하나 위에서 exec 한 판(PTY 없음). 명령 글자는 로그에 남기지 않는다.
+/// 명령 글자는 로그에 남기지 않는다.
 async fn exec(a: Exec, ctx: &ConnCtx) -> Result<Value, WireError> {
     let handle = crate::ssh::handle_of(crate::ssh::table(), a.session)
         .ok_or_else(|| serr(crate::errors::session_gone()))?;
@@ -233,7 +208,7 @@ async fn exec(a: Exec, ctx: &ConnCtx) -> Result<Value, WireError> {
     if let Some(collect) = a.collect {
         let max = a.max_stdout.unwrap_or(EXEC_BYTES_MAX).min(EXEC_BYTES_MAX);
         let out = crate::ssh::run_exec_bytes_direct(handle, a.command, timeout, max).await;
-        // stdout 은 응답보다 **먼저** 같은 연결 큐로(순서가 선다 — GUI 의 수집기가 응답 전에 다 받는다).
+        // stdout 은 응답보다 먼저 같은 연결 큐로 — GUI 의 수집기가 응답 전에 다 받아야 한다
         for chunk in out.stdout.chunks(COLLECT_CHUNK) {
             let _ = ctx.tx.send(Frame::Channel {
                 chan: collect,
@@ -263,18 +238,17 @@ async fn exec(a: Exec, ctx: &ConnCtx) -> Result<Value, WireError> {
 // GUI 쪽 — `ExecHandle::Server` 의 몸 · 세션 묻기
 // ---------------------------------------------------------------------------
 
-/// GUI 가 세션 서버의 SSH 세션 하나를 exec 대상으로 — 살아 있는지는 exec 이 답한다(없으면 "세션이 없습니다").
+/// 살아 있는지는 exec 이 답한다.
 pub(crate) fn handle_of(id: u32) -> Option<ExecHandle> {
     Some(ExecHandle::Server(id))
 }
 
-/// 그 세션이 붙은 별칭(서버 op `ssh_alias`) — 없거나 서버에 닿지 못하면 `None`.
 pub(crate) async fn alias_of(id: u32) -> Option<String> {
     let v = super::proxy::call(Grade::Read, "ssh_alias", json!({ "session": id })).await.ok()?;
     v.get("alias").and_then(Value::as_str).map(str::to_string)
 }
 
-/// **타일의** 세션(헤드리스 아님)의 exec 손잡이와 별칭 — 원격 대화 목록이 별칭으로 캐시를 가른다.
+/// 타일의 세션만(헤드리스 아님).
 pub(crate) async fn tile_handle_and_alias(id: u32) -> Option<(ExecHandle, String)> {
     let v = super::proxy::call(Grade::Read, "ssh_alias", json!({ "session": id })).await.ok()?;
     if v.get("tile").and_then(Value::as_bool) != Some(true) {
@@ -284,7 +258,6 @@ pub(crate) async fn tile_handle_and_alias(id: u32) -> Option<(ExecHandle, String
     Some((ExecHandle::Server(id), alias))
 }
 
-/// 그 호스트의 열린 타일 세션 하나(서버 op `ssh_find`).
 pub(crate) async fn find_tile(alias: &str) -> Option<u32> {
     super::proxy::call(Grade::Read, "ssh_find", json!({ "alias": alias }))
         .await
@@ -295,8 +268,6 @@ pub(crate) async fn find_tile(alias: &str) -> Option<u32> {
 
 static NEXT_EXEC: AtomicU64 = AtomicU64::new(1);
 
-/// `ExecHandle::Server` 의 몸을 exec 원시에 꽂는다(GUI 시작 — `client::start`). 함수 포인터인 이유는 `ssh::exec` 의
-/// `set_remote_exec` 머리말.
 pub(crate) fn install_remote_exec() {
     crate::ssh::set_remote_exec(
         |id, command, timeout, cancel| Box::pin(exec_text(id, command, timeout, cancel)),
@@ -304,7 +275,7 @@ pub(crate) fn install_remote_exec() {
     );
 }
 
-/// [`crate::ssh::run_exec`] 의 GUI 갈래 — 서버 op `ssh_exec`. 취소 깃발은 0.15초마다 보고 서버에 `ssh_exec_cancel` 을 보낸다.
+/// 취소는 협력적이다 — 이미 시작된 원격 명령은 계속 돌 수 있다.
 pub(crate) async fn exec_text(id: u32, command: String, timeout: Duration, cancel: Arc<AtomicBool>) -> ExecOutcome {
     if cancel.load(Ordering::SeqCst) {
         return ExecOutcome {
@@ -355,7 +326,6 @@ pub(crate) async fn exec_text(id: u32, command: String, timeout: Duration, cance
     }
 }
 
-/// [`crate::ssh::run_exec_bytes`] 의 GUI 갈래 — stdout 은 수집기(채널 프레임)로, 나머지는 응답으로.
 pub(crate) async fn exec_bytes(id: u32, command: String, timeout: Duration, max_stdout: usize) -> ExecBytes {
     let collect = super::tunnel::collect_open();
     let r = super::client::request(
@@ -404,7 +374,6 @@ fn exec_error(e: WireError) -> String {
     }
 }
 
-/// `ssh-copy-id` 상당 — 서버 op `ssh_copy_id`(비밀번호는 몸으로 한 방향). 실패는 `SshOpenError` 그대로.
 pub(crate) async fn copy_id(
     alias: &str,
     password: String,
@@ -442,10 +411,9 @@ fn open_error(e: WireError) -> crate::ssh::SshOpenError {
 }
 
 // ---------------------------------------------------------------------------
-// GUI 쪽 — 헤드리스 위임(③-3c — 관문·접속·거울·라우팅 모두 서버, 여기는 Tauri 명령 껍데기)
+// GUI 쪽 — 헤드리스 위임
 // ---------------------------------------------------------------------------
 
-/// 위임 대상 하나에 **헤드리스로** 접속한다(Tauri 명령) — 서버 op `headless_open`(멱등). 결정적 streamId(`delegated:<alias>`).
 #[tauri::command]
 pub async fn open_headless_session(alias: String) -> Result<String, crate::ssh::SshOpenError> {
     let v = super::client::request(
@@ -461,7 +429,6 @@ pub async fn open_headless_session(alias: String) -> Result<String, crate::ssh::
         .ok_or_else(|| crate::ssh::SshOpenError::other("bad headless_open reply"))
 }
 
-/// 헤드리스 세션 하나를 명시적으로 닫는다(Tauri 명령) — 서버 op `headless_close`(전송로 · 라우팅 · 거울). 멱등.
 #[tauri::command]
 pub async fn close_headless_session(stream_id: String) -> Result<(), String> {
     super::proxy::call(Grade::Write, "headless_close", json!({ "stream": stream_id }))
@@ -473,8 +440,6 @@ pub async fn close_headless_session(stream_id: String) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// **프런트 명령에 `ssh_exec`(·채널·헤드리스 op)로 가는 길이 없다** — Tauri 명령 등록 목록(`lib.rs` 의
-    /// `generate_handler!`)에 그 이름이 없고, 이 파일의 GUI 쪽 `#[tauri::command]` 는 헤드리스 둘뿐이다.
     #[test]
     fn ssh_exec_has_no_frontend_command() {
         let lib = include_str!("../lib.rs");
@@ -487,7 +452,7 @@ mod tests {
         assert_eq!(gui_commands(include_str!("ssh_ops.rs")), vec!["open_headless_session", "close_headless_session"]);
     }
 
-    /// 이 파일의 GUI 쪽 `#[tauri::command]` 이름들 — 줄 끝을 LF 로 맞춘 뒤 본다(CRLF 체크아웃 · 재리뷰 R08).
+    /// 줄 끝을 LF 로 맞춘 뒤 본다(CRLF 체크아웃).
     fn gui_commands(src: &str) -> Vec<String> {
         src.replace("\r\n", "\n")
             .split("#[tauri::command]\npub async fn ")
@@ -496,7 +461,6 @@ mod tests {
             .collect()
     }
 
-    /// CRLF 로 체크아웃된 같은 소스에서도 같은 명령 목록이 나온다.
     #[test]
     fn command_scan_ignores_line_endings() {
         let me = include_str!("ssh_ops.rs");
@@ -505,7 +469,6 @@ mod tests {
         assert_eq!(gui_commands(&crlf).len(), 2);
     }
 
-    /// op 등급 — exec·취소·헤드리스·채널·copy-id 는 쓰기, 별칭·찾기는 읽기. 승인 등급은 늘 거부.
     #[test]
     fn ssh_ops_have_grades() {
         use super::super::ipc::frame::{check_grade, required_grade};

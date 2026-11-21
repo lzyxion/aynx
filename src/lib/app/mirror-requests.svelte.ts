@@ -23,16 +23,9 @@ import {
 } from "$lib/mirror/request";
 
 /**
- * **원격 창의 배치 바꾸기 요청**(원격 웹 R3 — 설계 5절 · 15.3). 두 쪽이 한 파일에 있다:
- *
- * - **원격 창**([`startRemoteLayoutRequests`]) — 탭 모듈의 배치 함수들이 막는 대신 넘긴 요청(원격 id)을 메인 PC 열쇠로 바꿔
- *   (`$lib/mirror/request` 의 `toWire`) GUI `mirror_request` 로 보낸다. 세션을 끝내는 닫기 · 원격 창 자신의 저장 안 한 문서가 든 닫기는
- *   **보내기 전에 여기서 묻는다**(행동한 사람이 확인한다). 원격에서 따로 연 제 타일(쿼리 등)의 닫기는 보내지 않고 혼자 닫는다. 메인 PC 주 창이 없으면(거울 출처가 저장된 배치)
- *   보내지 않고 안내한다. 거절은 사람 말 한 줄(`app.mirror.refuse.*`).
- * - **메인 PC 주 창**([`startMirrorRequests`]) — GUI 가 주 창에만 여는 채널(`mirror_request_inbox` — 원격 창이 들을 수 있는 이벤트를 쓰지
- *   않는다)로 요청을 받아 [`applyLayoutRequest`] 로 **제 함수 그대로** 적용하고 `mirror_respond` 로 답한다. 결과 배치는 평소의 거울
- *   방송(`app/mirror-publish`)으로 원격에 돌아간다. 닫기는 확인 창 없이 적용하되(원격에서 이미 물었다) 저장 안 한 문서 · 열린 DB
- *   트랜잭션이면 거절하고, 닫았으면 짧은 안내("원격 <기기>가 …")를 남긴다.
+ * 원격 창: 세션을 끝내는 닫기 · 원격 창 자신의 저장 안 한 문서가 든 닫기는 보내기 전에 여기서 묻는다(행동한 사람이 확인한다).
+ * 메인 PC 주 창: 원격 창이 들을 수 있는 이벤트가 아니라 GUI 가 주 창에만 여는 채널(`mirror_request_inbox`)로 받는다.
+ * 닫기는 확인 창 없이 적용하되 저장 안 한 문서 · 열린 DB 트랜잭션이면 거절한다.
  */
 
 // ---------------------------------------------------------------------------
@@ -43,7 +36,6 @@ function refuseText(r: Refusal): string {
   return t(`app.mirror.refuse.${r}`);
 }
 
-/** 원격 창의 지금 탭 목록에서 세션 타일 수 — 닫기 확인 문구에 쓴다 */
 function sessionTilesIn(paneIds: readonly string[]): number {
   return paneIds.filter((id) => {
     for (const tab of residentWindowTabs()) {
@@ -54,12 +46,7 @@ function sessionTilesIn(paneIds: readonly string[]): number {
   }).length;
 }
 
-/**
- * 닫기 전에 원격에서 묻는다 — 진행하면 `true`.
- * 1. **원격 창 자신의 저장 안 한 문서**(11-15 — 이 창에서 고친 문서 타일 · `isDocDirty`)가 있으면 데스크톱 닫기와 같은 물음
- *    (`confirmUnsavedClose` — 저장하고 닫기 · 버리고 닫기 · 취소). 메인 PC 쪽 저장 안 한 문서 · 열린 트랜잭션은 메인 PC 가 거절한다.
- * 2. 세션을 끝내는 닫기면 한 번 더 — 세션 타일이 없으면 묻지 않는다.
- */
+/** 메인 PC 쪽 저장 안 한 문서 · 열린 트랜잭션은 메인 PC 가 거절한다 — 여기서는 이 창의 것만 묻는다 */
 async function confirmClose(req: Extract<LayoutRequest, { op: "closeTile" | "closeTabs" }>): Promise<boolean> {
   const panes =
     req.op === "closeTile"
@@ -82,10 +69,7 @@ async function confirmClose(req: Extract<LayoutRequest, { op: "closeTile" | "clo
   }
 }
 
-/**
- * **파일 타일 보기 설정의 요청** — 다른 요청과 달리 **조용히** 실패한다(토글 · 슬라이더마다 안내가 쌓이지 않게). 값은 이미 이 창에 적혀 있어 그 페이지 동안 보이고,
- * 메인 PC 가 받지 못했으면 다음 거울 갱신에 되돌아간다(알고 받은 한계 · docs/log/2026-11-04-file-ui-keep.md).
- */
+/** 조용히 실패한다(토글마다 안내가 쌓이지 않게) — 메인 PC 가 못 받으면 다음 거울 갱신에 되돌아간다(알고 받은 한계 · docs/log/2026-11-04-file-ui-keep.md) */
 async function sendFileUi(req: Extract<LayoutRequest, { op: "fileUi" }>): Promise<void> {
   if (mirrorSource() !== "home") return;
   const wire = toWire(req, { tile: homeTileKey, tab: homeTabKey });
@@ -95,7 +79,7 @@ async function sendFileUi(req: Extract<LayoutRequest, { op: "fileUi" }>): Promis
 
 async function sendLayout(req: LayoutRequest): Promise<void> {
   if (req.op === "fileUi") return sendFileUi(req);
-  // 원격에서 따로 연 제 타일 — 원격 혼자 닫는다(메인 PC 에는 없는 타일이다).
+  // 원격에서 따로 연 제 타일 — 메인 PC 에는 없는 타일이라 원격 혼자 닫는다.
   if (req.op === "closeTile" && isOwnInstance(req.tile)) {
     closeOwnInstance(req.tile);
     return;
@@ -118,7 +102,6 @@ async function sendLayout(req: LayoutRequest): Promise<void> {
   }
 }
 
-/** **원격 창 부팅**(`app/boot`) — 탭 모듈의 배치 함수가 요청을 이리로 넘기게 건다. */
 export function startRemoteLayoutRequests(): void {
   if (!isRemote) return;
   setRemoteLayoutSink((req) => void sendLayout(req));
@@ -130,11 +113,7 @@ export function startRemoteLayoutRequests(): void {
 
 const fail = (r: Refusal, why = ""): string => `[mirror-${r}]${why ? ` ${why}` : ""}`;
 
-/**
- * 그 타일을 이 창의 지금 탭 · 포커스 타일로(**키보드 포커스는 옮기지 않는다**) — "지금 타일" 을 보는 함수(`splitActive` · `moveTile` ·
- * `resizeTile`)를 그 타일에 겨누는 앞부분. `focusTile` 을 쓰지 않는 것은 그쪽이 다음 프레임에 DOM 포커스를 그 타일에 되돌려 놓아
- * 방금 연 새 타일의 포커스를 도로 빼앗기 때문이다.
- */
+/** 키보드 포커스는 옮기지 않는다 — `focusTile` 은 다음 프레임에 DOM 포커스를 되돌려 방금 연 새 타일의 포커스를 빼앗는다 */
 function aim(tabId: string, paneId: string): void {
   if (activeTabId() !== tabId) selectTab(tabId);
   focusPane(tabId, paneId);
@@ -145,11 +124,8 @@ function tabById(id: string): TabSpec | null {
 }
 
 /**
- * **요청 하나를 이 창(주 창)의 함수로 적용한다** — 됐으면 `null`, 아니면 거절 글자(`[mirror-<사유>] …` — 원격이 사람 말로 바꾼다).
- * 대상 열쇠는 **지금 워크스페이스**에서 찾는다 — 그 조작들은 이 창의 지금 탭 · 타일을 옮겨 겨누므로(`aim` · `selectTab`) 다른
- * 워크스페이스의 대상이면 화면이 그리로 옮겨 간다. 그래서 다른 워크스페이스(원격이 따로 보는 것)의 대상은 `elsewhere` 로 거절하고,
- * 화면을 옮기지 않는 닫기 · 이름 바꾸기만 이 창의 모든 워크스페이스에서 찾는다. 새 탭은 원격이 보던 워크스페이스(`workspace`)에
- * 넣는다(지금 것이 아니면 고르지 않고 넣기만 — `openTabInWorkspace`). `device` 는 닫기 안내에 쓰는 원격 기기 이름.
+ * 거절 글자 `[mirror-<사유>]` 는 원격이 사람 말로 바꾼다. 대상은 지금 워크스페이스에서만 찾는다 — 다른 워크스페이스의 대상이면 화면이
+ * 그리로 옮겨 가므로 `elsewhere` 로 거절한다(화면을 옮기지 않는 닫기 · 이름 바꾸기만 모든 워크스페이스).
  */
 export function applyLayoutRequest(req: LayoutRequest, device: string): string | null {
   const tabs = currentWorkspaceTabs();
@@ -157,7 +133,6 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
   const scope = anyWorkspace(req) ? everywhere : tabs;
   const tile = (key: string) => findTileByKey(scope, key);
   const tab = (key: string) => findTabByKey(scope, key);
-  // 지금 워크스페이스에는 없고 다른 워크스페이스에 있다 — 화면을 옮기지 않으려 거절한다
   const elsewhere = (key: string) => findTileByKey(everywhere, key) !== null || findTabByKey(everywhere, key) !== null;
   const lost = (...keys: (string | null | undefined)[]): string =>
     keys.some((k) => typeof k === "string" && elsewhere(k)) ? fail("elsewhere") : fail("missing");
@@ -174,7 +149,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
         const pane = req.pane ? fresh(req.pane) : null;
         if (req.title) {
           t0.title = req.title;
-          if (pane) t0.pinnedTitle = req.title; // `openInNewTab` 과 같은 제목 규칙
+          if (pane) t0.pinnedTitle = req.title;
         }
         if (pane && req.projectId) t0.projectId = req.projectId;
         if (pane && req.projectFolder?.trim()) t0.projectFolder = req.projectFolder.trim();
@@ -232,7 +207,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
       if (req.op === "tmuxTile") {
         const name = req.name;
         splitActive(undefined, (fresh) => {
-          if (name !== null) fresh.tmux = name; // `openTmuxTileIn` 과 같은 한 칸
+          if (name !== null) fresh.tmux = name;
         });
       } else splitActive(req.dir);
       return null;
@@ -242,7 +217,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
       if (!at) return fail("missing");
       if (isDocDirty(at.paneId)) return fail("unsaved");
       if (hasOpenDbTx(at.paneId)) return fail("dbtx");
-      closePaneIn(at.tabId, at.paneId); // 위 둘이 아니면 묻지 않고 곧바로 닫는다
+      closePaneIn(at.tabId, at.paneId);
       showNotice(t("app.mirror.closedTile", { device: device || t("app.mirror.someDevice") }));
       return null;
     }
@@ -303,7 +278,7 @@ export function applyLayoutRequest(req: LayoutRequest, device: string): string |
       return null;
     }
     case "openOrchTab": {
-      // 오케스트레이션 탭 — 메인 PC 의 여는 길 그대로(있으면 그리로 · 없으면 만든다). 앨범을 여는 것은 여전히 프로듀서의 start_run 뿐이다
+      // 탭만 연다 — 앨범을 열지는 않는다
       const r = openOrchTabForRemote(req.runId ?? null, req.workspace ?? null);
       return r === "ok" ? null : fail(r);
     }
@@ -333,10 +308,6 @@ async function handle(msg: unknown): Promise<void> {
   await invoke("mirror_respond", { id: msg.id, error }).catch(() => {});
 }
 
-/**
- * **메인 PC 주 창이 원격의 배치 요청을 받기 시작한다**(`app/boot` — 탭이 선 뒤). GUI 가 주 창에만 여는 채널이다 — 페이지를 다시 읽으면
- * 새 채널로 갈아 끼운다. 주 창 말고는 아무것도 하지 않는다.
- */
 export async function startMirrorRequests(): Promise<void> {
   if (!isMainWindow) return;
   const channel = new Channel<unknown>();

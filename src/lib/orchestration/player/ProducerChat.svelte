@@ -1,27 +1,8 @@
 <script lang="ts">
   /**
-   * **프로듀서 채팅 면**(오케스트레이션 2단계 단계 3 — aynx-notes docs/log/2026-10-30-orchestration-structured-producer.md 4-2 · 4-3 · 5-2 · 확정 목업
-   * `CoordChat`). 프로듀서 잎(`ProducerLeaf`)이 채팅을 연 뒤 그린다. 터미널 · PTY 가 없다 — 속은 세션 서버의 프로듀서 채팅 프로세스이고 상태는
-   * `app/producer-chat.svelte.ts` 가 쥔다(이 면이 다시 마운트돼도 남는다).
-   *
-   * - **머리**: 프로듀서 캐릭터(응답 중이면 강조색 고리) · "프로듀서 · Claude" · 모델 · 강도(악수가 알린 것 · 이제 앱이 안다) · 상태 칩(응답 중
-   *   이퀄라이저 · 작업자 기다리는 중 · 쉼 · 끝남 · 기록만) · ✕ 응답 끊기(= interrupt `deliverQueued: false` — 재생 막대 ✕ 와 같다).
-   * - **기록 + 꼬리**: 사이드 채팅과 같은 `TranscriptBody`(지난 턴 = 기록 파일 · 지금 턴 = 사건 꼬리) + **에이전트 머리**(캐릭터 · 이름 줄 —
-   *   사람 말은 오른쪽 말풍선) + **도구 알약**(서버 접두를 뗀 이름 · `spawn_worker role=…` · 같은 것 `×n` · 누르면 도구 줄 · 툴팁 = 화면 문구).
-   * - **권한 카드**: 서버가 카드로 세운 요청만 온다(스튜디오 밖 Read · Aynx DB 읽기 — 그 밖은 서버가 카드 없이 거절하고 `denied-by-policy` 한 줄).
-   * - **대기열 줄**: "대기열 n — 턴이 끝나면 전달" · 항목 [취소] · 보류([보내기]) · 보내지 못함([다시 보내기]) · [끊고 전달](`deliverQueued: true`).
-   * - **사람 필요 카드**: 앨범 상세의 `needsHuman(detail)`(보류 · 프로듀서 없음 · 트랙별 막힘 · 충돌 · 검증 — 첫 항목 + "외 n건") · 상세가 아직이면 목록 요약
- *   → [앨범 판 보기].
- * - **앱이 깨움**(단계 4): 꼬리의 표지(사건 `woken`) · 기록의 사람 말이 깨움 꼴이고 앨범의 예약 기록(`wakes` SHA)과 한 번씩 맞으면 말풍선 대신 가운데 점선
- *   알약 "앱이 깨움 · #1 보고 · #4 통합"(id → 트랙 번호는 여기서 짓는다 · 서버 문장은 쓰지 않는다) · 꼴만 맞으면 말풍선 + "앱 기록 없음" · 깨움이 꺼지면
- *   띠("사람 말 사이 깨움 n/30 — 다음 말을 기다립니다" 류).
- * - **턴 끝 경계**: 기록 · 꼬리의 에이전트 줄 뒤 사람 말(알약 포함) 앞에 가는 선 "턴 끝 · 프로듀서 쉼 (12:04)".
- * - **대화 중 모델 · 강도 칩**: 머리의 모델 · 강도를 누르면 칩 줄(사람 제어 프레임 `producer_chat_set_model` · `_set_effort` — 다음 턴부터).
-   * - **끝**: 끝 사건 `exited{why, restartable}` · 서버 표에 없음(`status` 의 `gone`) → 이유 한 줄 + [다시 띄우기](띄우지는 않는다 — 다음 말이 띄운다).
-   *   귀속 앨범이 orphaned 이고 되찾을 수 없으면 처음부터 **기록만**(입력 칸 없음 · [다시 띄우기] 없음 — 실기 a FAIL 2).
-   * - **띄우기 전 칩**: 이어받기 · 다시 붙이기로 막 세운 채팅(세대 0 · 대화 없음 · 말 없음)은 CLI · 모델 · 강도를 바꿀 수 있다(`respec` — 잎이
-   *   주소에 적고 서버에 다시 연다 · 기본 = 그 앨범의 직전 프로듀서 값).
-   * 사람이 보낸 글만 서버로 간다(이 면이 짓는 글 없음 — 이어받기 문장은 칸에 **채우기만**).
+  * 프로듀서 채팅 면. 사람이 보낸 글만 서버로 간다 — 이 면이 짓는 글은 없다(이어받기 문장은 칸에 채우기만).
+  * 권한 카드는 서버가 카드로 세운 요청만 온다(그 밖은 서버가 카드 없이 거절한다).
+  * 깨움 알약은 id → 트랙 번호만 여기서 짓고 서버 문장은 쓰지 않는다.
    */
   import { untrack, type Snippet } from "svelte";
   import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
@@ -90,15 +71,13 @@
     inputEl = $bindable(null),
   }: {
     target: ProducerTarget;
-    /** 이 탭이 보여 주는 앨범(사람 필요 카드 · 상태 칩의 재료) */
     runId?: string | null;
-    /** [앨범 판 보기] — 플레이어 잎으로 */
     onalbum?: () => void;
-    /** 띄우기 전(이어받기 · 다시 붙이기로 막 세운 채팅)의 CLI · 모델 · 강도 바꾸기 — 잎이 주소에 적고 서버에 다시 연다(띄우지 않는다) */
+    /** 잎이 주소에 적고 서버에 다시 연다(띄우지 않는다) */
     respec?: (p: { cli: RoleCli; model: string; effort: string }) => void;
-    /** 대화 중 모델 · 강도를 바꿨다 — 잎이 주소에 적는다(다음 띄우기도 그 값) */
+    /** 잎이 주소에 적는다(다음 띄우기도 그 값) */
     onretune?: (p: { model?: string; effort?: string }) => void;
-    /** 끝난 앨범의 [프로듀서 대화 기록](읽기만) — 머리에 ✕(잎을 걷는다 · 채팅은 닫지 않는다). 없으면 보통 채팅 머리 */
+    /** 끝난 앨범의 읽기 전용 기록 — 머리에 ✕(잎을 걷고 채팅은 닫지 않는다) */
     onclose?: () => void;
     inputEl?: HTMLTextAreaElement | null;
   } = $props();
@@ -118,7 +97,7 @@
     try {
       return await agentConversationTranscript(target.cli, c, before, PAGE);
     } catch (e) {
-      // 첫 턴이 도는 동안의 실패 = 아직 기록 없음(CLI 가 대화 파일을 쓰기 전 — 실기 18) · 턴 끝의 다시 읽기가 받는다
+      // 첫 턴이 도는 동안의 실패 = 아직 기록 없음(CLI 가 대화 파일을 쓰기 전) — 턴 끝의 다시 읽기가 받는다
       if (before === null && historyNotYet(st)) return { items: [], cursor: null };
       throw e;
     }
@@ -128,7 +107,7 @@
     return t("board.viewer.error", { e: stripReason(e instanceof Error ? e.message : String(e)) });
   }
 
-  // ── 상태 ──────────────────────────────────────────────────────────────────
+  // ── 상태 ──
 
   const pendingN = $derived(st ? pendingPermissions(st).length : 0);
   const activity = $derived(
@@ -159,7 +138,7 @@
   const effortRaw = $derived(st?.effort || target.effort || "");
   const effortText = $derived(effortRaw ? effortLabel(effortRaw) : t("orch.producer.effort.default"));
 
-  // ── 꼬리 → 줄 ────────────────────────────────────────────────────────────
+  // ── 꼬리 → 줄 ──
 
   const keyOf = (e: LiveEntry) => `e${e.n}`;
   const rows = $derived.by<LiveRow[]>(() => {
@@ -192,21 +171,18 @@
     title: (base: string) => (isCoordTool(base) ? t(`orch.producer.tool.${base}` as Key) : null),
   };
 
-  // 앨범에 묶인 프로듀서의 값을 기억한다(라이브러리 이어받기 칩의 기본값 — 이 브라우저의 편의)
+  // 라이브러리 이어받기 칩의 기본값 — 이 브라우저의 편의
   $effect(() => {
     const r = runId;
     const tg = target;
-    // 채팅 · 자기 대화 id 도(끝난 앨범의 [프로듀서 대화 기록] · 마무리 카드가 읽는다 — 갈라 온 원본 대화는 적지 않는다)
+    // 갈라 온 원본 대화는 적지 않는다
     if (!r) return;
     untrack(() => rememberProducer(r, { cli: tg.cli, model: tg.model, effort: tg.effort, chat: tg.chat, ...(tg.conv ? { conv: tg.conv } : {}) }));
   });
 
-  // ── 띄우기 전 칩(이어받기 · 다시 붙이기로 막 세운 채팅) ─────────────────────────
+  // ── 띄우기 전 칩 ──
 
-  /**
-   * 아직 띄우지 않았고 아무 말도 없다 — CLI · 모델 · 강도를 바꿀 수 있다(바꾸면 서버에 다시 연다 · 띄우지 않는다). 갈라 온 채팅(단계 5)은 CLI 가 원본
-   * 대화의 것으로 정해져 있어 이 칩 줄이 없다(모델 · 강도는 머리의 칩이 바꾼다).
-   */
+  /** 갈라 온 채팅은 CLI 가 원본 대화의 것으로 정해져 있어 이 칩 줄이 없다 */
   const prelaunch = $derived(
     !!respec &&
       !target.forkFrom &&
@@ -228,28 +204,26 @@
   });
   const preCli = $derived((target.cli === "codex" ? "codex" : "claude") as RoleCli);
   // 직전 프로듀서가 제안 밖 모델(Codex 의 계정 모델 등)이었으면 그 칩도 보인다
-  // 순서 = "기본"(빈 값) 고정 맨 앞 → 고정 순서 별칭 → 버전 → 등급(`orderModels` — 목록에 없는 지금 값은 더해서 그 자리에)
   const preModels = $derived(["", ...orderModels([...new Set([...MODEL_SUGGESTIONS[preCli], target.model])].filter(Boolean))]);
   const preEfforts = $derived(EFFORTS[preCli]);
 
   function pickPre(p: Partial<{ cli: RoleCli; model: string; effort: string }>): void {
     if (!respec) return;
     const cli = p.cli ?? preCli;
-    // CLI 를 바꾸면 모델은 기본 · 그 CLI 에 없는 강도도 기본으로
     const model = p.model ?? (cli === preCli ? target.model : "");
     const effort = p.effort ?? (EFFORTS[cli].includes(target.effort) ? target.effort : "");
     if (cli === preCli && model === target.model && effort === target.effort) return;
     respec({ cli, model, effort });
   }
 
-  // ── 대기열 ────────────────────────────────────────────────────────────────
+  // ── 대기열 ──
 
   const qrows = $derived(queueRows(live?.queue, live?.texts ?? {}));
   const qsum = $derived(queueSummary(qrows, live?.queue.held ?? false));
 
-  // ── 보내기 ────────────────────────────────────────────────────────────────
+  // ── 보내기 ──
 
-  /** 기록만 · 첫 띄우기 동안은 막는다(턴 중에는 막지 않는다 — 대기열) */
+  /** 턴 중에는 막지 않는다 — 대기열 */
   const gate = $derived.by((): ComposerGate | null => {
     if (live?.readOnly) return { text: t("orch.producer.gate.readOnly") };
     if (live?.sending && !responding && (live.epoch === 0 || live.life !== "live" || st?.status === "stopped")) {
@@ -262,7 +236,7 @@
     return sendProducer(target, text);
   }
 
-  // ── 권한 · 끝 ────────────────────────────────────────────────────────────
+  // ── 권한 · 끝 ──
 
   let deciding = $state<Record<string, true>>({});
   async function decide(requestId: string, decision: "allow" | "deny"): Promise<void> {
@@ -297,25 +271,21 @@
     return t(WHY_KEY[why ?? ""] ?? "orch.producer.exit.why.exited");
   }
 
-  /** 이 채팅의 앨범이 끝났나(서버 이어받기 판정 `why: ended` — 실기 b 고침 E: 끝난 앨범에 "다시 띄워 이어받으라" 를 말했다) */
+  /** 끝난 앨범에 "다시 띄워 이어받으라" 를 말하지 않게 */
   const ended = $derived(!!runId && albumEnded(summary ?? live?.album ?? null));
-  /** 입력 칸을 끄는 까닭(앨범 끝 · 사람이 프로듀서를 끝냄 — 실기 34) · 기록만은 따로(위 띠) */
   const sendClosed = $derived(live && !live.readOnly ? producerSendClosed({ albumEnded: ended, exitWhy: live.ended, gone: live.gone }) : null);
-  /** 다시 띄우면 어떻게 여나 — 갈라 온 채팅이 첫 말 전(자기 대화 없음)이면 원본 대화에서 **다시 갈라 온다**(실기 c — "같은 대화로" 는 틀린 말).
-   *  [다시 띄우기]와 같은 판정(`producerOpenMode` — 자기 대화 id 는 턴이 설 때 잎 주소에 적힌다) */
   const restartTip: Key = "orch.producer.exit.tip";
 
-  /** 끝난 채팅의 한 줄(서버 표에 없음 · 끝 사건) — 꼬리의 `exited` 카드가 없을 때 위에 */
   const endNote = $derived.by((): { why: string; restartable: boolean } | null => {
     if (!live || live.readOnly || onclose) return null;
     if (live.gone) return { why: live.gone, restartable: !ended && restartableWhy(live.gone) };
     return null;
   });
 
-  // ── 앨범 상세(사람 필요 · 트랙 번호 · 깨움 기록) — 보일 때 읽고 그 앨범의 변화 이벤트에 다시 ─────────
+  // ── 앨범 상세 ──
 
   let detail = $state<RunDetail | null>(null);
-  // 도구 알약은 이 앨범의 아티스트 이름을 쓴다. 프로필·권한의 원천은 서버다.
+  // 프로필 · 권한의 원천은 서버다.
   const roles = $derived(new Map((detail?.roles ?? []).map((r) => [r.id, r.name] as const)));
   $effect(() => {
     const id = runId;
@@ -346,13 +316,13 @@
     };
   });
 
-  // ── 앱이 깨움 ────────────────────────────────────────────────────────────
+  // ── 앱이 깨움 ──
 
   function whatText(w: string): string {
     return isWakeWhat(w) ? t(`orch.producer.wake.what.${w}` as Key) : w;
   }
 
-  /** 깨움 알약 글 — "앱이 깨움 · #1 보고 · #4 통합 (seq 41 뒤)" · 같은 범위의 재시도는 "앱이 깨움 · 다시 알림 · …"(실기 b 고침 C — 원래 알약과 글이 같아 중복처럼 보였다) */
+  /** 재시도는 "다시 알림" 을 단다 — 원래 알약과 글이 같으면 중복처럼 보인다 */
   function wakePill(w: { items?: readonly { what: string; taskId?: string | null; attemptId?: string | null }[]; more?: number; resync?: boolean; retry?: boolean; fromSeq: number }): string {
     const head = w.retry ? `${t("orch.producer.wake.title")} · ${t("orch.producer.wake.retry")}` : t("orch.producer.wake.title");
     if (w.resync) return `${head} · ${t("orch.producer.wake.resync")}`;
@@ -364,10 +334,10 @@
     return `${head} · ${chips.join(" · ")} (${t("orch.producer.wake.seq", { n: w.fromSeq })})`;
   }
 
-  /** 꼬리에 표지가 선 깨움(도는 깨움 턴) — 기록이 같은 깨움 말을 이미 받았으면 기록 쪽은 그리지 않는다(실기 b 고침 H: F5 직후 기록 알약 + 꼬리 알약 둘) */
+  /** 기록이 같은 깨움 말을 이미 받았으면 기록 쪽은 그리지 않는다 — 안 그러면 F5 직후 알약이 둘 선다 */
   const tailWakes = $derived(new Set((st?.entries ?? []).flatMap((e) => (e.kind === "notice" && e.code === WAKE_NOTE && e.detail ? [e.detail] : []))));
 
-  /** 기록의 사람 말 표지 — 앨범의 예약 기록과 한 번씩 맞춘다(표시용) · 꼬리가 같은 깨움을 그리고 있으면 숨김 */
+  /** 앨범의 예약 기록과 한 번씩 맞춘다(표시용) */
   function userMark(items: readonly TranscriptItem[]): readonly ({ pill: string } | { note: string } | { hide: true } | null)[] {
     const recs = detail?.wakes ?? [];
     return wakeMarks(items, recs, target.chat).map((m) => {
@@ -391,7 +361,7 @@
     return at === null ? t("orch.producer.turnEnd") : t("orch.producer.turnEnd.at", { time: clockOf(at) });
   }
 
-  // ── 대화 중 모델 · 강도 칩 ─────────────────────────────────────────────────
+  // ── 대화 중 모델 · 강도 칩 ──
 
   let retuneOpen = $state<"model" | "effort" | null>(null);
   const tuneCli = $derived((target.cli === "codex" ? "codex" : "claude") as RoleCli);
@@ -409,7 +379,7 @@
     if (await retuneProducer(target.chat, p)) onretune?.(p);
   }
 
-  // ── 사람 필요 카드 ────────────────────────────────────────────────────────
+  // ── 사람 필요 카드 ──
 
   const NEED_KEY: Record<string, Key> = {
     "no-producer": "orch.producer.human.need.no-producer",
@@ -423,7 +393,6 @@
 
   const human = $derived.by((): { text: string } | null => {
     if (detail && detail.runId === runId) {
-      // 상세 재료(`needsHuman`) — 첫 항목 + 외 n건
       const needs = needsHuman(detail);
       const first = needs[0];
       if (first) {
@@ -433,7 +402,6 @@
         return { text: needs.length > 1 ? `${body} · ${t("orch.producer.human.more", { n: needs.length - 1 })}` : body };
       }
     }
-    // 상세가 아직이거나 상세에 사람 필요 항목이 없다 — 목록 요약(조율 한도 · 사람 멈춤 · 상세보다 먼저 온 막힘)
     const r = summary;
     if (!r) return null;
     if (r.hold) return { text: t("orch.producer.human.hold") };
@@ -523,7 +491,6 @@
   {/if}
 {/snippet}
 
-<!-- [끊고 전달] — 알약 칸 안 보내기 원 왼쪽(목업 `CoordChat` · 10-30 실기: 칸 아래 줄에 따로 서 왼쪽 가장자리가 어긋났다) -->
 {#snippet deliver()}
   {#if responding}
     <button type="button" class="ghost-pill" title={t("orch.producer.deliver.title")} data-producer-deliver
@@ -611,7 +578,6 @@
     </div>
   {/if}
   {#if target.forkFrom && !target.conv && !live?.readOnly && (live?.epoch ?? 0) === 0}
-    <!-- (단계 5) 갈라 온 채팅 — 첫 말 전에는 원본 타일 대화의 기록을 보인다. 원래 타일은 그대로다 -->
     <div class="banner" data-producer-forked>{t("orch.producer.forked")}</div>
   {/if}
   {#if (live?.denied ?? 0) > 0}
@@ -729,10 +695,8 @@
   </div>
 
   {#if live?.readOnly}
-    <!-- 기록만 — 입력 칸을 두지 않는다(실기 a FAIL 2 · 위 띠가 까닭을 말한다) -->
     <div class="readonly-foot" data-producer-readonly-foot>{t("orch.producer.gate.readOnly")}</div>
   {:else if sendClosed}
-    <!-- 앨범이 끝났거나 사람이 프로듀서를 끝냈다 — 보낼 곳이 없다(서버도 거절한다 · 실기 34) -->
     <div class="readonly-foot" data-producer-closed-foot={sendClosed}>{t(sendClosed === "albumEnded" ? "orch.producer.gate.albumEnded" : "orch.producer.gate.closed")}</div>
   {:else}
     <FlipComposer
@@ -788,7 +752,7 @@
     white-space: nowrap;
   }
 
-  /* 부제가 길어도 머리 폭을 밀지 않는다 — 넘치면 말줄임(좁은 잎에서 ✕ 가 다음 줄로 밀리던 원인) */
+  /* 넘치면 말줄임 — 부제가 머리 폭을 밀면 좁은 잎에서 ✕ 가 다음 줄로 밀린다 */
   .sub {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -825,7 +789,6 @@
     opacity: 0.7;
   }
 
-  /* 응답 중 고리 — 캐릭터 둘레의 강조색 선(움직임 없음) */
   .avatar-wrap {
     display: inline-flex;
     border-radius: 50%;
@@ -912,8 +875,7 @@
     background: var(--control-ghost-hover);
   }
 
-  /* 꼬리(사람 필요 · 턴 끝 · 대기열) — 좌우 여백 = 아래 입력 칸(`FlipComposer` 의 좁은 여백 12px)과 같게: 대기열 칩 · 항목 글 · 알약 칸의 왼쪽 가장자리가
-     한 줄에 서고, 항목 [취소] 는 알약 칸의 오른쪽 가장자리에 선다(10-30 실기) */
+  /* 좌우 여백 = 아래 입력 칸(`FlipComposer` 의 좁은 여백 12px)과 같게 — 칩 · 항목 글 · 알약 칸의 왼쪽 가장자리가 한 줄에 선다 */
   .foot {
     display: flex;
     flex-direction: column;
@@ -999,7 +961,6 @@
     white-space: nowrap;
   }
 
-  /* 항목 줄 — 글은 대기열 칩 안 글자와 같은 들여쓰기(칩 안쪽 여백 10px) · [취소] 는 오른쪽 끝 */
   .qlist {
     list-style: none;
     margin: 0;
@@ -1113,7 +1074,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* 수명 안내 — 입력 칸 위 둥근 상자(목업 V3AlbumClosed) */
   .lifetime {
     display: flex;
     align-items: flex-start;
@@ -1136,7 +1096,6 @@
     color: var(--fg-1);
   }
 
-  /* [프로듀서 끝내기] — 빨간 글자 · 테두리 알약(목업) */
   .end-pill {
     flex: 0 0 auto;
     font: inherit;
@@ -1197,7 +1156,7 @@
     border-radius: 22px;
   }
 
-  /* 앱이 깨움 — 꼬리의 표지(기록의 알약과 같은 가운데 점선 모양 — TranscriptBody `.wake-in`) */
+  /* TranscriptBody `.wake-in` 과 같은 모양 */
   .wake {
     display: flex;
     justify-content: center;
@@ -1226,7 +1185,6 @@
     border-style: dashed;
   }
 
-  /* 대화 중 모델 · 강도 칩 — 머리 아래 글자가 눌린다 */
   .sub.tune {
     display: inline-flex;
     align-items: center;
@@ -1250,7 +1208,6 @@
     border-color: var(--line-strong);
   }
 
-  /* 띄우기 전 칩 — "새 앨범" 칸의 칩과 같은 모양(작게) */
   .prelaunch {
     display: flex;
     flex-direction: column;
@@ -1296,12 +1253,12 @@
     color: var(--control-sel-fg, var(--fg-1));
   }
 
-  /* 수명 안내는 아주 좁은 잎(창 620 근처 · 약 215)에서만 걷는다 — 1400 창의 표준 채팅 폭(약 360 · `orch-tab.ts` 의 `PRODUCER_SHARE` · `PRODUCER_PX`)에서는 보인다 */
+  /* 수명 안내는 아주 좁은 잎에서만 걷는다 — 표준 채팅 폭(`orch-tab.ts` 의 `PRODUCER_SHARE` · `PRODUCER_PX`)에서는 보인다 */
   @container (max-width: 300px) {
     .lifetime { display: none; }
   }
 
-  /* 좁은 잎(실기 a 31 — 창 620px 근처면 잎이 200px 안팎 · 1400 창의 표준 폭 약 360 도) — 머리를 두 줄로: 제목 줄 · 상태 칩 줄. 잎(`ProducerLeaf .leaf`)이 크기 컨테이너 */
+  /* 잎(`ProducerLeaf .leaf`)이 크기 컨테이너 — 좁으면 머리를 두 줄로(제목 줄 · 상태 칩 줄) */
   @container (max-width: 420px) {
     .head [data-producer-end] { order: 4; margin-left: auto; }
     .head {
@@ -1314,7 +1271,7 @@
       flex: 1 1 calc(100% - 40px);
     }
 
-    /* 닫기 · 끊기 원형 단추는 첫 줄(제목 옆)에 남긴다 — 제목 칸이 그 몫(단추 28 + 사이)까지 비워 둔다 */
+    /* 닫기 · 끊기 원형 단추는 첫 줄에 남긴다 — 제목 칸이 그 몫까지 비워 둔다 */
     .head:has(.icon-btn) .who {
       flex-basis: calc(100% - 82px);
     }

@@ -1,14 +1,5 @@
 <!--
-  **폰 알림 화면**(원격 웹 R5 · 10-25) — 전체 화면 덮개. 들어오는 길은 하나: 상태줄 🔔 알림 알약(`+page` 의 `onalerts` — 폰 배치일 때).
-  전체 화면 덮개(고르기 · 둘러보기 · 설정 · 알림)는 오른쪽에서 밀려 들어오고, 아래에서 올라오는 것은 시트뿐이다. 폰에서는 데스크톱 독을 열지 않는다 — 독의 실행 단추 · 호스트 · 프로젝트 · DB 는 시트(`MobileSheet`)와
-  둘러보기(`MobileBrowse`)가 이미 맡고, 독에만 있던 오케스트레이션 · 잠자기 방지는 시트의 "기타" 로 옮겼다.
-
-  - 머리: "알림" + 배지(독 알림 칸 · 상태줄 종과 같은 수 — 승인 대기 + 확인할 에이전트 알림, 사람이 답할 것이 있으면 강조색) · 둥근 닫기.
-  - 몸: 독의 알림 칸 본문(`DockAlerts`) 그대로 — 세션 요약 · 승인 대기 · 확인할 것 · 지난 알림. 보이는 동안 읽음(`open`)이고, 다른 곳으로
-    가는 줄은 이 덮개를 먼저 닫는다(`onclose` — 독에서와 같은 메뉴 통로).
-  - 독 본문의 줄 옆 지우기(×)는 이 화면에서만 44px 로 키운다(손가락 자리).
-  - 꼬리: [작업안 기록] · [모두 읽음] · [알림 지우기] — 독 알림 칸 바닥 줄과 같은 몸통(`Dock.svelte` 의 `openPlanHistory` · `readAll` ·
-    `clearAlerts`). 할 일이 없으면 흐려진다.
+  폰 알림 화면 — 전체 화면 덮개. 폰에서는 데스크톱 독을 열지 않는다. 몸은 독의 알림 칸 본문(`DockAlerts`) 그대로다.
 -->
 <script lang="ts">
   import { pushOut } from "$lib/mobile/motion";
@@ -37,27 +28,26 @@
   );
   const canClear = $derived(notificationList().length > 0 || resolvedAgentBanners().length > 0);
 
-  /** [모두 읽음] — 끝남을 확인함으로 · 일반 알림을 읽음으로(권한 물음 · 승인 대기는 남는다) */
   function readAll(): void {
     resolveFinishedBanners();
     markNotificationsRead();
   }
 
-  /** [알림 지우기] — 지난 알림을 비운다(확인할 것 · 승인 대기는 남는다). 누른 단추가 흐려지므로 포커스는 목록으로 */
+  /** 누른 단추가 흐려지므로 포커스는 목록으로 */
   function clearAlerts(): void {
     clearNotificationHistory();
     clearResolvedBanners();
     body?.focusList();
   }
 
-  /** [작업안 기록] — 폰 작업안 덮개의 기록 보기로(덮개는 한 번에 하나 — 이 화면을 갈아 끼운다) */
+  /** 덮개는 한 번에 하나 — 이 화면을 갈아 끼운다 */
   function openPlanHistory(): void {
     setPlansView("history");
     openPlans();
   }
 
   let closeBtn = $state<HTMLButtonElement | null>(null);
-  // 열리면 닫기 단추에 포커스 — 입력 칸이 아니라 화면 키보드가 뜨지 않고, Esc 가 이 덮개에서 받힌다
+  // 단추에 포커스 — 입력 칸이면 화면 키보드가 뜬다 · Esc 가 이 덮개에서 받힌다
   $effect(() => {
     closeBtn?.focus({ preventScroll: true });
   });
@@ -107,7 +97,7 @@
     left: 0;
     right: 0;
     height: var(--app-h, 100dvh);
-    /* 다른 폰 덮개와 같은 층 — 확인 상자(114) · 가림막 · 모달(100) 아래 */
+    /* 확인 상자(114) · 가림막 · 모달(100) 아래 */
     z-index: 90;
     display: flex;
     flex-direction: column;
@@ -123,7 +113,6 @@
   }
   @keyframes malerts-in {
     from {
-      /* 화면 폭 전체가 오른쪽에서 밀려 들어온다(밀어 넣는 화면) — 아래에서 올라오는 것은 새 탭 시트뿐 */
       transform: translateX(100%);
     }
   }
@@ -156,7 +145,7 @@
     text-align: center;
     font-variant-numeric: tabular-nums;
   }
-  /* 사람이 답해야 풀리는 것(승인 대기 · 권한 물음)이 있을 때만 강조색 — 상태줄 종 배지와 같은 규칙 */
+  /* 상태줄 종 배지와 같은 규칙 */
   .badge.urgent {
     background: var(--accent);
     color: var(--on-accent, #fff);
@@ -179,7 +168,6 @@
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* 독 알림 칸의 줄 옆 지우기(×) — 독은 32px 이지만 손가락으로 누르는 폰에서는 44px(아이콘도 키운다) */
   .body :global(.side) {
     width: 44px;
     height: 44px;

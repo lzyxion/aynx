@@ -1,44 +1,20 @@
-//! **메신저 다리의 Slack 전송**(2026-11-19 · 4단계). Socket Mode(WebSocket — `apps.connections.open` → `hello` → 봉투 · 봉투마다 받음 답) 고리 ·
-//! Web API 요청 하나([`call`] — `Authorization: Bearer <토큰>`) · 보내기(`chat.postMessage`) · 바꿔 쓰기(`chat.update`) · 누른 사람에게만 보이는
-//! 글(`chat.postEphemeral`) · 토큰 확인(`auth.test` + `apps.connections.open`) · 중립 글([`Text`]) → Block Kit. 받은 것은 코어의 중립 값
-//! ([`super::Incoming`] · [`super::ButtonPress`])으로 바꿔 일꾼(`sock::worker`)을 거쳐 [`super::on_message`] · [`super::on_press`] 로 넘긴다.
+//! 메신저 다리의 Slack 전송 — Socket Mode 고리 · Web API · 누름 받음 · 토큰 확인.
 //!
-//! - **DM 만**(사용자 결정) — `channel_type` 이 `im` 이 아닌 글은 버린다. 누름은 메시지 단추(`container.type == "message"`)만.
+//! - **DM 만** — `channel_type` 이 `im` 이 아닌 글은 버린다. 누름은 메시지 단추(`container.type == "message"`)만.
 //! - **PTY · 카드 결정 · 승인으로 가는 길이 없다** — 코어의 입구만 부른다(시험 `pty_writes_have_two_sites` · `bridge_has_no_approval_path` 가
 //!   이 파일도 훑는다).
-//! - **토큰이 둘이다** — 봇 토큰(`xoxb-…` — Web API 에만)과 앱 수준 토큰(`xapp-…` · 범위 `connections:write` — `apps.connections.open` 에만).
-//!   파일 몸은 `"<xoxb>\n<xapp>"`([`BotToken`]). **토큰이 나가는 곳은 `slack.com` 뿐이다** — REST 바탕은 [`API_BASE`] 하나(시험만 [`Conf::at`]),
-//!   WebSocket 주소는 `wss` 이고 호스트가 `slack.com` · `*.slack.com` 일 때만 붙는다([`socket_url_ok`] · 시험만 `ws://127.0.0.1`). 그 주소에는
-//!   Slack 이 준 표만 들고 토큰은 없다 — 주소도 로그에 싣지 않는다. 로그에는 고정 글자 · 오류 종류([`err_kind`] — Slack 의 오류 코드 낱말)만.
-//! - **멘션은 늘 막는다** — 남의 글자는 `rich_text` 블록의 글 조각(`{type: "text"}` — 서식 · 멘션 · 링크로 읽히지 않고 줄바꿈이 산다)으로, 그려 둔
-//!   알림 글(`messenger::Channel::Slack.render` — `& < >` 걷힘)은 `mrkdwn` 에 `verbatim: true`(맨글자 `@channel` 을 멘션으로 바꾸지 않는다). 대신
-//!   보이는 `text`(알림 미리 보기)도 `& < >` 를 걷는다. 링크 미리 보기는 끈다(`unfurl_links` · `unfurl_media`). 서식 기호는 글자 그대로 보인다
-//!   (Markdown 서식 정리는 미룬 일). **`plain_text` section 은 쓰지 않는다** — Slack 웹이 그 글의 줄바꿈을 접는다(`white-space: normal` — 실기
-//!   2026-11-19: 두 줄 답이 한 줄로 붙었다).
-//! - **id 는 `i64`**(코어 그대로): 사용자 · 대화방 id(`U024BE7LH` · `D024BE91L` — 대문자 영숫자)는 36진수로 읽고 되돌려 같은 글자일 때만
-//!   ([`id_num`] — 아니면 그 사건을 버리고 고정 글자 한 줄), 메시지 id 는 `ts`("초.마이크로초 6자리") → `초 × 10⁶ + 마이크로초`([`ts_num`]).
-//! - **스레드 = 답장** — Slack DM 에는 답장이 없고 스레드뿐이다. 맨 위 글에는 맨 위로, 스레드 안의 글에는 그 스레드로 답한다(받은 글 ts → 뿌리 ts
-//!   표 [`Threads`] · 최근 64개 · 짝 · 봇이 바뀌면 [`forget`]). 받은 글의 `reply_to` 는 그 스레드의 뿌리(봇이 보낸 답이면 코어의 "보낸 id →
-//!   스트림" 이 그 타일로 보낸다).
-//! - 방어 기계: 30초마다 WebSocket Ping · 75초 동안 어떤 프레임도 없으면 끊고 다시 붙기(반쯤 죽은 TCP) · 갓 붙은 연결이 [`Conf::stable`] 안에
-//!   죽기를 거듭하면 다음 `apps.connections.open` 앞에서 5초부터 두 배씩 5분까지(`logic::Flap` — Discord 와 같다 · `refresh_requested` 로 끊긴 것은
-//!   세지 않는다) · 인증 · 권한 오류([`FATAL_ERRORS`])와 `disconnect link_disabled` 는 상태 `error` 로 두고 고리를 끝낸다(토큰을 다시 등록 · 서버를
-//!   다시 띄울 때까지) · Web API 429 는 `Retry-After`(상한 [`RETRY_CAP`])만큼 쉬고 **한 번만** 다시. 그 밖(재시도 큐 · 중복 제거 · 속도 제한기)은 없다.
-//!
-//! Slack 세부(2026-11-19 docs.slack.dev 에서 확인): `POST https://slack.com/api/apps.connections.open`(앱 수준 토큰을 머리로 — 몸 인자는 오류)
-//! → `{ok, url: "wss://wss-….slack.com/link/?ticket=…&app_id=…"}` · 붙으면 `{type: "hello", num_connections, connection_info, debug_info}` ·
-//! 봉투 `{envelope_id, type: events_api | interactive | slash_commands, payload, accepts_response_payload}` — **봉투마다 `{envelope_id}` 를
-//! 돌려보낸다**(안 보내면 다시 보낸다) · `{type: "disconnect", reason: warning | refresh_requested | link_disabled}`(warning 은 약 10초 뒤 끊김 ·
-//! refresh_requested 는 몇 시간마다 오는 평소 일 · link_disabled 는 Socket Mode 가 꺼졌다) · 연결은 앱당 10개까지이고 봉투는 그중 하나에만 ·
-//! `apps.connections.open` 은 Tier 3. Web API 는 실패도 대개 HTTP 200 + `{ok: false, error}` · 속도 제한은 HTTP 429 + `Retry-After`(초) ·
-//! `auth.test` → `{user, user_id, bot_id …}` · `chat.postMessage {channel, text, blocks, thread_ts, unfurl_links, unfurl_media}` → `{ts}` ·
-//! `chat.update {channel, ts, text, blocks}` · `chat.postEphemeral {channel, user, text}` · 사건 `message`(`message.im` · 범위 `im:history`) —
-//! `{channel_type: "im", channel, user, text, ts, thread_ts?, subtype?, bot_id?}` · 글자는 `&amp; &lt; &gt;` 로 걷혀 오고 멘션 · 링크는 `<@U…>` ·
-//! `<#C…|이름>` · `<!here>` · `<url|글자>` · `<url>` · 누름 봉투 `interactive` 의 `block_actions` `{user{id}, channel{id}, message{ts}, container{type,
-//! message_ts, channel_id}, actions[{action_id, value}]}` · section `text` 1–3000자 · 단추 글자 75자 · `action_id` 255자(블록 안에서 겹치지 않게) ·
-//! `value` 2000자 · actions 블록에 요소 25개 · mrkdwn 에는 역슬래시 걷기가 없다. **확인하지 못한 것**: section `text` 3000자를 무엇으로 세는지(문서에
-//! 없다 — UTF-16 단위로 보수적으로 재고 [`TEXT_ROOM`] 까지만 쓴다) · 몸 없는 `apps.connections.open` · `auth.test` POST 의 `Content-Type`
-//! (form 빈 몸으로 보낸다).
+//! - **토큰이 둘이다** — 봇 토큰(Web API 에만)과 앱 수준 토큰(`apps.connections.open` 에만). **토큰이 나가는 곳은 `slack.com` 뿐이다** — REST 바탕은
+//!   [`API_BASE`] 하나, WebSocket 은 `wss` 이고 호스트가 `slack.com` · `*.slack.com` 일 때만 붙는다([`socket_url_ok`] · 시험 `responses_urls_and_threads`).
+//!   그 주소에는 토큰을 싣지 않고 주소도 로그에 싣지 않는다. 로그에는 고정 글자 · 오류 종류([`err_kind`])만.
+//! - **멘션은 늘 막는다** — 남의 글자는 `rich_text` 블록의 글 조각으로(서식 · 멘션 · 링크로 읽히지 않는다), 그려 둔 알림 글은 `mrkdwn` 에
+//!   `verbatim: true`, 미리 보기 `text` 도 `& < >` 를 걷는다. **`plain_text` section 은 쓰지 않는다** — Slack 웹이 그 글의 줄바꿈을 접는다.
+//! - **id 는 `i64`** — 사용자 · 대화방 id 는 36진수로 읽고 되돌려 같은 글자일 때만([`id_num`]), 메시지 id 는 `ts` → `초 × 10⁶ + 마이크로초`([`ts_num`]).
+//! - **스레드 = 답장** — Slack DM 에는 답장이 없고 스레드뿐이다. 스레드 안의 글에는 그 스레드로 답한다([`Threads`]).
+//! - 방어 기계: 30초마다 Ping · 75초 조용하면 다시 붙기(반쯤 죽은 TCP) · 갓 붙은 연결이 곧 죽기를 거듭하면 물러남(`logic::Flap` — `refresh_requested`
+//!   로 끊긴 것은 세지 않는다) · [`FATAL_ERRORS`] 와 `link_disabled` 면 고리를 끝낸다 · Web API 429 는 `Retry-After`(상한 [`RETRY_CAP`])만큼 쉬고
+//!   **한 번만** 다시. 그 밖(재시도 큐 · 중복 제거 · 속도 제한기)은 없다.
+//! - Slack 함정: **봉투마다 `{envelope_id}` 를 돌려보낸다**(안 보내면 다시 보낸다) · Web API 는 실패도 대개 HTTP 200 + `{ok: false}` ·
+//!   `apps.connections.open` 에 몸 인자를 주면 오류 · section `text` 3000자를 무엇으로 세는지 문서에 없다(UTF-16 으로 재고 [`TEXT_ROOM`] 까지만).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -56,35 +32,28 @@ use crate::server::log;
 
 const CHAN: Channel = Channel::Slack;
 
-/// 릴리스의 Web API 바탕 주소 — 이것 하나뿐이다(시험만 [`Conf::at`] 으로 루프백을 꽂는다).
+/// 시험만 [`Conf::at`] 으로 루프백을 꽂는다.
 pub(crate) const API_BASE: &str = "https://slack.com/api";
-/// 토큰의 머리(조각으로 적는다 — 소스에 토큰 꼴 글자가 통으로 있으면 저장소의 비밀 검사가 진짜 토큰으로 본다).
+/// 조각으로 적는다 — 소스에 토큰 꼴 글자가 통으로 있으면 저장소의 비밀 검사가 진짜 토큰으로 본다.
 const BOT_PREFIX: &str = concat!("xo", "xb-");
 const APP_PREFIX: &str = concat!("xa", "pp-");
-/// section `text` 상한 · 우리가 쓰는 자리(세는 법을 문서가 밝히지 않아 여유를 둔다 — 머리말).
 pub(crate) const TEXT_MAX: usize = 3000;
 pub(crate) const TEXT_ROOM: usize = 2900;
 const _: () = assert!(TEXT_ROOM < TEXT_MAX);
 /// 알림 미리 보기용 `text` 의 자리.
 const FALLBACK_ROOM: usize = 300;
-/// 긴 답의 최대 통 수.
 pub(crate) const MAX_PARTS: usize = 5;
-/// 단추 데이터(`value`) 상한 — 우리 데이터는 ASCII 35자 안 · 단추 글자 상한.
 pub(crate) const DATA_MAX: usize = 100;
 const LABEL_MAX: usize = 75;
-/// 머리 줄의 자리(단위).
 const HEAD_ROOM: usize = 500;
-/// 36진수 id 의 최대 글자(36¹² < 2⁶³).
+/// 36¹² < 2⁶³.
 const ID_MAX: usize = 12;
-/// 스레드 뿌리 표의 크기.
 const THREADS_KEEP: usize = 64;
-/// "다시 붙지 말라" 는 `apps.connections.open` 오류 — 인증 · 권한.
+/// 다시 붙지 않는 `apps.connections.open` 오류 — 인증 · 권한.
 pub(crate) const FATAL_ERRORS: &[&str] =
     &["invalid_auth", "not_authed", "token_revoked", "token_expired", "account_inactive", "not_allowed_token_type", "missing_scope", "no_permission"];
-/// 요청 시한 · 429 쉼 상한.
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const RETRY_CAP: Duration = Duration::from_secs(5);
-/// `hello` 시한 · Ping 간격 · 조용하면 끊는 때 · 물러남(처음 · 상한) · 이만큼 살면 안정한 연결.
 const HELLO_TIMEOUT: Duration = Duration::from_secs(20);
 const PING: Duration = Duration::from_secs(30);
 const IDLE: Duration = Duration::from_secs(75);
@@ -96,7 +65,6 @@ const STABLE: Duration = Duration::from_secs(60);
 // 설정 · 토큰
 // ---------------------------------------------------------------------------
 
-/// Slack 몫의 설정 — 제품은 [`Conf::release`].
 pub(crate) struct Conf {
     api: String,
     pub hello_timeout: Duration,
@@ -120,14 +88,13 @@ impl Conf {
         }
     }
 
-    /// 시험 — 루프백 가짜 Web API(`http://127.0.0.1:<포트>`). Socket Mode 주소는 그 가짜가 `apps.connections.open` 으로 준다.
     #[cfg(test)]
     pub(crate) fn at(api: &str) -> Conf {
         Conf { api: api.trim_end_matches('/').to_string(), ..Conf::release() }
     }
 }
 
-/// 토큰 둘 — 파일 몸 그대로 `"<봇 토큰>\n<앱 수준 토큰>"`. **`Debug` 는 값을 찍지 않는다** · `Display` 없음.
+/// 파일 몸 그대로 `"<봇 토큰>\n<앱 수준 토큰>"`. **`Debug` 는 값을 찍지 않는다** · `Display` 없음.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct BotToken(String);
 
@@ -138,8 +105,7 @@ impl std::fmt::Debug for BotToken {
 }
 
 impl BotToken {
-    /// 붙여 넣은 글자 → 토큰 둘. 모양: 공백 · 줄바꿈으로 나뉜 **정확히 두 조각** — 하나는 봇 토큰 머리, 하나는 앱 수준 토큰 머리(차례 무관) ·
-    /// 조각마다 `[A-Za-z0-9-]` · 20–300자(정확한 꼴은 Slack 이 정하므로 넉넉히).
+    /// 두 조각의 차례는 무관하다. 정확한 꼴은 Slack 이 정하므로 넉넉히 본다.
     pub(crate) fn parse(raw: &str) -> Option<BotToken> {
         let parts: Vec<&str> = raw.split_whitespace().collect();
         let [a, b] = parts.as_slice() else { return None };
@@ -154,17 +120,16 @@ impl BotToken {
         (piece(bot) && piece(app)).then(|| BotToken(format!("{bot}\n{app}")))
     }
 
-    /// 비밀 파일의 몸.
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// 봇 토큰 — Web API 에만.
+    /// Web API 에만.
     fn bot(&self) -> &str {
         self.0.split('\n').next().unwrap_or("")
     }
 
-    /// 앱 수준 토큰 — `apps.connections.open` 에만.
+    /// `apps.connections.open` 에만.
     fn app(&self) -> &str {
         self.0.split('\n').nth(1).unwrap_or("")
     }
@@ -174,13 +139,12 @@ pub(crate) fn parse_token(raw: &str) -> Option<BotToken> {
     BotToken::parse(raw)
 }
 
-/// 누름을 마칠 손잡이 — 누른 대화방 · 사람 id(글자 그대로 — `chat.postEphemeral` 의 칸). 받음 알림은 봉투 답으로 이미 끝났다. **`Debug` 없음**.
+/// 받음 알림은 봉투 답으로 이미 끝났다. **`Debug` 없음**.
 pub(crate) struct Ack {
     channel: String,
     user: String,
 }
 
-/// 이 세대가 아직 살아 있으면 보낼 손(클라이언트 · 설정 · 토큰).
 fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
     let (client, cfg, token) = super::hands(CHAN, gen)?;
     Some((client, cfg, token.slack()?.clone()))
@@ -190,7 +154,7 @@ fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
 // id
 // ---------------------------------------------------------------------------
 
-/// 사용자 · 대화방 id(대문자 영숫자) → `i64`(36진수). 되돌려 쓴 글자가 같지 않거나 넘치면 `None`.
+/// 되돌려 쓴 글자가 같지 않으면 `None`.
 pub(crate) fn id_num(s: &str) -> Option<i64> {
     if s.is_empty() || s.len() > ID_MAX || !s.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
         return None;
@@ -199,7 +163,6 @@ pub(crate) fn id_num(s: &str) -> Option<i64> {
     (id_text(n) == s).then_some(n)
 }
 
-/// `i64` → 사용자 · 대화방 id 글자(36진수 대문자).
 pub(crate) fn id_text(n: i64) -> String {
     const DIGITS: &[u8; 36] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut n = n.max(0) as u64;
@@ -215,7 +178,7 @@ pub(crate) fn id_text(n: i64) -> String {
     String::from_utf8(out).unwrap_or_default()
 }
 
-/// 메시지 `ts`("초.마이크로초 6자리") → `초 × 10⁶ + 마이크로초`.
+/// `ts` 는 "초.마이크로초 6자리".
 pub(crate) fn ts_num(s: &str) -> Option<i64> {
     let (secs, micros) = s.split_once('.')?;
     let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
@@ -225,7 +188,6 @@ pub(crate) fn ts_num(s: &str) -> Option<i64> {
     secs.parse::<i64>().ok()?.checked_mul(1_000_000)?.checked_add(micros.parse::<i64>().ok()?)
 }
 
-/// `i64` → 메시지 `ts` 글자.
 pub(crate) fn ts_text(n: i64) -> String {
     let n = n.max(0);
     format!("{}.{:06}", n / 1_000_000, n % 1_000_000)
@@ -235,7 +197,7 @@ pub(crate) fn ts_text(n: i64) -> String {
 // 스레드 뿌리 표
 // ---------------------------------------------------------------------------
 
-/// 받은 글 ts → 그 글이 든 스레드의 뿌리 ts(스레드 안의 글만 · 최근 [`THREADS_KEEP`] 개).
+/// 받은 글 ts → 그 글이 든 스레드의 뿌리 ts(스레드 안의 글만).
 #[derive(Default)]
 pub(crate) struct Threads {
     order: VecDeque<i64>,
@@ -270,7 +232,7 @@ fn threads() -> std::sync::MutexGuard<'static, Threads> {
     THREADS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 짝 · 봇이 바뀌었다 — 스레드 뿌리 표를 비운다(코어의 `forget_chat` 과 같은 때 · 잠금은 이 표 하나 — 다리 잠금을 부르지 않는다).
+/// 잠금은 이 표 하나 — 다리 잠금을 부르지 않는다.
 pub(super) fn forget() {
     threads().clear();
 }
@@ -279,18 +241,16 @@ pub(super) fn forget() {
 // 글자
 // ---------------------------------------------------------------------------
 
-/// UTF-16 단위 길이(보수적 — 머리말).
 pub(crate) fn units(text: &str) -> usize {
     text.chars().map(char::len_utf16).sum()
 }
 
-/// Slack 의 걷기 셋 — `& < >`(멘션 · 링크는 전부 `<…>` 라 이것으로 막힌다).
+/// 멘션 · 링크는 전부 `<…>` 라 이것으로 막힌다.
 pub(crate) fn escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-/// **받은 글자 되돌리기** — `<@U1>` → `@U1` · `<#C1|이름>` → `#이름` · `<!here>` → `@here` · `<!subteam^S1|@이름>` → `@이름` · `<url|글자>` → 글자
-/// (사람이 친 `main.rs` 를 Slack 이 `<http://main.rs|main.rs>` 로 바꾼다 — 친 글자를 살린다) · `<url>` → `url` · 그 뒤 `&lt; &gt; &amp;`(`&amp;` 를 맨 끝에).
+/// 받은 글자 되돌리기 — `<url|글자>` 는 글자를 살린다(사람이 친 `main.rs` 를 Slack 이 `<http://main.rs|main.rs>` 로 바꾼다). `&amp;` 는 맨 끝에.
 pub(crate) fn unslack(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -326,7 +286,6 @@ pub(crate) fn unslack(text: &str) -> String {
     out.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 }
 
-/// 평문을 `max` 단위 안으로(넘치면 `…`).
 fn clip_plain(text: &str, max: usize) -> String {
     if units(text) <= max {
         return text.to_string();
@@ -345,7 +304,7 @@ fn clip_plain(text: &str, max: usize) -> String {
     out
 }
 
-/// 그린 mrkdwn 을 `max` 단위 안으로 — `&amp;` 같은 걷기 조각 가운데를 가르지 않고, 열린 `*` 는 닫고 `…` 를 단다.
+/// `&amp;` 같은 걷기 조각 가운데를 가르지 않는다.
 pub(crate) fn clip_mrkdwn(text: &str, max: usize) -> String {
     if units(text) <= max {
         return text.to_string();
@@ -368,8 +327,7 @@ fn section_mrkdwn(text: &str) -> Value {
     json!({ "type": "section", "text": { "type": "mrkdwn", "text": clip_mrkdwn(text, TEXT_ROOM), "verbatim": true } })
 }
 
-/// **글자 그대로의 블록** — `rich_text` 의 글 조각은 서식 · 멘션 · 링크로 읽히지 않고 줄바꿈이 산다(머리말 — `plain_text` 는 줄바꿈이 접힌다).
-/// 머리 줄(있으면)은 굵은 조각으로 앞에, 몸은 그 아래 줄부터. 둘 다 비면 `None`.
+/// 남의 글자는 이 블록으로만 싣는다 — 서식 · 멘션 · 링크로 읽히지 않고 줄바꿈이 산다(머리말).
 fn rich(head: Option<&str>, body: &str) -> Option<Value> {
     let head: Option<String> = head
         .map(|h| h.chars().filter(|c| !c.is_control()).collect::<String>())
@@ -386,8 +344,6 @@ fn rich(head: Option<&str>, body: &str) -> Option<Value> {
     (!els.is_empty()).then(|| json!({ "type": "rich_text", "elements": [{ "type": "rich_text_section", "elements": els }] }))
 }
 
-/// **중립 글 → 블록들**. 평문은 `rich_text` 한 블록(머리 줄만 굵게 · 기호가 글자 그대로 · 멘션 없음 · 줄바꿈 그대로) — 그려 둔 알림 글은
-/// mrkdwn `verbatim`(상한 안으로 자른다) + 덧붙일 줄은 `rich_text`.
 pub(crate) fn blocks(t: &Text) -> Vec<Value> {
     let mut out = Vec::new();
     match t {
@@ -405,7 +361,7 @@ pub(crate) fn blocks(t: &Text) -> Vec<Value> {
     out
 }
 
-/// 알림 미리 보기용 `text`(평문 · `& < >` 걷음 · [`FALLBACK_ROOM`] 단위).
+/// 알림 미리 보기용 `text` — 이것도 `& < >` 를 걷는다.
 pub(crate) fn fallback(t: &Text) -> String {
     let s = match t {
         Text::Lines { head: Some(h), body } => clip_mrkdwn(&escape(&format!("{h}\n{body}")), FALLBACK_ROOM),
@@ -419,8 +375,7 @@ pub(crate) fn fallback(t: &Text) -> String {
     }
 }
 
-/// 단추 → actions 블록들 — 다섯 이하면 블록 하나에 단추 하나(세로로 쌓인다 — 다른 채널과 같은 모양), 넘치면 블록마다 다섯. 데이터는 `value`,
-/// `action_id` 는 `a<번호>`. 글자 75자 · 데이터 100자 넘는 것 · 빈 것은 뺀다.
+/// 다섯 이하면 블록 하나에 단추 하나(세로로 쌓인다 — 다른 채널과 같은 모양). `action_id` 는 블록 안에서 겹치지 않아야 한다.
 pub(crate) fn actions(buttons: &[Button]) -> Vec<Value> {
     let ok: Vec<Value> = buttons
         .iter()
@@ -438,7 +393,6 @@ pub(crate) fn actions(buttons: &[Button]) -> Vec<Value> {
     ok.chunks(per).take(5).map(|c| json!({ "type": "actions", "elements": c })).collect()
 }
 
-/// `chat.postMessage` 몸 — 미리 보기 끔 · (있으면) 스레드 · 단추.
 pub(crate) fn post_body(channel: &str, t: &Text, thread: Option<&str>, buttons: &[Button]) -> Value {
     let mut blocks = blocks(t);
     blocks.extend(actions(buttons));
@@ -449,12 +403,12 @@ pub(crate) fn post_body(channel: &str, t: &Text, thread: Option<&str>, buttons: 
     v
 }
 
-/// `chat.update` 몸 — 같은 블록에서 단추(actions)만 뺀다.
+/// 단추(actions)는 뺀다.
 pub(crate) fn update_body(channel: &str, ts: &str, t: &Text) -> Value {
     json!({ "channel": channel, "ts": ts, "text": fallback(t), "blocks": blocks(t) })
 }
 
-/// 답 전문 나누기 — 머리 줄은 따로 블록이라 몸마다 [`TEXT_ROOM`] 단위(걷기 없는 글 조각 — `logic::split_by`).
+/// 머리 줄은 따로 조각이라 몸마다 [`TEXT_ROOM`] 단위.
 pub(crate) fn split_answer(_head: &str, body: &str, more: &str) -> Vec<String> {
     super::logic::split_by(body, TEXT_ROOM, MAX_PARTS, more, char::len_utf16)
 }
@@ -463,10 +417,10 @@ pub(crate) fn split_answer(_head: &str, body: &str, more: &str) -> Vec<String> {
 // Web API
 // ---------------------------------------------------------------------------
 
-/// 요청의 실패 — 문구 없이 종류만(토큰 · Slack 의 설명 글을 싣지 않는다 — 오류 코드는 Slack 이 정한 낱말).
+/// 문구 없이 종류만 — 토큰 · Slack 의 설명 글을 싣지 않는다.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CallErr {
-    /// `{ok: false, error}` — 코드(소문자 · 숫자 · `_` 만 · 40자)
+    /// Slack 의 오류 코드 낱말 — 로그에 실리므로 소문자 · 숫자 · `_` 40자로 거른다
     Api(String),
     RateLimited,
     Code(u16),
@@ -484,7 +438,7 @@ pub(crate) fn err_kind(e: &CallErr) -> String {
     }
 }
 
-/// HTTP 상태 + 몸 → 값. 2xx 라도 `ok` 가 참이 아니면 오류 코드.
+/// 2xx 라도 `ok` 가 참이 아니면 오류다(Slack 은 실패도 대개 200).
 pub(crate) fn parse_response(status: u16, body: &str) -> Result<Value, CallErr> {
     match status {
         429 => Err(CallErr::RateLimited),
@@ -507,14 +461,12 @@ pub(crate) fn parse_response(status: u16, body: &str) -> Result<Value, CallErr> 
     }
 }
 
-/// 429 의 쉼 — `Retry-After` 머리(초), [`RETRY_CAP`] 에서 자른다(없으면 1초).
 pub(crate) fn retry_after(header: Option<&str>) -> Duration {
     let secs = header.and_then(|h| h.trim().parse::<f64>().ok()).unwrap_or(1.0);
     Duration::from_secs_f64(secs.clamp(0.0, RETRY_CAP.as_secs_f64()))
 }
 
-/// 요청 하나 — `POST <바탕>/<메서드>` · `Authorization: Bearer <token>`(봇 토큰은 Web API 에만 · 앱 수준 토큰은 `apps.connections.open` 에만 —
-/// 부르는 쪽이 고른다). 몸이 없으면 form 빈 몸. 429 는 한 번만 쉬고 다시.
+/// 어느 토큰을 실을지는 부르는 쪽이 고른다(머리말).
 async fn call(client: &reqwest::Client, api: &str, token: &str, method: &str, body: Option<&Value>) -> Result<Value, CallErr> {
     for attempt in 0..2 {
         let mut rq = client.post(format!("{api}/{method}")).timeout(SEND_TIMEOUT).header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
@@ -535,7 +487,7 @@ async fn call(client: &reqwest::Client, api: &str, token: &str, method: &str, bo
     Err(CallErr::RateLimited)
 }
 
-/// 한 통 보낸다 — 보낸 메시지 id(`ts`) · 실패면 `None`(로그 한 줄, 본문 없음). `reply_to` 가 스레드 안의 받은 글이면 그 스레드로(머리말).
+/// `reply_to` 가 스레드 안의 받은 글이면 그 스레드로(머리말).
 pub(crate) async fn send(chat: i64, t: &Text, reply_to: Option<i64>, buttons: &[Button]) -> Option<i64> {
     let (client, cfg, token) = hands(None)?;
     let thread = reply_to.and_then(|id| threads().root(id)).map(ts_text);
@@ -549,7 +501,6 @@ pub(crate) async fn send(chat: i64, t: &Text, reply_to: Option<i64>, buttons: &[
     }
 }
 
-/// 보낸 통을 바꿔 쓴다(단추는 걷힌다).
 pub(crate) async fn edit(chat: i64, message_id: i64, t: &Text) {
     let Some((client, cfg, token)) = hands(None) else { return };
     let body = update_body(&id_text(chat), &ts_text(message_id), t);
@@ -558,8 +509,7 @@ pub(crate) async fn edit(chat: i64, message_id: i64, t: &Text) {
     }
 }
 
-/// 누름을 마친다 — 받음 알림은 봉투 답으로 이미 끝났다. `toast` 는 그 통을 바꿔 쓰지 않을 때만(꺼짐 · 다른 곳이 이미 바꿈) 누른 사람에게만
-/// 보이는 글로 — 바꿔 쓰면 그 결과 줄이 곧 알림이다.
+/// 바꿔 쓰면 그 결과 줄이 곧 알림이라 `toast` 는 바꿔 쓰지 않을 때만 보낸다.
 pub(crate) async fn finish_press(ack: &Ack, toast: Option<&str>, rewritten: bool) {
     let Some(text) = toast.filter(|_| !rewritten) else { return };
     let Some((client, cfg, token)) = hands(None) else { return };
@@ -569,15 +519,13 @@ pub(crate) async fn finish_press(ack: &Ack, toast: Option<&str>, rewritten: bool
     }
 }
 
-/// `auth.test` 의 결과 → 봇 사용자 이름(영숫자 · `.` · `_` · `-` 80자 — 아니면 이름 없음).
 pub(crate) fn parse_auth(v: &Value) -> Option<String> {
     let name = v.get("user")?.as_str()?;
     let ok = !name.is_empty() && name.len() <= 80 && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-');
     ok.then(|| name.to_string())
 }
 
-/// 토큰 확인 → 봇 이름. 봇 토큰(`auth.test`) 다음에 앱 수준 토큰(`apps.connections.open` — 받은 주소는 쓰지 않는다). 실패는 **어느 토큰이 틀렸는지**
-/// 가른 이유 코드 문구(토큰 없음): `[bad-token] … bot token` · `[bad-token] … app-level token` · `[unreachable] …`.
+/// 실패 문구는 어느 토큰이 틀렸는지 가르고 토큰은 싣지 않는다. `apps.connections.open` 이 준 주소는 쓰지 않는다.
 pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &BotToken) -> Result<Option<String>, String> {
     let name = match call(client, &cfg.slack.api, token.bot(), "auth.test", None).await {
         Ok(v) => parse_auth(&v),
@@ -595,8 +543,7 @@ pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &
 // 받은 것
 // ---------------------------------------------------------------------------
 
-/// 사건 `message` 를 실은 `events_api` 의 `payload` → (받은 글, 스레드 뿌리 — 스레드 안의 글이면). `Ok(None)` = 버린다(DM 이 아님 · 봇 · 사람 없음 ·
-/// 다른 subtype), `Err` = id 꼴이 틀려 버린다(부른 쪽이 고정 글자 한 줄). `file_share` 는 글 없음(코어가 "글만 보낼 수 있습니다" 를 답한다).
+/// DM 이 아니면 버린다. `Err` = id 꼴이 틀려 버린다(부른 쪽이 고정 글자 한 줄 — 받은 글은 로그에 싣지 않는다).
 #[allow(clippy::result_unit_err)]
 pub(crate) fn parse_message(payload: &Value) -> Result<Option<(Incoming, Option<i64>)>, ()> {
     let Some(ev) = payload.get("event") else { return Ok(None) };
@@ -630,7 +577,6 @@ pub(crate) fn parse_message(payload: &Value) -> Result<Option<(Incoming, Option<
     Ok(Some((m, root)))
 }
 
-/// `interactive` 의 `payload`(`block_actions` · 메시지 단추) → 누름. `Ok(None)` = 그 밖 · `Err` = id 꼴이 틀림.
 #[allow(clippy::result_unit_err)]
 pub(crate) fn parse_press(payload: &Value) -> Result<Option<ButtonPress>, ()> {
     if payload.get("type").and_then(Value::as_str) != Some("block_actions") {
@@ -665,7 +611,7 @@ pub(crate) fn parse_press(payload: &Value) -> Result<Option<ButtonPress>, ()> {
     }))
 }
 
-/// Socket Mode 주소를 믿어도 되나 — `wss` · 호스트 `slack.com`(또는 그 아래) · 사용자 정보 없음(시험만 루프백 `ws`).
+/// 토큰 경계(머리말) — `slack.com` 도메인의 `wss` 만.
 pub(crate) fn socket_url_ok(url: &str) -> bool {
     let Ok(u) = reqwest::Url::parse(url) else { return false };
     let Some(host) = u.host_str() else { return false };
@@ -683,23 +629,19 @@ pub(crate) fn socket_url_ok(url: &str) -> bool {
 // Socket Mode
 // ---------------------------------------------------------------------------
 
-/// 연결 하나가 끝난 까닭.
 #[derive(Debug, PartialEq, Eq)]
 enum End {
-    /// 새 주소로 다시(닫힘 · 읽기 오류 · 조용함 · `disconnect warning`)
     Again,
-    /// `disconnect refresh_requested` — 평소 일(물러남에 세지 않는다)
+    /// `refresh_requested` — 몇 시간마다 오는 평소 일(물러남에 세지 않는다)
     Refresh,
-    /// `disconnect link_disabled` — Socket Mode 가 꺼졌다(멈춘다)
+    /// `link_disabled` — Socket Mode 가 꺼졌다(멈춘다)
     Disabled,
 }
 
-/// Socket Mode 고리 — 세대가 바뀌면(토큰을 다시 등록 · 지움 — 코어가 이 태스크를 걷는다) 끝난다.
 pub(super) async fn socket_loop(gen: u64) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     tokio::spawn(sock::worker(CHAN, gen, rx));
     let mut flap = Flap::default();
-    // 마지막으로 `hello` 를 받은 때(`refresh_requested` 로 끊기면 지운다 — 세지 않는다)
     let mut hello_at: Option<tokio::time::Instant> = None;
     loop {
         let Some((client, cfg, token)) = hands(Some(gen)) else { return };
@@ -766,12 +708,10 @@ pub(super) async fn socket_loop(gen: u64) {
     }
 }
 
-/// 우리가 닫는다.
 async fn close(ws: &mut Ws) {
     let _ = tokio::time::timeout(Duration::from_secs(2), ws.close(None)).await;
 }
 
-/// `hello` 를 기다린다(그 앞의 프레임은 버린다).
 async fn wait_hello(ws: &mut Ws) -> Option<Value> {
     loop {
         match ws.next().await? {
@@ -789,14 +729,14 @@ async fn wait_hello(ws: &mut Ws) -> Option<Value> {
     }
 }
 
-/// 연결 하나 — `hello` → (Ping · 조용함 감시 · 봉투마다 받음 답 → 처리 · `disconnect`). 돌려주는 것: 끝난 까닭과 `hello` 를 받은 때.
+/// 둘째 값은 `hello` 를 받은 때.
 async fn session(ws: &mut Ws, gen: u64, cfg: &Config, tx: &tokio::sync::mpsc::UnboundedSender<Event>) -> (End, Option<tokio::time::Instant>) {
     let Some(hello) = tokio::time::timeout(cfg.slack.hello_timeout, wait_hello(ws)).await.ok().flatten() else {
         close(ws).await;
         return (End::Again, None);
     };
     let at = tokio::time::Instant::now();
-    // 연결 수는 숫자만(상태 `conflict` 로 쓰지 않는다 — 실기에서 믿을 만한지 본 뒤 정한다)
+    // 연결 수는 로그에 숫자만 — 상태 `conflict` 로 쓰지 않는다
     let n = hello.get("num_connections").and_then(Value::as_u64).unwrap_or(0);
     log::line(format!("messenger bridge — slack socket connected (connections {n})"));
     super::set_link(CHAN, gen, Link::Ok);
@@ -848,7 +788,7 @@ async fn session(ws: &mut Ws, gen: u64, cfg: &Config, tx: &tokio::sync::mpsc::Un
     }
 }
 
-/// 봉투 하나 → 일꾼(기다리지 않는다). 스레드 안의 받은 글은 뿌리 표에 적는다(답이 그 스레드로 가게).
+/// 기다리지 않는다.
 fn dispatch(v: &Value, tx: &tokio::sync::mpsc::UnboundedSender<Event>) {
     let payload = v.get("payload").unwrap_or(&Value::Null);
     let parsed = match v.get("type").and_then(Value::as_str) {

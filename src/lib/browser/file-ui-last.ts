@@ -1,8 +1,6 @@
 /**
- * **새 파일 타일이 물려받는 마지막 보기**(순수 — 2026-11-04 · docs/log/2026-11-04-file-ui-keep.md). 저장소는 `app/file-ui-last.svelte.ts`.
- *
- * 값은 타일에 사는 다섯 칸과 같은 모양이다: 기본이면 칸이 없다(숨김 · 미리 보기 끔 · 장소 패널 켬 · 크기 `1`). 보기는 고른 적이 없으면 칸이 없어 설정의 기본 보기를 따른다.
- * **새로 여는 길에만** 얹는다 — 복원 · 이관 · 복제는 그 타일이 든 값 그대로다(`newLocalFsPane` 에 넣지 않은 이유).
+ * 새 파일 타일이 물려받는 마지막 보기 (docs/log/2026-11-04-file-ui-keep.md).
+ * 새로 여는 길에만 얹는다 — 복원 · 이관 · 복제는 그 타일이 든 값 그대로다(그래서 `newLocalFsPane` 에 넣지 않는다).
  */
 import {
   clampFileZoom,
@@ -21,7 +19,6 @@ export interface LastFileUi {
   zoom?: number;
 }
 
-/** 저장된 글자 → 값. 망가졌거나 모양이 틀린 칸은 버린다 */
 export function parseLastFileUi(raw: string | null): LastFileUi {
   if (raw === null) return {};
   let o: unknown;
@@ -43,12 +40,12 @@ export function parseLastFileUi(raw: string | null): LastFileUi {
   return out;
 }
 
-/** 값 → 저장할 글자(비었으면 `null` — 지운다) */
+/** 비었으면 `null` — 지운다 */
 export function serializeLastFileUi(last: LastFileUi): string | null {
   return Object.keys(last).length === 0 ? null : JSON.stringify(last);
 }
 
-/** 사람이 바꾼 한 조각을 얹는다(`noteFileUi` 와 같은 규칙 — 기본값이면 칸을 지운다) */
+/** `noteFileUi` 와 같은 규칙 — 기본값이면 칸을 지운다 */
 export function mergeLastFileUi(last: LastFileUi, patch: FileUiPatch): LastFileUi {
   const out = { ...last };
   if (patch.zoom !== undefined) {
@@ -70,7 +67,6 @@ export function mergeLastFileUi(last: LastFileUi, patch: FileUiPatch): LastFileU
   return out;
 }
 
-/** 새로 여는 파일 타일에 얹는다 — 그 밖의 종류는 그대로 */
 export function applyLastFileUi(pane: PaneSpec, last: LastFileUi): PaneSpec {
   if (pane.kind !== "localfs" && pane.kind !== "sftp") return pane;
   if (last.view) pane.fileView = last.view;

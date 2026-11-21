@@ -1,15 +1,6 @@
-// **문서 타일의 문서 상태** — `DocView.svelte` 에서 그대로 옮긴 컨트롤러(2026-10-27 분할 9차).
-// `DocView` 가 하나 만들고(`createDocDocument` — 경로 · 백엔드 · 끊김 · 원본 없음 · 미리 보기 표식 · 편집기 · 뿌리 상자는 게터로) 값은 게터로 읽는다.
-//
-// 쥐는 것: 마지막으로 읽은 파일 · 읽는 중 · 오류 · 읽기 차례(`seq`) · 도장(`stamp`) · 자동 새로고침 박자(`poll` — 묻고, 바뀌었으면 읽고, 다르면
-// 들인다 `accept`) · 편집 중인가 · 더러움 · 저장(`save` — 기대 version · [덮어쓰기]) · "저장됨" 반짝임 · 편집 띠(충돌 · 디스크 바뀜 · 저장 못 함 —
-// 전이는 순수 `doc-edit.ts`) · 다시 불러오기 · 편집 때문에 고정했는가 · 읽기 보기 체크박스 쓰기(차례로) · 외부로 열기 · 외부 편집기 ·
-// 다른 창에서 옮겨 온 초안으로 편집 시작(`startEditFromDraft` — 편집기의 처음 글 · 되살릴 것은 `editText` · `editRestore`).
-//
-// **편집 미리 보기의 한때 값(미리 보기 글 · 좁은 타일 탭 · 커서 줄 · 편집기 화면 범위 · 미리 보기 타이머)은 `DocView` 에 남는다** — 편집 시작 ·
-// 다시 불러오기 · 편집 종료가 그 값을 만지던 자리는 같은 순서로 `onEditStart` · `onEditReload` · `stopPreviewTimer` 를 부른다.
-// **`$effect` · 타이머 등록 · 등록 표(`app/doc-dirty`)는 여기 없다** — 경로 · 원본이 바뀌면 다시 읽기, 박자 `setInterval`, 더러움 표 ·
-// 저장 함수 등록, 언마운트 정리(`dispose` — "저장됨" 타이머)는 `DocView` 의 원래 자리 · 원래 순서 그대로다.
+// 문서 타일의 문서 상태(읽기 · 자동 새로고침 · 편집 · 저장 · 체크박스) — `DocView` 가 하나 만든다.
+// 편집 미리 보기의 한때 값은 `DocView` 에 남고 여기서는 `onEditStart` · `onEditReload` · `stopPreviewTimer` 로 그 순서를 지킨다.
+// `$effect` · 타이머 등록 · `app/doc-dirty` 등록은 `DocView` 가 쥔다 — 그 순서를 바꾸지 않는다.
 import { tick } from "svelte";
 import type { FsBackend, TextFile } from "$lib/fs-backend";
 import { replacePlan, shouldPoll, stampChanged, stuckToBottom, type Stamp } from "$lib/doc-refresh";
@@ -30,81 +21,55 @@ import { stripReason } from "$lib/error-reason";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import type { DocDraft, DocEditorRestore } from "$lib/doc-draft";
 
-/** 저장이 편집기에 묻고 알리는 것 — `DocEditor` 의 두 함수 */
 export interface DocSaveEditor {
   getText(): string;
   markSaved(text: string): void;
 }
 
-/** `DocView` 가 넘기는 값 — **게터**라 그때그때의 값이다(생성 시점 사본이 아니다). */
+/** 게터라 그때그때의 값이다(생성 시점 사본이 아니다) */
 export interface DocDocumentHost {
-  /** 보여 줄 파일의 절대 경로 */
   readonly path: string;
   readonly backend: FsBackend;
-  /** 원본에 닿지 않는다(`!backend.online`) */
   readonly offline: boolean;
-  /** 원본 터미널 타일이 아예 없어졌다 */
   readonly sourceGone: boolean;
-  /** 미리 보기 문서인가 — 편집하는 동안만 고정한다 */
   readonly preview: boolean;
-  /** 편집기(`bind:this`) — 편집 중이 아니면 `null` */
   readonly editor: DocSaveEditor | null;
-  /** 타일의 키보드 몸 — 보이는가 · 편집 종료 뒤 포커스 */
   readonly rootEl: HTMLDivElement | null;
-  /** 지금 스크롤하는 상자 — 통째로 바꿀 때 스크롤을 지킨다 */
   scroller(): HTMLElement | null;
-  /** 프롭 `onkeep` · `onunkeep` · `onnotice` */
   onkeep(): void;
   onunkeep(): void;
   onnotice(message: string): void;
-  /** 편집을 시작했다 — 미리 보기 쪽 한때 값을 그 글로(미리 보기 글 · 좁은 타일 탭 · 커서 줄 · 화면 범위) */
   onEditStart(text: string): void;
-  /** 다시 불러오기로 편집을 새로 세운다 — 미리 보기 타이머를 멈추고 한때 값을 새 글로 */
   onEditReload(text: string): void;
-  /** 미리 보기 타이머 멈춤 */
   stopPreviewTimer(): void;
 }
 
-/** 문서 하나를 만든다 — 상태는 이 안에 살고 읽기는 게터로 */
 export function createDocDocument(host: DocDocumentHost) {
-  /** 마지막으로 읽은 파일 — 끊겨도, 다시 읽다 실패해도 지우지 않는다 */
+  /** 끊겨도, 다시 읽다 실패해도 지우지 않는다 */
   let file = $state<TextFile | null>(null);
   let loading = $state(false);
-  /** 편집 모드인가 — 몸통이 편집기다 (E1 — 아래 "편집" 묶음) */
   let editing = $state(false);
   let error = $state<string | null>(null);
-  /** 늦게 온 답이 새 답을 덮지 않게 — 읽기마다 하나씩 오른다 */
+  /** 늦게 온 답이 새 답을 덮지 않게 — 읽기마다 오른다 */
   let seq = 0;
 
-  /** 마지막으로 **읽은 때의** `stat` — 다음 박자가 이것과 견준다. 화면에 나오지 않아 반응형이 아니다 */
   let stamp: Stamp | null = null;
-  /** 자동 새로고침의 묻기·읽기가 날아가 있다 — 박자가 겹쳐 보내지 않게 */
   let polling = false;
-  /** 글을 마지막으로 들인 때 — 타일 ⋯ 메뉴 맨 아래 정보 줄 */
   let updatedAt = $state<Date | null>(null);
 
-  // ── 편집 (E1) ────────────────────────────────────────────────────────────────
+  // ── 편집 ──
 
-  /** 편집기를 새로 세우는 열쇠 — 다시 불러오기가 올린다(`{#key}`) */
   let editGen = $state(0);
-  /** 편집기의 글이 저장해 둔 글과 다르다 */
   let dirty = $state(false);
-  /** 저장이 날아가 있다 */
   let saving = $state(false);
-  /** 방금 저장했다 — 도구줄의 작은 "저장됨"(토스트 없음). 몇 초 뒤 꺼진다 */
   let savedFlash = $state(false);
   let savedTimer: ReturnType<typeof setTimeout> | null = null;
-  /** 편집의 기준 version — 저장의 기대값. 편집 시작 · 저장 · 다시 불러오기 때 옮긴다 */
+  /** 저장의 기대 version */
   let baseVersion = "";
-  /** 편집 중 띠(충돌 · 디스크 바뀜 · 저장 못 함) */
   let bands = $state<BandState>(NO_BAND);
-  /**
-   * 옮겨 온 초안으로 선 편집이면 편집기의 처음 글과 되살릴 것(`startEditFromDraft`) — 아니면 `null`(처음 글 = 읽은 파일).
-   * 편집 시작 · 다시 불러오기 · 편집 종료가 지운다. 큰 글이라 반응형 프록시로 감싸지 않는다(`$state.raw`)
-   */
+  /** 옮겨 온 초안으로 선 편집의 처음 글 · 되살릴 것 — 큰 글이라 `$state.raw` */
   let seed = $state.raw<{ text: string; restore: DocEditorRestore } | null>(null);
 
-  /** 편집을 막는 사정 — 파일이 없으면 `null`(단추가 서지 않는다) */
   const editBlock = $derived<EditBlock | null>(file ? editBlockOf(file) : null);
 
   /** 편집 때문에 고정했는가 — [편집 종료]에서 미리 보기로 돌려놓는다 */
@@ -112,8 +77,7 @@ export function createDocDocument(host: DocDocumentHost) {
 
   function startEdit() {
     if (!file || editBlockOf(file) !== null || !host.backend.canWrite || host.offline) return;
-    // 편집하는 동안만 고정한다(다음 파일이 이 칸을 갈아 끼우지 않게). 타일링이라 편집이 끝나면 다시 미리 보기 —
-    // 저장했어도 같다. 남겨 둘 문서는 [고정]으로 따로 고정한다
+    // 편집하는 동안만 고정한다 — 편집이 끝나면 저장했어도 다시 미리 보기
     keptForEdit = host.preview;
     if (host.preview) host.onkeep();
     baseVersion = file.version;
@@ -127,11 +91,8 @@ export function createDocDocument(host: DocDocumentHost) {
   }
 
   /**
-   * **다른 창에서 옮겨 온 초안으로 편집을 잇는다**(`doc-draft.ts` · `app/doc-drafts`) — [편집]과 같은 문(막는 사정도 같다)이되
-   * 편집기의 글 = 초안의 글, 기준 version = 초안의 것이다. 읽은 디스크가 그 version 과 다르면 평소의 "디스크가 바뀌었습니다" 띠가
-   * 선다(`bandOnDisk` — 그냥 저장은 기대 version 이 달라 덮어쓰지 않는다 · 충돌 규칙 그대로). 같으면 읽은 글이 곧 기준 글이라 되돌려
-   * 원래 글이 되면 dirty 가 꺼진다 — 다르면 기준 글을 모르므로 저장할 때까지 dirty 다. dirty 는 편집기가 서며 알린다.
-   * 막혔으면 `false` — 부르는 쪽(`DocView`)이 초안을 쥔 채 띠로 말한다.
+   * 다른 창에서 옮겨 온 초안으로 편집을 잇는다 — 기준 version 은 초안의 것이라 디스크가 다르면 그냥 저장은 덮어쓰지 않는다.
+   * 디스크가 다르면 기준 글을 모르므로(`baseText: null`) 저장할 때까지 dirty 다.
    */
   function startEditFromDraft(d: DocDraft): boolean {
     if (!file || editBlockOf(file) !== null || !host.backend.canWrite || host.offline) return false;
@@ -157,7 +118,6 @@ export function createDocDocument(host: DocDocumentHost) {
     return true;
   }
 
-  /** [되돌리기] · [편집 종료] — 변경을 버리고 읽기 보기로. 편집 중 멈춰 둔 디스크의 새 글을 들인다 */
   function endEdit() {
     editing = false;
     seed = null;
@@ -171,11 +131,7 @@ export function createDocDocument(host: DocDocumentHost) {
     if (host.backend.online) void load();
   }
 
-  /**
-   * 저장 — 사람이 누른 저장(`Ctrl+S` · [저장] · 닫기 대화의 [저장하고 닫기])만 여기 온다.
-   * `force` 는 충돌 띠의 [덮어쓰기]뿐이다(기대 version 없이 쓴다). 저장할 것이 없으면(편집 중이 아니거나
-   * 바뀐 것이 없으면) 참.
-   */
+  /** 사람이 누른 저장만 온다. `force`(기대 version 없이 쓰기)는 충돌 띠의 [덮어쓰기]뿐이다 */
   async function save(force = false): Promise<boolean> {
     const editor = host.editor;
     if (!editing || !editor) return true;
@@ -217,17 +173,13 @@ export function createDocDocument(host: DocDocumentHost) {
     savedTimer = setTimeout(() => (savedFlash = false), 2500);
   }
 
-  /**
-   * 띠의 [다시 불러오기] — 내 변경을 버리고 디스크의 지금 글로 편집을 새로 시작한다. 새 글이 편집할 수 없는
-   * 것이 됐으면(커졌다 · 이진) 편집을 끝내고 읽기 보기로 보여 준다.
-   */
   async function reloadForEdit() {
     if (!host.backend.readText || host.offline) return;
     const my = ++seq;
     loading = true;
     try {
       const st = await stampOf();
-      // 백엔드 · 경로는 도장 **뒤의** 지금 값이다(재연결이 끼어도 새 세션으로 읽는다)
+      // 백엔드 · 경로는 도장 뒤에 다시 읽는다 — 재연결이 끼어도 새 세션으로 읽는다
       const got = await host.backend.readText(host.path);
       if (my !== seq) return;
       stamp = st;
@@ -254,26 +206,22 @@ export function createDocDocument(host: DocDocumentHost) {
     }
   }
 
-  /** 편집기를 받지 못했다 — 읽기 보기로 남고 오류 띠로 말한다 */
   function editorFailed(message: string) {
     editing = false;
     dirty = false;
     error = t("files.doc.editor.failed", { message });
   }
 
-  /** 언마운트 — "저장됨" 타이머를 거둔다 */
   function dispose() {
     if (savedTimer) clearTimeout(savedTimer);
   }
 
-  // ── 체크박스 ─────────────────────────────────────────────────────────────────
+  // ── 체크박스 ──
 
-  /** 읽기 보기에서 쓰는 중인 체크박스 줄들 — 그동안 그 체크박스는 막힌다 */
   let taskBusy = $state<ReadonlySet<number>>(new Set());
-  /** 체크박스 쓰기를 차례로 — 앞 쓰기가 옮긴 `version` 이 다음 쓰기의 기대값이다 */
+  /** 쓰기를 차례로 — 앞 쓰기가 옮긴 `version` 이 다음 쓰기의 기대값이다 */
   let taskChain: Promise<void> = Promise.resolve();
 
-  /** 읽기 보기의 체크박스를 막는 까닭 — `null` 이면 누를 수 있다 */
   const taskBlocked = $derived.by<string | null>(() => {
     if (!host.backend.canWrite || !host.backend.writeText) return t("files.doc.task.block.readonly");
     if (editBlock === "truncated") return t("files.doc.edit.block.truncated");
@@ -289,7 +237,6 @@ export function createDocDocument(host: DocDocumentHost) {
     taskBusy = next;
   }
 
-  /** 읽기 보기의 체크박스 — 파일에 그 한 글자를 쓴다(차례로) */
   function toggleTask(line: number, wasChecked: boolean) {
     if (editing || taskBlocked !== null || taskBusy.has(line)) return;
     setTaskBusy(line, true);
@@ -305,7 +252,7 @@ export function createDocDocument(host: DocDocumentHost) {
     if (editing || !target || !backend.writeText || editBlockOf(target) !== null || host.offline) return;
     const next = toggleTaskLine(target.text, line, wasChecked);
     if (next === null) {
-      // 그린 글과 지금 글이 어긋났다(앞 쓰기 · 다시 읽기) — 고치지 않고 지금 글을 다시 보여 준다
+      // 그린 글과 지금 글이 어긋났다 — 고치지 않고 다시 읽는다
       host.onnotice(t("files.doc.task.stale"));
       void load();
       return;
@@ -332,7 +279,7 @@ export function createDocDocument(host: DocDocumentHost) {
     }
   }
 
-  // ── 읽기 · 자동 새로고침 ─────────────────────────────────────────────────────
+  // ── 읽기 · 자동 새로고침 ──
 
   async function load() {
     if (!host.backend.readText || host.path === "") return;
@@ -340,7 +287,7 @@ export function createDocDocument(host: DocDocumentHost) {
     loading = true;
     error = null;
     try {
-      // 읽기 **전에** 도장을 찍는다 — 읽는 사이에 바뀌면 다음 박자가 다름을 보고 다시 읽는다(틈이 없다)
+      // 읽기 전에 도장을 찍는다 — 뒤에 찍으면 읽는 사이의 변경을 다음 박자가 놓친다
       const st = await stampOf();
       if (my !== seq) return;
       const got = await host.backend.readText(host.path);
@@ -355,7 +302,6 @@ export function createDocDocument(host: DocDocumentHost) {
     }
   }
 
-  /** 지금 `stat` — 못 물으면 `null`(다음 박자가 기준을 새로 잡는다) */
   async function stampOf(): Promise<Stamp | null> {
     try {
       const e = await host.backend.stat(host.path);
@@ -365,17 +311,13 @@ export function createDocDocument(host: DocDocumentHost) {
     }
   }
 
-  /**
-   * 타일이 화면에 보이는가 — 창이 가려졌거나(`visibilityState`) 조상이 `display: none` 이면(다른 탭 · 다른
-   * 타일이 확대됨 — `PaneHost` 의 `.pane-box.hidden`) 상자가 하나도 없다.
-   */
+  /** 조상이 `display: none`(다른 탭 · 다른 타일 확대 — `PaneHost` 의 `.pane-box.hidden`)이면 상자가 하나도 없다 */
   function isVisible(): boolean {
     if (document.visibilityState !== "visible") return false;
     const rootEl = host.rootEl;
     return rootEl !== null && rootEl.getClientRects().length > 0;
   }
 
-  /** 자동 새로고침 한 박자 — 묻고, 바뀌었으면 읽고, 다르면 들인다 */
   async function poll() {
     const gate = {
       visible: isVisible(),
@@ -399,20 +341,16 @@ export function createDocDocument(host: DocDocumentHost) {
       stamp = next;
       await accept(got);
     } catch (e) {
-      // 파일이 지워졌다 · 권한 — 띠가 서고 자동은 멈춘다(다시 시도가 푼다). 세션이 없다는 것은 배너 몫
+      // 오류가 서면 `shouldPoll` 이 자동을 멈춘다
       if (my === seq) error = failureOf(e);
     } finally {
       polling = false;
     }
   }
 
-  /**
-   * 읽은 것을 들인다 — `replacePlan` 대로. 통째로 바꿀 때는 스크롤을 지킨다: 맨 아래에 붙어 있었으면 맨 아래
-   * (로그 꼬리), 아니면 보던 자리. 스크롤 상자는 같은 보기 안에서 그대로라 대개 저절로 남지만, 글이 줄면
-   * 브라우저가 당겨 올리므로 한 번 되놓는다.
-   */
+  /** 통째로 바꿀 때 스크롤을 되놓는다 — 글이 줄면 브라우저가 당겨 올린다 */
   async function accept(got: TextFile) {
-    // 편집 중에는 글을 바꾸지 않는다 — 디스크가 편집의 기준과 다르면 띠만 세운다(자동 새로고침 · 재연결 · 새로고침)
+    // 편집 중에는 글을 바꾸지 않고 띠만 세운다
     if (editing) {
       bands = bandOnDisk(bands, baseVersion, got.version);
       return;
@@ -439,7 +377,7 @@ export function createDocDocument(host: DocDocumentHost) {
     else now.scrollTo({ top, left });
   }
 
-  /** 오류 → 화면 문구. 세션이 없다는 것은 오류로 적지 않는다(배너 몫) */
+  /** 세션이 없다는 것은 오류로 적지 않는다 — 배너 몫 */
   function failureOf(e: unknown): string | null {
     const message = e instanceof Error ? e.message : String(e);
     return isSessionGone(message) ? null : stripReason(message);
@@ -455,7 +393,6 @@ export function createDocDocument(host: DocDocumentHost) {
     }
   }
 
-  /** 외부 편집기로 편집(원격 — 받아서 로컬 편집기로 열고 저장하면 올린다). 도구줄 외부 열기 자리 · 이진 파일 안내에서 */
   async function editRemote(target: string = host.path) {
     const backend = host.backend;
     if (host.offline || !backend.edit) return;
@@ -498,15 +435,12 @@ export function createDocDocument(host: DocDocumentHost) {
     get bands() {
       return bands;
     },
-    /** 편집의 기준 version — 창을 넘길 초안에 싣는다 */
     get baseVersion() {
       return baseVersion;
     },
-    /** 편집기의 처음 글 — 옮겨 온 초안이면 그 글, 아니면 읽은 파일의 글 */
     get editText() {
       return seed?.text ?? file?.text ?? "";
     },
-    /** 편집기가 되살릴 것(옮겨 온 초안) — 아니면 `null` */
     get editRestore() {
       return seed?.restore ?? null;
     },
@@ -519,15 +453,12 @@ export function createDocDocument(host: DocDocumentHost) {
     get taskBlocked() {
       return taskBlocked;
     },
-    /** 편집기가 알린 더러움(`DocEditor` 의 `ondirty`) */
     setDirty(d: boolean) {
       dirty = d;
     },
-    /** 띠의 [취소] · [닫기] */
     dismissBand() {
       bands = bandOnDismiss(bands);
     },
-    /** 띠의 [무시] */
     ignoreBand() {
       bands = bandOnIgnore(bands);
     },

@@ -1,33 +1,16 @@
 /**
- * **터미널 테마 가져오기의 해석** — 다른 터미널의 색 구성 글자를 받아 형식을 가리고, 21칸(`TERM_COLOR_KEYS`) 한 벌로 채운다.
- * 순수 모듈이다(상태 · invoke · DOM 없음) — 저장은 Rust `term_themes.rs`(받은 21색을 다시 검증한다), 화면은
- * `dialogs/TermThemeDialog.svelte` + `app/term-themes.svelte.ts`.
- *
- * 받는 형식 넷:
- * - **Windows Terminal** 색 구성 JSON — `schemes` 원소 하나 · 그 배열 · `settings.json` 전체(주석 · 끝 쉼표 허용 — JSONC).
- *   `purple` · `brightPurple` 가 magenta 자리다. 여러 개면 전부 후보로 돌려주고 화면이 고르게 한다.
- * - **iTerm2** `.itermcolors` — plist XML 의 `Ansi 0..15 Color` · `Background Color` · `Foreground Color` · `Cursor Color` ·
- *   `Cursor Text Color` · `Selection Color`, 성분은 0~1 실수(`Color Space` 는 무시 — sRGB 로 본다).
- * - **Ghostty** 테마 — `palette = N=#rrggbb` · `background =` · `foreground =` · `cursor-color =` · `cursor-text =` ·
- *   `selection-background =`(값에 `#` 이 없어도 된다).
- * - **Alacritty** TOML — `[colors.primary]` · `[colors.normal]` · `[colors.bright]` · `[colors.cursor]`(`cursor` · `text`) ·
- *   `[colors.selection]`(`background`) — 섹션 · 점 키 · 한 줄 인라인 표. 옛 YAML 판(`colors:`)은 받지 않는다(`yaml` 오류).
- *
- * 빠진 칸 채우기([`fillColors`] — 꼭 있어야 하는 것은 배경 · 글자 · 보통 8색):
- * cursor ← foreground · cursorAccent ← background · selection ← 글자를 배경에 25% 섞은 색 · bright 8색 ← 보통 8색
- * (밝은 배경이면 그대로, 어두운 배경이면 흰색을 20% 섞어 조금 밝게). 색 글자는 `#rgb` · `#rrggbb` · `#rrggbbaa`(알파 버림) ·
- * `0xrrggbb` · 맨 `rrggbb` · `rgb()`/`rgba()` 를 받아 `#rrggbb` 소문자로 접는다([`normalizeColor`]).
+ * 다른 터미널(Windows Terminal · iTerm2 · Ghostty · Alacritty)의 색 구성 글자 → 21칸. 저장은 Rust `term_themes.rs` 가 21색을 다시 검증한다.
+ * iTerm2 의 `Color Space` 는 무시하고 sRGB 로 본다.
  */
 import { TERM_COLOR_KEYS, isLightBackground, type TermColorKey, type TermColors } from "$lib/theme";
 
 /** 이름 글자 수 상한 — Rust `term_themes::MAX_NAME` 과 같다 */
 export const MAX_THEME_NAME = 64;
-/** 받는 글자 상한(붙여넣기 · 파일) — `settings.json` 전체도 넉넉히 들어간다 */
 export const MAX_IMPORT_CHARS = 1024 * 1024;
 
 export type ImportFormat = "windows-terminal" | "iterm2" | "ghostty" | "alacritty";
 
-/** 실패 이유 — 화면이 i18n 문구로 바꾼다(`settings.terminal.import.error.<code>`) */
+/** i18n 키 `settings.terminal.import.error.<code>` 의 꼬리다 — 바꾸면 문구가 끊긴다 */
 export type ImportErrorCode =
   | "empty"
   | "tooBig"
@@ -60,7 +43,6 @@ const BRIGHT: Record<(typeof NORMAL)[number], TermColorKey> = {
   cyan: "brightCyan",
   white: "brightWhite",
 };
-/** ANSI 0..15 번호 → 칸 */
 const ANSI_INDEX: readonly TermColorKey[] = [...NORMAL, ...NORMAL.map((k) => BRIGHT[k])];
 
 // ---------------------------------------------------------------------------
@@ -69,7 +51,6 @@ const ANSI_INDEX: readonly TermColorKey[] = [...NORMAL, ...NORMAL.map((k) => BRI
 
 const hex2 = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
 
-/** 색 글자 하나 → `#rrggbb` 소문자. 모르는 모양(색 이름 · `CellForeground` 등)은 `null` */
 export function normalizeColor(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim().replace(/^["']|["']$/g, "").trim().toLowerCase();
@@ -86,15 +67,11 @@ export function normalizeColor(raw: unknown): string | null {
   return null;
 }
 
-/** `a` 를 `t` 만큼, `b` 를 나머지만큼 섞는다(둘 다 `#rrggbb`) */
 function mix(a: string, b: string, t: number): string {
   const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
   return `#${[0, 1, 2].map((i) => hex2(ch(a, i) * t + ch(b, i) * (1 - t))).join("")}`;
 }
 
-/**
- * 해석한 칸들 → 21칸. 배경 · 글자 · 보통 8색이 하나라도 없으면 빠진 칸 목록을 돌려준다(머리말의 채우기 규칙).
- */
 export function fillColors(raw: Partial21): TermColors | { missing: TermColorKey[] } {
   const got: Partial21 = {};
   for (const k of TERM_COLOR_KEYS) {
@@ -119,13 +96,11 @@ export function fillColors(raw: Partial21): TermColors | { missing: TermColorKey
 // 이름
 // ---------------------------------------------------------------------------
 
-/** 파일 이름 → 이름 후보(확장자 하나 걷기). 비면 `""` */
 export function fileStem(fileName: string | null | undefined): string {
   const base = (fileName ?? "").split(/[\\/]/).pop() ?? "";
   return base.replace(/\.[^.]+$/, "").trim();
 }
 
-/** 이름 다듬기 — 공백 접기 · 제어 문자 걷기 · [`MAX_THEME_NAME`] 자까지 */
 export function cleanThemeName(raw: string): string {
   // eslint-disable-next-line no-control-regex
   return Array.from(raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim()).slice(0, MAX_THEME_NAME).join("");
@@ -135,7 +110,6 @@ export function cleanThemeName(raw: string): string {
 // 형식별 해석
 // ---------------------------------------------------------------------------
 
-/** JSONC → JSON — 문자열 밖의 `//` · `/* *\/` 주석과 끝 쉼표를 걷는다 */
 export function stripJsonc(text: string): string {
   let out = "";
   let i = 0;
@@ -175,7 +149,6 @@ export function stripJsonc(text: string): string {
   return out;
 }
 
-/** WT 칸 이름 → 21칸. `purple` 이 magenta 자리 · 다른 내보내기의 `magenta` 도 받는다 */
 const WT_KEYS: Record<string, TermColorKey> = {
   background: "background",
   foreground: "foreground",
@@ -239,7 +212,6 @@ function parseWindowsTerminal(text: string, fallback: string): ImportResult {
   return { ok: true, format: "windows-terminal", themes };
 }
 
-/** iTerm2 칸 이름 → 21칸 */
 function itermKey(name: string): TermColorKey | null {
   const m = /^Ansi (\d{1,2}) Color$/.exec(name);
   if (m) return ANSI_INDEX[Number(m[1])] ?? null;
@@ -276,7 +248,6 @@ function parseIterm(text: string, fallback: string): ImportResult {
   return { ok: true, format: "iterm2", themes: [{ name: cleanThemeName(fallback), colors: filled }] };
 }
 
-/** `키 = 값` 줄들(Ghostty) — `#` 로 시작하는 줄은 주석 */
 function parseGhostty(text: string, fallback: string): ImportResult {
   const raw: Partial21 = {};
   const fixed: Record<string, TermColorKey> = {
@@ -305,7 +276,6 @@ function parseGhostty(text: string, fallback: string): ImportResult {
   return { ok: true, format: "ghostty", themes: [{ name: cleanThemeName(fallback), colors: filled }] };
 }
 
-/** TOML 의 글자 값 하나(`"…"` · `'…'` · 맨 글자) */
 function tomlValue(v: string): string {
   const t = v.trim();
   const q = /^"((?:[^"\\]|\\.)*)"|^'([^']*)'/.exec(t);
@@ -313,7 +283,6 @@ function tomlValue(v: string): string {
   return t.replace(/\s+#.*$/, "");
 }
 
-/** Alacritty 경로(점으로 이은 키) → 21칸 */
 function alacrittyKey(path: string): TermColorKey | null {
   const m = /^colors\.(primary|normal|bright|cursor|selection)\.(\w+)$/.exec(path);
   if (!m) return null;
@@ -363,7 +332,7 @@ function parseAlacritty(text: string, fallback: string): ImportResult {
 // 판별
 // ---------------------------------------------------------------------------
 
-/** 글자의 형식을 가린다 — 모르면 `null`, 옛 Alacritty YAML 이면 `"yaml"` */
+/** 옛 Alacritty YAML 은 받지 않는다 — `"yaml"` 로 가려 오류로 낸다 */
 export function detectFormat(text: string): ImportFormat | "yaml" | null {
   const t = text.replace(/^﻿/, "").trim();
   if (t.startsWith("<") || /<plist[\s>]/i.test(t)) return "iterm2";
@@ -379,10 +348,6 @@ export function detectFormat(text: string): ImportFormat | "yaml" | null {
   return null;
 }
 
-/**
- * 글자 → 후보 테마들. `fallbackName` 은 글자 안에 이름이 없을 때의 이름(보통 파일 이름 — 붙여넣기면 화면의 기본 이름).
- * 이름은 다듬고 상한으로 자른다. 비어 있으면 `fallbackName`.
- */
 export function parseTermTheme(text: string, fallbackName: string): ImportResult {
   if (text.length > MAX_IMPORT_CHARS) return { ok: false, error: "tooBig" };
   const body = text.replace(/^﻿/, "");

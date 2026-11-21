@@ -64,51 +64,9 @@
   import { targetOf, type Dot } from "$lib/chat/chat-presentation";
   import ChatHistory from "$lib/chat/ChatHistory.svelte";
 
-  // ---------------------------------------------------------------------------
-  // **채팅 독** (2026-10-23 — docs/log/2026-10-23-side-chat-dock.md) — 런처 독의 **반대쪽** 창 끝에 떠 있는 카드 하나. 쪽은 설정
-  // `[dock] layout`(`dockSides`), 열림 · 고정 · 갈래는 `app/chat-dock.svelte.ts`. 사람 창의 데스크톱 폭에서 마운트된다(`+page` — 메인 PC 주 창 ·
-  // 원격 웹 창의 데스크톱 폭 · 2026-11-01. 원격 폰 배치는 독 대신 폰 덮개 `mobile/MobileChat`).
-  //
-  // **원격 창**(데스크톱 폭)도 주 창과 같이 작업안 갈래의 몸통(`PlansView`)을 세운다(2026-11-13 — 예전엔 캔버스를 덮는 판 `PlansCover` 를
-  // 열어 타일을 가렸다 · 사용자 버그 보고). 원격 폰 배치는 독이 없고 제 덮개(`mobile/MobilePlans`)다.
-  //
-  // **갈래 [채팅 | 작업안]**(2026-10-25 — docs/log/2026-10-25-plans-tile-refresh.md) — 독 맨 위 폭 전체의 알약 두 칸(아이콘뿐 — 채팅 =
-  // 지금 채팅의 CLI 로고 · 작업안 = 체크리스트 + 승인 대기 수). 그 줄 오른쪽 끝에 독 단위의 📌 · ✕(2026-10-27 — 갈래를 바꿔도 그대로).
-  // 작업안 갈래의 몸통은 옛 작업안 타일의 `PlansView` 이고 머리줄이 없다(제목 ▾ · + · ⋯ 머리줄은 채팅 갈래에서만).
-  // 두 몸통은 **함께 마운트된 채** 갈래가 아닌 쪽만 숨는다 — 갈래를
-  // 오가도 채팅의 지금 턴 · 작업안의 펼친 명령 · 위험 카드의 확인 상태가 남는다. 작업안의 폴링 · 구독은 보일 때만(`visible`).
-  //
-  // ## 채팅 = 세션 서버의 채팅 프로세스 (v2 4단계 — docs/log/2026-10-23-side-chat-v2-design.md)
-  //
-  // 채팅 목록 · 저장은 `app/side-chats`, 속(프로세스 · 사건 · 지금 턴 · 권한)은 `app/side-chat-live`, 대화 면은 `SideChatFace`
-  // (기록 `TranscriptBody` + 꼬리 + 권한 카드 + 입력 칸). v1 의 `<AiFlip><Terminal/></AiFlip>` · 화면 읽기 · 신뢰 묻기 판정 · "터미널 보기" ·
-  // [대화로] 는 걷었다 — 터미널이 없으니 고르지 않은 채팅을 마운트해 둘 까닭도 없다(지금 채팅의 면 하나만 세운다 · 상태는 모듈에 남는다).
-  //
-  // 붙기: 독 마운트에서 서버 표에 살아 있는 채팅에 붙고(`joinLiveSideChats` — 뒤에서 도는 턴 · 권한 대기의 점), 채팅을 고를 때마다 그 채팅에
-  // 붙는다(`joinSideChat` — 구독 → attach → 없으면 open(띄우지 않음)). F5 · 웹뷰 크래시는 새 페이지가 같은 길로 다시 붙는다.
-  //
-  // 머리줄: 지금 채팅 제목 ▾(목록 — 맨 위 [새 채팅], 줄 = CLI 로고 · 제목 · 모델 · 시각 · 권한/답하는 중/새 답 점, 우클릭 이름 바꾸기 · 지우기) ·
-  // `+` 새 채팅 · ⋯(이름 바꾸기 · 지우기). 고정 · × 는 윗줄(갈래 옆). CLI · 모델 · 강도 · 연결 · 그림 · 실린 MCP 는 입력 칸 한 줄 안(`[+]` · 모델
-  // 키워드 · 연결 칩 — 2026-11-13 목업 D안, 몸은 대화 면의 `chat/side-chat-controls` · 옛 칸 아래 칩 줄 · 머리줄 MCP 칩은 걷었다). 사이드
-  // 채팅의 상태는 **이 독의 점**이고 탭 점은 없다 — 끝남 · 실패 · 권한 물음은 설정 `[ai] notify_side_chat` 으로 AI 타일과 같은 배너 · OS 알림(`app/side-chat-notify` — 2026-11-13).
-  //
-  // ## 틀 (구현 순서 1)
-  //
-  // **숨김은 `transform` 만**이다 — `{#if}` 로 걷지도, `display:none` 으로 끄지도 않는다. 닫힌 동안에는 창 끝 밖으로 밀려 있고
-  // (`.body` 가 넘침을 자른다) `inert` 라 포커스 · 누르기를 받지 않는다.
-  //
-  // 여닫기: 창 가장자리 호버(런처와 같은 순수 판정 — 쪽만 반대) · 단축키 `open-chat-dock` · 팔레트 · 머리줄 ×. 닫기는 Esc ·
-  // 바깥 누르기 — **고정(pin)이면 둘 다 닫지 않는다**. 고정해도 타일 영역을 밀지 않고 위에 덮는다.
-  //
-  // 두 독은 같은 띠를 두고 다투지 않는다 — 런처의 띠는 런처 쪽 끝, 이 띠는 반대쪽 끝이다(`dockSides` 가 늘 반대로 준다).
-  // 각자 제 리스너가 제 띠만 본다.
-  //
-  // ## 표시 조각 (2026-10-26)
-  //
-  // 목록 `chat/ChatHistory` · 순수 계산 `chat/chat-presentation` 은 props · 콜백만 받는다. 입력 칸 손잡이(`[+]` · 모델 메뉴 · 연결 칩)는 대화 면
-  // (`SideChatFace`)이 쥐고, 이 파일은 연결 칩들(`chipLinks`)과 그 안내 줄(`linkNote`)만 준다. 머리줄 · 목록 메뉴(`ToolbarMenu` — 독 DOM 안에
-  // 그대로) · 가장자리 · 바깥 누르기 · Esc · 폭과 두 몸통(`hidden`)은 이 파일이 쥔다.
-  // ---------------------------------------------------------------------------
+  // 숨김은 `transform` 만이다 — `{#if}` 로 걷지도 `display:none` 으로 끄지도 않는다. 닫힌 동안은 창 끝 밖으로 밀려 있고 `inert` 다.
+  // 두 몸통(채팅 · 작업안)은 함께 마운트된 채 갈래가 아닌 쪽만 숨는다 — 갈래를 오가도 지금 턴 · 펼친 명령 · 위험 카드의 확인 상태가 남는다.
+  // 고정(pin)이면 Esc · 바깥 누르기 둘 다 닫지 않는다.
 
   let dockEl = $state<HTMLElement | null>(null);
   let bodyEl = $state<HTMLElement | null>(null);
@@ -124,9 +82,7 @@
     restoreChatDockWidth();
     setChatDockAvailable(true);
     window.addEventListener("pointerdown", onOutsidePointerDown, true);
-    // 가장자리 호버 — 런처 독(`Dock.svelte`)과 같은 몸(`chrome/edge-dock.ts` — 창 좌표 · 수동 · 캡처 단계)이다.
     const offEdge = edgeHover.attach();
-    // 켠 AI CLI — 런처 · 모바일 시트와 같은 캐시(`knownAiClis` — 창마다 한 번 감지)
     void knownAiClis().then((list) => (clis = list));
     return () => {
       setChatDockAvailable(false);
@@ -136,10 +92,7 @@
     };
   });
 
-  /**
-   * 서버 표에 살아 있는 채팅(뒤에서 도는 턴 · 권한 대기)에도 붙어 목록의 점을 세운다(폰 덮개와 같은 몸). 목록은 부팅(`bootSideChats` —
-   * 원격 창은 거울 뒤)이 독 마운트보다 늦게 채울 수 있어 채팅이 처음 보일 때 한 번.
-   */
+  /** 목록은 부팅(`bootSideChats`)이 독 마운트보다 늦게 채울 수 있다 — 채팅이 처음 보일 때 한 번 붙는다 */
   let joinedLive = false;
   $effect(() => {
     if (joinedLive || chats.length === 0) return;
@@ -151,14 +104,11 @@
   // CLI 목록 · 새 채팅 · 붙기
   // ---------------------------------------------------------------------------
 
-  /** 감지된 AI CLI(설치 여부 포함) — 오기 전엔 `null` */
   let clis = $state<AiCli[] | null>(null);
-  /** 고를 수 있는 CLI — 설치 · 켬 · 세션 서버가 아는 것(`claude` · `codex`). 감지 전엔 `null` */
   const offered = $derived(clis ? offeredAiClis(clis, settings.disabledAgents).filter((c) => sideChatCliOk(c.id)) : null);
 
   let creating = false;
 
-  /** 새 채팅 — 기본은 마지막에 쓴 CLI(꺼졌으면 켠 목록의 첫 항목) · 고른 그 CLI 의 마지막 모델 · 강도(`sideChatNewDefault`). 띄우지 않는다(첫 보내기 때) */
   async function createChat(): Promise<void> {
     if (creating || !offered) return;
     const pick = sideChatNewDefault(offered, lastSideChatPick());
@@ -175,10 +125,6 @@
     }
   }
 
-  /**
-   * 이 페이지에서 처음 **채팅 갈래를** 열었는데 채팅이 없으면 하나 만든다(켠 CLI 가 있을 때) — 한 번뿐이다(마지막 채팅을 지운 뒤에는
-   * 빈 화면의 [새 채팅] 으로). 작업안 갈래로 열었을 때는 만들지 않는다(2026-10-25).
-   */
   let autoTried = false;
   $effect(() => {
     if (autoTried || !open || !offered || section !== "chat") return;
@@ -186,7 +132,6 @@
     if (untrack(() => chats.length) === 0 && offered.length > 0) untrack(() => void createChat());
   });
 
-  /** 지금 채팅에 붙는다(구독 → attach → 없으면 open — 띄우지 않는다) */
   $effect(() => {
     const c = current;
     if (!c) return;
@@ -194,9 +139,7 @@
     void joinSideChat(tg);
   });
 
-  /** 지금 보이는 채팅 — 끝난 턴이 "새 답" 으로 남을지의 판정과 그 표식 거두기 */
   $effect(() => {
-    // 작업안 갈래가 보이는 동안 채팅은 안 보인다(몸통은 마운트된 채 숨는다)
     setShownSideChat(open && section === "chat" && current ? current.id : null);
   });
 
@@ -204,7 +147,6 @@
     return sideChatDot(c.id);
   }
 
-  /** 머리줄 ▾ 의 점 — 모든 채팅 중 가장 급한 것(권한 > 새 답 > 답하는 중) */
   const headDot = $derived<Dot>(sideChatsHeadDot());
 
   function dotLabel(d: Dot): string {
@@ -222,7 +164,6 @@
     return offered?.find((c) => c.id === id)?.name ?? aiDisplayName(id) ?? id;
   }
 
-  /** 목록 줄의 아랫줄 — 모델 · (고른 강도) · 시각 */
   function rowSub(c: SideChat): string {
     const parts = [c.model ? modelLabel(c.model) : t("app.chatDock.cliDefault")];
     if (c.effort) parts.push(effortLabel(c.effort));
@@ -235,7 +176,6 @@
   // ---------------------------------------------------------------------------
 
   let listOpen = $state(false);
-  /** 목록의 시각 — 목록이 열린 동안 30초마다 */
   let now = $state(Date.now());
   $effect(() => {
     if (!listOpen) return;
@@ -255,12 +195,7 @@
     void focusHome();
   }
 
-  /**
-   * 독의 키보드 집 — **갈래마다 가장 먼저 쓸 곳**(열 때 · 갈래를 바꿀 때 둘 다 여기 — 2026-11-15). 못 찾으면 상자 자신.
-   * - 채팅 — 지금 채팅의 입력 칸.
-   * - 작업안 — 첫 검토 대기 카드 **자신**(`PlanList` 의 `data-plan-pending` · [승인] 단추가 아니다 — Enter 한 번에 승인되지 않게).
-   *   대기 카드가 없으면(빈 목록 · 실행 결과만 · 기록 보기) 목록의 스크롤 판(`PlansView` 의 `data-plans-body`).
-   */
+  /** 작업안은 첫 대기 카드 자신에 포커스한다 — [승인] 단추에 두면 Enter 한 번에 승인된다 */
   async function focusHome(): Promise<void> {
     await tick();
     const el =
@@ -290,7 +225,6 @@
       () => (moreOpen = false),
       (chat) => {
         if (key === "rename") {
-          // 이름 칸은 목록 줄에 선다 — 목록을 열고 그 줄을 칸으로
           listOpen = true;
           renaming = chat.id;
           renameText = chat.title;
@@ -300,26 +234,22 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 연결(5단계 — 결정 10 · 목업 ⑥A) — 이 채팅이 MCP 로 읽을 타일 묶음(최대 8). 고르기 · 끊기는 대화 면의 `[+]`(`chat/side-chat-controls`), 여기는 상태와 안내
+  // 연결
   // ---------------------------------------------------------------------------
 
-  /** 이 창의 연결할 수 있는 타일(포커스된 것이 위) */
   const linkTiles = $derived<LinkTile[]>(current ? linkTilesHere() : []);
 
-  /** 칩들 — 연결 순서대로 타일마다 이 창의 타일 → 서버가 아는 것 → 닫힘(순수 `linkChipStates`) */
   const chipLinks = $derived(current ? linkChipStates(current.tiles, linkTiles, sideChatLiveOf(current.id)?.links ?? []) : []);
 
-  /** [읽기 허용 켜기] — 로컬 타일의 'AI 읽기 허용'(사람 손 — ⋯ 메뉴의 체크 줄과 같은 문 · 원격 창이면 마스터 재확인) */
+  /** 로컬 타일의 'AI 읽기 허용' — 사람 손의 문(원격 창이면 마스터 재확인) */
   function allowRead(tile: LinkTile): void {
     if (tile.kind === "local") setLocalAiRead(tile.paneId, true);
   }
 
-  /** 연결한 원격 타일로 가기(호스트 AI 권한은 그 타일 머리줄의 칩에서 바꾼다) */
   function revealLinked(tile: LinkTile): void {
     focusTile(tile.tabId, tile.paneId);
   }
 
-  /** [다시 시작] — CLI 가 끝난 채팅을 다시 연다(다음 보내기가 띄운다) */
   function restart(chat: SideChat): void {
     void restartSideChat(targetOf(chat)).then(() => focusHome());
   }
@@ -367,16 +297,13 @@
     }
   }
 
-  /** 지우기 — 확인 · 대화 지우기 · 목록에서 빼기(폰 덮개와 같은 몸 — `removeSideChat`) */
   const removeChat = (chat: SideChat): Promise<void> => removeSideChat(chat);
 
-  /** 목록 줄의 호버 단추 — 우클릭 메뉴의 두 항목과 같은 일(메뉴가 없으니 통로를 거치지 않는다) */
   function startRename(chat: SideChat): void {
     renaming = chat.id;
     renameText = chat.title;
   }
 
-  /** 지금 대화 면(입력 칸의 `[+]` · 모델 메뉴를 쥔다) */
   let face = $state<ReturnType<typeof SideChatFace> | null>(null);
 
   function closeLists(): void {
@@ -388,17 +315,15 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 가장자리 호버로 열기 — 띠 · 시계 · 창 리스너는 `chrome/edge-dock.ts`(런처 독과 같은 몸 · 쪽만 `side`). 닫기는 여기 없다(Esc · 바깥 누르기 · ×).
+  // 가장자리 호버로 열기
   // ---------------------------------------------------------------------------
 
   const edgeHover = createEdgeHover({
     side: () => side,
-    // 런처 독의 판정과 같은 조건(이 독이 닫혀 있고, 모달 · 가림막 · 모바일 배치가 없다 — 떠 있는 메뉴는 `edge-dock` 이 DOM 에서 본다)
     blocked: () => chatDockOpen() || anyModalOpen() || veilVisible() || mobileLayout(),
     open: () => openChatDock(),
   });
 
-  /** 배치가 바뀌면 띠가 반대편 끝으로 간다 */
   $effect(() => {
     void side;
     edgeHover.forgetStrip();
@@ -412,13 +337,12 @@
     return () => ro.disconnect();
   });
 
-  /** 열리거나 닫힐 때마다 — 띠를 한 번 벗어나야 다시 센다(커서 아래에서 닫힌 독이 도로 열리지 않게) */
+  /** 띠를 한 번 벗어나야 다시 센다 — 커서 아래에서 닫힌 독이 도로 열리지 않게 */
   $effect(() => {
     void open;
     untrack(() => edgeHover.afterClose());
   });
 
-  /** 열리는 순간 키보드를 독 안으로 — 지금 갈래의 첫 자리(`focusHome` · 없으면 상자 자신) */
   $effect(() => {
     if (!open) return;
     const raf = requestAnimationFrame(() => void focusHome());
@@ -429,15 +353,14 @@
   // 닫기 — 바깥 누르기 · Esc (고정이면 둘 다 아니다)
   // ---------------------------------------------------------------------------
 
-  /** 독 바깥의 DOM 이지만 논리적으로 독의 일부일 수 있는 떠 있는 표면 — 런처 독의 `FLOATING` 과 같은 목록 */
+  /** 런처 독의 `FLOATING` 과 같은 목록 */
   const FLOATING = ".overlay, .modal, .menu, .menu-backdrop, [role='dialog'], [role='menu']";
 
   function onOutsidePointerDown(ev: PointerEvent): void {
     const target = ev.target;
     if (!(target instanceof Element)) return;
-    // 채팅 목록 — 목록 · 제목 단추(토글은 제 몫) · 떠 있는 줄 메뉴 밖을 누르면 목록만 닫는다(독 안 · 고정이어도 — 2026-11-17 사용자)
     if (listOpen && !target.closest("[data-chat-dock-rows], [data-chat-dock-list]") && !target.closest(FLOATING)) {
-      if (renaming) commitRename(); // 이름 칸의 blur 와 같은 뜻(남긴다) — 목록이 먼저 사라져도 글을 잃지 않게
+      if (renaming) commitRename(); // 목록이 먼저 사라져도 글을 잃지 않게
       listOpen = false;
     }
     if (!chatDockOpen() || chatDockPinned()) return;
@@ -448,11 +371,7 @@
     closeChatDock(false); // 누른 곳이 곧 갈 곳이다
   }
 
-  /**
-   * Escape — 독 안에서 누른 것만 받는다. 고정이면 닫지 않고 흘려보낸다(창의 Escape 사슬이 받는다). 목록이 열려 있으면 그것부터 닫는다.
-   * 대화 면(입력 칸 · 기록)의 Escape 도 여기 온다(2026-10-23 사용자 결정 — 고정이면 아무 일도 없다). "직접 입력…" 칸 · 찾기 띠 · 메뉴는
-   * 제 Escape 를 먼저 쓰고 전파를 멈춘다.
-   */
+  /** 고정이면 닫지 않고 흘려보낸다(창의 Escape 사슬이 받는다) — 칸 · 찾기 띠 · 메뉴는 제 Escape 를 먼저 쓰고 전파를 멈춘다 */
   function onKeydown(ev: KeyboardEvent): void {
     if (ev.key !== "Escape") return;
     if (ev.isComposing || ev.keyCode === 229) return; // IME 조합을 끄는 Escape 는 칸의 것
@@ -470,7 +389,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 폭 손잡이 — 타일 쪽(안쪽) 끝. 런처 독(`Dock.svelte`)과 같은 몸짓(포인터 캡처 · 매 프레임 자르기 · 뗄 때만 저장).
+  // 폭 손잡이
   // ---------------------------------------------------------------------------
 
   const width = $derived(chatDockWidth());
@@ -496,7 +415,6 @@
     setChatDockWidth(width, true);
   }
 
-  /** 머리줄 × 의 말풍선 — 이름 + 지금 걸린 조합 */
   const closeTitle = $derived.by(() => {
     const combo = effectiveCombo("open-chat-dock", settings.current.keybindings);
     return shortcutTitle(t("app.actions.close"), combo ? displayCombo(combo) : null);
@@ -505,20 +423,15 @@
   const noCli = $derived(offered !== null && offered.length === 0);
 
   // ---------------------------------------------------------------------------
-  // 갈래 [채팅 | 작업안] (2026-10-25)
+  // 갈래 [채팅 | 작업안]
   // ---------------------------------------------------------------------------
 
-  /** 지금 갈래 */
   const section = $derived(chatDockSection());
   const plansWaiting = $derived(pendingCount());
   let plansEl = $state<HTMLElement | null>(null);
   let headEl = $state<HTMLElement | null>(null);
 
-  /**
-   * 갈래가 바뀌면 새 몸통 · 머리줄을 고른 쪽에서 밀어 넣는다(작업안 = 오른쪽 칸이라 오른쪽에서, 채팅 = 왼쪽에서).
-   * 몸통은 둘 다 마운트된 채 `hidden` 만 바뀌므로 CSS 전환 대신 Web Animations 로 한 번 돌린다. 닫힌 독 · 첫 그림 ·
-   * 움직임 줄이기에서는 돌지 않는다. 위 칸 강조의 미끄러짐은 CSS(`.sec-thumb`).
-   */
+  /** 몸통은 둘 다 마운트된 채 `hidden` 만 바뀌므로 CSS 전환 대신 Web Animations 로 한 번 돌린다 */
   let shownSection: "chat" | "plans" | null = null;
   $effect(() => {
     const now = section;
@@ -533,11 +446,7 @@
     headEl?.animate([{ opacity: 0 }, { opacity: 1 }], opts);
   });
 
-  /**
-   * 열린 채 갈래가 바뀌면(단축키 `Ctrl+Shift+[` · `]` · 딥링크 · [AI에게 묻기]) 새 갈래의 첫 자리로 — 포커스가 **독 안**이었을 때만.
-   * 숨는 몸통 안에 있던 포커스는 `<body>` 로 떨어지므로 `<body>` 도 "독 안" 으로 본다. 고정한 독 옆 타일에서 바꿨으면 그 타일의
-   * 포커스를 빼앗지 않는다. 닫힌 독을 여는 길은 위 "열리는 순간" 효과가 맡는다(여기는 그때 포커스가 아직 타일이라 건너뛴다).
-   */
+  /** 포커스가 독 안이었을 때만 옮긴다 — 숨는 몸통 안의 포커스는 `<body>` 로 떨어지므로 `<body>` 도 독 안으로 본다 */
   let focusedSection: "chat" | "plans" | null = null;
   $effect(() => {
     const now = section;
@@ -549,7 +458,6 @@
     void focusHome();
   });
 
-  /** 갈래를 고른다 — 고른 갈래의 첫 자리로 포커스(`focusHome` — 같은 갈래를 다시 눌러도) */
   function pickSection(next: "chat" | "plans"): void {
     if (next === "chat") listOpen = false;
     setChatDockSection(next);
@@ -566,10 +474,6 @@
   {#if d}<span class="dot" data-dot={d} title={dotLabel(d)} aria-label={dotLabel(d)}></span>{/if}
 {/snippet}
 
-<!--
-  `role="presentation"` · `tabindex="-1"` — 런처 독과 같은 규칙(껍데기 상자 · 본문이 포커스를 못 받을 때의 몸). 닫힌 동안은
-  `inert` 라 탭 순회 · 누르기 · 스크린 리더에서 빠진다(그림은 창 끝 밖으로 밀려 있다).
--->
 <div
   class="chat-dock edge-dock glass-mid"
   class:open
@@ -585,17 +489,9 @@
   bind:this={dockEl}
   onkeydown={onKeydown}
 >
-  <!--
-    갈래 — 독 폭 절반(가운데)의 큰 알약 안 알약 두 칸(아이콘뿐 · 이름은 title · aria-label · 채팅 = `ai` 고정, CLI 로고는 머리줄 제목에). 작업안 칸의 대기 수 배지는 채팅을 보는 중에도 선다.
-  -->
-  <!--
-    윗줄 = 독 단위 — [빈 칸 | 갈래 | 📌 ✕](2026-10-27). 고정 · 닫기는 갈래와 무관하게 독 전체를 다루므로 갈래 머리줄이 아니라
-    여기 선다(갈래를 바꿔도 깜빡이지 않는다). 양옆 칸이 같은 폭이라 갈래는 늘 독 가운데 · 독 폭 절반이다.
-  -->
   <div class="top" data-chat-dock-top>
     <span aria-hidden="true"></span>
     <div class="sections" role="group" aria-label={t("app.chatDock.section.aria")} data-chat-dock-sections>
-      <!-- 고른 칸의 알약 — 칸 단추 뒤에 하나만 깔고 고른 쪽으로 미끄러진다 -->
       <span class="sec-thumb" data-section={section} aria-hidden="true"></span>
       <button
         type="button"
@@ -648,7 +544,6 @@
     </div>
   </div>
 
-  <!-- 갈래 머리줄 — 채팅 갈래에만(작업안 갈래는 위 칸이 이미 이름이라 머리줄 없이 몸통이 곧바로 선다 · 2026-10-27) -->
   {#if section === "chat"}
   <div class="head" bind:this={headEl}>
     <button
@@ -691,7 +586,6 @@
   {/if}
 
   {#if listOpen && section === "chat"}
-    <!-- 채팅 목록(목업 ⑤) — 맨 위 [새 채팅], 줄 = 로고 · 제목 · 모델 · 시각 · 점. 우클릭 = 이름 바꾸기 · 지우기 -->
     <ChatHistory
       {rows}
       {current}
@@ -714,7 +608,6 @@
     />
   {/if}
 
-  <!-- 본문 — 지금 채팅의 대화 면 하나(상태는 `app/side-chat-live` 에 남는다 — 채팅을 바꿔도 지금 턴을 잃지 않는다) -->
   <div class="chat-body" data-chat-dock-body hidden={section !== "chat"} bind:this={bodyEl}>
     {#if current}
       {@const c = current}
@@ -733,15 +626,12 @@
           phone={handheld()}
         >
           {#snippet linkNote()}
-            <!-- 안내 말풍선들의 그릇 — 꼬리는 맨 아래(입력 칸에 가장 가까운) 하나에만(`.link-note:last-child`) -->
             <div class="link-notes">
               {#if c.forkedFrom && c.forkedFrom.agent === c.cli && c.cwd}
-                <!-- 갈라 온 채팅(6단계) — CLI 가 그 대화의 기록된 폴더에서 돈다(도구가 그 폴더를 읽는다) -->
                 <div class="link-note" role="note" data-chat-fork-note title={c.cwd}>
                   <span class="link-note-text">{t("app.chatDock.fork.note", { folder: sideChatCwdLabel(c.cwd) })}</span>
                 </div>
               {/if}
-              <!-- 문제 있는 연결마다 한 줄(닫힘 · 읽기 꺼짐) — 그 타일 이름 · 그 타일에 대한 단추 -->
               {#each chipLinks.filter((x) => x.closed || x.readable === false) as chip (chip.stream)}
                 <div class="link-note" role="status" data-chat-link-note={chip.closed ? "closed" : "read-off"}>
                   {#if chip.closed}
@@ -781,7 +671,6 @@
     {/if}
   </div>
 
-  <!-- 작업안 갈래 — 옛 작업안 타일의 몸통 그대로(보기 · 감사 알약 · 진행 · 기록). 보일 때만 폴링 · 구독 -->
   <div class="plans-body" data-chat-dock-plans hidden={section !== "plans"} bind:this={plansEl}>
     <PlansView visible={open && section === "plans"} exitSide={side} />
   </div>
@@ -793,7 +682,6 @@
     <ToolbarMenu label={t("app.chatDock.list")} rows={rowMenuRows} trigger={rowMenu.el} align="left" onpick={pickRow} onclose={() => (rowMenu = null)} />
   {/if}
 
-  <!-- 폭 손잡이 — 안쪽(타일 쪽) 끝. `[dock] layout` 이 쪽을 바꾸면 함께 옮긴다. 키보드로는 잡지 않는다(런처 독과 같다) -->
   <div
     class="grip"
     role="separator"
@@ -808,14 +696,7 @@
 </div>
 
 <style>
-  /*
-   * 런처 독(`Dock.svelte`)과 같은 층 · 같은 판이다 — `.body`(타이틀바 아래 상자) 안의 `position: absolute`, 여백 `--gap`,
-   * 상태바 기둥 · 감싸기 테두리만큼 안쪽(`--dock-inset-*` — `+page` 가 쪽마다 채운다). z-index 도 같은 100 이고 DOM 에서
-   * 런처 독(과 설정 모달)보다 **앞**에 놓여, 설정 모달 · 그 배경막이 이 독을 덮는다.
-   *
-   * 폭은 손잡이로 끈 값(`--chat-dock-px` — 기본 380 · `$lib/dock` 의 `clampChatDockWidth`)이고, 창이 그보다 좁으면 창 폭에서
-   * 양쪽 여백을 뺀 만큼이다.
-   */
+  /* DOM 에서 런처 독(과 설정 모달)보다 앞에 놓여 설정 모달 · 그 배경막이 이 독을 덮는다 */
   .chat-dock {
     --chat-dock-w: min(var(--chat-dock-px, 380px), calc(100% - 2 * var(--gap)));
     position: absolute;
@@ -833,11 +714,7 @@
     border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
     overflow: hidden;
-    /*
-     * 닫힘 = 창 끝 밖으로 민다(거리 `--edge-dock-off` · 시간 · 곡선은 런처 독과 공용 — `theme.css` 의 "창 끝 독의 여닫이").
-     * `display` 는 늘 flex 다 — 숨김은 이 이동뿐이다(파일 머리말). 열리면 `transform: none` — 남기면 안쪽 `position: fixed` 메뉴의
-     * 기준 상자가 독으로 바뀐다(런처 독과 같은 이유).
-     */
+    /* 숨김은 이 이동뿐이다(`display` 는 늘 flex). 열리면 `transform: none` — 남기면 안쪽 `position: fixed` 메뉴의 기준 상자가 독으로 바뀐다 */
     transform: translateX(var(--edge-dock-off));
     transition: transform var(--edge-dock-dur) var(--edge-dock-ease);
   }
@@ -861,12 +738,6 @@
     outline: none;
   }
 
-  /*
-   * 갈래 — 독 폭 절반(가운데)의 낮은 면(surfaceContainerLow) 큰 알약, 안에 반폭 알약 두 칸(32px · 아이콘 18 가운데). 고른 칸 =
-   * `--control-sel-*`(secondaryContainer — 작업안의 보기 탭 · 고른 칩과 같은 역할)로 채운 알약 하나(`.sec-thumb`)가 고른
-   * 칸으로 미끄러진다. 대기 수 배지 = 강조색 채움.
-   */
-  /* 윗줄 — 1 : 2 : 1 이라 가운데 갈래가 독 폭 절반 · 늘 가운데다. 📌 ✕ 는 오른쪽 칸 끝(아래 머리줄 ⋯ 와 같은 오른쪽 여백) */
   .top {
     flex: 0 0 auto;
     display: grid;
@@ -893,7 +764,6 @@
     border-radius: 999px;
   }
 
-  /* 고른 칸의 알약 — 칸 단추 뒤 한 장(그리드 칸을 차지하지 않게 absolute). 오른쪽 칸 = 칸 폭 + 사이 2px 만큼 민다 */
   .sec-thumb {
     position: absolute;
     top: 3px;
@@ -916,7 +786,7 @@
   }
 
   .sec {
-    position: relative; /* 알약(`.sec-thumb`) 위에 */
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -965,7 +835,6 @@
     border-radius: 999px;
   }
 
-  /* 작업안 갈래의 몸통 — 남은 높이를 채우고 `PlansView` 가 제 안에서 스크롤한다 */
   .plans-body {
     flex: 1 1 auto;
     min-height: 0;
@@ -987,7 +856,6 @@
     padding: var(--space-2) var(--space-2) var(--space-1) var(--space-2);
   }
 
-  /* 지금 채팅 제목 ▾ — 목록을 연다 */
   .title-btn {
     flex: 1;
     min-width: 0;
@@ -1062,7 +930,6 @@
     outline-offset: -2px;
   }
 
-  /* 상태 점 — 답하는 중(강조색) · 권한(경고) · 새 답(완료) */
   .dot {
     flex: 0 0 auto;
     width: 8px;
@@ -1107,13 +974,11 @@
     margin: 0;
   }
 
-  /* 입력 칸 위 안내 말풍선들 — 갈라 온 채팅 · 연결한 타일을 AI 가 못 읽는다 · 닫혔다 */
   .link-notes {
     flex: 0 0 auto;
   }
 
-  /* 말풍선 하나 — 면 · 테두리 · 글 · 모서리 · 꼬리는 AI 타일 대화 면의 신뢰 말풍선(`pane/AiFlip.svelte` 의 `.trust-hint`)과 같은 값.
-     좌우 여백은 좁은 독에 맞춰 입력 칸(`FlipComposer` 의 `.compact` — `--space-3`)과 같다 */
+  /* 면 · 테두리 · 글 · 모서리 · 꼬리는 AI 타일 대화 면의 신뢰 말풍선(`pane/AiFlip.svelte` 의 `.trust-hint`)과 같은 값 */
   .link-note {
     position: relative;
     display: flex;
@@ -1130,8 +995,7 @@
     border-radius: var(--radius-surface-inner);
   }
 
-  /* 꼬리 — 입력 칸을 가리킨다(맨 아래 하나만 — 위 말풍선의 꼬리가 아래 말풍선을 찌르지 않게). 끝은 말풍선 아래 약 8px —
-     아래 여백(`--space-1`) + 입력 칸 위 여백(`--space-2`) 안이라 알약에 닿지 않는다 */
+  /* 꼬리는 맨 아래 하나만 — 위 말풍선의 꼬리가 아래 말풍선을 찌르지 않게 */
   .link-note:last-child::after {
     content: "";
     position: absolute;
@@ -1148,11 +1012,11 @@
   .link-note-text {
     flex: 1 1 12em;
     min-width: 0;
-    word-break: keep-all; /* 한글을 음절 가운데서 끊지 않는다 */
+    word-break: keep-all;
     overflow-wrap: anywhere;
   }
 
-  /* 말풍선 안 실행 단추 — `.trust-go`(AiFlip)와 같은 알약(말풍선 글자색 면 + 바탕색 글자). 좁으면 글 아래 줄 오른쪽 */
+  /* `.trust-go`(AiFlip)와 같은 알약 */
   .link-go {
     flex: none;
     margin-left: auto;
@@ -1172,7 +1036,6 @@
     outline-offset: 1px;
   }
 
-  /* 폭 손잡이 — 안쪽 끝의 6px 띠(런처 독 `.grip` 과 같은 모양). 왼쪽 독이면 오른쪽 끝, 오른쪽 독이면 왼쪽 끝 */
   .grip {
     position: absolute;
     top: 0;
@@ -1194,7 +1057,6 @@
     right: auto;
   }
 
-  /* 끄는 동안 대화 면이 포인터를 받아 글자를 고르지 않게 */
   .chat-dock.resizing {
     user-select: none;
   }

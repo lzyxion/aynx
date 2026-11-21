@@ -25,20 +25,8 @@
   import { ensureVaultUnlocked } from "$lib/app/prompts.svelte.js";
 
   /**
-   * 외부 MCP 서버 **추가 · 편집** — 설정 › MCP 의 하위 화면 (docs/log/2026-10-05-mcp-subview.md).
-   *
-   * 요약(`ExternalMcpServers`)의 [MCP 서버 추가 ›] 또는 줄 누르기가 연다. 틀(`SettingsSubView`)은 트리거 · 스니펫 ·
-   * 자동 승인과 공용이고, 움직임 · Escape · 돌아온 뒤 포커스는 요약이 맡는다. 칸 · 검증 · 저장 순서는 옛 모달
-   * (`McpServerDialog`)을 그대로 옮겼다:
-   *
-   * 1. 이름 · 값 검사는 Rust 한 곳(`agentMcpValidate`) — 같은 범위의 이름만 중복으로 본다.
-   * 2. 새로 친 비밀 값이 있을 때만 볼트 — 없으면 만들고(마스터 없음), 잠겼으면 해제를 청하고, 그래도 잠겼으면
-   *    **아무것도 쓰지 않고** 오류 한 줄(초안은 남는다). 값은 `vault.storeMcpEnv` 로만 나가고 돌려받는 것은 참조뿐.
-   * 3. 그다음에야 설정 **초안**(`setAiMcpServers`)에 쓴다 — 실제 파일 · 볼트의 옛 값 정리 · 실행 티켓 회수는 설정
-   *    창의 [저장] 이 하던 그대로다(Rust).
-   *
-   * 칸은 이 화면 안에만 산다 — [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다. 화면이 닫히면(`closed`) 진행 중인
-   * 검사 · 볼트 저장의 뒷단계는 멈춘다. [삭제] 는 옛 모달처럼 확인 없이 초안에서 뺀다(설정 [저장] 전까지 되돌릴 수 있다).
+   * 순서: Rust 검사(`agentMcpValidate`) → 볼트 → 설정 초안. 볼트가 끝내 잠겨 있으면 아무것도 쓰지 않는다.
+   * 비밀 값은 `vault.storeMcpEnv` 로만 나가고 돌려받는 것은 참조뿐이다 (→ docs/invariants.md 전문 3).
    */
   let {
     index,
@@ -48,20 +36,17 @@
     onsaved,
     ondeleted,
   }: {
-    /** 고칠 항목의 저장 자리 — `null` 이면 추가 */
+    /** `null` 이면 추가 */
     index: number | null;
     targets: AgentArgsTarget[];
     projectOptions: { id: string; name: string }[];
-    /** [취소] · 뒤로 · Escape — 아무것도 쓰지 않고 요약으로 */
     onback: () => void;
-    /** [추가] · [저장] 뒤 — 넣거나 고친 항목의 저장 자리 */
     onsaved: (index: number) => void;
     ondeleted: () => void;
   } = $props();
 
   const list = $derived(settings.current.ai.mcp_servers ?? []);
 
-  // 열릴 때만 초안을 만든다. 목록 변경은 검증을 통과한 [추가]/[저장] 에서만 한다.
   const editingIndex = untrack(() => index);
   const initial = untrack(() => (editingIndex === null ? null : (list[editingIndex] ?? null)));
   const adding = initial === null;
@@ -79,7 +64,6 @@
   let enabled = $state(initial?.enabled ?? true);
   let agents = $state<string[]>([...(initial?.agents ?? DEFAULT_AGENTS)]);
   let agentsChanged = $state(false);
-  /** 대상 › 사이드 채팅(2026-10-25 — 묻지 않기는 사이드 채팅의 권한 모드가 정한다 · 2026-11-20 '묻지 않기' 칸을 걷었다) */
   let sideChat = $state(initial?.side_chat ?? false);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -94,12 +78,12 @@
     closed = true;
   });
 
-  // 편집 중인 항목이 바깥에서 사라지면(다른 창의 설정 다시 읽기 등) 요약으로 — 없는 자리에 쓰지 않게.
+  // 항목이 바깥에서 사라지면 요약으로 — 없는 자리에 쓰지 않게
   $effect(() => {
     if (editingIndex !== null && list[editingIndex] === undefined) untrack(onback);
   });
 
-  // 검사 중 입력칸이 disabled 되어도 포커스(→ Escape)가 설정 안에 머물게 한다.
+  // 검사 중 입력칸이 disabled 되어도 포커스(→ Escape)가 설정 안에 머물게
   $effect(() => {
     if (busy) cancelButton?.focus();
   });
@@ -191,8 +175,6 @@
   <form aria-label={t(adding ? "settings.ai.external.form_new" : "settings.ai.external.form_edit")}
     onsubmit={(ev) => { ev.preventDefault(); void submit(); }}>
     <div class="mcp-box">
-    <!-- 칸 순서(2026-10-25 목업): 이름 → 연결 방식 → 명령·인자 / URL → 환경변수 / 헤더 → 범위 → 대상 → (사이드 채팅에서 묻지 않기) → 사용.
-         늘 보이는 설명 줄은 없다 — 설명은 이름 툴팁(`TipName`)에 산다 -->
     <div class="fields">
       <TipName id="ai-mcp-name-f" for="ai-mcp-name" label={t("settings.ai.external.name")} tip={t("settings.ai.external.name_tip")} />
       <input id="ai-mcp-name" bind:value={name} maxlength={48} disabled={busy}
@@ -306,7 +288,6 @@
 </SettingsSubView>
 
 <style>
-  /* 칸 — 트리거 · 스니펫 편집과 같은 1px 선의 판. 안은 옛 모달의 이름 | 칸 격자 그대로 */
   .mcp-box {
     container-type: inline-size;
     padding: var(--space-3);
@@ -333,13 +314,11 @@
     white-space: nowrap;
   }
 
-  /* 설명은 이름 툴팁(`TipName` — 위로 뜬다) — 얹을 자리는 글자 폭만큼 */
   .fields :global(.name.has-tip) {
     justify-self: start;
     cursor: help;
   }
 
-  /* 툴팁 글자의 읽기 칸(`aria-describedby`) — 격자의 칸을 차지하지 않는다(`settings.css` 의 `.tip-desc` 와 같은 숨김) */
   .fields :global(.tip-desc) {
     position: absolute;
     width: 1px;
@@ -416,7 +395,6 @@
     margin-top: var(--space-1);
   }
 
-  /* 대상 — [AI 타일 Claude Codex] │ [사이드 채팅] */
   .targets {
     display: flex;
     flex-wrap: wrap;
@@ -442,7 +420,6 @@
     background: var(--line);
   }
 
-  /* 연결 방식 옆의 프로토콜 이름 — 흐리게 */
   .proto {
     color: var(--fg-3);
     font-weight: 400;
@@ -453,12 +430,11 @@
     opacity: .7;
   }
 
-  /* 연결 방식 — 공용 이어 붙은 묶음(`.opt-chips` · `.opt-chip`, settings.css — 2026-10-28, 예전 outlined segmented + ✓) */
   .seg-btn {
     font-size: var(--t-xs);
   }
 
-  /* 좁은 설정 칸(작은 창 · 독) — 이름을 칸 위로 올린다(스니펫 · 트리거 편집과 같은 문턱) */
+  /* 스니펫 · 트리거 편집과 같은 문턱 */
   @container (max-width: 420px) {
     .fields {
       grid-template-columns: minmax(0, 1fr);

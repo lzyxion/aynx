@@ -1,21 +1,17 @@
-//! **Attempt 의 수명**(설계 B · C-3 · C-7 — G 3단계 · 헤드리스 설계 4-1 ~ 4-8 — 3차 3a): 조정자의 `spawn_worker{role}` · `stop_worker`,
-//! 사람의 [중단], 서버 손([`super::spawn::WorkerLauncher`])이 알려 오는 턴의 단계(worktree → 프로세스 → 턴 기록 → 끝), 종료 미확인 다시
-//! 보기, 서버 재시작 뒤 잔존 자원 찾기. 이어지는 턴(`send_prompt`)은 `resume.rs`.
+//! Attempt 의 수명 — 조정자의 `spawn_worker` · `stop_worker`, 사람의 [중단], 서버 손이 알려 오는 턴의 단계, 종료 미확인 다시 보기,
+//! 서버 재시작 뒤 잔존 자원. 이어지는 턴(`send_prompt`)은 `resume.rs`.
 //!
 //! 불변식:
-//! - **작업자 · 해결자 · 검토자는 헤드리스 턴이다**(3a) — 한 턴 = 셸 없는 CLI 프로세스 하나(파이프 · 생성 시 Job · `SPAWN_LOCK` 아래 —
-//!   `server::workers`). 세션 · PTY · 타일 · 신호 스트림이 없다. 턴의 끝 = 프로세스 끝(+ 트리 종료 확인).
-//! - **맡긴 저장소에서만**(E5) — 첫 턴(`spawn_worker`)과 이어지는 턴마다 지금 맡기기를 다시 읽고(`roles.rs`), 서버 손은 효과 **직전**에
-//!   [`Orchestration::turn_preflight`] 로 한 번 더 본다(2-6 — 신원 · 받아들인 판 · 역할).
+//! - **작업자 · 해결자 · 검토자는 헤드리스 턴이다** — 한 턴 = 셸 없는 CLI 프로세스 하나(파이프 · 생성 시 Job · `SPAWN_LOCK` 아래).
+//!   세션 · PTY · 타일 · 신호 스트림이 없다. 턴의 끝 = 프로세스 끝(+ 트리 종료 확인).
+//! - **앨범 구성 안에서만** — 첫 턴과 이어지는 턴마다 앨범 관문을 다시 보고, 서버 손은 효과 **직전**에
+//!   [`Orchestration::turn_preflight`] 로 한 번 더 본다(신원 · 역할).
 //! - 한도 슬롯 예약 · Attempt 생성 · Task 를 active 로 · 첫 턴 토큰 발급 · 멱등 기록이 **잠금 하나 안에서 한 번에** 일어난다
 //!   (`spawn_slot_reservation_is_atomic`). 띄우는 일(git · 프로세스)은 잠금 **밖** 서버 손의 스레드에서.
-//! - **상태 기계**(4-5 · 4-8): `spawning` → `running`(턴) → 턴 끝(트리 종료 확인) → 그 턴 안에 `report_done{success|failure}` 가 왔으면
-//!   `reported`(닫힘) · 아니면 `idle`(+ `blocked` 표지가 있을 수 있다 — 비종결). 판정형(검토자)은 한 턴 — 판정이 있으면 `reported` · 없으면
-//!   `exited`(종결 · 활성 검토 비움). 트리 종료를 확인하지 못하면 `stop-unconfirmed`(산 것으로 센다 — 서버 시계가 다시 본다).
-//!   `stopped` 는 **트리 종료가 확인된 뒤에만**(`stopped_only_after_tree_exit`). `idle` 은 닫는 사건(중단 · 반려 · 취소 · Run 중단 · 완료)에서
-//!   곧바로 닫힌다(산 프로세스가 없다).
-//! - **작업자 토큰은 턴 단위**(D9 · D11) — 턴을 띄울 때 뽑고 그 턴의 트리 종료가 확인될 때 거둔다(`idle` 에는 산 토큰이 없다). 생성
-//!   실패면 곧바로.
+//! - **상태 기계**: `spawning` → `running` → 턴 끝(트리 종료 확인) → 그 턴 안에 `report_done{success|failure}` 가 왔으면 `reported` ·
+//!   아니면 `idle`(비종결). 판정형은 한 턴 — 판정이 있으면 `reported` · 없으면 `exited`. 트리 종료를 확인하지 못하면 `stop-unconfirmed`
+//!   (산 것으로 센다). `stopped` 는 **트리 종료가 확인된 뒤에만**(`stopped_only_after_tree_exit`). `idle` 은 닫는 사건에서 곧바로 닫힌다.
+//! - **작업자 토큰은 턴 단위** — 턴을 띄울 때 뽑고 그 턴의 트리 종료가 확인될 때 거둔다(`idle` 에는 산 토큰이 없다 · 생성 실패면 곧바로).
 //! - 서버는 작업자에게 키도 표준 입력도 보내지 않는다(stdin = NUL) — 지시는 실행 인자(첫 지시 · resume 턴의 지시)뿐이다.
 
 use std::path::Path;
@@ -36,10 +32,10 @@ pub(crate) enum SpawnVerdict {
     Reap,
 }
 
-/// 동시 · 총 작업자 한도 — 도는 턴 + 예약 < 한도. 잠금 안에서 부른다.
+/// 도는 턴 + 예약 < 한도. 잠금 안에서 부른다.
 pub(super) fn check_worker_slot(slot: &Slot) -> Result<(), OrchError> {
     let l = slot.run.limits;
-    // 검토자는 세지 않는다(통합 설계 3-4 — 검토는 작업자 한도와 따로). `idle` 은 자리를 차지하지 않는다(4-5 — 술어 `turn_may_live`).
+    // 검토자는 작업자 한도와 따로다 · `idle` 은 자리를 차지하지 않는다.
     let live = slot.run.live_workers() as u32 + slot.reserved_workers;
     let total = slot.run.worker_count() as u32 + slot.reserved_workers;
     if live >= l.max_concurrent_workers {
@@ -57,7 +53,7 @@ pub(super) fn check_worker_slot(slot: &Slot) -> Result<(), OrchError> {
     Ok(())
 }
 
-/// 동시 한도만(이어지는 턴 — 총 한도는 Attempt 수라 새 턴은 세지 않는다).
+/// 이어지는 턴은 동시 한도만 — 총 한도는 Attempt 수라 새 턴은 세지 않는다.
 pub(super) fn check_concurrent_slot(slot: &Slot) -> Result<(), OrchError> {
     let l = slot.run.limits;
     let live = slot.run.live_workers() as u32 + slot.reserved_workers;
@@ -70,12 +66,11 @@ pub(super) fn check_concurrent_slot(slot: &Slot) -> Result<(), OrchError> {
     Ok(())
 }
 
-/// Attempt 하나를 `stopping` 으로(턴이 살아 있을 수 있고 아직 중단 중이 아닐 때만) — 올렸으면 `true`(서버 손이 트리를 끝낸다).
+/// 올렸으면 `true`(서버 손이 트리를 끝낸다).
 pub(super) fn mark_stopping(slot: &mut Slot, attempt_id: &str, now: u64, actor: Actor) -> bool {
     let Some(a) = slot.run.attempts.iter_mut().find(|a| a.id == attempt_id) else {
         return false;
     };
-    // 술어 `turn_may_live` — 멈출 것은 도는 턴(프로세스)이다(`idle` 을 닫는 길은 [`close_idle`]).
     if !a.turn_may_live() || matches!(a.state, AttemptState::Stopping | AttemptState::StopUnconfirmed) {
         if a.turn_may_live() {
             a.stop_requested = true;
@@ -89,7 +84,7 @@ pub(super) fn mark_stopping(slot: &mut Slot, attempt_id: &str, now: u64, actor: 
     true
 }
 
-/// `idle` Attempt 를 곧바로 닫는다(4-5 닫는 사건 — 산 프로세스 · 산 토큰이 없다). 닫았으면 `true`.
+/// 산 프로세스 · 산 토큰이 없어 곧바로 닫는다.
 pub(super) fn close_idle(slot: &mut Slot, attempt_id: &str, now: u64, actor: Actor) -> bool {
     let Some(a) = slot.run.attempts.iter_mut().find(|a| a.id == attempt_id) else {
         return false;
@@ -104,7 +99,7 @@ pub(super) fn close_idle(slot: &mut Slot, attempt_id: &str, now: u64, actor: Act
     true
 }
 
-/// 닫는 사건 하나(Attempt 하나) — `idle` 은 곧바로 닫고, 도는 턴은 `stopping`. 서버 손이 멈출 것이면 `true`.
+/// 서버 손이 멈출 것이면 `true`.
 pub(super) fn close_or_stop(slot: &mut Slot, attempt_id: &str, now: u64, actor: Actor) -> bool {
     if close_idle(slot, attempt_id, now, actor) {
         return false;
@@ -112,7 +107,7 @@ pub(super) fn close_or_stop(slot: &mut Slot, attempt_id: &str, now: u64, actor: 
     mark_stopping(slot, attempt_id, now, actor)
 }
 
-/// 이 Run 의 열린 Attempt 를 모두 닫는다(Run [중단] · 실행 한도 — 4-5) — `idle` 은 곧바로, 도는 턴은 `stopping`. 서버 손이 멈출 Attempt id 들.
+/// 서버 손이 멈출 Attempt id 들.
 pub(super) fn mark_all_stopping(slot: &mut Slot, now: u64, actor: Actor) -> Vec<String> {
     let ids: Vec<String> = slot
         .run
@@ -124,8 +119,7 @@ pub(super) fn mark_all_stopping(slot: &mut Slot, now: u64, actor: Actor) -> Vec<
     ids.into_iter().filter(|id| close_or_stop(slot, id, now, actor)).collect()
 }
 
-/// 그 Task 의 열린 작업자(쓰기형)를 닫는다(Task 반려 · 취소 — 4-5 닫는 사건). 도는 턴은 `stopping` 으로 올려 `stop_queue` 에 쌓는다(부른 쪽이
-/// 잠금 밖에서 `drain_stops`). 판정형은 `review::invalidate` 가 맡는다.
+/// 도는 턴은 `stop_queue` 에 쌓는다 — 부른 쪽이 잠금 밖에서 `drain_stops`. 판정형은 `review::invalidate` 가 맡는다.
 pub(super) fn close_task_workers(slot: &mut Slot, task_id: &str, now: u64, actor: Actor) {
     let ids: Vec<String> = slot
         .run
@@ -141,25 +135,23 @@ pub(super) fn close_task_workers(slot: &mut Slot, task_id: &str, now: u64, actor
     }
 }
 
-/// orphaned Attempt 의 잔존 판정 갈래(헤드리스 설계 5절 · D13) — Attempt 의 판(파일 세대 · 실행 방식)마다 다른 함수로 판정하고 **섞지 않는다**.
+/// 잔존 판정은 Attempt 의 판(파일 세대 · 실행 방식)마다 다른 함수로 하고 **섞지 않는다**.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LeftoverBranch {
-    /// v1 · v2 PTY Attempt(`stream` 이 있다) — 떨어진 PTY 세션 + 기록된 PID · CLI 이미지.
+/// 옛 파일의 PTY Attempt(`stream` 이 있다).
     PtySession,
-    /// 헤드리스 턴(3a 의 작업자 · 해결자 · 검토자 · 2단계 검토자) — 턴 잡.
     HeadlessTurn,
 }
 
-/// 이 Attempt 의 잔존 판정 갈래([`Attempt::exec_mode`] 와 같은 가름).
 pub(crate) fn leftover_branch(a: &Attempt) -> LeftoverBranch {
     match a.exec_mode() {
-        // 옛 파일 호환(v1 · v2 PTY 작업자 — 잔존 세션 · PID 판정).
+        // 옛 파일 호환 — 지우면 옛 Run 파일의 잔존 판정이 깨진다.
         ExecMode::Pty => LeftoverBranch::PtySession,
         ExecMode::Headless => LeftoverBranch::HeadlessTurn,
     }
 }
 
-/// OS 에 묻는 손 — 그 pid 가 살아 있고 이미지가 그 CLI 인가(pid 재사용을 피한다).
+/// 이미지까지 본다 — pid 재사용을 피한다.
 fn os_pid_is_cli(pid: u32, cli: WorkerCli) -> bool {
     crate::server::os::pid_alive(pid)
         && crate::server::os::image_path(pid)
@@ -167,12 +159,11 @@ fn os_pid_is_cli(pid: u32, cli: WorkerCli) -> bool {
             .is_some_and(|p| p.contains(cli.as_str()))
 }
 
-/// orphaned Run 의 Attempt 프로세스가 아직 살아 있나. 서버가 다시 떴으니 이 서버의 표에는 그 프로세스가 없다 — OS 에 직접 묻는다.
+/// 이 서버의 표에는 그 프로세스가 없다 — OS 에 직접 묻는다.
 pub(super) fn leftover_process_alive(a: &Attempt) -> bool {
     leftover_alive_with(a, &os_pid_is_cli)
 }
 
-/// [`leftover_process_alive`] 의 몸 — 판마다 갈래를 고르고 OS 손(`pid_is_cli`)은 바꿔 끼울 수 있다(시험).
 pub(crate) fn leftover_alive_with(a: &Attempt, pid_is_cli: &dyn Fn(u32, WorkerCli) -> bool) -> bool {
     match leftover_branch(a) {
         LeftoverBranch::PtySession => pty_leftover_alive(a, pid_is_cli),
@@ -180,22 +171,18 @@ pub(crate) fn leftover_alive_with(a: &Attempt, pid_is_cli: &dyn Fn(u32, WorkerCl
     }
 }
 
-/// v1 · v2 PTY 갈래(옛 길) — 상태가 "턴(세션)이 살아 있을 수 있음"(술어 `turn_may_live` — 서버 재시작 잔존 판정)이고 기록된 pid 가
-/// 그 CLI 로 살아 있을 때.
 fn pty_leftover_alive(a: &Attempt, pid_is_cli: &dyn Fn(u32, WorkerCli) -> bool) -> bool {
     a.turn_may_live() && a.pid.is_some_and(|pid| pid_is_cli(pid, a.cli))
 }
 
-/// 헤드리스 턴 갈래(5절 v3 잡) — 옛 서버의 자기 잡(`KILL_ON_JOB_CLOSE`)이 턴 트리를 끝냈으므로 **기본은 "없음"**. 마지막 턴이 산 상태(`running`
-/// · `stop-unconfirmed`)로 남았을 때만 기록된 PID · 이미지로 한 번 확인한다(잡 밖 자손 — 스토어판 pwsh 등 ③-0). 턴 기록이 없는 2단계 이전
-/// 모양(스트림 없는 검토자의 첫 턴 전)은 상태로 본다.
+/// 옛 서버의 잡(`KILL_ON_JOB_CLOSE`)이 턴 트리를 끝냈으므로 기본은 "없음" — 마지막 턴이 산 상태로 남았을 때만
+/// 기록된 PID · 이미지로 확인한다(잡 밖 자손).
 fn headless_leftover_alive(a: &Attempt, pid_is_cli: &dyn Fn(u32, WorkerCli) -> bool) -> bool {
     let maybe = if a.turns.is_empty() { a.turn_may_live() } else { a.last_turn_may_live() };
     maybe && a.pid.is_some_and(|pid| pid_is_cli(pid, a.cli))
 }
 
-/// 서버 재시작 뒤 orphaned Run 의 **잔존 자원**(설계 C-7) — 살아 있을 수 있던 Attempt 의 프로세스(pid 가 살아 있고 이미지가 그
-/// CLI 인지 — pid 재사용을 피한다) · 남아 있는 worktree. 사람에게 안내만 한다(자동으로 끝내지 않는다).
+/// 사람에게 안내만 한다(자동으로 끝내지 않는다).
 pub(super) fn leftovers_of(run: &Run) -> Vec<Value> {
     let mut out = Vec::new();
     for a in &run.attempts {
@@ -230,15 +217,14 @@ fn attempt_audit(gen: u32, actor: Actor, a: &Attempt) -> OrchestrationAudit {
     }
 }
 
-/// `exit_reason` 의 짧은 글자 — 제어 문자 · 긴 글을 싣지 않는다(영속 파일 · 보드).
+/// 영속 파일 · 보드에 싣는다 — 제어 문자 · 긴 글을 걷는다.
 fn short_reason(s: &str) -> String {
     let one: String = s.chars().filter(|c| !c.is_control()).collect();
     one.chars().take(240).collect()
 }
 
 impl Orchestration {
-/// 조정자 `spawn_worker{role}` — 역할 id 로 지금 맡기기에서 역할을 고르고(쓰기형 = 작업자 · 해결자 · 판정형 = 검토자 — 4-7), 머리말의
-    /// 원자 구간 뒤 서버 손에 맡긴다(비동기). 옛 `cli` 인자는 `bad-args`(조용히 무시하지 않는다 — 3-2a).
+    /// 옛 `cli` 인자는 `bad-args` — 조용히 무시하지 않는다.
     pub(super) fn spawn_worker(&self, run_id: &str, gen: u32, args: Option<&Value>) -> Result<Value, OrchError> {
         if arg(args, "cli").is_some() {
             return Err(OrchError::new(
@@ -253,7 +239,6 @@ impl Orchestration {
                 "role is required — a role id from get_run roles (like r-1a2b3c4d), not worker or reviewer",
             ));
         }
-        // 맡기기를 지금 읽는다(잠금 밖 — 파일 · git).
         let lookup = self.run_inputs(run_id);
         let role = {
             let g = self.lock();
@@ -266,7 +251,6 @@ impl Orchestration {
         }
     }
 
-    /// 쓰기형(작업자 · 해결자)의 첫 턴.
     fn spawn_writer(
         &self,
         run_id: &str,
@@ -282,7 +266,7 @@ impl Orchestration {
         if reuse_of.as_deref().is_some_and(|s| !is_id("att", s)) {
             return Err(bad("reuseWorktreeOf must be an attempt id"));
         }
-        // 이어 쓸 worktree 가 깨끗한지 — git 은 잠금 밖에서 먼저 읽고, 잠금 안에서 나머지 조건(끝났나 · 같은 Task · 아무도 안 쓰나)을 본다.
+        // git 은 잠금 밖에서 먼저 읽고, 나머지 조건은 잠금 안에서 본다.
         let reuse_clean: Option<Result<bool, String>> = match reuse_of.as_deref() {
             None => None,
             Some(of) => {
@@ -295,7 +279,7 @@ impl Orchestration {
                 path.map(|p| (self.probe())(Path::new(&p), None).map(|s| !s.dirty && s.head.is_some()))
             }
         };
-        // 통합 ref 가 있는 Run — 새 Attempt 의 기준은 통합 머리(통합 설계 2-2). git 은 잠금 밖에서 먼저 읽고 잠금 안에서 기대 머리와 견준다.
+        // 새 Attempt 의 기준은 통합 머리 — git 은 잠금 밖에서 먼저 읽고 잠금 안에서 기대 머리와 견준다.
         let int_head = if reuse_of.is_none() { self.read_integration_head(run_id) } else { None };
         let attempt_id = new_id("att").ok_or_else(|| OrchError::new(reason::INTERNAL, "no randomness source"))?;
         let token = crate::token::generate_token().ok_or_else(|| OrchError::new(reason::INTERNAL, "no randomness source"))?;
@@ -311,7 +295,7 @@ impl Orchestration {
             if self.launcher().is_none() {
                 return Err(OrchError::new(reason::SPAWN_UNAVAILABLE, "this server cannot start workers"));
             }
-            // 맡기기 관문(E5 — 맡긴 저장소에서만) → 역할(표에서만 — 3-2a).
+            // 앨범 관문 → 역할(서버 표에서만).
             lookup.gate(&slot.run)?;
             role?;
             let role = lookup.pick_role(&slot.run, &super::tools::req_text(args, "role", 64)?)?;
@@ -321,14 +305,13 @@ impl Orchestration {
             let Some(task) = slot.run.task(&task_id).cloned() else {
                 return Err(OrchError::new(reason::NOT_FOUND, format!("no task {task_id} in this run")));
             };
-            // 술어 `owns_worktree` — Task 의 현재 Attempt 가 자원(worktree · 대화)을 아직 쥐고 있으면 새 작업자를 띄우지 않는다(`idle` 도
-            // 쥔다 — 이어 시키려면 `send_prompt`, 버리려면 `stop_worker`).
+            // `idle` 도 자원을 쥔다 — 이어 시키려면 `send_prompt`, 버리려면 `stop_worker`.
             let current_live = task
                 .current_attempt
                 .as_deref()
                 .and_then(|id| slot.run.attempts.iter().find(|a| a.id == id))
                 .is_some_and(|a| a.owns_worktree());
-            // 충돌한 Task 의 작업자 = 충돌 해결 Attempt(통합 설계 3b · 4-6) — 일반 텍스트 내용 충돌만. 나머지는 사람에게(반려 · 취소).
+            // 충돌 해결 Attempt 는 일반 텍스트 내용 충돌만 — 나머지는 사람에게.
             let resolving = match (task.state, &task.conflict) {
                 (TaskState::Conflict, Some(info)) if super::resolve::resolvable(info) && slot.run.integration.is_some() => {
                     if reuse_of.is_some() {
@@ -361,7 +344,7 @@ impl Orchestration {
                     ),
                 ));
             }
-            // 되돌림 한도(E18 — 반려된 Task 에 쓰기형을 다시 띄우는 순간 · 해결자 · resume 은 세지 않는다).
+            // 되돌림 한도 — 반려된 Task 에 쓰기형을 다시 띄우는 순간만 센다(해결자 · resume 은 세지 않는다).
             if task.state == TaskState::Rejected {
                 lookup.rework_check(&slot.run, &task)?;
             }
@@ -369,27 +352,26 @@ impl Orchestration {
                 None => None,
                 Some(of) => {
                     let r = reuse_worktree(&slot.run, &task_id, of, reuse_clean.clone())?;
-                    // 지우기 · 만들기 예약 중인 자리는 이어 쓰지 않는다(리뷰 F4 — 같은 실제 경로 열쇠).
+                    // 지우기 · 만들기 예약 중인 자리는 이어 쓰지 않는다(같은 실제 경로 열쇠).
                     if slot.wt_busy.contains_key(&super::worktree::wt_key(&r.path)) {
                         return Err(OrchError::new(reason::WORKTREE_IN_USE, "that worktree is being removed right now"));
                     }
                     Some(r)
                 }
             };
-            // 이어 쓰면 기준은 그 worktree 의 것(새로 분기하지 않는다) — 의존 · base 규칙은 새 worktree 에만.
+            // 이어 쓰면 기준은 그 worktree 의 것 — 의존 · base 규칙은 새 worktree 에만.
             let base = match (&reuse, slot.run.integration.is_some()) {
                 (Some(r), _) => Base::Commit(r.base_commit.clone()),
                 (None, true) => {
                     let expected = super::accept::integration_base(&slot.run, &task)?;
                     match int_head {
-                        // 해결 Attempt 의 자리는 충돌을 계산한 그때의 통합 머리(`old`) — 그사이 머리가 또 움직였어도 수락 때 `mergeBase = old`
-                        // 로 다시 3-way 한다(4-6). 외부 변경 검사는 똑같이 한다.
+                        // 해결 Attempt 의 자리는 충돌을 계산한 그때의 통합 머리(`old`) — 수락 때 `mergeBase = old` 로 다시 3-way 한다.
                         Some(Ok(Some(h))) if h == expected => match &resolving {
                             Some(info) => Base::Commit(info.old.clone()),
                             None => Base::Commit(h),
                         },
                         Some(Ok(_)) => {
-                            // 외부 변경(통합 설계 4-5) — 자동 채택하지 않고 보류.
+                            // 외부 변경 — 자동 채택하지 않고 보류.
                             self.hold_diverged(slot, "spawn", now);
                             let h = slot.run.hold.clone();
                             self.after_change(&g, run_id);
@@ -413,7 +395,7 @@ impl Orchestration {
             };
             check_worker_slot(slot)?;
             let cli = role.cli;
-            // Claude 는 서버가 대화 id 를 정한다(`--session-id`), Codex 는 첫 턴의 `thread.started` 가 고정한다(4-4).
+            // Claude 는 서버가 대화 id 를 정한다(`--session-id`), Codex 는 첫 턴의 `thread.started` 가 고정한다.
             let session_id = (cli == WorkerCli::Claude).then(|| uuid.clone());
             slot.run.attempts.push(Attempt {
                 id: attempt_id.clone(),
@@ -422,7 +404,7 @@ impl Orchestration {
                 gen,
                 state: AttemptState::Spawning,
                 stream: None,
-                // 이어 쓰면 처음부터 그 자리를 적는다 — 같은 worktree 를 두 번째 생성이 다시 집지 못하게(한 worktree 한 작성자).
+                // 처음부터 그 자리를 적는다 — 같은 worktree 를 두 번째 생성이 다시 집지 못하게(한 worktree 한 작성자).
                 worktree: reuse.as_ref().map(|r| r.path.clone()),
                 branch: reuse.as_ref().map(|r| r.branch.clone()),
                 base_commit: reuse.as_ref().map(|r| r.base_commit.clone()),
@@ -516,7 +498,6 @@ impl Orchestration {
                 .last()
                 .map(|a| attempt_audit(gen, Actor::Coordinator, a))
                 .unwrap_or_default();
-            // 첫 턴의 작업자 토큰(턴 단위 — 그 턴의 트리 종료 확인 뒤 거둔다).
             g.tokens.push((
                 token,
                 Binding {
@@ -536,8 +517,7 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 조정자 `stop_worker` — running · paused 에서 받는다(멈춤은 줄이는 쪽이라 일시정지 중에도 — 설계 C-7 의 "조율 쓰기 거절" 예외).
-    /// 도는 턴이면 잡을 끝내고 확인 뒤 `stopped`, `idle` 이면 곧바로 닫는다(4-5).
+    /// 멈춤은 줄이는 쪽이라 일시정지 중에도 받는다.
     pub(super) fn stop_worker(&self, run_id: &str, gen: u32, args: Option<&Value>) -> Result<Value, OrchError> {
         let request_id = request_id(args)?;
         let attempt_id = super::tools::req_text(args, "attemptId", 64)?;
@@ -567,7 +547,7 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 사람의 [중단](작업자 하나 — 보드). orphaned 는 읽기 전용(`run-orphaned`). `idle` 은 곧바로 닫는다.
+    /// orphaned 는 읽기 전용(`run-orphaned`).
     pub(crate) fn human_stop_worker(&self, run_id: &str, attempt_id: &str) -> Result<Value, OrchError> {
         let now = self.now();
         let stop = {
@@ -598,7 +578,6 @@ impl Orchestration {
         Ok(json!({ "attemptId": attempt_id, "state": state }))
     }
 
-    /// 서버 손에 멈춤을 맡긴다(잠금 밖).
     pub(super) fn stop_processes(&self, run_id: &str, attempts: &[String]) {
         if attempts.is_empty() {
             return;
@@ -614,9 +593,7 @@ impl Orchestration {
     // 서버 손이 알려 오는 단계
     // -----------------------------------------------------------------------
 
-    /// **효과 직전 확인**(헤드리스 설계 2-4 · 2-6 — 서버 손이 턴 프로세스를 띄우기 바로 전에 부른다): 지금 맡기기를 다시 읽어(잠금 밖 —
-    /// 파일 · git) 블록 · 받아들인 판 · 신원(Run 사본과도 같아야 한다) · 그 Attempt 의 역할(CLI · 종류 사본)을 본다. 어긋나면 거절 낱말 — 서버
-    /// 손은 그 턴을 띄우지 않는다(생성 실패). **블로킹**.
+    /// 효과 직전 확인 — 앨범 관문 · 신원(Run 사본과도 같아야 한다) · 그 Attempt 의 역할을 다시 본다. 어긋나면 서버 손은 그 턴을 띄우지 않는다. 블로킹.
     pub(crate) fn turn_preflight(&self, run_id: &str, attempt_id: &str) -> Result<Option<(super::roles::TurnRole, u32)>, OrchError> {
         let lookup = self.run_inputs(run_id);
         let mut g = self.lock();
@@ -636,7 +613,7 @@ impl Orchestration {
         Ok(fresh)
     }
 
-    /// worktree 가 섰다 — 적고, 계속해도 되는가(그사이 중단됐으면 `false` — 서버 손은 프로세스를 띄우지 않는다).
+    /// 그사이 중단됐으면 `false` — 서버 손은 프로세스를 띄우지 않는다.
     pub(crate) fn attempt_worktree(&self, run_id: &str, attempt_id: &str, path: &str, branch: &str, base: &str) -> bool {
         let now = self.now();
         let mut g = self.lock();
@@ -653,9 +630,7 @@ impl Orchestration {
         go
     }
 
-    /// 턴이 서지 못했다(worktree · MCP 파일 · 실행 파일 · 효과 직전 확인 · 생성) 또는 중단으로 띄우지 않았다 — 프로세스가 없으므로 곧바로 정한다:
-    /// **첫 턴**이면 끝 상태(중단 중이었으면 `stopped`, 아니면 `exited` + 사유 — 반쯤 만든 worktree 는 Attempt 에 남는다), **이어지는 턴**이면
-    /// `idle` 로 돌아간다(아무것도 전달되지 않았다 — `rejected{spawn-failed}` · 턴 기록 `failed:spawn-failed`). 그 턴의 토큰은 곧바로 거둔다.
+    /// 프로세스가 없으므로 곧바로 정한다 — 첫 턴이면 끝 상태(반쯤 만든 worktree 는 남는다), 이어지는 턴이면 `idle`. 그 턴의 토큰은 곧바로 거둔다.
     pub(crate) fn attempt_spawn_failed(&self, run_id: &str, attempt_id: &str, why: &str) {
         let now = self.now();
         let (detail, ended, gen) = {
@@ -664,14 +639,13 @@ impl Orchestration {
             let Some(a) = slot.run.attempts.iter_mut().find(|a| a.id == attempt_id) else {
                 return;
             };
-            // 술어 `turn_may_live` — 생성 실패는 턴(프로세스)의 사건이다(이미 끝났으면 상태는 그대로).
             if !a.turn_may_live() {
-                // 이미 끝 상태여도 작업자 토큰은 거둔다(리뷰 F13 — 생성 실패의 회수를 한 길로).
+                // 이미 끝 상태여도 작업자 토큰은 거둔다(생성 실패의 회수를 한 길로).
                 revoke_worker(&mut g, attempt_id);
                 return;
             }
             let was_stopping = a.state == AttemptState::Stopping || a.stop_requested;
-            // 이어지는 턴 — 첫 턴이 대화를 고정했다(턴 기록이 있다). 아무것도 전달되지 않았으니 `idle` 로(닫히지 않는다).
+            // 이어지는 턴 — 아무것도 전달되지 않았으니 `idle` 로(닫히지 않는다).
             let resume = !a.turns.is_empty() && a.kind == Some(AttemptKind::Write) && !was_stopping;
             let word = short_reason(&format!("spawn-failed: {why}"));
             if resume {
@@ -729,8 +703,7 @@ impl Orchestration {
         }
     }
 
-    /// 턴 프로세스가 섰다 — `running`(첫 턴은 `spawning` 에서, 이어지는 턴은 예약된 `running` 그대로). `blocked` 표지는 새 턴이 서면 지운다.
-    /// 그사이 중단됐으면 [`SpawnVerdict::Reap`] — 서버 손이 곧바로 끝낸다.
+    /// `blocked` 표지는 새 턴이 서면 지운다. 그사이 중단됐으면 [`SpawnVerdict::Reap`].
     pub(crate) fn attempt_spawned(&self, run_id: &str, attempt_id: &str, pid: Option<u32>) -> SpawnVerdict {
         let now = self.now();
         let mut g = self.lock();
@@ -750,7 +723,6 @@ impl Orchestration {
             a.exit_reason = None;
             SpawnVerdict::Keep
         } else {
-            // 술어 `turn_may_live` — 방금 선 프로세스를 거둘 것이므로 끝 상태가 아니면 중단 중으로.
             if a.turn_may_live() && a.state != AttemptState::Stopping {
                 a.state = AttemptState::Stopping;
             }
@@ -763,9 +735,8 @@ impl Orchestration {
         verdict
     }
 
-    /// 헤드리스 턴 기록(서버 손이 턴 시작(`ended` 거짓) · 끝(참)에 부른다). 시각은 이 시계가 찍는다(시작 = 처음 본 때 · 끝 = 지금). 같은 `n`
-    /// 이면 고쳐 쓰고, 아니면 더한다(최근 [`TURNS_KEPT`] 개). 끝난 턴이 `conversation-mismatch` 면 대화가 끊긴 것이다(D6 — 더는 resume 하지
-    /// 않는다). 판정형의 실패 턴은 `exit_reason` 을 턴 사유로 채운다(보드 · 알림 — 낱말뿐). 프롬프트 · 본문 · 토큰은 이 기록에 없다(4-8 · D11).
+    /// 같은 `n` 이면 고쳐 쓴다. 끝난 턴이 `conversation-mismatch` 면 대화가 끊긴 것이다(더는 resume 하지 않는다).
+    /// 프롬프트 · 본문 · 토큰은 이 기록에 없다.
     pub(crate) fn attempt_turn(&self, run_id: &str, attempt_id: &str, mut rec: TurnRecord, ended: bool) {
         let now = self.now();
         let (event, detail) = {
@@ -780,7 +751,6 @@ impl Orchestration {
                 a.conversation_broken = true;
             }
             if !ended || rec.outcome == "ok" {
-                // 시작 · 성공 — 사유 없음.
             } else if a.exit_reason.is_none() {
                 let label = match &rec.reason {
                     Some(r) if rec.outcome == "failed" => format!("turn failed:{r}"),
@@ -820,11 +790,8 @@ impl Orchestration {
         self.audit(event, run_id, detail);
     }
 
-    /// **도는 턴의 진행 칸**(F4 — 서버 손이 턴 도중 Attempt 마다 2초에 한 번까지 부른다 · `turn::ProgressGate`). 아직 끝나지 않은 그 턴(`n` ·
-    /// `ended_at` 없음)의 도구 수 · 거절 · 마지막 도구 · 모델 · CLI 판만 고치고, 바뀌었으면 이벤트 [`super::store::EVT_PROGRESS`] 하나를 낸다.
-    ///
-    /// **seq 를 올리지 않고 · 쓰기 줄에 넣지 않고 · `wait_run` 을 깨우지 않는다** — 조정자가 진행마다 깨지 않게, 2초마다 Run 파일을 다시 쓰지
-    /// 않게. 메모리의 칸은 다음 진짜 사건의 스냅숏에 함께 실려도 되고(낱말 · 수만), 최종값은 턴 기록 끝([`Self::attempt_turn`])이 쓴다. 감사 줄 없음.
+    /// 도는 턴의 진행 칸 — seq 를 올리지 않고 · 쓰기 줄에 넣지 않고 · `wait_run` 을 깨우지 않는다(조정자가 진행마다 깨지 않게).
+    /// 최종값은 턴 기록 끝([`Self::attempt_turn`])이 쓴다. 감사 줄 없음.
     pub(crate) fn attempt_turn_progress(&self, run_id: &str, attempt_id: &str, n: u32, p: &super::turn::TurnProgress) {
         let g = &mut *self.lock();
         let Some(slot) = g.runs.get_mut(run_id) else { return };
@@ -848,9 +815,7 @@ impl Orchestration {
         (self.emit)(super::store::EVT_PROGRESS, json!({ "runId": run_id, "attemptId": attempt_id, "turn": n }));
     }
 
-    /// 대화를 고정한다(Codex 첫 턴 — 서버가 띄운 프로세스의 stdout `thread.started` 가 알린 id · 4-4 E8). 이미 고정돼 있으면 같아야 한다 —
-    /// 다르면 대화가 끊긴 것이다(D6). Claude 는 서버가 정한 `--session-id` 로 이미 고정돼 있다. 서버 손은 이것을 **턴 도중**(init 확인을 지난
-    /// 순간 — F4) 한 번, 턴 끝에 한 번 부른다(두 번째는 같은 값 확인). seq 를 올리지 않는다(`wait_run` 조건에 닿지 않는다 — 영속 · 이벤트만).
+    /// 이미 고정돼 있으면 같아야 한다 — 다르면 대화가 끊긴 것이다. seq 를 올리지 않는다(`wait_run` 조건에 닿지 않는다).
     pub(crate) fn attempt_conversation(&self, run_id: &str, attempt_id: &str, conversation: &str) {
         let mut g = self.lock();
         let Some(slot) = g.runs.get_mut(run_id) else { return };
@@ -865,13 +830,8 @@ impl Orchestration {
         self.after_change(&g, run_id);
     }
 
-    /// 턴 프로세스가 끝났다. `confirmed` = 트리(잡 · 파이프 EOF)까지 사라졌다. 헤드리스(3a):
-    /// - 확인 안 됨 → `stop-unconfirmed`(산 것으로 센다 · 토큰 유지 — 서버 시계가 다시 본다).
-    /// - 확인됨 + 중단을 청했음 → `stopped`(닫힘).
-    /// - 확인됨 + 자연 끝 → 쓰기형: 그 Attempt 의 보고가 있으면 `reported`(닫힘) · 없으면 `idle`(열림 — `blocked` 표지가 있을 수 있다).
-    ///   판정형: 판정이 있으면 `reported` · 없으면 `exited`(종결 · 활성 검토 비움 — `reviewer-exited`).
-    ///
-    /// 확인되면 그 턴의 작업자 토큰을 거둔다(턴 단위). PTY(옛 파일)는 옛 길 그대로.
+    /// `confirmed` = 트리(잡 · 파이프 EOF)까지 사라졌다 — 확인 안 되면 `stop-unconfirmed`(산 것으로 센다 · 토큰 유지).
+    /// 확인되면 그 턴의 작업자 토큰을 거둔다.
     pub(crate) fn attempt_process_exited(&self, run_id: &str, attempt_id: &str, confirmed: bool, exit_code: Option<u32>) {
         let now = self.now();
         let (detail, event, ended, gen) = {
@@ -885,7 +845,6 @@ impl Orchestration {
             let has_report = slot.run.reports.iter().any(|r| r.attempt_id == attempt_id);
             let has_verdict = slot.run.review_reports.iter().any(|r| r.attempt_id == attempt_id);
             let reported = a.state == AttemptState::Reported || has_report || has_verdict;
-            // 술어 `turn_may_live` — 종료 감시는 턴(프로세스) 수명의 사건이다(이미 끝 상태면 무시).
             let live = a.turn_may_live();
             if !live {
                 return;
@@ -940,9 +899,9 @@ impl Orchestration {
             let gen = slot.run.gen;
             let detail = attempt_audit(gen, Actor::Server, a);
             slot.run.bump(now, Actor::Server, event, Some(attempt_id), state.as_str());
-            // 판정 없이 끝난 검토자는 Task 의 활성 검토 자리를 비운다(5단계 — 다음 검토가 막히지 않게).
+            // 판정 없이 끝난 검토자는 활성 검토 자리를 비운다 — 다음 검토가 막히지 않게.
             super::review::on_reviewer_ended(slot, attempt_id, now);
-            // 감독 사건(리뷰 F11) — 미확인 · 보고 없이 끝남은 사람이 볼 일이다(보고한 작업자의 정상 종료 · `blocked` 는 보고 때 이미 알렸다).
+            // 미확인 · 보고 없이 끝남은 사람이 볼 일이다.
             match state {
                 AttemptState::StopUnconfirmed | AttemptState::ExitUnconfirmed => {
                     self.raise(slot, "exit-unconfirmed", Some(attempt_id), Some(state.as_str()))
@@ -959,7 +918,6 @@ impl Orchestration {
                 self.raise(slot, "run-ended", None, Some(RunState::Stopped.as_str()));
             }
             if !unconfirmed {
-                // 턴 단위 토큰(D9) — 그 턴의 트리 종료가 확인됐다.
                 revoke_worker(&mut g, attempt_id);
             }
             if ended {
@@ -974,8 +932,7 @@ impl Orchestration {
         }
     }
 
-    /// 종료 미확인 Attempt 를 다시 본다(서버 시계) — `stop-unconfirmed` · (옛) `exit-unconfirmed`, 그리고 프로세스가 이미 끝났는데 `stopping`
-    /// 으로 남은 것(미확인 자연 종료 뒤 사람이 중단을 눌렀다). 트리가 사라졌으면 그 판정을 마저 한다. 바뀐 수.
+    /// 프로세스가 이미 끝났는데 `stopping` 으로 남은 것도 본다(미확인 자연 종료 뒤 사람이 중단을 눌렀다). 바뀐 수.
     pub(crate) fn recheck_unconfirmed(&self) -> usize {
         let Some(l) = self.launcher() else { return 0 };
         let list: Vec<(String, String)> = {
@@ -1004,14 +961,13 @@ impl Orchestration {
         n
     }
 
-    /// worktree op 층이 쓰는 Run 의 저장소 · worktree 자리(살아 있든 orphaned 든 — 사람의 정리는 orphaned 에도 된다).
+    /// 사람의 정리는 orphaned 에도 된다.
     pub(crate) fn run_paths(&self, run_id: &str) -> Result<(String, String), OrchError> {
         let g = self.lock();
         let s = g.runs.get(run_id).ok_or_else(super::store::not_found_run)?;
         Ok((s.run.repo.clone(), s.run.worktree_dir.clone()))
     }
 
-    /// 이 worktree 를 지금 쓰는(자원을 쥔) Attempt 가 있나(시험 — 지우기는 [`claim_worktree`] 가 같은 판정을 쓴다).
     #[cfg(test)]
     pub(crate) fn worktree_in_use(&self, run_id: &str, path: &str) -> bool {
         let want = super::worktree::wt_key(path);
@@ -1019,8 +975,7 @@ impl Orchestration {
         g.runs.get(run_id).is_some_and(|s| worktree_used(s, &want))
     }
 
-    /// 사람의 worktree 지우기(GUI op — `ops::wt_remove`) 앞 — 같은 실제 경로 열쇠로 "쓰는 중" 과 다른 예약을 보고 `removing` 을 세운다
-    /// (리뷰 F4). 돌려준 열쇠로 [`Orchestration::end_worktree_claim`].
+    /// 같은 실제 경로 열쇠로 "쓰는 중" 과 다른 예약을 보고 `removing` 을 세운다. 돌려준 열쇠로 [`Orchestration::end_worktree_claim`].
     pub(crate) fn begin_worktree_removal(&self, run_id: &str, path: &str) -> Result<String, OrchError> {
         let key = super::worktree::wt_key(path);
         let mut g = self.lock();
@@ -1029,17 +984,12 @@ impl Orchestration {
         Ok(key)
     }
 
-    /// worktree 자리 예약을 푼다.
     pub(crate) fn end_worktree_claim(&self, run_id: &str, key: &str) {
         if let Some(slot) = self.lock().runs.get_mut(run_id) {
             slot.wt_busy.remove(key);
         }
     }
 
-    // (3차 6단계) Attempt worktree 목록(옛 op `orchestration_wt_list` · 조정자 `list_worktrees`)은 걷었다 — 보드는 Run 상세의 Attempt 칸을,
-    // [정리]는 `cleanup_preview` 를 본다.
-
-    /// 사람의 worktree 지우기 뒤 — Attempt 의 worktree 칸을 비운다(사건 하나).
     pub(crate) fn note_worktree_removed(&self, run_id: &str, path: &str) {
         let now = self.now();
         let want = super::worktree::wt_key(path);
@@ -1069,18 +1019,17 @@ impl Orchestration {
     }
 }
 
-/// 이 worktree 열쇠(`worktree::wt_key`)를 지금 쓰는 Attempt 가 있나. orphaned Run(서버 재시작 뒤)의 Attempt 상태는 옛 서버의 마지막
-/// 기록이라 그 프로세스가 **실제로** 살아 있을 때만 쓰는 중으로 본다(리뷰 F12 — 영속 상태와 지금의 잔존 프로세스를 나눈다).
+/// orphaned Run 의 Attempt 상태는 옛 서버의 마지막 기록이라 그 프로세스가 실제로 살아 있을 때만 쓰는 중으로 본다.
 pub(super) fn worktree_used(slot: &Slot, key: &str) -> bool {
     let orphaned = slot.run.state == RunState::Orphaned;
     slot.run.attempts.iter().any(|a| {
-        // 술어 `owns_worktree`(4-5 표 — 사람 [정리] 거절: `idle` 도 자기 worktree 를 쥔다). orphaned 는 판마다 갈린 잔존 판정.
+        // `idle` 도 자기 worktree 를 쥔다.
         let may_live = if orphaned { leftover_process_alive(a) } else { a.owns_worktree() };
         may_live && a.worktree.as_deref().is_some_and(|w| super::worktree::wt_key(w) == key)
     })
 }
 
-/// worktree 자리 예약(리뷰 F4) — 쓰는 중이거나 다른 지우기 · 만들기가 예약했으면 `worktree-in-use`. 잠금 안에서 부른다.
+/// 잠금 안에서 부른다.
 pub(super) fn claim_worktree(slot: &mut Slot, key: &str, what: &'static str) -> Result<(), OrchError> {
     if worktree_used(slot, key) {
         return Err(OrchError::new(
@@ -1107,10 +1056,8 @@ fn run_ended_detail(gen: u32) -> OrchestrationAudit {
     }
 }
 
-/// 기준 고르기(설계 B 의존성 규칙 · 4단계) — `dependsOn` 이 전부 accepted 여야 한다(`dependency-not-accepted`).
-/// - 의존 없음: main(`base` 는 `"main"` 만 — 선행 Task id 는 거절).
-/// - 의존 **하나**: 그 선행의 **유효한** `AcceptedArtifact.commitOid`(거둔 수락은 아니다). `base` 인자와 어긋나도 **의존이 이긴다**.
-/// - 의존 **여럿**: 자동 분기하지 않고 `needs-merge` — 사람이 병합한 뒤 조정자가 `base: "main"` 을 줄 때만 main 에서(보드가 안내).
+/// `dependsOn` 이 전부 accepted 여야 한다. 의존 하나면 그 선행의 유효한 수락 커밋(`base` 인자와 어긋나도 의존이 이긴다),
+/// 여럿이면 자동 분기하지 않고 `needs-merge`.
 fn resolve_base(run: &Run, task: &Task, base: Option<&str>) -> Result<Base, OrchError> {
     for d in &task.depends_on {
         if run.task(d).map(|t| t.state) != Some(TaskState::Accepted) {
@@ -1148,9 +1095,7 @@ fn resolve_base(run: &Run, task: &Task, base: Option<&str>) -> Result<Base, Orch
     }
 }
 
-/// 이어 쓸 worktree(`spawn_worker{reuseWorktreeOf}`) — **같은 Task 의 앞 Attempt** 이고, 그 Attempt 가 **닫혔고**(자원을 놓았다 — 아니면
-/// `worktree-in-use` · `idle` 은 쥐고 있다), worktree 가 남아 있고, 그 worktree 를 쥔 Attempt 가 없고, **깨끗할 때만**(미커밋 없음 —
-/// `worktree-dirty`). `clean` 은 잠금 밖에서 읽은 git 결과(없으면 worktree 가 없는 것).
+/// 같은 Task 의 앞 Attempt 이고 · 닫혔고 · 그 worktree 를 쥔 Attempt 가 없고 · 깨끗할 때만. `clean` 은 잠금 밖에서 읽은 git 결과.
 fn reuse_worktree(run: &Run, task_id: &str, of: &str, clean: Option<Result<bool, String>>) -> Result<spawn::Reuse, OrchError> {
     let prev = run
         .attempts
@@ -1160,7 +1105,6 @@ fn reuse_worktree(run: &Run, task_id: &str, of: &str, clean: Option<Result<bool,
     if prev.task_id != task_id || prev.is_reviewer() {
         return Err(bad("reuseWorktreeOf must be an earlier worker attempt of the same task"));
     }
-    // 술어 `owns_worktree`(4-5 표 — `reuseWorktreeOf` 는 소유자 없는 깨끗한 worktree 만): 앞 Attempt 가 아직 쥐고 있으면 안 된다.
     if prev.owns_worktree() {
         return Err(OrchError::new(
             reason::WORKTREE_IN_USE,
@@ -1171,7 +1115,6 @@ fn reuse_worktree(run: &Run, task_id: &str, of: &str, clean: Option<Result<bool,
         return Err(OrchError::new(reason::NOT_FOUND, format!("attempt {of} has no worktree to reuse")));
     };
     let want = super::worktree::wt_key(&path);
-    // 같은 술어 `owns_worktree` — 그 worktree 를 쥔 다른 Attempt 도 없어야 한다.
     if run.attempts.iter().any(|a| {
         a.owns_worktree() && a.worktree.as_deref().is_some_and(|w| super::worktree::wt_key(w) == want)
     }) {
@@ -1201,8 +1144,7 @@ fn reuse_worktree(run: &Run, task_id: &str, of: &str, clean: Option<Result<bool,
 
 #[cfg(test)]
 impl Orchestration {
-    /// 시험(서버 손 — `server::workers`) — Run 하나 · Task 하나 · Claude 작업자 하나를 세운다(꽂힌 서버 손에 맡긴다). 맡기기는 시험용 역할
-    /// 표(`super::test_album`)로 꽂는다. Run id.
+    /// 시험 — Run 하나 · Task 하나 · Claude 작업자 하나를 세운다.
     pub(crate) fn test_spawn_one(&self) -> String {
         super::test_album::delegate_all(self);
         let run = self

@@ -1,5 +1,4 @@
-//! 세션 서버 상태·전역 등록 해제 이관. 현재·옛 이름 중 이 인스턴스 것만 걷는다.
-//! 새 전역 등록은 만들지 않으며 블로킹 I/O·CLI 스폰은 블로킹 풀에서만 돈다.
+//! 세션 서버 상태 · 전역 등록 해제 이관. 현재·옛 이름 중 이 인스턴스 것만 걷고, 새 전역 등록은 만들지 않는다.
 
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
@@ -7,7 +6,7 @@ use tauri::{Emitter, Manager};
 use crate::i18n::tr;
 use super::*;
 
-/// 세션 서버의 MCP 좌표(③-3c — 주인은 서버, `crate::server::ai_proxy::mcp_coords`). 서버에 닿지 못하면 `running: false`.
+/// 서버에 닿지 못하면 `running: false`.
 #[tauri::command]
 pub async fn mcp_status() -> Result<McpStatus, ()> {
     let coords = crate::server::ai_proxy::mcp_coords().await;
@@ -26,7 +25,7 @@ fn claude_user_config_path() -> Option<PathBuf> {
     }
 }
 
-/// 토큰이 있는 JSON도 이름만 꺼낸다. 파서 오류·파일 내용은 밖으로 내보내지 않는다.
+/// 토큰이 있는 JSON 이라 이름만 꺼낸다 — 파서 오류·파일 내용은 밖으로 내보내지 않는다.
 fn user_server_names(text: &str, names: &[&str]) -> Vec<String> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
         return Vec::new();
@@ -37,7 +36,6 @@ fn user_server_names(text: &str, names: &[&str]) -> Vec<String> {
     names.iter().filter(|name| servers.contains_key(**name)).map(|name| (*name).to_owned()).collect()
 }
 
-/// 기존 해제 경로 — Claude는 사용자 범위를 지정하고 Codex는 표만 원자적으로 걷는다.
 fn unregister_now(adapter: &CliAdapter, name: &str) -> bool {
     match adapter.remover {
         Remover::Cli { remove_post } => adapter.command()
@@ -48,10 +46,10 @@ fn unregister_now(adapter: &CliAdapter, name: &str) -> bool {
     }
 }
 
-/// 기존 우편함 이벤트 이름을 유지해 늦게 뜬 창도 결과를 한 번 받는다.
+/// 늦게 뜬 창도 결과를 한 번 받는다(`McpState` 우편함).
 pub const REREGISTERED_EVENT: &str = "mcp-reregistered";
 
-/// 서버가 못 떠도 이전 전역 등록은 해제한다. 없는 항목·다른 인스턴스 이름은 쓰지 않는다.
+/// 없는 항목·다른 인스턴스 이름은 건드리지 않는다.
 pub fn spawn_unregister_migration(app: tauri::AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         let names: Vec<&str> = std::iter::once(MCP_NAME).chain(LEGACY_MCP_NAMES.iter().copied()).collect();
@@ -82,7 +80,7 @@ pub fn spawn_unregister_migration(app: tauri::AppHandle) {
     });
 }
 
-/// 이관 알림을 **가져간다**(가져가면 비워진다 — 토스트가 두 번 뜨지 않게).
+/// 이관 알림을 가져간다(가져가면 비워진다 — 토스트가 두 번 뜨지 않게).
 ///
 /// **동기로 남는다** (docs/conventions.md 의 예외): `Mutex<Option<String>>` 에서 `take()`
 /// 한 번이다. 무거운 일(`claude mcp remove`)은 [`spawn_unregister_migration`] 이 블로킹 풀에서 한다.
@@ -97,7 +95,7 @@ mod tests {
 
     #[test]
     fn migration_reads_only_user_names_for_this_instance() {
-        // 옛 이름 후보는 지금 비어 있다(2026-10-22 2차) — 기계는 가짜 옛 이름(`old-sessions*`)으로 잰다.
+        // 옛 이름 후보는 지금 비어 있다 — 기계는 가짜 옛 이름(`old-sessions*`)으로 잰다.
         let text = r#"{"mcpServers":{"aynx-sessions":{},"old-sessions":{},"aynx-sessions-dev":{},"old-sessions-dev":{},"aynx":{},"other":{}},
             "projects":{"/work":{"mcpServers":{"old-sessions":{}}}}}"#;
         for dev in [false, true] {

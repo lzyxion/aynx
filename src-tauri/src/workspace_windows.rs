@@ -86,15 +86,7 @@ pub async fn focus_window(app: AppHandle, label: String) -> Result<(), String> {
     window.set_focus().map_err(|e| e.to_string())
 }
 
-/// **주 창이 떠난다**(`quitAll` 의 끝 — 창마다 세션을 체크포인트와 함께 놓은 뒤). `mode`:
-///
-/// - `null`(주 창 X) — `[app] tray_on_close`(기본 켬)이고 트레이가 서 있으면 **창만 모두 닫고 트레이에 남는다**(③-4 — `tray`),
-///   아니면 GUI 를 끝낸다.
-/// - `"exit"`(트레이 [GUI 종료]) — GUI 를 끝낸다.
-/// - `"endSessions"`(트레이 [모든 세션 종료] — 확인은 트레이가 이미 받았다) — 세션을 모두 닫고 서버와 GUI 를 끝낸다.
-///
-/// 어느 쪽이든 GUI 를 끝내거나 트레이로 가는 길은 로컬·SSH 세션을 닫지 않는다(창 파괴 거둠이 서버에 `close_window` 를 보내지
-/// 않는다 — `proxy::QUITTING`). 연결이 끊기면 서버가 이 GUI 의 임대를 풀고 세션은 산다(다음에 켜면 복원이 다시 붙는다).
+/// `quitAll` 의 끝(창마다 세션을 놓은 뒤). `mode` 글자는 프런트와 맞춘 값이다. `endSessions` 밖의 길은 세션을 닫지 않는다(`proxy::QUITTING`).
 #[tauri::command]
 pub async fn workspace_exit_app(
     app: AppHandle,
@@ -109,7 +101,7 @@ pub async fn workspace_exit_app(
     match mode.as_deref() {
         Some("endSessions") => crate::tray::end_all_and_exit(&app).await,
         Some("exit") => crate::tray::exit_gui(&app),
-        // 끝내기 모달의 [트레이로 숨기기](2026-10-28) — 설정 `tray_on_close` 와 상관없이 트레이에 남는다(트레이가 없으면 GUI 종료).
+        // 설정 `tray_on_close` 와 상관없이 트레이에 남는다.
         Some("tray") => {
             if crate::tray::active(&app) {
                 crate::tray::leave_to_tray(&app);

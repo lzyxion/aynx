@@ -27,7 +27,7 @@
   import VerifyFields from "../VerifyFields.svelte";
 
   import type { Snippet } from "svelte";
-  /** `crumb` — 판의 경로 줄(원형 ← · 라이브러리 › 새 앨범). 목업대로 오른쪽 구성 카드 맨 위에 그린다(구성 칸의 `disabled` 밖 — 시작 중에도 돌아갈 수 있게). */
+  /** 구성 칸의 `disabled` 밖에 그린다 — 시작 중에도 돌아갈 수 있게 */
   let { tabId, visible, crumb }: { tabId: string; visible: boolean; crumb?: Snippet } = $props();
   const seed = untrack(() => albumScreens[tabId]);
   const fork = seed?.fork;
@@ -44,9 +44,7 @@
   let loading = $state(false);
   let ready = $state(false);
   let error = $state<string | null>(null);
-  /** 저장소 기본값에 지난 구성(멤버)이 있었다 — 2절 설명 줄이 그 사실을 말한다 */
   let fromLast = $state(false);
-  /** 고른 프로듀서 카드의 모델 · 강도 칸(카드 부제를 누르면 펼친다) */
   let tuneOpen = $state(false);
   let addingArtist = $state(false);
   let disposed = false;
@@ -59,7 +57,6 @@
   const risk = $derived(albumRiskNeeded(draft));
   const canSend = $derived(ready && !loading && !busy && albumDraftValid(draft, artists.list) && clis.some((c) => c.id === draft.cli));
   const repoName = $derived(repoProjects.find((p) => p.path === draft.repo)?.name ?? draft.repo.split(/[\\/]/).filter(Boolean).pop() ?? "");
-  /** 표지 = 들인 아티스트 얼굴 둘을 흐리게 겹친다(아직 앨범이 아니다) */
   const coverFaces = $derived(draft.members.map((m) => artists.list.find((a) => a.id === m.artist)).filter((a) => !!a).slice(0, 2));
   const cliSub = (id: string) => draft.cli === id ? [draft.model ? modelLabel(draft.model) : t("orch.new.cliDefault"), effortLabel(draft.effort)].filter(Boolean).join(" · ") : t("orch.new.cliDefault");
 
@@ -67,7 +64,6 @@
   $effect(() => {
     const projects = localProjects();
     let alive = true;
-    // 프로젝트 목록에는 일반 폴더도 있다. git 저장소만 보이고 최근 앨범의 저장소를 앞세운다.
     void Promise.all([
       Promise.all(projects.map(async (project) => ({ project, status: await repoStatusOf(null, project.path) }))),
       runSnapshot().catch(() => []),
@@ -113,7 +109,6 @@
   }
   function edited() { attempt.edited(); }
   function changed() { edited(); draft.riskConfirmed = false; }
-  /** 카드를 고르면 그 CLI 로 바꾸고, 이미 고른 카드를 다시 누르면 모델 · 강도 칸을 여닫는다 */
   function pickCli(cli: RoleCli) {
     if (draft.cli === cli) { tuneOpen = !tuneOpen; return; }
     draft.cli = cli; draft.model = ""; draft.effort = ""; changed();
@@ -202,7 +197,6 @@
         </div>
         <AutoMergeField tag="new" enabled={!!draft.verify.command.trim()} bind:checked={draft.autoMerge} onchange={changed} />
       </AlbumCard>
-      <!-- 4절 한도 · 기타 — 접지 않는다(목업 V3FoldA): 작은 숫자 칸 격자가 늘 보이고 그 자리에서 고친다(요약 줄 · 펼치기 없음) -->
       <AlbumCard num={4} title={t("orch.new.limitsOther")} data-new-limits-section>
         <div class="limits">
           {#each ALBUM_LIMITS as l}<label>{t(l.label)}<input class="num-input" type="number" min="1" max={l.max} data-new-limit={l.key} bind:value={draft.limits[l.key]} /></label>{/each}
@@ -224,7 +218,7 @@
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   p { margin: 0; color: var(--fg-2); line-height: 1.6; overflow-wrap: anywhere; font-size: var(--t-sm); }
 
-  /* ── 왼쪽 프로듀서 칸(목업: 머리 · 빈 가운데 · 아래쪽 안내와 CLI 카드 · 채팅 입력 알약) */
+  /* ── 왼쪽 프로듀서 칸 */
   .producer { display: flex; flex-direction: column; background: var(--surface-raised); overflow: hidden; }
   .producer-head { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: var(--t-sm); }
   .producer-head b { font-size: var(--t-md); }
@@ -265,7 +259,7 @@
   .send:disabled { background: var(--control-bg); color: var(--fg-3); cursor: default; }
   .sending { margin-top: 6px; padding-left: 16px; font-size: var(--t-xs); color: var(--fg-3); }
 
-  /* ── 오른쪽 구성 판(목업: 점선 표지 · ALBUM · 큰 제목 자리 · 번호 카드 넷) */
+  /* ── 오른쪽 구성 판 */
   .config-col { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-radius: var(--radius-surface); background: var(--bg-panel); overflow: hidden; }
   .config { flex: 1; min-height: 0; overflow: auto; padding: 14px 28px 20px; border-radius: 0; background: transparent; }
   .album-title { display: flex; align-items: center; gap: 20px; padding: 4px 0 16px; }
@@ -306,7 +300,6 @@
   .seg button:hover:not(:disabled) { background: var(--control-ghost-hover); }
   .seg button[aria-pressed="true"] { background: var(--control-sel-bg); color: var(--control-sel-fg); }
   .seg button:disabled { cursor: default; opacity: .5; }
-  /* 4절 — 칸마다 이름(왼쪽 · 줄임) + 작은 숫자 칸(오른쪽). 넓으면 셋 · 넷씩, 좁으면 하나씩 */
   .limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 14px; }
   .limits label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: var(--t-xs); color: var(--fg-2); }
   .num-input { box-sizing: border-box; flex: 0 0 auto; width: 64px; height: var(--field-height); padding: 0 8px; border: 1px solid transparent; border-radius: var(--field-radius); background: var(--field-bg); box-shadow: var(--glass-ctl-edge, none); color: var(--fg-1); font: inherit; font-size: var(--t-sm); font-weight: 700; text-align: center; outline: none; }

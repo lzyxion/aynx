@@ -1,4 +1,3 @@
-// 앨범 초안과 아티스트 편집이 공유하는 입력값.
 import type { Key } from "$lib/i18n/keys";
 const MODEL_MAX = 64;
 export type RoleCli = "claude" | "codex";
@@ -11,13 +10,13 @@ export const LIMITS: readonly { key: LimitKey; default: number; max: number; lab
   { key: "maxReviews", default: 6, max: 20, label: "orch.config.limit.reviews" },
 ];
 
-/** CLI 별 추론 강도(빈 값 = 에이전트 기본값) — Claude `--effort`, Codex `model_reasoning_effort` */
+/** 빈 값 = 에이전트 기본값 — Claude `--effort`, Codex `model_reasoning_effort` */
 export const EFFORTS: Record<RoleCli, readonly string[]> = {
   claude: ["", "low", "medium", "high", "xhigh", "max"],
   codex: ["", "low", "medium", "high", "xhigh"],
 };
 
-/** 모델 이름 제안 — **설치 계정에서 실측된 것만**(Claude 별칭 — 등급 순 `model-order.ts` · 2.1.322 · Codex 는 빈 값 = 에이전트 기본값) */
+/** 설치 계정에서 실측된 것만 — Claude 별칭은 등급 순(`model-order.ts`) */
 export const MODEL_SUGGESTIONS: Record<RoleCli, readonly string[]> = {
   claude: ["fable", "opus", "sonnet", "haiku"],
   codex: [],
@@ -34,12 +33,6 @@ export function effortOk(cli: RoleCli, s: string): boolean {
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
-/** Rust `worktree::comparable` 와 같은 비교 글자 — 구분자 `/` · 끝 구분자 떼기 · Windows 꼴이면 소문자 */
 export function cliShort(cli: RoleCli | null): string {
   return cli === "codex" ? "Codex" : cli === "claude" ? "Claude" : "?";
 }
-
-/**
- * 역할의 "에이전트 · 모델 · 강도" 칸에서 **에이전트를 뺀 나머지** — 좁은 자리는 에이전트를 로고(`AgentLogo`)로 그리고
- * 이 글자를 뒤에 붙인다. 모델이 비면 `defaultLabel`(기본값) · 강도는 있을 때만.
- */

@@ -4,33 +4,10 @@
   import { closeNote, openNote } from "$lib/settings/note-popover.svelte.js";
 
   /**
-   * 설정의 ⓘ 설명을 그리는 **팝오버 한 벌** (docs/log/2026-09-28-settings-note-popover.md).
-   *
-   * 호스트 폼(`HostForm.svelte`)도 제 모달 뿌리에 한 벌을 세운다 — 규칙은 같고 "설정 화면" 을
-   * "호스트 폼 모달" 로 읽으면 된다(docs/log/2026-09-28-hostform-note-popover.md). 그 폼은
-   * `{#if}` 로 통째로 뜨고 지므로 `active` 는 늘 참이고, 닫힘은 폼 쪽 `$effect` 가 맡는다.
-   *
-   * `SettingsModal` 의 뿌리(`.settings-view`)에 하나 선다. 무엇을 그릴지는 모듈 칸
-   * (`note-popover.svelte.ts`)이 쥐고, 이 컴포넌트는 **그 ⓘ 가 자기 설정 화면 안에 있을 때만**
-   * 그린다 — 설정이 독과 고정 타일에 둘 떠 있어도 팝오버는 한 벌이다.
-   *
-   * ## 자리 — `position: fixed` · 잘리지 않는다
-   *
-   * 설정 본문(`.settings-panel`)은 `overflow-y: auto`, 독은 `overflow: hidden` 이라 `absolute`
-   * 면 잘린다. 고르개(`Dropdown`)와 같은 길로 화면 좌표에 앉힌다 — 독은 여닫이가 끝나면
-   * `transform` 을 남기지 않으므로 `fixed` 의 기준 상자는 창이다(`Dock.svelte` 의 여닫이 주석).
-   * `document.body` 포털은 쓰지 않는다(Svelte 5 가 블록을 걷을 때 옮긴 노드의 형제를 끌고
-   * 갈 수 있다 — `UsageHoverCard` 머리말).
-   *
-   * 두 걸음이다: 투명하게 그려 높이를 재고, `placeTooltip`(아래가 기본 · 모자라면 위로
-   * 뒤집기 · 가로는 창 안으로 민다)으로 자리를 잡은 뒤 보인다. 폭은 `min(설정 화면 안쪽 폭,
-   * 340px)`, 높이는 260px 을 넘으면 팝오버 자신이 스크롤한다.
-   *
-   * ## 닫히는 길
-   *
-   * ⓘ 다시 누르기 · Esc(포커스가 ⓘ 로 돌아간다) · 바깥 누르기 · 다른 ⓘ 열기(칸이 하나라 갈아
-   * 끼워진다) · 설정 본문 스크롤과 창 크기 바꾸기(따라다니지 않고 닫는다 — `Dropdown` 과 같다) ·
-   * 설정이 안 보이게 될 때(`SettingsModal` 의 `open`) · 가림막.
+   * 설정 · 호스트 폼의 ⓘ 설명 팝오버 — 그 ⓘ 가 자기 설정 화면 안에 있을 때만 그린다(설정이 독과 고정 타일에 둘 떠 있어도 한 벌).
+   * `position: fixed` 로 앉힌다 — 본문 · 독의 overflow 에 `absolute` 는 잘린다. `document.body` 포털은 쓰지 않는다
+   * (Svelte 5 가 블록을 걷을 때 옮긴 노드의 형제를 끌고 갈 수 있다 — `UsageHoverCard` 머리말).
+   * 호스트 폼은 `{#if}` 로 통째로 뜨고 지므로 `active` 는 늘 참이고, 닫힘은 폼 쪽 `$effect` 가 맡는다.
    */
   let { active }: { active: boolean } = $props();
 
@@ -38,14 +15,12 @@
   let popEl = $state<HTMLElement | null>(null);
   const MAX_W = 340;
 
-  /** 이 설정 화면 안의 ⓘ 가 연 것만 — 다른 설정 화면(독 ↔ 고정 타일)의 것은 그쪽이 그린다 */
   const cur = $derived.by(() => {
     const c = openNote();
     const root = rootEl?.parentElement;
     return c && root?.contains(c.anchor) ? c : null;
   });
 
-  /** 폭 — 설정 화면의 안쪽 폭과 340px 중 좁은 쪽 */
   function widthFor(): number {
     const view = rootEl?.parentElement;
     if (!view) return MAX_W;
@@ -54,7 +29,6 @@
     return Math.max(160, Math.min(MAX_W, Math.floor(inner)));
   }
 
-  // 열리면(또는 다른 ⓘ 로 갈아 끼워지면) 재고 → 앉히고 → 포커스를 준다.
   $effect(() => {
     const c = cur;
     const el = popEl;
@@ -63,7 +37,7 @@
     el.style.visibility = "hidden";
     const a = c.anchor.getBoundingClientRect();
     if (a.width === 0 && a.height === 0) {
-      closeNote(); // ⓘ 가 이미 안 보인다 (섹션이 갈렸다)
+      closeNote();
       return;
     }
     el.style.width = `${widthFor()}px`;
@@ -79,8 +53,7 @@
     el.focus({ preventScroll: true });
   });
 
-  // 바깥을 누르면 닫는다 — 캡처 단계라 누른 곳의 동작은 그대로 산다(다른 ⓘ 는 곧장 열린다).
-  // 연 ⓘ 자신은 제외한다: 그 클릭은 ⓘ 의 토글이 받는다.
+  // 캡처 단계라 누른 곳의 동작은 그대로 산다 — 연 ⓘ 자신의 클릭은 ⓘ 의 토글이 받는다.
   $effect(() => {
     const c = cur;
     if (!c) return;
@@ -106,9 +79,7 @@
     };
   });
 
-  // 설정이 안 보이게 되면(독이 닫힘 · 고정 타일이 가려짐) 닫는다. **켜짐 → 꺼짐** 으로 바뀔
-  // 때만 본다 — 고정 타일의 `open` 은 "보이고 포커스도 가진" 뜻이라, 포커스 없는 타일에서 ⓘ 를
-  // 누르는 순간에도 꺼져 있을 수 있다(그때 곧장 닫으면 팝오버가 뜨지 못한다).
+  // 켜짐 → 꺼짐 으로 바뀔 때만 닫는다 — 고정 타일의 `open` 은 포커스까지 뜻해 포커스 없는 타일에서 ⓘ 를 누르는 순간에도 꺼져 있을 수 있다.
   let wasActive = false;
   $effect(() => {
     const now = active;
@@ -116,7 +87,6 @@
     wasActive = now;
   });
 
-  // 가림막이 내려오면 닫는다 (다른 뜬 상자들과 같다 — `RemoteChip` 의 상자)
   $effect(() => {
     if (veilVisible() && cur) closeNote();
   });
@@ -134,10 +104,6 @@
 <span class="note-pop-root" bind:this={rootEl} hidden></span>
 
 {#if cur}
-  <!--
-    비모달 대화상자 — 포커스를 받아 화살표·PgUp/PgDn 으로 긴 설명을 스크롤하고, Esc 로 닫는다.
-    Tab 으로 빠져나가면 그대로 둔다(바깥 누르기·스크롤이 닫는다).
-  -->
   <div
     id={cur.id}
     class="note-pop"
@@ -152,11 +118,7 @@
 {/if}
 
 <style>
-  /*
-   * 뜬 면 한 벌 — 메뉴·툴팁과 같은 토큰(`--surface-raised-solid` · `--line-strong` ·
-   * `--shadow-raised`). 비치지 않는 바탕이라 뒤의 설정 글자와 겹쳐 읽히지 않는다.
-   * 글자는 예전 펼친 전문(`.hint`)과 같은 크기·색이다.
-   */
+  /* 비치지 않는 바탕이라 뒤의 설정 글자와 겹쳐 읽히지 않는다 */
   .note-pop {
     position: fixed;
     z-index: 111;
@@ -179,7 +141,6 @@
     cursor: auto;
     left: 0;
     top: 0;
-    /* 재는 동안은 안 보인다 — 자리를 잡으면 스크립트가 켠다 */
     visibility: hidden;
   }
 

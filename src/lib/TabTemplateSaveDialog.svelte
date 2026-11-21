@@ -13,13 +13,7 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
 
-  /**
-   * **탭을 템플릿으로 저장하는 상자**(2026-11-16). 입구가 둘이다 — 탭 우클릭 [템플릿 저장] · 팔레트 [지금 탭을 템플릿으로 저장…].
-   * 둘 다 같은 문(`openTabTemplateSave`)을 지나므로 이 상자는 어디서 열렸는지 모른다: 아는 것은 폼 한 벌(`tabTemplateSaveForm`)뿐이고
-   * 저장 · 취소도 그 모듈의 함수 둘이다. 모양은 스니펫 저장 상자(`SnippetSaveDialog.svelte`)와 같은 글래스 모달이다.
-   *
-   * Escape 는 여기서 끊는다(`stopPropagation`) — 창의 Escape 사슬로 새면 뒤에 깔린 다른 모달까지 닫는다.
-   */
+  // Escape 는 여기서 끊는다 — 창의 Escape 사슬로 새면 뒤에 깔린 다른 모달까지 닫는다.
   const form = $derived(tabTemplateSaveForm());
   const rows = $derived(form?.root ? templateRows(form.root) : []);
   const options = $derived(form ? templateProjectOptions() : []);
@@ -27,7 +21,6 @@
   let nameEl = $state<HTMLInputElement | null>(null);
   let opened = false;
   $effect(() => {
-    // 열릴 때 한 번 — 이름을 골라 둔다(그대로면 Enter, 아니면 그냥 치면 덮어써진다)
     if (form && !opened) {
       opened = true;
       nameEl?.select();
@@ -95,7 +88,6 @@
           <p class="hint">{t("app.tabTemplates.save.projectHint")}</p>
 
           {#if form.root}
-            <!-- 배치 미리보기 + 타일 목록(종류 칩 · 대상) -->
             <div class="layout" data-tab-template-save="preview">
               <TemplatePreview root={form.root} width={132} height={84} />
               <div class="tiles">
@@ -130,7 +122,7 @@
 {/if}
 
 <style>
-  /* `SnippetSaveDialog.svelte`·`dialogs/*` 의 `.overlay`/`.modal` 과 **같은 값**이다 */
+  /* `SnippetSaveDialog.svelte`·`dialogs/*` 의 `.overlay`/`.modal` 과 같은 값이다 */
   .overlay {
     position: fixed;
     inset: 0;
@@ -223,7 +215,6 @@
     color: var(--fg-3);
   }
 
-  /* 미리보기 — 왼쪽 그림 · 오른쪽 타일 목록 */
   .layout {
     display: flex;
     gap: var(--space-3);

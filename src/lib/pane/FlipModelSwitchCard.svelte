@@ -1,9 +1,7 @@
 <script lang="ts">
   /**
-   * **Claude 의 모델 · Effort 전환 확인 카드**(2026-11-14 — 목업 E5 · 판정 `pane/flip-model-ack.ts` 의 `claudeSwitchAsk`). 그 타일 TUI 에 "Switch model?"
-   * · "Change effort level?" 확인이 떠 있는 동안 AI 타일 대화 면의 대화 끝(권한 카드와 같은 자리 · 같은 판 — `TilePermissionCard` 의 `.perm`)에 선다.
-   * [전환] · [취소] 는 부르는 쪽(`AiFlip`)이 TUI 에 **고정 키**(`SWITCH_YES_KEY` · `SWITCH_NO_KEY`)를 사람 입력 문으로 보낸다 — 이 카드는 누름만 알린다.
-   * 제목의 이름은 화면 글자에서 읽은 **표시용**이다(보내는 키에 실리지 않는다 — 불변식 4).
+   * Claude 의 모델 · Effort 전환 확인 카드 — 이 카드는 누름만 알리고, 부르는 쪽이 고정 키를 보낸다.
+   * 제목의 이름은 화면 글자에서 읽은 표시용이다(보내는 키에 실리지 않는다 — 불변식 4).
    */
   import { t } from "$lib/i18n/i18n.svelte.js";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -16,9 +14,8 @@
     onyes,
     onno,
   }: {
-    /** 무엇을 바꾸는 확인인가 */
     kind?: "model" | "effort";
-    /** 화면에서 읽은 대상 이름(모델 이름 · Effort 단계 — 표시용 · 모르면 빈 글) */
+    /** 모르면 빈 글 */
     name: string;
     phone?: boolean;
     onyes: () => void;
@@ -49,7 +46,7 @@
 </div>
 
 <style>
-  /* 타일 권한 카드(`TilePermissionCard` 의 `.perm`)와 같은 판 — 기다리는 동안 경고색 테두리 */
+  /* 타일 권한 카드(`TilePermissionCard` 의 `.perm`)와 같은 판 */
   .perm {
     display: flex;
     flex-direction: column;
@@ -89,7 +86,7 @@
     margin-top: var(--space-1);
   }
 
-  /* 글 너비대로(목업 E5) — 좌우 여백을 넉넉히 · 폰에서도 원이 되지 않게 */
+  /* 폰에서도 원이 되지 않게 */
   .perm-actions .btn {
     min-width: 72px;
     padding-inline: var(--space-4);

@@ -8,7 +8,6 @@
   import ExternalMcpServers from "./ExternalMcpServers.svelte";
   import McpSessionsView from "./McpSessionsView.svelte";
 
-  // 고정 줄·외부 줄 모두 설정 초안을 바꾸고 [저장] 뒤 다음 실행부터 적용한다.
   let { active = false, onloaded }: { active?: boolean; onloaded?: () => void } = $props();
   let argsTargets = $state<AgentArgsTarget[]>([]);
   let mcp = $state<McpStatus | null>(null);
@@ -16,10 +15,8 @@
   const agents = $derived(settings.current.ai.mcp_sessions_agents ?? ["claude", "codex"]);
   let external = $state<ReturnType<typeof ExternalMcpServers> | undefined>();
 
-  /** 세션 서버 하위 화면에 사는 색인 줄 — 그리로 간다(나머지는 요약) */
   const SUB_VIEW_ANCHORS = new Set(["ai-mcp-sessions-info", "ai-mcp-sessions-targets", "ai-mcp-sessions-tools", "ai-mcp-sessions-calls"]);
   export function expandForAnchor(anchor: string): void {
-    // 고정 줄 · 목록 머리는 요약에, 상태 · 도구 · 최근 호출은 세션 서버 하위 화면에 있다 — 그 화면으로 움직임 없이 간다.
     if (SUB_VIEW_ANCHORS.has(anchor)) external?.showPinned();
     else external?.showSummary();
   }
@@ -35,8 +32,6 @@
 
 <ExternalMcpServers bind:this={external} targets={argsTargets} {active}>
   {#snippet pinned(open: () => void)}
-    <!-- 고정 줄 — 공용 `.slist` 줄이고 MCP 목록의 첫 줄이다. 줄 단추(덮개 `.slist-open::after` 가 줄 전체를 덮는다)는
-         세션 서버 하위 화면(`McpSessionsView`)을 열고, 끝 표시도 외부 서버 줄과 같은 `›` 다. 칩 · 스위치는 덮개 위에 따로 선다 -->
     <div class="slist-row mcp-row" id="ai-mcp-sessions" class:off={!enabled}>
       <button type="button" id="ai-mcp-sessions-toggle" class="slist-open sessions-open"
         aria-label={t("settings.ai.sessions.open_aria", { name: mcp?.name || t("settings.ai.sessions.label") })}
@@ -64,7 +59,6 @@
             label={t("settings.ai.external.enabled_aria", { name: mcp?.name || t("settings.ai.sessions.label") })}
             title={t("settings.ai.external.enabled_note")} />
         </span>
-        <!-- 꺾쇠는 그림일 뿐 — 누르면 줄 단추의 덮개가 받는다 -->
         <span class="slist-chev" aria-hidden="true"><UiIcon name="chevron" size={16} /></span>
       </span>
     </div>
@@ -75,7 +69,6 @@
 </ExternalMcpServers>
 
 <style>
-  /* 줄 모양은 공용 `.slist` */
   .mcp-agents {
     display: inline-flex;
     align-items: center;

@@ -1,14 +1,5 @@
 <script lang="ts">
-  /**
-   * **메타 줄**(10-24 "A + 명령 나눠 보기") — 검토 카드(`ReviewCard`)와 작업안 카드(`console/PlanList`)가 명령 아래에 두는 **흐린 12px
-   * 한 줄**(넘치면 접어 내린다). 예전에 대상 칩 줄 · 경로 · 검증 줄 · sudo 칩 · 자동 승인 거부 칩이 각자 자리를 잡던 것을 ` · ` 로 이었다.
-   *
-   * 차례: `대상 N` + 대상들(신원 코드는 고정폭 · 여럿이면 첫 대상에 흐린 "(먼저)" — canary: 성공해야 나머지로 번진다 · 넷을 넘으면
-   * "대상 N ▸" 한 단추로 접는다) · `경로 /x` · `검증: cmd` · `sudo`(경고색) · "자동 승인 안 됨 — {사유}"(서버가 쥔 그 글 그대로).
-   * 부모가 덧붙일 칸(작업안의 방식 · 타임아웃)은 `extra` 로 받아 끝에 잇는다 — 그 칸들도 `class="mi"` 를 달면 구분점이 붙는다.
-   *
-   * 대상 펼침은 이 조각의 상태다 — 보이는 작업안이 바뀌면(`op.operationId`) 다시 접힌다.
-   */
+  /** 검토 카드 · 작업안 카드의 명령 아래 흐린 한 줄. `extra` 의 칸도 `class="mi"` 를 달아야 구분점이 붙는다 */
   import type { Snippet } from "svelte";
   import type { Operation } from "$lib/operations";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -16,18 +7,15 @@
 
   interface Props {
     op: Operation;
-    /** 대상 id → 이 창의 {code, label} */
     targetLookup: Map<string, { code: string; label: string }>;
-    /** 자동 승인 거부 사유(서버가 쥔 그 글) — 없으면 `null` */
+    /** 서버가 쥔 그 글 */
     autoRefused?: string | null;
-    /** 대상 칸을 그릴지(DB 작업안은 대상이 `db:<id>` 하나라 연결 머리줄이 대신 말한다) */
+    /** DB 작업안은 대상이 `db:<id>` 하나라 연결 머리줄이 대신 말한다 */
     targets?: boolean;
-    /** 끝에 덧붙일 칸들 */
     extra?: Snippet;
   }
   let { op, targetLookup, autoRefused = null, targets = true, extra }: Props = $props();
 
-  /** 대상이 이보다 많으면 늘어놓지 않고 "대상 N ▸" 한 단추로 접는다 */
   const TARGETS_INLINE_MAX = 4;
 
   let open = $state(false);
@@ -79,8 +67,7 @@
 </div>
 
 <style>
-  /* 글자 흐름 한 줄 — 칸 사이 흐린 " · ". 부모의 `extra` 칸에도 닿게 `:global(.mi)` 로 잡는다 */
-  /* flex 라 칸 사이 템플릿 공백(글자 마디)이 사라진다 — 구분점 양옆 간격이 `::before` 여백 하나로 같다 */
+  /* 부모의 `extra` 칸에도 닿게 `:global(.mi)` 로 잡는다 */
   .rmeta {
     display: flex;
     flex-wrap: wrap;

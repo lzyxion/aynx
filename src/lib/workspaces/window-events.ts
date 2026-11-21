@@ -6,17 +6,14 @@ export type WindowAction =
   | { kind: "inspect" }
   | { kind: "saveDocs"; ids: string[] }
   | { kind: "hostAliases"; aliases: string[]; to?: string }
-  /** `token` — 창 이관에서 받는 창이 짐을 꺼내기 직전·물러설 때(보낸 창이 실은 초안을 확인 · 잠금 · 풀기 — `app/tear` 의 `holdTearSource`) */
+  /** `token` — 창 이관에서 받는 창이 짐을 꺼내기 직전 · 물러설 때 보낸 창의 초안을 잠그고 푼다 */
   | { kind: "pause"; token?: number }
   | { kind: "resume"; token?: number }
-  /** 앱 전체 종료 직전 — 이 창의 세션 타일을 체크포인트와 함께 놓는다(세션은 서버에 산다 · ③-2) */
+  /** 앱 전체 종료 직전 — 이 창의 세션 타일을 체크포인트와 함께 놓는다(세션은 서버에 산다) */
   | { kind: "leaveSessions" }
   | { kind: "release"; token: number }
   | { kind: "focus"; paneId?: string; streamId?: string; workspaceId?: string; tabKey?: string; tileKey?: string }
-  /**
-   * 보조 창 → 주 창: 작업안을 열어 달라(2026-10-25 — 작업안은 주 창의 채팅 독 갈래에만 산다). `at` = 그 작업안으로 데려가기 ·
-   * `history` = 기록의 그 실행 · 둘 다 없으면 `view` 로 연다. 받는 쪽은 `app/plans.svelte.ts` 의 `takePlansWindowRequest`.
-   */
+  /** 보조 창 → 주 창 — 작업안은 주 창의 채팅 독 갈래에만 산다 */
   | { kind: "plans"; at?: string; history?: string; view?: "list" | "history" };
 export interface WindowRequest { id: string; sender: string; action: WindowAction }
 export type WindowReply = boolean | UnsavedWindow;

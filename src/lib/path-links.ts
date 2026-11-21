@@ -2,85 +2,51 @@ import { isTextLike } from "$lib/doc-lang";
 import { imageMime } from "$lib/browser/preview";
 
 /**
- * **터미널 글자 속 파일 경로** — 순수 모듈 (docs/log/2026-09-27-doc-tile.md "A — 여는 길").
- *
- * 터미널 한 줄에서 파일 경로로 보이는 토막을 찾고([`findPathLinks`]), 그것을 그 타일에서 열 수 있는 경로로 푼다
- * ([`resolvePathLink`]). xterm 에 거는 일은 `term-path-links.ts` 가 한다 — 여기는 글자만 본다.
- *
- * ## 잡는 모양
- *
- * - 절대: `C:\a\b.md` · `C:/a/b.md` · `\\server\share\x.txt` · `/etc/nginx/nginx.conf`
- * - 홈: `~/notes.md` (`~\x` 도)
- * - 상대: `./x.md` · `../x.md` · `docs/x.md` · `src\a.ts` — 구분자가 있는 것. 구분자가 없는 **맨 이름**
- *   (`README.md` · `package.json` — `ls` 출력)은 **점이 있을 때만**(`README` 처럼 점 없는 이름은 산문의 낱말과
- *   구별되지 않는다).
- * - 꼬리 `:12` · `:12:3`(컴파일러 · grep 출력)은 경로에서 떼어 `line`/`col` 로 둔다. 줄 범위 `:12-20` 과 GitHub 식
- *   `#L12` · `#L12-L20` · `#L12-20`(AI CLI 가 자주 쓴다)도 같은 꼬리다 — 시작 줄만 `line` 으로 두고 끝 줄은 버린다. 줄은 여는 쪽이 문서 타일에
- *   한 번짜리 "이 줄로" 를 걸어 그 줄로 스크롤한다(`term-path-links.ts` → `doc-line-jump.ts`) — 열은 아직 쓰지 않는다.
- *   링크 범위에는 꼬리까지 든다(눈에 보이는 토막 전체가 밑줄).
- *
- * **이름이 [`isTextLike`] 인 것만** 잡는다 — 오탐 억제이자 여는 길이 문서 보기뿐이라서다(이진 파일을 걸어 봐야
- * 열 곳이 없다). URL 과 겹치는 토막은 버린다(URL 이 이긴다 — `https://x/docs/a.md` 의 `/docs/a.md` 를 따로 걸지
- * 않는다). xterm 도 먼저 등록된 프로바이더(web-links)가 이기지만, 여기서 먼저 빼 두면 순서에 기대지 않는다.
- * **그림 파일**(`browser/preview.ts` 의 `imageMime` 표 — png · jpg · gif · webp · bmp · svg · ico)도 잡는다(2026-11-14) — 여는 쪽이
- * 이미지 타일로 연다([`isOpenablePath`]).
- *
- * 경로 안의 공백은 잡지 않는다(따옴표로 싼 경로 포함 — v1).
+ * 구분자 없는 맨 이름은 점이 있을 때만 잡는다 — 점 없는 이름은 산문의 낱말과 구별되지 않는다. 경로 안의 공백은 잡지 않는다.
+ * URL 과 겹치는 토막은 여기서 먼저 뺀다 — xterm 프로바이더 등록 순서에 기대지 않는다.
  */
 
-/** 한 줄에서 찾은 경로 토막 하나 — `start`/`end` 는 그 줄 문자열의 반열린 구간 */
+/** `start`/`end` 는 그 줄 문자열의 반열린 구간 */
 export interface PathMatch {
   start: number;
   end: number;
-  /** 꼬리(`:12:3`)를 뗀 경로 글자 그대로 */
   path: string;
-  /** `abs` 절대(윈도우 · UNC · POSIX) · `home` `~/…` · `rel` 상대 */
   form: "abs" | "home" | "rel";
   line?: number;
   col?: number;
 }
 
-/** 경로를 끊는 글자 — 공백 · 따옴표 · 괄호 · 파이프 · 쉼표 · 세미콜론 · `=`(`--out=docs/a.md`) */
 const TOKEN = /[^\s"'`<>()[\]{}|,;=]+/g;
-/** URL(스킴 + `://`) — 이 구간과 겹치는 경로는 버린다 */
 const URL_RE = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s"'`<>]*/g;
-/** 토막 끝의 문장 부호 — 경로의 일부가 아니다(`see docs/a.md.` 의 마침표) */
 const TRAILING_PUNCT = /[.,:;!?]+$/;
-/** `:12` · `:12:3` · `:12-20` · `#L12` · `#L12-L20` · `#L12-20` 꼬리 — 줄은 1 또는 4번 무리, 칸은 2번(범위의 끝 줄은 버린다) */
+/** 줄은 1 또는 4번 무리, 칸은 2번(범위의 끝 줄은 버린다) */
 const LINE_COL = /(?::(\d+)(?::(\d+)|-(\d+))?|#L(\d+)(?:-L?(\d+))?)$/;
-/** 글롭 글자가 섞이면 경로가 아니라 패턴이다 */
 const GLOB = /[*?]/;
 
-/** 앱 안에서 열 파일인가 — 문서 보기(`isTextLike`) 또는 이미지 타일(`imageMime`) */
 export function isOpenablePath(path: string): boolean {
   return isTextLike(path) || imageMime(path) !== null;
 }
 
-/** 경로의 마지막 조각 */
 function baseName(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return path.slice(i + 1);
 }
 
-/** 모양 판정 — 경로가 아니면 `null` */
 function formOf(path: string): PathMatch["form"] | null {
   if (/^[A-Za-z]:[\\/]/.test(path)) return "abs";
   if (/^\\\\[^\\]/.test(path)) return "abs";
   if (path.startsWith("/")) return path.startsWith("//") ? null : "abs";
   if (/^~[\\/]/.test(path)) return "home";
   if (path.includes("/") || path.includes("\\")) return "rel";
-  // 맨 이름 — 점이 있어야 한다(맨 앞 점 하나뿐인 `.env` 같은 이름도 된다)
   return path.includes(".") ? "rel" : null;
 }
 
-/** 한 줄의 URL 구간들 */
 function urlRanges(text: string): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (const m of text.matchAll(URL_RE)) out.push([m.index, m.index + m[0].length]);
   return out;
 }
 
-/** 터미널 한 줄에서 경로로 보이는 토막들 (왼쪽부터) */
 export function findPathLinks(text: string): PathMatch[] {
   const urls = urlRanges(text);
   const out: PathMatch[] = [];
@@ -110,37 +76,26 @@ export function findPathLinks(text: string): PathMatch[] {
   return out;
 }
 
-/**
- * 글 **전체가** 경로 하나인가(앞뒤 공백은 본다) — 아니면 `null`. 맨 이름도 지난다(대화 면 링크 주소 `[x](README.md)` —
- * `doc-links.ts` 의 `hrefPathLink` — 는 일부러 건 링크라서다). 판정은 [`findPathLinks`] 그대로라 같은 오탐 억제를 지난다
- * (끝의 문장 부호가 떨어져 나가면 전체가 아니다).
- */
+/** 맨 이름도 지난다 — 대화 면 링크 주소(`doc-links.ts` 의 `hrefPathLink`)는 일부러 건 링크라서다 */
 export function wholePathLink(text: string): PathMatch | null {
   const found = findPathLinks(text);
   return found.length === 1 && found[0].start === 0 && found[0].end === text.length ? found[0] : null;
 }
 
-/**
- * 대화 면에서 **글자만 보고** 걸 만한 경로인가 — 구분자(`/` `\` — 절대 · 홈 · `./x` 포함)가 있거나 줄 꼬리가 있는 것. 맨 이름
- * (`Node.js` · `package.json` · `index.ts`)은 산문 · 코드 조각에 너무 흔하고 대화 면은 그냥 클릭이라 걸지 않는다(`foo.ts:12` 는 건다).
- * 터미널의 Ctrl+클릭([`findPathLinks`])은 이 거름을 쓰지 않는다 — `ls` 출력의 맨 이름을 연다.
- */
+/** 맨 이름은 산문 · 코드 조각에 너무 흔해 대화 면에서는 걸지 않는다 — 터미널 Ctrl+클릭은 이 거름을 쓰지 않는다 */
 function chatCue(m: PathMatch): boolean {
   return m.form !== "rel" || /[\\/]/.test(m.path) || m.line !== undefined;
 }
 
-/** 대화 면의 인라인 코드 조각(`` `src/a.ts:12` ``) — 글 전체가 경로 하나이고 [`chatCue`] 를 지날 때만. 아니면 `null` */
 export function codePathLink(text: string): PathMatch | null {
   const m = wholePathLink(text);
   return m && chatCue(m) ? m : null;
 }
 
-/** 평문 속 경로 — [`findPathLinks`] 가운데 [`chatCue`] 를 지나는 것만(대화 면의 코드 조각 밖 글) */
 export function prosePathLinks(text: string): PathMatch[] {
   return findPathLinks(text).filter(chatCue);
 }
 
-/** 글을 경로 일치와 그 사이 글로 쪼갠다(왼쪽부터 · 이어 붙이면 원래 글) — [`prosePathLinks`] 의 그리기 몫 */
 export function splitProsePaths(text: string): Array<{ text: string; path: boolean }> {
   const out: Array<{ text: string; path: boolean }> = [];
   let at = 0;
@@ -153,35 +108,20 @@ export function splitProsePaths(text: string): Array<{ text: string; path: boole
   return out;
 }
 
-/**
- * 경로를 풀 자리 — 그 터미널이 어디의 셸인가.
- *
- * - `local` — 이 컴퓨터의 셸. `cwd` 는 그 셸이 **마지막으로** 알려 준 폴더(OSC 7) 그대로 — PowerShell 에서 `prompt` 함수를
- *   새로 정의하면 앱의 훅(`integration.ps1` 의 `prompt` 감싸개)이 사라져 그 뒤의 `cd` 를 모른다. 그때 상대 경로(`..` 포함)는 옛
- *   폴더 기준으로 풀려 없는 파일 토스트로 물러선다(`..` 의 판정 · 접기 자체는 `path-links.test.ts` 가 지킨다).
- * - `wsl` — 이 컴퓨터의 WSL 셸. 셸이 보여 주는 경로는 배포판 안의 POSIX 경로라 `toLocal`(보통
- *   `wslCwdToWindows`)로 이 컴퓨터의 경로로 옮긴다. `cwd` 도 POSIX 다.
- * - `remote` — SSH 셸. 경로는 원격의 POSIX 경로이고 윈도우 모양은 열 수 없다.
- */
+/** `local` 의 `cwd` 는 셸이 마지막으로 알린 OSC 7 그대로다 — PowerShell 에서 `prompt` 를 새로 정의하면 훅이 사라져 상대 경로가 옛 폴더 기준으로 풀린다 */
 export type PathLinkPlace =
   | { kind: "local"; cwd: string | null }
   | { kind: "wsl"; cwd: string | null; toLocal: (posix: string) => string | null }
   | { kind: "remote"; cwd: string | null };
 
-/**
- * 푼 결과 — 바로 열 경로(`path`) 또는 **홈 기준 나머지**(`home` — 여는 자리가 백엔드의 `home()` 을 물어 잇는다:
- * 홈은 느린 왕복이라 이 순수 층이 모른다). 열 수 없으면 `null`(링크를 걸지 않는다).
- */
+/** `home` 은 홈 기준 나머지 — 홈은 느린 왕복이라 이 순수 층은 모르고 여는 자리가 잇는다 */
 export type ResolvedPath = { path: string } | { home: string } | null;
 
 export function isWinAbs(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]/.test(path);
 }
 
-/**
- * `base` 폴더에 `rel` 을 잇고 `.`·`..` 를 접는다. 구분자는 `sep` 하나로 맞춘다(`\` 면 `/` 도 `\` 로).
- * 뿌리(`C:\` · `\\server\share\` · `/`) 위로는 올라가지 않는다.
- */
+/** 뿌리(`C:\` · `\\server\share\` · `/`) 위로는 올라가지 않는다 */
 export function joinNormalize(base: string, rel: string, sep: "/" | "\\"): string {
   const full = `${base}${sep}${rel}`;
   const unified = sep === "\\" ? full.replace(/\//g, "\\") : full;
@@ -211,12 +151,10 @@ export function joinNormalize(base: string, rel: string, sep: "/" | "\\"): strin
   return root + parts.join(sep);
 }
 
-/** 폴더 경로의 구분자 — 드라이브 · UNC · 역슬래시가 보이면 `\`, 아니면 `/` */
 export function sepOf(dir: string): "/" | "\\" {
   return isWinAbs(dir) || dir.includes("\\") ? "\\" : "/";
 }
 
-/** 찾은 토막 → 그 타일에서 열 경로 (위 [`ResolvedPath`]) */
 export function resolvePathLink(m: Pick<PathMatch, "path" | "form">, place: PathLinkPlace): ResolvedPath {
   const { path, form } = m;
   if (form === "abs") {
@@ -246,19 +184,13 @@ export function resolvePathLink(m: Pick<PathMatch, "path" | "form">, place: Path
   return { path: joinNormalize(cwd, path, sepOf(cwd)) };
 }
 
-/** 홈 폴더에 나머지를 잇는다 ([`ResolvedPath`] 의 `home` 갈래를 여는 자리가 마무리할 때) */
 export function joinHome(home: string, rest: string): string {
   return joinNormalize(home, rest, sepOf(home));
 }
 
-// ---------------------------------------------------------------------------
-// OSC 8 하이퍼링크의 주소
-// ---------------------------------------------------------------------------
+// ── OSC 8 하이퍼링크의 주소 ──
 
-/**
- * `file://` 주소 → 이 컴퓨터의 경로. 호스트가 비었거나 `localhost` 일 때만(그 밖의 호스트는 다른 기계의 파일이다 —
- * `ls --hyperlink` 가 원격에서 붙이는 모양). `file:///C:/a/b.md` 는 `C:/a/b.md`. 모양이 아니면 `null`.
- */
+/** 호스트가 비었거나 `localhost` 일 때만 — 그 밖의 호스트는 다른 기계의 파일이다(`ls --hyperlink` 가 원격에서 붙이는 모양) */
 export function fileUrlToLocalPath(uri: string): string | null {
   let url: URL;
   try {
@@ -279,11 +211,7 @@ export function fileUrlToLocalPath(uri: string): string | null {
   return path === "" || path === "/" ? null : path;
 }
 
-/**
- * OSC 8 링크를 눌렀을 때 할 일 — `web`(http · https 만, 기존 동작) · `doc`(로컬 타일의 로컬 `file://` 이고 이름이
- * 텍스트 · 그림으로 보일 때 — 그림은 여는 쪽이 이미지 타일로) · `null`(아무것도 하지 않는다 — 그 밖의 스킴은 **원격이 보낸 바이트**라 여는 문을 두지 않는다:
- * docs/log/2026-09-23-osc52-osc8.md).
- */
+/** http · https · 로컬 타일의 로컬 `file://` 만 연다 — 그 밖의 스킴은 원격이 보낸 바이트라 여는 문을 두지 않는다(docs/log/2026-09-23-osc52-osc8.md) */
 export type OscLinkAction = { kind: "web"; url: string } | { kind: "doc"; path: string } | null;
 
 export function oscLinkAction(uri: string, localTile: boolean): OscLinkAction {

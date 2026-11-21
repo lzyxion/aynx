@@ -1,18 +1,12 @@
-//! **TLS 통합 시험**(쿼리 타일 9단계) — 자체 CA 가 발급한 서버 인증서(SAN `db.test` · `mydb.test` · `localhost` — **IP SAN 없음**)를 넣은
-//! PostgreSQL · MySQL · MariaDB 와 TLS 를 끈 같은 셋, 임시 sshd 가 있을 때만 돈다(`#[ignore]` + 환경변수). 사용자의 `~/.ssh/config` ·
-//! `known_hosts`(호스트 키는 이번만) · `sessions.toml` · 볼트는 건드리지 않는다(비밀번호는 몸으로만).
+//! TLS 통합 시험 — 자체 CA 인증서(SAN `db.test` · `mydb.test` · `localhost` — **IP SAN 없음**)를 넣은 PG · MySQL · MariaDB 와
+//! TLS 를 끈 같은 셋, 임시 sshd 가 있을 때만 돈다(`#[ignore]` + `AYNX_TEST_TLS_*`). 사용자의 ssh 설정 · `known_hosts` · 볼트는 건드리지 않는다.
 //!
 //! ```text
-//! AYNX_TEST_TLS_CA=<ca.crt 전체 경로>            AYNX_TEST_TLS_OTHER_CA=<다른 CA>   AYNX_TEST_TLS_PW=<postgres · root 비밀번호>
-//! AYNX_TEST_TLS_PG=<포트>  _PG_PLAIN=<포트>  _MYSQL=<포트>  _MYSQL_PLAIN=<포트>  _MARIADB=<포트>  _MARIADB_PLAIN=<포트>   # 127.0.0.1
-//! AYNX_TEST_TLS_SSH=<user>:<pw>@127.0.0.1:<포트>   # sshd 에서 PG 는 db.test:5432, MySQL 은 mydb.test:3306
 //! cargo test --lib db::tls_tests -- --ignored --nocapture --test-threads=1
 //! ```
 //!
-//! sshd(linuxserver/openssh-server)는 `AllowTcpForwarding yes` 와 `PerSourcePenalties no` 가 있어야 한다 — OpenSSH 9.8+ 는 키 관문
-//! (잠긴 키 건너뛰기)으로 끊긴 preauth 연결을 실패한 인증으로 세어 몇 판 뒤 그 주소를 20초씩 막는다(시험이 접속을 여러 번 연다).
-//!
-//! `MEASURE` 줄은 실측 기록이다(docs/log 에 옮긴다).
+//! sshd 는 `AllowTcpForwarding yes` 와 `PerSourcePenalties no` 가 있어야 한다 — OpenSSH 9.8+ 는 끊긴 preauth 연결을 실패한 인증으로
+//! 세어 그 주소를 막는다(시험이 접속을 여러 번 연다).
 
 use mysql_async::prelude::Queryable;
 use serde_json::Value;
@@ -64,7 +58,7 @@ fn ssh_creds(ssh_pw: Option<&str>, declined: &[String]) -> SharedCreds {
     }
 }
 
-/// 붙고 · 세션이 TLS 인지 물어 보고 · 닫는다. `Ok(tls 인가)` / `Err(문구)`.
+/// `Ok(tls 인가)` / `Err(문구)`.
 async fn probe(engine: Engine, t: NetTarget, pw: &str, ssh_pw: Option<&str>) -> Result<bool, String> {
     let mut declined: Vec<String> = Vec::new();
     for _ in 0..6 {
@@ -107,7 +101,7 @@ fn one_line(s: &str) -> String {
     s.replace('\n', " / ")
 }
 
-/// 모드 × 엔진 표 — 직결(127.0.0.1 포트에 이름 `localhost` 로 · 이름 틀림은 `127.0.0.1` 로).
+/// 이름 틀림은 `127.0.0.1` 로 붙어 만든다.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_TLS_* 가 있을 때만 — 자체 CA 인증서를 넣은 DB 컨테이너"]
 async fn tls_modes_by_engine() {
@@ -151,7 +145,6 @@ async fn tls_modes_by_engine() {
         ok("tls require(이름 틀림 · CA 없음 — 검증 안 함)", run("127.0.0.1", tp, Require, None).await, true);
         ok("tls verify-ca", run("localhost", tp, VerifyCa, Some(ca.clone())).await, true);
         ok("tls verify-ca(이름 틀림 — 이름은 안 봄)", run("127.0.0.1", tp, VerifyCa, Some(ca.clone())).await, true);
-        // verify-ca 는 CA 파일만 믿는다 — CA 파일 없이는 붙지 않는다(접속 전에 거절 · 저장 거절과 같은 문구).
         fail("tls verify-ca(CA 없음)", run("localhost", tp, VerifyCa, None).await, "CA 검증은 CA 파일이 필요합니다");
         if let Some(o) = &other {
             fail("tls verify-ca(다른 CA)", run("localhost", tp, VerifyCa, Some(o.clone())).await, "알 수 없는 인증 기관");
@@ -161,7 +154,6 @@ async fn tls_modes_by_engine() {
         fail("tls verify-full(CA 없음)", run("localhost", tp, VerifyFull, None).await, "알 수 없는 인증 기관");
         fail("tls verify-full(CA 파일 없음)", run("localhost", tp, VerifyFull, Some(missing.clone())).await, &missing);
         fail("tls verify-full(PEM 아님)", run("localhost", tp, VerifyFull, Some(bad.clone())).await, "PEM");
-        // CA 파일은 검증 모드에서만 읽는다 — require 에 없는 파일을 줘도 상관없다.
         ok("tls require(없는 CA 파일 — 읽지 않음)", run("localhost", tp, Require, Some(missing.clone())).await, true);
         // ── TLS 를 끈 서버 ──
         ok("plain disable", run("localhost", pp, Disable, None).await, false);
@@ -170,7 +162,7 @@ async fn tls_modes_by_engine() {
         fail("plain verify-ca", run("localhost", pp, VerifyCa, Some(ca.clone())).await, "TLS(SSL)를 받지 않습니다");
         fail("plain verify-full", run("localhost", pp, VerifyFull, Some(ca.clone())).await, "TLS(SSL)를 받지 않습니다");
 
-        // 드라이버의 skip_domain_validation 이 이 rustls 에서 죽어 있는지(verify-ca 를 탐침으로 만든 까닭) — 기록만.
+        // 드라이버의 skip_domain_validation 이 이 rustls 에서 죽어 있는지(verify-ca 를 탐침으로 만든 까닭) — 단언 없이 출력만.
         if engine == Engine::My {
             let ssl = mysql_async::SslOpts::default()
                 .with_root_certs(vec![std::fs::read(&ca).unwrap().into()])
@@ -200,8 +192,7 @@ async fn tls_modes_by_engine() {
 /// (이름표, 엔진, sshd 에서 본 이름, 포트, 모드, CA 파일, 실패면 문구 조각)
 type SshCase = (&'static str, Engine, &'static str, u16, DbTlsMode, bool, Option<&'static str>);
 
-/// SSH 경유 + verify-full — 드라이버는 터널(`127.0.0.1:<임시>`)에 붙고 이름 검증은 프리셋 host(`db.test` · `mydb.test`)로 선다.
-/// MySQL 은 verify-ca 탐침도 터널로 지난다.
+/// 드라이버는 터널(`127.0.0.1:<임시>`)에 붙어도 이름 검증은 프리셋 host 로 선다.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "AYNX_TEST_TLS_SSH · _CA 가 있을 때만 — 임시 sshd + TLS DB"]
 async fn tls_verify_full_over_ssh_tunnel() {

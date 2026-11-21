@@ -1,9 +1,5 @@
 <script lang="ts">
-  /**
-   * **JSON 트리 한 마디**(블록 리치 보기 — `term/BlockView.svelte`). 객체 · 배열은 chevron(펼치면 90°)으로 접고 펴며 개수를 말하고, 값은 종류별 색
-   * (문자열 · 수 · 참거짓 · null)이다. 처음에는 깊이 [`OPEN_DEPTH`] 미만만 펼친다. 아이가 많으면 [`MAX_CHILDREN`] 개까지 그리고
-   * "… N개 더" 한 줄(큰 배열이 화면을 붙잡지 않게). 값은 글자 보간으로만 그린다(`{@html}` 없음).
-   */
+  /** JSON 트리 한 마디. 값은 글자 보간으로만 그린다(`{@html}` 없음). */
   import JsonTree from "./JsonTree.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -11,6 +7,7 @@
   let { value, name = null, depth = 0 }: { value: unknown; name?: string | null; depth?: number } = $props();
 
   const OPEN_DEPTH = 2;
+  /** 큰 배열이 화면을 붙잡지 않게 — 넘치면 "… N개 더" 한 줄 */
   const MAX_CHILDREN = 200;
 
   const isObj = $derived(typeof value === "object" && value !== null);
@@ -74,7 +71,7 @@
     background: var(--surface-hover);
   }
 
-  /* 펼침 표시 — DB 스키마 트리(`query/SchemaTree.svelte`)와 같은 chevron · 펼치면 90° (글자 ▸/▾ 는 작아 잘 안 보였다) */
+  /* DB 스키마 트리(`query/SchemaTree.svelte`)와 같은 chevron */
   .chev {
     display: inline-flex;
     align-self: center;

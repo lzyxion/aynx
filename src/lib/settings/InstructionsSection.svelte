@@ -19,14 +19,7 @@
   import InstructionsImport from "./InstructionsImport.svelte";
   import SideChatInstructionEditor from "./SideChatInstructionEditor.svelte";
 
-  /**
-   * 지침은 **자기 파일**(<설정 루트>/instructions/*.md)에 즉시 저장한다.
-   * 설정 창 [저장]/[취소]와 무관하고, 에이전트가 읽는 파일에 쓰는 일은 별도 [반영]이다.
-   * 요약 ↔ 추가·편집·반영의 자리·움직임·Escape는 기존 공용 틀을 따른다.
-   * 섹션을 떠나면 초안은 버리고 요약으로 돌아간다. 돌아온 포커스는 연 줄/단추에 둔다.
-   * **사이드 채팅 지침**(2026-11-01)은 목록 밖의 고정 줄 하나 — `<데이터 루트>/sidechat/CLAUDE.md` 에 즉시 저장하고 [반영]이 없다
-   * (세션 서버가 채팅을 띄울 때 읽는다 — `SideChatInstructionEditor`).
-   */
+  /** 지침은 설정 창 [저장]/[취소]와 무관하게 자기 파일에 즉시 저장한다 — 에이전트가 읽는 파일에 쓰는 일은 별도 [반영]이다 */
   let { active = true, onloaded }: { active?: boolean; onloaded?: () => void } = $props();
   let list = $state<InstructionList>({ items: [], broken: [] });
   let targets = $state<AgentArgsTarget[]>([]);
@@ -35,7 +28,7 @@
   let saving = $state(false);
   let error = $state<string | null>(null);
   let notice = $state<"saved" | "deleted" | "imported" | "side-saved" | null>(null);
-  /** 사이드 채팅 지침 글(없으면 빈 글) — 못 읽었으면 `null`(줄은 서되 편집은 막는다) */
+  /** 못 읽었으면 `null` — 줄은 서되 편집은 막는다 */
   let sideText = $state<string | null>(null);
   let importedCount = $state(0);
   let importFailures = $state<{ source: string; reason: string }[]>([]);
@@ -70,7 +63,6 @@
     loading = true;
     error = null;
     try {
-      // 사이드 채팅 지침은 따로 읽는다 — 못 읽어도 지침 목록은 선다
       const side = sideChatInstructionsLoad().then((text) => text, () => null);
       const [instructions, agents] = await Promise.all([instructionsList(), agentArgsTargets()]);
       const sideLoaded = await side;
@@ -79,7 +71,6 @@
       if (current !== request) return;
       list = instructions;
       targets = agents.filter((agent) => agent.id === "claude" || agent.id === "codex");
-      // agentArgsTargets가 실패하면 빈 표를 돌려준다. 이미 지원하는 두 대상은 계속 고를 수 있다.
       if (targets.length === 0) targets = [{ id: "claude", display: "Claude Code" }, { id: "codex", display: "Codex" }];
       onloaded?.();
     } catch (e) {
@@ -185,7 +176,6 @@
   {:else if view.kind === "side-chat"}
     <SideChatInstructionEditor text={sideText ?? ""} onback={back} onsaved={sideSaved} />
   {:else}
-    <!-- 머리 — MCP 섹션(`ExternalMcpServers`)과 같은 틀: 한 줄 설명(ⓘ 자세히) · 각주 · 목록 소제목과 단추 -->
     <p class="lead">
       <InfoNote id="instructions-info" label={t("settings.instructions.subhead")} plain>
         {#snippet summary()}{t("settings.instructions.summary")}{/snippet}
@@ -194,7 +184,6 @@
     </p>
     <p class="footnote">{t("settings.instructions.footnote")}</p>
 
-    <!-- 사이드 채팅 지침 — 목록 밖 고정 줄 하나(같은 `.slist` 줄 모양). 내 지침은 늘어나므로 고정 줄을 위에 둔다. 누르면 하위 화면에서 고친다 · 저장은 즉시 · [반영] 없음 -->
     <h4 class="subhead">{t("settings.instructions.side_chat.subhead")}</h4>
     <ul class="slist" aria-label={t("settings.instructions.side_chat.subhead")}>
       <li class="slist-row">
@@ -242,11 +231,10 @@
     {/if}
     <div id="instructions-list">
       {#if list.items.length > 0}
-        <!-- 줄 모양은 설정 공용 목록(`settings.css` 의 `.slist`) — 트리거 · 스니펫 · AI 에이전트 · MCP 와 한 벌이다 -->
         <ul class="slist instruction-rows" aria-label={t("settings.instructions.list")}>
           {#each list.items as item (item.name)}
             <li class="slist-row instruction-row" class:off={!item.enabled}>
-              <!-- 줄 누르기 = 편집(덮개가 꺾쇠 · 빈 자리까지 덮는다). 칩 · 스위치는 이 단추 **밖**에 따로 선다(단추 안 단추는 무효 마크업) -->
+              <!-- 칩 · 스위치는 이 단추 밖에 따로 선다 — 단추 안 단추는 무효 마크업이다 -->
               <button type="button" class="slist-open instruction-open" data-name={item.name} disabled={loading || saving}
                 aria-label={t("settings.instructions.edit.aria", { name: item.name })}
                 onclick={() => openSub({ kind: "edit", name: item.name })}>
@@ -278,7 +266,6 @@
                     label={t("settings.instructions.enabled.aria", { name: item.name })} title={t("settings.instructions.enabled.help")}
                     onchange={(enabled) => void saveRow(item, { ...item, enabled })} />
                 </span>
-                <!-- 꺾쇠는 그림일 뿐 — 누르면 줄 단추의 덮개가 받는다 -->
                 <span class="slist-chev" aria-hidden="true"><UiIcon name="chevron" size={16} /></span>
               </span>
             </li>
@@ -301,8 +288,7 @@
   .note { font-size: var(--t-xs); color: var(--fg-2); line-height: 1.5; }
   .notice { margin-top: 0; }
   .error, .broken { font-size: var(--t-xs); color: var(--err); overflow-wrap: anywhere; }
-  /* 목록 · 줄 · 알약 모양은 `settings.css` 의 공용 `.slist` 한 벌이다.
-     범위는 "무엇인지"(분류)라 프로젝트 범위만 제3색 — 강조색은 선택 · 주 동작에 남긴다 */
+  /* 범위는 분류라 제3색 — 강조색은 선택 · 주 동작에 남긴다 */
   .scope.project { color: var(--tertiary); background: var(--tertiary-soft); }
   .instruction-agents { display: inline-flex; align-items: center; gap: var(--space-1); }
   .apply { margin-top: var(--space-3); }

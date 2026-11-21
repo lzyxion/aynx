@@ -1,5 +1,4 @@
-//! **내보내기** — 고른 범주의 파일을 허용 목록(`catalog`)대로 모은다. 목록 밖의 파일은 **열지도 않는다**
-//! (볼트 · 웹훅 · 토큰 파일을 읽는 줄이 이 파일에 없다).
+//! **내보내기** — 허용 목록(`catalog`) 밖의 파일은 열지도 않는다(볼트 · 웹훅 · 토큰 파일을 읽는 줄이 이 파일에 없다).
 
 use std::path::Path;
 
@@ -31,7 +30,6 @@ pub(super) fn read_text_opt(path: &Path) -> Result<Option<String>, String> {
     Ok(read_opt(path)?.map(|b| String::from_utf8_lossy(&b).into_owned()))
 }
 
-/// 폴더 안 파일 이름들(정렬) — 없으면 빈 목록. 하위 폴더 · 링크가 아닌 일반 파일만.
 pub(super) fn file_names(dir: &Path) -> Vec<String> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut names: Vec<String> = rd
@@ -47,7 +45,7 @@ pub(super) fn parse_toml(text: &str) -> Option<DocumentMut> {
     text.parse::<DocumentMut>().ok()
 }
 
-/// 맨 위 키 → 범주(`settings.toml`). `[ai]` 는 general · mcp 두 범주가 나눠 갖는다.
+/// `[ai]` 는 general · mcp 두 범주가 나눠 갖는다.
 fn settings_subset(doc: &DocumentMut, has: &dyn Fn(&str) -> bool) -> DocumentMut {
     let mut out = DocumentMut::new();
     for (key, item) in doc.iter() {
@@ -72,7 +70,6 @@ fn settings_subset(doc: &DocumentMut, has: &dyn Fn(&str) -> bool) -> DocumentMut
     out
 }
 
-/// `~/.ssh/sessions.toml` 에서 내보낸 별칭의 `[hosts.*]` 와 `[groups.*]` 만.
 fn sessions_subset(doc: &DocumentMut, names: &[String]) -> DocumentMut {
     let mut out = DocumentMut::new();
     if let Some(hosts) = doc.get("hosts").and_then(Item::as_table_like) {
@@ -95,7 +92,7 @@ fn sessions_subset(doc: &DocumentMut, names: &[String]) -> DocumentMut {
     out
 }
 
-/// 위임 표에서 호스트 `[[target]]` · DB `[[database]]` 만(오케스트레이션 `[[repo]]` 는 이 PC 의 저장소에 묶여 뺀다).
+/// 오케스트레이션 `[[repo]]` 는 이 PC 의 저장소에 묶여 뺀다.
 fn delegation_subset(doc: &DocumentMut) -> DocumentMut {
     let mut out = DocumentMut::new();
     for key in ["target", "database"] {
@@ -112,7 +109,6 @@ fn push(out: &mut Vec<Entry>, name: impl Into<String>, bytes: Vec<u8>) {
     out.push(Entry { name: name.into(), bytes });
 }
 
-/// 고른 범주의 묶음 항목들(manifest 제외).
 pub(crate) fn collect(roots: &Roots, categories: &[&str]) -> Result<Vec<Entry>, String> {
     let has = |c: &str| categories.contains(&c);
     let mut out = Vec::new();

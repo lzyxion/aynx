@@ -1,9 +1,5 @@
 <script lang="ts">
-  /**
-   * **코멘트 트레이**(2단계 — 칩 · 받을 곳 · 넘기기/복사) — `DiffView.svelte` 에서 뗀 표시 조각. 코멘트 목록 · 받을 곳 · 넘기기
-   * (`handOver` — 붙여 넣기만, Enter 는 사람)는 부모가 쥔다. 받을 곳 고르개가 열렸는가(`targetMenu`)만 `bind:` — 바깥 클릭 · Esc 는
-   * 부모가 닫는다. 메뉴 줄은 `runOnMenu`(스냅샷 → 닫기 → 실행) 통로 그대로.
-   */
+  /** 코멘트 트레이 — 메뉴 줄은 `runOnMenu`(스냅샷 → 닫기 → 실행) 통로를 지난다. */
   import Keys from "$lib/Keys.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { runOnMenu } from "$lib/browser/menu-runner";
@@ -123,7 +119,6 @@
     flex: 1 1 auto;
   }
 
-  /* 고르개 — 범위 단추 아래 · 좁은 모드 파일 단추 아래 */
   .pop {
     position: absolute;
     top: calc(100% + 4px);
@@ -135,7 +130,6 @@
     max-width: min(520px, 90cqw);
   }
 
-  /* 아래 트레이 — 코멘트 칩 · 받을 곳 · 넘기기 */
   .tray {
     display: flex;
     align-items: center;
@@ -219,7 +213,6 @@
     background: var(--accent-hover);
   }
 
-  /* 강조색 단추 위의 단축키 칩 — 불투명 판 대신 단추 글자색을 옅게 섞은 판 · 선 */
   .tbtn.primary {
     --keycap-fg: var(--on-accent);
     --keycap-bg: color-mix(in srgb, var(--on-accent) 14%, transparent);
@@ -237,7 +230,6 @@
     outline-offset: 1px;
   }
 
-  /* 받을 곳 고르개 — 트레이 위로 연다 */
   .pop.up {
     top: auto;
     bottom: calc(100% + 4px);

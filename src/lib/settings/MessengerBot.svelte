@@ -20,26 +20,11 @@
   import MessengerSlackSteps from "$lib/settings/MessengerSlackSteps.svelte";
 
   /**
-   * **봇 채널 칸의 몸통**(Telegram · 봇으로 연결한 Discord · Slack) — 봇 연결 · 계정 연결(짝짓기) · 말하기(메신저 다리 1b —
-   * docs/log/2026-11-18-messenger-bridge.md · 사용자 확정 목업 "설정 › 알림 › 채널" · Discord · Slack 은 2026-11-19 A안).
-   *
-   * | 상태 | 줄 |
-   * | --- | --- |
-   * | 토큰 없음 | 봇 토큰 칸(비밀번호형 · Slack 은 봇 · 앱 토큰 두 칸) + [연결] + 요령(Slack 은 번호 줄 + [매니페스트 복사]) |
-   * | 토큰만 | 계정 연결(요령 · 짝짓기를 청한 계정이 있으면 이름 · 코드 · [허용] · [거절]) · 봇 연결 해제 |
-   * | 짝지음 | 메신저에서 AI 타일에 말하기 · 연결된 계정 [다시 연결] · 봇 [테스트 보내기] · 봇 연결 해제 |
-   *
-   * 세 채널의 줄은 같고, 요령 글 · 연결 해제 설명만 채널마다 다르다(`TEXT` — 토큰 칸은 `tokenFields`). 명령은 모두 `channel` 을 싣는다
-   * (`messenger_bot_*` — 짝지은 계정은 채널마다 하나). 줄 id 는 `messenger-<채널>-…` · 말하기만 `messenger-channel-<채널>-chat`(설정 색인 anchor).
-   * Slack 의 두 토큰은 `"<봇>\n<앱>"` 한 글자열로 넘긴다(`joinTokens` — 서버가 접두사로 가르고, 어느 토큰이 틀렸는지도 서버가 말한다).
-   * Slack 은 이름 대신 멤버 ID 가 온다(서버가 준 글자를 그대로 그린다).
-   *
-   * - **봇 토큰은 화면에 다시 보여 주지 않는다** — 칸은 [연결] 을 누르자마자 비우고, 상태(`messenger_bot_status`)에는 토큰이 없다.
-   *   토큰을 읽는 것은 세션 서버뿐이다(`server/messenger_bridge_proxy.rs`).
-   * - 짝짓기를 청한 이름 · 짝지은 이름은 **남의 글자**다 — 글자로만 그린다(`{@html}` 없음).
-   * - 원격 창에서는 토큰 넣기 · 허용/거절 · 다시 연결 · 연결 해제가 잠긴다(`remote/deny.rs` HOME_ONLY — 손잡이에 "메인 PC 에서만" 툴팁 —
-   *   보안 · 원격 접속 섹션과 같은 관례). 말하기는 원격에서 **켜지** 못한다(끄기는 된다 — 부모가 `chatLocked` 로 넘긴다).
-   * - 상태는 부모가 쥔다(머리줄 칩 · 규칙 묶음이 같은 값을 본다) — 이 몸통은 명령을 부르고 새 상태를 `onstatus` 로 올린다.
+   * 봇 채널 칸의 몸통 (docs/log/2026-11-18-messenger-bridge.md).
+   * - 봇 토큰은 화면에 다시 보여 주지 않는다 — 칸은 [연결] 을 누르자마자 비우고, 상태에는 토큰이 없다. 토큰을 읽는 것은 세션 서버뿐이다.
+   * - 짝짓기를 청한 이름 · 짝지은 이름은 남의 글자다 — 글자로만 그린다(`{@html}` 없음).
+   * - 원격 창에서는 토큰 넣기 · 허용/거절 · 다시 연결 · 연결 해제가 잠긴다(`remote/deny.rs` HOME_ONLY). 말하기는 원격에서 켜지 못한다(끄기는 된다).
+   * - 말하기 줄 id `messenger-channel-<채널>-chat` 은 설정 색인 anchor 다.
    */
   let {
     channel,
@@ -53,20 +38,17 @@
   }: {
     channel: BotChannel;
     name: string;
-    /** 봇 상태(`null` = 아직 모름 · 못 읽음) */
     status: BotStatus | null;
-    /** 상태를 못 읽은 까닭(옛 세션 서버 등) — 이미 표식을 뗀 글 */
     loadError: string | null;
     /** `[messenger] <채널>_chat` */
     chat: boolean;
-    /** 말하기 손잡이를 잠근다(원격 창 · 저장된 값이 꺼짐) */
     chatLocked: boolean;
     onchat: (on: boolean) => void;
-    /** 명령이 새 상태를 돌려줬다 — `paired` 는 이 몸통에서 짝을 허용해 막 연결됐는가 */
+    /** `paired` = 이 몸통에서 짝을 허용해 막 연결됐는가 */
     onstatus: (next: BotStatus, paired: boolean) => void;
   } = $props();
 
-  /** 채널마다 다른 글 — 나머지 줄은 `settings.messenger.bot.*` 를 함께 쓴다. `howto` 가 `null` 이면 번호 줄(`MessengerSlackSteps`) */
+  /** `howto` 가 `null` 이면 번호 줄(`MessengerSlackSteps`) */
   const TEXT: Record<BotChannel, { howto: Key | null; pairHowto: Key; chatNote: Key; unbotNote: Key }> = {
     telegram: {
       howto: "settings.messenger.telegram.howto",
@@ -89,7 +71,6 @@
   };
 
   let busy = $state(false);
-  /** 토큰 칸 밑 한 줄 — 등록 거절 문구 */
   let rejection = $state<string | null>(null);
 
   const text = $derived(TEXT[channel]);
@@ -102,7 +83,6 @@
     return stripReason(e instanceof Error ? e.message : String(e));
   }
 
-  /** 명령 하나(`channel` 을 싣는다) — 새 상태를 올린다. 실패는 토스트(`inline` 이면 칸 밑) */
   async function run(command: string, args: Record<string, unknown>, opts: { inline?: boolean; paired?: boolean } = {}) {
     busy = true;
     rejection = null;
@@ -117,7 +97,6 @@
     }
   }
 
-  /** [연결] — 칸은 넣자마자 비운다(`MessengerTokenForm` — 거절되면 다시 붙여 넣는다 · 화면에 토큰을 남겨 두지 않는다) */
   function connect(values: string[]) {
     const token = joinTokens(values);
     if (token === null) return;
@@ -268,7 +247,6 @@
     color: var(--err);
   }
 
-  /* 코드 확인 상자 — 요령 밑에 두 칸을 다 쓴다(이름 · 코드 | 허용 · 거절) */
   .srow.pair-row > .pair {
     grid-column: 1 / -1;
     grid-row: 3;

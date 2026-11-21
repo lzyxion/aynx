@@ -1,16 +1,6 @@
 <!--
-  **폰 사이드 채팅 화면**(원격 웹 · 2026-11-01 — docs/log/2026-11-01-remote-side-chat.md 화면 단계) — 전체 화면 덮개. 데스크톱 폭의 채팅 독
-  (`ChatDock`) 대신 원격 폰 배치에서 선다. 들어오는 길: 상태줄의 말풍선 · 시트(`MobileSheet`)의 줄 · [사이드 채팅에 묻기](`openSideChatHere`).
-
-  - 머리: ← 닫기(뒤로) · 지금 채팅 제목 ▾(목록 — 맨 위 [새 채팅] · 줄 = 로고 · 제목 · 모델 · 시각 · 점 + 늘 보이는 이름 바꾸기 · 지우기 단추 —
-    독과 같은 `ChatHistory`) · + 새 채팅.
-    휴대폰 '뒤로' 도 닫는다 — 다른 폰 덮개와 같은 기록 칸(`MobileBar` 의 SvelteKit `pushState`).
-  - 몸: 독과 같은 대화 면(`SideChatFace` 의 `phone` — Enter 줄바꿈 · 보내기는 단추 · 누르는 자리 44px). 상태는 `app/side-chat-live` 에 남아
-    덮개를 닫았다 열어도 지금 턴을 잃지 않는다. 권한 카드는 원격에서도 그냥 [허용 한 번] · [거절]이다(재확인 없음 — 사용자 결정 11-01).
-  - 열 때 입력 칸에 포커스를 주지 않는다(화면 키보드가 대화를 가린다) — 뒤로 단추에 준다.
-  - CLI · 모델 · 강도 · 연결 · 그림 · 실린 MCP 는 독과 같은 입력 칸 한 줄(`[+]` · 모델 키워드 · 연결 칩 — 2026-11-13 목업 D안 · 대화 면이 쥔다).
-    예전 폰 판의 칸 안 그림 고르기 단추는 `[+]` › 파일 업로드로 들어갔다.
-  - 오른쪽에서 밀려 들어오고 밀려 나간다(다른 전체 화면 덮개와 같은 `pushOut`).
+  폰 사이드 채팅 화면 — 전체 화면 덮개. 상태는 `app/side-chat-live` 에 남아 덮개를 닫았다 열어도 지금 턴을 잃지 않는다.
+  권한 카드는 원격에서도 [허용 한 번] · [거절] 그대로다(재확인 없음 — 사용자 결정).
 -->
 <script lang="ts">
   import { onMount, untrack } from "svelte";
@@ -58,21 +48,20 @@
   let now = $state(Date.now());
 
   onMount(() => {
-    // 열리면 뒤로 단추에 포커스 — 입력 칸이 아니라 화면 키보드가 뜨지 않고, Esc 가 이 덮개에서 받힌다
+    // 뒤로 단추에 포커스 — 입력 칸이면 화면 키보드가 대화를 가린다 · Esc 가 이 덮개에서 받힌다
     backBtn?.focus({ preventScroll: true });
     void knownAiClis().then((list) => (clis = list));
     void joinListedSideChats();
     return () => setShownSideChat(null);
   });
 
-  /** 지금 채팅에 붙는다(독과 같은 길 — 구독 → attach → 없으면 open, 띄우지 않는다) */
+  /** 없으면 open — 띄우지 않는다 */
   $effect(() => {
     const c = current;
     if (!c) return;
     void joinSideChat(untrack(() => targetOf(c)));
   });
 
-  /** 지금 보이는 채팅 — 끝난 턴의 "새 답" 표식을 거둔다 */
   $effect(() => {
     setShownSideChat(current ? current.id : null);
   });
@@ -84,12 +73,12 @@
     return () => clearInterval(timer);
   });
 
-  /** 연결 이름 — 보낼 때 서버가 머리글을 같은 이름으로 짓게(독의 연결 칩과 같은 판정 · 고르기는 없다) */
+  /** 보낼 때 서버가 머리글을 같은 이름으로 짓게 */
   const chipLinks = $derived(current ? linkChipStates(current.tiles, linkTilesHere(), sideChatLiveOf(current.id)?.links ?? []) : []);
 
   let creating = false;
 
-  /** 새 채팅 — 마지막에 쓴 CLI · 모델(그 CLI 가 꺼졌으면 켠 목록의 첫 항목). 띄우지 않는다(첫 보내기 때) */
+  /** 띄우지 않는다(첫 보내기 때) */
   async function createChat(): Promise<void> {
     if (creating || !offered) return;
     const pick = sideChatNewDefault(offered, lastSideChatPick());
@@ -136,7 +125,6 @@
     return "";
   }
 
-  // 목록 줄의 이름 바꾸기 · 지우기 — 줄 오른쪽 단추 둘(폰은 늘 보인다 — 우클릭이 없다). 몸은 독과 같다(`renameSideChat` · `removeSideChat`).
   // 우클릭 메뉴(`rowMenu`)는 폰에 서지 않는다 — `ChatHistory` 의 칸만 채운다
   let renaming = $state<string | null>(null);
   let renameText = $state("");
@@ -288,7 +276,7 @@
     left: 0;
     right: 0;
     height: var(--app-h, 100dvh);
-    /* 다른 폰 덮개와 같은 층 — 확인 상자(114) · 가림막 · 모달(100) 아래 */
+    /* 확인 상자(114) · 가림막 · 모달(100) 아래 */
     z-index: 90;
     display: flex;
     flex-direction: column;
@@ -304,7 +292,6 @@
   }
   @keyframes mchat-in {
     from {
-      /* 화면 폭 전체가 오른쪽에서 밀려 들어온다(밀어 넣는 화면 — 알림 · 작업안 덮개와 같은 말) */
       transform: translateX(100%);
     }
   }
@@ -366,7 +353,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* 상태 점 — 독 머리줄과 같은 말: 답하는 중(강조색) · 권한(경고) · 새 답(완료) */
   .dot {
     flex: 0 0 auto;
     width: 8px;

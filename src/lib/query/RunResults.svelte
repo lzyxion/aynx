@@ -2,12 +2,7 @@
   import type { DbQueryResult, DbScriptResult } from "./query-backend";
   import type { PanelList, PanelRow, ResultTabId } from "./run-panel";
 
-  /**
-   * 결과 칸이 그리는 실행 하나(`QueryView` 의 탭별 결과 — 저장하지 않는다). `list` 는 실행이 끝날 때 한 번 지은 목록(`run-panel`)이다.
-   * - `result` — 단문의 성공(`inWork` = 그 뒤 작업이 열려 있다 · `writable` = 쓰기 모드였다)
-   * - `script` — 여러 문장(스크립트 실행기)
-   * - `error` — 실행의 실패(문장에 붙는 실패면 `list` 가 한 줄, 아니면 `null` · `tag` = needsWork · 결과 불명)
-   */
+  /** 저장하지 않는다. `list` 는 실행이 끝날 때 한 번 지은 목록이다 */
   export type RunShown =
     | { kind: "result"; r: DbQueryResult; list: PanelList; inWork: boolean; writable: boolean }
     | { kind: "script"; r: DbScriptResult; list: PanelList }
@@ -15,7 +10,7 @@
 
   export type { PanelRow };
 
-  /** 고른 결과 탭 — 실행(목록)마다 기억한다. 스크립트 탭마다 결과가 따로라 탭을 오가도 그 실행의 탭이 남는다(저장하지 않는다). */
+  /** 실행(목록)마다 기억한다 — 스크립트 탭을 오가도 그 실행의 탭이 남는다(저장하지 않는다) */
   const chosenTab = new WeakMap<PanelList, ResultTabId>();
 </script>
 
@@ -30,21 +25,8 @@
   import type { KeptPick } from "./ResultChart.svelte";
 
   /**
-   * **문장별 결과 패널**(10-14 — Beekeeper Studio 식 개편, 목업 `Main` · `Success`). 단문 · 여러 문장 · 스크립트 실행이 같은 틀이다:
-   *
-   * 1. **요약 줄** — 그림 · 한 줄 결론 · 부연 · 시간(색은 결론의 갈래: 성공 `--ok` · 이번 실행만 되돌림 `--warn` · 실패 · 되돌림 · 결과 불명
-   *    `--err` · 그 밖 중립). needsWork 면 [트랜잭션 작업 시작] 이 이 줄 끝에 선다.
-   * 2. **문장 목록** — 상태 그림(✓ ↶ ✕ · ?) · 번호 · SQL 한 줄 · 결과(영향 행 · "되돌림" · "실패" · "실행 안 함") · 시간. 성공 · 되돌림 · 실행
-   *    안 함도 모두 보이고 **실패 줄만 강조**(왼쪽 막대 + 옅은 바탕 + DB 오류 원문을 그 줄 안에). 줄을 누르면 편집기에서 그 문장을 고르고
-   *    (`onlocate` — 보낸 뒤 글이 바뀌었으면 부르는 쪽이 짚지 않는다), 조회 문장이면 그 결과 표가 아래에 펼쳐진다.
-   * 3. **결과 표**(고른 조회 문장 — `ResultGrid`) 또는 **개수 줄**("✓ n · ↶ n · ✕ n · 건너뜀 n" + 행 상한). 표가 서면 개수는 표의 상태 줄 맨
-   *    앞으로 옮겨 아래 줄이 둘로 서지 않게 한다.
-   *
-   * **문장이 둘 이상이면 결과마다 탭**(10-14 — DBeaver · DataGrip · Beekeeper 식): 요약 줄 아래 `[요약] [결과 1 · 3행] …` 탭 줄. [요약] =
-   * 문장 목록 + 개수 줄, [결과 N] = 행을 돌려준 N 번째 문장의 `ResultGrid` 하나. 요약의 행 수를 누르면 그 결과 탭으로 간다. 단문은 탭 없이
-   * 위 1~3 그대로. 고른 탭은 실행마다 기억한다(`chosenTab`).
-   *
-   * 규칙(상태 · 자리 맞추기 · 처음 펼칠 줄 · 결과 탭 · 처음 탭)은 `run-panel`(순수), 스크립트의 결론 문구는 `script-run` 의 `scriptSummary`.
+   * 문장별 결과 패널 — 요약 줄 · 문장 목록 · 결과 표(또는 개수 줄). 문장이 둘 이상이면 결과마다 탭이다.
+   * 표가 서면 개수는 표의 상태 줄 맨 앞으로 옮긴다 — 아래 줄이 둘로 서지 않게.
    */
   let {
     shown,
@@ -58,10 +40,10 @@
     shown: RunShown;
     name: string;
     limit: RowLimitProps;
-    /** [트랜잭션 작업 시작] — needsWork 결과에 단다(쓰기 모드 · 작업 없음일 때만 부르는 쪽이 준다) */
+    /** needsWork 결과의 [트랜잭션 작업 시작] — 쓰기 모드 · 작업 없음일 때만 부르는 쪽이 준다 */
     begin?: { disabled: boolean; onclick: () => void } | null;
     onlocate: (row: PanelRow) => void;
-    /** [표 | 차트] · 차트의 고른 축 — 부르는 쪽(스크립트 탭)이 들고 있어 다시 실행해도 남는다(`ResultGrid` 의 같은 이름) */
+    /** 부르는 쪽이 들고 있어 다시 실행해도 남는다 */
     view?: "grid" | "chart";
     chartPick?: KeptPick;
   } = $props();
@@ -87,18 +69,14 @@
     }
   });
 
-  /** 탭 줄이 없을 때(단문 · 한 문장) 목록 아래에 펼칠 결과 표 */
+  /** 탭 줄이 없을 때 목록 아래에 펼칠 결과 표 */
   const grid = $derived.by(() => {
     if (bar) return null;
     const r = rows[picked]?.result;
     return r && r.columns.length > 0 && !detached ? r : null;
   });
-  /**
-   * 조용한 성공 — 문장 하나가 성공해 행을 돌려줬으면 요약 띠 · 문장 목록 없이 결과 표만(행 수 · 시간은 표의 상태 줄에 있다 — 2026-11-10
-   * 사용자 결정). 실패 · 스크립트 · 행 없는 문장(바꾼 행 수 · 자동 커밋 안내)은 그대로 보인다.
-   */
+  /** 단문이 행을 돌려줬으면 요약 띠 · 문장 목록 없이 결과 표만(사용자 결정) */
   const quiet = $derived(shown.kind === "result" && grid !== null);
-  /** 탭 줄이 있을 때 고른 결과 탭(없으면 [요약]) */
   const current = $derived(bar && typeof tab === "number" ? (tabs.find((x) => x.no === tab) ?? null) : null);
 
   type Tone = "ok" | "warn" | "err" | "info";
@@ -145,7 +123,7 @@
         : shown.tag === "unconfirmed"
           ? t("pane.query.unconfirmed.head")
           : t("pane.query.error.head");
-    // 문장에 붙은 실패는 그 줄 안에 원문이 있다 — 요약 줄에 다시 적지 않는다.
+    // 문장에 붙은 실패는 그 줄 안에 원문이 있다 — 요약 줄에 다시 적지 않는다
     return { tone: "err", title, why: shown.list ? undefined : shown.message, unknown: shown.tag === "unconfirmed" };
   });
 
@@ -204,7 +182,7 @@
     return bar ? tabs.find((x) => x.row === i) : undefined;
   }
 
-  /** 탭 고르기 — 사람이 결과 탭을 고르면(`locate`) 편집기에서도 그 문장을 고른다(목록 줄을 누른 것과 같다) */
+  /** `locate` 면 편집기에서도 그 문장을 고른다 */
   function selectTab(id: ResultTabId, locate: boolean) {
     tab = id;
     if (list) chosenTab.set(list, id);
@@ -223,7 +201,6 @@
     return barEl?.querySelector<HTMLElement>('[aria-selected="true"]') ?? null;
   }
 
-  // 고른 탭이 넘친 탭 줄 밖이면 보이게(가로 스크롤 — 스크립트 탭 줄과 같은 관례)
   $effect(() => {
     void tab;
     if (!barEl) return;
@@ -245,7 +222,6 @@
     void tick().then(() => selectedTabEl()?.focus());
   }
 
-  /** 세로 휠 → 탭 줄 가로 스크롤 */
   function onTabWheel(ev: WheelEvent) {
     const el = barEl;
     if (!el || el.scrollWidth <= el.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
@@ -293,7 +269,6 @@
   {/if}
 
   {#if bar}
-    <!-- 결과 탭 줄 — [요약] + 행을 돌려준 문장마다 하나(←/→ · Home/End) -->
     <div
       class="rtabs"
       role="tablist"
@@ -339,7 +314,6 @@
     </div>
   {:else}
   {#if rows.length > 0 && !quiet}
-    <!-- 문장 목록 — 화살표로 옮기고 누르면 편집기에서 그 문장을 고른다(조회 문장은 결과 표가 아래에 펼쳐진다) -->
     <div class="list" class:grow={!grid} role="listbox" tabindex="0" aria-label={t("pane.query.script.list")} onkeydown={onKey}>
       <div class="row head" aria-hidden="true">
         <span></span><span class="no">{t("pane.query.list.no")}</span><span>{t("pane.query.list.sql")}</span><span class="meta"
@@ -412,7 +386,7 @@
     height: 100%;
   }
 
-  /* 요약 줄 — 결론의 갈래마다 의미색(새 색 없음 · 바탕은 옅게) */
+  /* 결론의 갈래마다 의미색 — 새 색 없음 */
   .sum {
     flex: 0 0 auto;
     display: flex;
@@ -460,7 +434,6 @@
     color: var(--accent);
   }
 
-  /* 결과 불명 — 왼쪽 막대로 한 번 더(예전 남는 띠와 같은 강조) */
   .sum.unknown {
     box-shadow: inset 3px 0 0 var(--err);
   }
@@ -540,7 +513,6 @@
     outline: 1px solid var(--focus-border);
   }
 
-  /* 문장 목록 — 칸: 그림 · 번호 · SQL · 결과 · 시간 */
   .list {
     flex: 0 1 auto;
     max-height: 40%;
@@ -577,7 +549,7 @@
     z-index: 1;
     padding-top: 3px;
     padding-bottom: 3px;
-    /* 끈끈한 머리 — 밑으로 줄이 지나가니 글래스 크롬 타일에서는 불투명(`--tile-sticky` · `PaneHost`) */
+    /* 밑으로 줄이 지나가니 글래스 크롬 타일에서는 불투명(`--tile-sticky` · `PaneHost`) */
     background: var(--tile-sticky, var(--bg-panel));
     color: var(--fg-3);
     cursor: default;
@@ -646,7 +618,6 @@
     white-space: nowrap;
   }
 
-  /* 실패 줄만 강조 — 왼쪽 막대 + 옅은 바탕 + 오류 원문 */
   .row.st-failed {
     background: color-mix(in srgb, var(--err) 9%, transparent);
     box-shadow: inset 3px 0 0 var(--err);
@@ -678,7 +649,7 @@
     color: var(--fg-1);
   }
 
-  /* 결과 탭 줄 — 정의 보기 탭(`QueryView` 의 .otab)과 같은 밑줄 탭 · 넘치면 가로 스크롤(스크립트 탭 줄 관례) */
+  /* `QueryView` 의 .otab 과 같은 밑줄 탭 */
   .rtabs {
     flex: 0 0 auto;
     display: flex;
@@ -738,7 +709,6 @@
     color: var(--fg-2);
   }
 
-  /* 좁은 폭 — 행 수를 접고 이름만 */
   @container (max-width: 380px) {
     .rtab {
       padding: 3px 7px 4px;
@@ -749,7 +719,6 @@
     }
   }
 
-  /* 요약의 행 수 → 그 결과 탭 */
   .to-tab {
     padding: 0;
     font: inherit;
@@ -785,7 +754,7 @@
     min-height: 0;
   }
 
-  /* 아래 줄 — 결과 표의 상태 줄(`ResultGrid` 의 .status)과 같은 치수 */
+  /* `ResultGrid` 의 .status 와 같은 치수 — 고치면 같이 */
   .foot {
     flex: 0 0 auto;
     display: flex;

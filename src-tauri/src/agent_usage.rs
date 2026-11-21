@@ -1,35 +1,17 @@
-//! **에이전트 사용량** — 지난 대화의 토큰 합과 요금제 한도 % (docs/log/2026-09-26-agent-usage.md).
+//! **에이전트 사용량** — 지난 대화의 토큰 합과 요금제 한도 % (docs/log/2026-09-26-agent-usage.md). **요금 환산은 하지 않는다**(구독제라
+//! 뜻이 없다).
 //!
-//! 1단계(`agent_sessions.rs`)의 대화 목록에 **숫자만** 얹는다: 대화마다 토큰(입력 · 캐시 읽기 · 캐시 쓰기 ·
-//! 출력)과 오늘·7일 합, 그리고 에이전트마다 요금제 한도 %. **요금 환산은 하지 않는다**(구독제라 뜻이 없다).
+//! ## Codex 의 누적 칸
 //!
-//! ## 에이전트마다 다른 것은 표 한 줄에 — [`UsageSource`] · [`LimitSource`]
+//! `token_count.info.total_token_usage` 는 대화 누적이고 포크 파일의 첫 기록은 부모의 누적을 이어받는다 — 파일의 첫 `token_count` 는
+//! `last` 만, 그 뒤로는 앞 누적과의 차이만 센다. 누적이 줄어들면(다시 이어 띄운 대화) 그 줄의 `last` 로 새 구간을 연다.
+//! `token_usage_record` 는 한 파일 안에서도 구간마다 있다 없다 하므로 "그 구간에 응답 기록이 있으면 그것(+ 첫 기록 앞의 누적 차),
+//! 없으면 누적 차" 로 센다.
 //!
-//! `agent_sessions::TARGETS` 의 줄이 이 두 칸을 든다. 파일 찾기·증분 읽기·캐시·합산·날짜 버킷은 공용이다.
+//! ## 증분 읽기
 //!
-//! | | Claude Code | Codex |
-//! | --- | --- | --- |
-//! | 줄 | 응답(`assistant`)의 `message.usage` | `token_usage_record`(응답마다) · `event_msg.token_count`(누적) |
-//! | 중복 | 스트리밍으로 한 응답이 여러 줄 — `(message.id, requestId)` 로 묶고 **칸마다 큰 값** | `response_id` 로 묶는다 |
-//! | 대화 하나 | `<id>.jsonl` + `<id>/subagents/**/*.jsonl`(서브에이전트 — 부모 대화에 합산) | 롤아웃 파일(같은 id 가 둘이면 둘 다) |
-//! | 한도 % | 타일의 claude 가 실은 mod 가 도우미로 적은 파일(`claude_usage.rs`) | 롤아웃의 마지막 `rate_limits` |
-//!
-//! **Codex 의 누적 칸** — `token_count.info.total_token_usage` 는 대화 누적이다. 포크 파일의 첫 기록은 부모의
-//! 누적을 이어받는다(로컬: 포크 34 중 15 에서 첫 `total − last ≠ 0`) → 파일의 첫 `token_count` 는 `last` 만 세고,
-//! 그 뒤로는 앞 누적과의 차이만 센다. 누적이 줄어들면(로컬 13회 — 다시 이어 띄운 대화) 그 줄의 `last` 로 새 구간을
-//! 연다. 응답마다 적히는 `token_usage_record` 는 신형 CLI 에만 있고 한 파일 안에서도 **구간마다** 있다 없다 한다
-//! (옛 CLI 로 다시 이으면 빠진다) — 그래서 구간마다 "그 구간에 응답 기록이 있으면 그것(+ 첫 기록 앞의 누적 차),
-//! 없으면 누적 차" 로 센다. 로컬 95 파일에서 이 규칙이 누적 차 합의 1.00~1.08 배(응답 기록이 누적이 빠뜨린 응답까지
-//! 센다), 한 파일에서도 모자라지 않았다. 포크의 응답 기록에는 부모 몫이 없다(포크 파일은 부모 줄을 복사하지
-//! 않고 `history_base` 로 가리킨다 — 로컬 34/34, 포크 시각보다 이른 줄 0).
-//!
-//! ## 증분 읽기 — 파일마다 바이트 자리
-//!
-//! 대화 파일은 덧붙이기만 한다(Claude · Codex 둘 다 — `/compact` 도 덧붙인다). 파일마다 `(mtime, 크기, 다 읽은
-//! 자리, 누적)` 을 메모리 캐시에 두고, 크기가 늘면 **그 자리부터** 새 줄만 읽는다. 끝의 반쯤 적힌 줄은 자리를
-//! 옮기지 않는다(다음 읽기가 마저 읽는다). 크기가 줄었거나(다시 쓴 파일) 크기는 같은데 mtime 이 바뀌었으면
-//! 처음부터 다시 읽는다. 줄은 **바늘**(`"usage"` · `token_count` …)이 든 것만 JSON 으로 푼다 — 도구 출력이 든
-//! 큰 줄은 훑고 지나간다. 첫 읽기는 파일을 나눠 여러 스레드로.
+//! 대화 파일은 덧붙이기만 한다(`/compact` 도) — 크기가 늘면 다 읽은 자리부터 새 줄만 읽는다. 끝의 반쯤 적힌 줄은 자리를 옮기지
+//! 않는다. 크기가 줄었거나 크기는 같은데 mtime 이 바뀌었으면 처음부터 다시 읽는다.
 //!
 //! ## 개인정보
 //!
@@ -51,17 +33,15 @@ use crate::agent_sessions::{
 /// 로컬 날짜 — 서기 1년 1월 1일부터의 일수(`chrono::NaiveDate::num_days_from_ce`).
 pub(crate) type Day = i32;
 
-/// 파일 안의 모델 번호 — [`FileUsage::models`] 의 자리. 모델을 모르면 빈 이름의 번호다.
+/// [`FileUsage::models`] 의 자리.
 type ModelIx = u16;
 
-/// 캐시 상한 — 넘으면 비우고 다시 채운다(대화 파일 상한 600 + 서브에이전트의 몇 배).
+/// 캐시 상한 — 넘으면 비우고 다시 채운다.
 const CACHE_MAX: usize = 8192;
-/// 읽기 버퍼.
 const READ_BUF: usize = 256 * 1024;
 /// Codex 한도 — 최신 파일 이만큼의 꼬리만 본다.
 const LIMIT_FILES: usize = 8;
 const LIMIT_TAIL_BYTES: u64 = 256 * 1024;
-/// 첫 읽기의 스레드 수 상한.
 const MAX_THREADS: usize = 8;
 
 // ---------------------------------------------------------------------------
@@ -90,7 +70,7 @@ impl Tokens {
         self.output += o.output;
     }
 
-    /// 칸마다 큰 값 — 같은 응답이 여러 줄에 적힐 때(스트리밍 중 출력 수가 자란다).
+    /// 같은 응답이 여러 줄에 적힌다 — 스트리밍 중 출력 수가 자란다.
     fn max_each(&mut self, o: &Tokens) {
         self.input = self.input.max(o.input);
         self.cache_read = self.cache_read.max(o.cache_read);
@@ -108,7 +88,6 @@ impl Tokens {
     }
 }
 
-/// RFC 3339 시각 → 로컬 날짜.
 fn day_of(ts: Option<&str>) -> Option<Day> {
     let d = chrono::DateTime::parse_from_rfc3339(ts?).ok()?;
     Some(
@@ -126,24 +105,20 @@ fn today() -> Day {
 // 파일 하나의 누적 — 에이전트를 가리지 않는 모양
 // ---------------------------------------------------------------------------
 
-/// Codex 누적 칸의 한 구간(누적이 줄어들 때마다 새 구간 — 모듈 머리말).
+/// Codex 누적 칸의 한 구간 — 모듈 머리말.
 #[derive(Default)]
 struct Epoch {
-    /// 이 구간에 응답 기록(`token_usage_record`)이 한 번이라도 있었나.
     keyed_seen: bool,
     /// 첫 응답 기록 **앞**의 누적 차.
     pre: BTreeMap<(Day, ModelIx), Tokens>,
-    /// 응답 기록 — `response_id` 로 묶는다.
     keyed: HashMap<String, (Day, ModelIx, Tokens)>,
-    /// 누적 차 전부(응답 기록이 없는 구간에서 쓴다).
     delta: BTreeMap<(Day, ModelIx), Tokens>,
 }
 
-/// 한도 한 칸 — 창 길이(분)가 라벨의 근거다(Codex `window_minutes` · Claude 는 `five_hour`=300 · `seven_day`=10080).
+/// 창 길이(분)가 라벨의 근거다(Codex `window_minutes` · Claude 는 `five_hour`=300 · `seven_day`=10080).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LimitWindow {
-    /// 창 길이(분). 모르면 `None`.
     #[serde(default)]
     pub window_minutes: Option<u64>,
     /// 출처의 이름(`five_hour` · `seven_day` · `primary` · `secondary`) — 라벨은 분으로 짓는다.
@@ -151,32 +126,28 @@ pub struct LimitWindow {
     pub kind: Option<String>,
     /// 0~100.
     pub used_percent: f64,
-    /// 초기화 시각(epoch 초).
+    /// epoch 초
     #[serde(default)]
     pub resets_at: Option<i64>,
 }
 
-/// 파일 하나에서 본 마지막 한도.
 #[derive(Clone, Debug, Default)]
 struct LimitSnap {
     at_ms: i64,
     windows: Vec<LimitWindow>,
 }
 
-/// 파일 하나의 누적 — 증분으로 자란다. **`Debug` 없음**(id 만 있지만 모듈의 결을 따른다).
+/// **`Debug` 없음** — 모듈의 결을 따른다.
 #[derive(Default)]
 pub(crate) struct FileUsage {
-    /// 파일 안에 적힌 대화 id(Codex `session_meta.payload.id`) — Claude 는 파일 이름이 id 다.
+    /// Codex `session_meta.payload.id` — Claude 는 파일 이름이 id 다.
     meta_id: Option<String>,
-    /// 포크로 시작한 대화(Codex `forked_from_id`).
     forked: bool,
-    /// 응답마다 한 칸(Claude `message.id:requestId`) — 같은 키는 칸마다 큰 값.
+    /// Claude `message.id:requestId` — 같은 키는 칸마다 큰 값.
     keyed: HashMap<String, (Day, ModelIx, Tokens)>,
-    /// 이 파일에 나온 모델 이름 — 줄마다 글자를 들지 않게 번호로 쥔다.
     models: Vec<String>,
-    /// Codex — 지금 턴의 모델(`turn_context.payload.model`). 그 뒤의 기록은 이 모델의 것이다.
+    /// Codex — 지금 턴의 모델. 그 뒤의 기록은 이 모델의 것이다.
     current_model: Option<ModelIx>,
-    /// Codex 누적 칸 — 앞 누적(`total_tokens` 와 네 칸).
     last_total: Option<(u64, Tokens)>,
     epochs: Vec<Epoch>,
     limits: Option<LimitSnap>,
@@ -190,7 +161,7 @@ impl FileUsage {
         self.epochs.last_mut().expect("방금 넣었다")
     }
 
-    /// 모델 이름 → 번호(처음 보면 더한다). 번호가 넘치면(6만 개 — 닿지 않는다) 마지막 번호에 몰아 둔다.
+    /// 번호가 넘치면 마지막 번호에 몰아 둔다.
     fn model_ix(&mut self, name: &str) -> ModelIx {
         if let Some(i) = self.models.iter().position(|m| m == name) {
             return i as ModelIx;
@@ -202,12 +173,11 @@ impl FileUsage {
         (self.models.len() - 1) as ModelIx
     }
 
-    /// 모델 번호 → 이름(모르면 빈 글자).
     fn model_name(&self, i: ModelIx) -> &str {
         self.models.get(i as usize).map_or("", String::as_str)
     }
 
-    /// (날짜, 모델)별 합 — 셈의 규칙(Codex 구간 규칙)은 여기 한 곳이다.
+    /// 셈의 규칙(Codex 구간 규칙)은 여기 한 곳이다.
     fn buckets(&self) -> BTreeMap<(Day, ModelIx), Tokens> {
         let mut out: BTreeMap<(Day, ModelIx), Tokens> = BTreeMap::new();
         let mut put = |k: (Day, ModelIx), t: &Tokens| out.entry(k).or_default().add(t);
@@ -231,7 +201,6 @@ impl FileUsage {
         out
     }
 
-    /// 날짜별 합.
     fn days(&self) -> BTreeMap<Day, Tokens> {
         let mut out: BTreeMap<Day, Tokens> = BTreeMap::new();
         for ((d, _), t) in self.buckets() {
@@ -245,19 +214,16 @@ impl FileUsage {
 // 에이전트 표의 두 칸
 // ---------------------------------------------------------------------------
 
-/// 토큰을 세는 법 — `agent_sessions::SessionTarget::usage`.
 pub(crate) struct UsageSource {
     /// 이 글자(바이트) 중 하나라도 든 줄만 JSON 으로 푼다.
     needles: &'static [&'static str],
-    /// 줄 하나(끝 `\n` 뗀 것) → 누적에 더한다. 읽히지 않는 줄은 조용히 건너뛴다.
+    /// 줄 하나(끝 `\n` 뗀 것). 읽히지 않는 줄은 조용히 건너뛴다.
     line: fn(&mut FileUsage, &[u8]),
-    /// 같은 대화에 딸린 다른 파일(Claude 서브에이전트) — 대화 파일 경로를 받는다.
+    /// 같은 대화에 딸린 다른 파일(Claude 서브에이전트).
     companions: fn(&Path) -> Vec<PathBuf>,
-    /// 대화 id — 대화 파일 경로와 그 파일의 누적을 받는다.
     conversation_id: fn(&Path, &FileUsage) -> Option<String>,
 }
 
-/// 요금제 한도 % 의 출처 — `agent_sessions::SessionTarget::limits`.
 #[derive(Clone, Copy)]
 pub(crate) enum LimitSource {
     /// 타일의 claude 가 실은 mod 가 한도 도우미로 적은 파일(`claude_usage.rs`).
@@ -302,8 +268,7 @@ struct CUsage {
     output_tokens: Option<u64>,
 }
 
-/// Claude 응답 줄 — `(message.id, requestId)` 마다 칸마다 큰 값(로컬: 같은 키 줄 30,633 쌍 중 12,404 쌍이
-/// 출력 수가 달랐다 — 스트리밍 중 자란다).
+/// `(message.id, requestId)` 마다 칸마다 큰 값 — 스트리밍 중 출력 수가 자란다.
 fn claude_line(u: &mut FileUsage, line: &[u8]) {
     let Ok(v) = serde_json::from_slice::<CLine>(line) else {
         return;
@@ -426,7 +391,7 @@ struct XUsage {
 }
 
 impl XUsage {
-    /// Codex 의 `input_tokens` 는 캐시 몫을 품는다(로컬 4,421/4,421: `cached ≤ input` · `total = input + output`).
+    /// Codex 의 `input_tokens` 는 캐시 몫을 품는다(`cached ≤ input` · `total = input + output`).
     fn tokens(&self) -> Tokens {
         Tokens {
             input: self
@@ -468,8 +433,7 @@ struct XWin {
     resets_at: Option<f64>,
 }
 
-/// `rate_limits` → 한도 칸들. `limit_id` 가 `codex` 가 아닌 것(로컬: `base_model_inference` — 늘 0%)은 요금제
-/// 한도가 아니라 건너뛴다(없으면 받는다).
+/// `limit_id` 가 `codex` 가 아닌 것(`base_model_inference` — 늘 0%)은 요금제 한도가 아니라 건너뛴다(없으면 받는다).
 fn codex_windows(r: &XRate) -> Option<Vec<LimitWindow>> {
     if r.limit_id.as_deref().is_some_and(|id| id != "codex") {
         return None;
@@ -581,7 +545,6 @@ fn codex_line(u: &mut FileUsage, line: &[u8]) {
     }
 }
 
-/// 지금 턴의 모델 — 아직 `turn_context` 를 못 봤으면 빈 이름.
 fn codex_model(u: &mut FileUsage) -> ModelIx {
     match u.current_model {
         Some(m) => m,
@@ -636,20 +599,16 @@ impl Entry {
 
 static CACHE: LazyLock<Mutex<HashMap<PathBuf, Entry>>> = LazyLock::new(Default::default);
 
-/// 지운 대화의 파일들을 캐시에서 뺀다(지난 대화 지우기 — `agent_sessions::delete`). 합계는 원래 **있는 파일만** 센다([`refresh`] 는
-/// 후보 파일 · 딸린 파일에서만 대화를 짓는다) — 이것은 사라진 파일의 누적을 메모리에 묵히지 않으려는 것이다. 그 파일과 `under`
-/// 아래(Claude 의 딸린 폴더 — 서브에이전트 파일)를 뺀다.
+/// 사라진 파일의 누적을 메모리에 묵히지 않으려는 것이다 — 합계는 원래 있는 파일만 센다. `under` = Claude 의 딸린 폴더.
 pub(crate) fn forget(path: &Path, under: Option<&Path>) {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     cache.retain(|p, _| p != path && !under.is_some_and(|u| p.starts_with(u)));
 }
 
-/// 줄에 바늘이 하나라도 있나.
 fn wanted(finders: &[memchr::memmem::Finder<'_>], line: &[u8]) -> bool {
     finders.iter().any(|f| f.find(line).is_some())
 }
 
-/// 파일 하나를 도장에 맞춘다 — 바뀌지 않았으면 아무것도 읽지 않고, 늘었으면 새 줄만, 줄었으면 처음부터.
 fn catch_up(e: &mut Entry, st: &FileStamp, src: &UsageSource) {
     if e.size == st.size && e.mtime_ms == st.mtime_ms {
         return;
@@ -665,7 +624,7 @@ fn catch_up(e: &mut Entry, st: &FileStamp, src: &UsageSource) {
     let mut read = || -> std::io::Result<()> {
         let mut f = std::fs::File::open(&st.path)?;
         f.seek(SeekFrom::Start(e.offset))?;
-        // 도장의 크기까지만 — 그 사이 자란 몫은 다음 읽기가 본다(크기와 자리가 어긋나지 않게).
+        // 도장의 크기까지만 — 크기와 자리가 어긋나지 않게.
         let mut r = BufReader::with_capacity(READ_BUF, f.take(st.size - e.offset));
         let mut buf = Vec::new();
         loop {
@@ -686,21 +645,19 @@ fn catch_up(e: &mut Entry, st: &FileStamp, src: &UsageSource) {
         Ok(())
     };
     if read().is_err() {
-        // 못 읽었다 — 지금까지 읽은 것은 두고 도장은 옛것으로 남긴다(다음에 다시).
+        // 못 읽었다 — 도장은 옛것으로 남긴다(다음에 다시).
         return;
     }
     e.size = st.size;
     e.mtime_ms = st.mtime_ms;
 }
 
-/// 할 일 하나 — 파일 도장 · 그 에이전트의 줄 파서 · 캐시에서 꺼낸 누적.
 struct Job {
     stamp: FileStamp,
     src: &'static UsageSource,
     entry: Entry,
 }
 
-/// 할 일들을 스레드 몇 개로 나눠 처리한다(첫 읽기는 1 GB 가 넘을 수 있다).
 fn run_jobs(jobs: &mut [Job]) {
     let busy: Vec<&mut Job> = jobs
         .iter_mut()
@@ -738,37 +695,30 @@ fn run_jobs(jobs: &mut [Job]) {
 // 대화별 합
 // ---------------------------------------------------------------------------
 
-/// 대화 하나의 사용량 (camelCase).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationUsage {
     pub agent: &'static str,
     pub id: String,
-    /// 전체(네 칸).
     pub tokens: Tokens,
     pub total: u64,
     /// 오늘(로컬 날짜) 합.
     pub today: u64,
     /// 오늘 포함 7일 합.
     pub week: u64,
-    /// 서브에이전트 파일을 합쳤나(Claude).
     pub subagents: bool,
-    /// 포크로 시작했나 — 화면이 "+21k" 로 적는다(부모 몫을 빼고 센 것이라서).
+    /// 화면이 "+21k" 로 적는다 — 부모 몫을 빼고 센 것이라서.
     pub forked: bool,
 }
 
-/// 사용량 한 벌.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageScan {
     pub conversations: Vec<ConversationUsage>,
-    /// 읽은 파일 수(대화 + 딸린 파일).
     pub files: usize,
-    /// 이 호출이 걸린 시간(ms) — 진단용.
     pub elapsed_ms: u64,
 }
 
-/// 대화 하나 — 에이전트 표 · 줄 파서 · 대화 파일 · 딸린 파일들.
 type ConvFiles = (
     &'static SessionTarget,
     &'static UsageSource,
@@ -776,8 +726,7 @@ type ConvFiles = (
     Vec<PathBuf>,
 );
 
-/// 후보 파일을 찾아 캐시를 도장에 맞춘다 — 캐시 잠금과 대화 목록을 돌려준다. 두 명령(대화별 · 기간 요약)이
-/// 같은 캐시를 나눠 쓴다: 한쪽이 읽은 것을 다른 쪽이 다시 읽지 않는다.
+/// 두 명령(대화별 · 기간 요약)이 같은 캐시를 나눠 쓴다.
 fn refresh(
     sources: &[(&'static SessionTarget, Vec<PathBuf>)],
 ) -> (
@@ -820,8 +769,7 @@ fn refresh(
             Job { stamp, src, entry }
         })
         .collect();
-    // 잠금을 쥔 채 읽는다 — 이 캐시를 만지는 것은 사용량 명령뿐이고(블로킹 풀), 두 읽기가 겹치면 뒤의 것이
-    // 기다렸다가 캐시를 그대로 받는다.
+    // 잠금을 쥔 채 읽는다 — 두 읽기가 겹치면 뒤의 것이 기다렸다가 캐시를 그대로 받는다.
     run_jobs(&mut jobs);
     let files = jobs.len();
     for j in jobs {
@@ -830,7 +778,6 @@ fn refresh(
     (cache, convs, files)
 }
 
-/// 몸통 — 루트를 받는다(시험이 임시 폴더를 넘긴다).
 fn scan(sources: &[(&'static SessionTarget, Vec<PathBuf>)]) -> UsageScan {
     let started = std::time::Instant::now();
     let (cache, convs, files) = refresh(sources);
@@ -864,7 +811,7 @@ fn scan(sources: &[(&'static SessionTarget, Vec<PathBuf>)]) -> UsageScan {
                 week_sum += tk.total();
             }
         }
-        // 같은 대화 id 가 파일 둘에 있으면(다시 이은 Codex 포크) 둘을 더한다 — 두 번째 파일은 제 몫만 센다.
+        // 같은 대화 id 가 파일 둘에 있으면(다시 이은 Codex 포크) 둘을 더한다.
         let slot = by_id
             .entry((t.id, id.clone()))
             .or_insert_with(|| ConversationUsage {
@@ -894,7 +841,7 @@ fn scan(sources: &[(&'static SessionTarget, Vec<PathBuf>)]) -> UsageScan {
 }
 
 // ---------------------------------------------------------------------------
-// 기간 요약 — 대시보드 "사용량" 칸 (docs/log/2026-09-26-agent-usage.md "사용량 칸")
+// 기간 요약 — 대시보드 "사용량" 칸 (docs/log/2026-09-26-agent-usage.md)
 // ---------------------------------------------------------------------------
 
 /// 하루 — 기간의 모든 달력일이 선다(기록이 없는 날은 0).
@@ -913,7 +860,6 @@ pub struct UsageDay {
 pub struct UsageBucket {
     pub date: String,
     pub agent: &'static str,
-    /// 모델 이름(모르면 빈 글자).
     pub model: String,
     pub tokens: Tokens,
     pub total: u64,
@@ -927,17 +873,14 @@ pub struct UsageModel {
     pub model: String,
     pub tokens: Tokens,
     pub total: u64,
-    /// 서로 다른 대화 수.
     pub conversations: u32,
 }
 
-/// 기간 요약 한 벌.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
-    /// 오늘(로컬) — `YYYY-MM-DD`.
+    /// 로컬 `YYYY-MM-DD`.
     pub today: String,
-    /// 기간의 첫날.
     pub start: String,
     /// 기록이 시작된 날(거르개의 에이전트 기준 · 전체 이력) — 없으면 `None`.
     pub first_day: Option<String>,
@@ -949,7 +892,6 @@ pub struct UsageSummary {
     pub recent: Vec<UsageDay>,
     /// (날짜, 에이전트, 모델) 칸 — 기간과 최근 [`RECENT_DAYS`] 일 중 **긴 쪽**(잔디에서 기간 밖의 날을 골라도 풀이가 선다).
     pub buckets: Vec<UsageBucket>,
-    /// 기간의 모델별 합.
     pub models: Vec<UsageModel>,
     /// 오늘부터 거꾸로 세어 토큰이 있는 날이 이어진 수(오늘이 비면 0) — 기간과 무관.
     pub streak: u32,
@@ -957,29 +899,25 @@ pub struct UsageSummary {
     pub prior_avg: Option<f64>,
     pub prior_days: u32,
     pub elapsed_ms: u64,
-    /// 원격 호스트가 들었으면 호스트마다 덮개(센 파일 · 아직 못 센 파일) — 이 PC 만이면 비었다
-    /// (docs/log/2026-09-27-remote-conversations.md "2단계").
+    /// 원격 호스트마다 덮개 — 이 PC 만이면 비었다.
     pub remote: Vec<RemoteCoverage>,
 }
 
-/// 원격 호스트 하나의 사용량 덮개 — 요약에 든 파일 수와 **아직 세지 못한** 파일(머리 한 번에 다 오지 않은 큰 대화 —
-/// 사람이 [전체 사용량 읽기] 를 누르면 선다). 화면은 이것으로 "dev-01: Claude 토큰 N개 대화는 전체 읽기 뒤" 를 적는다.
+/// 아직 세지 못한 파일 = 머리 한 번에 다 오지 않은 큰 대화(사람이 [전체 사용량 읽기] 를 누르면 선다).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteCoverage {
     pub host: String,
-    /// 끝까지 센 대화 파일 수.
     pub counted: u32,
     /// 아직 못 센 대화 파일 수(에이전트별) · 그 바이트 합(남은 몫).
     pub pending_claude: u32,
     pub pending_codex: u32,
     pub pending_bytes: u64,
-    /// 목록을 뽑은 때(이 PC 의 epoch ms) — 없으면 아직 읽지 않았다.
+    /// 이 PC 의 epoch ms — 없으면 아직 읽지 않았다.
     pub read_at: Option<i64>,
 }
 
-/// 사용 잔디가 늘 그리는 날 수 — 다섯 주. Claude Code 가 기본으로 30일이 지난 대화 기록을 지워(`cleanupPeriodDays`)
-/// 그보다 긴 이력은 뜻이 없다(사용자 결정 — docs/log/2026-09-26-agent-usage.md "셋째 판").
+/// 다섯 주 — Claude Code 가 기본으로 30일이 지난 대화 기록을 지워(`cleanupPeriodDays`) 그보다 긴 이력은 뜻이 없다.
 const RECENT_DAYS: Day = 35;
 
 fn date_str(d: Day) -> String {
@@ -987,8 +925,7 @@ fn date_str(d: Day) -> String {
         .map_or_else(String::new, |n| n.format("%Y-%m-%d").to_string())
 }
 
-/// 요약에 드는 파일 하나 — 에이전트 · 대화(모델별 대화 수를 센다) · 그 파일의 누적. 로컬 캐시와 원격 캐시
-/// (`agent_sessions_remote`)가 같은 모양으로 넘긴다 — 셈의 규칙은 [`summarize_files`] 한 곳이다.
+/// 로컬 캐시와 원격 캐시(`agent_sessions_remote`)가 같은 모양으로 넘긴다 — 셈의 규칙은 [`summarize_files`] 한 곳이다.
 pub(crate) type SummaryFile<'a> = (&'static str, String, &'a FileUsage);
 
 /// 몸통 — `period` 는 기간의 날 수(`None` = 기록 전체), `agent` 는 거르개(`None` = 전체).
@@ -1006,7 +943,6 @@ fn summarize(
     s
 }
 
-/// 로컬 캐시 → 요약에 드는 파일들(대화 파일과 딸린 파일 — 딸린 파일은 부모 대화의 것).
 fn local_files<'a>(
     cache: &'a HashMap<PathBuf, Entry>,
     convs: &'a [ConvFiles],
@@ -1027,14 +963,12 @@ fn local_files<'a>(
     out
 }
 
-/// 파일들 → 기간 요약 (**순수 함수**). 로컬 · 원격 · 둘의 합이 모두 여기를 지난다.
 pub(crate) fn summarize_files(
     files: Vec<SummaryFile<'_>>,
     period: Option<u32>,
     agent: Option<&str>,
     today: Day,
 ) -> UsageSummary {
-    // 전체 이력의 날짜별 합(거르개 적용) · 에이전트 목록 · (날짜, 에이전트, 모델) 칸 · 모델별 대화
     let mut all_days: BTreeMap<Day, Tokens> = BTreeMap::new();
     let mut agents: Vec<&'static str> = Vec::new();
     let mut cells: BTreeMap<(Day, &'static str, String), Tokens> = BTreeMap::new();
@@ -1060,7 +994,7 @@ pub(crate) fn summarize_files(
             cells.entry((d, aid, model)).or_default().add(&tk);
         }
     }
-    // 표의 순서로(칩 순서가 흔들리지 않게)
+    // 표의 순서로 — 칩 순서가 흔들리지 않게
     agents.sort_by_key(|a| TARGETS.iter().position(|t| t.id == *a));
 
     let first = all_days.keys().next().copied();
@@ -1097,7 +1031,6 @@ pub(crate) fn summarize_files(
             models.entry((*a, m.clone())).or_default().0.add(tk);
         }
     }
-    // 대화 수 — 기간 안에 그 모델의 기록이 있는 대화
     for ((a, m), slot) in models.iter_mut() {
         if let Some(set) = model_convs.get(&(*a, m.clone())) {
             slot.1 = set
@@ -1119,14 +1052,13 @@ pub(crate) fn summarize_files(
         .collect();
     models.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.model.cmp(&b.model)));
 
-    // 연속 — 오늘부터 거꾸로
     let mut streak = 0u32;
     let mut d = today;
     while all_days.get(&d).is_some_and(|t| t.total() > 0) {
         streak += 1;
         d -= 1;
     }
-    // 오늘 앞 7 달력일 — 기록이 시작된 뒤만(설치 전 빈 날을 0 으로 넣으면 첫 며칠의 "평균 대비" 가 부푼다)
+    // 기록이 시작된 뒤만 — 설치 전 빈 날을 0 으로 넣으면 첫 며칠의 "평균 대비" 가 부푼다
     let prior: Vec<u64> = match first {
         Some(f) => ((today - 7).max(f)..today)
             .map(|d| all_days.get(&d).map_or(0, Tokens::total))
@@ -1157,12 +1089,8 @@ fn all_sources() -> Vec<(&'static SessionTarget, Vec<PathBuf>)> {
     TARGETS.iter().map(|t| (t, (t.roots)())).collect()
 }
 
-/// 기간 요약 — 대시보드 "사용량" 칸. `days` 는 기간의 날 수(없으면 기록 전체), `agent` 는 에이전트 거르개
-/// (없으면 전체). 캐시를 나눠 쓰므로 대화별 명령을 한 번 부른 뒤라면 늘어난 몫만 읽는다. async + 블로킹 풀.
-///
-/// **어디서**(docs/log/2026-09-27-remote-conversations.md "2단계"): `local`(기본 참) = 이 PC 를 넣나, `hosts` = 넣을 원격
-/// 별칭들. 원격 몫은 **이미 읽어 둔 캐시에서만** 온다(여기서는 서버에 묻지 않는다 — 연결이 없는 호스트도 마지막으로 읽은
-/// 값이 선다). 둘 다 주면 한 요약으로 더한다("모두").
+/// `days` = 기간의 날 수(없으면 기록 전체) · `agent` = 에이전트 거르개 · `local`(기본 참) = 이 PC 를 넣나 · `hosts` = 넣을 원격
+/// 별칭들. 원격 몫은 **이미 읽어 둔 캐시에서만** 온다(여기서는 서버에 묻지 않는다).
 #[tauri::command]
 pub async fn agent_usage_summary(
     days: Option<u32>,
@@ -1183,7 +1111,7 @@ pub async fn agent_usage_summary(
     .map_err(|e| e.to_string())
 }
 
-/// 이 PC(고르면) + 원격 캐시 → 한 요약. 잠금 순서는 늘 로컬 캐시 → 원격 캐시(원격 쪽은 로컬 캐시를 잡지 않는다).
+/// 잠금 순서는 늘 로컬 캐시 → 원격 캐시(원격 쪽은 로컬 캐시를 잡지 않는다).
 fn summarize_with_hosts(
     local: bool,
     hosts: &[String],
@@ -1211,10 +1139,10 @@ fn summarize_with_hosts(
 }
 
 // ---------------------------------------------------------------------------
-// 원격 판이 빌려 쓰는 것 — 같은 줄 파서 · 같은 셈 (`agent_sessions_remote`)
+// 원격 판이 빌려 쓰는 것 — 같은 줄 파서 · 같은 셈
 // ---------------------------------------------------------------------------
 
-/// 그 에이전트의 바늘(이 글자가 든 줄만 JSON 으로 푼다) — 원격 전체 읽기는 서버에서 이 바늘로 줄을 걸러 받는다.
+/// 원격 전체 읽기는 서버에서 이 바늘로 줄을 걸러 받는다.
 pub(crate) fn needles_of(agent: &str) -> &'static [&'static str] {
     match sessions::target(agent).ok().and_then(|t| t.usage.as_ref()) {
         Some(src) => src.needles,
@@ -1222,8 +1150,7 @@ pub(crate) fn needles_of(agent: &str) -> &'static [&'static str] {
     }
 }
 
-/// 온전한 줄들(끝 줄바꿈까지)을 누적에 먹인다 — 답 = 먹은 바이트(마지막 줄바꿈까지). 끝의 반쯤 온 줄은 먹지 않는다
-/// (로컬 `catch_up` 과 같은 규칙 — 다음 읽기가 그 자리부터 마저 읽는다).
+/// 답 = 먹은 바이트(마지막 줄바꿈까지). 끝의 반쯤 온 줄은 먹지 않는다(로컬 `catch_up` 과 같은 규칙).
 pub(crate) fn feed_lines(agent: &str, u: &mut FileUsage, bytes: &[u8]) -> u64 {
     let Some(src) = sessions::target(agent).ok().and_then(|t| t.usage.as_ref()) else {
         return 0;
@@ -1245,7 +1172,6 @@ pub(crate) fn feed_lines(agent: &str, u: &mut FileUsage, bytes: &[u8]) -> u64 {
     end as u64 + 1
 }
 
-/// 파일 하나의 네 칸 합.
 pub(crate) fn file_tokens(u: &FileUsage) -> Tokens {
     let mut t = Tokens::default();
     for tk in u.buckets().values() {
@@ -1254,7 +1180,7 @@ pub(crate) fn file_tokens(u: &FileUsage) -> Tokens {
     t
 }
 
-/// 롤아웃의 바이트(꼬리)에서 가장 늦은 요금제 한도 — `(잰 시각 ms, 칸들)`. 로컬 `codex_rollout_limits` 와 같은 풀이.
+/// `(잰 시각 ms, 칸들)`. 로컬 `codex_rollout_limits` 와 같은 풀이.
 pub(crate) fn codex_limits_in(bytes: &[u8]) -> Option<(i64, Vec<LimitWindow>)> {
     let mut u = FileUsage::default();
     // 누적 칸을 흉내 내지 않게 줄마다 새 판으로 — 한도만 본다.
@@ -1268,7 +1194,7 @@ pub(crate) fn codex_limits_in(bytes: &[u8]) -> Option<(i64, Vec<LimitWindow>)> {
     u.limits.map(|l| (l.at_ms, l.windows))
 }
 
-/// 원격 호스트의 Codex 한도 — 화면의 한도 카드 모양으로(Claude 는 싣지 않는다 — 상태줄은 이 PC 의 것).
+/// Claude 는 싣지 않는다 — 한도 파일은 이 PC 의 것.
 pub(crate) fn remote_codex_limits(snap: Option<(i64, Vec<LimitWindow>)>) -> AgentLimits {
     match snap {
         Some((at, windows)) => AgentLimits {
@@ -1286,8 +1212,7 @@ pub(crate) fn remote_codex_limits(snap: Option<(i64, Vec<LimitWindow>)>) -> Agen
     }
 }
 
-/// 대화마다 토큰 — 목록(`agent_sessions_list`)과 **따로** 부른다: 목록은 앞·꼬리만 읽어 빠르고, 이것은 첫
-/// 호출에 파일 전체를 읽는다(그다음부터는 늘어난 몫만). async + 블로킹 풀.
+/// 목록(`agent_sessions_list`)과 **따로** 부른다 — 목록은 앞 · 꼬리만 읽어 빠르고, 이것은 첫 호출에 파일 전체를 읽는다.
 #[tauri::command]
 pub async fn agent_usage_scan() -> Result<UsageScan, String> {
     tauri::async_runtime::spawn_blocking(|| scan(&all_sources()))
@@ -1299,14 +1224,13 @@ pub async fn agent_usage_scan() -> Result<UsageScan, String> {
 // 한도 %
 // ---------------------------------------------------------------------------
 
-/// 에이전트 하나의 한도 (camelCase).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentLimits {
     pub agent: &'static str,
-    /// 비었으면 아직 값이 없다(화면은 안내 한 줄 — 숫자를 지어내지 않는다).
+    /// 비었으면 아직 값이 없다 — 숫자를 지어내지 않는다.
     pub windows: Vec<LimitWindow>,
-    /// 값을 잰 시각(epoch ms).
+    /// epoch ms
     pub measured_at: Option<i64>,
     /// 이 PC 에서 그 에이전트를 본 적이 있나(대화 루트 폴더가 있다) — 값이 없어도 상태바에 빈 고리를 세울지.
     pub seen: bool,
@@ -1367,8 +1291,7 @@ fn limits_of(
     }
 }
 
-/// 에이전트마다 요금제 한도 % — Claude 는 상태줄 도우미가 적은 파일, Codex 는 최신 롤아웃 꼬리. 싸다(파일 한
-/// 개 + 꼬리 몇 개) — 앱이 뜰 때 상태바가 한 번, 대시보드 에이전트 칸이 보이는 동안 1분마다 부른다.
+/// 싸다(파일 한 개 + 꼬리 몇 개) — 대시보드 에이전트 칸이 보이는 동안 1분마다 부른다.
 #[tauri::command]
 pub async fn agent_usage_limits() -> Result<Vec<AgentLimits>, String> {
     tauri::async_runtime::spawn_blocking(|| {

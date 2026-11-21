@@ -1,11 +1,6 @@
 import type { commands as koCommands } from "$lib/i18n/ko/commands";
 
-/**
- * `commands` namespace — English. Glossary lives in `en/settings.ts`.
- *
- * Action names are **not** here: the palette and the cheat sheet read the same
- * cells as the settings screen (`settings.keybinding.<id>`).
- */
+/** `commands` namespace — English. Glossary: `en/settings.ts`. Action names are not here — the palette and cheat sheet read `settings.keybinding.<id>`. */
 export const commands: Record<keyof typeof koCommands, string> = {
   // ── Command palette ───────────────────────────────────────────────────────
   "palette.aria": "Command palette",
@@ -61,7 +56,7 @@ export const commands: Record<keyof typeof koCommands, string> = {
 
   "palette.history.tail": "{pane} · {when}",
   "palette.history.empty": "No commands yet",
-  // Past conversations — narrowed with `conv ` (not shown for unprefixed queries)
+  // Past conversations
   "palette.section.conversation": "Past conversations",
   "palette.hint.conversation": "resume",
   "palette.conversation.hint.enter": "resume",
@@ -121,7 +116,7 @@ export const commands: Record<keyof typeof koCommands, string> = {
   "cheatsheet.files.views": "View — icons · compact · details",
 
 
-  // Mouse gesture chips — click words become mouse-icon chips, drags stay soft chips (keep the place word space-separated)
+  // Mouse gesture chips — keep the place word space-separated from the click word (click words become mouse-icon chips)
   "cheatsheet.g.rightClick": "Right-click",
   "cheatsheet.g.shiftRightClick": "Shift+right-click",
 
@@ -186,7 +181,7 @@ export const commands: Record<keyof typeof koCommands, string> = {
 
   // ── Blocked actions ───────────────────────────────────────────────────────
   "keys.terminalRequired": "A terminal tile must be focused.",
-  // Tab templates (2026-11-16)
+  // Tab templates
   "palette.section.template": "Templates",
   "palette.action.saveTemplate": "Save current tab as template…",
   "palette.action.exportSettings": "Export settings…",

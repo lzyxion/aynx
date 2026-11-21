@@ -1,5 +1,4 @@
 <script lang="ts">
-  // 트랙 줄을 누르면 트랙 경로로 이동한다. 시도 단추는 같은 경로의 시도를 고른다.
   import { t, locale } from "$lib/i18n/i18n.svelte.js";
   import {
     TASK_STATE_KEY,
@@ -32,29 +31,25 @@
     profiles = [],
   }: {
     row: TrackRow;
-    /** 아티스트 목록(이름 · 아이콘 — 부모가 한 번 읽어 나눠 준다) */
     profiles?: readonly ArtistProfile[];
     detail: RunDetail;
     busy: boolean;
     ontoggle: () => void;
     onverify: () => void;
     onpermissions: () => void;
-    /** 아티스트를 눌렀다 — 그 Attempt 의 작업자 상세로(③) */
     onartist: (attemptId: string) => void;
   } = $props();
 
   const statusText = $derived(row.statusKey ? t(row.statusKey, { n: row.turnNo }) : keyText(TASK_STATE_KEY, row.task.state, t));
   const label = $derived(`${trackNo(row.no)} · ${statusText}`);
-  /** 시도 → 그 아티스트 프로필(이름 · 아이콘 — 지금 목록, 지운 아티스트면 띄울 때의 이름 사본) */
   const profileOf = (a: AttemptView) => (a.roleId ? profiles.find((p) => p.id === a.roleId) ?? null : null);
   const nameOf = (a: AttemptView) => profileOf(a)?.name || a.roleName?.trim() || artistOf(a.cli).name;
   const writer = $derived(row.writer ? { name: nameOf(row.writer), profile: profileOf(row.writer) } : null);
   const judge = $derived(row.judge ? { name: nameOf(row.judge), profile: profileOf(row.judge) } : null);
   const acc = $derived(validAccepted(detail, row.task.id));
-  /** 상태 칸 낱말 앞의 그림(10-30 — # 칸 그림은 그대로 두고 상태 칸에도) */
   const icon = $derived(trackStatusIcon(row));
 
-  /** 줄 머리의 아티스트 줄 — 아티스트 이름 뒤 그때의 사실 한 마디(목업 "구현가 · Edit src/log.rs" — 지어내지 않는다 · 서버 칸만) */
+  /** 아티스트 이름 뒤 그때의 사실 한 마디 — 지어내지 않는다 · 서버 칸만 */
   const subline = $derived.by(() => {
     const parts: string[] = [];
     if (row.need === "blocked" && row.blockedNeed) {
@@ -69,7 +64,6 @@
     return parts.join(" · ");
   });
 
-  /** 한국어 주격 조사 — 이름 끝 글자에 받침이 있으면 "이", 없거나 한글이 아니면 "가"("검토자가 듣는 중") */
   function subjectParticle(name: string): string {
     const code = name.trim().charCodeAt(name.trim().length - 1);
     return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0 ? "이" : "가";
@@ -118,7 +112,6 @@
               >{/if}
           </span>
         {/if}
-        <!-- 검토 중이면 검토자 한 사람("검토자가 듣는 중"), 아니면 쓴 아티스트 이름 · 그때의 사실(목업) — 이름을 누르면 그 시도로 -->
         <span class="sub-text">
           {#if judge && row.judge}{@const id = row.judge.id}<button type="button" class="who"
               title={t("orch.track.artist.open", { name: judge.name })} onclick={(e) => pick(e, id)}
@@ -178,14 +171,12 @@
   .head:focus-visible {
     box-shadow: inset 0 0 0 2px var(--focus-ring, var(--accent));
   }
-  /* 지금 재생 중인 줄 — 목업의 옅은 강조 판 */
   .track[data-tone="playing"] > .head {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .track[data-tone="playing"] .title {
     color: var(--accent);
   }
-  /* 사람 필요(막힘 · 충돌 · 검증 실패) — 호박 판 */
   .track[data-tone="attention"] > .head {
     background: color-mix(in srgb, var(--warn) 14%, transparent);
   }
@@ -241,7 +232,6 @@
     flex: 0 0 auto;
     --album-bg: var(--m3-surface-container-low, var(--bg-panel));
   }
-  /* 아티스트 문 — 얼굴 · 이름 · feat. 를 누르면 작업자 상세(줄 펼침과 따로) */
   .face-btn,
   .who {
     font: inherit;
@@ -304,7 +294,6 @@
   .track[data-tone="attention"] .status-text {
     color: var(--warn);
   }
-  /* 사람 관문 단추 — 알약(검증 = 강조색 · 앨범 권한 = 호박) */
   .gate {
     font: inherit;
     font-size: var(--t-xs);
@@ -361,7 +350,7 @@
     color: var(--fg-2);
     font-variant-numeric: tabular-nums;
   }
-  /* 좁은 판(판 `.board` 가 크기 컨테이너 — 열 머리와 같은 문턱) — 진행 칸을 걷고 상태 칸을 줄인다 */
+  /* 판 `.board` 가 크기 컨테이너 — 열 머리와 같은 문턱 */
   @container (max-width: 640px) {
     .head {
       grid-template-columns: 28px minmax(0, 1fr) 110px 48px;

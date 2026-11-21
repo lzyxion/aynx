@@ -16,31 +16,16 @@
   import { cleanTemplateName, MAX_TEMPLATE_NAME } from "$lib/tab-templates";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
-  /**
-   * 템플릿 **편집** — 설정 › 템플릿의 하위 화면(2026-11-17 — 스니펫 편집 `SnippetEditor` 와 같은 틀).
-   *
-   * 요약(`TemplatesSection`)의 줄 누르기가 연다. 틀(`SettingsSubView`)은 스니펫 · 트리거와 공용이고, 움직임 · Escape · 돌아온 뒤
-   * 포커스는 요약이 맡는다. 위에서부터: 배치 그림(저장 상자보다 조금 큰 그림) + 구성 요약 · 칸(이름 · 프로젝트) · 단추.
-   * 만들기 · 배치 고치기는 여기 없다(탭 우클릭 [템플릿 저장] — 같은 이름으로 다시 저장하면 덮어쓸지 묻는다).
-   *
-   * - **칸은 이 화면 안에만 산다** — [저장] 을 눌러야 파일에 쓴다. **바뀐 것만** 쓴다(순수 `templateEditPlan`): 이름이 바뀌면
-   *   `renameTabTemplate` → 그다음 프로젝트가 바뀌면 `moveTabTemplateProject`. 첫 단계가 실패하면(같은 이름 → 칸 아래 오류 ·
-   *   못 씀 → 그 함수가 안내 한 줄) 거기서 멈추고 화면에 남는다. 아무것도 안 바뀌었으면 쓰지 않고 돌아간다(스니펫 편집처럼 [저장] 은
-   *   칸이 맞으면 늘 켜져 있다). [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다.
-   * - [삭제] 는 저장 쪽(`deleteTabTemplate`)이 한 번 묻는다 — 지웠으면 요약으로.
-   * - 편집 중 템플릿이 목록에서 사라지면(다른 창 · 시작 화면에서 지움) 요약으로 — 없는 것에 쓰지 않게.
-   */
+  /** [저장] 은 바뀐 것만 쓴다 — 이름이 먼저, 실패하면 거기서 멈추고 화면에 남는다. [취소] · 뒤로 · Escape 는 아무것도 쓰지 않는다. */
   let {
     id,
     onback,
     onsaved,
     ondeleted,
   }: {
-    /** 고칠 템플릿의 id */
     id: string;
-    /** [취소] · 뒤로 · Escape — 아무것도 쓰지 않고 요약으로 */
     onback: () => void;
-    /** [저장] 뒤(바뀐 것이 없어도) */
+    /** 바뀐 것이 없어도 부른다 */
     onsaved: (id: string) => void;
     ondeleted: () => void;
   } = $props();
@@ -55,17 +40,13 @@
       return { name: cur?.name ?? "", projectId: cur?.projectId ?? "" };
     }),
   );
-  /** 이름 칸 아래 오류 — 같은 이름(던진 문구) */
   let nameTaken = $state<string | null>(null);
   let busy = $state(false);
 
   const nameEmpty = $derived(cleanTemplateName(form.name) === "");
   const canCommit = $derived(!nameEmpty && !busy);
 
-  /**
-   * 프로젝트 후보 — 저장 상자와 같은 목록(없음 + 이름순). 템플릿의 프로젝트를 목록에서 못 찾으면(지워진 프로젝트) 그 자리를
-   * "찾을 수 없는 프로젝트" 로 남겨 고르기가 빈칸으로 보이지 않게 한다.
-   */
+  /** 지워진 프로젝트도 후보에 남긴다 — 고르기가 빈칸으로 보이지 않게 */
   const options = $derived.by(() => {
     const base = templateProjectOptions();
     const pid = tpl?.projectId;
@@ -73,6 +54,7 @@
     return [...base, { value: pid, label: t("settings.templates.project.gone") }];
   });
 
+  // 편집 중 템플릿이 목록에서 사라지면 요약으로 — 없는 것에 쓰지 않게.
   $effect(() => {
     if (!tabTemplates().some((x) => x.id === id)) untrack(onback);
   });
@@ -102,7 +84,6 @@
     if (await deleteTabTemplate(id)) ondeleted();
   }
 
-  /** 이름 칸에서 Enter = [저장] (설정 화면은 `<form>` 이 아니라 직접 받는다) */
   function onFieldKey(e: KeyboardEvent): void {
     if (e.key !== "Enter" || e.isComposing || !(e.target instanceof HTMLInputElement)) return;
     e.preventDefault();
@@ -117,7 +98,6 @@
   {onback}
 >
   {#if tpl}
-    <!-- 배치 그림 + 구성 요약 — 저장 상자(`TabTemplateSaveDialog`)의 그림보다 한 단 크다 -->
     <div class="tpl-layout" data-template-editor="preview">
       <TemplatePreview root={tpl.root} width={160} height={100} />
       <p class="tpl-sum">{templateRowSub(templateSummary(tpl.root), tpl.savedAt, Date.now(), t)}</p>
@@ -170,7 +150,6 @@
 </SettingsSubView>
 
 <style>
-  /* 배치 그림 — 저장 상자의 미리보기 칸과 같은 면 */
   .tpl-layout {
     display: flex;
     flex-wrap: wrap;
@@ -191,7 +170,6 @@
     color: var(--fg-2);
   }
 
-  /* 칸 — 스니펫 편집(`SnippetEditor`)과 같은 결: 이름 | 칸, 좁으면 이름이 위로 */
   .tpl-form {
     container-type: inline-size;
     display: flex;

@@ -51,32 +51,16 @@
   } from "$lib/remote-access";
 
   /**
-   * **원격 접속** 섹션(R1a-5 — 원격 웹 클라이언트, 설계 docs/log/2026-10-15-remote-web-client-design.md 13·14절).
-   *
-   * 맨 위 **상태 줄**(`StateRow` · 판정은 `remoteStateView` — 단계는 제목, 칩은 이상이 있을 때만) 아래로 AI 에이전트와 같은 공용 펼침 목록(`.slist.accordion`)의 카드 넷이
-   * 2px 틈으로 이어진다(상태 줄도 그 목록의 첫 칸이다 — 위 끝 모서리는 상태 줄, 아래 끝은 마지막 카드). 머리만 봐도 상태가 읽히고 한 번에 한 장만 열린다:
-   * ① **원격 접속** — 머리 = 주소 + [복사](연결 전이면 그 말 — 주소는 이 자리에만 그린다) · 저장 뒤에 적용 + 켜기 토글, 몸통 = Tailscale 연결(메인 PC 만) · MagicDNS 이름 · 포트.
-   * ② **페어링된 기기** — 머리 = 열린 수 · 전체 수 + [모두 끊기], 몸통 = 이름 바꾸기 · 폐기. ③ **최근 기록** — 머리 = 마지막 한 줄 · 그리는 12건 안의 잠금 해제 실패 수, 몸통 = 목록.
-   * ④ **설정 안내** — 연결 뒤(여는 주소 · Funnel 경고) → 보안 점검 → 직접 설정하기(`tailscale serve` 명령 · 이름 찾기).
-   *
-   * - **상태 줄 · 처음 펼칠 카드는 섹션에 들어와 이번에 새로 읽은 값으로만 판정한다**(모듈 상태에 남은 지난 값이면 초록이 깜빡이고 잘못된 카드가 열렸다 닫힌다).
-   *   펼침은 연결 전이면 원격 접속, 아니면 모두 접힘(`firstOpenCard`)이고 확인 중에는 미뤘다가 한 번만 정한다.
-   *   폴링은 펼침을 건드리지 않고, 사람이 먼저 여닫았거나 앵커로 왔으면 정하지 않는다. 섹션을 떠나면 잊는다.
-   * - **머리의 칩 줄은 머리 단추(`.slist-open`)의 형제다**. 줄은 덮개 위에 서되 빈 자리 · 글자는 덮개로 흘리고 칩만 받아서, 칩 · 토글 · 단추를 눌러도 여닫히지 않는다.
-   * - **"Tailscale 연결" 줄 하나가 모든 상태를 맡는다**(`connectRowState` — 두 줄 높이 고정 · 상태에 따라 아래에 줄이나 알림을 새로 만들지 않는다 ·
-   *   좁은 창의 줄바꿈만 예외). 원격 창에는 그리지 않는다(세 명령 모두 메인 PC 전용 — `remote/deny.rs`).
-   * - **켜기·이름·포트는 메인 PC 에서만**이다(Rust `remote/deny.rs` 의 `save_settings` 칸 단위 문이 원격 저장을 거절한다) — 원격 창에서는
-   *   그 칸을 잠그고(끄기만 된다) [찾기] 도 없다(`remote_detect_host` 는 메인 PC 전용).
-   * - **마스터 암호가 없으면 그 사실을 밝힌다**(사용자 결정 10-15 — 마스터는 선택): 저장된 켬이고 볼트에 마스터가 없으면 상태 줄의 경고 칩 — 누르면 보안 섹션으로 간다.
-   * - 기기 목록 · 폐기 · 이름 바꾸기 · 기록은 즉시 동작이다([저장] 밖 — 보안 섹션의 볼트 손잡이와 같은 부류). **[연결] · [serve 끄기] 도 즉시 동작이다** —
-   *   [연결] 은 serve 를 확인한 뒤 `[remote]` 의 켬 · 이름 · 포트만 곧바로 저장하고, 저장 전이던 다른 칸의 편집은 그대로 둔다(`markRemoteConnected`).
-   *   [serve 끄기] 는 serve 만 걷고 `[remote]` 는 안 바꾼다 — 토글도 serve 를 안 건드린다.
-   * - 보이는 동안 3초마다 상태·목록·기록을 다시 읽는다(메모리 읽기뿐 — 원격 창은 `remote-sessions` 이벤트를 받지 않는다).
-   *   serve 판정은 CLI 를 부르므로 따로 — 보일 때 · 동작 뒤 · 15초마다.
+   * 설정 › 원격 접속.
+   * - 상태 줄 · 처음 펼칠 카드는 이번 방문에 새로 읽은 값으로만 판정한다 — 모듈 상태의 지난 값이면 초록이 깜빡이고 잘못된 카드가 열렸다 닫힌다.
+   * - 켜기 · 이름 · 포트는 메인 PC 에서만이다(Rust `remote/deny.rs` 의 `save_settings` 칸 단위 문이 원격 저장을 거절한다) — 원격 창에서는
+   *   그 칸을 잠그고(끄기만 된다) Tailscale 연결 줄 · [찾기] 도 그리지 않는다(메인 PC 전용 명령).
+   * - [연결] 은 `[remote]` 의 켬 · 이름 · 포트만 곧바로 저장하고 다른 칸의 미저장 편집은 그대로 둔다 · [serve 끄기] 는 serve 만 걷고 `[remote]` 는 안 바꾼다.
+   * - 저장된 켬이고 볼트에 마스터가 없으면 그 사실을 상태 줄의 경고 칩으로 밝힌다(마스터는 선택이다).
+   * - 원격 창은 `remote-sessions` 이벤트를 받지 않으므로 보이는 동안 다시 읽는다.
    */
   let { active = false }: { active?: boolean } = $props();
 
-  /** 이번 방문에 새로 읽었나 — 처음 펼칠 카드를 정하는 재료(모듈 상태의 지난 값이 아니다) */
   let accessFresh = $state(false);
   let serveFresh = $state(false);
 
@@ -119,7 +103,6 @@
     };
   });
 
-  /** "5분 전" 이 흐르게 — 보이는 동안만 */
   let now = $state(Date.now());
   $effect(() => {
     if (!active) return;
@@ -172,7 +155,6 @@
   // ── 이름 찾기 ──
   let detecting = $state(false);
   let detectError = $state<string | null>(null);
-  /** 마지막 [찾기] 결과 — 칸이 그 값 그대로인 동안만 "찾았습니다 / 이미 이 이름" 을 그린다(`hostNote`) */
   let detected = $state<{ host: string; changed: boolean } | null>(null);
   async function detect(): Promise<void> {
     detecting = true;
@@ -190,7 +172,6 @@
     }
   }
 
-  /** 이름 칸 왼쪽 상태 아이콘 — 판정은 순수 함수(`hostNote` · `hostNoteIcon`), 문장은 툴팁·읽기 이름으로만(칸 아래 줄 없음) */
   const note = $derived(
     hostNote({
       host: prefs.host,
@@ -222,7 +203,6 @@
 
   // ── 펼침 ──
   const CARDS: readonly RemoteCard[] = ["access", "devices", "log", "guide"];
-  /** 펼친 카드 하나(없으면 모두 접힘) — 화면 상태일 뿐 저장하지 않는다 */
   let expanded = $state<RemoteCard | null>(null);
   const openIndex = $derived(expanded === null ? -1 : CARDS.indexOf(expanded));
   /** 이번 방문의 펼침이 정해졌다(처음 판정 · 사람의 여닫기 · 앵커) — 뒤로는 폴링이 펼침을 움직이지 않는다 */
@@ -237,7 +217,7 @@
     }
     if (decided) return;
     const first = firstOpenCard(stateView.phase);
-    if (first === undefined) return; // 확인 중 — 받은 뒤에 정한다
+    if (first === undefined) return;
     decided = true;
     expanded = first;
   });
@@ -247,10 +227,7 @@
     expanded = card;
   }
 
-  /**
-   * 설정 색인이 **접힌 카드 안의 칸**을 가리키면 그 카드 하나만 펼친다 — `SettingsModal` 의 `revealPendingAnchor` 가 스크롤 전에 부른다(`McpSection.expandForAnchor` 와 같은 꼴).
-   * 머리의 토글(`remote-enabled`)은 늘 보이므로 펼치지 않는다. 펼친 줄이 그 자리에서 곧바로 재어지도록 이때만 전이를 건너뛴다(`instant`).
-   */
+  /** 접힌 카드 안의 칸을 가리키면 그 카드 하나만 펼친다 — 펼친 줄이 곧바로 재어지도록 이때만 전이를 건너뛴다(`instant`) */
   export function expandForAnchor(anchor: string): void {
     const card = remoteAnchorCard(anchor);
     if (card === null) return;
@@ -310,7 +287,6 @@
   }
 
   const openDevices = $derived(remoteDevices().filter((d) => d.unlocked).length);
-  /** 이번 방문에 읽기 전에는 지난 값을 믿지 않는다(확인 중) */
   const stateView = $derived(
     remoteStateView({
       remote: isRemote,
@@ -321,7 +297,6 @@
       deviceCount: remoteDevices().length,
     }),
   );
-  /** 원격 접속 카드 머리의 주소 — 메인 PC 는 연결 줄과 같은 사실(serve 가 걸려 있으면 주소 · 관문이 닫혔는지는 상태 줄이 말한다), 원격 창은 상태 줄이 연결됨일 때만 */
   const accessUrl = $derived.by(() => {
     if (isRemote) return stateView.phase === "connected" ? remoteUrl(saved.host ?? "") : null;
     return row.state === "connected" ? row.url : null;
@@ -330,7 +305,6 @@
   const recent = $derived(remoteLog().slice(0, 12));
   /** 그리는 최근 12건 안의 잠금 해제 실패 수 — 시간 창 · 확인 처리는 없다(그 줄들이 밀려 나가면 칩도 사라진다) */
   const unlockFailures = $derived(recent.filter((e) => e.kind === "unlockFailed").length);
-  /** 머리에 보일 마지막 기록 — 모르는 종류는 목록처럼 건너뛴다 */
   const lastLogLine = $derived.by(() => {
     for (const e of recent) {
       const key = logKindKey(e.kind);
@@ -340,10 +314,7 @@
   });
 </script>
 
-<!--
-  카드 한 장 — `McpSection` 의 에이전트 칸과 같은 공용 펼침 목록의 줄이다. 칩 줄은 머리 단추의 **형제**이고(단추 안에 경고 칩 단추를 둘 수 없다),
-  격자가 제목 아래로 보낸다. 접힌 몸통은 `inert` 라 Tab 이 밟지 않는다.
--->
+<!-- 칩 줄은 머리 단추의 형제다(단추 안에 경고 칩 단추를 둘 수 없다) · 접힌 몸통은 `inert` 라 Tab 이 밟지 않는다 -->
 {#snippet card(
   id: RemoteCard,
   title: Snippet,
@@ -406,7 +377,6 @@
   {:else}
     <span data-remote-access-url>{t("settings.remote.notConnected")}</span>
   {/if}
-  <!-- 저장 전(켜기 · 이름 · 포트 어느 것이든) -->
   {#if unsaved}
     <StatusChip tone="warn" role="status" data-remote-unsaved>{t("settings.remote.unsaved")}</StatusChip>
   {/if}
@@ -731,7 +701,6 @@
 <p class="lead">{t("settings.remote.lead")}</p>
 
 <div class="slist accordion remote-list">
-  <!-- 저장된 값 + 실제 관문 · serve(`remote_status` · `remote_serve_status`) -->
   <StateRow id="remote-state" tone={stateView.tone} icon={stateView.icon} note={stateView.note ? t(stateView.note) : ""} data-remote-status={stateView.phase}>
     {#snippet title()}
       <span class="name">{t(stateView.title)}</span>
@@ -769,7 +738,6 @@
     color: var(--warn);
   }
 
-  /* 머리 — 공용 `.slist-row`(줄 전체를 덮는 `.slist-open` 덮개)는 그대로 두고 칸만 격자로: 제목 / 칩 줄 / 끝 칸 */
   .remote-list .remote-head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -817,7 +785,6 @@
     height: 22px;
   }
 
-  /* 상태 줄 — 목록의 첫 칸(2px 틈으로 첫 카드와 잇는다 · 위 끝 곡률은 공용 `.slist > :first-child`). 칩이 없으면 글자가 타일 가운데에 선다 */
   .remote-list > :global(.vstate) {
     align-items: center;
     padding: var(--space-3) 14px;
@@ -830,14 +797,12 @@
     border-top-right-radius: 4px;
   }
 
-  /* 경고 칩도 상태 칩 높이(20)로 */
   .remote-list :global(.vstate-chips .warn-chip) {
     box-sizing: border-box;
     height: 20px;
     padding-block: 0;
   }
 
-  /* 몸통 — 머리에 앞 칸(로고)이 없으니 이름 시작선까지 들여 쓰지 않는다 */
   .remote-list .slist-panel {
     padding: 0 8px 8px;
   }
@@ -848,7 +813,6 @@
   }
 
   @container (max-width: 380px) {
-    /* 머리 — 칩 줄이 끝 칸 아래까지 쓰고, 이름은 말줄임 대신 접힌다 */
     .remote-head .head-sup {
       grid-column: 1 / -1;
     }
@@ -862,7 +826,6 @@
       white-space: normal;
     }
 
-    /* 상태 줄 — 타일을 걷어 글자 칸을 넓힌다 */
     .remote-list > :global(.vstate) :global(.vstate-tile) {
       display: none;
     }
@@ -881,7 +844,6 @@
       white-space: normal;
     }
 
-    /* 몸통의 줄 — 이름 왼쪽 · 손잡이 오른쪽 격자가 들어가지 않으니 흐름으로, 손잡이는 이름 밑 줄로 */
     .remote-list .srow {
       display: flex;
       flex-wrap: wrap;
@@ -928,8 +890,7 @@
   }
 
 
-  /* 이름 칸 왼쪽 상태 아이콘 — 적용됨 초록 체크 · 찾음 강조색 점 · 같은 이름/개발 루프백 흐림 · 이름 없음 경고.
-     칸은 늘 14px 를 잡아 상태가 바뀌어도 입력 칸 폭이 흔들리지 않는다 */
+  /* 칸은 늘 14px 를 잡아 상태가 바뀌어도 입력 칸 폭이 흔들리지 않는다 */
   .host-state {
     position: relative;
     flex: 0 0 14px;
@@ -972,7 +933,6 @@
     white-space: nowrap;
   }
 
-  /* 설정 안내 — 펼친 카드 면 위의 글. 소제목은 머리 제목보다 크지 않게 */
   .guide {
     min-width: 0;
     padding: 2px 6px 6px;
@@ -1040,7 +1000,6 @@
     color: var(--warn);
   }
 
-  /* 기기 — 줄마다 몸통의 작은 분할 목록 한 칸(`.slist-body`) · 기록은 그 한 칸 안에 머리카락 선 */
   .devices,
   .log {
     margin: 0;
@@ -1081,7 +1040,6 @@
     min-width: 6em;
   }
 
-  /* 입력 칸 옆 글자 단추([찾기] · 이름 바꾸기의 [저장] · [취소]) — 칸과 같은 높이, 글자 · 여백은 전역 `.btn` 값 */
   .size-row .value + .btn,
   .devices .rename ~ .btn {
     height: var(--field-height);
@@ -1117,7 +1075,6 @@
     color: var(--err);
   }
 
-  /* 기록 부연(무엇) — " — " 로 잇지 않고 흐린 글자로 띄운다 */
   .log .detail {
     margin-left: 0.5em;
     color: var(--fg-2);

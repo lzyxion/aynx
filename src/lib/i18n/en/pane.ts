@@ -1,21 +1,15 @@
 import type { pane as koPane } from "$lib/i18n/ko/pane";
 
 /**
- * `pane` namespace — English. Glossary lives in `en/settings.ts`.
- *
- * Words reused from the settings screen so the two screens agree:
- * tile · tab · window · session · host · broadcast input · fixed tile size ·
- * lock · zoom · AI read access · shell integration · snippet.
- *
- * Tone: concise product English, sentence case. Exit codes appear only in
- * tooltips, exactly where the Korean puts them.
+ * `pane` namespace — English. Glossary: `en/settings.ts`; reuse the settings screen's words (tile · tab · window · session · host · broadcast input · …).
+ * Exit codes appear only in tooltips, exactly where the Korean puts them.
  */
 export const pane: Record<keyof typeof koPane, string> = {
-  // ── Tile header (PaneHeader.svelte) ───────────────────────────────────────
+  // ── Tile header ───────────────────────────────────────────────────────────
   "header.title.host": "{name} — {host}",
   "header.doc.unsaved": "Has unsaved changes",
   "header.tmux.aria": "tmux session {name} — open the session list",
-  // Connection status tooltip (session-info.ts) — fragments joined with `·`, not a sentence.
+  // Connection status tooltip — fragments joined with `·`, not a sentence.
   "header.info.auth": "Auth: {method}",
   "header.info.auth.with_identity": "Auth: {method} ({identity})",
   "header.info.auth.with_identity.stored": "Auth: {method} ({identity}, saved)",
@@ -33,7 +27,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "header.info.shared": "Shared connection: with {n} other tile(s)",
   "header.info.db": "{n} database connection(s) use this connection",
   "header.info.agent_forward": "Agent forwarding on",
-  // Connection info card (SessionInfoCard.svelte) — left column label, right column value.
+  // Connection info card
   "header.info.card.auth": "Auth",
   "header.info.card.jump": "Via",
   "header.info.card.connected": "Connected",
@@ -45,7 +39,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "header.info.card.agent": "AI",
   "header.info.card.shell": "Shell",
   "header.info.card.folder": "Folder",
-  // Query tile name card (moved here from the bar's engine name, `query/info-card`)
+  // Query tile name card
   "header.info.card.state": "State",
   "header.info.card.engine": "Engine",
   "header.info.card.conn": "Connection",
@@ -70,7 +64,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "header.forward.chip.one": "forward {n}",
   "header.forward.chip.other": "forward {n}",
   "header.forward.relaying": "{n} connection(s) relaying",
-  // Tile header "+N" chip (chips hidden by overflow — pane/HeaderChips · 2026-10-23)
+  // Tile header "+N" chip
   "header.more.aria": "{n} hidden chip(s) — {list}",
   "header.aiRead.title": "Allow AI to read is on — click to turn it off",
   "header.sync.title": "Broadcasting input",
@@ -88,7 +82,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "header.zoom.aria": "Zoom tile",
   "header.close.title": "Close tile",
   "header.close.aria": "Close tile",
-  // AI tile terminal / conversation flip (2026-10-17 — pane/AiFlip.svelte)
+  // AI tile terminal / conversation flip
   "flip.toConvo": "Switch to conversation",
   "flip.toTerm": "Switch to terminal",
   "flip.sending": "Sending…",
@@ -96,7 +90,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "flip.composer.send": "Send (Enter)",
   "flip.composer.interrupt": "Stop",
   "flip.composer.stop": "Stop this turn (Esc)",
-  // Conversation composer [+] and model keyword (2026-11-13)
+  // Conversation composer [+] and model keyword
   "flip.composer.attach": "Upload file",
   "flip.model.menu": "Choose model · effort",
   "flip.model.unknown": "Model — shown after the first reply",
@@ -127,7 +121,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "flip.switch.gate": "Answer the prompt above first",
   "flip.convo.aria": "This tile's conversation",
   "flip.find": "Find in conversation",
-  // Permission cards on the AI tile's conversation face (2026-11-01 — pane/TilePermissionCard.svelte)
+  // Permission cards on the AI tile's conversation face
   "perm.title.command": "Wants to run a command",
   "perm.title.edit": "Wants to edit a file",
   "perm.title.write": "Wants to write a file",
@@ -174,7 +168,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "find.close": "Close (Esc)",
   "flip.notAi": "Only AI tiles (Claude Code · Codex) can flip to the conversation view.",
 
-  // ── Tile menu (pane/pane-menu.ts · PaneMenu.svelte) ───────────────────────
+  // ── Tile menu ─────────────────────────────────────────────────────────────
   "menu.aria": "{title} tile menu",
   "menu.split_row": "Split left and right",
   "menu.split_col": "Split top and bottom",
@@ -205,8 +199,6 @@ export const pane: Record<keyof typeof koPane, string> = {
   "menu.session_log.title.on": "Opens the log file this session is writing in your default app",
   "menu.session_log.title.off":
     "This session keeps no log — turn on 'Session logging' in the host settings and it starts on the next connection",
-  // "Open logs folder" left this menu on 2026-09-17 — it targets one app-wide folder, not the
-  // tile, so it now lives in Settings › Terminal (`settings.terminal.logs_folder.*`).
   "menu.aiRead": "Allow AI to read",
   "menu.aiRead.title": "The AI (MCP) reads this tile's screen and command history — this tile only · Turning it off also clears this tile's data on the server",
   "menu.aiperm": "AI access…",
@@ -244,7 +236,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "menu.continueOrch": "Continue in orchestration",
   "menu.continueOrch.title": "Opens a new album draft with this tile's conversation and repository pinned — the album starts when you send the first message",
 
-  // ── Ask an AI tile about a block (ask-ai.ts · app/ask-ai.svelte.ts · AskAiPicker.svelte) ──
+  // ── Ask an AI tile about a block ──
   "askai.lead.fail": "This command failed. Please look into why.",
   "askai.lead.ok": "Please take a look at this command's result.",
   "askai.where": "Host {host} · folder {cwd}",
@@ -261,7 +253,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "askai.output.unavailable": "(the output scrolled off the screen and could not be captured)",
   "askai.summary": "{command} · exit {exit}",
   "askai.button": "Ask AI",
-  // Command block rich view (2026-10-18 — term/BlockView.svelte)
+  // Command block rich view
   "blockview.button": "Rich view",
   "blockview.button.title": "View this block's output as a tree, table or document",
   "blockview.aria": "Block view",
@@ -311,7 +303,7 @@ export const pane: Record<keyof typeof koPane, string> = {
     "The {name} tile is not accepting pastes right now — several lines could be sent at once, so nothing was pasted",
   "askai.gone": "The AI tile to paste into is gone",
 
-  // ── tmux session list (pane/TmuxMenu.svelte · tmux.ts · PaneHost.svelte) ──
+  // ── tmux session list ──
   "tmux.aria": "{title} tmux sessions",
   "tmux.group": "{title} · tmux sessions",
   "tmux.loading": "Reading the list…",
@@ -332,7 +324,7 @@ export const pane: Record<keyof typeof koPane, string> = {
     "Creates a new tmux session on this host and opens it in a new tile (the app picks the next number)",
   "tmux.bad_name": "That name cannot be used",
 
-  // ── Forward list menu (pane/ForwardMenu.svelte — tile header forward chip · ⋯ "Port forwarding…") ──
+  // ── Forward list menu ──
   "fwmenu.aria": "{title} port forwards",
   "fwmenu.group": "{title} · port forwards",
   "chipmore.aria": "{title} hidden chips",
@@ -348,7 +340,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "tmux.ago.days": "{n}d",
   "tmux.refresh.title": "Asks the server for the session list again",
   "tmux.refresh.aria": "Refresh the tmux session list",
-  // Kill a session (button at the end of a row · confirm dialog — tmuxKillPrompt in tmux.ts)
+  // Kill a session
   "tmux.kill.title_attr": "Kills '{name}' (tmux kill-session — asks first)",
   "tmux.kill.title_attr_here": "Kills '{name}', which this tile is attached to — this tile's connection ends too (asks first)",
   "tmux.kill.aria": "Kill session {name}",
@@ -362,7 +354,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "tmux.kill.ok_here": "Kill and end this tile",
   "tmux.kill.failed": "Could not kill the tmux session: {reason}",
 
-  // ── Drag and drop (pane/drop-rules.ts) ────────────────────────────────────
+  // ── Drag and drop ─────────────────────────────────────────────────────────
   "drop.paste": "Paste path into the terminal",
   "drop.paste.elsewhere": "These files are not where this terminal runs — cannot paste",
   "drop.attach.otherserver": "Files from another server cannot be attached to this tile",
@@ -378,13 +370,13 @@ export const pane: Record<keyof typeof koPane, string> = {
   "drop.upload.localfs": "Copy to this folder",
   "drop.upload.none": "Uploads are only possible on SSH tiles",
 
-  // ── Split handles (SplitView.svelte) ──────────────────────────────────────
+  // ── Split handles ─────────────────────────────────────────────────────────
   "split.row.title": "Vertical split handle (drag · ← →)",
   "split.row.aria": "Vertical split handle",
   "split.col.title": "Horizontal split handle (drag · ↑ ↓)",
   "split.col.aria": "Horizontal split handle",
 
-  // ── Terminal notices (Terminal.svelte) ────────────────────────────────────
+  // ── Terminal notices ──────────────────────────────────────────────────────
   "term.copy.ok": "Copied the last command's output",
   "term.copy.empty":
     "Nothing to copy — there is no shell integration (OSC 133) or no finished command yet",
@@ -411,7 +403,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "term.paste.edit": "Text to paste — you can edit it",
   "term.paste.edit.title": "Edit, then press Ctrl+Enter to paste",
 
-  // ── Lines printed into the terminal buffer (Terminal.svelte `notice`) ─────
+  // ── Lines printed into the terminal buffer ────────────────────────────────
   "notice.tmux_reattached": "Reattached to the tmux session.",
   "notice.connected": "Connected.",
   "notice.reconnected": "Reconnected — this is a new shell.",
@@ -423,14 +415,14 @@ export const pane: Record<keyof typeof koPane, string> = {
   "notice.dropped.reason": "⚠ The connection dropped — {reason}. Reconnecting automatically.",
   "notice.reconnected.new": "Reconnected — this is a new shell.",
   "notice.session_left_behind": "This tile's session could not come along.",
-  // Local exit reasons (the session server sends codes only — ③-2)
+  // Local exit reasons — the session server sends codes only
   "notice.exit_code": "exit code {code}",
   "notice.server_stopped": "The session server stopped — press Enter for a new shell",
   "notice.reattached_lost": "⚠ Reattached — some output was lost ({kib} KiB); the screen was redrawn.",
   "notice.restored":
     "{name} — restored from the last layout. Not connected yet ([Connect] or Ctrl+Shift+R).",
 
-  // ── The three banners overlaid on a tile (Terminal.svelte) ────────────────
+  // ── The three banners overlaid on a tile ──────────────────────────────────
   "banner.reconnect.head": "⚠ The connection dropped —",
   "banner.reconnect.trying": "retry {n} running…",
   "banner.reconnect.countdown": "retry {n} in {secs}s",
@@ -476,7 +468,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "worktree.failed.hint": "Opened a plain shell (home) without the worktree.",
   "worktree.close": "Close",
 
-  // ── Tile names (session.ts) ───────────────────────────────────────────────
+  // ── Tile names ────────────────────────────────────────────────────────────
   "shell.cmd": "Command Prompt",
   "name.local": "Local",
   "name.start": "Start",
@@ -572,7 +564,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "query.schema.sub.composite": "composite",
   "query.schema.default": "Default: {value}",
   "query.schema.pk": "Primary key",
-  // Read-only DDL view (10-13) — tree right-click "View DDL" · F4 → [Result | DDL] below
+  // Read-only DDL view
   "query.def.menu": "View DDL",
   "query.def.menu.aria": "Schema tree menu",
   "query.def.hint": "F4 · right-click — view DDL",
@@ -590,7 +582,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "query.def.copyFailed": "Could not copy the DDL",
   "query.def.insert": "Insert into editor",
   "query.def.insert.title": "Insert at the editor cursor (does not run)",
-  // Schema tree name filter (10-13) — filters only what has been read
+  // Schema tree name filter
   "query.filter.placeholder": "Find names",
   "query.filter.title": "Find names (Ctrl+F · Ctrl+I · Esc clears)",
   "query.filter.clear": "Clear find",
@@ -839,7 +831,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "query.rows.limit": "Row limit",
   "query.rows.option": "{n} rows",
 
-  // ── Session errors (session.ts `describeSessionError`) ────────────────────
+  // ── Session errors ────────────────────────────────────────────────────────
   "error.unknown_value": "(unknown)",
   "error.no_session": "The {name} tile has no session.",
   "error.host_key.unknown": "Could not verify the host key ({type} {fingerprint}).",
@@ -862,7 +854,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "error.password_cancelled": "The connection was stopped because the password prompt was cancelled.",
   "error.other": "Could not open the session: {reason}",
 
-  // -- What to do next (session.ts `openErrorHint`) --------------------------
+  // -- What to do next --------------------------------------------------------
   "error.hint.dns": "Check the host address (host form → host address)",
   "error.hint.tcp_refused": "Check the port, and whether sshd is running on the server",
   "error.hint.tcp_timeout": "Check the firewall and VPN, or whether a jump host is needed",
@@ -879,12 +871,12 @@ export const pane: Record<keyof typeof koPane, string> = {
   // A tail, not a cause — it is appended to whichever hint line was chosen above.
   "error.hint.identities_only": " (IdentitiesOnly is on — only the configured key was tried)",
 
-  // ── Command status badge (shell-integration.ts) ───────────────────────────
+  // ── Command status badge ──────────────────────────────────────────────────
   "status.running": "Command running",
   "status.fail": "Command failed",
   "status.ok": "Command finished",
 
-  // ── One finished command (finish-notify.ts · app/finish-notify.ts) ────────
+  // ── One finished command ──────────────────────────────────────────────────
   "block.duration.under": "< 0.1s",
   "block.duration.seconds": "{n}s",
   "block.duration.minutes": "{m}m {s}s",
@@ -900,7 +892,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   // Program notification (OSC 9 · 777) — the tile name comes first so it never reads as the app
   "program_notify.toast": "Program in {tile}: {text}",
 
-  // ── Port forwarding (forward.ts) ──────────────────────────────────────────
+  // ── Port forwarding ───────────────────────────────────────────────────────
   "forward.active": "{n} active",
   "forward.idle": "Idle",
   "forward.add_failed": "Could not start the forward",

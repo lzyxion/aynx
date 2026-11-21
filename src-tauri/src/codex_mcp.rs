@@ -16,12 +16,10 @@ pub(crate) fn codex_home() -> Option<PathBuf> {
     }
 }
 
-/// codex 설정 파일 — `<codex_home>/config.toml`.
 pub(crate) fn config_path() -> Option<PathBuf> {
     Some(codex_home()?.join("config.toml"))
 }
 
-/// 파서 오류를 사용자 문구로 — **파일 내용을 싣지 않는다**(모듈 머리말). 줄 번호만.
 fn parse_error(text: &str, e: &toml_edit::TomlError) -> String {
     let line = e
         .span()
@@ -38,7 +36,6 @@ fn parse_error(text: &str, e: &toml_edit::TomlError) -> String {
     }
 }
 
-/// 전역 등록 해제 — 요청한 이름의 표 하나만 걷는다. 다른 서버·주석·개발/릴리스 이름은 그대로다.
 pub(crate) fn remove(text: &str, name: &str) -> Result<String, String> {
     let mut doc: DocumentMut = text.parse().map_err(|e| parse_error(text, &e))?;
     let Some(servers) = doc.get_mut("mcp_servers").and_then(Item::as_table_like_mut) else {
@@ -50,7 +47,6 @@ pub(crate) fn remove(text: &str, name: &str) -> Result<String, String> {
     Ok(match_line_endings(text, doc.to_string()))
 }
 
-/// 기존 Codex 등록과 같은 원자적 저장 경로. 파일·항목이 없으면 쓰지 않는다.
 pub(crate) fn remove_at(path: &Path, name: &str) -> Result<bool, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,

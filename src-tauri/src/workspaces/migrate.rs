@@ -441,7 +441,7 @@ fn targets_valid(root: &Path) -> Result<bool, Error> {
     Ok(true)
 }
 
-/// workspace 대상이 유효하면 commit을 완료하고 유효하지 않으면 원본 둘로 되돌린다.
+/// 대상이 유효하지 않을 때 원본 둘로 되돌린다.
 fn restore(root: &Path, backup: &Path) -> Result<(), Error> {
     if backup.as_os_str().is_empty() {
         // 빈 backupDir은 원본 둘이 모두 없었다는 뜻이다. 부분 저장을 지우고 재시도한다.

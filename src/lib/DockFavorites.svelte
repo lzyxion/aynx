@@ -29,46 +29,24 @@
   import { currentWorkspaceId, workspaceList } from "$lib/app/workspaces.svelte.js";
 
   /**
-   * **하단 독의 즐겨찾기 칸** (2026-10-13 — 워크스페이스 칸 자리를 물려받았다. 워크스페이스 전환 · 편집 · 삭제 · 순서 ·
-   * 배지는 탭 줄 맨 앞 워크스페이스 목록(`Tabs.svelte`)이 맡는다).
-   *
-   * 즐겨찾기를 그리고 다루는 곳은 **이 독 하나**다(2026-10-23 — 시작 화면의 즐겨찾기 줄은 걷었다). 목록은 `favorites.svelte.ts`
-   * (창에 하나뿐인 모듈 상태 · localStorage), 여는 길은 `app/open-favorite.ts`(호스트는 접속, 프로젝트 · DB 연결은 열기).
-   * 더하는 길은 사이드 독의 호스트 · 프로젝트 · DB 연결 줄을 이 독으로 끌어다 놓는 것이고, `app/favorite-drop.ts` 가 **놓은 자리에** 끼운다(받는 규칙: 호스트 · DB 폴더는 받지 않음 ·
-   * 열 칸 · 중복은 조용히 넘김). 끄는 동안 독을 여는 일은 `FloatingStatusDock` 이, 받는 일은 이 컴포넌트의 `dragOver` · `drop`
-   * (판 전체에 배선 — `StatusBar.svelte`)이 한다.
-   *
-   * 칸 = 44×44 둥근 네모 얼굴(호스트 · 프로젝트 아이콘 · DB 엔진 로고 — 2026-10-18 End-4 식) 하나, 이름은 앱 말풍선(`title`), 이 워크스페이스에
-   * 열려 있으면 칸 아래 primary 점. 우클릭 · 메뉴 키 · `Shift+F10` 은 작은 앱
-   * 메뉴(즐겨찾기에서 빼기 — menu-runner 통로), 끌면 순서 바꾸기(같은 순수 함수 `reorderFavorites`), 포커스가 있으면
-   * `Alt+←/→` · `Home`/`End` 로도 옮긴다. 목록이 비면 아무것도 그리지 않는다(독에는 핀 · 런처 단추만 선다).
-   *
-   * **놓을 자리 표시**(2026-10-23 — 점선 · 삽입선 · ＋ 칸은 쓰지 않는다, 사용자): 칸 사이에 대면 양옆이 벌어지고(약 120ms ·
-   * 움직임 줄이기면 즉시) 그 틈에 끄는 것의 옅은 미리보기 칸이 선다. 더하기 끌기 · 칸 자리 바꾸기가 같은 틈(`gap`)을 쓴다.
-   * 놓으면 미리보기가 진짜 칸이 되고 새 칸에 1초 테두리 강조. 이미 있는 칸이었으면 그 칸이 경고색으로 한 번 깜빡인다 —
-   * `dragover` 에서는 짐의 값을 못 읽어 놓는 순간에야 알 수 있으므로 끄는 동안에는 틈이 벌어진다. 열 칸이 찼으면 틈 없이
-   * "가득 참" 글자만 서고 놓을 수 없다(`dropEffect = "none"`).
-   *
-   * 메뉴는 독 **안**에 뜬다(`position: fixed` · 창 좌표) — 밖에 두면 독의 바깥 누르기 감지가 메뉴 줄을 누르는 순간 독을
-   * 접는다. 메뉴 · 끌기 동안은 `busy` 로 독이 접히지 않게 한다.
+   * 하단 독의 즐겨찾기 칸 — 즐겨찾기를 그리고 다루는 곳은 이 독 하나다. 받는 일(`dragOver` · `drop`)은 판 전체(`StatusBar.svelte`)에 배선된다.
+   * 놓을 자리는 벌어진 틈의 옅은 미리보기 칸으로만 보인다 — 점선 · 삽입선 · ＋ 칸은 쓰지 않는다(사용자 결정).
+   * `dragover` 에서는 짐의 값을 못 읽어 중복은 놓는 순간에야 안다 — 그래서 끄는 동안에는 틈이 벌어진다.
+   * 메뉴는 독 안에 뜬다 — 밖에 두면 독의 바깥 누르기 감지가 메뉴 줄을 누르는 순간 독을 접는다.
    */
   let {
     busy = $bindable(false),
     count = $bindable(0),
     iconSize = 20,
   }: {
-    /** 메뉴가 떠 있거나 끄는 중인가 — 독(`FloatingStatusDock`)이 그동안 접히지 않는다 */
+    /** 참인 동안 독(`FloatingStatusDock`)이 접히지 않는다 */
     busy?: boolean;
-    /** 지금 그린 칸 수(놓을 자리 미리보기 칸 포함) — 독이 구분선을 몇 개 세울지 가른다(0 이면 이 칸 묶음이 없다) */
+    /** 미리보기 칸 포함 — 독이 구분선 수를 가른다 */
     count?: number;
-    /** 얼굴 안 아이콘 크기 — 독의 다른 글리프와 같은 값을 받는다 */
     iconSize?: number;
   } = $props();
 
-  // ---------------------------------------------------------------------------
-  // 호스트 목록 — 호스트 칸은 별칭만 들고 있어 그릴 때 지금 목록에서 다시 찾는다(`resolveFavorites`). 스스로
-  // 한 번 읽는다(앱을 켜자마자 독을 열면 상위 캐시가 아직 비어 있다). 호스트 칸이 하나도 없으면 읽지 않는다.
-  // ---------------------------------------------------------------------------
+  // 호스트 칸은 별칭만 들고 있다. 스스로 한 번 읽는다 — 앱을 켜자마자 독을 열면 상위 캐시가 아직 비어 있다
   const actions = hostActions();
   const { onconnect, onhosts } = actions;
   const refreshKey = $derived(actions.refreshKey ?? 0);
@@ -88,7 +66,7 @@
     };
   });
 
-  // DB 연결 — 칸은 id 만 들고 있어 연결 목록 사본(`app/db-conns`)에서 다시 찾는다. DB 칸이 있을 때만 한 번 읽는다(독 DB 칸이 아직 안 열렸으면 비어 있다)
+  // 독 DB 칸이 아직 안 열렸으면 연결 목록 사본이 비어 있다
   const wantsDbs = $derived(favorites().some((f) => f.kind === "db"));
   $effect(() => {
     if (wantsDbs) void ensureDbConns();
@@ -100,11 +78,7 @@
     count = favs.length + (gap !== undefined ? 1 : 0);
   });
 
-  /**
-   * **열린 곳 점** — 그 즐겨찾기가 이 워크스페이스에 지금 열려 있는가(칸 아래 primary 점, 2026-10-18 End-4 식 독).
-   * 프로젝트는 사이드 독 목록과 같은 판정(`projectMarkers(p).here`), 호스트는 이 창의 탭에 그 별칭의 SSH 타일이 있는가,
-   * DB 연결은 독 DB 줄의 "여기 열림" 표식과 같은 판정(그 연결의 쿼리 타일이 지금 워크스페이스에 있는가 — `DbList.svelte` 의 `markersOf`).
-   */
+  /** 열린 곳 점 — 사이드 독의 표식과 같은 판정이어야 한다(프로젝트 `projectMarkers` · DB `DbList.svelte` 의 `markersOf`) */
   const openHosts = $derived(new Set(
     residentWindowTabs().flatMap((tab) => listPanes(tab.root)).filter((pane) => pane.kind === "ssh" && pane.alias).map((pane) => pane.alias!),
   ));
@@ -118,9 +92,7 @@
   const iconOf = (host: HostEntry) => hostMeta(host).icon?.trim() || null;
   const colorOf = (host: HostEntry) => hostMeta(host).color?.trim() || null;
 
-  // ---------------------------------------------------------------------------
-  // 우클릭 메뉴 — 즐겨찾기에서 빼기 하나(호스트 · 프로젝트 · DB 연결 자체는 그대로다)
-  // ---------------------------------------------------------------------------
+  // ── 우클릭 메뉴 ──
   let menu = $state<{ key: string; x: number; y: number } | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
   let row = $state<HTMLDivElement | null>(null);
@@ -129,7 +101,6 @@
     menu = { key, x: Math.max(4, Math.min(x, window.innerWidth - 192)), y: Math.max(4, Math.min(y, window.innerHeight - 52)) };
     void tick().then(() => menuEl?.querySelector<HTMLElement>("[role='menuitem']")?.focus());
   }
-  /** 메뉴를 닫는다 — Escape 로 닫았으면 포커스를 그 칸으로 돌려준다. 독이 접힐 때도 부른다 */
   export function closeMenu(back = false): void {
     const key = menu?.key;
     menu = null;
@@ -138,23 +109,18 @@
   function focusCell(key: string): void {
     row?.querySelector<HTMLElement>(`[data-dock-fav="${CSS.escape(key)}"]`)?.focus();
   }
-  /** 메뉴 줄 — 스냅샷(그 칸) → 닫기 → 빼기 (docs/conventions.md "메뉴를 닫는 코드") */
+  /** 스냅샷 → 닫기 → 빼기 (docs/conventions.md "메뉴를 닫는 코드") */
   function removeFromMenu(): void {
     runOnMenu(() => favs.find((f) => f.key === menu?.key)?.fav, () => (menu = null), removeFavorite);
   }
 
-  // ---------------------------------------------------------------------------
-  // 끌어서 순서 바꾸기 — 옛 워크스페이스 칸과 같은 포인터 몸짓(문턱 5px 전에는 클릭 그대로 · `Esc` 취소 · 놓은 직후의 클릭
-  // 하나는 무시). 설정 › 머리줄 칩과 같은 모양이다: 끄는 칸은 자리(폭)만 남기고 사라지고(`.lifted`), 그 빈자리가 커서 x 를
-  // 따라 옮겨 다니며(보이는 순서 `order` · `insertIndexAt`) 이웃이 FLIP 으로 비켜선다. 놓으면 그 자리에 내려앉고(`playFlip` 의 pop),
-  // 줄 밖에 놓거나 `Esc` 면 원래 순서로 미끄러져 돌아간다. 들고 있는 것은 커서를 따라오는 잔상이다. 더하기 끌기의 틈(`gap`)과는 따로다.
-  // ---------------------------------------------------------------------------
-  /** `px`·`py` = 지금 커서, `ox`·`oy` = 칸 안에서 잡은 자리 — 잔상(`.dock-fav-ghost`)이 잡은 그 점을 커서에 붙여 따라온다 */
+  // ── 끌어서 순서 바꾸기 ── (더하기 끌기의 틈 `gap` 과는 따로다)
+  /** `ox`·`oy` = 칸 안에서 잡은 자리 — 잔상이 그 점을 커서에 붙여 따라온다 */
   let drag = $state<{
     key: string; pointerId: number; x: number; y: number; moved: boolean; px: number; py: number; ox: number; oy: number;
   } | null>(null);
   let dragEndedAt = -Infinity;
-  /** 자리 바꾸기 동안 보이는 순서(끄는 칸의 빈자리가 이미 놓일 곳에 있다) — 끌지 않을 때는 `null` */
+  /** 끌지 않을 때는 `null` */
   let order = $state<string[] | null>(null);
   const shown = $derived.by(() => {
     const cur = order;
@@ -163,7 +129,7 @@
     return cur.flatMap((k) => byKey.get(k) ?? []);
   });
 
-  /** 상태를 바꾸고(`change`) 바뀐 자리로 미끄러지게 — `pop` 은 방금 놓인 칸(내려앉는다). 설정 › 머리줄 칩과 같은 `$lib/flip` */
+  /** `pop` 은 방금 놓인 칸(내려앉는다) */
   async function flipRow(change: () => void, pop: string | null = null): Promise<void> {
     const g = row;
     const before = g ? measureLefts(g) : null;
@@ -173,29 +139,23 @@
     playFlip(g, before, pop);
   }
 
-  /** 벌어진 틈 — 키 = 그 칸 앞 · `null` = 맨 뒤 · `undefined` = 틈 없음 */
+  /** 키 = 그 칸 앞 · `null` = 맨 뒤 · `undefined` = 틈 없음 */
   let gap = $state<string | null | undefined>(undefined);
-  /** 사이드 독에서 끌어 오는 짐(더하기) — 종류 · 열 칸이 찼는가 */
   let addDrag = $state<{ kind: FavoriteDropKind; full: boolean } | null>(null);
-  /** 참이면 틈이 움직임 없이 닫힌다 — 놓은 순간 미리보기가 진짜 칸으로 바뀌는 자리(둘이 겹쳐 폭이 튀지 않게) */
+  /** 참이면 틈이 움직임 없이 닫힌다 — 미리보기와 진짜 칸이 겹쳐 폭이 튀지 않게 */
   let settle = false;
-  /** 자리 바꾸기 중 끄는 칸 — 잔상의 얼굴 */
   const movingFav = $derived(drag?.moved ? favs.find((f) => f.key === drag?.key) ?? null : null);
 
   const reducedMotion = () =>
     typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
-  /** 틈이 벌어지고 닫히는 움직임 — 미리보기 칸의 폭을 0 ↔ 제 폭으로(양옆 칸이 그만큼 비켜선다) */
   function grow(node: HTMLElement): TransitionConfig {
     if (settle || reducedMotion()) return { duration: 0 };
     const w = node.offsetWidth;
     return { duration: 120, easing: cubicOut, css: (t) => `width:${t * w}px;overflow:hidden` };
   }
 
-  /**
-   * 창 가로 좌표 → 틈 자리(칸 가운데로 앞뒤를 가른다 — 핀 쪽 바깥이면 맨 앞, 런처 쪽이면 맨 뒤). 커서가 **지금 벌어진 틈(미리보기
-   * 칸) 위**면 그 자리를 그대로 둔다 — 틈이 벌어지며 칸이 비켜서는 탓에 자리가 오락가락하지 않게.
-   */
+  /** 커서가 지금 벌어진 틈 위면 그 자리를 둔다 — 칸이 비켜서는 탓에 자리가 오락가락하지 않게 */
   function gapAt(x: number): string | null {
     const el = row;
     if (!el) return null;
@@ -211,11 +171,8 @@
     return workspaceDropBefore(cells, x);
   }
 
-  // ---------------------------------------------------------------------------
-  // 끌어다 놓아 더하기(2026-10-23) — 사이드 독의 호스트 · 프로젝트 · DB 연결 줄(HTML5 끌기). 판 전체(`StatusBar` 의 `.floating-menu`)가
-  // 이 셋을 부른다. **우리 짐일 때만** `preventDefault` · `stopPropagation` 한다 — 독 밖의 호스트 드롭(시작 타일 위 = 접속 ·
-  // 타일 분할)은 그대로 산다(독은 `position: fixed` 판이라 독 위의 드롭만 여기 온다).
-  // ---------------------------------------------------------------------------
+  // ── 끌어다 놓아 더하기 ──
+  // 우리 짐일 때만 `preventDefault` · `stopPropagation` 한다 — 독 밖의 호스트 드롭(시작 타일 위 = 접속 · 타일 분할)이 산다
   let flash = $state<{ keys: string[]; kind: "new" | "dup" } | null>(null);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -228,7 +185,6 @@
     });
   }
 
-  /** 끌기를 거둔다 — 독이 접히거나 끌기가 끝나면 부른다 */
   export function clearDrop(): void {
     addDrag = null;
     if (!drag) gap = undefined;
@@ -268,10 +224,8 @@
     const g = row;
     const lefts = g ? measureLefts(g) : null;
     const result = addDroppedFavorites(kind, (type) => dt.getData(type), before);
-    // 새 칸은 자리 바꾸기와 같은 내려앉기로 선다(`playFlip` 의 pop — 이웃은 미리보기 칸 자리 그대로라 미끄러지지 않는다)
     const landed = result.added[0];
     if (landed && g && lefts) void tick().then(() => playFlip(g, lefts, favoriteKey(landed)));
-    // 더해졌으면 틈은 움직임 없이 닫히고 그 자리에 진짜 칸이 선다 · 이미 있던 칸이면 틈이 닫히며 그 칸이 깜빡인다
     settle = result.added.length > 0;
     addDrag = null;
     gap = undefined;
@@ -311,18 +265,15 @@
       drag = null;
       if (d && el.hasPointerCapture(d.pointerId)) el.releasePointerCapture(d.pointerId);
     };
-    /** 끝내되 순서는 되돌린다(줄 밖에 놓음 · Esc · 취소) — 빈자리가 원래 자리로 미끄러져 돌아간다 */
     const revert = () => {
       const had = order !== null;
       finish();
       if (had) void flipRow(() => (order = null));
     };
-    /** 놓아도 되는 자리인가 — 줄 둘레 24px 까지(독은 한 줄이라 조금 벗어나도 줄 위로 본다) */
     const inside = (x: number, y: number) => {
       const r = el.getBoundingClientRect();
       return x >= r.left - 24 && x <= r.right + 24 && y >= r.top - 24 && y <= r.bottom + 24;
     };
-    /** 커서 x → 빈자리를 그 자리로 옮긴다(이웃은 FLIP 으로 비켜선다 — 설정 › 머리줄 칩과 같은 `$lib/flip`) */
     const reorder = (x: number) => {
       const d = drag;
       const cur = order;
@@ -353,7 +304,6 @@
       d.px = ev.clientX;
       d.py = ev.clientY;
       ev.preventDefault();
-      // 처음 움직인 순간 — 칸이 제자리에서 비고(`.lifted`) 그 빈자리가 커서를 따라 옮겨 다닌다
       if (first) order = [...favKeys];
       reorder(ev.clientX);
     };
@@ -362,7 +312,6 @@
       if (!d || ev.pointerId !== d.pointerId) return;
       if (!d.moved) return finish();
       if (!inside(ev.clientX, ev.clientY)) return revert();
-      // 놓을 자리 = 빈자리가 지금 선 곳 — 그 뒤 칸 앞(맨 뒤면 `null`). 제자리면 `moveFavorite` 가 아무것도 바꾸지 않는다
       const cur = order ?? favKeys;
       const before = cur[cur.indexOf(d.key) + 1] ?? null;
       finish();
@@ -399,11 +348,7 @@
     };
   });
 
-  /**
-   * 칸 위의 키 — 메뉴 키 · `Shift+F10` 은 우클릭 메뉴(칸 위에), `Alt+←/→` 는 한 칸, `Home`/`End` 는 양 끝으로 옮긴다
-   * (상태바 선두단과 같은 키). `Alt+화살표` 는 전역 타일 포커스 키라 여기서 멈춰 세운다 — 나머지
-   * 키는 손대지 않는다.
-   */
+  /** `Alt+화살표` 는 전역 타일 포커스 키라 여기서 멈춰 세운다 */
   function onKey(ev: KeyboardEvent, key: string): void {
     if (ev.ctrlKey || ev.metaKey) return;
     if (ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey)) {
@@ -432,7 +377,6 @@
   }
 </script>
 
-<!-- 끄는 것의 얼굴 아이콘 — 자리 바꾸기 = 그 칸 · 더하기 = 호스트 · 프로젝트 · DB 자리 아이콘(미리보기 칸 · 잔상이 같이 쓴다) -->
 {#snippet dragIcon()}
       {#if movingFav?.kind === "host"}
         <HostIcon icon={iconOf(movingFav.host)} size={iconSize} fallback="server" color={colorOf(movingFav.host)} />
@@ -449,14 +393,12 @@
       {/if}
 {/snippet}
 
-<!-- 놓을 자리 미리보기 칸 — 끄는 것의 옅은 얼굴. `at` 은 틈 자리 -->
 {#snippet preview(at: string)}
   <span class="dock-fav-preview" data-dock-fav-preview={at} aria-hidden="true" transition:grow>
     <span class="fav-face">{@render dragIcon()}</span>
   </span>
 {/snippet}
 
-<!-- 잔상 — 칸 자리 바꾸기 동안 커서를 따라다니는 떠 있는 칸(잡은 점이 커서에 붙는다). 창 좌표 `position: fixed` — 메뉴와 같은 자리 규칙 -->
 {#if drag?.moved && movingFav}
   <span class="dock-fav-ghost" aria-hidden="true" style:left="{drag.px - drag.ox}px" style:top="{drag.py - drag.oy}px">
     <span class="fav-face">{@render dragIcon()}</span>
@@ -519,10 +461,7 @@
 {/if}
 
 <style>
-  /*
-   * 칸 = 34×34 얼굴 하나(옛 워크스페이스 칸과 같은 치수 · 독의 `--sb-cell-*`). 칸이 많으면(최대 10) 이 줄만 가로로
-   * 스크롤한다 — 포커스 링이 얼굴 밖으로 나가는 만큼 여백을 두고 같은 크기의 음수 바깥 여백으로 되돌린다.
-   */
+  /* 가로 스크롤 줄 — 포커스 링이 얼굴 밖으로 나가는 만큼 여백을 두고 같은 크기의 음수 바깥 여백으로 되돌린다 */
   .dock-favs {
     --fav-ring-gap: 2px;
     --fav-ring-w: 1.5px;
@@ -552,7 +491,6 @@
     cursor: pointer;
     touch-action: none;
   }
-  /* End-4 식 칸(2026-10-18) — 44px 원(2026-10-26 둥근 네모 14px → 원 · 알약 판 안) · surfaceContainerHigh 판, 호버(· 메뉴가 열린 칸)는 상태 층 */
   .fav-face {
     position: relative;
     box-sizing: border-box;
@@ -564,7 +502,6 @@
     background: var(--control-tile-bg);
     box-shadow: var(--glass-ctl-edge, none);
   }
-  /* 열린 곳 점 — 칸 아래 가운데 primary 점(판 안쪽 바닥) */
   .fav-open {
     position: absolute;
     left: 50%;
@@ -599,19 +536,16 @@
   .dock-fav:focus-visible .fav-face::after {
     border-color: var(--focus-ring);
   }
-  /* 끄는 칸 — 자리(폭)만 남기고 사라진다. 그 빈자리가 커서를 따라 옮겨 다니며 곧 놓일 자리다(설정 › 머리줄 칩과 같다 · 10-23 사용자).
-     들고 있는 것은 커서를 따라오는 잔상(`.dock-fav-ghost`)이다 */
+  /* 자리(폭)는 남긴다 — 그 빈자리가 곧 놓일 자리다 */
   .dock-fav.lifted {
     visibility: hidden;
   }
-  /* 놓은 직후 — 새 칸은 1초 강조색 테두리, 이미 있던 칸은 경고색으로 한 번 깜빡(테두리 색 전환은 위 `::after` 의 120ms) */
   .dock-fav.flash-new .fav-face::after {
     border-color: var(--accent);
   }
   .dock-fav.flash-dup .fav-face::after {
     border-color: var(--warn);
   }
-  /* 놓을 자리 미리보기 칸 — 옅은 secondaryContainer 면 · 반투명(점선 · 삽입선 없음 — 사용자). 폭은 `grow` 가 0 ↔ 제 폭으로 */
   .dock-fav-preview {
     flex: 0 0 auto;
     display: block;
@@ -620,7 +554,6 @@
     opacity: 0.55;
     pointer-events: none;
   }
-  /* 잔상 — 집어 든 칸: 살짝 커지고 기울어 그림자가 진다(놓을 자리 미리보기와 달리 진한 원래 얼굴). 눌림을 받지 않는다 */
   .dock-fav-ghost {
     position: fixed;
     z-index: 1;
@@ -634,7 +567,7 @@
   .dock-fav-ghost .fav-face::after {
     display: none;
   }
-  /* 끄는 동안의 커서 — 포인터 캡처를 줄이 쥐므로 줄에 건다 */
+  /* 포인터 캡처를 줄이 쥐므로 커서도 줄에 건다 */
   .dock-favs.grabbing,
   .dock-favs.grabbing * {
     cursor: grabbing;
@@ -646,7 +579,6 @@
   .dock-fav-preview .fav-face::after {
     display: none;
   }
-  /* 열 칸이 찼다 — 판 위 가운데의 작은 글자(끄는 동안만) */
   .dock-full-hint {
     position: absolute;
     left: 50%;

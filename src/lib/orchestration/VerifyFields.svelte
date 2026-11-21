@@ -1,9 +1,5 @@
 <script lang="ts">
-  // **수락 전 검증 칸 묶음** — [새 앨범] 3절이 쓴다(목업 V3NewAlbum: 모노 입력 알약 + 오른쪽 실행 방식 세그먼트). 명령이 있으면 아래에
-  // 시한 · 고급 칸 셋(보존 폴더 · 캐시 키 · 추가 환경 변수 — 접지 않고 늘 보인다) · 경고 한 줄이 붙는다. **실행 방식 칸**은 부르는 쪽의 `mode` 조각으로 받는다.
-  // 검증 문자열은 사람만 정한다(MCP 로 못 바꾼다). 제목은 부르는 쪽 카드가 단다.
-  //
-  // `tag` 는 `data-<tag>-verify-*` 이름표의 머리다.
+  // 수락 전 검증 칸 묶음 — 검증 문자열은 사람만 정한다(MCP 로 못 바꾼다). `tag` 는 `data-<tag>-verify-*` 이름표의 머리다.
   import type { Snippet } from "svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { VERIFY_COMMAND_MAX, VERIFY_TIMEOUT_DEFAULT, VERIFY_TIMEOUT_MAX } from "$lib/orchestration/model";
@@ -28,11 +24,10 @@
     keepDirs: string;
     cacheKeyFiles: string;
     extraEnv: string;
-    /** 이 OS 에서 검증을 돌릴 수 없다(서버의 비Windows 스텁) — 칸을 끈다 */
+    /** 이 OS 에서 검증을 돌릴 수 없다(서버의 비Windows 스텁) */
     unsupported?: boolean;
     commandError?: string | null;
     timeoutError?: string | null;
-    /** 명령 칸 오른쪽에 그리는 실행 방식 칸 */
     mode?: Snippet;
   } = $props();
 
@@ -73,7 +68,6 @@
             bind:value={timeout}
           />
         </label>
-        <!-- 고급 칸 셋 — 접지 않는다(목업 V3FoldA): 명령이 있으면 시한 옆에 작은 칸 셋이 늘 보인다 -->
         <div class="adv" {...attr("advanced")}>
           <label class="adv-row">
             <span>{t("orch.field.verify.keepDirs")}</span>

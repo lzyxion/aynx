@@ -1,18 +1,11 @@
 import type { files as koFiles } from "$lib/i18n/ko/files";
 
 /**
- * `files` namespace — English. Glossary lives in `en/settings.ts`.
- *
- * Covers the file tiles (local and SFTP), their context menus, transfers, and the
- * host list with its context menu. "탐색기" is **File Explorer** — the Korean uses
- * the Windows name, and so does this.
- *
- * Counts: where English needs a singular the caller picks between `.one` and
- * `.other` (`transfer.conflict.title.*`); everywhere else the wording works for
- * any number ("{count} items").
+ * `files` namespace — English. Glossary: `en/settings.ts`. "탐색기" is **File Explorer** (the Windows name).
+ * Counts: the caller picks `.one` / `.other` only where English needs a singular (`transfer.conflict.title.*`); elsewhere the wording works for any number.
  */
 export const files: Record<keyof typeof koFiles, string> = {
-  // ── File tile body (SftpBrowser · FileList) ───────────────────
+  // ── File tile body ─────────────────────────────────────────────────────────
   "browser.path.aria": "Path",
   "browser.path.placeholder": "Type a path, then Enter",
   "browser.path.placeholder.posix": "Type /a/path, then Enter",
@@ -59,7 +52,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "browser.offline.alias": "The terminal isn't connected — this picks up again once it is ({alias}).",
   "browser.retry": "Retry",
 
-  // ── Toolbar row (BrowserToolbar) ───────────────────────────────────────────
+  // ── Toolbar row ────────────────────────────────────────────────────────────
   "toolbar.back": "Back",
   "toolbar.back.title": "Back (Backspace)",
   "toolbar.forward": "Forward",
@@ -98,7 +91,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "status.zoom": "Icon size",
   "space.of": "{free} free of {total}",
 
-  // ── File tile context menu (FileMenu) ──────────────────────────────────────
+  // ── File tile context menu ─────────────────────────────────────────────────
   "menu.close.aria": "Close menu",
   "menu.entry.aria": "Item menu",
   "menu.dir.aria": "Folder menu",
@@ -128,7 +121,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "menu.download.busy": "Download (transfer running)",
   "menu.export": "Export to File Explorer…",
   "menu.export.busy": "Export to File Explorer… (transfer running)",
-  // Remote client only — stands where Download · Export sit on the main PC
+  // Remote client only
   "menu.todevice": "Download to this device",
   "menu.todevice.busy": "Download to this device (transfer running)",
   "menu.enter": "Open",
@@ -144,7 +137,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "menu.cdhere": "cd here in the terminal",
   "menu.copypath": "Copy path",
 
-  // ── Transfers — bar · conflicts · upload/forward/remote edit ───────────────
+  // ── Transfers ──────────────────────────────────────────────────────────────
   "transfer.cancel": "Cancel",
   "transfer.canceling": "Canceling…",
   "transfer.canceled": "Transfer canceled.",
@@ -176,9 +169,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "transfer.forward.localport": "The local port must be a whole number between 1 and 65535",
   "transfer.forward.remoteport": "The remote port must be a whole number between 1 and 65535",
   "transfer.forward.remotehost": "Enter a remote host (for example, localhost)",
-  // Only failures are announced — success is silent (the header chip says it)
   "transfer.forward.preset.failed": "Could not open {n} forward(s): {list}",
-  // A preset row was deleted but the live session's tunnel could not be closed (the save itself succeeded)
   "transfer.forward.preset.closefailed": "Could not close {n} forward(s): {list}",
   "transfer.drop.loading": "Still reading the listing — drop again in a moment.",
   "transfer.drop.root": "Go into a drive first — 'This PC' has nowhere to put files.",
@@ -206,7 +197,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "transfer.edit.path": "Enter a remote path (for example, ~/nginx.conf)",
   "transfer.edit.opened": "{name} opened in your local editor — saving uploads it automatically.",
 
-  // ── Dragging — inside the app and out to File Explorer ─────────────────────
+  // ── Dragging ───────────────────────────────────────────────────────────────
   "drag.count": "{count} items",
   "drag.remote.otherwindow": "Remote files dragged from another window aren't supported yet.",
   "drag.source.gone": "Couldn't find where this was dragged from.",
@@ -221,7 +212,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "drag.blocked.long":
     "The path is too long (over {limit} characters) — use the right-click [Export to File Explorer…] instead.",
 
-  // ── Host list (HostList · app/hosts) ───────────────────────────────────────
+  // ── Host list ──────────────────────────────────────────────────────────────
   "host.top": "Top level",
   "host.loading": "Loading…",
   "host.empty.nohosts": "No hosts",
@@ -290,7 +281,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "host.keygen.done": "Created the key: {path}",
   "host.keygen.install": "Install the public key on this host…",
 
-  // ── Host list context menu (HostMenu) ──────────────────────────────────────
+  // ── Host list context menu ─────────────────────────────────────────────────
   "hostmenu.close.aria": "Close menu",
   "hostmenu.group.aria": "Group menu",
   "hostmenu.bg.aria": "Folder menu",
@@ -333,12 +324,12 @@ export const files: Record<keyof typeof koFiles, string> = {
   "hostmenu.adddb": "Add DB connection…",
   "hostmenu.installkey.title": "Connects once with a password to install your public key",
 
-  // ── Validation text returned by the pure modules (fs-backend's `nameError`) ─
+  // ── Validation text (`nameError`) ──────────────────────────────────────────
   "ops.name.windows": 'A name can\'t contain \\ / : * ? " < > |',
   "ops.name.posix": "A name can't contain /",
   "ops.session.gone": "Could not find the session — the terminal is not connected",
 
-  // ── `errorOf` fallbacks (sftp-browser · fs-backend · fs-ops · sftp · agent) ─
+  // ── `errorOf` fallbacks ────────────────────────────────────────────────────
   "ops.fail.home": "Could not work out the home directory",
   "ops.fail.roots": "Could not read the list of drives",
   "ops.fail.list": "Could not read the contents of {path}",
@@ -580,7 +571,7 @@ export const files: Record<keyof typeof koFiles, string> = {
   "doc.editor.go": "go",
   "host.rename.place.workspaces": "workspaces",
   "host.remove.refs.workspaces": "{n} saved workspace tiles",
-  // ── Image tile (ImageView.svelte — 2026-11-14) ─────────────────────────────
+  // ── Image tile ─────────────────────────────────────────────────────────────
   "image.aria": "Image viewer",
   "image.prev": "Previous image",
   "image.next": "Next image",

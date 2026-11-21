@@ -1,10 +1,7 @@
 <script lang="ts">
   /**
-   * **쿼리 타일의 스키마 칸 배치** — 넓은 타일의 사이드바(`.side` + 폭 끌기 경계 `.vsplit`)와 좁은 타일의 떠 있는 패널(투명 백드롭 +
-   * `.tree-pop`)을 `QueryView.svelte` 에서 뗀 표시 조각. 어느 쪽인지는 `treeDrop`(떠 있는 자리 — 사이드바면 `null`)이 가른다. 부모는
-   * 두 자리(`.main` 안 · `.query` 밖)에 이것을 하나씩 두고 각 조건(`treeShown` · `treeDrop`)으로 세운다 — 좁은 타일은 사이드바가 없어
-   * 한 번에 하나만 선다(`tree` 손잡이도 하나 — `bind:tree`). 트리 열기/닫기 · 자리 계산 · 폭 끌기 · 펼친 열쇠 · 편집기로 가는 동작은 부모가 쥔다.
-   * 사이드바를 여닫는 움직임도 부모의 감싸개(`.tree-side` — `sidePanelGrow`)가 받는다 — 여기 사이드바는 형제 둘이라 전환을 붙일 한 요소가 없다.
+   * 쿼리 타일의 스키마 칸 — 넓은 타일의 사이드바와 좁은 타일의 떠 있는 패널(`treeDrop`). 부모가 두 자리에 하나씩 두지만 한 번에 하나만
+   * 선다(`tree` 손잡이도 하나). 여닫는 움직임은 부모의 감싸개가 받는다 — 여기 사이드바는 형제 둘이라 전환을 붙일 한 요소가 없다.
    */
   import SchemaTree from "$lib/query/SchemaTree.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
@@ -41,9 +38,8 @@
     busy: boolean;
     tree: ReturnType<typeof SchemaTree> | null;
     treeExpanded: string[];
-    /** 트리가 서버에서 읽는 중(데이터 탭이 그 사이 조회를 미룬다) */
+    /** 데이터 탭이 그 사이 조회를 미룬다 */
     treeReading: boolean;
-    /** 데이터 탭 열기(두 번 누르기 · Enter) */
     openData: (obj: TreeRelation) => void;
     insertName: (text: string) => void;
     onTreeFail: (message: string) => void;
@@ -53,13 +49,11 @@
     treeDropKey: (ev: KeyboardEvent) => void;
     dragTree: (ev: PointerEvent) => void;
     splitKey: (ev: KeyboardEvent, which: "tree" | "split") => void;
-    /** 트리가 읽은 것 — 편집기 자동완성으로 */
     oncatalog?: (n: CatalogNote) => void;
   } = $props();
 </script>
 
-<!-- 스키마 트리 — 넓은 타일의 사이드바와 좁은 타일의 떠 있는 패널이 같은 것을 그린다(한 번에 하나만 선다 — `tree` 손잡이도 하나).
-     떠 있는 패널(`drop`)이면 편집기로 가는 조작(데이터 탭 열기 · 이름 넣기)이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행 · DDL 보기는 `defineFromTree`) -->
+<!-- 떠 있는 패널이면 편집기로 가는 조작이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행) -->
 {#snippet schemaTree(drop: boolean)}
   {#if opened}
     <SchemaTree
@@ -113,7 +107,7 @@
   <div class="side" style:width="{treeLayout.boxW}px">
     {@render schemaTree(false)}
   </div>
-  <!-- 경계 — 끌기 · 포커스하면 화살표. separator 는 ARIA 에서 조작 위젯인데 svelte 의 a11y 표는 늘 비대화형으로 본다(DocView 와 같다) -->
+  <!-- separator 는 ARIA 에서 조작 위젯인데 svelte 의 a11y 표는 늘 비대화형으로 본다 -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div
     class="vsplit"
@@ -136,7 +130,7 @@
     background: var(--surface-field);
   }
 
-  /* 떠 있는 트리 — 바깥 클릭을 받는 투명 백드롭과 패널. 우클릭 메뉴(`TreeMenu` 의 40/41)보다 한 칸 아래 */
+  /* 우클릭 메뉴(`TreeMenu` 의 40/41)보다 한 칸 아래 */
   .tree-backdrop {
     position: fixed;
     inset: 0;
@@ -166,7 +160,7 @@
     color: var(--fg-3);
   }
 
-  /* 경계 — `QueryView` 의 `.hsplit`(편집기 · 결과 경계)과 같은 값(그쪽은 부모에 남았다) */
+  /* `QueryView` 의 `.hsplit` 과 같은 값 */
   .vsplit {
     flex: 0 0 auto;
     position: relative;
@@ -179,7 +173,7 @@
     cursor: col-resize;
   }
 
-  /* 잡기 쉽게 — 보이는 선은 1px, 잡는 자리는 넓게 */
+  /* 보이는 선은 1px, 잡는 자리는 넓게 */
   .vsplit::after {
     content: "";
     position: absolute;

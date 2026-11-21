@@ -1,21 +1,9 @@
-//! **검토자**(통합 설계 2026-10-15-orchestration-integration-design 3-3 · 3-4 · D6 · D7 · R6 · R7 · R15 — 5단계): 조정자의
-//! `spawn_worker{role: "reviewer"}` → 보고 하나를 읽기만 하는 AI 세션, 검토자의 `report_review` → 판정 기록(`ReviewReport`),
-//! Run 옵션 `requireReview` 의 수락 관문.
-//!
-//! 불변식:
-//! - **수명이 작업자와 따로다**(R7) — 검토 생성은 Task 상태 · `current_attempt` 를 바꾸지 않고(작업자 길 `attempts.rs::spawn_worker` 를
-//!   쓰지 않는다), 작업자 한도에 세지 않는다. 생성 · 잡 · 토큰 회수는 작업자와 같은 서버 손 · 같은 종료 길이다.
-//! - **보고당 활성 검토 하나** · **Run 당 동시 하나**(`review-active`) · 총 `maxReviews`(`review-budget-exhausted`). 대상 `{reportId,
-//!   commitOid}` 는 띄울 때 고정한다(`Attempt.review_of`) — 검토자의 `get_diff` 도 그 대상만 본다.
-//! - 대상 보고가 바뀌면(새 보고 · 반려 · 취소 · 수락) 활성 검토를 **무효화**한다 — 자리를 비우고 검토자를 멈추며(`stop_queue`), 그 뒤
-//!   `report_review` 는 `stale` 로 기록만 한다. 늦게 끝난 옛 검토가 새 판정을 덮지 않는다(`reviewState` 는 **현재 보고**의 `current`
-//!   판정만 본다).
-//! - 실행 모양(서버 손 — `server::workers`): cwd = 서버가 만든 **빈 폴더**, 보고 커밋은 Run 자리의 **분리 HEAD worktree**(훅 끔)로
-//!   읽기 자리에만 넘긴다. 추적 symlink 의 대상이 그 자리 밖이면 띄우지 않는다(`symlink-outside` — 9절 위험 5 확정). 인자는 사람이 고른
-//!   작업자 권한 모드와 **무관한 고정 인자**(`turn::turn_argv` 의 판정형 줄 — 사용자 추가 인자 없음 · 설정 출처 통제). (3차 2단계) 검토자는
-//!   **헤드리스 턴**이다 — 세션 · PTY · 타일 스트림이 없고(`Attempt.stream` 없음) 턴(= 프로세스)이 끝나면 끝, 판정 뒤 자동 종료는 없다.
-//! - **검토자는 역할 기반 보조 검토다 — 독립 진위 보증이 아니다.** 같은 계정 안의 이름표 토큰((가) 결정)이라 작업자가 토큰을 훔쳐 검토자를
-//!   사칭하거나 같은 계정 파일에 손대는 것은 막지 못한다. 도구 설명 · 보드 · 수칙이 그대로 말한다.
+//! 검토자(판정형 역할) — 보고 하나를 읽기만 하는 헤드리스 턴과 그 판정 기록(`ReviewReport`).
+//! - 수명이 작업자와 따로다 — Task 상태 · `current_attempt` 를 바꾸지 않고 작업자 한도에 세지 않는다.
+//! - 대상 `{reportId, commitOid}` 는 띄울 때 고정한다 — 검토자의 `get_diff` 도 그 대상만 본다. 대상 보고가 바뀌면 활성 검토를 무효화하고, 그 뒤
+//!   판정은 `stale` 로 기록만 한다(늦은 옛 검토가 새 판정을 덮지 않는다).
+//! - cwd 는 빈 폴더, 보고 커밋은 분리 HEAD 읽기 자리로만 넘긴다. 추적 symlink 가 그 자리 밖이면 띄우지 않는다. 인자는 작업자 권한과 무관한 고정 인자다.
+//! - **검토자는 역할 기반 보조 검토다 — 독립 진위 보증이 아니다.** 같은 계정 안의 이름표 토큰이라 작업자가 검토자를 사칭하는 것은 막지 못한다(→ docs/invariants.md 전문 9).
 //! - 검토 본문(요약 · 찾은 것)은 영속 · 보드 · 조정자에만 — 감사에는 판정 · 길이 · 개수만.
 
 use std::path::{Path, PathBuf};
@@ -30,18 +18,14 @@ use super::store::{reason, writable, Binding, OrchError, Orchestration, Slot};
 use super::tools::{arg, bad, coordinator_slot, opt_text, req_text, request_id};
 use crate::audit::OrchestrationAudit;
 
-/// 현재 보고(검토 대상이 될 보고)의 id.
 fn current_report_id(run: &Run, task: &Task) -> Option<String> {
     review_target(run, task).map(|r| r.report_id)
 }
 
-/// 현재 보고의 id(수락 규칙 판정 — `roles.rs`).
 pub(super) fn current_report(run: &Run, task: &Task) -> Option<String> {
     current_report_id(run, task)
 }
 
-/// Task 의 **현재 보고**에 대한 검토 상태(통합 설계 3-3) — `pending`(그 보고의 활성 검토) · 마지막 `current` 판정(`pass` ·
-/// `changes-requested`) · `none`. 옛 보고의 판정 · `stale` · `late` 는 들지 않는다.
 pub(super) fn review_state<'r>(run: &'r Run, task: &Task) -> (&'static str, Option<&'r ReviewReport>) {
     let cur = current_report_id(run, task);
     if task.review.active.is_some() && task.review.target.is_some() && task.review.target == cur {
@@ -59,7 +43,6 @@ pub(super) fn review_state<'r>(run: &'r Run, task: &Task) -> (&'static str, Opti
     }
 }
 
-/// 보기(조정자 `get_run` · 보드) — Task 마다 `{state, reportId?, reviewId?, verdict?, summary?, findings?, attemptId?}`.
 pub(super) fn state_view(run: &Run) -> Value {
     let mut out = serde_json::Map::new();
     for t in &run.tasks {
@@ -83,9 +66,7 @@ pub(super) fn state_view(run: &Run) -> Value {
     Value::Object(out)
 }
 
-/// 검토 보고 목록 보기(조정자 `get_run` · 보드 — E2E 10-16 #7b) — 저장된 `current` 판정이라도 그 대상 보고가 **더는 Task 의 현재 보고가
-/// 아니면**(해결자 · 새 Attempt 의 보고로 바뀜) `stale` 로 보인다. [`review_state`] 와 같은 규칙(현재 보고의 `current` 만 유효)을 읽을 때
-/// 계산한다 — 저장값(영속 파일)은 판정 그때의 기록으로 둔다.
+/// 대상 보고가 더는 현재 보고가 아닌 `current` 판정은 읽을 때 `stale` 로 보인다 — 저장값(영속 파일)은 판정 그때의 기록으로 둔다.
 pub(super) fn reports_view(run: &Run) -> Value {
     let list: Vec<Value> = run
         .review_reports
@@ -103,8 +84,7 @@ pub(super) fn reports_view(run: &Run) -> Value {
     Value::Array(list)
 }
 
-/// 활성 검토를 **무효화**한다(잠금 안 — 보고 교체 · 반려 · 취소 · 수락). 자리를 비우고 검토자를 `stopping` 으로 올려 `stop_queue` 에
-/// 쌓는다(부른 쪽이 잠금 밖에서 `drain_stops`). 무효화했으면 `true`.
+/// 부른 쪽이 잠금 밖에서 `drain_stops` 해야 검토자가 멈춘다.
 pub(super) fn invalidate(slot: &mut Slot, task_id: &str, now: u64, actor: Actor, why: &str) -> bool {
     let Some(t) = slot.run.tasks.iter_mut().find(|t| t.id == task_id) else { return false };
     let Some(att) = t.review.active.take() else { return false };
@@ -116,8 +96,7 @@ pub(super) fn invalidate(slot: &mut Slot, task_id: &str, now: u64, actor: Actor,
     true
 }
 
-/// 검토자가 판정 없이 끝났다(생성 실패 · 종료 — 잠금 안, `attempts.rs` 의 종료 길이 부른다). 그 Task 의 활성 자리를 비운다(다음 검토가
-/// 막히지 않게). 작업자면 아무 일 없다.
+/// 판정 없이 끝난 검토자의 활성 자리를 비운다 — 아니면 다음 검토가 막힌다.
 pub(super) fn on_reviewer_ended(slot: &mut Slot, attempt_id: &str, now: u64) {
     let is_reviewer = slot.run.attempts.iter().any(|a| a.id == attempt_id && a.is_reviewer());
     if !is_reviewer {
@@ -133,9 +112,7 @@ pub(super) fn on_reviewer_ended(slot: &mut Slot, attempt_id: &str, now: u64) {
     }
 }
 
-/// 검토 자리 하나를 만든다(서버 손 — **블로킹** git): Run 자리 안에 보고 커밋의 **분리 HEAD worktree**(`orch-<task8>-<att8>-rv` · 훅 끔)와
-/// 빈 cwd(`cwd_root/review-<att8>`). 경로들(`(자리, cwd)`). 자리는 만든 즉시 곁 파일에 `role: review` 로 적는다(통합 설계 6-2 — 그 뒤
-/// 무엇이 실패해도 폐기 정책이 "이 Run 의 서버 임시 자리" 로 안다).
+/// **블로킹** git. 자리는 만든 즉시 곁 파일에 `role: review` 로 적는다 — 그 뒤 무엇이 실패해도 정리가 "이 Run 의 서버 임시 자리" 로 안다.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn place_blocking(
     repo: &Path,
@@ -167,8 +144,7 @@ pub(crate) fn place_blocking(
     let hooks = super::worktree::empty_hooks_dir();
     let rg = Git::new(repo, &hooks, &env, reason::WORKTREE_FAILED)?;
     let place_s = place.to_string_lossy().into_owned();
-    // 리뷰 F2 — checkout 이 smudge · process 필터(LFS 포함)를 서버 권한으로 돌리지 않게, 꺼낼 트리 전체에 필터가 걸리면 띄우지 않는다
-    // (속성 출처 = 그 커밋 — 미지원 조합은 실행 전 거절, 사람이 본다).
+    // checkout 이 smudge · process 필터(LFS 포함)를 서버 권한으로 돌리지 않게, 꺼낼 트리에 필터가 걸리면 띄우지 않는다(속성 출처 = 그 커밋).
     if super::git::tree_has_filters(&rg, commit, &[commit])? {
         return Err(OrchError::new(
             reason::FILTERS_CONFIGURED,
@@ -193,8 +169,7 @@ pub(crate) fn place_blocking(
     Ok((place_s, cwd.to_string_lossy().into_owned()))
 }
 
-/// 검토 자리의 추적 symlink 대상 검사(9절 위험 5 확정 — 검증 자리와 같은 판정): 하나라도 자리 밖이면(못 읽은 링크도 밖으로 본다)
-/// `symlink-outside`. **블로킹**(git).
+/// 검증 자리와 같은 판정 — 못 읽은 링크도 밖으로 본다. **블로킹**(git).
 pub(crate) fn check_links_blocking(place: &Path) -> Result<(), OrchError> {
     let env = child_env(std::env::vars_os());
     let hooks = super::worktree::empty_hooks_dir();
@@ -241,8 +216,7 @@ fn findings_arg(args: Option<&Value>) -> Result<Vec<String>, OrchError> {
 }
 
 impl Orchestration {
-    /// 조정자 `spawn_worker{role: <판정형 역할 id>}`(3a — 4-7: 판정형 = 검토자 길) — 머리말의 관문(잠금 하나) 뒤 서버 손에 맡긴다(비동기).
-    /// Task 상태 · `current_attempt` 는 그대로. CLI · 모델 · 강도 · 지침은 역할에서, 권한은 **늘 읽기 전용**(판정형 고정 인자).
+    /// 조정자 `spawn_worker{role: <판정형 역할 id>}`. 권한은 역할과 무관하게 **늘 읽기 전용**(판정형 고정 인자).
     pub(super) fn spawn_reviewer(
         &self,
         run_id: &str,
@@ -274,7 +248,6 @@ impl Orchestration {
             if self.launcher().is_none() {
                 return Err(OrchError::new(reason::SPAWN_UNAVAILABLE, "this server cannot start reviewers"));
             }
-            // 맡기기 관문(E5 — 맡긴 저장소에서만).
             lookup.gate(&slot.run)?;
             let role = lookup.pick_role(&slot.run, &role.id)?;
             let Some(task) = slot.run.task(&task_id).cloned() else {
@@ -286,7 +259,6 @@ impl Orchestration {
                     format!("task {task_id} is {} — only a reported task can be reviewed", task.state.as_str()),
                 ));
             }
-            // 대상 = 수락할 수 있는 현재 보고(성공 · 불일치 없음 · 미커밋 없음 · 커밋 있음 — 수락 못 할 보고는 검토할 뜻이 없다).
             let (report, commit) = acceptable(&slot.run, &task)?;
             if task.review.active.is_some() {
                 return Err(OrchError::new(
@@ -294,14 +266,12 @@ impl Orchestration {
                     format!("task {task_id} already has a review running — wait for its verdict (wait_run until=reviewed)"),
                 ));
             }
-            // 술어 `turn_may_live` — "Run 당 동시 하나" 는 도는 판정 턴을 센다(동시 한도 — 4-5 · 4-7).
             if slot.run.attempts.iter().any(|a| a.is_reviewer() && a.turn_may_live()) {
                 return Err(OrchError::new(
                     reason::REVIEW_ACTIVE,
                     "another reviewer of this run is still running — reviews run one at a time; wait for it (wait_run until=reviewed)",
                 ));
             }
-            // 판정 총 수(E16 — 맡기기의 `max_reviews` · 판정형 역할 전부의 합).
             let max = lookup.max_reviews(&slot.run);
             if slot.run.review_count() as u32 >= max {
                 return Err(OrchError::new(
@@ -309,7 +279,6 @@ impl Orchestration {
                     format!("this repository's delegation allows at most {max} judgments per run — they are used up"),
                 ));
             }
-            // 판정형에게는 세션 · 타일 스트림이 없다(Attempt.stream = 없음). 턴 자원(턴 MCP 파일)의 주인 표시는 `turn_claim_key`.
             slot.run.attempts.push(Attempt {
                 id: attempt_id.clone(),
                 task_id: task_id.clone(),
@@ -418,7 +387,7 @@ impl Orchestration {
         Ok(result)
     }
 
-    /// 검토 자리가 섰다(서버 손) — 적고, 계속해도 되는가(그사이 중단 · 무효화됐으면 `false` — 서버 손은 프로세스를 띄우지 않는다).
+    /// `false` 면(그사이 중단 · 무효화) 서버 손은 프로세스를 띄우지 않는다.
     pub(crate) fn attempt_review_place(&self, run_id: &str, attempt_id: &str, place: &str, cwd: &str) -> bool {
         let now = self.now();
         let mut g = self.lock();
@@ -437,7 +406,6 @@ impl Orchestration {
         go
     }
 
-    /// 검토자 `get_task` — 검토 지시서: Task 명세 + 대상 보고(요약 · 메모 · 바뀐 파일 — 서버가 보고 때 읽은 것) + 고정 OID + 읽기 자리.
     pub(super) fn reviewer_task(&self, run_id: &str, attempt_id: &str) -> Result<Value, OrchError> {
         let g = self.lock();
         let slot = g.runs.get(run_id).ok_or_else(super::store::not_found_run)?;
@@ -476,13 +444,11 @@ impl Orchestration {
             "base": of.base_commit,
             "commit": of.commit_oid,
             "readOnlyFolder": of.place.as_deref().map(|p| p.replace('\\', "/")),
-            // 대상이 무효화됐으면(보고 교체 · 반려 · 취소 · 수락) 판정은 stale 로만 남는다.
             "stillCurrent": still,
             "rules": "Review the reported commit against its base (the task's own change — not the integration result). Read the code in readOnlyFolder and the change with get_diff; do not edit, commit or change anything. Then call report_review once: verdict pass or changes-requested, a short summary and at most 20 short findings. This is a role-based supplementary review — the coordinator and a person decide.",
         }))
     }
 
-    /// 검토자 `report_review` — 자기 Attempt · 한 번(`already-reported`). 대상이 무효화됐으면 `stale`, 중단 · 세대 교체 뒤면 `late`(기록만).
     pub(super) fn report_review(&self, run_id: &str, attempt_id: &str, args: Option<&Value>) -> Result<Value, OrchError> {
         let request = request_id(args)?;
         let key = format!("{attempt_id}:{request}");
@@ -513,7 +479,6 @@ impl Orchestration {
             }
             let of = a.review_of.clone().ok_or_else(|| OrchError::new(reason::NOT_FOUND, "no review target"))?;
             let task = slot.run.task(&a.task_id).cloned().ok_or_else(|| OrchError::new(reason::NOT_FOUND, "no such task"))?;
-            // 자리가 이 검토자의 것이 아니거나 대상이 지금 보고가 아니면 무효화된 것이다(stale) — 중단 · 세대 교체 뒤면 late.
             let mine = task.review.active.as_deref() == Some(attempt_id)
                 && current_report_id(&slot.run, &task).as_deref() == Some(of.report_id.as_str());
             let late = matches!(slot.run.state, RunState::Stopping | RunState::Stopped)
@@ -539,14 +504,13 @@ impl Orchestration {
                 state,
             });
             if mine {
-                // 자리를 비운다(판정이 섰다 · 늦은 판정은 세지 않지만 자리는 놓는다). 대상은 마지막 대상으로 남는다.
+                // 늦은 판정은 세지 않지만 자리는 놓는다.
                 if let Some(t) = slot.run.tasks.iter_mut().find(|t| t.id == a.task_id) {
                     t.review.active = None;
                 }
             }
             if state == ReviewReportState::Current {
-                // (3a) Attempt 는 `running` 그대로 — 턴이 끝나면(트리 종료 확인) 판정이 있으니 `reported`(닫힘)가 된다(4-5 — 턴 밖에서만
-                // `reported`). 보고 뒤 자동 종료는 없다 — 헤드리스는 턴이 끝나면 스스로 끝난다(E4). 끝나지 않는 턴은 턴 시한이 끝낸다.
+                // Attempt 는 `running` 그대로 — `reported` 는 턴이 끝난(트리 종료 확인) 뒤에만 된다.
                 if verdict == ReviewVerdict::ChangesRequested {
                     self.raise(slot, "review-changes-requested", Some(attempt_id), None);
                 }

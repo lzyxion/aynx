@@ -26,8 +26,7 @@ export function artistFormError(form: ArtistInput, original?: ArtistProfile | nu
   return null;
 }
 
-/** 저장할 것이 있는가 — 새 아티스트는 늘 참, 기존은 저장 때와 같은 정규화(이름 · 모델 공백 정리 · 지침 줄 끝 LF)로 비교한다.
- *  textarea 는 값을 LF 로 돌려주므로 CRLF 로 저장된 지침을 고르기만 해도 달라 보이지 않게 한다. */
+/** 저장 때와 같은 정규화로 비교한다 — textarea 는 LF 로 돌려주므로 CRLF 로 저장된 지침을 고르기만 해도 달라 보이면 안 된다 */
 export function artistDirty(form: ArtistInput, original: ArtistProfile | null): boolean {
   if (!original) return true;
   const norm = (a: ArtistInput) => [a.name.trim(), a.icon, a.cli, a.kind, a.model.trim(), a.effort, a.instructions.replace(/\r\n?/g, "\n")];

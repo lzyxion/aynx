@@ -1,5 +1,4 @@
 <script lang="ts">
-  // 연 앨범의 프로듀서 채팅만 그린다. 새 앨범은 플레이어의 new 초안 경로에서 시작한다.
   import { untrack } from "svelte";
   import type { PaneSpec } from "$lib/session";
   import { focusTile, tabOfPane } from "$lib/app/tabs.svelte.js";
@@ -14,15 +13,14 @@
   const spec = $derived(pane.producer ?? null);
   const tab = $derived(tabOfPane(pane.id));
   const runId = $derived(tab ? albumRunId(tab) : null);
-  /** 끝난 앨범 — 이 잎은 [프로듀서 대화 기록](읽기만)이라 머리에 ✕ 가 선다(걷으면 플레이어 전체 폭) */
   const ended = $derived(albumEnded(runSummaryOf(runId)));
   const target = $derived.by((): ProducerTarget | null => {
     if (!spec?.opened || !runId) return null;
     return { chat: spec.chatId, cli: spec.cli === "codex" ? "codex" : "claude", model: spec.model, effort: spec.effort,
       studio: spec.studio, conv: spec.conv ?? null, adoptRun: runId };
   });
-  // 붙기는 채팅 id 에만 건다 — 첫 턴이 서면 대화 id 가 잎 주소(`conv`)에 적혀 target 이 새로 지어지는데, 그때 떠났다 다시 붙으면 꼬리(사람의
-  // 첫 말 말풍선)를 잃고 CLI 가 아직 쓰지 않은 기록을 읽어 "그 대화를 찾지 못했습니다" 가 떴다(실기 18). 채팅이 같으면 붙은 채로 둔다.
+  // 붙기는 채팅 id 에만 건다 — target 이 대화 id 로 새로 지어질 때 떠났다 다시 붙으면 첫 말 말풍선을 잃고
+  // CLI 가 아직 쓰지 않은 기록을 읽어 "그 대화를 찾지 못했습니다" 가 뜬다.
   const chatId = $derived(target?.chat ?? null);
   $effect(() => {
     if (!visible || !chatId) return;

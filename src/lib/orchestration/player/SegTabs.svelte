@@ -1,8 +1,5 @@
 <script lang="ts">
-  // **고르기 알약 묶음 = 탭 전환**(목업 V3FoldA — ▶ 펼침 대신). 같은 자리를 바꿔 보여 주고 아래로 길어지지 않는다.
-  // 모양은 [새 앨범]의 `.seg`(읽기 | 편집 자동 | 전부 자동)와 같은 토큰 — 바탕 `--surface-field` · 고른 칸 `--control-sel-*`.
-  // 접근성은 WAI-ARIA 탭: `role="tablist"` · 고른 탭만 Tab 순서에 · ← → Home End 로 옮긴다. 패널은 부르는 쪽이
-  // `id = {idBase}-{탭 id}` · `role="tabpanel"` · `aria-labelledby = {idBase}-{탭 id}-tab` 으로 단다.
+  // 패널은 부르는 쪽이 `id = {idBase}-{탭 id}` · `role="tabpanel"` · `aria-labelledby = {idBase}-{탭 id}-tab` 으로 단다.
   // `name` 은 `data-{name}-tab="{id}"` 이름표의 머리다(하네스가 누른다).
   let {
     tabs,
@@ -18,7 +15,6 @@
     label: string;
     idBase: string;
     name: string;
-    /** 판 폭 전체 띠(앨범 화면) — 아니면 글자 폭 알약 묶음 */
     wide?: boolean;
     onpick?: (id: string) => void;
   } = $props();

@@ -10,13 +10,7 @@
   import type { Load } from "./schema-tree";
   import { definitionName } from "./definition";
 
-  /**
-   * **DDL 읽기 전용 보기** — 쿼리 타일 아래 칸의 "DDL" 쪽(위의 [결과 | DDL] 전환 — `QueryView`). 서버 op `db_definition` 의 답
-   * (`query/definition` · Rust `db::definition`)을 **읽기 전용** CodeMirror(SQL 방언 색칠 — `doc-editor-cm` 의 `readOnly`)에 보인다.
-   *
-   * 머리줄: 종류 · 이름(`스키마.이름` — 표시용) · 재구성 표시(PG 테이블 · 시퀀스 · 형 · 집계 — "카탈로그로 재구성한 정의") · 잘림 표시 ·
-   * [복사] · [편집기에 넣기](편집기 커서 자리 — 앞뒤 글과 줄을 띄운다 · **실행하지 않는다**). 실행 · 쓰기 단추는 없다.
-   */
+  /** DDL 읽기 전용 보기 — 실행 · 쓰기 단추는 없다([편집기에 넣기] 도 실행하지 않는다) */
   let {
     target,
     dialect,
@@ -26,7 +20,6 @@
     target: DbDefinitionTarget;
     dialect: DbDialect;
     load: Load<DbDefinition>;
-    /** 편집기에 넣기 — 부르는 쪽이 `SqlEditor.insertBlock` 으로 */
     oninsert: (sql: string) => void;
   } = $props();
 
@@ -69,7 +62,7 @@
     );
   });
 
-  // 대상이 바뀌어 새 글이 오면 바꿔 끼운다(읽기 전용이어도 앱이 보내는 글은 들어간다)
+  // 읽기 전용이어도 앱이 보내는 글은 들어간다
   let shown = "";
   $effect(() => {
     const s = sql;

@@ -1,46 +1,11 @@
-//! **원격 에이전트 대화** — SSH 로 붙은 서버에 남은 Claude Code · Codex 대화를 로컬과 같은 모양의 줄로 읽는다
-//! (docs/log/2026-09-27-remote-conversations.md).
+//! 원격 에이전트 대화 — SSH 로 붙은 서버에 남은 Claude Code · Codex 대화를 로컬과 같은 모양의 줄로 읽는다 (docs/log/2026-09-27-remote-conversations.md).
 //!
-//! ## 새 접속을 열지 않는다
-//!
-//! 읽기는 **이미 살아 있는 타일 세션**의 전송로 위에 exec 채널을 얹어 한다([`crate::ssh::run_exec_bytes`] — 원격
-//! 워크트리 목록 · 훅 설치와 같은 길). 화면이 넘긴 세션 번호가 타일 세션이 아니면(없거나 헤드리스) 읽지 않는다. 캐시의
-//! 열쇠는 화면이 넘긴 이름이 아니라 **그 세션이 붙은 별칭**이다([`crate::server::ssh_ops::tile_handle_and_alias`] — 세션 서버에 묻는다).
-//!
-//! ## 두 걸음
-//!
-//! 1. **목록** — exec 한 번: 서버의 지금 시각 · `$HOME` · 두 루트, 그리고 두 루트의 대화 파일(크기 · mtime · 경로)을
-//!    mtime 내림차순으로 최신 [`MAX_FILES`] 개([`list_command`]). GNU `find -printf` 가 없으면 `stat -c`(busybox) →
-//!    `stat -f`(BSD · macOS)로 물러선다. 루트는 `CLAUDE_CONFIG_DIR` · `CODEX_HOME` 을 따른다 — **exec 셸의 환경에 있을 때만**
-//!    (로그인 셸이 대화형 설정 파일에서만 거는 값은 보이지 않는다).
-//! 2. **머리 · 꼬리** — 캐시(경로 · 크기 · mtime)와 다른 파일만, 여러 파일을 exec 한 번에 묶어(`head -c` · `tail -c` 를
-//!    경계 표식으로 가른다 — [`fetch_command`]) 읽는다. 바이트 수는 로컬과 같다(Claude 앞 64 KB · Codex 128 KB · 꼬리
-//!    64 KB). 그 바이트는 로컬과 **같은 다듬기 · 같은 파서**를 지난다(`agent_sessions::chunk_from_parts` · 표의 `parse`)
-//!    — 제목 · 폴더 · 브랜치 규칙이 한 벌이다.
-//!
-//! 한 번 부를 때 [`CALL_BUDGET`] 만큼만 읽고 돌려준다(`complete=false` + 진행 수). 화면이 다시 부르면 이어 읽는다 — 목록은
-//! [`FRESH`] 안이면 다시 뽑지 않는다. 그래서 "dev-01에서 읽는 중… (12 / 31)" 이 선다.
-//!
-//! ## 상한 · 안전
-//!
-//! 파일 수([`MAX_FILES`]) · 묶음의 파일 수와 바이트([`BATCH_MAX_FILES`] · [`BATCH_MAX_BYTES`]) · exec 시한. 경로는 **서버가 준
-//! 목록의 것**이고 그 루트 아래 `*.jsonl` 인 것만 받으며([`parse_listing`]) 명령에는 [`crate::ssh::sh_quote`] 로만 들어간다.
-//! 대화 본문에서 온 글자는 명령에 들어가지 않는다(재개 명령은 UUID 모양의 id 와 고정 낱말뿐 — `agent_sessions::join_argv`).
-//!
-//! ## 개인정보 · 저장
-//!
-//! 로컬과 같은 선: 화면으로 가는 것은 제목(로컬과 같은 순서) · 폴더 · 브랜치 · 모델 · 시각 · 토큰 수뿐이다. 캐시는 **메모리에만**
-//! 있고(앱을 끄면 사라진다) 서버에도 이 PC 에도 아무것도 쓰지 않는다. 이 모듈의 자료형은 `Debug` 를 파생하지 않는다.
-//!
-//! ## 시계
-//!
-//! "밖에서 열림"(파일이 2분 안에 고쳐졌다)은 서버의 시계로 재야 한다 — 목록 exec 이 서버의 지금을 함께 찍고, 그 차이
-//! (이 PC 의 지금 − 서버의 지금)만큼 mtime 을 옮겨 `updatedAt` 으로 낸다. 그래서 화면은 로컬 줄과 같은 판정을 그대로 쓴다.
-//!
-//! ## 토큰
-//!
-//! Codex 는 꼬리의 마지막 `token_count` 누적(`total_token_usage` 의 입력 + 출력)을 싣는다. Claude 는 응답마다 적혀 파일
-//! 전체를 더해야 해서 **싣지 않는다**(원격 파일 전체를 읽지 않는다 — 1단계).
+//! 새 접속을 열지 않는다 — 이미 살아 있는 타일 세션의 전송로 위에 exec 채널을 얹는다. 화면이 넘긴 세션 번호가 타일 세션이 아니면(없거나 헤드리스)
+//! 읽지 않고, 캐시 열쇠는 화면이 넘긴 이름이 아니라 그 세션이 붙은 별칭이다.
+//! 경로는 서버가 준 목록의 것으로 그 루트 아래 `*.jsonl` 만 받고 명령에는 [`crate::ssh::sh_quote`] 로만 들어간다. 대화 본문에서 온 글자는 명령에 들어가지 않는다.
+//! 캐시는 메모리에만 있고 서버에도 이 PC 에도 아무것도 쓰지 않는다. 이 모듈의 자료형은 `Debug` 를 파생하지 않는다.
+//! "밖에서 열림" 은 서버의 시계로 재야 한다 — 목록 exec 이 서버의 지금을 함께 찍고 그 차이만큼 mtime 을 옮겨 `updatedAt` 으로 낸다.
+//! 루트의 `CLAUDE_CONFIG_DIR` · `CODEX_HOME` 은 exec 셸의 환경에 있을 때만 따른다(대화형 설정 파일에서만 거는 값은 보이지 않는다).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -54,32 +19,22 @@ use crate::agent_sessions::{
 };
 use crate::i18n::tr;
 
-/// 목록에 올리는 최신 파일 수(두 에이전트 합, mtime 순).
 const MAX_FILES: usize = 300;
-/// 목록 exec 의 출력 상한 — 줄 하나가 경로 몇백 글자라 넉넉하게.
 const LIST_MAX_BYTES: usize = 1024 * 1024;
 const LIST_TIMEOUT: Duration = Duration::from_secs(20);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
-/// 묶음 하나의 파일 수 · 바이트(최악의 경우 — 요청한 머리 + 꼬리의 합).
 const BATCH_MAX_FILES: usize = 40;
 const BATCH_MAX_BYTES: u64 = 6 * 1024 * 1024;
-/// 한 번 부를 때 읽는 시간 — 넘기면 읽은 데까지 돌려준다(화면이 다시 부른다).
 const CALL_BUDGET: Duration = Duration::from_secs(4);
-/// 목록을 다시 뽑지 않고 쓰는 시간 — 화면의 F5 는 이것을 건너뛴다(`force`).
 const FRESH: Duration = Duration::from_secs(60);
 /// 꼬리 바이트 — 로컬과 같다(`agent_sessions::TAIL_BYTES`).
 const TAIL_BYTES: u64 = 64 * 1024;
-/// Codex 이름표(`session_index.jsonl`)의 꼬리 — 로컬(1 MB)보다 작게: 네트워크로 온다.
 const INDEX_TAIL_BYTES: u64 = 256 * 1024;
-/// 폴더가 있나 묻는 수의 상한.
 const CWDS_MAX: usize = 256;
 
-// ---------------------------------------------------------------------------
-// 1. 목록
-// ---------------------------------------------------------------------------
+// ── 1. 목록 ──
 
-/// 목록의 파일 한 줄 — 서버가 적어 준 그대로(검사를 지난 것).
 #[derive(Clone, PartialEq)]
 pub(crate) struct Listed {
     /// `"claude"` · `"codex"` · `"index"`(Codex 이름표)
@@ -90,7 +45,6 @@ pub(crate) struct Listed {
     pub path: String,
 }
 
-/// 목록 exec 한 판의 답.
 #[derive(Clone, PartialEq)]
 pub(crate) struct Listing {
     /// 서버의 지금(epoch 초) — 못 읽었으면 `None`(시계 보정 없음).
@@ -100,7 +54,7 @@ pub(crate) struct Listing {
     pub index: Option<Listed>,
 }
 
-/// 목록 명령 (**순수 함수**). `sh -c` 로 감싼다 — 로그인 셸이 fish 여도 같은 뜻이다.
+/// `sh -c` 로 감싼다 — 로그인 셸이 fish 여도 같은 뜻이다.
 pub(crate) fn list_command() -> String {
     let script = format!(
         r#"C="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}/projects"; XH="${{CODEX_HOME:-$HOME/.codex}}"; X="$XH/sessions"
@@ -120,12 +74,10 @@ exit 0"#,
     format!("sh -c {}", crate::ssh::sh_quote(&script))
 }
 
-/// 경로 하나가 쓸 만한가 — 절대 경로 · 제어 문자 없음 · `..` 조각 없음.
 fn clean_path(p: &str) -> bool {
     p.starts_with('/') && !p.chars().any(char::is_control) && !p.split('/').any(|seg| seg == "..")
 }
 
-/// `root` 바로 아래(깊이 `depth` 조각)의 파일인가.
 fn under(root: &str, path: &str, depth: usize) -> bool {
     let root = root.trim_end_matches('/');
     match path.strip_prefix(root).and_then(|r| r.strip_prefix('/')) {
@@ -134,13 +86,10 @@ fn under(root: &str, path: &str, depth: usize) -> bool {
     }
 }
 
-/// 파일 이름.
 fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// 목록 출력 → [`Listing`] (**순수 함수**). 머리 줄(`N`·`H`·`C`·`X`)이 모자라면 `None`. 파일 줄은 그 루트 아래의 모양이
-/// 맞는 것만 받는다(Claude `C/<폴더>/<이름>.jsonl` · Codex `X/YYYY/MM/DD/rollout-*.jsonl` · 이름표 `X/../session_index.jsonl`).
 pub(crate) fn parse_listing(out: &str) -> Option<Listing> {
     let mut now_s = None;
     let mut home = None;
@@ -211,11 +160,9 @@ pub(crate) fn parse_listing(out: &str) -> Option<Listing> {
     })
 }
 
-// ---------------------------------------------------------------------------
-// 2. 머리 · 꼬리
-// ---------------------------------------------------------------------------
+// ── 2. 머리 · 꼬리 ──
 
-/// 파일 하나에서 무엇을 읽나 — 앞 `head` 바이트(0 이면 안 읽는다) · 끝 `tail` 바이트(0 이면 안 읽는다).
+/// `head` · `tail` 이 0 이면 그쪽은 읽지 않는다.
 #[derive(Clone, PartialEq)]
 pub(crate) struct FetchItem {
     pub path: String,
@@ -223,14 +170,12 @@ pub(crate) struct FetchItem {
     pub tail: u64,
 }
 
-/// 에이전트의 앞 바이트 — 로컬 표의 값.
 fn head_bytes(t: &SessionTarget) -> u64 {
     let SessionSource::JsonlFiles { head_bytes, .. } = &t.source;
     *head_bytes
 }
 
-/// 목록의 파일 → 읽을 몫 (**순수 함수**). 로컬 `read_chunk` 와 같은 범위: 파일이 앞보다 길면 꼬리는 앞과 겹치지 않게
-/// `min(꼬리, 크기 − 앞)`. 이름표는 꼬리만.
+/// 로컬 `read_chunk` 와 같은 범위다.
 pub(crate) fn fetch_item(f: &Listed) -> FetchItem {
     if f.agent == "index" {
         return FetchItem {
@@ -240,8 +185,7 @@ pub(crate) fn fetch_item(f: &Listed) -> FetchItem {
         };
     }
     let head = local::target(f.agent).map(head_bytes).unwrap_or(64 * 1024);
-    // 꼬리는 로컬처럼 **한 바이트 더**(앞과 한 바이트 겹친다) — 꼬리의 첫 줄은 잘린 줄로 버려지므로, 꼬리가 줄 첫머리에서
-    // 시작하면 온전한 줄 하나를 잃는다(로컬 `read_chunk` 의 2026-11-14 주석)
+    // 꼬리는 로컬처럼 한 바이트 더 — 꼬리의 첫 줄은 잘린 줄로 버려지므로, 꼬리가 줄 첫머리에서 시작하면 온전한 줄 하나를 잃는다.
     let tail = if f.size > head {
         (TAIL_BYTES + 1).min(f.size - head + 1)
     } else {
@@ -254,14 +198,12 @@ pub(crate) fn fetch_item(f: &Listed) -> FetchItem {
     }
 }
 
-/// 묶음이 부를 수 있는 최대 바이트.
 fn item_bound(i: &FetchItem) -> u64 {
     i.head + i.tail + 64
 }
 
-/// 머리 · 꼬리 명령 (**순수 함수**). 파일마다 `\n<표식> <번호> H\n` + `head -c` · `\n<표식> <번호> T\n` + `tail -c`,
-/// 끝에 `\n<표식> END\n`. 표식 앞의 줄바꿈은 우리가 넣은 것이라 가를 때 떼어 낸다([`parse_fetch`]). 대화 파일의 줄은
-/// JSON(`{` 로 시작)이라 표식 줄과 섞이지 않는다 — 부를 때마다 새 표식이라 더 그렇다.
+/// 대화 파일의 줄은 JSON(`{` 로 시작)이라 표식 줄과 섞이지 않는다 — 부를 때마다 새 표식이라 더 그렇다.
+/// 표식 앞의 줄바꿈은 우리가 넣은 것이라 가를 때 떼어 낸다([`parse_fetch`]).
 pub(crate) fn fetch_command(nonce: &str, items: &[FetchItem]) -> String {
     let mut script = String::new();
     for (i, it) in items.iter().enumerate() {
@@ -283,15 +225,13 @@ pub(crate) fn fetch_command(nonce: &str, items: &[FetchItem]) -> String {
     format!("sh -c {}", crate::ssh::sh_quote(&script))
 }
 
-/// 파일 하나의 받은 몫.
 #[derive(Default, Clone, PartialEq)]
 pub(crate) struct Fetched {
     pub head: Option<Vec<u8>>,
     pub tail: Option<Vec<u8>>,
 }
 
-/// 머리 · 꼬리 출력 → 번호별 몫 (**순수 함수**). 둘째 값 = `END` 까지 다 왔나. 끝이 잘렸으면(시한 · 상한) **마지막 조각은
-/// 버린다** — 반쯤 온 조각을 온전한 것으로 믿지 않는다.
+/// 끝이 잘렸으면(시한 · 상한) 마지막 조각은 버린다 — 반쯤 온 조각을 온전한 것으로 믿지 않는다.
 pub(crate) fn parse_fetch(nonce: &str, out: &[u8]) -> (HashMap<usize, Fetched>, bool) {
     let (pieces, complete) = split_marked(nonce, out);
     let mut got: HashMap<usize, Fetched> = HashMap::new();
@@ -313,8 +253,7 @@ pub(crate) fn parse_fetch(nonce: &str, out: &[u8]) -> (HashMap<usize, Fetched>, 
     (got, complete)
 }
 
-/// 경계 표식(`\n<표식> <이름>\n`)으로 가른 조각들 — `(이름, 몸)` · 둘째 값 = `END` 까지 왔나 (**순수 함수**). 다음 표식이 없는
-/// 마지막 조각은 잘린 것이라 버린다. 머리 · 꼬리 읽기와 전체 사용량 읽기가 같은 틀을 쓴다.
+/// 다음 표식이 없는 마지막 조각은 잘린 것이라 버린다.
 pub(crate) fn split_marked<'a>(nonce: &str, out: &'a [u8]) -> (Vec<(String, &'a [u8])>, bool) {
     let needle = format!("\n{nonce} ");
     let finder = memchr::memmem::Finder::new(needle.as_bytes());
@@ -330,19 +269,16 @@ pub(crate) fn split_marked<'a>(nonce: &str, out: &'a [u8]) -> (Vec<(String, &'a 
         if label == "END" {
             return (pieces, true);
         }
-        // 다음 표식이 없으면 이 조각은 잘렸다 — 버린다
         let Some(&next) = marks.get(k + 1) else { break };
         pieces.push((label, out.get(body_start..next).unwrap_or_default()));
     }
     (pieces, false)
 }
 
-/// 이 파일의 몫이 다 왔나 — 청한 칸이 모두 있다.
 fn fetched_whole(it: &FetchItem, f: &Fetched) -> bool {
     (it.head == 0 || f.head.is_some()) && (it.tail == 0 || f.tail.is_some())
 }
 
-/// Codex 꼬리의 마지막 누적 토큰(`token_count.info.total_token_usage` 의 입력 + 출력) — 없으면 `None`.
 pub(crate) fn codex_tokens(lines: &[Value]) -> Option<u64> {
     lines.iter().rev().find_map(|v| {
         if v["type"] != "event_msg" || v["payload"]["type"] != "token_count" {
@@ -354,7 +290,7 @@ pub(crate) fn codex_tokens(lines: &[Value]) -> Option<u64> {
     })
 }
 
-/// 받은 몫 → 파싱 결과와 토큰 (**순수 함수**) — 로컬과 같은 다듬기(`chunk_from_parts`) · 같은 파서.
+/// 로컬과 같은 다듬기(`chunk_from_parts`) · 같은 파서.
 pub(crate) fn parse_fetched(f: &Listed, got: Fetched) -> (Option<Parsed>, Option<u64>) {
     let Ok(t) = local::target(f.agent) else {
         return (None, None);
@@ -379,9 +315,7 @@ pub(crate) fn parse_fetched(f: &Listed, got: Fetched) -> (Option<Parsed>, Option
     (parse(&chunk), tokens)
 }
 
-/// 받은 몫 → 토큰 셈 · Codex 한도 (**순수 함수**). 셈은 **머리 한 번에 파일 전체가 온** 때만 선다(꼬리가 없고 받은 앞이
-/// 청한 앞보다 짧다 — 파일이 거기서 끝났다). 그 바이트는 로컬 사용량과 같은 줄 파서를 지난다(`agent_usage::feed_lines`).
-/// 큰 파일은 머리 · 꼬리 사이를 모르므로 세지 않는다 — 사람이 누르는 전체 읽기([`agent_usage_remote_read`])의 몫이다.
+/// 셈은 머리 한 번에 파일 전체가 온 때만 선다 — 큰 파일은 머리 · 꼬리 사이를 모르므로 세지 않는다.
 fn usage_from_fetch(
     f: &Listed,
     it: &FetchItem,
@@ -407,7 +341,6 @@ fn usage_from_fetch(
     (usage, limits)
 }
 
-/// 이름표 꼬리 → 이름표 (**순수 함수**). 파일이 꼬리보다 길면 첫 (잘린) 줄을 버린다.
 pub(crate) fn parse_index(f: &Listed, got: Fetched) -> HashMap<String, String> {
     let mut bytes = got.tail.unwrap_or_default();
     if f.size > INDEX_TAIL_BYTES {
@@ -420,7 +353,7 @@ pub(crate) fn parse_index(f: &Listed, got: Fetched) -> HashMap<String, String> {
     local::codex_titles_from(&bytes)
 }
 
-/// 폴더가 있나 묻는 명령 (**순수 함수**) — 있는 것만 한 줄씩 찍는다. 제어 문자가 든 폴더는 묻지 않는다.
+/// 제어 문자가 든 폴더는 묻지 않는다.
 pub(crate) fn exists_command(cwds: &[String]) -> String {
     let mut script = String::from("for d in");
     for c in cwds {
@@ -431,33 +364,27 @@ pub(crate) fn exists_command(cwds: &[String]) -> String {
     format!("sh -c {}", crate::ssh::sh_quote(&script))
 }
 
-// ---------------------------------------------------------------------------
-// 캐시 — 별칭마다, 메모리에만
-// ---------------------------------------------------------------------------
+// ── 캐시 — 별칭마다, 메모리에만 ──
 
 struct Entry {
     size: u64,
     mtime_ms: i64,
     agent: &'static str,
-    /// `None` = 대화가 아니다(빈 대화 · 사이드체인 …) 또는 못 읽었다 — 다시 읽지 않는다(파일이 바뀌면 다시).
+    /// `None` = 대화가 아니거나 못 읽었다 — 파일이 바뀌기 전까지 다시 읽지 않는다.
     parsed: Option<Arc<Parsed>>,
     tokens: Option<u64>,
-    /// 토큰 셈(2단계) — 머리 한 번에 다 온 파일은 그 바이트로, 큰 파일은 사람이 누른 전체 읽기로 자란다. `None` = 아직.
     usage: Option<RemoteUsage>,
     /// Codex 롤아웃 꼬리의 가장 늦은 요금제 한도 — `(잰 시각 ms, 칸들)`.
     limits: Option<(i64, Vec<crate::agent_usage::LimitWindow>)>,
 }
 
-/// 파일 하나의 토큰 셈 — 로컬 사용량 캐시와 같은 누적(`agent_usage::FileUsage`)과 다 읽은 자리.
 struct RemoteUsage {
     /// 다 읽은 자리(마지막 온전한 줄의 끝).
     offset: u64,
     file: crate::agent_usage::FileUsage,
-    /// 전체 읽기가 한 번에 청하는 바이트 — 한 줄이 이보다 길면 늘리고, 답이 넘치면 줄인다.
     chunk: u64,
-    /// 나아가지 못한 횟수(이어서) — [`USAGE_STALLS_MAX`] 면 멈춘다.
     stalls: u32,
-    /// 더 읽을 수 없다(아주 긴 한 줄 · 서버가 거듭 끊음) — 다시 조르지 않는다(파일이 바뀌면 다시).
+    /// 더 읽을 수 없다(아주 긴 한 줄 · 서버가 거듭 끊음) — 파일이 바뀌기 전까지 다시 조르지 않는다.
     broken: bool,
 }
 
@@ -480,7 +407,6 @@ struct HostCache {
     files: HashMap<String, Entry>,
     /// 이름표 — 읽은 파일의 (크기, mtime) 와 함께.
     titles: Option<(u64, i64, HashMap<String, String>)>,
-    /// 폴더 → 있나. 목록을 새로 뽑을 때 비운다.
     exists: HashMap<String, bool>,
 }
 
@@ -510,8 +436,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// 파일이 바뀌어 머리 · 꼬리를 다시 읽을 때 **앞서 센 몫**을 넘겨받는다 — 대화 파일은 덧붙기만 하므로 자랐으면 센 자리부터
-/// 이어 센다(로컬 `catch_up` 과 같은 규칙). 줄었거나 크기는 같은데 mtime 이 바뀌었으면(다시 쓴 파일) 버린다.
+/// 대화 파일은 덧붙기만 하므로 자랐으면 센 자리부터 이어 센다(로컬 `catch_up` 과 같은 규칙). 줄었거나 다시 쓴 파일이면 버린다.
 fn carried_usage(old: Option<Entry>, f: &Listed) -> Option<RemoteUsage> {
     let old = old?;
     let mut u = old.usage?;
@@ -521,7 +446,6 @@ fn carried_usage(old: Option<Entry>, f: &Listed) -> Option<RemoteUsage> {
     {
         return None;
     }
-    // 파일이 자랐다 — 멈춰 있던 파일도 새 몫은 다시 읽어 본다
     if f.size != old.size {
         u.broken = false;
         u.stalls = 0;
@@ -529,7 +453,6 @@ fn carried_usage(old: Option<Entry>, f: &Listed) -> Option<RemoteUsage> {
     Some(u)
 }
 
-/// 캐시와 다른(없거나 크기 · mtime 이 바뀐) 파일.
 fn stale(cache: &HostCache, f: &Listed) -> bool {
     match cache.files.get(&f.path) {
         Some(e) => e.size != f.size || e.mtime_ms != f.mtime_ms || e.agent != f.agent,
@@ -541,7 +464,6 @@ fn index_stale(cache: &HostCache, idx: &Listed) -> bool {
     !matches!(&cache.titles, Some((s, m, _)) if *s == idx.size && *m == idx.mtime_ms)
 }
 
-/// 읽을 것들 — 이름표가 바뀌었으면 맨 앞, 그다음 목록 순(최신부터).
 fn pending(cache: &HostCache, listing: &Listing) -> Vec<Listed> {
     let mut out = Vec::new();
     if let Some(idx) = &listing.index {
@@ -553,7 +475,7 @@ fn pending(cache: &HostCache, listing: &Listing) -> Vec<Listed> {
     out
 }
 
-/// 다음 묶음 — 파일 수 · 바이트 상한 안에서 앞에서부터. 적어도 하나는 담는다.
+/// 적어도 하나는 담는다.
 pub(crate) fn next_batch(pending: &[Listed]) -> Vec<(Listed, FetchItem)> {
     let mut out = Vec::new();
     let mut bytes = 0u64;
@@ -569,54 +491,44 @@ pub(crate) fn next_batch(pending: &[Listed]) -> Vec<(Listed, FetchItem)> {
     out
 }
 
-/// 부를 때마다 새 표식 — 시각과 순번.
 fn nonce() -> String {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("@@aynx{:x}{:x}", now_ms(), n)
 }
 
-// ---------------------------------------------------------------------------
-// 화면이 받는 것
-// ---------------------------------------------------------------------------
+// ── 화면이 받는 것 ──
 
-/// 원격 대화 한 줄 — 로컬 줄(`AgentSession`)과 같은 칸 + 호스트 · 토큰. **`Debug` 없음**.
+/// `Debug` 없음.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSession {
     #[serde(flatten)]
     pub session: AgentSession,
-    /// 그 세션이 붙은 별칭.
     pub host: String,
-    /// 토큰 합 — 끝까지 센 파일이면 그 합(두 에이전트 — 2단계), 아니면 Codex 꼬리의 누적(입력 + 출력), 모르면 `None`.
+    /// 끝까지 센 파일이면 그 합, 아니면 Codex 꼬리의 누적(입력 + 출력), 모르면 `None`.
     pub tokens: Option<u64>,
 }
 
-/// 한 번 부른 답.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSessionList {
     pub host: String,
-    /// 최신순 · 같은 대화는 한 번.
     pub sessions: Vec<RemoteSession>,
-    /// 목록의 대화 파일 수와 그중 읽은 수 — 화면의 "(12 / 31)".
     pub total: usize,
     pub done: usize,
-    /// 다 읽었다(아니면 화면이 다시 부른다).
     pub complete: bool,
-    /// 목록을 뽑은 때(이 PC 의 epoch ms) — 화면의 "N분 전에 읽음".
+    /// 목록을 뽑은 때(이 PC 의 epoch ms).
     pub read_at: i64,
-    /// 서버의 `$HOME` — 화면이 `~/…` 를 편다.
     pub home: Option<String>,
 }
 
-/// 끝까지 센 파일의 토큰 합(네 칸) — 아직 다 못 셌으면 `None`(Codex 는 꼬리의 누적으로 물러선다).
 fn row_tokens(e: &Entry, size: u64) -> Option<u64> {
     let u = e.usage.as_ref().filter(|u| u.offset >= size)?;
     Some(crate::agent_usage::file_tokens(&u.file).total())
 }
 
-/// 캐시 → 줄들 (**순수에 가까운** — 잠금 안에서만 부른다).
+/// 잠금 안에서만 부른다.
 fn rows_of(host: &str, cache: &HostCache, listing: &Listing, skew_ms: i64) -> Vec<RemoteSession> {
     let empty = HashMap::new();
     let titles = cache.titles.as_ref().map(|(_, _, t)| t).unwrap_or(&empty);
@@ -627,7 +539,7 @@ fn rows_of(host: &str, cache: &HostCache, listing: &Listing, skew_ms: i64) -> Ve
             continue;
         };
         if e.size != f.size || e.mtime_ms != f.mtime_ms {
-            continue; // 아직 새 몫을 못 읽었다
+            continue;
         }
         let Some(p) = &e.parsed else { continue };
         let Ok(t) = local::target(f.agent) else {
@@ -651,7 +563,6 @@ fn rows_of(host: &str, cache: &HostCache, listing: &Listing, skew_ms: i64) -> Ve
     out
 }
 
-/// exec 실패를 한 줄로.
 fn exec_failure(r: &crate::ssh::ExecBytes, secs: u64) -> Option<String> {
     if let Some(e) = &r.error {
         return Some(e.clone());
@@ -666,7 +577,6 @@ fn exec_failure(r: &crate::ssh::ExecBytes, secs: u64) -> Option<String> {
     None
 }
 
-/// 목록을 (필요하면) 새로 뽑는다.
 async fn ensure_listing(
     handle: &crate::ssh::ExecHandle,
     key: &str,
@@ -713,7 +623,6 @@ async fn ensure_listing(
     Ok(())
 }
 
-/// 묶음 하나를 읽어 캐시에 넣는다 — 답 = 이번에 끝낸 파일 수.
 async fn fetch_batch(
     handle: &crate::ssh::ExecHandle,
     key: &str,
@@ -786,7 +695,7 @@ async fn fetch_batch(
     Ok(done)
 }
 
-/// 목록의 대화 폴더 중 아직 모르는 것이 있나 묻는다 — 실패하면 모두 "있다" 로 둔다(재개가 서버의 한 줄로 실패한다).
+/// 실패하면 모두 "있다" 로 둔다(재개가 서버의 한 줄로 실패한다).
 async fn check_exists(handle: &crate::ssh::ExecHandle, key: &str) {
     let ask: Vec<String> = with_hosts(|h| {
         let Some(c) = h.get(key) else {
@@ -826,9 +735,6 @@ async fn check_exists(handle: &crate::ssh::ExecHandle, key: &str) {
     });
 }
 
-/// **원격 지난 대화** — 살아 있는 타일 세션 `id` 의 전송로로 그 서버의 대화 파일을 읽는다(새 접속 없음 — 모듈 머리말).
-/// `force` 면 목록을 새로 뽑는다(화면의 F5). 한 번에 [`CALL_BUDGET`] 만큼만 읽고, 덜 읽었으면 `complete=false` —
-/// 화면이 다시 부른다. 캐시는 그 세션이 붙은 별칭의 것이다.
 #[tauri::command]
 pub async fn agent_sessions_remote_list(
     id: u32,
@@ -857,7 +763,7 @@ pub async fn agent_sessions_remote_list(
         let first = batch.first().map(|(f, _)| f.clone());
         let done = fetch_batch(&handle, &key, batch).await?;
         if done == 0 {
-            // 한 파일도 끝내지 못했다(첫 파일부터 잘렸다) — 그 파일을 빈 것으로 두고 넘어간다(같은 자리를 맴돌지 않게)
+            // 한 파일도 끝내지 못했다 — 그 파일을 빈 것으로 두고 넘어간다(같은 자리를 맴돌지 않게).
             if let Some(f) = first {
                 with_hosts(|h| {
                     let c = h.entry(key.clone()).or_default();
@@ -918,11 +824,8 @@ pub async fn agent_sessions_remote_list(
     }))
 }
 
-// ---------------------------------------------------------------------------
-// 재개 · 포크 — 명령 한 줄
-// ---------------------------------------------------------------------------
+// ── 재개 · 포크 ──
 
-/// 캐시에서 그 대화의 폴더와 명령 (**순수에 가까운**).
 fn launch_from_cache(
     cache: &HostCache,
     t: &'static SessionTarget,
@@ -975,8 +878,7 @@ fn launch_from_cache(
     })
 }
 
-/// 원격 대화의 재개(`resume`) · 새 대화로 계속(`fork`) 할 **서버의** 폴더와 명령 한 줄 — 그 별칭을 읽어 둔 캐시에서만
-/// 찾는다(화면이 넘긴 폴더를 믿지 않는다). 화면은 그 별칭의 새 SSH 타일(공유 전송로)을 그 폴더에서 이 명령으로 연다.
+/// 그 별칭을 읽어 둔 캐시에서만 찾는다 — 화면이 넘긴 폴더를 믿지 않는다.
 #[tauri::command]
 pub async fn agent_session_remote_launch_spec(
     alias: String,
@@ -991,29 +893,18 @@ pub async fn agent_session_remote_launch_spec(
     })
 }
 
-// ---------------------------------------------------------------------------
-// 3. 전체 사용량 읽기 — 사람이 누를 때만 (2단계)
-// ---------------------------------------------------------------------------
-//
-// 머리 한 번에 다 오지 않은 큰 대화의 토큰은 파일 전체를 더해야 한다(Claude 는 응답마다 적힌다). 사용량 칸의 [전체 사용량
-// 읽기] 를 사람이 누르면 파일마다 다 읽은 자리부터 **조각**(`tail -c +N | head -c M`)을 청하고, 서버의 `awk` 가 그 조각의
-// **온전한 줄 중 바늘이 든 줄만** 돌려준다(로컬 사용량과 같은 바늘 — `agent_usage::needles_of`. 도구 출력이 든 큰 줄은 서버에서
-// 걸러져 오지 않는다) + 온전한 줄의 바이트 수(다음 자리). 받은 줄은 로컬과 같은 줄 파서를 지난다. 서버에는 아무것도 쓰지 않는다.
-// 한 번 부를 때 [`CALL_BUDGET`] 만큼 — 화면이 진행을 올리며 이어 부르고, 멈추려면 그만 부르면 된다.
+// ── 3. 전체 사용량 읽기 — 사람이 누를 때만 ──
+// 서버의 `awk` 가 조각의 온전한 줄 중 바늘(`agent_usage::needles_of`)이 든 줄만 돌려준다 — 도구 출력이 든 큰 줄은 서버에서 걸러진다. 서버에는 아무것도 쓰지 않는다.
 
-/// 조각의 처음 크기 · 가장 작은 · 가장 큰 크기(한 줄이 조각보다 길면 늘리고, 답이 넘치면 줄인다).
 const USAGE_CHUNK_START: u64 = 16 * 1024 * 1024;
 const USAGE_CHUNK_MIN: u64 = 1024 * 1024;
 const USAGE_CHUNK_MAX: u64 = 256 * 1024 * 1024;
-/// exec 하나가 서버에서 훑는 바이트 · 파일 수 · 돌려받는 출력의 상한.
 const USAGE_BATCH_RAW: u64 = 96 * 1024 * 1024;
 const USAGE_BATCH_FILES: usize = 40;
 const USAGE_OUT_MAX: usize = 8 * 1024 * 1024;
 const USAGE_TIMEOUT: Duration = Duration::from_secs(45);
-/// 나아가지 못한 횟수가 이만큼 쌓이면 그 파일은 멈춘다(`broken`).
 const USAGE_STALLS_MAX: u32 = 6;
 
-/// 조각 하나 — 그 파일의 `start` 부터 `len` 바이트.
 #[derive(Clone, PartialEq)]
 pub(crate) struct UsageItem {
     pub path: String,
@@ -1027,9 +918,7 @@ fn awk_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// 전체 사용량 명령 (**순수 함수**). 파일마다 `\n<표식> i U\n` + 바늘이 든 온전한 줄들 + `\n<표식> i E <온전한 줄의 바이트>\n`,
-/// 끝에 `\n<표식> END\n`. 조각 끝에 `\n@@E` 를 붙여 awk 가 **끝의 반쯤 온 줄**을 알아보게 한다 — 끝에서 둘째 레코드(반쯤 온 줄
-/// 또는 우리가 넣은 빈 줄)는 세지 않는다. `length` 가 바이트를 세게 `LC_ALL=C`.
+/// 조각 끝에 `\n@@E` 를 붙여 awk 가 끝의 반쯤 온 줄을 알아보게 한다 — 끝에서 둘째 레코드는 세지 않는다. `length` 가 바이트를 세게 `LC_ALL=C`.
 pub(crate) fn usage_command(nonce: &str, items: &[UsageItem]) -> String {
     let mut script = String::new();
     for (i, it) in items.iter().enumerate() {
@@ -1058,8 +947,7 @@ pub(crate) fn usage_command(nonce: &str, items: &[UsageItem]) -> String {
     format!("sh -c {}", crate::ssh::sh_quote(&script))
 }
 
-/// 전체 사용량 출력 → 번호별 `(바늘이 든 줄들, 온전한 줄의 바이트)` (**순수 함수**). 끝 표식(`E`)까지 온 파일만 — 바이트가
-/// 음수(조각 끝 표식이 없었다)면 받지 않는다. 둘째 값 = `END` 까지 왔나.
+/// 바이트가 음수(조각 끝 표식이 없었다)면 받지 않는다.
 pub(crate) fn parse_usage(nonce: &str, out: &[u8]) -> (HashMap<usize, (Vec<u8>, u64)>, bool) {
     let (pieces, complete) = split_marked(nonce, out);
     let mut bodies: HashMap<usize, Vec<u8>> = HashMap::new();
@@ -1087,8 +975,6 @@ pub(crate) fn parse_usage(nonce: &str, out: &[u8]) -> (HashMap<usize, (Vec<u8>, 
     (got, complete)
 }
 
-/// 아직 다 세지 못한 대화 파일의 다음 조각들 — 목록 순(최신부터). 대화가 아닌 파일 · 멈춘 파일 · 머리 · 꼬리를 아직 새로 못 읽은
-/// 파일(목록과 캐시가 어긋난다)은 뺀다.
 fn usage_pending(c: &HostCache, l: &Listing) -> Vec<UsageItem> {
     let mut out = Vec::new();
     for f in &l.files {
@@ -1113,7 +999,7 @@ fn usage_pending(c: &HostCache, l: &Listing) -> Vec<UsageItem> {
     out
 }
 
-/// 다음 묶음 — 훑는 바이트 · 파일 수 상한 안에서 앞에서부터. 적어도 하나.
+/// 적어도 하나는 담는다.
 pub(crate) fn usage_batch(pending: &[UsageItem]) -> Vec<UsageItem> {
     let mut out: Vec<UsageItem> = Vec::new();
     let mut raw = 0u64;
@@ -1127,8 +1013,6 @@ pub(crate) fn usage_batch(pending: &[UsageItem]) -> Vec<UsageItem> {
     out
 }
 
-/// 받은 조각들을 누적에 얹는다 — 답 = 나아간 파일 수. 나아가지 못한 파일(한 줄이 조각보다 길다 · 답이 잘렸다)은 조각 크기를
-/// 고치고, 거듭되면 멈춘다.
 fn apply_usage(
     c: &mut HostCache,
     items: &[UsageItem],
@@ -1141,7 +1025,7 @@ fn apply_usage(
         };
         let u = e.usage.get_or_insert_with(RemoteUsage::fresh);
         if u.offset != it.start {
-            continue; // 그 사이 캐시가 바뀌었다
+            continue;
         }
         match got.remove(&i) {
             Some((body, n)) if n > 0 => {
@@ -1151,12 +1035,10 @@ fn apply_usage(
                 progressed += 1;
             }
             Some(_) => {
-                // 온전한 줄이 하나도 없다 — 한 줄이 조각보다 길다
                 u.chunk = (u.chunk * 4).min(USAGE_CHUNK_MAX);
                 u.stalls += 1;
             }
             None if progressed == 0 && i == 0 => {
-                // 첫 조각부터 잘렸다(출력 상한 · 시한) — 조각을 줄인다
                 u.chunk = (u.chunk / 4).max(USAGE_CHUNK_MIN);
                 u.stalls += 1;
             }
@@ -1169,14 +1051,12 @@ fn apply_usage(
     progressed
 }
 
-/// 전체 사용량 읽기의 진행 — 화면의 "12 / 340 MB".
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteUsageProgress {
     pub host: String,
     pub done_bytes: u64,
     pub total_bytes: u64,
-    /// 아직 다 세지 못한 대화 파일 수.
     pub pending: usize,
     pub complete: bool,
 }
@@ -1212,8 +1092,7 @@ fn usage_progress(host: &str, c: &HostCache) -> RemoteUsageProgress {
     }
 }
 
-/// **전체 사용량 읽기** — 살아 있는 타일 세션 `id` 의 전송로로 그 서버의 큰 대화 파일을 조각씩 센다(사람이 누를 때만 —
-/// 새 접속 없음). 목록은 새로 뽑지 않는다(이미 읽어 둔 것의 크기까지만 센다). 한 번에 [`CALL_BUDGET`] 만큼 — 화면이 이어 부른다.
+/// 목록은 새로 뽑지 않는다 — 이미 읽어 둔 것의 크기까지만 센다.
 #[tauri::command]
 pub async fn agent_usage_remote_read(
     id: u32,
@@ -1259,9 +1138,7 @@ pub async fn agent_usage_remote_read(
     }))
 }
 
-/// 원격 호스트들의 **센 몫**을 요약 셈에 빌려준다(`agent_usage::agent_usage_summary` — 잠금을 쥔 채 `f` 를 부른다). 서버에는
-/// 묻지 않는다 — 연결이 없는 호스트도 마지막으로 읽은 값이 든다. 다 세지 못한 파일도 센 데까지는 들고(앞 몫은 옳은 수다),
-/// 덮개(`RemoteCoverage`)가 남은 몫을 적는다.
+/// 잠금을 쥔 채 `f` 를 부른다. 서버에는 묻지 않는다 — 연결이 없는 호스트도 마지막으로 읽은 값이 든다.
 pub(crate) fn with_usage_files<R>(
     hosts: &[String],
     f: impl FnOnce(
@@ -1312,8 +1189,7 @@ pub(crate) fn with_usage_files<R>(
     f(files, coverage)
 }
 
-/// 원격 호스트의 요금제 한도 — **Codex 만**(롤아웃 꼬리의 `rate_limits` — 머리 · 꼬리 읽기에서 함께 본다). Claude 의 한도는
-/// 이 PC 의 상태줄 도우미만 적으므로 원격에는 없다. 서버에 묻지 않는다(캐시에서).
+/// Codex 만 — Claude 의 한도는 이 PC 의 상태줄 도우미만 적으므로 원격에는 없다.
 #[tauri::command]
 pub async fn agent_usage_remote_limits(
     host: String,
@@ -1330,17 +1206,12 @@ pub async fn agent_usage_remote_limits(
     Ok(vec![crate::agent_usage::remote_codex_limits(snap)])
 }
 
-// ---------------------------------------------------------------------------
-// 4. 원격 기록 보기 — 끝에서 거꾸로, 창 하나씩 (2단계)
-// ---------------------------------------------------------------------------
+// ── 4. 원격 기록 보기 — 끝에서 거꾸로, 창 하나씩 ──
 
-/// 첫 창 · 가장 넓은 창(로컬 리더가 한 번에 훑는 상한 + 여유).
 const VIEW_WINDOW_FIRST: u64 = 512 * 1024;
 const VIEW_WINDOW_MAX: u64 = 40 * 1024 * 1024;
 const VIEW_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// 창 명령 (**순수 함수**) — 첫 줄에 서버의 파일 크기와 창의 시작, 그 뒤로 `[시작, 끝)` 의 바이트. 끝 = `before`(없으면 크기,
-/// 크기보다 크면 크기). 경로는 캐시(서버가 준 목록)의 것이고 인용된다.
 pub(crate) fn view_command(path: &str, before: Option<u64>, window: u64) -> String {
     let end = before.map_or_else(|| "$s".to_string(), |b| b.to_string());
     let script = format!(
@@ -1351,7 +1222,7 @@ st=$((e > {window} ? e - {window} : 0)); printf '%s %s\\n' \"$s\" \"$st\"; tail 
     format!("sh -c {}", crate::ssh::sh_quote(&script))
 }
 
-/// 창 출력 → `(파일 크기, 창의 시작, 바이트)` (**순수 함수**). 받은 바이트가 창의 길이와 다르면(잘렸다 · 그 사이 줄었다) 믿지 않는다.
+/// 받은 바이트가 창의 길이와 다르면(잘렸다 · 그 사이 줄었다) 믿지 않는다.
 pub(crate) fn parse_view(out: &[u8], before: Option<u64>) -> Result<(u64, u64, &[u8]), String> {
     let bad = || tr!(ko: "서버에서 기록을 다 받지 못했습니다", en: "Could not receive the transcript from the server");
     let nl = out.iter().position(|b| *b == b'\n').ok_or_else(bad)?;
@@ -1371,7 +1242,6 @@ pub(crate) fn parse_view(out: &[u8], before: Option<u64>) -> Result<(u64, u64, &
     Ok((size, start, data))
 }
 
-/// 캐시에서 그 대화의 서버 경로 — 같은 id 가 둘이면 가장 최근 것.
 fn conversation_path(c: &HostCache, agent: &str, id: &str) -> Option<String> {
     c.files
         .iter()
@@ -1380,9 +1250,7 @@ fn conversation_path(c: &HostCache, agent: &str, id: &str) -> Option<String> {
         .map(|(p, _)| p.clone())
 }
 
-/// **원격 기록 보기** — 살아 있는 타일 세션 `id` 의 전송로로 그 서버의 대화 파일을 끝에서 거꾸로 한 쪽씩 읽는다(로컬
-/// `agent_conversation_transcript` 와 같은 리더 · 같은 줄 파서 · 같은 커서). 파일은 그 별칭을 읽어 둔 캐시의 것만 — 화면이
-/// 넘긴 경로는 받지 않는다. 본문은 화면으로만 간다(로그 · MCP · 디스크 없음 — `TranscriptPage` 는 `Debug` 가 없다).
+/// 파일은 그 별칭을 읽어 둔 캐시의 것만 — 화면이 넘긴 경로는 받지 않는다. 본문은 화면으로만 간다(로그 · MCP · 디스크 없음).
 #[tauri::command]
 pub async fn agent_conversation_transcript_remote(
     id: u32,
@@ -1440,8 +1308,7 @@ pub async fn agent_conversation_transcript_remote(
     }
 }
 
-/// **원격 기록의 그림 한 장** — 로컬 `agent_conversation_image` 의 원격판. 같은 캐시 경로 찾기 · 같은 창 명령(그 줄과 앞뒤 줄바꿈만 —
-/// `[at-1, at+len+1)`) · 같은 순수 검사(`agent_transcript::image_in_window`). 바이트는 화면으로만.
+/// 바이트는 화면으로만.
 #[tauri::command]
 pub async fn agent_conversation_image_remote(
     id: u32,
@@ -1459,7 +1326,6 @@ pub async fn agent_conversation_image_remote(
             tr!(ko: "대화 id 모양이 올바르지 않습니다", en: "The conversation id is malformed"),
         );
     }
-    // 창 크기를 정하기 전에 상한을 본다(그림 줄 상한 — 순수 검사가 같은 것을 다시 본다)
     if len == 0 || len > crate::agent_transcript::image_line_max() {
         return Err(tr!(ko: "그 그림을 기록에서 찾지 못했습니다", en: "Could not find that image in the transcript"));
     }

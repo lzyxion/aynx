@@ -1,31 +1,25 @@
-// **사이드 채팅 v2 의 프런트 얼굴**(3단계 — docs/log/2026-10-23-side-chat-v2-design.md 3절) — 세션 서버의 채팅 프로세스 op 를 부르는
-// 같은 이름 Tauri 명령(`src-tauri/src/server/side_chat_proxy.rs`)의 타입 붙은 감싸개 · 사건 꼴(`Ev` — Rust `side_chat/event.rs` 의 거울) ·
-// 사건 통로 하나. 화면(`ChatDock`)은 4단계에서 이것을 쓴다.
+// 사이드 채팅의 프런트 얼굴 — 세션 서버 채팅 op 를 부르는 Tauri 명령(`server/side_chat_proxy.rs`)의 감싸개 · 사건 꼴(Rust `side_chat/event.rs` 의 거울) · 사건 통로.
 //
-// - **사람 창**(메인 PC 주 창 · 원격 웹 창 — 2026-11-01)만 부를 수 있다 — 창 이름은 Rust 가 부른 웹뷰에서 채운다(여기서 싣지 않는다).
-//   보조 · 떼어 낸 창은 `[main-window-only]`. 원격 관문(`remote/deny.rs`)은 사이드 채팅 명령을 모두 허용한다.
-// - 사건은 전역 이벤트가 아니다: Rust 가 몸의 `windows`(그 채팅을 보는 창들) 가운데 이 창이 건 **`Channel` 에만** 보낸다(본문이 다른 창 · 원격의 `listen` 에
-//   닿지 않게). 그래서 `listen("side-chat-event")` 로는 받을 수 없고 [`onSideChatEvent`] 를 쓴다 — 창마다 통로 하나를 걸고 채팅 id 로 나눠 준다.
-// - 사건은 빠질 수 있다(서버 broadcast `Lagged`) → 채팅마다 `seq` 가 1씩 는다. [`seqStep`] 이 `gap` 이면 [`sideChatAttach`] 로 다시 받는다.
-// - 실패는 `[이유] 문구` — `stale-chat`(옛 프로세스 세대 → 다시 attach) · `session-gone`(서버 표에 없음 → 다시 open) 등은 `error-reason.ts`.
+// - 사람 창(메인 PC 주 창 · 원격 웹 창)만 부를 수 있다 — 창 이름은 Rust 가 채운다(여기서 싣지 않는다). 보조 · 떼어 낸 창은 `[main-window-only]`.
+// - 사건은 전역 이벤트가 아니다: 그 채팅을 보는 창이 건 `Channel` 에만 간다(본문이 다른 창 · 원격의 `listen` 에 닿지 않게) — `listen` 으로는 못 받는다.
+// - 사건은 빠질 수 있다(서버 broadcast `Lagged`) — `seqStep` 이 `gap` 이면 `sideChatAttach` 로 다시 받는다.
 
 import { Channel, invoke } from "./ipc";
 import type { TranscriptLink } from "$lib/context";
 
 export type SideChatCli = "claude" | "codex";
-/** `mcpTool` = 외부 MCP 서버의 도구(늘 묻는다 — 묻지 않기는 채팅의 권한 모드 · 허용 목록 · 2026-11-20) */
+/** `mcpTool` = 외부 MCP 서버의 도구 */
 export type PermKind = "tool" | "command" | "fileChange" | "mcpTool";
 export type Decision = "allow" | "deny";
-/** `auto` · `remembered` = 사람이 그 채팅에 정한 모드(Auto) · 허용 목록([이 채팅에서 허용])으로 서버가 대신 허용했다(2026-11-20) */
+/** `auto` · `remembered` = 사람이 그 채팅에 정한 모드(Auto) · 허용 목록으로 서버가 대신 허용했다 */
 export type ResolvedBy = "human" | "cli" | "closed" | "auto" | "remembered";
-/** 사이드 채팅의 권한 모드(2026-11-20 — Rust `side_chat::perm`) */
+/** Rust `side_chat::perm` 과 같은 값 */
 export type PermMode = "manual" | "auto";
 export type Outcome = "ok" | "interrupted" | "error";
-/** 서버가 낸 프로세스 끝의 까닭(`server::side_chat` `kill` · 어댑터의 악수 실패 = `protocol`). */
 export type ExitReason = "closed" | "protocol" | "start-timeout" | "exit" | "crash";
 export type SideChatStatus = "stopped" | "starting" | "ready" | "running";
 
-/** CLI 무관 사건(Rust `Ev` — 꼬리표 `t` · camelCase). */
+/** Rust `Ev` — 꼬리표 `t` · camelCase */
 export type SideChatEv =
   | {
       t: "ready";
@@ -33,15 +27,12 @@ export type SideChatEv =
       version: string | null;
       model: string | null;
       models: string[];
-      /** 모델 → 받는 추론 강도(악수가 알린 것). 열쇠 `""` = 지금 뜬 CLI 기본 모델 · 빈 목록 = 강도 없음 · 열쇠 없음 = 모름 */
+      /** 열쇠 `""` = 지금 뜬 CLI 기본 모델 · 빈 목록 = 강도 없음 · 열쇠 없음 = 모름 */
       efforts: Record<string, string[]>;
       conversationId: string | null;
     }
   | { t: "turnStarted"; turn: string | null }
-  /**
-   * 보낸 글이 CLI 에 들어갔다. `text` · `files` = 사람이 보낸 본문(연결 머리글 없이)과 붙인 그림의 파일 이름 — 서버가 얹는다(다른 창이 보낸
-   * 글을 곧바로 그리게 · 2026-11-01). 서버가 그 글을 모르면 칸이 없다.
-   */
+  /** `text` · `files` = 사람이 보낸 본문(연결 머리글 없이) · 그림 파일 이름 — 서버가 그 글을 모르면 칸이 없다 */
   | { t: "userAccepted"; clientId: string | null; text?: string; files?: string[] }
   | { t: "textDelta"; item: string | null; text: string }
   | { t: "text"; item: string | null; text: string }
@@ -50,25 +41,22 @@ export type SideChatEv =
   | { t: "toolFinished"; item: string; ok: boolean; output: string | null }
   | { t: "permission"; requestId: string; kind: PermKind; title: string; detail: string; toolName: string }
   | { t: "permissionResolved"; requestId: string; decision: Decision | null; by: ResolvedBy }
-  /** 서버가 카드 없이 대신 허용한 요청(끝난 한 줄 · 알림 없음 — 곧이어 `permissionResolved`) */
+  /** 서버가 카드 없이 대신 허용한 요청 — 곧이어 `permissionResolved` */
   | { t: "permissionAuto"; requestId: string; kind: PermKind; title: string; toolName: string; by: ResolvedBy }
-  /** 그 채팅의 권한 모드 · 허용 목록이 바뀌었다(모드 칩) — `allow` = 종류 열쇠(`outsideRead` · `fileChange` · `command` · `mcp:<서버>`) */
+  /** `allow` = 종류 열쇠(`outsideRead` · `fileChange` · `command` · `mcp:<서버>`) */
   | { t: "permPolicy"; mode: PermMode; allow: string[] }
   | { t: "turnEnded"; turn: string | null; outcome: Outcome; message: string | null }
   | { t: "modelChanged"; model: string }
-  /** 추론 강도가 바뀌었다(`null` = CLI 기본) */
+  /** `null` = CLI 기본 */
   | { t: "effortChanged"; effort: string | null }
-  /** 낱말 하나 + 짧은 상세 — 화면 문구는 낱말로 고른다(`untested-version` · `handshake-failed` · `stderr` …). 새 낱말이 올 수 있다. */
+  /** 화면 문구는 낱말로 고른다 — 새 낱말이 올 수 있다 */
   | { t: "notice"; code: string; detail: string | null }
-  /** 이 프로세스에 실린 외부 MCP 서버 이름(띄울 때 — 입력 칸 `[+]` › MCP · 2026-10-25 · 11-13 머리줄 칩에서 옮김) */
   | { t: "mcpServers"; names: string[] }
   | { t: "exited"; code: number | null; reason: ExitReason };
 
 export type PermissionEv = Extract<SideChatEv, { t: "permission" }>;
 
-/** 사건 하나의 봉투(서버 이벤트 `side-chat-event`). */
 export interface SideChatEvent {
-  /** 지금 그 채팅을 보는 창 라벨들(주 창 · 원격 창 — 2026-11-01). Rust 가 이 창들의 통로로만 보낸다 */
   windows: string[];
   chat: string;
   epoch: number;
@@ -76,10 +64,7 @@ export interface SideChatEvent {
   ev: SideChatEv;
 }
 
-/**
- * 그 채팅의 **연결**(5단계 — 연결 칩) — 서버가 아는 것: 스트림 · 거울의 타일 코드 · 이름 · 종류 · 지금 AI 가 읽을 수 있나 · 거울에 없음(닫힘).
- * 토큰 · 값은 없다(채팅 MCP 토큰은 프런트로 오지 않는다).
- */
+/** 토큰 · 값은 없다 — 채팅 MCP 토큰은 프런트로 오지 않는다 */
 export interface SideChatLinkView {
   stream: string;
   code: string | null;
@@ -89,37 +74,32 @@ export interface SideChatLinkView {
   closed: boolean;
 }
 
-/** `side_chat_open` · `side_chat_attach` 의 답 — 그 뒤 사건은 `seq` 다음부터. */
+/** 그 뒤 사건은 `seq` 다음부터 */
 export interface SideChatSnapshot {
-  /** 연결 묶음(연결 순서 · 없으면 빈 배열 — 옛 서버의 `link` 하나는 GUI Rust 가 이 모양으로 옮긴다) — 서버가 재시작 · TTL 로 잊었으면 독이 저장된 묶음을 다시 건다 */
+  /** 서버가 재시작 · TTL 로 잊었으면 독이 저장된 묶음을 다시 건다 */
   links: SideChatLinkView[];
   chat: string;
   cli: SideChatCli;
   model: string;
-  /** 추론 강도(`null` = CLI 기본) */
   effort: string | null;
-  /** 프로세스 세대(0 = 아직 안 띄움) — 보내기 · 끊기 · 결정에 싣는다(옛 것이면 `[stale-chat]`). */
+  /** 프로세스 세대(0 = 아직 안 띄움) — 보내기 · 끊기 · 결정에 싣는다(옛 것이면 `[stale-chat]`) */
   epoch: number;
   leaseEpoch: number;
   seq: number;
   status: SideChatStatus;
   conversationId: string | null;
-  /** CLI 가 도는 폴더(`null` = 채팅 자기 폴더 · 갈라 온 채팅은 그 대화의 기록된 폴더 — 이름표로만 쓴다) · 옛 서버는 칸 없음 */
+  /** 이름표로만 쓴다 · 옛 서버는 칸 없음 */
   cwd?: string | null;
-  /** 갈라 올 원본 대화(첫 턴 전까지) */
   forkFrom?: string | null;
-  /** 지금(마지막) 프로세스에 실린 외부 MCP 서버 이름 — 프로세스가 없으면 열 때 계산한 실을 예정 이름(2026-11-13 · 이름만) · 옛 서버는 칸 없음 */
   mcpServers?: string[];
-  /** 그 채팅의 권한 모드 · 허용 목록(판 37 — 옛 서버는 칸 없음 = Manual · 빈 목록) */
+  /** 옛 서버는 칸 없음 = Manual · 빈 목록 */
   permMode?: PermMode;
   permAllow?: string[];
-  /** 지금 턴의 사건(지난 턴은 기록 파일 — `agent_conversation_transcript`). */
+  /** 지금 턴의 사건(지난 턴은 기록 파일) */
   liveTurn: SideChatEv[];
-  /** 기다리는 권한 요청. */
   pending: PermissionEv[];
 }
 
-/** `side_chat_list` 의 한 줄. */
 export interface SideChatRow {
   chat: string;
   cli: SideChatCli;
@@ -128,15 +108,12 @@ export interface SideChatRow {
   epoch: number;
   status: SideChatStatus;
   conversationId: string | null;
-  /** 지금 보는 창 수(남의 창 라벨은 오지 않는다 · 2026-11-01) */
+  /** 남의 창 라벨은 오지 않는다 */
   viewers: number;
   detached: boolean;
 }
 
-/**
- * 띄우는 모양 — `fork` = 타일 대화 이어 가기(6단계 — 원본 대화 id 만 · 폴더는 서버가 대화 색인에서 정한다). `resume` 의 `project` = 갈라 온
- * 채팅 자신의 대화(서버가 그 대화의 기록된 폴더를 다시 찾는다 — 없으면 채팅 자기 폴더).
- */
+/** `fork` 의 폴더는 서버가 대화 색인에서 정한다. `resume` 의 `project` = 갈라 온 채팅 자신의 대화 */
 export type SideChatMode =
   | { kind: "fresh" }
   | { kind: "resume"; conv: string; project?: boolean }
@@ -150,18 +127,14 @@ export interface SideChatOpenArgs {
   mode: SideChatMode;
 }
 
-/** 연다 — **띄우지 않는다**(첫 보내기 때 서버가 띄운다). 같은 채팅 · 같은 CLI 면 다시 붙는다. */
+/** 띄우지 않는다(첫 보내기 때 서버가 띄운다). */
 export function sideChatOpen(a: SideChatOpenArgs): Promise<SideChatSnapshot> {
   return invoke("side_chat_open", { chat: a.chat, cli: a.cli, model: a.model, effort: a.effort ?? null, mode: a.mode });
 }
 
 /**
- * 사람이 보낸 글 — 프로세스가 없으면 서버가 띄우고 준비를 기다린다(길 수 있다). 답의 `epoch` 가 이제 쓸 세대다. `link` = 서버가 이 글 앞에
- * 붙인 연결 머리글(붙이지 않았으면 `null` · 옛 서버는 칸 없음 — 세션 id 는 없다). `linkNames` = 스트림 id → 입력 칸 연결 칩의 지금 이름(머리글을
- * 붙일 때만 서버가 그 이름으로 짓는다 — 기록 칩 = 입력 칸 칩 · 없는 타일은 거울 이름). `images` = 붙인 그림의 경로(2026-10-24 — 앱 첨부 자리의
- * 사본만 · 서버가 다시 본다: 8장 · 10 MB · png/jpeg/gif/webp — 밖이면 `[image-*]` · `[too-many-images]`). `files` = 그림 밖 첨부의 경로(판 32 —
- * 같은 첨부 자리의 사본만 · 서버가 그 채팅 cwd 의 `attachments/` 에 옮겨 적고 글 끝에 경로를 붙인다 · 그림과 합쳐 8개 · 하나 10 MB — 밖이면
- * `[file-*]` · `[too-many-attachments]` · 판 31 서버면 `[server-outdated]`). 첨부만이면 글이 빌 수 있다.
+ * 사람이 보낸 글. `images` · `files` 는 앱 첨부 자리의 사본만 — 서버가 다시 보고 한도 밖이면 `[image-*]` · `[file-*]` · `[too-many-*]`.
+ * `link` = 서버가 붙인 연결 머리글(세션 id 는 없다) · `linkNames` 는 머리글을 붙일 때만 그 이름으로 짓는다.
  */
 export function sideChatSend(
   chat: string,
@@ -175,32 +148,28 @@ export function sideChatSend(
   return invoke("side_chat_send", { chat, epoch, text, clientId: clientId ?? null, linkNames: linkNames ?? null, images, files });
 }
 
-/**
- * **완료 확인 공유**(2026-11-13 — `app/agent-seen.svelte.ts`) — 이 창에서 사람이 그 채팅의 턴 끝(`turnEnded` 사건의 `epoch` · `seq`)을 봤다.
- * 서버가 낡지 않았으면 `side-chat-seen{chat, epoch, seq}` 로 방송한다(몸은 id · 번호뿐). 판 31 미만 서버면 보내지 않고 `{sent: false}`.
- */
+/** 완료 확인 공유 — 판 31 미만 서버면 보내지 않고 `{sent: false}` */
 export function sideChatSeen(chat: string, epoch: number, seq: number): Promise<{ sent: boolean }> {
   return invoke("side_chat_seen", { chat, epoch, seq });
 }
 
-/** 도는 턴을 끊는다 — 보냈나(도는 턴이 없으면 false). */
 export function sideChatInterrupt(chat: string, epoch: number): Promise<boolean> {
   return invoke("side_chat_interrupt", { chat, epoch });
 }
 
-/** 모델 바꾸기 — 산 프로세스에 보냈나(없으면 다음 띄우기에 쓴다). */
+/** 산 프로세스에 보냈나(없으면 다음 띄우기에 쓴다) */
 export function sideChatSetModel(chat: string, epoch: number, model: string): Promise<boolean> {
   return invoke("side_chat_set_model", { chat, epoch, model });
 }
 
-/** 추론 강도 바꾸기(`null` = CLI 기본) — 산 프로세스에 보냈나(없으면 다음 띄우기에 쓴다). 다시 띄우지 않는다 */
+/** 다시 띄우지 않는다 */
 export function sideChatSetEffort(chat: string, epoch: number, effort: string | null): Promise<boolean> {
   return invoke("side_chat_set_effort", { chat, epoch, effort });
 }
 
 /**
- * 사람의 권한 결정([허용 한 번] · [이 채팅에서 허용] · [거절]). `remember` = 허용 + 그 요청의 종류를 그 채팅의 허용 목록에(종류는 서버가
- * 기다리는 요청에서 읽는다 — 여기서 보내지 않는다). 기다리는 요청이 아니면 `[unknown-request]` · 판 36 이하 서버에 `remember` 면 `[server-outdated]`.
+ * 사람의 권한 결정. `remember` 의 종류는 서버가 기다리는 요청에서 읽는다 — 여기서 보내지 않는다.
+ * 기다리는 요청이 아니면 `[unknown-request]` · 판 36 이하 서버에 `remember` 면 `[server-outdated]`.
  */
 export function sideChatDecide(
   chat: string,
@@ -213,59 +182,51 @@ export function sideChatDecide(
   return invoke("side_chat_decide", { chat, epoch, requestId, decision, message: message ?? null, remember });
 }
 
-/** 그 채팅의 권한 모드 · 허용 목록(서버 답 — `side_chat_set_perm_mode` · `side_chat_forget_allow`) */
 export interface SideChatPermView {
   mode: PermMode;
   allow: string[];
 }
 
-/** **권한 모드 바꾸기**(모드 칩 — 판 37). Auto 면 서버가 기다리는 카드도 허용으로 답한다. 옛 서버면 `[server-outdated]` */
+/** Auto 면 서버가 기다리는 카드도 허용으로 답한다. 옛 서버면 `[server-outdated]` */
 export function sideChatSetPermMode(chat: string, mode: PermMode): Promise<SideChatPermView> {
   return invoke("side_chat_set_perm_mode", { chat, mode });
 }
 
-/** **허용 목록에서 한 종류 빼기**(모드 칩 메뉴 항목의 × — 그 종류는 다시 묻는다 · 판 37) */
 export function sideChatForgetAllow(chat: string, kind: string): Promise<SideChatPermView> {
   return invoke("side_chat_forget_allow", { chat, kind });
 }
 
-/** 닫는다(프로세스를 잡째 끝낸다) — 서버 표에 있었나. */
 export function sideChatClose(chat: string): Promise<boolean> {
   return invoke("side_chat_close", { chat });
 }
 
-/** 스냅숏 + 임대를 이 창으로(F5 · 크래시 뒤 · `seq` 빈틈). 서버 표에 없으면 `[session-gone]`. */
+/** 서버 표에 없으면 `[session-gone]`. */
 export function sideChatAttach(chat: string): Promise<SideChatSnapshot> {
   return invoke("side_chat_attach", { chat });
 }
 
 /**
- * **연결 칩**(5단계) — 그 채팅이 MCP 로 읽을 타일 묶음을 **통째로 놓는다**(`streams` = 타일의 `historyStreamId` · 연결 순서 · 빈 배열 = 모두
- * 끊기 · 최대 8 — 넘으면 `[too-many-links]`). 서버는 거울에 있는 창 타일만 받는다 — 모르는 것이 하나라도 섞이면 `[bad-link]` 이고 아무것도
- * 바뀌지 않는다. 옛 세션 서버에 둘 이상을 걸면 `[server-outdated]`. 바뀌었으면 다음 보내기에 앱 고정 연결 머리글이 붙는다. 읽기 판정은
- * MCP 호출 · 타일마다 서버가 한다.
+ * 묶음을 통째로 놓는다(최대 8 — 넘으면 `[too-many-links]`). 모르는 스트림이 하나라도 섞이면 `[bad-link]` 이고 아무것도 안 바뀐다.
+ * 옛 서버에 둘 이상을 걸면 `[server-outdated]`. 읽기 판정은 MCP 호출 · 타일마다 서버가 한다.
  */
 export function sideChatLink(chat: string, streams: readonly string[]): Promise<{ links: SideChatLinkView[]; changed: boolean }> {
   return invoke("side_chat_link", { chat, epoch: null, streams: [...streams] });
 }
 
-/** 서버 표의 채팅들. */
 export function sideChatList(): Promise<SideChatRow[]> {
   return invoke("side_chat_list");
 }
 
-// ---------------------------------------------------------------------------
-// 사건 통로
-// ---------------------------------------------------------------------------
+// ── 사건 통로 ──
 
-/** 받는 사건 꼬리표 — Rust `side_chat/event.rs` 의 `Ev` 갈래와 같은 목록(`side-chat-api.test.ts` 가 대조한다). */
+/** Rust `side_chat/event.rs` 의 `Ev` 갈래와 같은 목록(`side-chat-api.test.ts` 가 대조한다). */
 export const EV_TAGS: ReadonlySet<string> = new Set([
   "ready", "turnStarted", "userAccepted", "textDelta", "text", "toolStarted", "toolOutput", "toolFinished",
   "permission", "permissionResolved", "turnEnded", "modelChanged", "effortChanged", "notice", "mcpServers", "exited",
   "permissionAuto", "permPolicy",
 ]);
 
-/** 봉투 모양인가 — 통로로 온 값을 믿기 전에 본다(모르는 꼬리표는 버린다 — 새 사건은 Rust 와 함께 이 표에 넣는다). */
+/** 모르는 꼬리표는 버린다 — 새 사건은 Rust 와 함께 이 표에 넣는다. */
 export function isSideChatEvent(x: unknown): x is SideChatEvent {
   if (typeof x !== "object" || x === null) return false;
   const o = x as Record<string, unknown>;
@@ -281,12 +242,7 @@ export function isSideChatEvent(x: unknown): x is SideChatEvent {
   );
 }
 
-/**
- * 받은 사건을 어떻게 할까 — **순수**. `last` = 그 채팅에서 마지막으로 반영한 `seq`(스냅숏의 `seq` 에서 시작).
- * - `apply` — 바로 다음 것.
- * - `drop` — 이미 반영했다(스냅숏에 들어 있던 것 · 겹쳐 온 것).
- * - `gap` — 빠진 것이 있다 → 다시 attach(사건 broadcast 는 빠질 수 있다).
- */
+/** `last` = 그 채팅에서 마지막으로 반영한 `seq`(스냅숏의 `seq` 에서 시작). */
 export function seqStep(last: number, seq: number): "apply" | "drop" | "gap" {
   if (seq <= last) return "drop";
   return seq === last + 1 ? "apply" : "gap";
@@ -294,11 +250,10 @@ export function seqStep(last: number, seq: number): "apply" | "drop" | "gap" {
 
 type Handler = (e: SideChatEvent) => void;
 
-/** 채팅 id → 받는 손들. 통로는 창(페이지)마다 하나 — 첫 구독이 건다. */
+/** 통로는 창(페이지)마다 하나 — 첫 구독이 건다. */
 const handlers = new Map<string, Set<Handler>>();
 let opened: Promise<void> | null = null;
 
-/** 통로로 온 값 하나를 그 채팅의 손들에 — 시험이 부른다. */
 export function dispatchSideChatEvent(msg: unknown): void {
   if (!isSideChatEvent(msg)) return;
   const set = handlers.get(msg.chat);
@@ -318,10 +273,7 @@ function ensureChannel(): Promise<void> {
   return opened;
 }
 
-/**
- * 채팅 하나의 사건을 받는다 — 통로가 서면 풀린다(사람 창이 아니면 `[main-window-only]` 로 실패). 돌려준 함수로 그만 받는다.
- * 순서: 구독을 먼저 걸고 그다음 `sideChatOpen` · `sideChatAttach` 로 스냅숏을 받은 뒤 [`seqStep`] 으로 겹친 것을 버린다.
- */
+/** 순서: 구독을 먼저 걸고 그다음 스냅숏을 받은 뒤 `seqStep` 으로 겹친 것을 버린다. */
 export async function onSideChatEvent(chat: string, handler: Handler): Promise<() => void> {
   let set = handlers.get(chat);
   if (!set) handlers.set(chat, (set = new Set()));

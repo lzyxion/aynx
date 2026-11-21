@@ -1,26 +1,14 @@
-//! **설정 옮기기** — 이 PC 의 설정을 `.zip` 한 장으로 내보내고, 다른 PC(또는 같은 PC)에서 미리 본 뒤 들인다
-//! (설정 › 일반 › 설정 옮기기 · 팔레트 — docs/log/2026-11-17-settings-transfer.md).
-//!
-//! | 하위 모듈 | 맡는 것 |
-//! | --- | --- |
-//! | `catalog` | 허용 목록 하나 — 묶음 경로 → 범주 · `settings.toml` 칸 → 범주 · 설정 루트 파일별 담음/뺌 표 |
-//! | `zipfile` | zip 쓰기 · 읽기(경로 탈출 · 크기 상한 · 암호화 · zip64 거절) — `flate2` 위의 작은 구현 |
-//! | `export` | 지금 설정에서 범주별 파일을 모은다(허용 목록 밖은 열지도 않는다) |
-//! | `import` | 묶음 ↔ 지금 설정을 비교해 미리 보기 줄과 쓸 파일 목록을 **한 함수**로 만든다(미리 보기와 적용이 갈리지 않게) |
+//! **설정 옮기기** — 이 PC 의 설정을 `.zip` 한 장으로 내보내고, 미리 본 뒤 들인다(docs/log/2026-11-17-settings-transfer.md).
 //!
 //! ## 불변식
 //!
-//! - **볼트 · 토큰 · 웹훅 URL · 원격 기기는 담지 않는다** — 내보내기는 볼트를 열지도 읽지도 않고(`vault.bin` 을 경로로도 열지 않는다),
-//!   허용 목록([`catalog::category_of`])에 없는 파일은 묶음에 있어도 가져오지 않는다. 시험 `export_never_contains_secrets` ·
-//!   `import_ignores_unlisted_paths`.
-//! - **가져오기는 미리 보기에서 사람이 확정해야만 쓴다** — 미리 보기 명령은 아무것도 바꾸지 않는다. 적용은 Tauri 명령
-//!   [`settings_import_apply`] 하나이고 **MCP 에 도구가 없다**. 이것은 위임(AI 권한)을 바꾸는 세 번째 길이다
-//!   (호스트 폼 · 타일 AI 권한 팝오버 · 설정 가져오기 — docs/invariants.md 2절). 기본은 파일 값 그대로이고 사람이 [Off 로 들이기]를
-//!   고를 수 있다. 위임 블록의 **신원 스냅샷은 그대로 옮긴다** — 이 PC 의 `~/.ssh/config` · DB 연결이 다른 곳을 가리키면 기존 규칙대로
-//!   저절로 꺼진다(`Delegation::identity_matches` · `db_level`).
-//! - `~/.ssh/config` 는 **덮지 않는다** — 없는 별칭의 `Host` 블록만 끝에 덧붙인다(같은 이름은 그대로 둔다 · `config_edit` 의 덧붙이기 규칙).
-//! - 적용 직전 지금 설정을 같은 형식으로 `<설정 루트>/backups/aynx-before-import-<시각>.zip` 에 남기고, 파일마다 원자 교체
-//!   (`fs_atomic`)하며, 도중에 실패하면 이미 바꾼 파일을 되돌린다.
+//! - **볼트 · 토큰 · 웹훅 URL · 원격 기기는 담지 않는다** — 내보내기는 볼트를 열지 않고(`vault.bin` 을 경로로도 열지 않는다),
+//!   허용 목록([`catalog::category_of`]) 밖의 파일은 묶음에 있어도 가져오지 않는다. 시험 `export_never_contains_secrets` · `import_ignores_unlisted_paths`.
+//! - **가져오기는 미리 보기에서 사람이 확정해야만 쓴다** — 미리 보기는 아무것도 바꾸지 않고, 적용은 Tauri 명령 [`settings_import_apply`] 하나 · **MCP 에 도구가 없다**.
+//!   위임(AI 권한)을 바꾸는 세 번째 길이다(→ docs/invariants.md 전문 2). 기본은 파일 값 그대로 · 사람이 [Off 로 들이기]를 고를 수 있다.
+//!   위임 블록의 신원 스냅샷은 그대로 옮긴다 — 이 PC 의 대상이 다르면 기존 규칙대로 저절로 꺼진다(`Delegation::identity_matches` · `db_level`).
+//! - `~/.ssh/config` 는 덮지 않는다 — 없는 별칭의 `Host` 블록만 끝에 덧붙인다.
+//! - 적용 직전 지금 설정을 `<설정 루트>/backups/` 에 백업하고, 파일마다 원자 교체하며, 도중에 실패하면 이미 바꾼 파일을 되돌린다.
 //! - 원격 웹 클라이언트에서는 네 명령 모두 막는다(`remote/deny.rs` 의 `HOME_ONLY`).
 
 mod catalog;
@@ -43,14 +31,11 @@ pub(crate) use import::{ImportChoices, PreviewCategory};
 /// 묶음 형식 판 — 모르는 판은 거절한다.
 pub(crate) const FORMAT: u32 = 1;
 
-/// 읽고 쓰는 세 자리. 시험은 임시 폴더를 넣는다.
 #[derive(Debug, Clone)]
 pub(crate) struct Roots {
-    /// `<config_dir>/aynx[-dev]` — `instance::config_root`.
     pub config: PathBuf,
-    /// `~/.aynx[-dev]` — `instance::home_root`(위임 표).
     pub home: PathBuf,
-    /// `~/.ssh` — 사용자의 것(두 인스턴스가 같이 본다 — `instance` 머리말).
+    /// 사용자의 것 — 개발 · 릴리스 두 인스턴스가 같이 본다.
     pub ssh: PathBuf,
 }
 
@@ -71,7 +56,6 @@ impl Roots {
     }
 }
 
-/// `manifest.json` — 묶음의 머리.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -99,7 +83,7 @@ pub struct Bundle {
     pub files: BTreeMap<String, Vec<u8>>,
 }
 
-/// 받은 zip 바이트 → 묶음. 형식 판 · manifest · 경로를 본다. 허용 목록 밖 경로는 조용히 버린다(쓸 자리가 없다).
+/// 허용 목록 밖 경로는 조용히 버린다.
 pub(crate) fn open_bundle(bytes: &[u8]) -> Result<Bundle, String> {
     let entries = zipfile::read(bytes)?;
     let not_ours = || tr!(ko: "Aynx 설정 묶음이 아닙니다(manifest.json 이 없음)", en: "This is not an Aynx settings bundle (no manifest.json)");
@@ -120,7 +104,6 @@ pub(crate) fn open_bundle(bytes: &[u8]) -> Result<Bundle, String> {
     Ok(Bundle { manifest, files })
 }
 
-/// 범주들을 담은 zip 바이트(manifest 첫 장).
 pub(crate) fn build_zip(roots: &Roots, categories: &[&str]) -> Result<(Vec<u8>, usize), String> {
     let entries = export::collect(roots, categories)?;
     let manifest = Manifest {
@@ -139,14 +122,11 @@ pub(crate) fn build_zip(roots: &Roots, categories: &[&str]) -> Result<(Vec<u8>, 
     Ok((zipfile::write(&all)?, files))
 }
 
-/// 받은 범주 id 를 표의 것으로만 거른다(모르는 글자는 버림).
 fn known_categories(raw: &[String]) -> Vec<&'static str> {
     catalog::CATEGORIES.iter().copied().filter(|c| raw.iter().any(|r| r == c)).collect()
 }
 
-// ---------------------------------------------------------------------------
-// 순수에 가까운 몸통(경로를 받는다 — 시험 대상)
-// ---------------------------------------------------------------------------
+// ── 경로를 받는 몸통 ──
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,7 +179,6 @@ pub struct ImportDone {
     pub touched: Vec<String>,
 }
 
-/// 백업 → 적용(파일마다 원자 교체 · 실패하면 되돌림).
 pub(crate) fn apply_at(roots: &Roots, bytes: &[u8], choices: &ImportChoices) -> Result<ImportDone, String> {
     let bundle = open_bundle(bytes)?;
     let plan = import::plan(roots, &bundle, choices)?;
@@ -248,7 +227,7 @@ fn io_err(path: &Path, e: &std::io::Error) -> String {
     tr!(ko: "{path} 쓰기 실패: {e}", en: "Could not write {path}: {e}", path = path.display())
 }
 
-/// 이미 바꾼 파일을 원래대로(없던 파일은 지운다). 실패는 삼킨다 — 백업 zip 이 남아 있다.
+/// 실패는 삼킨다 — 백업 zip 이 남아 있다.
 fn restore(done: &[(PathBuf, Option<Vec<u8>>)]) {
     for (path, original) in done.iter().rev() {
         let _ = match original {
@@ -258,7 +237,6 @@ fn restore(done: &[(PathBuf, Option<Vec<u8>>)]) {
     }
 }
 
-/// 지금 설정 전부를 같은 형식으로 `<설정 루트>/backups/` 에.
 fn write_backup(roots: &Roots) -> Result<PathBuf, String> {
     let (zip, _) = build_zip(roots, catalog::CATEGORIES)?;
     let dir = roots.config.join("backups");
@@ -274,7 +252,6 @@ fn write_backup(roots: &Roots) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// 사람이 고른 저장 · 열기 자리 — `.zip` 만.
 fn zip_path(raw: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(raw.trim());
     let ok = path.is_absolute() && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"));
@@ -297,11 +274,8 @@ fn join_err(e: impl std::fmt::Display) -> String {
     tr!(ko: "설정 옮기기 작업이 실패했습니다: {e}", en: "The settings transfer task failed: {e}")
 }
 
-// ---------------------------------------------------------------------------
-// 명령 — 전부 async + spawn_blocking(디스크) · 원격 창에서는 막힘(`remote/deny.rs` HOME_ONLY) · MCP 도구 없음
-// ---------------------------------------------------------------------------
+// ── 명령 ──
 
-/// 내보내기 모달의 범주별 개수 · 크기(아무것도 쓰지 않는다).
 #[tauri::command]
 pub async fn settings_export_summary() -> Result<Vec<ExportCategory>, String> {
     tauri::async_runtime::spawn_blocking(|| summary_at(&Roots::current()?)).await.map_err(join_err)?
@@ -315,7 +289,6 @@ pub struct ExportDone {
     pub files: usize,
 }
 
-/// 고른 범주를 `.zip` 한 장으로 쓴다.
 #[tauri::command]
 pub async fn settings_export(path: String, categories: Vec<String>) -> Result<ExportDone, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -343,7 +316,7 @@ pub async fn settings_import_preview(path: String) -> Result<ImportPreview, Stri
     .map_err(join_err)?
 }
 
-/// 사람이 미리 보기에서 확정한 대로 들인다(백업 먼저). 파일을 **다시 읽어** 다시 판정한다 — 프런트가 보낸 것은 선택뿐이다.
+/// 파일을 다시 읽어 다시 판정한다 — 프런트가 보낸 것은 선택뿐이다.
 #[tauri::command]
 pub async fn settings_import_apply(app: tauri::AppHandle, path: String, choices: ImportChoices) -> Result<ImportDone, String> {
     let done = tauri::async_runtime::spawn_blocking(move || {

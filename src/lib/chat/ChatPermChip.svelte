@@ -1,10 +1,4 @@
 <script lang="ts">
-  /**
-   * **권한 모드 칩**(2026-11-20 — 사이드 채팅 입력 칸 아래 줄 · 모델 키워드 바로 왼쪽 · 권한 모드 목업).
-   * 높이 24 알약 · 그림 13 + 낱말(`Manual` · `Auto` — 번역하지 않는다). Manual = 연한 회색 면(중성) · 방패, Auto = 앱 강조색 채움 · 그림은
-   * `PERM_AUTO_ICON`(한 군데에서 바꾼다). 좁은 칸에서도 **줄지 않는다**(모델 이름이 먼저 줄임표로 준다). 누르면 모드 메뉴(`ChatPermMenu`).
-   * `title` · `aria-label` 에 지금 모드를 풀어 적는다. 폰(`touch`)은 누르는 자리만 44px 근처로 넓힌다.
-   */
   import UiIcon from "$lib/UiIcon.svelte";
   import { PERM_AUTO_ICON, PERM_MANUAL_ICON, PERM_MODE_WORD, permChipTitle } from "$lib/chat/perm-mode";
   import type { SideChatControls } from "$lib/chat/side-chat-controls.svelte";
@@ -36,7 +30,7 @@
 {/if}
 
 <style>
-  /* 24 알약 · 줄지 않는다(`flex: none`) — 좁으면 옆 모델 키워드의 이름이 먼저 준다 */
+  /* 줄지 않는다(`flex: none`) — 좁으면 옆 모델 키워드의 이름이 먼저 준다 */
   .pm {
     position: relative;
     flex: none;
@@ -61,7 +55,6 @@
     background: var(--control-tile-bg-hover);
   }
 
-  /* Auto — 앱 강조색 채움 */
   .pm.auto {
     color: var(--on-accent);
     background: var(--accent);
@@ -76,12 +69,10 @@
     outline-offset: 1px;
   }
 
-  /* 메뉴가 열려 있다 — 면은 그대로(모드 색이 뜻이다) · 포커스 테두리와 같은 결의 얇은 테두리 */
   .pm.on {
     box-shadow: 0 0 0 1px var(--line-strong);
   }
 
-  /* 폰 — 보이는 크기는 그대로, 누르는 자리만 44px 근처 */
   .pm.touch::after {
     content: "";
     position: absolute;

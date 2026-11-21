@@ -1,7 +1,5 @@
 <script lang="ts">
-  // 사용자 터미널 테마 — **가져오기**(파일 고르기 또는 붙여넣기 → 후보 확인 · 이름 고치기 → 넣기)와 **관리**(이름 바꾸기 · 지우기)
-  // 두 얼굴의 모달 하나. 상태 · 넣기 · 지우기는 `app/term-themes.svelte.ts`, 해석은 순수 `$lib/term-theme-import`.
-  // 설정 › 터미널의 [가져오기…] · [관리] 단추가 연다 — 메뉴가 없어 menu-runner 통로가 필요 없다. 독보다 뒤에 그려진다(`+page`).
+  // 사용자 터미널 테마 가져오기 · 관리 — 독보다 뒤에 그려져야 위에 온다(`+page`).
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { trapTab } from "$lib/focus-trap";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -22,7 +20,6 @@
 
   const pickedCount = $derived(termThemeDialog.candidates.filter((c) => c.pick).length);
 
-  // 열릴 때 포커스 — 가져오기는 파일 단추, 관리는 상자.
   $effect(() => {
     if (!termThemeDialog.mode) return;
     queueMicrotask(() => {
@@ -47,7 +44,6 @@
     if (file) void readThemeFile(file);
   }
 
-  /** 견본 — 배경 위에 글자 · 빨강 · 초록 · 노랑 · 파랑 · 보라 · 청록 */
   function dots(c: Record<string, string | undefined>): string[] {
     return [c.foreground, c.red, c.green, c.yellow, c.blue, c.magenta, c.cyan].filter((x): x is string => !!x);
   }
@@ -204,7 +200,6 @@
 {/if}
 
 <style>
-  /* `.overlay`·`.modal`·`.lead`·`.wrong`·`.actions` 는 다른 모달(`AppIconCropDialog`)의 규칙을 베껴 둔다(스코프 — dialogs/ 규약) */
   .overlay {
     position: fixed;
     inset: 0;
@@ -218,15 +213,15 @@
 
   .modal {
     box-sizing: border-box;
-    width: calc(460px + 2 * var(--space-4) + 2px); /* 옛 content-box 너비 그대로 — 안쪽 여백(스크롤 칸) · 테두리를 더함 */
+    width: calc(460px + 2 * var(--space-4) + 2px);
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll`(theme.css) — 흐림 층이 밑동까지 덮게 */
+    overflow: hidden; /* 스크롤은 안쪽 `.glass-scroll` — 흐림 층이 밑동까지 덮게 */
     background: var(--glass-raised, var(--surface-raised-solid));
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius-surface); /* 바깥 면(2026-10-25) */
+    border-radius: var(--radius-surface);
     box-shadow: var(--shadow-raised);
   }
 
@@ -264,7 +259,7 @@
     display: none;
   }
 
-  /* 붙여넣기 칸 — 크롬 글자를 얹으므로 우물 면(터미널 색 아님 — conventions "크롬 글자를 얹는 상자는 크롬 면") */
+  /* 크롬 글자를 얹으므로 우물 면 — 터미널 색 아님(conventions "크롬 글자를 얹는 상자는 크롬 면") */
   .paste {
     box-sizing: border-box;
     width: 100%;
@@ -295,9 +290,7 @@
     margin-top: var(--space-1);
   }
 
-  /* 좌우 4px 안쪽 여백 + 같은 음수 margin = 스크롤 상자에 포커스 링이 설 자리(내용 자리는 그대로). 4 = 줄 양 끝의 체크박스
-     (가져오기 목록 왼쪽) · [삭제] `.btn`(관리 목록 오른쪽)의 링 2 + 틈 2 — 3px 이면 그 링이 1px 잘린다(2026-11-19). 이름 칸 `.value`
-     식 링은 2 + 1. 위아래는 세로 스크롤 상자라 3px 그대로 둔다(줄 자리가 움직이지 않게). */
+  /* 좌우 4px 여백 + 같은 음수 margin = 포커스 링이 설 자리. 4 = 체크박스 · `.btn` 의 링 2 + 틈 2 — 3px 이면 링이 1px 잘린다 */
   .list {
     list-style: none;
     margin: var(--space-3) -4px 0;
@@ -315,7 +308,6 @@
     gap: var(--space-2);
   }
 
-  /* 견본 — 팔레트 배경 위의 점들(설정 › 터미널의 견본과 같은 모양) */
   .swatch {
     flex: 0 0 auto;
     display: inline-flex;

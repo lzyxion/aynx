@@ -1,48 +1,11 @@
-//! 프로젝트 목록 — `<config_dir>/aynx/projects.json` (docs/log/2026-09-24-projects.md).
+//! 프로젝트 목록 — 설정 루트의 `projects.json`. 프로젝트는 저장소 폴더 하나(로컬 경로 또는 호스트 별칭 + 서버 경로)다.
 //!
-//! **프로젝트**는 저장소 폴더 하나다. 로컬이면 경로, 원격이면 호스트 별칭 + 그 서버의 경로이고,
-//! "열면" 그 폴더에서 타일이 하나 뜨고 프로젝트의 **에이전트**(기본 Claude Code — `null` 이면 셸)가 뜬다.
-//! 프로젝트 독(`Ctrl+Shift+J`) · 명령 팔레트 · 즐겨찾기가 이 표를 읽는다.
-//!
-//! ```json
-//! { "projects": [
-//!   { "id": "3f2a…", "name": "aynx", "host": null, "path": "C:\\Users\\me\\projects\\proj",
-//!     "shell": null, "agent": "claude", "setupScript": "pnpm install", "tmux": false },
-//!   { "id": "9c01…", "name": "aynx (dev-01)", "host": "dev-01", "path": "~/aynx",
-//!     "shell": null, "agent": null, "tmux": true } ] }
-//! ```
-//!
-//! ## 시작 명령 → 에이전트 · 설정 스크립트 (2026-09-28 — docs/log/2026-09-28-project-agent-setup-script.md)
-//!
-//! 옛 칸 `command`(자유 글자 한 줄)는 없어졌다. 읽을 때 [`migrate_command`] 가 옮기고, 새로 쓸 때는 그 칸을 쓰지
-//! 않는다: 빈 글자 → 셸(`agent: null`), 첫 낱말이 에이전트 실행 파일(`crate::agent_args::TARGETS`) → 그 에이전트
-//! (뒤에 인자가 있었으면 [`ProjectMigration`] `args` — 폼이 "설정 › AI 추가 인자로 옮겨 주세요" 한 줄), 그 밖의
-//! 명령 → 셸 + (설정 스크립트가 비었으면) 그 명령을 설정 스크립트로(`script` — "설정 스크립트로 옮겼습니다").
-//! 안내 칸은 사람이 폼을 저장하면 사라진다(폼은 그 칸을 보내지 않는다).
-//!
-//! **설정 스크립트**(`setupScript`)는 여러 줄 글자다 — 새 워크트리를 만들 때 그 타일에서 에이전트보다 먼저 한 번
-//! 돈다(`crate::setup_script`). 이 파일에만 살고 MCP 로도 로그로도 나가지 않는다(`Debug` 는 줄 수만 적는다).
-//!
-//! ## 파일 관례 — `snippets.json` 과 같은 폴더·같은 원자적 쓰기, 그러나 **백엔드가 스키마를 안다**
-//!
-//! 쓰기는 [`crate::app_state::save_at`](원자적 교체 · 무변경 생략) 하나를 지나고, 없거나 깨진
-//! 파일은 빈 목록으로 시작해 콘솔에 **한 번만** 남긴다(`host_history.rs` 와 같은 판정). 다만
-//! 스니펫처럼 불투명 문자열을 보관만 하지 않는다 — **호스트 이름 변경·제거 팬아웃**이 이 표의
-//! `host` 칸을 고쳐야 하고, 그 일을 프런트가 목록 전체를 다시 써서 하면 창 둘이 서로의 변경을
-//! 덮는다. 그래서 명령이 한 줄씩(추가·교체·삭제·별칭 따라가기) 고치고, 고칠 때마다
-//! [`CHANGED_EVENT`] 를 쏘아 창마다 든 사본이 다시 읽는다.
-//!
-//! ## 여기 없는 것
-//!
-//! `git` 을 부르지 않는다 — 워크트리는 [`crate::worktree`] 가 따로 맡는다(설계 노트의 둘째 ·
-//! docs/log/2026-09-24-worktrees.md). 경로가 실제로 있는지도
-//! 보지 않는다: 원격 경로는 이 PC 에서 알 수 없고, 로컬 경로가 사라져도 타일은 홈에서 뜬다
-//! (`pty.rs` 의 `spawn_cwd` — 없는 폴더는 조용히 홈이다).
-//!
-//! **보안 메모**: 에이전트는 표의 id 하나고, 설정 스크립트는 사람이 폼에 손으로 적은 글자다. 앱은 여기에 아무것도
-//! 지어 넣지 않고, 사람이 [열기] · 새 워크트리 · [설정 스크립트 실행] 을 누른 순간에만 그 타일에서 돌린다 —
-//! `on_connect`·tmux 부트스트랩과 같은 자리다(AI 문자열이 PTY 로 가는 길이 아니다 — MCP 에는 이 표를 읽는 도구도
-//! 쓰는 도구도 없다). 비밀은 한 글자도 담지 않는다.
+//! - 옛 칸 `command` 는 읽을 때 [`migrate_command`] 가 옮기고 새로 쓸 때는 쓰지 않는다 — 이 호환을 지우면 옛 파일의 시작 명령이 사라진다.
+//! - 호스트 이름 변경 · 제거 팬아웃이 이 표의 `host` 칸을 고친다 — 프런트가 목록 전체를 다시 쓰면 창 둘이 서로의 변경을 덮으므로 명령이
+//!   한 줄씩 고치고 [`CHANGED_EVENT`] 를 쏜다.
+//! - **보안**: 설정 스크립트는 사람이 폼에 적은 글자이고 사람이 [열기] · 새 워크트리 · [설정 스크립트 실행] 을 누른 순간에만 그 타일에서
+//!   돈다(AI 문자열이 PTY 로 가는 길이 아니다 — MCP 에는 이 표를 읽거나 쓰는 도구가 없다). 본문은 이 파일에만 살고 MCP · 로그로 나가지
+//!   않는다(`Debug` 는 줄 수만). 비밀은 담지 않는다.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,77 +16,61 @@ use tauri::{AppHandle, Emitter};
 use crate::app_state::{load_at, missing_dir, save_at};
 use crate::i18n::tr;
 
-/// 한 번 고칠 때마다 쏘는 이벤트 — 창마다 든 사본(`app/projects.svelte.ts`)이 듣고 다시 읽는다.
+/// 창마다 든 사본(`app/projects.svelte.ts`)이 듣고 다시 읽는다.
 pub const CHANGED_EVENT: &str = "projects-changed";
 
-/// 옛 파일에 `command` 칸이 **없던** 줄의 시작 명령 — 그때의 기본값(`claude`)이다. 이관이 이 글자를 에이전트로 읽는다.
+/// 옛 파일에 `command` 칸이 **없던** 줄의 시작 명령 — 그때의 기본값이다.
 const LEGACY_DEFAULT_COMMAND: &str = "claude";
 
-/// 이관 안내 — 옛 시작 명령을 옮기며 사람에게 한 줄 알릴 것 (모듈 머리말). 폼을 저장하면 사라진다.
+/// 폼을 저장하면 사라진다.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectMigration {
-    /// `args` — 에이전트로 옮겼고 뒤의 인자 `text` 는 설정 › AI 추가 인자로 옮겨야 한다 ·
-    /// `script` — 명령 `text` 를 설정 스크립트로 옮겼다 · `dropped` — 설정 스크립트가 이미 있어 명령 `text` 를 옮기지 못했다.
+    /// `args` — 에이전트로 옮겼고 뒤의 인자 `text` 는 설정 › AI 추가 인자로 옮겨야 한다 · `script` — 명령을 설정 스크립트로 옮겼다 ·
+    /// `dropped` — 설정 스크립트가 이미 있어 옮기지 못했다.
     pub kind: String,
-    /// 옛 명령의 그 조각 (사람이 적은 글자 그대로)
     pub text: String,
 }
 
-/// 프로젝트 하나.
-///
-/// 읽기는 [`ProjectWire`] 를 지난다(옛 `command` 칸의 이관 — [`migrate_command`]). `Debug` 는 손으로 짓는다 —
-/// 설정 스크립트 본문을 남기지 않는다(줄 수만).
+/// `Debug` 는 손으로 짓는다 — 설정 스크립트 본문을 남기지 않는다(줄 수만).
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(from = "ProjectWire")]
 pub struct Project {
-    /// 안정된 신원 — 즐겨찾기(`project:<id>`)·독의 선택이 이 글자로 가리킨다. 비어 오면
-    /// [`project_upsert`] 가 새로 뽑는다.
+    /// 즐겨찾기(`project:<id>`)·독의 선택이 이 글자로 가리킨다. 비어 오면 [`project_upsert`] 가 새로 뽑는다.
     #[serde(default)]
     pub id: String,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
-    /// 목록에 보이는 이름.
     #[serde(default)]
     pub name: String,
-    /// 원격이면 `~/.ssh/config` 의 별칭, 로컬이면 `null`.
     #[serde(default)]
     pub host: Option<String>,
-    /// 저장소 폴더 — 로컬이면 이 PC 의 절대 경로, 원격이면 그 서버의 경로(`~/…` 허용).
+    /// 원격이면 그 서버의 경로(`~/…` 허용).
     #[serde(default)]
     pub path: String,
-    /// **로컬 전용** — 열 셸의 id (`list_shells` 의 `id`). 없으면 기본 셸.
+    /// 로컬 전용 — `list_shells` 의 `id`. 없으면 기본 셸.
     #[serde(default)]
     pub shell: Option<String>,
-    /// 열면 뜨는 에이전트 — `crate::agent_args::TARGETS` 의 id(`claude` · `codex`), `None` 이면 셸만 그 폴더에서 연다.
-    /// 띄우는 줄은 AI 타일과 같은 문(`crate::agent_autorun::agent_autorun_command`)을 지난다(추가 인자 · 장식).
+    /// `crate::agent_args::TARGETS` 의 id, `None` 이면 셸만 그 폴더에서 연다.
     pub agent: Option<String>,
-    /// 설정 스크립트 — 여러 줄(`\n`), 빈 글자 = 없음. 새 워크트리를 만들 때 한 번 돈다(`crate::setup_script`).
+    /// 여러 줄(`\n`), 빈 글자 = 없음.
     #[serde(rename = "setupScript", skip_serializing_if = "String::is_empty")]
     pub setup_script: String,
-    /// **원격 전용** — 호스트가 tmux 호스트일 때 이 프로젝트의 타일도 tmux 안에서 뜰 것인가.
-    /// 호스트가 tmux 가 아니면 뜻이 없다 (둘 다 켜져야 tmux 다 — docs/log/2026-09-24-projects.md).
+    /// 원격 전용 — 호스트도 tmux 호스트여야 뜻이 있다(둘 다 켜져야 tmux 다).
     #[serde(default = "default_tmux")]
     pub tmux: bool,
-    /// 새 워크트리를 만들 **부모 폴더** — 없으면 기본 자리 `<저장소 부모>/<저장소명>-wt`
-    /// ([`crate::worktree::worktree_base`]). 새 워크트리는 이 폴더 아래 `<이름>` 이다.
-    ///
-    /// 사용자 피드백(2026-09-24, "워크트리가 어디 생기는지 모르겠다")으로 생긴 칸이다 — 자리를
-    /// 숨은 규칙이 아니라 폼에 보이는 값으로 둔다. 칸 이름은 프런트(`worktreeDir`)와 같은
-    /// 글자로 적고, 비어 있으면 파일에 쓰지 않는다(옛 파일과 모양이 같다).
+    /// 새 워크트리의 부모 폴더 — 없으면 [`crate::worktree::worktree_base`]. 비어 있으면 파일에 쓰지 않는다(옛 파일과 모양이 같다).
     #[serde(
         default,
         rename = "worktreeDir",
         skip_serializing_if = "Option::is_none"
     )]
     pub worktree_dir: Option<String>,
-    /// 이관 안내 (모듈 머리말) — 옛 시작 명령을 옮긴 줄에만 있다. 폼이 저장하면 사라진다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migration: Option<ProjectMigration>,
-    /// 목록에 보일 아이콘 — 호스트 메타의 `icon` 과 같은 문자열(이모지 · `svg:…`). 없으면 기본 그림
-    /// (docs/log/2026-09-29-folder-project-icons.md). 앱은 해석하지 않고, 비어 있으면 파일에 쓰지 않는다.
+    /// 호스트 메타의 `icon` 과 같은 문자열(이모지 · `svg:…`). 앱은 해석하지 않는다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
-    /// 아이콘의 색 — CSS 색 문자열(`#4a90d9`). 단색(선) 아이콘과 기본 그림에만 입는다. 비어 있으면 쓰지 않는다.
+    /// CSS 색 문자열 — 단색(선) 아이콘과 기본 그림에만 입는다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
 }
@@ -137,7 +84,7 @@ impl std::fmt::Debug for Project {
             .field("path", &self.path)
             .field("shell", &self.shell)
             .field("agent", &self.agent)
-            // 본문은 남기지 않는다(CLAUDE.md 보안 제약 — 로그·Debug) — 줄 수만.
+            // 본문은 남기지 않는다(로그 · Debug) — 줄 수만.
             .field("setup_script_lines", &script_lines(&self.setup_script))
             .field("tmux", &self.tmux)
             .field("worktree_dir", &self.worktree_dir)
@@ -151,7 +98,7 @@ impl std::fmt::Debug for Project {
     }
 }
 
-/// 설정 스크립트의 줄 수 — 빈 줄은 세지 않는다(제거 확인 "설정 스크립트 N줄" · `Debug`).
+/// 빈 줄은 세지 않는다.
 pub(crate) fn script_lines(script: &str) -> usize {
     script.lines().filter(|l| !l.trim().is_empty()).count()
 }
@@ -160,10 +107,7 @@ fn default_tmux() -> bool {
     true
 }
 
-/// 파일·프런트에서 오는 한 줄의 모양 — 옛 `command` 칸을 받아 [`Project`] 로 옮긴다(`serde(from)`).
-///
-/// `agent` 칸이 **있으면**(값이 `null` 이어도) 새 모양이라 그대로 쓰고 `command` 는 버린다. 없으면 옛 모양이다 —
-/// `command`(없으면 그때의 기본값 `claude`)를 [`migrate_command`] 로 옮긴다.
+/// `agent` 칸이 **있으면**(값이 `null` 이어도) 새 모양이라 `command` 는 버린다. 없으면 옛 모양 — [`migrate_command`] 로 옮긴다.
 #[derive(serde::Deserialize)]
 struct ProjectWire {
     #[serde(default)]
@@ -196,7 +140,7 @@ struct ProjectWire {
     color: Option<String>,
 }
 
-/// 칸이 **있었다**(값이 `null` 이어도)를 `Some(..)` 으로 — 없으면 `#[serde(default)]` 의 `None`.
+/// 칸이 **있었다**(값이 `null` 이어도)를 `Some(..)` 으로.
 fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
     use serde::Deserialize;
     Option::<String>::deserialize(d).map(Some)
@@ -234,8 +178,7 @@ impl From<ProjectWire> for Project {
     }
 }
 
-/// 옛 시작 명령 한 줄 → (에이전트, 설정 스크립트, 안내) — **순수 함수**, 이관 표(모듈 머리말)를 고정하는 자리.
-/// 프런트 `src/lib/projects.ts` 의 `migrateProjectCommand` 와 같은 표다(두 테스트가 같은 줄들을 본다).
+/// 프런트 `src/lib/projects.ts` 의 `migrateProjectCommand` 와 같은 표다(두 시험이 같은 줄들을 본다 — 바꾸면 함께).
 pub(crate) fn migrate_command(
     command: &str,
     setup_script: &str,
@@ -265,9 +208,7 @@ pub(crate) fn migrate_command(
     (None, setup_script.to_string(), Some(note))
 }
 
-/// 설정 스크립트를 저장할 모양으로 — 줄 끝(`\r\n` · `\r`)을 `\n` 으로, 줄마다 끝 공백과 앞뒤의 빈 줄을 뗀다.
-/// 공백뿐이면 빈 글자(= 없음). 탭 말고 다른 제어 문자는 거절한다(NUL 은 셸에 실을 수 없고, ESC 같은 것은 화면을
-/// 흔든다) — 실패는 사람이 읽을 한 줄.
+/// 탭 말고 다른 제어 문자는 거절한다(NUL 은 셸에 실을 수 없고, ESC 같은 것은 화면을 흔든다).
 pub(crate) fn normalize_script(script: &str) -> Result<String, String> {
     let unified = script.replace("\r\n", "\n").replace('\r', "\n");
     if unified
@@ -283,7 +224,7 @@ pub(crate) fn normalize_script(script: &str) -> Result<String, String> {
     let joined = lines.join("\n");
     Ok(joined.trim_end().trim_start_matches('\n').to_string())
 }
-
+/// 순서가 곧 사람이 넣은 차례다.
 /// 파일 한 장의 모양 — `{ "projects": [ … ] }` (순서가 곧 사람이 넣은 차례다).
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectsFile {
@@ -299,19 +240,15 @@ pub(crate) fn projects_path() -> Option<PathBuf> {
     Some(crate::instance::config_root()?.join("projects.json"))
 }
 
-/// 읽고-고치고-쓰는 한 벌을 **한 번에 하나만** 돌린다 (창이 여럿이어도 프로세스는 하나다 —
-/// `host_history.rs` 의 `FILE_LOCK` 과 같은 이유).
-// 프로젝트는 전역 목록이며 workspace 잠금을 잡지 않는다.
+/// 읽고-고치고-쓰는 한 벌을 한 번에 하나만 돌린다. 프로젝트는 전역 목록이며 workspace 잠금을 잡지 않는다.
 pub(crate) static FILE_LOCK: Mutex<()> = Mutex::new(());
 
-/// 깨진 파일을 한 번 알렸는가.
 static WARNED: AtomicBool = AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
-// 순수 조작 — 유닛 테스트 대상
+// 순수 조작
 // ---------------------------------------------------------------------------
 
-/// 파일을 읽는다. 없으면 빈 목록, **깨졌으면 빈 목록 + 한 번만 경고**.
 pub(crate) fn load_file(path: &Path) -> ProjectsFile {
     let warn_once = |what: String| {
         if !WARNED.swap(true, Ordering::Relaxed) {
@@ -336,11 +273,7 @@ fn write_file(path: &Path, file: &ProjectsFile) -> Result<(), String> {
     save_at(path, &json).map(|_| ())
 }
 
-/// 들어온 한 줄을 **저장할 모양**으로 다듬는다 — 실패는 사람이 읽을 한 줄.
-///
-/// 규칙: 이름·경로는 비면 안 된다 · 경로에 제어문자(개행 포함)가 섞이면 안 된다 · 에이전트는 표에 있는 id 이거나
-/// 없음 · 설정 스크립트는 [`normalize_script`] · 로컬이면 `tmux` 는 뜻이 없고, 원격이면 `shell` 은 뜻이 없다
-/// (그 칸은 비운다). 이관 안내(`migration`)는 저장에서 지운다 — 폼이 저장했다는 것이 곧 사람이 읽었다는 뜻이다.
+/// 이관 안내(`migration`)는 저장에서 지운다 — 폼이 저장했다는 것이 곧 사람이 읽었다는 뜻이다.
 pub(crate) fn normalize(mut p: Project) -> Result<Project, String> {
     p.name = p.name.trim().to_string();
     p.path = p.path.trim().to_string();
@@ -372,16 +305,13 @@ pub(crate) fn normalize(mut p: Project) -> Result<Project, String> {
     if p.path.chars().any(char::is_control) {
         return Err(tr!(ko: "경로는 한 줄이어야 합니다", en: "The path must be a single line"));
     }
-    // 로컬은 **절대 경로만** (2026-09-24 실기 ⑤ — 위치를 원격으로 바꾸기 전에 적은 `~/aynx-lab` 이
-    // 로컬 경로로 저장됐다). 로컬 타일은 셸 없이 그 폴더에서 뜨므로 `~`·상대 경로가 펴지지 않는다.
-    // 워크트리 폴더 칸과 **같은 표**(`worktree::is_absolute_dir`) · 프런트 `isAbsoluteLocalPath`.
+    // 로컬은 절대 경로만 — 로컬 타일은 셸 없이 그 폴더에서 뜨므로 `~` · 상대 경로가 펴지지 않는다. 프런트 `isAbsoluteLocalPath` 와 같은 표.
     if p.host.is_none() && !crate::worktree::is_absolute_dir(&p.path, false) {
         return Err(tr!(
             ko: "로컬 경로는 절대 경로여야 합니다 (예: C:\\Users\\me\\repo)",
             en: "A local path must be absolute (e.g. C:\\Users\\me\\repo)"
         ));
     }
-    // 아이콘·색 — 앞뒤 공백을 떼고 비면 없음(호스트 메타의 빈 칸 = 키 없음과 같은 규칙). 한 줄이어야 한다.
     p.icon = p
         .icon
         .map(|s| s.trim().to_string())
@@ -409,13 +339,11 @@ pub(crate) fn normalize(mut p: Project) -> Result<Project, String> {
     if p.host.is_some() {
         p.shell = None;
     } else {
-        // 로컬에는 tmux 가 없다 — 켠 채로 두면 파일을 읽는 사람이 뜻을 오해한다.
         p.tmux = false;
     }
     Ok(p)
 }
 
-/// 같은 id 가 있으면 **그 자리에서** 바꾸고, 없으면 맨 뒤에 붙인다. 바뀌었으면 `true`.
 pub(crate) fn upsert(file: &mut ProjectsFile, mut p: Project) -> bool {
     // 모르는 추가 필드는 편집 뒤에도 보존한다.
     if let Some(old) = file.projects.iter().find(|x| x.id == p.id) {
@@ -436,19 +364,17 @@ pub(crate) fn upsert(file: &mut ProjectsFile, mut p: Project) -> bool {
     }
 }
 
-/// id 하나를 뺀다. 뺀 것이 있으면 `true`.
 pub(crate) fn remove(file: &mut ProjectsFile, id: &str) -> bool {
     let before = file.projects.len();
     file.projects.retain(|p| p.id != id);
     file.projects.len() != before
 }
 
-/// 별칭 비교는 저장소 전체에서 **대소문자를 무시한다** (`favorites.ts` 의 `withRenamedHost`).
+/// 별칭 비교는 저장소 전체에서 **대소문자를 무시한다**(`favorites.ts` 의 `withRenamedHost`).
 fn same_alias(a: &str, b: &str) -> bool {
     a.trim().eq_ignore_ascii_case(b.trim())
 }
 
-/// 호스트 이름 변경을 따라간다 — 그 별칭의 원격 프로젝트들이 새 이름을 가리키게. 바꾼 게 있으면 `true`.
 pub(crate) fn rename_host(file: &mut ProjectsFile, from: &str, to: &str) -> bool {
     let to = to.trim();
     if from.trim().is_empty() || to.is_empty() || from.trim() == to {
@@ -464,10 +390,7 @@ pub(crate) fn rename_host(file: &mut ProjectsFile, from: &str, to: &str) -> bool
     changed
 }
 
-/// 호스트가 지워졌다 — 그 별칭의 원격 프로젝트를 **함께 뺀다**. 뺀 게 있으면 `true`.
-///
-/// 남겨 두지 않는 이유: 호스트 없는 원격 프로젝트는 열 방법이 없는 줄이다. 로컬로 바꿔 살리면
-/// 원격 경로(`/root/aynx`)가 이 PC 의 경로인 척한다.
+/// 함께 뺀다 — 호스트 없는 원격 프로젝트는 열 방법이 없고, 로컬로 바꿔 살리면 원격 경로가 이 PC 의 경로인 척한다.
 pub(crate) fn forget_host(file: &mut ProjectsFile, alias: &str) -> bool {
     if alias.trim().is_empty() {
         return false;
@@ -478,7 +401,7 @@ pub(crate) fn forget_host(file: &mut ProjectsFile, alias: &str) -> bool {
     file.projects.len() != before
 }
 
-/// 새 id — 16바이트 무작위의 hex. 엔트로피를 못 얻으면 시각으로 떨어진다(신원일 뿐 비밀이 아니다).
+/// 엔트로피를 못 얻으면 시각으로 떨어진다(신원일 뿐 비밀이 아니다).
 fn new_id() -> String {
     let mut buf = [0u8; 16];
     if getrandom::fill(&mut buf).is_err() {
@@ -525,7 +448,6 @@ fn list_at(path: &Path) -> Result<Vec<Project>, String> {
     Ok(load_file(path).projects)
 }
 
-/// 명령의 공용 꼬리 — 블로킹 풀에서 돌리고, 바뀌었으면 이벤트를 쏜다.
 async fn run_modify(
     app: AppHandle,
     f: impl FnOnce(&mut ProjectsFile) -> bool + Send + 'static,
@@ -546,10 +468,9 @@ async fn run_modify(
 }
 
 // ---------------------------------------------------------------------------
-// 명령 — 전부 async + spawn_blocking (docs/conventions.md)
+// 명령 — 전부 async + spawn_blocking
 // ---------------------------------------------------------------------------
 
-/// 목록 전체 (파일 순서 그대로). 없거나 깨졌으면 빈 목록이다(오류가 아니다).
 #[tauri::command]
 pub async fn projects_list() -> Result<Vec<Project>, String> {
     let path = projects_path().ok_or_else(missing_dir)?;
@@ -563,7 +484,7 @@ pub async fn projects_list() -> Result<Vec<Project>, String> {
         })?
 }
 
-/// 한 줄을 넣거나 바꾼다 — 돌려주는 것은 **저장된 모양**(id 가 비어 왔으면 새 id 가 붙어 있다).
+/// 돌려주는 것은 **저장된 모양**(id 가 비어 왔으면 새 id 가 붙어 있다).
 #[tauri::command]
 pub async fn project_upsert(app: AppHandle, project: Project) -> Result<Project, String> {
     let path = projects_path().ok_or_else(missing_dir)?;
@@ -576,10 +497,7 @@ pub async fn project_upsert(app: AppHandle, project: Project) -> Result<Project,
     Ok(saved)
 }
 
-/// 한 줄을 뺀다. 없는 id 면 조용히 성공이다.
-///
-/// 설정 스크립트는 이 줄에 살았으므로 함께 사라지고, **로컬** 프로젝트면 그 저장소의 워크트리별 스크립트 실행
-/// 기록(곁 파일 `worktrees.json` — `crate::worktree::forget_setup_records`)도 걷는다. 폴더·워크트리는 디스크에 남는다.
+/// 없는 id 면 조용히 성공이다. 로컬 프로젝트면 워크트리별 스크립트 실행 기록(`worktrees.json`)도 걷는다 — 폴더 · 워크트리는 디스크에 남는다.
 #[tauri::command]
 pub async fn project_remove(app: AppHandle, id: String) -> Result<(), String> {
     let path = projects_path().ok_or_else(missing_dir)?;
@@ -607,20 +525,17 @@ pub async fn project_remove(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// id 하나의 프로젝트 — **블로킹**(부르는 쪽이 블로킹 풀 안이다 — `crate::setup_script` 가 설정 스크립트를 이 파일에서
-/// 직접 읽는다: 프런트가 스크립트 글자를 실어 보내는 길을 만들지 않는다). 없거나 설정 폴더를 모르면 `None`.
+/// 블로킹. `crate::setup_script` 가 설정 스크립트를 이 파일에서 직접 읽는다 — 프런트가 스크립트 글자를 실어 보내는 길을 만들지 않는다.
 pub(crate) fn find_blocking(id: &str) -> Option<Project> {
     let path = projects_path()?;
     load_file(&path).projects.into_iter().find(|p| p.id == id)
 }
 
-/// 호스트 이름 변경 팬아웃(`app/host-rename.ts`)이 부른다 — 원격 프로젝트가 새 별칭을 따라간다.
 #[tauri::command]
 pub async fn project_rename_host(app: AppHandle, from: String, to: String) -> Result<(), String> {
     run_modify(app, move |file| rename_host(file, &from, &to)).await
 }
 
-/// 호스트 제거 팬아웃(`app/host-remove.ts`)이 부른다 — 그 호스트의 원격 프로젝트를 뺀다.
 #[tauri::command]
 pub async fn projects_forget_host(app: AppHandle, alias: String) -> Result<(), String> {
     run_modify(app, move |file| forget_host(file, &alias)).await
@@ -629,7 +544,7 @@ pub async fn projects_forget_host(app: AppHandle, alias: String) -> Result<(), S
 #[cfg(test)]
 mod tests;
 
-/// MCP 실행 범위 판별에 필요한 로컬 프로젝트 신원·경로만 읽는다(블로킹 문맥).
+/// MCP 실행 범위 판별용 — 로컬 프로젝트 신원 · 경로만 읽는다(블로킹 문맥).
 pub(crate) fn mcp_project_roots() -> Vec<(String, String)> {
     projects_path()
         .map(|path| {

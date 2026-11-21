@@ -1,12 +1,9 @@
-//! **프로듀서 승인 정책**(오케스트레이션 2단계 단계 2 — 설계 4-3 · R9 · 사용자 결정 U2/O2) — 어댑터(`claude` · `codex`)를 감싸는 순수 층.
+//! 프로듀서 승인 정책 — 어댑터(`claude` · `codex`)를 감싸는 순수 층.
 //!
-//! 프로듀서 채팅에서 **사람이 [허용] 할 수 있는 카드는 둘뿐**이다: Claude 의 `Read`(스튜디오 밖 경로 — 안쪽은 미리 허용 `Read(./**)`) ·
-//! Aynx MCP 의 DB 도구(`mcp__<Aynx 서버>__db_*` — 행이 모델 제공자로 간다 · 연결 AI 권한 상한은 서버 그대로). 그 밖의 모든 승인 요청(Codex
-//! 명령 실행 · 파일 변경 · 권한 확대 · 모르는 MCP 도구 · Claude 의 그 밖 도구)은 **카드 없이** 곧바로 거절 답을 짓고(`encode_decision(Deny)` —
-//! 어댑터가 CLI 에 하는 고정 답과 같은 등급: 사람의 결정이 아니다) 알림 `notice{denied-by-policy, 요청 종류 낱말}` 만 낸다. 거절한 요청은
-//! 권한 표(`pending`)에 적히지 않으므로 사람의 [`Adapter::encode_decision`](원격 · 다른 창의 `producer_chat_decide` 포함)이 우회로가 되지 않는다.
-//!
-//! 순수 — 프로세스 · 파일 · 환경을 모른다(어댑터 규칙 그대로).
+//! 프로듀서 채팅에서 **사람이 [허용] 할 수 있는 카드는 둘뿐**이다: Claude 의 `Read` · Aynx MCP 의 DB 도구(행이 모델 제공자로 간다 ·
+//! 연결 AI 권한 상한은 서버 그대로). 그 밖의 모든 승인 요청(Codex 명령 실행 · 파일 변경 · 권한 확대 · 모르는 MCP 도구 · Claude 의 그 밖 도구)은
+//! **카드 없이** 곧바로 거절 답(어댑터의 고정 답과 같은 등급 — 사람의 결정이 아니다)과 알림만 낸다. 거절한 요청은 사람의
+//! [`Adapter::encode_decision`](원격 · 다른 창 포함)이 받지 못한다 — 우회로가 되지 않는다(시험 `producer_approval_allowlist`).
 
 use std::collections::BTreeSet;
 
@@ -17,10 +14,8 @@ use super::Adapter;
 pub(crate) const DENIED_BY_POLICY: &str =
     "Aynx producer chats cannot change files, run commands outside the read-only sandbox or widen permissions — hand that work to a worker (spawn_worker)";
 
-/// 알림 낱말.
 pub(crate) const NOTICE: &str = "denied-by-policy";
 
-/// 카드가 될 수 있는 요청인가 — Claude `Read` · Aynx MCP 의 DB 도구. 순수.
 pub(crate) fn card_allowed(kind: PermKind, tool_name: &str, aynx_server: &str) -> bool {
     let db = tool_name.strip_prefix("mcp__").and_then(|r| r.strip_prefix(aynx_server)).and_then(|r| r.strip_prefix("__")).is_some_and(|t| {
         t.starts_with("db_") || t == "list_db_connections"
@@ -41,7 +36,6 @@ fn kind_word(k: PermKind) -> &'static str {
     }
 }
 
-/// 어댑터를 감싼다 — 승인 요청만 거르고 나머지는 그대로 넘긴다.
 pub(crate) struct ProducerGuard {
     inner: Box<dyn Adapter>,
     aynx: String,
@@ -110,7 +104,6 @@ impl Adapter for ProducerGuard {
         self.inner.encode_set_effort(effort)
     }
 
-    /// 사람의 결정 — 카드로 선 요청만(정책으로 거절한 것은 어댑터 표에도 없다 — `unknown-request`).
     fn encode_decision(&mut self, request_id: &str, decision: Decision, message: Option<&str>) -> Result<Step, &'static str> {
         if self.denied.contains(request_id) {
             return Err("unknown-request");
@@ -136,8 +129,6 @@ impl Adapter for ProducerGuard {
 mod tests {
     use super::*;
 
-    /// 시험 `producer_approval_allowlist`(설계 4-3) — 카드는 둘뿐(Claude `Read` · Aynx DB 도구) · 그 밖은 카드 없이 거절(Codex 명령 · 파일 ·
-    /// 모르는 MCP · Claude 의 그 밖 도구 · 다른 서버의 `db_` 이름) · 거절한 요청은 사람의 결정이 받지 못한다.
     #[test]
     fn producer_approval_allowlist() {
         let s = "aynx-sessions";
@@ -159,7 +150,6 @@ mod tests {
             assert!(!card_allowed(k, t, s), "{t}");
         }
 
-        // 진짜 Claude 어댑터를 감싸 — Bash 요청은 카드 없이 거절 답 + 알림, Read 요청은 카드.
         let o = crate::side_chat::claude::Opts {
             exe: "claude.exe",
             mode: crate::side_chat::event::Mode::Fresh,

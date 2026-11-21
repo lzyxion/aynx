@@ -1,5 +1,4 @@
-//! SSH 프로젝트 지침 — 열린 타일의 연결만 빌린다. 전역·볼트·새 접속·MCP 없음.
-//! 호스트마다 한 번 연결을 빌리고 경로별 지침 합집합을 SFTP 스냅숏으로 판정한다. 원격끼리는 async 직렬화.
+//! SSH 프로젝트 지침 — 열린 타일의 연결만 빌린다. 전역 · 볼트 · 새 접속 · MCP 없음.
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -19,14 +18,12 @@ const PROJECT_TIMEOUT: Duration = Duration::from_secs(20);
 const LIST_TIMEOUT: Duration = Duration::from_secs(5);
 static REMOTE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// 접속 표에서 가장 작은 대화형 id를 고른다. 핸들 없이도 시험할 수 있다(세션 서버의 op `ssh_find` 가 같은 판정을 쓴다).
+/// 세션 서버의 op `ssh_find` 가 같은 판정을 쓴다.
 pub(crate) fn tile_id<'a>(host: &str, sessions: impl Iterator<Item = (u32, &'a str, bool)>) -> Option<u32> {
     sessions.filter(|(_, alias, shell)| *shell && alias.eq_ignore_ascii_case(host))
         .map(|(id, _, _)| id).min()
 }
 
-/// 그 호스트의 열린 타일 연결 하나를 빌린다 — SSH 표는 세션 서버에 산다(③-3b2 · op `ssh_find`). exec 는 서버 op `ssh_exec`,
-/// SFTP 는 채널 터널로 간다.
 async fn borrowed(host: &str) -> Option<(u32, crate::ssh::ExecHandle)> {
     let id = crate::server::ssh_ops::find_tile(host).await?;
     Some((id, crate::ssh::ExecHandle::server(id)))
@@ -54,7 +51,7 @@ fn timed_out() -> String {
     tr!(ko: "원격 프로젝트 지침 작업이 20초 안에 끝나지 않았습니다 — 연결 상태를 확인하고 다시 미리 보기 하세요", en: "The remote project instruction task did not finish within 20 seconds — check the connection and preview again")
 }
 
-/// 파일 글자는 Debug에 싣지 않는다. 가짜 파일 시스템도 이 모양으로 계획을 시험한다.
+/// 파일 글자는 Debug 에 싣지 않는다.
 type Snapshot = ProjectSnapshot;
 
 fn plan_subpath_snapshot(projects: &[&Project], path: &str, home: &str, subpath: Option<&str>, body: Option<&str>, snapshot: Snapshot, dev: bool) -> Vec<FileChange> {
@@ -117,7 +114,6 @@ async fn snapshot(session: u32, sftp: &SftpSession, wt: &str, subpath: Option<&s
     Snapshot { directory, agents, claude, other_claude }
 }
 
-/// 새 파일은 서버 기본 권한으로 CREATE|EXCLUDE 임시 파일을 만들고 rename한다. 폴더 생성 없음.
 async fn create(session: u32, sftp: &SftpSession, target: &str, contents: &[u8]) -> Result<(), String> {
     let (dir, name) = target.rsplit_once('/').ok_or_else(folder_missing)?;
     let tmp = crate::sftp::join_remote(if dir.is_empty() { "/" } else { dir }, &crate::text_file::save_temp_name(name));
@@ -171,7 +167,6 @@ async fn apply_rows(session: u32, sftp: &SftpSession, rows: &mut [FileChange]) {
     }
 }
 
-/// 목록은 기존 git 명령·파싱을 빌린다. git 실패 시 프로젝트 하나, bare는 제외한다.
 fn worktree_paths(outcome: &crate::ssh::ExecOutcome, root: &str) -> Vec<String> {
     if outcome.exit_code != Some(0) || outcome.error.is_some() || outcome.timed_out || outcome.cancelled {
         return vec![root.to_owned()];
@@ -179,7 +174,6 @@ fn worktree_paths(outcome: &crate::ssh::ExecOutcome, root: &str) -> Vec<String> 
     crate::worktree::parse_porcelain(&outcome.stdout).into_iter().filter(|wt| !wt.bare).map(|wt| wt.path).collect()
 }
 
-/// 시간 초과 때 이미 시도한 쓰기의 기록을 보존한다.
 fn mark_timeout(rows: &mut [FileChange]) {
     for row in rows {
         if matches!(row.edit, Edit::Write(_) | Edit::Delete) {
@@ -194,7 +188,7 @@ async fn persist_rows(rows: &[FileChange]) -> Result<(), String> {
     blocking(move || written::persist(&rows, false)).await
 }
 
-/// 같은 별칭의 프로젝트는 한 연결 대여 안에서 처리한다. 첫 등록 순서를 보존한다.
+/// 첫 등록 순서를 보존한다.
 pub(super) fn host_groups(projects: &[Project]) -> Vec<Vec<&Project>> {
     let mut groups: Vec<Vec<&Project>> = Vec::new();
     let mut indices = HashMap::new();
@@ -209,7 +203,7 @@ pub(super) fn host_groups(projects: &[Project]) -> Vec<Vec<&Project>> {
     groups
 }
 
-/// 한 호스트의 목록들을 정규화된 절대 경로별로 모은다. 경로 대소문자는 보존한다.
+/// 경로 대소문자는 보존한다.
 fn group_worktrees<'a>(groups: &mut Vec<(String, Vec<&'a Project>)>, indices: &mut HashMap<String, usize>,
     project: &'a Project, home: &str, paths: Vec<String>) -> Result<(), String> {
     let paths = paths.into_iter().map(|path| under_home(home, &path)).collect::<Result<Vec<_>, _>>()?;
@@ -313,7 +307,7 @@ fn find_project<'a>(projects: &'a [Project], host: &str, repo: &str, home: &str)
     })
 }
 
-/// 새 워크트리 단일 반영은 찾은 프로젝트 하나의 지침만 쓴다. 받은 핸들로 SFTP를 열고 반드시 닫는다.
+/// 받은 핸들로 연 SFTP 는 반드시 닫는다.
 pub(crate) async fn apply_worktree(handle: &crate::ssh::SessionHandle, session: u32, host: &str, repo: &str, path: &str) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + PROJECT_TIMEOUT;
     let setup = async {

@@ -1,19 +1,8 @@
 /**
  * 설정 화면의 문구 — **한국어가 기준 사전이다.**
+ * 이 파일이 `Key` 타입의 뿌리다(`i18n/keys.ts`) — 영어 사전(`en/settings.ts`)에 칸이 하나라도 비거나 남으면 `npm run check` 가 잡는다.
  *
- * 이 파일이 `Key` 타입의 뿌리라(`i18n/keys.ts`), 여기 없는 키는 `t()` 에 넣을 수 없고
- * 영어 사전(`en/settings.ts`)에 칸이 하나라도 비거나 남으면 `npm run check` 가 잡는다.
- *
- * ## 키 이름
- *
- * `<섹션>.<사물>` 에 `.label`·`.help`·`.summary`·`.note`·`.option.<값>` 같은 꼬리를 단다.
- * 섹션 이름은 설정 화면 왼쪽 목록과 같다 (general · credentials · theme · terminal · keys ·
- * snippets · triggers · ai · automation). 옛 `shell`·`workspace`·`lock` 섹션은 손잡이가
- * 하나뿐이라 접혔고, 그 키들도 새 자리(`terminal.shell.*` · `general.reconnect.*` ·
- * `general.idle.*`)로 따라갔다 (docs/log/2026-09-17-settings-general.md). 반대로 볼트 묶음은
- * 일반에서 **나가** 자기 섹션을 받았다 — `general.vault.*` → `credentials.*`
- * (docs/log/2026-09-19-vault.md).
- *
+ * 키 이름: `<섹션>.<사물>` 에 `.label`·`.help`·`.summary`·`.note`·`.option.<값>` 같은 꼬리를 단다 · 섹션 이름은 설정 화면 왼쪽 목록과 같다(예외: 보안 = `credentials`).
  * ## 규칙 셋
  *
  * - **HTML 을 넣지 않는다.** `<strong>` 이 들어가던 문장은 마크업에 맞춰 키를 쪼갠다
@@ -24,7 +13,6 @@
  *   사용자에게 보여 주는 **예시 문법**이라 두 언어 모두에서 그대로 남는다.
  */
 export const settings = {
-  // 에이전트 지침 — 라이브러리 저장과 파일 반영은 별도.
   "nav.instructions": "지침",
   "instructions.list": "지침 목록",
   "instructions.import": "가져오기",
@@ -117,7 +105,7 @@ export const settings = {
   "instructions.unchanged.count": "변경 없음 {count}개",
   "instructions.block.empty": "새 블록이 없습니다.",
 
-  // ── 설정 화면의 셸 (SettingsModal · SectionNav · SettingRow · InfoNote) ─────
+  // ── 설정 화면의 셸 ─────
   "title": "설정",
   "nav.aria": "설정 분류",
   "nav.marked": "고칠 칸이 있음",
@@ -139,7 +127,6 @@ export const settings = {
     "파일의 값을 다시 읽습니다 — 이 창의 저장하지 않은 변경은 사라집니다.",
   "actions.cancel": "취소",
   "actions.save": "저장",
-  // 설정 화면 닫기 = [취소] — 미저장 변경이 있으면 먼저 묻는다(docs/log/2026-10-22-settings-close-asks-save.md).
   "close.ask.title": "저장하지 않은 변경",
   "close.ask.body": "저장하지 않은 변경이 있습니다. 저장할까요? [저장 안 함] 은 마지막으로 저장한 설정으로 되돌립니다.",
   "close.ask.save": "저장",
@@ -150,17 +137,9 @@ export const settings = {
   "row.note": "{label} 설명 자세히",
   "info.more": "자세히 보기",
 
-  // ── 일반 (앱 전체에 걸치는 값 — 언어 · 시작 동작 · 프라이버시) ─────────────
-  //
-  // 언어 **이름**(한국어 · English)은 사전에 없다: 어느 언어로 보든 자기 이름은 자기
-  // 글자로 적어야 하므로 `settings.svelte.ts` 의 `LANGUAGE_NAMES` 에 상수로 산다.
-  //
-  // `reconnect.*`·`forget.*` 는 옛 `workspace.*`, `idle.*` 는 옛 `lock.*` 이다
-  // (docs/log/2026-09-17-settings-general.md).
-  //
-  // ⓘ 설명(`note`)은 한두 문장만 둔다 — 긴 설명은 docs/user/settings.md 에 산다
-  // (docs/log/2026-09-28-settings-note-popover.md). `note` 가 없는 줄은 ⓘ 도 없다.
-  // 일반의 소제목 넷 — 화면 · 시작과 접속 · 파일 타일 · 세션 서버(`general.server.heading`)
+  // ── 일반 ─────────────
+  // 언어 이름(한국어 · English)은 사전에 없다 — 어느 언어로 보든 자기 글자로 적어야 해서 `settings.svelte.ts` 의 `LANGUAGE_NAMES` 에 산다.
+  // ⓘ 설명(`note`)은 한두 문장만 둔다 — 긴 설명은 docs/user/settings.md 에 산다. `note` 가 없는 줄은 ⓘ 도 없다.
   "general.display.heading": "화면",
   "general.startup.heading": "시작과 접속",
   "general.files.heading": "파일 타일",
@@ -178,12 +157,12 @@ export const settings = {
   "general.ui_font.summary": "터미널 밖의 글자 — 비우면 기본 글꼴",
   "general.ui_font.note": "CSS font-family 형식입니다. 예: ",
 
-  // 시작 시 SSH 자동 재접속 (옛 `workspace.*` — docs/log/2026-09-03-workspace-restore.md)
+  // 시작 시 SSH 자동 재접속 (docs/log/2026-09-03-workspace-restore.md)
   "general.reconnect.label": "시작 시 SSH 자동 재접속",
   "general.reconnect.summary": "지난번 SSH 타일을 시작하자마자 다시 붙입니다 — ",
   "general.reconnect.summary.term": "기본은 꺼짐",
   "general.reconnect.note": "여러 서버에 한꺼번에 붙으면 접속 제한·확인 창이 겹칠 수 있습니다.",
-  // 접속 이력 (docs/log/2026-09-23-host-history.md) — 지우기는 두 번 눌러 확정한다.
+  // 접속 이력 (docs/log/2026-09-23-host-history.md)
   "general.history.label": "접속 이력",
   "general.history.summary": "호스트별 마지막 접속·실패 시각을 이 PC 에만 저장합니다 (history.json).",
   "general.history.note": "비밀번호·키·명령은 담지 않습니다. 위임·빠른 접속은 적지 않습니다.",
@@ -207,11 +186,10 @@ export const settings = {
   "general.project_start.option.auto": "자동",
   "general.project_start.option.off": "끔",
 
-  // 프라이버시 — 무입력 자동 잠금 (옛 `lock.*`)
-  // 알림 섹션 (settings/NotificationsSection.svelte · docs/log/2026-09-27-discord-notify.md)
+  // 프라이버시 — 무입력 자동 잠금
+  // 알림 섹션 (docs/log/2026-09-27-discord-notify.md)
   "notifications.app.subhead": "앱 · OS",
-  // 메신저 알림 — 채널 카드(settings/MessengerChannel.svelte) + 함께 쓰는 규칙(settings/MessengerSettings.svelte)
-  // (docs/log/2026-09-27-discord-notify.md · docs/log/2026-09-28-messenger-channels.md "3단계")
+  // 메신저 알림 — 채널 카드 + 함께 쓰는 규칙 (docs/log/2026-09-28-messenger-channels.md)
   "messenger.heading": "메신저",
   "messenger.channels.subhead": "채널",
   "messenger.rules.subhead": "규칙",
@@ -226,7 +204,7 @@ export const settings = {
   "messenger.webhook.row": "웹훅",
   "messenger.webhook.registered": "등록됨",
   "messenger.webhook.disconnect.label": "웹훅 연결 해제",
-  // 봇 몸통(settings/MessengerBot.svelte) — Telegram · Discord 가 함께 쓰는 줄. 채널마다 다른 요령은 `messenger.<채널>.*`
+  // 봇 몸통 — Telegram · Discord 가 함께 쓰는 줄 · 채널마다 다른 요령은 `messenger.<채널>.*`
   "messenger.bot.token.label": "봇 토큰",
   "messenger.telegram.howto": "Telegram 에서 @BotFather 에게 /newbot 을 보내 받은 토큰입니다. 넣은 뒤에는 다시 보여 주지 않습니다.",
   "messenger.bot.pair.label": "계정 연결",
@@ -245,7 +223,7 @@ export const settings = {
   "messenger.bot.row": "봇",
   "messenger.bot.unbot.label": "봇 연결 해제",
   "messenger.telegram.unbot.note": "토큰과 연결된 계정을 함께 지웁니다.",
-  // 두 방식 채널(Discord · Slack) — 한 번에 한 방식(봇 = 알림 + 말하기 · 웹훅 = 알림만 — 2026-11-19 사용자 A안). `{channel}` = 채널 이름
+  // 두 방식 채널(Discord · Slack) — 한 번에 한 방식(봇 = 알림 + 말하기 · 웹훅 = 알림만) · `{channel}` = 채널 이름
   "messenger.via.label": "연결 방식",
   "messenger.via.note": "봇은 {channel} 에서 AI 타일에 말할 수 있습니다. 웹훅은 알림만 받습니다.",
   "messenger.via.bot": "봇",
@@ -318,7 +296,7 @@ export const settings = {
   "messenger.operation_pending.note": "AI 가 원격 명령 · DB 쓰기 승인을 요청하면 · 자동 승인된 것은 보내지 않음 · 승인은 앱(또는 원격 웹)에서만",
   "messenger.include_summary.label": "AI 설명 싣기",
   "messenger.include_summary.note": "끄면 앱 분석 한 줄과 대상 · 만료만 보냅니다",
-  // 무입력 자동 잠금 — 보안 섹션이 그린다(가림막이 곧 볼트 잠금 · 키 이름은 옛 `general.` 그대로)
+  // 무입력 자동 잠금 — 보안 섹션이 그린다(가림막이 곧 볼트 잠금 · 키 이름은 `general.` 그대로)
   "general.idle.label": "무입력 자동 잠금",
   "general.idle.summary": "입력이 없으면 화면을 가리고 볼트를 잠급니다 — ",
   "general.idle.summary.term": "기본은 꺼짐",
@@ -326,9 +304,9 @@ export const settings = {
   // 자동 잠금 슬라이더 — `0` 만 다른 말이고 나머지는 숫자를 끼운 한 문장이다
   "general.idle.off": "끄기",
   "general.idle.minutes": "{min}분",
-  // 세션 서버 (③-2 — src-tauri/src/server.rs) — 상태 한 줄 + [모든 세션 종료] · [다시 시작]. 로컬 세션은 서버에 산다(SSH 는 아직 앱 안).
+  // 세션 서버
   "general.server.heading": "세션 서버",
-  // 앱 업데이트(2026-11-12 — `settings/UpdatesRows.svelte` · 일반의 끝)
+  // 앱 업데이트
   "general.updates.heading": "업데이트",
   "general.updates.auto.label": "업데이트 자동 확인",
   "general.updates.auto.tip": "시작할 때와 6시간마다. 알리기만 합니다 — 고르기 전에는 아무것도 내려받거나 설치하지 않습니다. GitHub Releases 의 업데이트 목록만 읽고 이 PC 에 대해서는 아무것도 보내지 않습니다. 업데이트는 실행 전에 Aynx 서명 키로 확인합니다.",
@@ -341,7 +319,7 @@ export const settings = {
   "general.updates.skipped": "건너뛴 버전 {version}",
   "general.updates.skipped.tip": "이 버전은 다시 알리지 않습니다. 더 새 버전은 그대로 보입니다.",
   "general.updates.undo": "되돌리기",
-  // 설정 옮기기(2026-11-17 — 일반의 끝 소제목 · 모달 `dialogs/SettingsTransferDialog.svelte`)
+  // 설정 옮기기
   "general.transfer.heading": "설정 옮기기",
   "general.transfer.export.label": "설정 내보내기",
   "general.transfer.export.tip": "고른 범주를 .zip 으로 저장합니다. 볼트 · 토큰 · 웹훅 URL · 원격 기기는 빠집니다.",
@@ -438,7 +416,7 @@ export const settings = {
   "transfer.projects.repick": "폴더 고르기",
   "transfer.note.command": "명령 줄",
   "transfer.note.command.detail": "ProxyCommand 같은 명령 줄 — 접속할 때 이 PC 에서 실행됩니다.",
-  // 창을 모두 닫으면 트레이에 남기(③-4) — GUI 의 수명 한 칸
+  // 창을 모두 닫으면 트레이에 남기
   "general.tray.label": "창을 모두 닫으면 트레이에 남기",
   "general.tray.summary": "켜면 마지막 창을 닫아도 앱이 트레이에 남아 작업안 결과 알림·메신저가 계속 돕니다. 끄면 창을 닫을 때 앱이 끝나고, 세션은 어느 쪽이든 세션 서버에서 계속 삽니다.",
   "general.tray.note": "트레이 메뉴: 열기 · 떨어진 세션 · GUI 종료(세션은 계속 실행) · 모든 세션 종료. 사전 정책 자동 승인은 앱이 꺼져 있어도 세션 서버가 돌립니다.",
@@ -470,36 +448,21 @@ export const settings = {
   "general.server.restarting": "다시 시작하는 중…",
   "general.server.restart.failed": "세션 서버를 다시 시작하지 못했습니다: {error}",
 
-  // ── 보안 (볼트 한 묶음 · docs/log/2026-09-19-vault.md) ─────────────────────
-  //
-  // **자기 섹션이다** (2026-09-19 밤). ③에서는 일반의 마지막 소제목이라 키도
-  // `general.vault.*` 였는데, 내비 한 칸을 받으면서 `credentials.*` 로 옮겼다.
-  //
-  // 화면의 이름은 **보안 / Security** 다 (2026-09-19, 사용자 결정) — 키 앞가지와 섹션 id
-  // 는 `credentials` 로 **그대로 둔다**(id 는 안정된 값이라 라벨만 바꾼다 ·
-  // docs/conventions.md). 이 파일 머리말의 "섹션 이름 = 왼쪽 목록" 규칙에서 이 칸만
-  // 예외다.
-  //
-  // 섹션 이름(`보안`)은 내비가 그리므로 `heading` 키가 없다 — 본문 첫 줄에 같은 글자를
-  // 한 번 더 세우지 않는다 (`SettingsModal` 의 "어느 섹션에도 h3 제목이 없다").
-  //
-  // 이 묶음의 줄들은 **[저장]·[취소] 바깥**이다 — "복원 정보 지우기" 와 같은 부류로,
-  // 누르는 즉시 디스크가 바뀐다. 머리말이 그 사실을 먼저 말한다.
-  //
-  // 상태 곁말은 금고의 **등급을 정직하게** 적는 자리다 (모달의 `app.save.note.*` 와 같은
-  // 문장을 쓴다 — 같은 사실을 두 화면이 다르게 말하면 어느 쪽이 참인지 알 수 없다).
+  // ── 보안 (docs/log/2026-09-19-vault.md) ─────────────────────
+  // 키 앞가지와 섹션 id 는 `credentials` 그대로다(id 는 안정된 값 — 라벨만 "보안") · 내비가 이름을 그려 `heading` 키가 없다.
+  // 이 묶음의 줄들은 [저장]·[취소] 바깥이다 — 누르는 즉시 디스크가 바뀌고, 머리말이 그 사실을 먼저 말한다.
+  // 상태 곁말은 금고의 등급을 정직하게 적는다 — 모달의 `app.save.note.*` 와 같은 문장을 쓴다(같은 사실을 두 화면이 다르게 말하지 않게).
   "credentials.lead":
     "볼트·마스터 암호·저장된 자격증명 — 비밀번호와 키 암호구를 이 앱에 담아 두면 다음 접속부터 묻지 않습니다. 이 줄들은 [저장] 을 기다리지 않고 곧바로 적용됩니다.",
-  // 잠그는 시점은 **이 섹션의 값이 아니다** — 가운데의 링크가 그 칸으로 간다 (버튼이 문장
-  // 안에 서므로 키를 셋으로 쪼갠다 · docs/conventions.md 의 "문자열에 HTML 을 넣지 않는다").
-  // 잠금 = 가림막 하나(2026-10-21) — {combo} 는 `toggle-veil` 의 지금 조합(안 걸렸으면 "(없음)")
+  // 잠그는 시점은 이 섹션의 값이 아니다 — 문장 가운데 링크 단추가 서서 키를 셋으로 쪼갠다(문자열에 HTML 을 넣지 않는다).
+  // 잠금 = 가림막 하나 — {combo} 는 `toggle-veil` 의 지금 조합(안 걸렸으면 "(없음)")
   "credentials.lead.veil.before": "볼트는 가림막과 함께 잠기고, 가림막을 걷으면 열립니다 — 가림막은 {combo}, 무입력 자동 잠금 시간은 ",
   "credentials.lead.veil.link": "아래 무입력 자동 잠금",
   "credentials.lead.veil.after": "에서 정합니다.",
 
   "credentials.state.label": "상태",
   "credentials.state.absent": "볼트 없음",
-  // 상태 줄(2026-10-21 — 목업 안 A): 제목 · 한 마디 · 사실 칩
+  // 상태 줄: 제목 · 한 마디 · 사실 칩
   "credentials.state.open": "볼트 열림",
   "credentials.state.open.master": "가림막을 걸면 함께 잠깁니다",
   "credentials.chip.items": "항목 {n}",
@@ -510,9 +473,8 @@ export const settings = {
   "credentials.state.locked": "잠김",
   "credentials.state.note.absent":
     "아직 만들지 않았습니다. 접속 모달에서 [이 앱에 저장] 을 켜거나 여기서 마스터 암호를 설정하면 그때 만들어집니다.",
-  // 잠기는 규칙은 **하나**다 — 가림막이 걸리면 볼트도 잠근다 (마스터가 있든 없든).
-  // 무입력 자동 잠금이 꺼져 있으면 그 사실은 자동 잠금 칩(`chip.idleoff`)이 말한다: 그때 잠그는 길은
-  // 가림막 단축키뿐이라, 앱을 닫을 때까지 열려 있을 수 있다.
+  // 잠기는 규칙은 하나다 — 가림막이 걸리면 볼트도 잠근다(마스터가 있든 없든).
+  // 무입력 자동 잠금이 꺼져 있으면 잠그는 길은 가림막 단축키뿐이라 앱을 닫을 때까지 열려 있을 수 있다 — 그 사실은 `chip.idleoff` 가 말한다.
   "credentials.state.note.nomaster":
     "마스터 암호가 없어 이 PC 의 내 계정으로 로그인한 사람은 볼 수 있습니다 — 가림막이 걸리면 잠기고 Enter 로 엽니다.",
   "credentials.state.note.master":
@@ -538,7 +500,7 @@ export const settings = {
   "credentials.items.search.ph": "호스트 · 키 경로 · 연결 이름으로 찾기",
   "credentials.kind.host_password": "호스트 비밀번호",
 
-  // ── 요약 ↔ 하위 화면 (2026-10-21 — 저장된 항목 · AI 권한 호스트 · AI 권한 DB 연결은 [관리 ›] 이 여는 하위 화면이다) ──
+  // ── 요약 ↔ 하위 화면 ──
   "credentials.manage": "관리",
   "credentials.back": "보안",
   "credentials.back.aria": "보안으로 돌아가기",
@@ -551,7 +513,7 @@ export const settings = {
   "credentials.delegation.search.ph": "별칭으로 찾기",
   "credentials.dbai.search.ph": "연결 이름으로 찾기",
 
-  // ── 들어가기 관문 (2026-10-21 — 보안은 들어갈 때마다 잠금 해제를 거친다 · 통과는 화면 상태뿐) ──
+  // ── 들어가기 관문 — 보안은 들어갈 때마다 잠금 해제를 거친다(통과는 화면 상태뿐) ──
   "credentials.gate.title": "보안 설정이 잠겨 있습니다",
   "credentials.gate.locked": "볼트가 잠겨 있습니다. 잠금을 해제하면 저장된 항목과 AI 권한을 보고 고칠 수 있습니다.",
   "credentials.gate.master": "들어갈 때마다 마스터 암호를 다시 확인합니다. 볼트는 그대로 열려 있습니다.",
@@ -560,12 +522,7 @@ export const settings = {
   "credentials.gate.unlock": "잠금 해제…",
   "credentials.gate.open": "열기",
 
-  // ── AI 권한 호스트 (`~/.aynx/delegation.toml` — 2026-10-07 전엔 "AI 위임 호스트") ────────────────────────────────────
-  //
-  // 앞선 판에서는 이 목록이 **관제판**에 있었다(위임 탭). 관제판은 "지금 무엇이 돌고 있나"
-  // 를 보는 화면이고 위임은 **설정**이라, 아직 안 붙은 줄이 세션 목록의 바닥을 늘 차지했다.
-  // 자리를 여기로 옮긴다 — 볼트와 같은 층이다(둘 다 "앱이 사람 없이 쓰는 권한").
-  // docs/log/2026-09-21-fleet-delegation-ui.md.
+  // ── AI 권한 호스트 (`~/.aynx/delegation.toml`) ────────────────────────────────────
   "credentials.delegation.label": "AI 권한 호스트",
   "credentials.delegation.note":
     "AI 권한을 준 호스트입니다 — 사람이 연 타일과 헤드리스 세션에 함께 적용됩니다. 바꾸는 자리는 호스트 설정의 AI 칸과 타일 머리줄이고, 여기서는 무엇이 적혀 있는지 보고 지울 수 있습니다 (~/.aynx/delegation.toml).",
@@ -587,7 +544,7 @@ export const settings = {
   // 부팅 알림 — 고아 위임이 있으면 앱을 켤 때 한 번만 뜬다.
   "credentials.delegation.notice": "설정에 없는 AI 권한 {n}개 — 설정 › 보안에서 정리하세요",
   "credentials.delegation.notice.action": "설정 열기",
-  // DB 연결의 AI 권한(쿼리 타일 3a) — 위 호스트 표 아래 같은 층.
+  // DB 연결의 AI 권한 — 위 호스트 표 아래 같은 층
   "credentials.dbai.label": "AI 권한 DB 연결",
   "credentials.dbai.note":
     "delegation.toml 의 [[database]] — 연결마다 AI 가 볼 수 있는 단계(Schema · Read · Ask · YOLO)입니다. 바꾸는 곳은 DB 연결 폼의 AI 권한 칸이고, MCP 로는 바꿀 수 없습니다.",
@@ -645,10 +602,7 @@ export const settings = {
   "option.dynamic_mode.full": "전체",
 
   // ── 터미널 프리셋 이름 (`theme.ts` 의 `TERM_PRESETS[…].labelKey`) ───────────
-  //
-  // 이름은 전부 두 언어에서 같은 글자다 — 고유명(Tokyo Night · Gruvbox …)은 제품 이름이라
-  // 번역하지 않고, Aynx 두 벌도 같은 글자로 맞췄다(2026-10-24). 그래도 키를 두는 이유는 그
-  // 목록을 한 자리에서 보고, 번역되는 이름이 다시 생겨도 키 구조가 그대로이게 하기 위해서다.
+  // 이름은 전부 두 언어에서 같은 글자다(고유명은 번역하지 않는다) — 번역되는 이름이 다시 생겨도 키 구조가 그대로이게 키를 둔다.
   "preset.aynx-dark": "Aynx Dark",
   "preset.tokyo-night": "Tokyo Night",
   "preset.gruvbox-dark": "Gruvbox Dark",
@@ -657,11 +611,7 @@ export const settings = {
   "preset.gruvbox-light": "Gruvbox Light",
 
   // ── 단축키 액션 이름 (`keybindings.ts` 의 `ACTIONS[].id` 로 찾는다) ──────────
-  //
-  // **id 는 `settings.toml` 의 `[keybindings]` 키라 절대 바뀌지 않는다** — 여기서 바뀌는
-  // 것은 화면에 보이는 이름뿐이다. `ACTIONS[].label` 은 그대로 둔다: 명령 팔레트·치트시트
-  // (아직 단계 ② 앞이라 한국어다)가 같은 값을 읽고 있고, 그쪽은 다음 단계에서 옮긴다.
-  // 두 곳이 어긋나지 않는지는 `i18n.test.ts` 가 id 목록으로 확인한다.
+  // id 는 `settings.toml` 의 `[keybindings]` 키라 절대 바뀌지 않는다 — 바뀌는 것은 화면 이름뿐이다.
   "keybinding.jump-prev": "이전 명령으로 점프",
   "keybinding.jump-next": "다음 명령으로 점프",
   "keybinding.copy-output": "마지막 명령 출력 복사",
@@ -675,7 +625,7 @@ export const settings = {
   "keybinding.prev-tab": "이전 탭",
   "keybinding.split": "분할",
   "keybinding.open-settings": "설정 열기",
-  // 독의 칸 — 이름은 "독의 어느 칸" 으로 맞췄다 (docs/log/2026-09-25-unified-dock.md · id 는 2026-10-21 `-dock` 으로 통일)
+  // 독의 칸 — 이름은 "독의 어느 칸" 으로 맞췄다 (docs/log/2026-09-25-unified-dock.md)
   "keybinding.open-hosts-dock": "독: 호스트",
   "keybinding.open-projects-dock": "독: 프로젝트",
   "keybinding.open-db-dock": "독: DB",
@@ -720,8 +670,7 @@ export const settings = {
   "keybinding.files-places": "장소 패널 켜고 끄기",
   "keybinding.files-filter": "폴더에서 찾기",
   "keybinding.files-preview": "미리 보기 패널 켜고 끄기",
-  // `workspace-1`…`workspace-9` 는 코드가 만들어 내는 아홉 줄이라 **키 하나**로 받는다
-  // (`goToTabActions()` — id 는 그대로 `settings.toml` 의 키다).
+  // `workspace-1`…`workspace-9` 는 코드가 만드는 아홉 줄이라 키 하나로 받는다(id 는 그대로 `settings.toml` 의 키다).
   "keybinding.workspace": "탭 {n}로",
 
   // ── theme ──────────────────────────────────────────────────────
@@ -825,7 +774,7 @@ export const settings = {
   "theme.avatars.back": "테마",
   "theme.avatars.back.aria": "테마로 돌아가기",
   "theme.avatars.current": "지금 지정된 아바타",
-  // ── 아바타(docs/log/2026-10-31-avatars.md) — 설정 › 테마 › 아바타 하위 화면(`AvatarsSection`) · 자르기 모달 ─────────
+  // ── 아바타(docs/log/2026-10-31-avatars.md) ─────────
   "avatars.lead":
     "등록한 그림 하나를 앱 아이콘 · AI CLI · 오케스트레이션 아티스트 · 탭과 알림에서 함께 씁니다. 앱 아이콘만 둥근 사각, 나머지는 동그라미로 그립니다.",
   "avatars.show.heading": "표시",
@@ -913,8 +862,8 @@ export const settings = {
   "theme.tile.header.note": "숨김이면 타일 메뉴와 헤더 끌기(새 창으로 분리)를 못 씁니다.",
 
   // ── terminal ──────────────────────────────────────────────────────
-  // ── 터미널 (TerminalSection) ───────────────────────────────────────────────
-  // 기본 셸 — 이 섹션의 **첫 줄** (옛 `shell.*` — docs/log/2026-09-17-settings-general.md).
+  // ── 터미널 ───────────────────────────────────────────────
+  // 기본 셸 — 이 섹션의 첫 줄
   "terminal.shell.label": "기본 셸",
   "terminal.shell.missing.before": "저장된 셸(",
   "terminal.shell.missing.after": ")이 이 PC 에 없어 {shell} 을 씁니다",
@@ -927,7 +876,7 @@ export const settings = {
   "terminal.theme.summary": "터미널 안쪽의 팔레트입니다. 앱 테마와는 별개라 색이 달라도 정상입니다.",
   "terminal.theme.group.dark": "다크",
   "terminal.theme.group.light": "라이트",
-  // 사용자 터미널 테마 — 가져오기 · 관리 (dialogs/TermThemeDialog.svelte)
+  // 사용자 터미널 테마 — 가져오기 · 관리
   "terminal.theme.group.user": "내 테마",
   "terminal.theme.userMissing": "없는 테마 (Aynx 로 그림)",
   "terminal.import.open": "테마 가져오기…",
@@ -1049,7 +998,6 @@ export const settings = {
   "terminal.bell.note": "안 보는 탭이면 이름 옆에 고리가 남습니다.",
 
   // ── 세션 로그 폴더 (docs/log/2026-09-17-tile-menu-flyouts.md) ──────────────
-  // 타일 ⋯ 메뉴에서 내려온 줄이다 — 대상이 타일 하나가 아니라 앱 전역의 한 폴더다.
   "terminal.logs_folder.label": "세션 로그 폴더",
   "terminal.logs_folder.open": "폴더 열기",
   "terminal.logs_folder.pending": "경로를 읽는 중…",
@@ -1057,8 +1005,7 @@ export const settings = {
   "terminal.logs_folder.note": "로깅은 호스트마다 켭니다(호스트 편집 › 세션 로깅).",
 
   // ── keys ──────────────────────────────────────────────────────
-  // ── 단축키 (KeybindingsSection) ────────────────────────────────────────────
-  //
+  // ── 단축키 ────────────────────────────────────────────
   // 액션 **이름**은 여기 없다 — id 로 찾는 `keybinding.*` 가 이미 위에 있다.
   "keys.lead.p1": "조합 버튼을 누르고 원하는 키를 누르면 ",
   "keys.lead.term": "바로 적용됩니다.",
@@ -1076,7 +1023,7 @@ export const settings = {
   "keys.conflict.short": "겹침",
 
   // ── triggers ──────────────────────────────────────────────────────
-  // ── 트리거 (TriggersSection) ───────────────────────────────────────────────
+  // ── 트리거 ───────────────────────────────────────────────
   // 목록 한 줄
   "triggers.subhead": "트리거",
   "triggers.list.subhead": "내 트리거",
@@ -1090,7 +1037,7 @@ export const settings = {
   "triggers.kind.highlight": "하이라이트",
   "triggers.kind.highlight.title": "매치 구간에 색을 입힙니다\n새 출력부터 붙습니다.",
   "triggers.kind.link": "링크",
-  // 링크 스위치의 툴팁이 옛 각주(보여주기만 한다는 경계)를 함께 든다
+  // 링크 스위치의 툴팁이 보여주기만 한다는 경계 안내를 함께 든다
   "triggers.kind.link.title": "Ctrl+클릭하면 URL 을 엽니다\n주소의 $1 자리에 캡처가 URL 인코딩되어 들어가고, http · https · mailto 만 엽니다. 트리거는 보여주기만 합니다 — 매치해도 명령을 실행하거나 문자열을 보내지 않습니다.",
   "triggers.kind.tooltip": "툴팁",
   "triggers.kind.tooltip.title": "마우스를 올리면 설명이 뜹니다",
@@ -1115,13 +1062,13 @@ export const settings = {
   "triggers.error.item": "정규식이 잘못되어 이 트리거는 무시됩니다 — {message}",
   "triggers.error.draft": "정규식이 잘못되었습니다 — {message}",
   "triggers.error.full": "트리거는 최대 {max}개까지 둘 수 있습니다.",
-  // 요약 — 내 트리거 목록 + [트리거 추가 ›]. 줄을 누르면(스위치 빼고) 편집 하위 화면
+  // 요약 — 내 트리거 목록 + [트리거 추가 ›]
   "triggers.list.aria": "트리거 목록",
   "triggers.add.open": "트리거 추가",
   "triggers.row.edit": "편집",
   "triggers.row.edit.aria": "{pattern} 편집",
   "triggers.row.inert": "하는 일 없음",
-  // 추가 · 편집 하위 화면 (`TriggerEditor`) — 뒤로 가기 글자는 요약의 이름
+  // 추가 · 편집 하위 화면 — 뒤로 가기 글자는 요약의 이름
   "triggers.back": "트리거",
   "triggers.back.aria": "트리거로 돌아가기",
   "triggers.title.add": "트리거 추가",
@@ -1138,7 +1085,7 @@ export const settings = {
   "triggers.commit.add": "추가",
   "triggers.commit.save": "저장",
   "triggers.delete": "삭제",
-  // 시험 칸 — 결과는 터미널과 같은 엔진(`$lib/triggers`)으로 계산한다
+  // 시험 칸
   "triggers.test.head": "시험",
   "triggers.test.aria": "시험할 출력 줄",
   "triggers.test.placeholder": "출력 줄을 붙여 넣으세요 (여러 줄 가능)",
@@ -1147,8 +1094,7 @@ export const settings = {
   "triggers.test.invalid": "패턴을 고치면 결과가 보입니다",
   "triggers.test.truncated": "앞 {max}줄만 봅니다",
   "triggers.test.blocked": "열지 않음 — http · https · mailto 만 엽니다",
-  // 예시 카드 (`TriggerEditor` 의 "예시에서 시작"). 이름·설명은 화면 글자뿐이고, 채워지는
-  // 트리거 값(툴팁 문구 등)은 `example-triggers.ts` 의 영어 리터럴 그대로다.
+  // 예시 카드 — 이름·설명은 화면 글자뿐이고, 채워지는 트리거 값(툴팁 문구 등)은 `example-triggers.ts` 의 영어 리터럴 그대로다.
   "triggers.examples.added": "추가됨",
   "triggers.examples.added.title": "같은 패턴이 이미 목록에 있습니다 — 그래도 고를 수 있습니다",
   "triggers.examples.fatal.name": "치명 오류 (FATAL·PANIC·CRITICAL)",
@@ -1179,7 +1125,7 @@ export const settings = {
   "triggers.examples.ipv4.desc": "글자색 — 가라앉은 청회색 (정보용)",
   "triggers.examples.jira.name": "Jira 이슈 키 (ABC-123)",
   "triggers.examples.jira.desc": "링크 + 툴팁 — 주소 jira.example.com 을 고쳐 쓰는 틀",
-  // ── 템플릿 (TemplatesSection — 2026-11-17) ─────────────────────────────────
+  // ── 템플릿 ─────────────────────────────────
   "templates.subhead": "템플릿",
   "templates.list.subhead": "내 템플릿",
   "templates.summary": "탭 하나를 여는 법(배치와 타일마다 연결 대상)을 이름 붙여 저장해 둔 것입니다.",
@@ -1200,12 +1146,8 @@ export const settings = {
   "templates.form.save": "저장",
   "templates.form.cancel": "취소",
   "templates.delete": "삭제",
-  // ── 스니펫 (SnippetsSection) ───────────────────────────────────────────────
-  //
-  // `{{이름}}`·`{{서비스}}` 는 스니펫 파서(`snippets.ts`)가 읽는 표식이라 두 겹 중괄호가
-  // 그대로 남는다 — 영어에서는 안쪽 낱말만 바뀐다 (`{{name}}`·`{{service}}`).
-  // 기본값·설명 문법 — `{{이름}}` 은 다른 코드가 읽는 표식이라 두 언어에서 **같은 모양**이고,
-  // 안쪽 낱말만 그 언어로 적는다 (docs/conventions.md 의 "화면 문구는 `t()` 를 거친다").
+  // ── 스니펫 ───────────────────────────────────────────────
+  // `{{이름}}`·`{{서비스}}` 는 스니펫 파서(`snippets.ts`)가 읽는 표식이라 두 언어에서 같은 모양이다 — 안쪽 낱말만 그 언어로 적는다.
   "snippets.note.syntax.example": "{{이름=기본값|설명}}",
   "snippets.note.syntax.after": " 을 적으면 넣을 때 값을 묻습니다.",
   // 요약 (목록 한 줄)
@@ -1224,7 +1166,7 @@ export const settings = {
   "snippets.insert": "삽입",
   "snippets.insert.title": "이 스니펫을 포커스된 터미널에 넣습니다",
   "snippets.insert.aria": "{name} 삽입",
-  // 추가 · 편집 하위 화면 (SnippetEditor)
+  // 추가 · 편집 하위 화면
   "snippets.back": "스니펫",
   "snippets.back.aria": "스니펫으로 돌아가기",
   "snippets.title.add": "스니펫 추가",
@@ -1247,7 +1189,7 @@ export const settings = {
   "snippets.delete": "삭제",
   "snippets.delete.aria": "{name} 삭제",
   "snippets.error.full": "스니펫은 최대 {max}개까지 둘 수 있습니다.",
-  // 미리보기 (SnippetPreview — 트리거의 시험 칸 자리)
+  // 미리보기
   "snippets.preview.head": "미리보기",
   "snippets.preview.empty": "명령을 적으면 터미널에 나갈 글자가 여기 보입니다.",
   "snippets.placeholders.label": "넣을 때 물어볼 칸 — 시험 삼아 값을 적어 보세요:",
@@ -1255,17 +1197,12 @@ export const settings = {
   "snippets.preview.value.aria": "{name} 칸에 시험 삼아 넣을 값",
   "snippets.preview.enter": "넣은 뒤 Enter 를 붙여 곧바로 실행합니다.",
   "snippets.preview.no_enter": "명령줄에 놓기만 합니다 — Enter 는 직접 칩니다.",
-  // 옛 각주 — 지금은 "명령" 칸 이름의 툴팁 둘째 줄이다
+  // "명령" 칸 이름의 툴팁 둘째 줄
   "snippets.footnote.strong": "앱이 문자열을 지어내지 않습니다.",
   "snippets.footnote.body": " 나가는 것은 여기 적어 둔 글자와, 넣을 때 사람이 채운 자리표시자뿐입니다 — AI 가 쓴 명령이 이 길로 들어올 자리는 없습니다.",
 
   // ── ai ──────────────────────────────────────────────────────
-  // ── AI 에이전트 (McpSection) ────────────────────────────────────────────────
-  //
-  // 섹션 id·키 접두는 옛 이름 그대로 `ai` 다 (docs/log/2026-09-27-ai-agents-settings.md) — 공통 ·
-  // 에이전트마다 한 블록 · MCP 서버(고급) 세 묶음으로 그린다.
-  //
-  // 안내 중 `<strong>` 에 맞춰 조각으로 나뉘었던 것(`.before` / `.term` / `.after`)은 툴팁에서 평문으로 잇는다.
+  // ── AI 에이전트 — 섹션 id·키 접두는 `ai` 다 ──
   "ai.server.label": "서버 상태",
   "ai.checking": "확인 중…",
   "ai.server.running": "실행 중",
@@ -1417,8 +1354,7 @@ export const settings = {
   "ai.start_dir.note.before": "포커스된 로컬 터미널의 ",
   "ai.start_dir.note.term": "현재 폴더",
   "ai.start_dir.note.after": "가 있으면 그것이 우선이고, 이 값은 그게 없을 때(시작 화면·SSH 타일에서 열 때) 쓰입니다. 없는 폴더면 홈에서 열립니다.",
-  // 에이전트 훅 — 에이전트 상태 점의 정확한 신호 (docs/log/2026-09-24-agent-hook-signals.md ·
-  // docs/log/2026-09-26-codex-hooks.md). 줄은 Rust 의 에이전트 표로 그린다 — `{agent}` = 제품 이름.
+  // 에이전트 훅 (docs/log/2026-09-24-agent-hook-signals.md) — 줄은 Rust 의 에이전트 표로 그린다, `{agent}` = 제품 이름.
   "ai.hooks.label": "에이전트 훅",
   "ai.hooks.partial.tip": "이전 버전의 훅이 남아 있어 현재 형식으로 갱신합니다",
   "ai.hooks.update": "업데이트…",
@@ -1462,9 +1398,9 @@ export const settings = {
   "ai.args.invalid": "적용되지 않습니다 — {reason}",
   "ai.args.danger": "권한 확인을 건너뛰는 옵션입니다 — Aynx 가 띄우는 모든 {agent} 에 적용됩니다",
   "ai.args.note": "Aynx 가 띄우는 에이전트(AI 타일 · 셸 메뉴 · 프로젝트 시작 화면 · 재개 · 새 대화로 계속)에만 붙습니다 — 셸에 직접 친 명령은 친 그대로입니다. 공백으로 나누고 따옴표로 묶습니다. 셸 문법(; & | < > ` $)과 변수는 쓰지 않으며, 각 인자는 타일의 셸에 맞게 다시 인용됩니다.",
-  // ── 자동 승인 (AutomationSection) ──────────────────────────────────────────
+  // ── 자동 승인 ──────────────────────────────────────────
   // 늘 보이는 위험 경고 한 줄 — `middle` 과 `middle2` 사이에 `<code>&&</code>` 가 들어간다.
-  // 파이프(|) 허용(10-22 옵트인) — 설정 › 자동 승인의 한 줄
+  // 파이프(|) 허용
   "automation.pipes.label": "파이프(|) 허용",
   "automation.pipes.note": "단계마다 모두 허용 범위일 때만 · 리디렉트(> <)·치환($ `)·서브셸은 여전히 사람 승인",
   "automation.warn.before": "주의가 필요한 명령(지우기 · 덮어쓰기 · 권한 변경 등)과 파이프·리다이렉트·치환이 섞인 명령은 ",
@@ -1477,15 +1413,14 @@ export const settings = {
   "automation.approve.enabled": "활성화",
   "automation.approve.note": "AI 가 MCP 로 올린 작업안 가운데 아래 조건(켠 묶음 · 허용 패턴 · 대상 수 한도)을 모두 만족한 것만 사람이 누르지 않아도 실행됩니다. 조건 밖이면 지금처럼 승인 대기로 남습니다. AI 는 자기 작업안을 스스로 승인할 수 없습니다.",
   "automation.approve.summary": "켜면 아래 조건을 모두 만족한 작업안을 앱이 대신 승인합니다",
-  // 문장 안의 '묶음' — 아래 목록 제목(`automation.bundles.label`)과 함께 쓰지 않는다:
-  // 한국어는 같은 글자지만 영어는 제목이 복수(Bundles), 문장 안은 단수(bundle)다.
+  // 문장 안의 '묶음' — 목록 제목(`automation.bundles.label`)과 키를 함께 쓰지 않는다(영어는 제목이 복수, 문장 안은 단수다).
   "automation.bundle.term": "묶음",
   "automation.bundles.label": "묶음",
   "automation.bundles.tip": "이름으로 위임 범위를 정합니다 — 켜면 그 묶음의 규칙이 허용 목록에 더해집니다. 묶음은 조회만 위임합니다 — 명령마다 허용한 하위 명령·인자만 맞고, 바꾸는 꼴(ip link set · git branch -D · date -s 등)은 사람 승인입니다. [편집]에서 묶음과 그 안의 명령을 하나씩 켜고 끄고, 명령을 넣어 판정을 시험합니다.",
   // 요약 줄 — "10개 중 3개 켜짐 · 규칙 41줄"
   "automation.bundles.summary": "{total}개 중 {on}개 켜짐 · 규칙 {rules}줄",
   "automation.bundles.adjust": "편집",
-  // 묶음 편집 하위 화면 — 뒤로 가기(‹ 자동 승인) · 제목 · 소제목 넷 · 데이터 읽기 주의
+  // 묶음 편집 하위 화면
   "automation.bundles.back": "자동 승인",
   "automation.bundles.back.aria": "자동 승인으로 돌아가기",
   "automation.bundles.title": "묶음 편집",
@@ -1498,9 +1433,8 @@ export const settings = {
   "automation.bundles.toggle.aria": "{name} 사용",
   "automation.bundles.expand.aria": "{name} 명령 보기",
   "automation.bundles.command.aria": "{name} — {cmd} 사용",
-  // 묶음의 이름·짧은 설명. 표 자체(`automation-presets.ts`)는 Rust 쌍둥이와 **글자까지 잠긴**
-  // 드리프트 테스트를 이고 있어 손대지 않는다 — 화면만 id 로 이 칸을 찾아 읽고, 모르는
-  // id 면 표의 한국어 문자열로 떨어진다 (docs/log/2026-09-17-i18n.md).
+  // 묶음의 이름·짧은 설명 — 표(`automation-presets.ts`)는 Rust 쌍둥이와 글자까지 잠긴 드리프트 테스트를 이고 있어 손대지 않는다.
+  // 화면만 id 로 이 칸을 찾아 읽고, 모르는 id 면 표의 한국어 문자열로 떨어진다 (docs/log/2026-09-17-i18n.md).
   "automation.bundle.system.name": "시스템 상태",
   "automation.bundle.system.description": "디스크·메모리·CPU·프로세스·로그인 사용자·시각 (시각·이름 바꾸기 제외)",
   "automation.bundle.services.name": "서비스 점검",
@@ -1560,7 +1494,7 @@ export const settings = {
   "automation.test.reason.bundle_disabled": "묶음 ‘{bundle}’을 켜면 자동 승인",
   "automation.test.reason.sub_missing": "{exec} {sub} 는 묶음에 없습니다",
   "automation.test.reason.no_rule": "맞는 규칙 없음",
-  // 검토 카드의 "자동 승인 안 됨" 칩만 쓰는 둘(10-22 — 시도 전에 걸러지는 이유 · `operations/auto.rs` `why_not_auto`)
+  // 검토 카드의 "자동 승인 안 됨" 칩만 쓰는 둘 — 시도 전에 걸러지는 이유(`operations/auto.rs` `why_not_auto`)
   "automation.test.reason.auto_off": "자동 승인이 꺼져 있습니다(설정 › 자동 승인)",
   "automation.test.reason.max_targets": "대상 {n}곳 — 자동 승인 상한 {max}곳을 넘습니다",
   "automation.test.reason.constraint.bundle": "묶음 ‘{bundle}’ · {key}: {detail}",
@@ -1581,7 +1515,7 @@ export const settings = {
   "automation.allow.empty.bundles.before": "허용 패턴은 없지만 위의 ",
   "automation.allow.empty.bundles.after": "이 켜져 있어, 그 묶음의 규칙에 맞는 명령은 자동 승인 후보가 됩니다.",
   "automation.allow.empty.none": "허용 패턴도 묶음도 없어 아무 명령도 자동 승인되지 않습니다 — 자동 승인을 쓰려면 묶음을 켜거나 패턴을 하나 이상 추가하세요.",
-  // 허용 패턴 편집 하위 화면 — 목록(규칙/간단) · [+ 규칙] [+ 간단 패턴] · 폼
+  // 허용 패턴 편집 하위 화면
   "automation.allow.title": "허용 패턴 편집",
   "automation.allow.list": "규칙 목록",
   "automation.allow.add.rule": "규칙",
@@ -1668,11 +1602,10 @@ export const settings = {
   "automation.notifyResults.note": "창이 앞에 없을 때 작업안 실행이 끝나면 결과를 OS 알림으로 알립니다. 토스트와 독 알림 칸 기록은 이 칸과 무관하게 늘 남습니다.",
 
   // ── extra ──────────────────────────────────────────────────────
-  // 프리셋 목록 맨 아래 두 칸 (`DYNAMIC_DARK_TERM_KEY` · `DYNAMIC_LIGHT_TERM_KEY` — 앱 색 테마·사용자 색·월페이퍼에서 생성한
-  // 팔레트를 밝기 고정으로. 앱 밝기를 바꿔도 그대로)
+  // 프리셋 목록 맨 아래 두 칸 (`DYNAMIC_DARK_TERM_KEY` · `DYNAMIC_LIGHT_TERM_KEY`)
   "preset.dynamicDark": "색 테마에 맞춤 · 다크",
   "preset.dynamicLight": "색 테마에 맞춤 · 라이트",
-  // 아무 조합도 안 걸린 액션 (`keybindings.ts` 의 `displayCombo` 가 내던 "(없음)")
+  // 아무 조합도 안 걸린 액션
   "keys.unbound": "(없음)",
   // 터미널 미리보기 상자의 가짜 출력 — 색 대비를 보여 주는 장식이지만 글자는 읽힌다
   "terminal.preview.modified": "수정됨:",
@@ -1689,7 +1622,7 @@ export const settings = {
   "keybinding.switch-workspace": "워크스페이스 전환",
   "keybinding.next-workspace": "다음 워크스페이스",
   "keybinding.prev-workspace": "이전 워크스페이스",
-  // 원격 접속(R1a-5 — 원격 웹 클라이언트)
+  // 원격 접속
   "nav.remote": "원격 접속",
   "remote.lead": "다른 PC·폰 브라우저에서 Tailscale(tailnet) 너머로 이 앱을 엽니다. 앱은 127.0.0.1 에서만 연결을 받고, tailnet 에 내보내는 것은 이 PC 의 tailscale serve 입니다.",
   "remote.connect.label": "Tailscale 연결",

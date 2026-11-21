@@ -1,27 +1,7 @@
-// Aynx 원격 창 폴리필(R1a-3 — 설계 14.3) — 관문이 앱 셸(index.html)의 **첫 스크립트**로 끼운다(`/remote/polyfill.js`).
-//
-// 같은 앱 번들이 브라우저에서 돌도록 `window.__TAURI_INTERNALS__` 를 세운다 — `@tauri-apps/api/{core,event,window,webview,app,path}` 와
-// 플러그인 JS 는 이 표면만 쓰므로 **호출부를 고치지 않고** 관문의 ws(`/remote/ws`)로 간다. `window.__AYNX_REMOTE__ = true` 가
-// 프런트의 `isRemote`(`src/lib/ipc.ts`)다.
-//
-// - 창 라벨·부팅 표는 관문이 같은 HTML 의 `<meta name="aynx-remote">` 에 싣는다(동기로 읽힌다 — 앱 모듈이 뜨기 전에
-//   `getCurrentWindow().label` 이 맞아야 한다). invoke 는 ws 의 `hello` 가 오기 전까지 줄에 쌓였다가 그 뒤 나간다.
-// - 프레임 모양은 `src-tauri/src/remote/frames.rs` 머리말. Channel 은 이진 프레임 `[1][세대][콜백][순번][종류][본문]` — 세대가
-//   다르면 버린다. 순서는 `@tauri-apps/api` 의 `Channel` 이 순번으로 다시 세운다.
-// - 연결이 끊기면 **페이지를 다시 읽는다** — 라벨이 페이지 수명과 같다(새 연결 = 새 숨은 창). 세션이 끝났으면 관문이
-//   잠금 해제 쪽을 낸다.
-// - 플러그인 명령은 여기서 가른다(아래 `PLUGINS` 표): 브라우저로 대신하거나 · 무해한 흉내 · "원격에서 지원하지 않음" 거절 ·
-//   그대로 관문(`event` 의 emit · `path` — `capabilities/remote.json` 이 연다). 표에 없는 `plugin:*` 는 거절하고 콘솔에 남긴다.
-// - 앱 명령의 문은 관문(`remote/deny.rs` — 메인 PC 전용 · 재확인 · 미지원 · 허용)이다. 여기서 하는 것은 둘뿐이다:
-//   (1) **재확인**(R1a-4): 부팅 표의 `reauth` 명령은 보내기 전에 `POST /remote/reauth {cmd, password?}` 로 1회용 표를 받아 프레임의
-//   `reauth` 에 싣는다. 마스터가 없으면 관문이 곧바로 표를 주고, 있으면 암호 칸이 뜬다. R4 부터 칸·확인은 **앱 모달**
-//   (`window.__AYNX_REMOTE_UI__` — 앱이 부팅에서 건다 · 마스터가 없으면 확인 단추만)이고, 앱이 뜨기 전에만 이 파일의 작은 칸.
-//   **암호는 그 HTTP 몸으로만 간다** — ws 프레임에 싣지 않는다. 앱 프런트는 `window.__AYNX_REMOTE_REAUTH__(이름)` 으로 같은
-//   확인을 부를 수 있다(로컬 타일 "AI 읽기 허용" 켜기 — `ipc.ts` 의 `confirmRemoteMaster`). 묻기(`plugin:dialog|message`)도
-//   손잡이가 있으면 앱 모달로 간다(R4 — 브라우저 `confirm` 대신).
-//   (2) `NOOP` 명령(관문이 "원격 미지원" 으로 거절하는 것 중 브라우저에선 "아무것도 안 함" 이 맞는 것)은 보내지 않고 `null`.
-//
-// 앱 모듈을 부르지 않는 잎이다(빌드를 거치지 않는 그대로의 파일 — CSP `script-src 'self'`).
+// Aynx 원격 창 폴리필 — 관문이 앱 셸(index.html)의 **첫 스크립트**로 끼워 `window.__TAURI_INTERNALS__` 를 관문 ws 로 세운다.
+// 빌드를 거치지 않는 그대로의 파일이다(CSP `script-src 'self'` — 인라인 스크립트·스타일을 쓰지 않는다). 프레임 모양은 `remote/frames.rs` 와 맞춘다.
+// 앱 명령의 문은 관문 `remote/deny.rs` 하나다 — 여기서는 재확인 표 받기와 `NOOP` 만 한다.
+// 재확인 암호는 `POST /remote/reauth` 몸으로만 간다 — ws 프레임에 싣지 않는다.
 "use strict";
 (() => {
   const meta = document.querySelector('meta[name="aynx-remote"]');
@@ -32,22 +12,19 @@
   } catch {
     return;
   }
-  meta.remove(); // 부팅 표는 한 번 쓰면 끝 — DOM 에 남기지 않는다
+  meta.remove(); // 부팅 표는 DOM 에 남기지 않는다
   const LABEL = String(boot.label || "");
   const GEN = Number(boot.gen) >>> 0;
-  // 이 파일 자신의 문구 언어 — 앱 모듈이 뜨기 전에는 관문이 실은 메인 PC 의 앱 언어(`boot.lang`), 뜬 뒤에는 앱이 적는
-  // `<html lang>`(`i18n.svelte.ts` 의 `setLocale` — 원격에서 언어를 바꿔도 따라간다). 셸의 처음 `lang` 은 고정값이라 보지 않는다.
+  // 셸의 처음 `<html lang>` 은 고정값이라 보지 않는다 — 앱이 `setLocale` 로 적은 뒤의 값만 따른다.
   let lang = boot.lang === "en" ? "en" : "ko";
   new MutationObserver(() => {
     const l = document.documentElement.lang;
     if (l === "en" || l === "ko") lang = l;
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
-  /** `[한국어, English]` 둘 중 지금 언어 쪽 */
   const L = (pair) => (lang === "en" ? pair[1] : pair[0]);
   const UNSUPPORTED = ["원격에서는 할 수 없습니다", "Not available in the remote client"];
   const CLOSED = ["원격 연결이 끊겼습니다", "The remote connection was closed"];
   const CANCELLED = ["마스터 암호 확인을 취소했습니다", "Master password check cancelled"];
-  // 거절 문구의 사람 말 이름(R1a-5) — 명령 이름 대신.
   const PLUGIN_LABEL = {
     "plugin:opener|open_path": ["메인 PC 에서 파일 열기", "Open a file on the main PC"],
     "plugin:opener|reveal_item_in_dir": ["탐색기에서 보기", "Show in File Explorer"],
@@ -55,7 +32,6 @@
     "plugin:dialog|save": ["저장 위치 고르기", "Choose where to save"],
     "plugin:drag|start_drag": ["탐색기로 끌어내기", "Drag out to File Explorer"],
   };
-  // 재확인 칸에 보일 사람 말(R1a-5) — 표에 없으면 받은 글자 그대로(`confirmRemoteMaster(what)` 의 화면 이름 포함).
   const REAUTH_LABEL = {
     approve_operation: ["작업안 승인", "Approve a task plan"],
     modify_operation_targets: ["작업안 대상 고치기", "Change task plan targets"],
@@ -66,13 +42,11 @@
     orchestration_delete_archived: ["보관한 앨범 영구 삭제", "Permanently delete an archived album"],
   };
   const unsupportedFor = (cmd) => `${L(UNSUPPORTED)} — ${PLUGIN_LABEL[cmd] ? L(PLUGIN_LABEL[cmd]) : cmd}`;
-  // 재확인 명령(관문 `deny.rs` 의 REAUTH — 부팅 표로 온다).
   const REAUTH = new Set(Array.isArray(boot.reauth) ? boot.reauth.map(String) : []);
-  // 관문이 "원격 미지원" 으로 거절하는 것 중 브라우저에서 "아무것도 안 함" 이 맞는 것(창 조작 흉내와 같은 결) — 보내지 않고 null.
   // 이름은 모두 `deny.rs` 의 UNSUPPORTED 여야 한다(시험 `polyfill_noops_are_unsupported`).
   const NOOP = new Set(["set_app_icon", "focus_window", "take_tray_intent"]);
 
-  // ── 콜백 표 (transformCallback) ──
+  // ── 콜백 표 ──
   const callbacks = new Map();
   let nextCallback = 1;
   function transformCallback(callback, once = false) {
@@ -90,7 +64,6 @@
     const cb = callbacks.get(id);
     if (cb) cb(data);
   }
-  // listen 이 돌려준 eventId → 그 핸들러 콜백(unregisterListener 가 걷는다).
   const listenerCallbacks = new Map();
 
   // ── ws ──
@@ -182,7 +155,7 @@
     }
   }
 
-  // `__TAURI_TO_IPC_KEY__` 를 가진 값(Channel 등)은 그 직렬화로 — tauri 의 processIpcMessage 와 같은 규칙.
+  // tauri 의 processIpcMessage 와 같은 규칙.
   function replacer(_key, value) {
     if (value && typeof value === "object" && typeof value.__TAURI_TO_IPC_KEY__ === "function") {
       return value.__TAURI_TO_IPC_KEY__();
@@ -228,8 +201,7 @@
     return call((id) => `{"t":"invoke","id":${id},"cmd":${JSON.stringify(cmd)},"args":${json},"headers":${JSON.stringify(headersObject(options))}${extra}}`);
   }
 
-  // ── 재확인(R1a-4) ──
-  // 한 번에 하나 — 칸이 떠 있는 동안 온 다른 재확인은 그 뒤에 선다.
+  // ── 재확인 ──
   let reauthChain = Promise.resolve();
 
   async function postReauth(body) {
@@ -261,7 +233,7 @@
     return L(["마스터 암호를 확인하지 못했습니다", "Couldn't check the master password"]);
   }
 
-  // 작은 암호 칸 — 인라인 스크립트·스타일 없이(DOM + CSSOM). 앱의 단축키가 가로채지 않게 키 이벤트는 여기서 멈춘다.
+  // 앱이 뜨기 전에만 쓰는 암호 칸. 앱의 단축키가 가로채지 않게 키 이벤트는 여기서 멈춘다.
   function askMaster(cmd) {
     return new Promise((resolve, reject) => {
       const veil = document.createElement("div");
@@ -340,18 +312,16 @@
     });
   }
 
-  // 앱이 건 모달 손잡이(R4 — `src/lib/app/remote-dialog.svelte.ts`). 앱이 뜨기 전에는 없다 → 이 파일의 칸·네이티브 대화.
+  // 앱이 건 모달 손잡이(`src/lib/app/remote-dialog.svelte.ts`) — 앱이 뜨기 전에는 없다.
   function appUi(name) {
     const ui = window.__AYNX_REMOTE_UI__;
     return ui && typeof ui[name] === "function" ? ui : null;
   }
 
-  // 마스터 없음의 표를 받은 뒤 사람이 확인하기까지 이보다 오래 걸렸으면 표를 새로 받는다(표 60초 — `auth.rs` REAUTH_TTL).
+  // 표 수명(`auth.rs` REAUTH_TTL 60초)보다 짧아야 한다 — 확인이 이보다 오래 걸렸으면 표를 새로 받는다.
   const REAUTH_FRESH_MS = 45000;
 
-  // 이 명령 한 번의 재확인 표. 앱 모달이 있으면(R4) 마스터가 없어도 **확인 단추 한 번**을 받는다(그 사실을 모달이 밝힌다) —
-  // 앱이 뜨기 전이면 예전처럼 칸 없이 곧바로. 마스터가 있으면 앱 모달의 암호 칸(없으면 이 파일의 칸) — 암호는 여기서
-  // `POST /remote/reauth` 몸으로만 간다(앱 모달은 `submit` 을 부를 뿐 암호를 쥐고 있지 않는다).
+  // 앱 모달은 `submit` 을 부를 뿐 암호를 쥐지 않는다.
   function reauthTicket(cmd) {
     const run = async () => {
       const started = Date.now();
@@ -382,7 +352,7 @@
   const resolved = (v) => () => Promise.resolve(v);
 
   function dialogMessage(a) {
-    // 앱 모달(R4) — 단추·결과 글자는 앱이 같은 규칙으로 고른다(`src/lib/remote-dialog.ts` 의 `dialogChoices`).
+    // 아래 단추·결과 글자 규칙은 `src/lib/remote-dialog.ts` 의 `dialogChoices` 와 같아야 한다.
     const ui = appUi("message");
     if (ui) {
       return Promise.resolve(ui.message({ message: a && a.message, title: a && a.title, kind: a && a.kind, buttons: a && a.buttons }));
@@ -407,7 +377,6 @@
     return Promise.resolve(null);
   }
 
-  // 창·웹뷰 조작 — 브라우저 탭에는 뜻이 없다. 부팅이 부르는 것은 무해하게 흉내 내고, 값을 묻는 것은 그럴듯한 값.
   const windowGetters = {
     is_maximized: () => false,
     is_minimized: () => false,
@@ -432,7 +401,7 @@
   };
 
   const PLUGINS = {
-    // 이벤트: listen/unlisten 은 관문이 Rust 리스너로 대신 단다 · emit/emit_to 는 그대로(출처 = 이 원격 창).
+    // null = 그대로 관문으로 — `capabilities/remote.json` 이 여는 것만 둔다.
     "event|listen": (a) =>
       call((id) => JSON.stringify({ t: "listen", id, event: a.event, target: a.target, handler: a.handler })).then((eventId) => {
         listenerCallbacks.set(eventId, a.handler);
@@ -441,36 +410,30 @@
     "event|unlisten": (a) => call((id) => JSON.stringify({ t: "unlisten", id, event: a.event, eventId: a.eventId })),
     "event|emit": null,
     "event|emit_to": null,
-    // 경로: 메인 PC 의 경로가 맞는 답이다(관문 — capabilities/remote.json).
     "path|*": null,
-    // 클립보드 읽기 → 브라우저(보안 컨텍스트 — tailscale serve 의 https).
+    // 보안 컨텍스트(tailscale serve 의 https)에서만 된다.
     "clipboard-manager|read_text": () => navigator.clipboard.readText(),
     "clipboard-manager|write_text": (a) => navigator.clipboard.writeText(String((a && (a.text ?? (a.data && a.data.plainText && a.data.plainText.text))) || "")),
-    // 여는 것: URL 은 새 탭 · 메인 PC 의 파일·폴더 열기는 뜻이 없다.
     "opener|open_url": (a) => {
       window.open(String(a.url), "_blank", "noopener");
       return Promise.resolve(null);
     },
     "opener|open_path": () => Promise.reject(unsupportedFor("plugin:opener|open_path")),
     "opener|reveal_item_in_dir": () => Promise.reject(unsupportedFor("plugin:opener|reveal_item_in_dir")),
-    // 알림 → 웹 Notification(처음 쓸 때 브라우저가 묻는다 — 플러그인 JS 의 requestPermission 이 직접 부른다).
     "notification|is_permission_granted": () =>
       Promise.resolve(window.Notification ? Notification.permission === "granted" : false),
     "notification|request_permission": () =>
       window.Notification ? Notification.requestPermission() : Promise.resolve("denied"),
     "notification|notify": notify,
-    // 대화상자: 묻기·알림은 브라우저 confirm/alert · 파일 고르기는 아직 없다(앱 안 선택기는 다음 단계).
     "dialog|message": dialogMessage,
     "dialog|ask": (a) => dialogMessage({ ...a, buttons: "YesNo" }).then((r) => r === "Yes"),
     "dialog|confirm": (a) => dialogMessage({ ...a, buttons: "OkCancel" }).then((r) => r === "Ok"),
     "dialog|open": () => Promise.reject(unsupportedFor("plugin:dialog|open")),
     "dialog|save": () => Promise.reject(unsupportedFor("plugin:dialog|save")),
-    // 탐색기로 끌어내기 — 원격에는 메인 PC 탐색기가 없다.
     "drag|start_drag": () => Promise.reject(unsupportedFor("plugin:drag|start_drag")),
-    // 앱 정보.
     "app|version": () => (version !== null ? Promise.resolve(version) : new Promise((r) => versionWaiters.push(r))),
     "app|name": resolved("Aynx"),
-    // 웹뷰 확대(설정의 UI 크기) → CSS zoom. 웹뷰 확대와 달리 CSS zoom 은 px 값에도 곱해지니, 화면에서 잰 높이를 쓰는 폰 배치가 되돌리게 계수를 함께 알린다.
+    // CSS zoom 은 웹뷰 확대와 달리 px 값에도 곱해진다 — `--css-zoom` 을 빼면 폰 배치의 `--app-h` 높이가 어긋난다.
     "webview|set_webview_zoom": (a) => {
       const factor = String(Number(a && a.value) || 1);
       document.documentElement.style.zoom = factor;
@@ -487,7 +450,6 @@
     if (Object.prototype.hasOwnProperty.call(PLUGINS, `${plugin}|*`)) return PLUGINS[`${plugin}|*`] === null ? "pass" : PLUGINS[`${plugin}|*`];
     if (plugin === "window" || plugin === "webview") {
       if (Object.prototype.hasOwnProperty.call(windowGetters, command)) return () => Promise.resolve(windowGetters[command]());
-      // 조작(보이기·최소화·최대화·닫기·끌기·크기·포커스 …) — 아무것도 하지 않는다.
       if (/^(show|hide|close|destroy|minimize|unminimize|maximize|unmaximize|toggle_maximize|start_dragging|start_resize_dragging|set_[a-z_]+|center|request_user_attention|webview_show|webview_hide|webview_close)$/.test(command)) {
         return resolved(null);
       }
@@ -520,11 +482,9 @@
   }
 
   window.__AYNX_REMOTE__ = true;
-  // 이 원격 기기의 이름(R1a-5 — 상태바 "원격 — <이름>". 관문이 부팅 표에 싣는다 · 이름을 바꾸면 다음 새로 고침부터).
   window.__AYNX_REMOTE_DEVICE__ = String(boot.device || "");
-  // 이 원격 기기의 id(10-20 — 폰 설정의 [이 기기 페어링 해제]). 비밀이 아니다 — 기기 목록이 이미 내보내는 값.
+  // 비밀이 아니다 — 기기 목록이 이미 내보내는 값.
   window.__AYNX_REMOTE_DEVICE_ID__ = String(boot.deviceId || "");
-  // 앱 프런트가 부르는 재확인(표는 쓰지 않는다 — 60초 뒤 사라진다). 통과면 true, 취소·실패면 거절.
   window.__AYNX_REMOTE_REAUTH__ = (what) => reauthTicket(String(what || "")).then(() => true);
   window.__TAURI_INTERNALS__ = {
     invoke,
@@ -547,7 +507,7 @@
     },
   };
 
-  // 사람이 입력했다 — 원격 세션의 무입력 시계를 되감는다(20초에 한 번까지).
+  // 원격 세션의 무입력 시계를 되감는다.
   let lastActive = 0;
   const active = () => {
     const now = Date.now();
@@ -559,9 +519,7 @@
     window.addEventListener(type, active, { capture: true, passive: true });
   }
 
-  // 백그라운드에서 돌아왔다(R5 — 폰 브라우저) — 10초 넘게 숨어 있었으면 ws 가 살아 있는지 가벼운 명령 하나로 본다. 폰은 뒤로 간 탭의
-  // 연결을 소리 없이 끊기도 해서(열린 것처럼 보이는 죽은 소켓) 6초 안에 답이 없으면 닫는다 → 늘 하던 다시 읽기(재동기화 · 거울 다시 받기).
-  // 끊긴 것이 이미 보이면(`onclose`) 그쪽이 다시 읽는다.
+  // 폰 브라우저는 뒤로 간 탭의 연결을 소리 없이 끊기도 한다(열린 것처럼 보이는 죽은 소켓) — 돌아오면 답을 확인하고 없으면 다시 읽는다.
   let hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {

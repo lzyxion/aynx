@@ -1,31 +1,22 @@
-//! **서버가 집행하는 작업자 커밋**(`commit_changes` — 사용자 결정 10-15 · 자문 S+ 안 5 · 6절). 작업자는 **무엇을** 커밋할지(전부 ·
-//! 파일 목록 · 메시지)만 정하고, git 쓰기는 세션 서버가 이 파일 하나로 한다 — 작업자 샌드박스(Codex `workspace-write`)는 `.git` 쓰기 없이
-//! 그대로 둔다(10-15 이전의 `writable_roots` 시도는 효과가 없어 걷었다).
+//! 서버가 집행하는 작업자 커밋(`commit_changes`) — 작업자는 무엇을 커밋할지(전부 · 파일 목록 · 메시지)만 정하고 git 쓰기는 세션 서버가
+//! 이 파일 하나로 한다. 작업자 샌드박스(Codex `workspace-write`)에 `.git` 쓰기를 주지 않는다(`writable_roots` 는 효과가 없었다).
 //!
 //! 불변식:
-//! - **자리는 서버 기록에서만** — worktree 경로 · 브랜치 · 저장소는 그 Attempt 의 서버 기록이고, 요청의 cwd · gitdir · ref · git 옵션은
-//!   받지 않는다(스키마에 없고, 와도 무시한다). 실행 전에 그 worktree 의 최상위 · 공용 git 디렉터리가 **Run 저장소의 `.git`** 인지
-//!   실제 경로로 다시 본다(작업자가 `.git` 포인터 파일을 바꿔 다른 저장소를 가리키게 해도 거절 `worktree-mismatch`).
-//! - **git 실행** — 신뢰된 절대 경로의 실행 파일(PATH 의 절대 폴더에서 찾은 것 · 처음 한 번) · 셸 없음 · 인자 배열 · 환경은 서버 자기 환경에서
-//!   **`GIT_*` 를 모두 걷은 것**(작업자 환경은 애초에 물려받지 않는다) · `-c core.hooksPath=<빈 폴더>` · `core.fsmonitor=false` ·
-//!   `commit.gpgSign=false`(+ `--no-gpg-sign`) · editor/pager 끔(`--no-pager` · `core.editor=:` · `core.pager=cat`) · 자동 정리 끔 ·
-//!   `GIT_TERMINAL_PROMPT=0` · 시한.
-//!   실행기는 공용 `git.rs`(통합 설계 1단계 — 끝 코드 보존 · stdout 바이트 상한, 넘으면 `output-too-large`).
-//! - **필터** — `.gitattributes` 의 clean/process 필터는 외부 프로그램을 돌린다. 설정(시스템 · 전역 · 저장소 어디든)에 clean/process 가 있는
-//!   필터 이름을, 이번에 stage 할 수 있는 파일(전부 = `ls-files` 의 추적 + 무시되지 않은 새 파일, 목록 = 그 파일들)이 `filter` 속성으로
-//!   쓰면 **거절**(`filters-configured` — 사람에게 안내). `--no-filters` 계열(원시 내용 저장)은 LFS · 줄바꿈 의미가 바뀌어 고르지 않았다
-//!   (보수적). Git for Windows 는 시스템 설정에 `filter.lfs` 를 늘 두므로 "설정이 있다" 만으로 거절하지 않고 **속성이 그 이름을 쓸 때만**
-//!   거절한다. 한계: 검사와 stage 사이에 작업자가 `.gitattributes` 를 바꾸면 설정된(사람 · 시스템이 정한) 필터가 돌 수 있다 — 작업자가
-//!   필터 **명령**을 새로 정할 수는 없다(그건 `.git/config` 쓰기라 샌드박스 작업자에게 없다).
-//! - **전용 임시 index** — `GIT_INDEX_FILE` = 서버가 정한 임시 파일에 `read-tree <HEAD>` → 선택분만 `add -A`(목록은 `:(literal)` ·
-//!   NUL 구분 · stdin) → `write-tree` → `commit-tree -p <HEAD>` → `update-ref refs/heads/<브랜치> <새> <옛>`(CAS — 그사이 움직였으면
-//!   `head-moved`). 실제 worktree index 는 커밋 뒤 `read-tree <새>` + `update-index --refresh` 로 맞춘다(작업 파일은 건드리지 않는다 ·
-//!   ref 를 움직이는 `reset` 은 쓰지 않는다).
-//! - **신원** — 저장소 · 사용자 git 설정의 `user.name` · `user.email` 그대로(작업자가 고르지 못한다). 없으면 `no-git-identity`.
-//!   메시지 끝에 trailer `Aynx-Task` · `Aynx-Attempt`(작업자가 쓴 같은 이름의 줄은 걷는다).
-//! - **경로** — 상대 경로만 · `..` · 절대 · 드라이브 · `:` · `.git` 낱말(대소문자 · 끝 점/공백 무시) 거절 · 실제 경로가 worktree 밖이면
-//!   거절(정션 · 심볼릭 링크 부모) · 폴더는 받지 않는다(파일 단위) — 모두 `path-outside` · `invalid-argument`. 상한: 파일 [`PATHS_MAX`] ·
-//!   메시지 [`MESSAGE_MAX`].
+//! - **자리는 서버 기록에서만** — 요청의 cwd · gitdir · ref · git 옵션은 받지 않는다. 실행 전에 그 worktree 의 최상위 · 공용 git 디렉터리가
+//!   **Run 저장소의 `.git`** 인지 실제 경로로 다시 본다(작업자가 `.git` 포인터 파일을 바꿔도 `worktree-mismatch`).
+//! - **git 실행** — 신뢰된 절대 경로의 실행 파일 · 셸 없음 · 인자 배열 · 서버 환경에서 **`GIT_*` 를 모두 걷은 것**(작업자 환경은 물려받지 않는다) ·
+//!   훅 끔 · fsmonitor 끔 · 서명 끔 · editor/pager 끔 · 자동 정리 끔 · `GIT_TERMINAL_PROMPT=0` · 시한(공용 `git.rs`).
+//! - **필터** — clean/process 필터는 외부 프로그램을 돌린다. 이번에 stage 할 수 있는 파일이 `filter` 속성으로 설정된 필터 이름을 쓰면 **거절**
+//!   (`filters-configured`). Git for Windows 는 `filter.lfs` 를 늘 두므로 설정만으로는 거절하지 않는다. `--no-filters` 는 LFS · 줄바꿈 뜻이 바뀌어
+//!   쓰지 않는다. 한계: 검사와 stage 사이에 작업자가 `.gitattributes` 를 바꾸면 설정된 필터가 돌 수 있다 — 필터 **명령**을 새로 정할 수는 없다
+//!   (`.git/config` 쓰기는 샌드박스 작업자에게 없다).
+//! - **전용 임시 index** — `read-tree <HEAD>` → 선택분만 `add -A`(`:(literal)` · NUL · stdin) → `write-tree` → `commit-tree` →
+//!   `update-ref` CAS(움직였으면 `head-moved`). 실제 index 는 커밋 뒤 `read-tree` + `update-index --refresh` 로 맞춘다(작업 파일은 건드리지
+//!   않는다 · ref 를 움직이는 `reset` 은 쓰지 않는다).
+//! - **신원** — git 설정의 `user.name` · `user.email` 그대로(작업자가 고르지 못한다 · 없으면 `no-git-identity`). trailer `Aynx-Task` ·
+//!   `Aynx-Attempt`(작업자가 쓴 같은 이름의 줄은 걷는다).
+//! - **경로** — 상대 경로 · 파일 단위만. `..` · 절대 · 드라이브 · `:` · `.git` 낱말(대소문자 · 끝 점/공백 무시) · 실제 경로가 worktree 밖
+//!   (정션 · 심볼릭 링크 부모)은 거절.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -40,56 +31,50 @@ use super::store::{reason, release_request, request_seen, reserve_request, OrchE
 use super::tools::{arg, bad, opt_text, req_text, request_id};
 use crate::audit::OrchestrationAudit;
 
-/// 메시지 상한(바이트 — trailer 제외).
+/// 바이트 — trailer 제외.
 pub(crate) const MESSAGE_MAX: usize = 8 * 1024;
-/// 파일 목록 상한.
 pub(crate) const PATHS_MAX: usize = 500;
-/// 경로 하나의 상한(바이트).
+/// 바이트.
 const PATH_MAX: usize = 1024;
-/// 보드에 싣는 메시지 첫 줄 상한(글자).
+/// 글자.
 pub(crate) const SUBJECT_MAX: usize = 120;
-/// 무엇을 커밋하나.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Selection {
-    /// worktree 의 모든 변경(추가 · 수정 · 삭제 · 무시되지 않은 새 파일).
+    /// 무시되지 않은 새 파일 포함.
     All,
-    /// 이 파일들만(worktree 기준 상대 경로 — 검사 전 글자).
+    /// worktree 기준 상대 경로 — 검사 전 글자.
     Paths(Vec<String>),
 }
 
-/// 커밋 한 번의 재료 — 자리는 **서버 기록**에서 온다.
+/// 자리는 서버 기록에서 온다.
 pub(crate) struct CommitJob<'a> {
-    /// Run 저장소(주 작업 폴더) — 공용 git 디렉터리 확인.
     pub repo: &'a Path,
-    /// Attempt 의 worktree.
     pub worktree: &'a Path,
-    /// Attempt 의 브랜치(`refs/heads/` 없이).
+    /// `refs/heads/` 없이.
     pub branch: &'a str,
     pub expected_head: Option<&'a str>,
     pub selection: &'a Selection,
-    /// 최종 메시지(trailer 포함 — [`final_message`]).
+    /// trailer 포함.
     pub message: &'a str,
-    /// 빈 훅 폴더.
     pub hooks_dir: &'a Path,
-    /// 임시 index 를 둘 폴더(절대 경로).
+    /// 절대 경로.
     pub index_dir: &'a Path,
-    /// 자식 git 의 환경 재료 — 보통 서버 자기 환경(`std::env::vars_os`). [`child_env`] 가 `GIT_*` 를 걷는다.
+    /// 보통 서버 자기 환경 — [`child_env`] 가 `GIT_*` 를 걷는다.
     pub env: Vec<(OsString, OsString)>,
-    /// 충돌 해결 Attempt 면 표식 검사(통합 설계 3b · 3-2) — 새 트리의 충돌 경로에 표식이 남으면 `conflict-markers-left`.
+    /// 충돌 해결 Attempt 면 표식 검사 — 새 트리의 충돌 경로에 표식이 남으면 `conflict-markers-left`.
     pub markers: Option<&'a super::resolve::MarkerCheck>,
 }
 
-/// 커밋 결과.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Committed {
     pub commit: String,
     pub parent: String,
     pub branch: String,
     pub files: usize,
-    /// 커밋 뒤 남은 변경(추적 안 된 파일 포함 · 무시 파일 제외 — 상한 [`CHANGED_FILES_MAX`]).
+    /// 추적 안 된 파일 포함 · 무시 파일 제외.
     pub remaining: Vec<String>,
     pub remaining_truncated: bool,
-    /// 실제 index 맞추기가 실패했다(커밋 · ref 는 섰다 — 작업자의 git 이 index 를 잡고 있었다 등). 경고만.
+    /// 커밋 · ref 는 섰다 — 경고만.
     pub index_sync_failed: bool,
 }
 
@@ -101,8 +86,7 @@ fn failed(msg: impl Into<String>) -> OrchError {
     fail(reason::COMMIT_FAILED, msg)
 }
 
-/// 메시지 다듬기(순수) — 제어 문자(TAB · LF 빼고)를 지우고, 작업자가 쓴 `Aynx-*:` 줄을 걷고, 끝에 trailer 둘을 붙인다.
-/// 빈 메시지면 `None`.
+/// 작업자가 쓴 `Aynx-*:` 줄을 걷고 trailer 둘을 붙인다. 빈 메시지면 `None`.
 pub(crate) fn final_message(raw: &str, task_id: &str, attempt_id: &str) -> Option<String> {
     let clean = super::spawn::sanitize_text(raw);
     let body: Vec<&str> = clean
@@ -117,7 +101,6 @@ pub(crate) fn final_message(raw: &str, task_id: &str, attempt_id: &str) -> Optio
     Some(format!("{body}\n\nAynx-Task: {task_id}\nAynx-Attempt: {attempt_id}\n"))
 }
 
-/// 메시지 첫 줄(보드 — 제어 문자 없이 [`SUBJECT_MAX`] 글자까지).
 pub(crate) fn subject(message: &str) -> String {
     message
         .lines()
@@ -130,7 +113,7 @@ pub(crate) fn subject(message: &str) -> String {
         .collect()
 }
 
-/// 경로 하나를 검사해 worktree 기준 `/` 상대 경로로(순수 부분 + 실제 경로 확인). `wt_real` 은 worktree 의 실제 경로.
+/// `wt_real` 은 worktree 의 실제 경로.
 pub(crate) fn check_path(wt_real: &Path, raw: &str) -> Result<String, OrchError> {
     let outside = |why: &str| fail(reason::PATH_OUTSIDE, format!("path {:?} is not allowed: {why}", short(raw)));
     if raw.is_empty() || raw.len() > PATH_MAX || raw.chars().any(char::is_control) {
@@ -179,7 +162,7 @@ fn short(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).take(120).collect()
 }
 
-/// 임시 index 파일 — 떨어지면 지운다(`.lock` 도).
+/// 떨어지면 지운다(`.lock` 도).
 struct TempIndex(PathBuf);
 
 impl Drop for TempIndex {
@@ -199,7 +182,6 @@ fn temp_index(dir: &Path) -> Result<TempIndex, OrchError> {
     Ok(TempIndex(dir.join(format!("commit-{name}.index"))))
 }
 
-/// 같은 자리인가(실제 경로 · 비교 열쇠).
 fn same_place(a: &Path, b: &Path) -> bool {
     match (super::worktree::real_path(a), super::worktree::real_path(b)) {
         (Some(x), Some(y)) => crate::worktree::comparable(&x.to_string_lossy()) == crate::worktree::comparable(&y.to_string_lossy()),
@@ -207,13 +189,12 @@ fn same_place(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// 설정된 clean/process 필터 이름들(시스템 · 전역 · 저장소 · include 모두 — git 이 읽는 그대로).
+/// 시스템 · 전역 · 저장소 · include 모두 — git 이 읽는 그대로.
 fn configured_filters(g: &Git<'_>) -> Result<Vec<String>, OrchError> {
     let o = g.run(&["config", "-z", "--get-regexp", r"^filter\..*\.(clean|process)$"], &[], None)?;
-    // 종료 1 = 없음.
     let mut names: Vec<String> = Vec::new();
     for rec in o.stdout.split('\0').filter(|r| !r.is_empty()) {
-        // `-z` 꼴 = `<키>\n<값>\0`. 키 = `filter.<이름>.clean|process`(이름은 서브섹션 — 대소문자를 가린다, 나머지는 소문자).
+        // 키 = `filter.<이름>.clean|process` — 이름(서브섹션)은 대소문자를 가린다.
         let key = rec.split('\n').next().unwrap_or("");
         let lower = key.to_ascii_lowercase();
         if !lower.starts_with("filter.") {
@@ -237,7 +218,6 @@ fn configured_filters(g: &Git<'_>) -> Result<Vec<String>, OrchError> {
     Ok(names)
 }
 
-/// 이 파일들 중 설정된 필터를 `filter` 속성으로 쓰는 것이 있나.
 fn uses_filters(g: &Git<'_>, files: &[String], names: &[String]) -> Result<Option<String>, OrchError> {
     if names.is_empty() || files.is_empty() {
         return Ok(None);
@@ -248,7 +228,6 @@ fn uses_filters(g: &Git<'_>, files: &[String], names: &[String]) -> Result<Optio
         input.push(0);
     }
     let out = g.ok(&["check-attr", "-z", "--stdin", "filter"], &[], Some(&input))?;
-    // `<경로>\0filter\0<값>\0` 반복.
     let parts: Vec<&str> = out.split('\0').collect();
     for chunk in parts.chunks(3) {
         if let [path, _attr, value] = chunk {
@@ -260,7 +239,7 @@ fn uses_filters(g: &Git<'_>, files: &[String], names: &[String]) -> Result<Optio
     Ok(None)
 }
 
-/// 커밋을 집행한다 — **블로킹**(git). `before_cas` 는 ref 갱신 직전에 불린다(시험이 그 틈에 HEAD 를 움직인다 — 운영은 빈 함수).
+/// 블로킹(git). `before_cas` 는 ref 갱신 직전에 불린다(시험이 그 틈에 HEAD 를 움직인다 — 운영은 빈 함수).
 pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Result<Committed, OrchError> {
     if !job.worktree.is_dir() {
         return Err(fail(reason::WORKTREE_MISMATCH, "your worktree folder is missing"));
@@ -301,7 +280,7 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
             ));
         }
     }
-    // 3. 신원 — 설정 그대로(작업자가 고르지 못한다).
+    // 3. 신원 — 설정 그대로.
     let get = |k: &str| -> Result<String, OrchError> {
         let o = g.run(&["config", "--get", k], &[], None)?;
         Ok(if o.ok() { o.stdout.trim().to_string() } else { String::new() })
@@ -343,7 +322,7 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
             ),
         ));
     }
-    // 5. 임시 index — HEAD 에서 → 선택분 stage.
+    // 5. 임시 index.
     let idx = temp_index(job.index_dir)?;
     let idx_s = idx.0.to_string_lossy().into_owned();
     let ienv: [(&str, &str); 1] = [("GIT_INDEX_FILE", idx_s.as_str())];
@@ -376,14 +355,14 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
     if !hex40(&tree) {
         return Err(failed("git write-tree gave no tree"));
     }
-    // 5b. 충돌 해결 Attempt — 커밋할 트리의 충돌 경로에 표식이 남았으면 거절(3-2 · 표식 크기 속성 · CRLF — `resolve.rs`).
+    // 5b. 충돌 해결 Attempt — 표식이 남았으면 거절.
     if let Some(check) = job.markers {
         let left = super::resolve::markers_left_blocking(&g, &tree, check)?;
         if !left.is_empty() {
             return Err(super::resolve::markers_left_error(&left));
         }
     }
-    // 6. 커밋 객체 — 신원은 설정에서 읽은 것(서버가 넣는다).
+    // 6. 커밋 객체.
     let cenv: [(&str, &str); 4] = [
         ("GIT_AUTHOR_NAME", name.as_str()),
         ("GIT_AUTHOR_EMAIL", email.as_str()),
@@ -398,7 +377,7 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
         return Err(failed("git commit-tree gave no commit"));
     }
     drop(idx);
-    // 7. CAS — 그사이 브랜치가 움직였으면 거절(만든 커밋 객체는 아무 ref 도 가리키지 않아 git 이 나중에 치운다).
+    // 7. CAS — 만든 커밋 객체는 아무 ref 도 가리키지 않아 git 이 나중에 치운다.
     before_cas();
     let upd = g.run(&["update-ref", "-m", "aynx: commit_changes", &want, &new, &old], &[], None)?;
     if !upd.ok() {
@@ -411,7 +390,7 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
         }
         return Err(failed(upd.line()));
     }
-    // 8. 실제 index 맞추기(작업 파일은 그대로) — 실패해도 커밋은 섰다.
+    // 8. 실제 index 맞추기 — 실패해도 커밋은 섰다.
     let sync = g.run(&["read-tree", &new], &[], None)?;
     let index_sync_failed = !sync.ok();
     if sync.ok() {
@@ -436,12 +415,11 @@ pub(crate) fn commit_blocking(job: &CommitJob<'_>, before_cas: &dyn Fn()) -> Res
 // MCP 작업자 도구 `commit_changes`
 // ---------------------------------------------------------------------------
 
-/// 임시 index 폴더 — 서버 데이터 폴더 아래(없으면 임시 폴더).
+/// 서버 데이터 폴더 아래(없으면 임시 폴더).
 fn index_dir() -> PathBuf {
     super::persist::store_dir().unwrap_or_else(std::env::temp_dir).join("commit-index")
 }
 
-/// 인자 `selection` — `"all"` 또는 `{paths: [..]}`.
 fn selection_arg(args: Option<&Value>) -> Result<Selection, OrchError> {
     match arg(args, "selection") {
         Some(Value::String(s)) if s == "all" => Ok(Selection::All),
@@ -463,7 +441,7 @@ fn selection_arg(args: Option<&Value>) -> Result<Selection, OrchError> {
     }
 }
 
-/// 커밋 관문(잠금 안) — 현재 Attempt · 살아 있는 Run · 보고 전 · 열린 상태. `(worktree, 브랜치, Task id, 해결 Attempt 의 표식 검사)`.
+/// 잠금 안.
 fn commit_gate(slot: &Slot, attempt_id: &str) -> Result<(String, String, String, Option<super::resolve::MarkerCheck>), OrchError> {
     let run = &slot.run;
     if matches!(run.state, RunState::Stopping | RunState::Stopped) {
@@ -484,7 +462,7 @@ fn commit_gate(slot: &Slot, attempt_id: &str) -> Result<(String, String, String,
     if run.report_of(attempt_id).is_some() {
         return Err(OrchError::new(reason::ALREADY_REPORTED, "you already reported — commit before report_done"));
     }
-    // 커밋은 **턴 안에서**만(3a — `running`). 옛 상태(2차 PTY)는 옛 파일 읽기용. `blocked` 뒤에도 보고가 없으니 다음 턴에서 커밋할 수 있다(D7).
+    // 커밋은 턴 안에서만(`running`) — 옛 PTY 상태는 옛 파일 읽기용. `blocked` 뒤에도 다음 턴에서 커밋할 수 있다.
     if !matches!(
         a.state,
         AttemptState::Running
@@ -506,7 +484,7 @@ fn commit_gate(slot: &Slot, attempt_id: &str) -> Result<(String, String, String,
     Ok((wt, branch, a.task_id.clone(), markers))
 }
 
-/// 거절 기록의 재료 — 인자에서 읽을 수 있는 만큼(깨진 인자면 없다). 요청 id 는 128자까지 · 파일 수는 목록일 때만.
+/// 깨진 인자면 없다.
 fn rejection_hints(args: Option<&Value>) -> (Option<String>, Option<u32>) {
     let request = request_id(args).ok().map(|r| r.chars().take(128).collect());
     let files = match arg(args, "selection") {
@@ -517,10 +495,8 @@ fn rejection_hints(args: Option<&Value>) -> (Option<String>, Option<u32>) {
 }
 
 impl Orchestration {
-    /// `commit_changes` 거절 하나를 남긴다(사용자 결정 10-15) — 타임라인 `commit_rejected`(사유 · Attempt · 요청 id · 파일 수) · Attempt 의
-    /// 마지막 거절 칸(보드 · 조정자 요약) · 감사(같은 고정 칸). 사람이 해야 하는 사유([`commit_needs_human`])는 감독 알림도 — 그 Attempt 의
-    /// **바로 앞 거절과 같은 사유면 다시 알리지 않는다**(작업자가 같은 거절을 되풀이해도 알림은 하나 · 보드 칸은 그대로 보인다 — 커밋이 서면
-    /// 칸이 걷혀 다음 거절은 다시 알린다). **경로 목록 · 메시지 본문은 어디에도 싣지 않는다.** Run · Attempt 를 못 찾으면(없는 Run 등) 남기지 않는다.
+    /// 사람이 해야 하는 사유는 감독 알림도 — 바로 앞 거절과 같은 사유면 다시 알리지 않는다(되풀이해도 알림은 하나).
+    /// **경로 목록 · 메시지 본문은 어디에도 싣지 않는다.**
     fn commit_rejected(&self, run_id: &str, attempt_id: &str, args: Option<&Value>, err: &OrchError) {
         let (request, files) = rejection_hints(args);
         let now = self.now();
@@ -571,13 +547,12 @@ impl Orchestration {
         self.audit("commit_rejected", run_id, detail);
     }
 
-    /// 작업자 `commit_changes` — 관문(잠금 안 · 요청 예약) → 커밋(잠금 밖 · 블로킹 git) → 기록(잠금 안 · 멱등).
+    /// 관문(잠금 안 · 요청 예약) → 커밋(잠금 밖) → 기록(잠금 안 · 멱등).
     pub(super) fn commit_changes(&self, run_id: &str, attempt_id: &str, args: Option<&Value>) -> Result<Value, OrchError> {
         self.commit_changes_with(run_id, attempt_id, args, std::env::vars_os().collect(), &|| {})
     }
 
-    /// [`Self::commit_changes`] 의 몸 — 환경 재료 · CAS 직전 손을 받는다(시험). 거절은 모두 [`Self::commit_rejected`] 로 남는다
-    /// (`request-in-progress` — 같은 요청의 첫 호출이 아직 도는 중 — 만 빼고: 그건 거절이 아니라 기다림이다).
+    /// 거절은 모두 [`Self::commit_rejected`] 로 남는다 — `request-in-progress` 만 빼고(거절이 아니라 기다림이다).
     pub(super) fn commit_changes_with(
         &self,
         run_id: &str,
@@ -608,7 +583,7 @@ impl Orchestration {
         let raw = req_text(args, "message", MESSAGE_MAX)?;
         let selection = selection_arg(args)?;
         let expected = opt_text(args, "expectedHead", 64)?;
-        // 1. 관문 + 자리(서버 기록) · 요청 예약.
+        // 1. 관문 · 요청 예약.
         let (worktree, branch, task_id, repo, markers) = {
             let mut g = self.lock();
             let slot = super::report::worker_run(&mut g, run_id)?;

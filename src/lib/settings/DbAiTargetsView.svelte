@@ -10,11 +10,8 @@
   import { dbAiNeedsCleanup, filterDbAiTargets } from "$lib/settings/credentials-view";
 
   /**
-   * **AI 권한 DB 연결**(쿼리 타일 3a) — 설정 › 보안의 하위 화면(2026-10-21 — 요약의 [관리 ›] 이 연다).
-   * `delegation.toml` 의 `[[database]]`. 호스트 표(`DelegationHostsView`)와 같은 문법: 보는 것과 지우는 것뿐이고,
-   * 바꾸는 자리는 DB 연결 폼의 AI 칸이다([연결 설정…]이 그 문). 스냅샷 값은 화면에 오지 않는다(맞는지만 — `identityOk`).
-   * 단계 칩 하나 + 헤드리스 칩 하나(2026-11-09 — 타일 없이 AI 접속 · 호스트 표의 "헤드리스 접속" 칩과 같은 꼴 · SQLite 는 비밀번호가 없어 없다).
-   * 표는 섹션이 볼 때마다 다시 읽는다(`CredentialsSection` 의 `$effect`).
+   * AI 권한 DB 연결 — 설정 › 보안의 하위 화면(`delegation.toml` 의 `[[database]]`). 보고 지우기만 한다 — 바꾸는 자리는 DB 연결 폼의 AI 칸이다.
+   * 스냅샷 값은 화면에 오지 않는다(맞는지만 — `identityOk`).
    */
   let { onback }: { onback: () => void } = $props();
 
@@ -64,7 +61,6 @@
   backAria={t("settings.credentials.back.aria")}
   {onback}
 >
-  <!-- 늘 보이는 설명은 한 줄 · 파일 이름(delegation.toml) · MCP 로 못 바꿈은 ⓘ(10-30 실기 — 설명 글이 많다) -->
   <p class="hint cred-note">
     <InfoNote id="db-ai-note" label={t("settings.credentials.dbai.note.aria")} note={dbNote} plain>
       {#snippet summary()}{t("settings.credentials.dbai.note.short")}{/snippet}
@@ -142,7 +138,7 @@
                 title={t("settings.credentials.delegation.stage.title", { stage: t(DB_AI_NAME[v.level]) })}
                 ><AiGaugeMini at={orphan || broken ? 0 : DB_AI_LEVELS.indexOf(v.level)} />{t(DB_AI_NAME[v.level])}</span
               >
-              <!-- 헤드리스 칩 — 엔진 무관(SQLite 도 — 2026-11-09 · 고아 줄도 세운다 — 파일의 칸이다) -->
+              <!-- 헤드리스 칩은 엔진 무관 · 고아 줄도 세운다 — 파일의 칸이다 -->
               <span
                 class="gchip"
                 class:on
