@@ -248,7 +248,7 @@ function makeHandle(
   // 한 번에 하나만 날리고 그동안 온 입력은 이어 붙였다가 한 덩어리로 보낸다.
   let writing: Promise<void> | null = null;
   let pendingInput = "";
-  /** 하나라도 사람 것이면 사람 — 서버가 오케스트레이션 작업자의 개입 잠금에 쓴다 */
+  /** 묶음의 출처(`mergeSource`) — 서버가 크기 주인 판정에 쓴다 */
   let pendingSource: InputSource | null = null;
   let draining = false;
 

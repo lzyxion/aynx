@@ -4,7 +4,10 @@
  * 키 입력 경로가 아닌 것(재연결 배너 단추 · `on_connect`)은 여기 오지 않는다.
  */
 
-export type InputFn = (data: string) => void;
+import type { InputSource } from "$lib/term/input-source";
+
+/** 출처가 없으면 받는 쪽이 키로 친다(파일 끌어 놓기 · `cd` 같은 코드 입력) */
+export type InputFn = (data: string, source?: InputSource) => void;
 
 /**
  * 터미널이 돌려보내는 보고(마우스 추적 · 포커스 이벤트)로만 된 문자열인가 — 형제 패널에 방송하면 TUI 위의 마우스 좌표가
@@ -29,6 +32,6 @@ export function registerInput(paneId: string, fn: InputFn): () => void {
 }
 
 /** 입력을 시작한 패널 자신도 목록에 넣어 부른다 */
-export function broadcastInput(paneIds: readonly string[], data: string): void {
-  for (const id of paneIds) inputs.get(id)?.(data);
+export function broadcastInput(paneIds: readonly string[], data: string, source?: InputSource): void {
+  for (const id of paneIds) inputs.get(id)?.(data, source);
 }

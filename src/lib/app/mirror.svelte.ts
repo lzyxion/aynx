@@ -15,6 +15,7 @@ import {
 import { liveKeys, paneKeyOf, reduceMirror, type MirrorMemory, type MirrorSeed } from "$lib/mirror/reduce";
 import { parseLastView, serializeLastView } from "$lib/mobile/prefs";
 import { followHomeStartBoard } from "$lib/start-widgets.svelte.js";
+import { mobileLayout } from "$lib/app/mobile.svelte.js";
 
 /**
  * 원격 창은 제 탭을 만들거나 저장하지 않는다 — 탭에 쓰는 길은 `applyMirrorTabs` 하나이고, 배치를 바꾸는 조작은 메인 PC 주 창에 요청으로 보낸다.
@@ -127,7 +128,7 @@ function apply(snap: MirrorSnapshot): void {
   placeholderKeys = r.placeholderKeys;
   placeholders.clear();
   for (const id of r.placeholders) placeholders.add(id);
-  applyMirrorTabs(r.tabs, r.activeId, r.focus);
+  applyMirrorTabs(r.tabs, r.activeId, r.focus, !mobileLayout());
   // 타일 ↔ 대화 연결은 메인 PC 의 것으로 — 붙기 전 · 떼어 둔 동안의 신호를 원격은 못 받는다
   for (const tab of r.tabs)
     for (const p of listPanes(tab.root)) if (p.kind === "local" || p.kind === "ssh") mirrorAgentLink(p.id, p.agentLink);

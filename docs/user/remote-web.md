@@ -96,11 +96,13 @@ switches tabs or closes a tile, the remote window follows right away.
 - **The side that typed last sets the size** (the same as tmux's `latest`). When you start typing remotely, the shell takes the remote window's size, and typing on the main PC again
   returns it to the main PC's size. The side that did not set the size draws at the other side's size in the top left (empty space stays as margin; overflow scrolls), wraps the drawn
   area in a **dashed border** and adds a tag on the top edge — "Remote device 120×30" in a main PC window, "Main PC 120×30" in a remote window
-  ("Other window 120×30" if another remote device set it).
+  ("Other window 120×30" if another remote device set it). Clicking or scrolling in a terminal still reaches the program but does not change the size — only typing,
+  pasting or the card buttons below do (on a phone, the **⤢** button — see [Using it from a phone](#using-it-from-a-phone)).
 - **Restoring the size** — you do not have to type. A focused tile shows a card in the empty space ("Showing the remote device's size"), and [Fit this window] returns that tile
   to this window's size right away (no characters go to the shell; only the size changes). If this window has two or more shrunken tiles, the card offers [This tile only] and
-  [Restore all] (all shrunken tiles in this window's current workspace; other windows and workspaces stay as they are). If the size difference leaves no room for the card,
-  clicking the tag shows the same buttons. The card follows the focus to another shrunken tile. Typing in this window also takes the size back, as before.
+  [Restore all] (all shrunken tiles in this window's current workspace; other windows and workspaces stay as they are). If there is no empty space, the card sits over the
+  bottom-right corner of the terminal and has a close button; after you close it (or if the tile is too small for the card), clicking the tag shows the same buttons.
+  The card follows the focus to another shrunken tile. Typing in this window also takes the size back, as before.
 - For programs that ask the terminal for the cursor position or colors, such as vim and Claude Code, **only the side that set the size** answers — answers do not arrive twice even when two windows
   are viewing together.
 - A slow remote side (a phone, a weak network) does not freeze the main PC screen. If the remote side falls too far behind, only that remote side is resynced (some output may be skipped
@@ -222,7 +224,9 @@ Phones and tablets open the same address too, and **they can do the same as a PC
   terminal and type straight into it with the on-screen keyboard (the old way). This is the same value as phone settings › This device › Input and is remembered **in that browser only**.
 - **A phone does not set the shell size.** Typing on a phone leaves the shell size of the main PC window as it is, and the phone draws at the main PC's size (swipe sideways if it overflows;
   the phone layout has no border or card). To fit the phone's screen size, turn on **⤢** in the top strip (Fit to this device; a wide-screen tablet uses [Fit this device] on the tag or
-  card) — after that, as with a PC remote, **the side that typed last** sets the size. This choice is remembered in that browser.
+  card) — the shell takes the phone's size right away, without typing (the same as the card's [Fit this window]). While ⤢ is on, opening the page or showing another
+  tile fits the phone again. When the main PC (or another window) takes the size back (by typing, for example), ⤢ turns itself off and the phone draws at that size again.
+  This choice is remembered in that browser.
 - **Phone settings** ([Settings] in the sheet · the gear on the picker screen): **This device** — terminal font size (8–24; when it matches the main PC's value, it follows the main PC again) ·
   Fit to this device (the same value as ⤢) · Input (Input box (default) · Direct — the same value as the key strip's leftmost button) · AI tile opens to (Chat (default) · Terminal) · Key strip (turn each key on or off, reorder) · Theme (**Main PC** (default — the main PC's theme settings as they are) · System = the phone's brightness · Light · Dark). These values are saved **in that
   browser only**, and the main PC's settings do not change (they apply only to the phone screen). **Main PC** — auto-approval can be changed only on the main PC, so only its current

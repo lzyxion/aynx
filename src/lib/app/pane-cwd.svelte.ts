@@ -4,7 +4,7 @@ import type { PathLinkPlace } from "$lib/path-links";
 
 /**
  * 값이 바뀔 때만 올린다 — 원본(`shell-integration.ts`)은 프롬프트마다 와서 반응형이 아니다.
- * 화면 전용 — 저장하지 않고 이관 짐에도 싣지 않는다(받는 창의 셸이 다음 프롬프트에 다시 알려 준다).
+ * 화면 전용 — 저장하지 않는다. 다시 붙는 창 · 받는 창은 버퍼 끝의 OSC 7(`cwdSuffix`)로 다시 받는다.
  */
 
 const cwds = $state<Record<string, string>>({});

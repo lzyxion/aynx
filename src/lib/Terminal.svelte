@@ -22,6 +22,7 @@
   import { CHECKPOINT_SCROLLBACK, isHandoff, registerSerialize, TEAR_SCROLLBACK } from "$lib/tear";
   import {
     attachShellIntegration,
+    cwdSuffix,
     registerCommands,
     type CopyResult,
     type PaneStatus,
@@ -136,7 +137,9 @@
   import { LOST_NOTICE_MS, dismissesLostNotice, lostNoticeOf, type LostNotice } from "$lib/term/lost-notice";
   import { registerTermActions } from "$lib/term-actions";
   import {
+    claimSizeOnAttach,
     domRendererOnly,
+    dropFitOnOwnerLoss,
     focusLineField,
     handheld,
     lineFieldMode,
@@ -153,7 +156,7 @@
   import { encodingSuffix, watchMouseEncoding } from "$lib/term/mouse-encoding";
   import { parkDelayMs } from "$lib/mobile/policy";
   import type { AskBlockRef } from "$lib/ask-ai";
-  import { classifyInput, mergeSource, type InputSource } from "$lib/term/input-source";
+  import { classifyInput, mergeSource, type InputContext, type InputSource } from "$lib/term/input-source";
   import {
     claimsOwnership,
     ownerFromEvent,
@@ -209,7 +212,7 @@
     onactivity?: () => void;
     onstatus?: (paneId: string, status: PaneStatus | null) => void;
     /** 동시 입력 — `true` 면 자기 write 를 하지 않는다(브로드캐스트 목록에 자기도 있어 두 번 친다) */
-    onbroadcast?: (data: string) => boolean;
+    onbroadcast?: (data: string, source: InputSource) => boolean;
     onsession?: (paneId: string, sessionId: number | null) => void;
     ontitle?: (paneId: string, title: string) => void;
     onshell?: (paneId: string, shell: string) => void;
@@ -468,8 +471,20 @@
   });
 
   // 입력 출처: 붙여넣기 · 키 이벤트 동안 `onData` 로 나온 글은 내용이 터미널 응답 모양이어도 사람 것이다(Ctrl+F3 = `ESC[1;5R`).
+  // 포인터 이벤트 동안의 글은 마우스다 — 휠이 바뀐 방향키(`ESC[A`)가 크기 주인을 바꾸지 않게.
+  // 불리언은 이벤트 없이 코드가 부르는 동기 구간(`pasteToTerm` · `sendAsKey`), `*Ev` 는 캡처 리스너가 적어 둔 DOM 이벤트다.
   let inputPasting = false;
   let inputKeyEvent = false;
+  let keyEv: Event | null = null;
+  let pasteEv: Event | null = null;
+  let pointerEv: Event | null = null;
+  // 마이크로태스크로 깃발을 내리면 안 된다 — 신뢰된 이벤트는 리스너 사이에도 마이크로태스크가 돌아 xterm 의 처리기 전에 꺼진다.
+  const delivering = (ev: Event | null) => ev !== null && ev.eventPhase !== Event.NONE;
+  const inputContext = (): InputContext => ({
+    pasting: inputPasting || delivering(pasteEv),
+    keyEvent: inputKeyEvent || delivering(keyEv),
+    pointer: delivering(pointerEv),
+  });
 
   // `paste()` 는 `onData` 를 동기로 낸다 — 그래서 이 구간 표시로 출처가 갈린다.
   function pasteToTerm(text: string) {
@@ -742,16 +757,18 @@
   let noticeCardH = $state(118);
   const NOTICE_CARD_W = 300;
   let noticePop = $state(false);
+  // 글자 위에 겹친 카드만 닫힌다 — 닫으면 꼬리표 단추로 돌아가고, 주인 아님이 끝나면 풀린다.
+  let noticeDismissed = $state(false);
   let claimAfterAttach = false;
 
   const foreignShown = $derived(!sizeOwner && ownerSize !== null && !mobileLayout());
   const noticeKind = $derived(noticeSide(isRemote, ownerPrimary));
   const noticeOutline = $derived(noticeBox && noticeDrawn ? outlineBox(noticeBox, noticeDrawn) : null);
-  const noticeCard = $derived(
-    foreignShown && active && noticeBox && noticeDrawn
-      ? placeCard(noticeBox, noticeDrawn, { width: NOTICE_CARD_W, height: noticeCardH })
-      : null,
-  );
+  const noticeCard = $derived.by(() => {
+    if (!foreignShown || !active || !noticeBox || !noticeDrawn) return null;
+    const p = placeCard(noticeBox, noticeDrawn, { width: NOTICE_CARD_W, height: noticeCardH });
+    return p?.side === "over" && noticeDismissed ? null : p;
+  });
   const noticeButtons = $derived(noticeActions(shrunkCount(), !viewer || viewerEligible()));
 
   $effect(() => {
@@ -762,6 +779,7 @@
       else {
         clearShrunk(id);
         noticePop = false;
+        noticeDismissed = false;
       }
     });
     return () => clearShrunk(id);
@@ -821,6 +839,11 @@
   function runNotice(a: NoticeAction) {
     if (a.act === "all") void reclaimAll();
     else void reclaimSize();
+    if (active) term?.focus();
+  }
+
+  function dismissNotice() {
+    noticeDismissed = true;
     if (active) term?.focus();
   }
 
@@ -1542,7 +1565,7 @@
       const lostNote = lostNoticeOf(lostBytes);
       if (lostNote) showLost(lostNote);
       if (!replaySized) refit();
-      if (claimAfterAttach) {
+      if (claimAfterAttach || claimSizeOnAttach()) {
         claimAfterAttach = false;
         if (!view.owner) void reclaimSize();
       }
@@ -1902,7 +1925,9 @@
     const ser = new SerializeAddon();
     t.loadAddon(ser);
     // 직렬화가 싣지 않는 마우스 인코딩(SGR)을 덧붙인다 — 빠지면 그 화면으로 시작한 터미널의 휠 보고가 사라진다.
+    // 지금 폴더(OSC 7)도 같은 이유로 덧붙인다 — 빠지면 다시 붙은 창이 다음 프롬프트까지 폴더 칩을 못 띄운다.
     const mouseEnc = watchMouseEncoding(t);
+    const bufferTail = () => encodingSuffix(mouseEnc.current()) + cwdSuffix(shell?.cwd());
     term = t;
     fit = f;
 
@@ -1921,7 +1946,7 @@
 
     // 지금 크기를 함께 싣는다 — 직렬화 문자열은 이 열 수에서만 원래의 줄바꿈을 재현한다.
     const unserialize = registerSerialize(pane.id, (scrollback = TEAR_SCROLLBACK) => ({
-      buffer: ser.serialize({ scrollback }) + encodingSuffix(mouseEnc.current()),
+      buffer: ser.serialize({ scrollback }) + bufferTail(),
       cols: t.cols,
       rows: t.rows,
       // 버퍼와 같은 동기 순간의 오프셋 — 받는 창이 이 뒤를 재생한다.
@@ -1941,7 +1966,7 @@
       checkpointedAt = consumed;
       try {
         stashCheckpoint(s.kind, s.id, {
-          buffer: ser.serialize({ scrollback: CHECKPOINT_SCROLLBACK }) + encodingSuffix(mouseEnc.current()),
+          buffer: ser.serialize({ scrollback: CHECKPOINT_SCROLLBACK }) + bufferTail(),
           cols: t.cols,
           rows: t.rows,
           consumed,
@@ -1973,13 +1998,13 @@
     const sendInput = (data: string) => {
       // 재생 구간의 DSR/DA 답은 버린다 — 셸은 이미 답을 받았다(동시 입력 형제에게도 가면 안 된다).
       if (replaying) return;
-      const source = classifyInput(data, { pasting: inputPasting, keyEvent: inputKeyEvent });
+      const source = classifyInput(data, inputContext());
       if (source === "keyboard" && stickyCtrl()) {
         setStickyCtrl(false);
         data = ctrlOf(data) ?? data;
       }
       if (!shouldSendInput(source, sizeOwner)) return;
-      if (onbroadcast?.(data)) return;
+      if (onbroadcast?.(data, source)) return;
       writeInput(data, source);
     };
 
@@ -1990,7 +2015,10 @@
 
     const unOwner = listen<unknown>(SIZE_OWNER_EVENT, (ev) => {
       const v = ownerFromEvent(session?.lease, ev.payload);
-      if (v && !disposed) applyOwner(v);
+      if (!v || disposed) return;
+      const was = sizeOwner;
+      applyOwner(v);
+      if (viewer) dropFitOnOwnerLoss(visible, was, v.owner);
     }).catch(() => () => {});
 
     // ── OSC 133 창구 ──
@@ -2311,7 +2339,7 @@
 
     // 남긴 검색 강조는 사람 입력에만 지운다 — 포커스 보고(`?1004`)의 `ESC[I` 가 점프 직후 강조를 지운다.
     t.onData((data) => {
-      if (classifyInput(data, { pasting: inputPasting, keyEvent: inputKeyEvent }) !== "protocol") termSearch.keptEvent("input");
+      if (classifyInput(data, inputContext()) !== "protocol") termSearch.keptEvent("input");
     });
     t.onData(sendInput);
 
@@ -2400,17 +2428,16 @@
     };
     if (viewer) container.addEventListener("focusin", onFocusIn, true);
     container.addEventListener("paste", onPasteEvent, true);
-    // 키 · 붙여넣기 처리기 안에서 xterm 이 동기로 내는 `onData` 까지가 사람 입력이다 — 마이크로태스크에서 내린다.
-    const markKey = () => {
-      inputKeyEvent = true;
-      queueMicrotask(() => (inputKeyEvent = false));
-    };
-    const markPaste = () => {
-      inputPasting = true;
-      queueMicrotask(() => (inputPasting = false));
-    };
+    // 그 이벤트가 배달되는 동안(`inputContext`) xterm 처리기가 동기로 내는 `onData` 가 그 출처다 — 적어 두기만 한다.
+    const markKey = (ev: Event) => (keyEv = ev);
+    const markPaste = (ev: Event) => (pasteEv = ev);
+    // xterm 은 문서에 단 `mouseup` · 끌기에서도 보고를 낸다 — 이 구간 밖의 것은 `classifyInput` 이 모양으로 가른다.
+    const markPointer = (ev: Event) => (pointerEv = ev);
+    const POINTER_EVENTS = ["wheel", "mousedown", "mouseup", "mousemove"] as const;
+    const pointerOpts = { capture: true, passive: true };
     container.addEventListener("keydown", markKey, true);
     container.addEventListener("paste", markPaste, true);
+    for (const type of POINTER_EVENTS) container.addEventListener(type, markPointer, pointerOpts);
     // 덮개는 `onData` 로 걷지 않는다 — CLI 의 터미널 질의에 xterm 이 내는 응답도 `onData` 로 나온다.
     const veilKey = (ev: KeyboardEvent) => {
       if (aiVeil && !["Shift", "Control", "Alt", "Meta"].includes(ev.key)) aiVeil.input();
@@ -2462,6 +2489,7 @@
       container.removeEventListener("paste", onPasteEvent, true);
       container.removeEventListener("keydown", markKey, true);
       container.removeEventListener("paste", markPaste, true);
+      for (const type of POINTER_EVENTS) container.removeEventListener(type, markPointer, pointerOpts);
       container.removeEventListener("keydown", veilKey, true);
       container.removeEventListener("paste", veilPaste, true);
       aiVeil?.close();
@@ -2552,6 +2580,7 @@
       bind:pop={noticePop}
       buttons={noticeButtons}
       onrun={runNotice}
+      ondismiss={dismissNotice}
     />
   {/if}
   {#if suggest.suggestBox && suggest.suggestItems.length > 0}

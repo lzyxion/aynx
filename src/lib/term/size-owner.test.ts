@@ -44,29 +44,47 @@ describe("ownerFromReply", () => {
 });
 
 describe("shouldSendInput", () => {
+  const idle = { pasting: false, keyEvent: false, pointer: false };
+
   it("drops terminal replies when not the owner, never human input", () => {
     const dsr = "\x1b[12;40R";
     const da = "\x1b[?62;22c";
     const osc = "\x1b]11;rgb:0000/0000/0000\x1b\\";
     for (const reply of [dsr, da, osc]) {
-      const src = classifyInput(reply, { pasting: false, keyEvent: false });
+      const src = classifyInput(reply, idle);
       expect(src).toBe("protocol");
       expect(shouldSendInput(src, false)).toBe(false);
       expect(shouldSendInput(src, true)).toBe(true);
     }
     // 같은 바이트라도 키 이벤트 중이면 사람 것 — Ctrl+F3 = ESC[1;5R.
-    expect(shouldSendInput(classifyInput("\x1b[1;5R", { pasting: false, keyEvent: true }), false)).toBe(true);
+    expect(shouldSendInput(classifyInput("\x1b[1;5R", { ...idle, keyEvent: true }), false)).toBe(true);
     for (const typed of ["ls\r", "가", "\x03", "\x1b[A"]) {
-      expect(shouldSendInput(classifyInput(typed, { pasting: false, keyEvent: false }), false)).toBe(true);
+      expect(shouldSendInput(classifyInput(typed, idle), false)).toBe(true);
     }
-    expect(shouldSendInput(classifyInput("\x1b[12;40R", { pasting: true, keyEvent: false }), false)).toBe(true);
+    expect(shouldSendInput(classifyInput("\x1b[12;40R", { ...idle, pasting: true }), false)).toBe(true);
   });
 
-  it("human input claims ownership when eligible", () => {
+  it("always sends mouse input, owner or not", () => {
+    for (const [data, ctx] of [
+      ["\x1b[<0;10;5M", idle],
+      ["\x1b[<64;3;7M", idle],
+      ["\x1b[A", { ...idle, pointer: true }], // 휠 → 방향키
+    ] as const) {
+      const src = classifyInput(data, ctx);
+      expect(src).toBe("mouse");
+      expect(shouldSendInput(src, false)).toBe(true);
+      expect(shouldSendInput(src, true)).toBe(true);
+    }
+  });
+
+  it("only keys and pastes claim ownership, and only when eligible", () => {
     expect(claimsOwnership("keyboard", true)).toBe(true);
     expect(claimsOwnership("paste", true)).toBe(true);
+    expect(claimsOwnership("mouse", true)).toBe(false);
     expect(claimsOwnership("protocol", true)).toBe(false);
     expect(claimsOwnership("keyboard", false)).toBe(false);
+    expect(claimsOwnership("paste", false)).toBe(false);
+    expect(claimsOwnership("mouse", false)).toBe(false);
   });
 });
 

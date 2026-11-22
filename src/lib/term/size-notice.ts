@@ -13,16 +13,16 @@ export interface Size2 {
   height: number;
 }
 
-/** 터미널 상자 왼쪽 위 기준 px */
+/** 터미널 상자 왼쪽 위 기준 px. `over` 는 글자 위에 겹친 자리라 닫을 수 있어야 한다. */
 export interface CardPlace {
-  side: "right" | "below";
+  side: "right" | "below" | "over";
   left: number;
   top: number;
 }
 
 export const CARD_GAP = 12;
 
-/** 아무 데도 안 들어가면 `null` — 꼬리표를 눌러 같은 단추를 연다 */
+/** 옆 · 아래 빈자리가 없으면 상자 안 오른쪽 아래 구석(`over`), 상자도 작으면 `null` — 꼬리표를 눌러 같은 단추를 연다 */
 export function placeCard(box: Size2, drawn: Size2, card: Size2, gap: number = CARD_GAP): CardPlace | null {
   const dw = Math.min(drawn.width, box.width);
   const dh = Math.min(drawn.height, box.height);
@@ -43,6 +43,9 @@ export function placeCard(box: Size2, drawn: Size2, card: Size2, gap: number = C
   if (fitsRight && fitsBelow) return rightW * box.height >= belowH * box.width ? right() : below();
   if (fitsRight) return right();
   if (fitsBelow) return below();
+  if (box.width >= card.width + 2 * gap && box.height >= card.height + 2 * gap) {
+    return { side: "over", left: Math.round(box.width - card.width - gap), top: Math.round(box.height - card.height - gap) };
+  }
   return null;
 }
 

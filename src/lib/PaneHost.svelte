@@ -72,6 +72,7 @@
     type TabSpec,
   } from "$lib/session";
   import { broadcastInput, isTerminalReport } from "$lib/sync.svelte.js";
+  import type { InputSource } from "$lib/term/input-source";
   import { isRemote } from "$lib/ipc";
   import { mirrorPlaceholder } from "$lib/app/mirror.svelte.js";
   import { mobileLayout } from "$lib/app/mobile.svelte.js";
@@ -201,7 +202,7 @@
    * 제외된 패널에서 친 입력은 방송하지 않는다(제외는 양방향이다) · 대상은 그 탭 트리에서만 뽑는다.
    * `true` 면 입력한 패널은 자기 write 를 건너뛴다.
    */
-  function broadcast(tab: TabSpec, fromPaneId: string, data: string): boolean {
+  function broadcast(tab: TabSpec, fromPaneId: string, data: string, source: InputSource): boolean {
     // 터미널이 생성한 보고(마우스 추적 · 포커스)는 방송하지 않는다 — TUI 위 마우스 좌표가 형제 셸에 쓰레기로 쏟아진다.
     if (isTerminalReport(data)) return false;
     const set = syncPanes.get(tab.id);
@@ -212,6 +213,7 @@
         .map((p) => p.id)
         .filter((id) => set.has(id)),
       data,
+      source,
     );
     return true;
   }
@@ -777,7 +779,7 @@
               {onshell}
               {ontmux}
               {oncommand}
-              onbroadcast={(data) => broadcast(item.tab, item.pane.id, data)}
+              onbroadcast={(data, source) => broadcast(item.tab, item.pane.id, data, source)}
               onrequestedit={() => oneditremote?.(item.tab.id, item.pane.id)}
               onopenpath={(target, line) => onopenpath?.(item.tab.id, item.pane.id, target, line)}
               onmenu={(x, y, ctx) => {

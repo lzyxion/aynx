@@ -3,6 +3,7 @@
   import { t as tr } from "$lib/i18n/i18n.svelte.js";
   import type { CardPlace, NoticeAction, NoticeSide, Size2 } from "$lib/term/size-notice";
   import type { TermSize } from "$lib/term/size-owner";
+  import UiIcon from "$lib/UiIcon.svelte";
 
   let {
     kind,
@@ -14,6 +15,7 @@
     pop = $bindable(),
     buttons,
     onrun,
+    ondismiss,
   }: {
     kind: NoticeSide;
     ownerSize: TermSize;
@@ -26,6 +28,8 @@
     pop: boolean;
     buttons: NoticeAction[];
     onrun: (a: NoticeAction) => void;
+    /** `over` 자리 카드의 ✕ */
+    ondismiss: () => void;
   } = $props();
 
   const tag = $derived(tr(`pane.sizeNotice.tag.${kind}`, { cols: ownerSize.cols, rows: ownerSize.rows }));
@@ -81,8 +85,16 @@
     bind:offsetHeight={cardH}
     role="status"
   >
-    <div class="size-card-title">{tr(`pane.sizeNotice.title.${kind}`)}</div>
-    <div class="size-card-body">{tr("pane.sizeNotice.body")}</div>
+    {#if card.side === "over"}
+      <button
+        type="button"
+        class="size-card-x"
+        title={tr("app.actions.close")}
+        aria-label={tr("app.actions.close")}
+        onclick={ondismiss}><UiIcon name="close" size={14} /></button
+      >
+    {/if}
+    <div class="size-card-title" class:with-x={card.side === "over"}>{tr(`pane.sizeNotice.title.${kind}`)}</div>
     <div class="size-card-actions">
       {#each buttons as b (b.act)}
         <button type="button" class:primary={b.act === "tile"} onclick={() => onrun(b)}>{tr(b.label)}</button>
@@ -172,12 +184,27 @@
     font-size: 13px;
     font-weight: var(--fw-semibold);
   }
-  .size-card-body {
-    margin-top: 4px;
-    word-break: keep-all;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--fg-muted);
+  .size-card-title.with-x {
+    padding-right: 24px;
+  }
+  .size-card .size-card-x {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    color: var(--fg-2);
+    background: transparent;
+  }
+  .size-card .size-card-x:hover {
+    color: var(--fg-1);
+    background: var(--control-ghost-hover);
   }
   .size-card-actions {
     display: flex;

@@ -83,7 +83,7 @@ Claude `-p --output-format stream-json --verbose --setting-sources "" --tools Re
 --disable plugins --disable hooks --skip-git-repo-check` — 세션 · PTY · 타일 · 붙이기 없음 · 턴(= 프로세스)이 끝나면 끝 · 판정 없이 끝나면 종결) · cwd = 서버 빈 폴더 ·
 보고 커밋은 Run 자리의 분리 HEAD 읽기 자리(추적 symlink 가 밖이면 거절 `symlink-outside`). 조정자 수락은 지금 앨범 구성의 수락 규칙이 정한다.
 **검증 글자 · 다섯 한도는 시작 때 고정**하고 도중에 바꾸지 않는다. 영속 Run 은 판 4만 읽고 미지원 판은 건너뛴다(로그 한 줄) · 앨범 없는 Run 은 실행 · 수락 · 검증을 못 한다(`run_without_album_is_inert`).
-GUI `write` op 는 입력 출처(`keyboard`·`paste`·`protocol` — 프런트 `src/lib/term/input-source.ts`)를 싣는다(원격 웹의 크기 주인 판정 — 터미널 응답은 사람 입력이 아니다). 작업자 타일이 없으므로 개입 잠금도 없다.
+GUI `write` op 는 입력 출처(`keyboard`·`paste`·`mouse`·`protocol` — 프런트 `src/lib/term/input-source.ts`)를 싣는다(원격 웹의 크기 주인 판정 — 키 · 붙여넣기만 주인을 바꾼다. 마우스 보고 · 휠은 셸에 보내되 주인을 바꾸지 않고, 터미널 응답은 사람 입력이 아니다). 작업자 타일이 없으므로 개입 잠금도 없다.
 
 <a id="arch-orch-spawn"></a>
 ### 서버가 띄우는 것 ①~④

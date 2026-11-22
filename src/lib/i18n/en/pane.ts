@@ -919,7 +919,6 @@ export const pane: Record<keyof typeof koPane, string> = {
   "sizeNotice.title.remoteDevice": "Showing the remote device's size",
   "sizeNotice.title.mainPc": "Showing the main PC's size",
   "sizeNotice.title.otherWindow": "Showing another window's size",
-  "sizeNotice.body": "The shell took the size of the device that typed last",
   "sizeNotice.tagHint": "Click to fit this window again",
   "sizeNotice.fitHere": "Fit this window",
   "sizeNotice.fitTile": "This tile only",

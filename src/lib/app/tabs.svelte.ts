@@ -15,6 +15,7 @@ import { clearTabSlide, requestTabSlide } from "$lib/pane/tab-slide.svelte.js";
 import { focusPaneBody } from "$lib/pane/focus";
 import { isMainWindow, isRemote } from "$lib/app/window.svelte.js";
 import type { LayoutRequest } from "$lib/mirror/request";
+import { mirrorLayoutChange } from "$lib/mirror/layout-change";
 import { settings } from "$lib/settings.svelte.js";
 import { CLOSE_SLIDE_DELAY_MS, noteTileClosing, withLayoutAnim } from "$lib/layout-anim.svelte.js";
 import { noteDocSwap } from "$lib/doc-swap";
@@ -1310,10 +1311,23 @@ export function mirrorLocalChoice(): {
   };
 }
 
-/** 통째로 갈아 끼우되 같은 타일은 같은 id 라 터미널 시청자가 다시 붙지 않는다 */
-export function applyMirrorTabs(next: TabSpec[], nextActive: string | null, focus: Record<string, string>): void {
+/**
+ * 통째로 갈아 끼우되 같은 타일은 같은 id 라 터미널 시청자가 다시 붙지 않는다.
+ * 구조가 바뀐 스냅숏만 배치 애니메이션 문을 지난다 — 비율 · 포커스까지 켜면 메인 PC 의 분할선 끌기가 원격에서 늘어진다.
+ * `animate` 는 폰 배치면 부르는 쪽이 끈다(한 번에 타일 하나라 유령 · 등장 지연만 끼어든다) — 문서 본문 떠오르기는 그대로 둔다.
+ */
+export function applyMirrorTabs(next: TabSpec[], nextActive: string | null, focus: Record<string, string>, animate = true): void {
   if (!isRemote) return;
-  tabs = next;
+  const change = mirrorLayoutChange(tabs, next);
+  for (const id of change.docSwaps) noteDocSwap(id);
+  const swap = () => {
+    tabs = next;
+  };
+  if (animate && change.animate) {
+    // 유령은 DOM 이 아직 옛 배치인 지금 떠 둬야 한다
+    const ghost = change.closed !== null && noteTileClosing(change.closed);
+    withLayoutAnim(swap, ghost ? CLOSE_SLIDE_DELAY_MS : 0);
+  } else swap();
   const alive = new Set(next.map((tab) => tab.id));
   for (const id of Object.keys(activePane)) if (!alive.has(id)) delete activePane[id];
   for (const id of Object.keys(hasActivity)) if (!alive.has(id)) delete hasActivity[id];

@@ -10,7 +10,8 @@
 //!
 //! ## 크기 주인 (tmux `latest`)
 //!
-//! - 크기 주인 = 마지막으로 사람이 입력한 자격 있는 쪽(터미널 응답 `protocol` 은 바꾸지 않는다) — 폰 시청자는 자격이 없을 수 있다.
+//! - 크기 주인 = 마지막으로 키를 치거나 붙여넣은 자격 있는 쪽(터미널 응답 `protocol` · 마우스 `mouse` 는 바꾸지 않는다 — 마우스는
+//!   셸에는 간다) — 폰 시청자는 자격이 없을 수 있다.
 //! - resize 는 크기 주인의 것만 적용하고, 아닌 쪽은 적어 두었다가 주인이 되는 순간 서버가 적용한다.
 //! - 되찾기([`Core::claim_size_owner`])는 셸에 아무 바이트도 보내지 않는다.
 //! - 주인이 떠나면 주 → 붙은 순서의 첫 자격 있는 시청자 → 없음 순으로 다시 고른다. "주인 없음" 일 때만 서버가 터미널 질의에 대신 답한다.
@@ -311,17 +312,17 @@ impl Core {
         })
     }
 
-    /// 사람의 입력이고 자격이 있으면 크기 주인이 된다 — 서버는 쓰기 전에 그 쪽이 적어 둔 크기를 적용한다.
+    /// `claims_size`(키 · 붙여넣기)이고 자격이 있으면 크기 주인이 된다 — 서버는 쓰기 전에 그 쪽이 적어 둔 크기를 적용한다.
     pub(crate) fn input(
         &mut self,
         stream: &str,
         session_epoch: u64,
         lease_epoch: u64,
-        human: bool,
+        claims_size: bool,
     ) -> Result<Holder, CoreError> {
         let h = self.holder(stream, session_epoch, lease_epoch)?;
         let eligible = self.streams.get(stream).is_some_and(|e| e.eligible(lease_epoch));
-        if human && eligible {
+        if claims_size && eligible {
             self.set_owner(stream, lease_epoch);
         }
         Ok(h)

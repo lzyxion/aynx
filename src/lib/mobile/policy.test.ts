@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isHandheld, isMobileLayout, parkDelayMs, preferDomRenderer, sizeOwnerEligible, wantsViewer } from "./policy";
+import { claimsOnAttach, dropsFitOnLoss, isHandheld, isMobileLayout, parkDelayMs, preferDomRenderer, sizeOwnerEligible, wantsViewer } from "./policy";
 
 const home = { remote: false, narrow: true, coarse: true, fitHere: false };
 const phone = { remote: true, narrow: true, coarse: true, fitHere: false };
@@ -32,6 +32,24 @@ describe("모바일 정책(원격 웹 R5)", () => {
     expect(wantsViewer(desk, false, true)).toBe(false);
     // 메인 PC 창은 늘 참(시청자가 아니다)
     expect(wantsViewer(home, false, false)).toBe(true);
+  });
+
+  it("폰 배치의 이 기기 크기로 맞추기 — 켜 있으면 붙자마자 되찾는다(태블릿 · 데스크톱은 카드 길)", () => {
+    expect(claimsOnAttach({ ...phone, fitHere: true })).toBe(true);
+    expect(claimsOnAttach(phone)).toBe(false);
+    expect(claimsOnAttach({ ...tablet, fitHere: true })).toBe(false);
+    expect(claimsOnAttach({ ...desk, fitHere: true })).toBe(false);
+    expect(claimsOnAttach({ ...home, fitHere: true })).toBe(false);
+  });
+
+  it("보이는 폰 타일이 주인을 잃으면 끈다 — 주인이 아니었거나 숨은 타일이면 그대로", () => {
+    const on = { ...phone, fitHere: true };
+    expect(dropsFitOnLoss(on, true, true, false)).toBe(true);
+    expect(dropsFitOnLoss(on, true, false, false)).toBe(false);
+    expect(dropsFitOnLoss(on, true, true, true)).toBe(false);
+    expect(dropsFitOnLoss(on, false, true, false)).toBe(false);
+    expect(dropsFitOnLoss(phone, true, true, false)).toBe(false);
+    expect(dropsFitOnLoss({ ...tablet, fitHere: true }, true, true, false)).toBe(false);
   });
 
   it("떼기 전 기다림 · 렌더러", () => {

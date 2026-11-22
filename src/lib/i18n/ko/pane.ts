@@ -942,7 +942,6 @@ export const pane = {
   "sizeNotice.title.remoteDevice": "원격 기기 크기로 표시 중",
   "sizeNotice.title.mainPc": "메인 PC 크기로 표시 중",
   "sizeNotice.title.otherWindow": "다른 창 크기로 표시 중",
-  "sizeNotice.body": "마지막으로 입력한 기기의 크기로 셸이 바뀌었습니다",
   "sizeNotice.tagHint": "눌러서 이 창 크기로 되돌리기",
   "sizeNotice.fitHere": "이 창 크기로",
   "sizeNotice.fitTile": "이 타일만",

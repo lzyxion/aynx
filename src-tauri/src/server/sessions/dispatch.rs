@@ -356,13 +356,17 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
     }
 }
 
-/// **쓰기의 문** — 주 또는 지금 붙은 시청자의 열쇠만. 출처가 `protocol` 이 아니면(모르는 값 · 없음 포함) 사람 입력이라 그 쪽이
-/// 크기 주인이 된다 — 출처는 프런트 `src/lib/term/input-source.ts` 가 분류한다.
+/// **쓰기의 문** — 주 또는 지금 붙은 시청자의 열쇠만. 그 쓰기가 크기 주인을 바꾸는지는 [`claims_size`] — 출처는 프런트
+/// `src/lib/term/input-source.ts` 가 분류한다.
 pub(crate) fn input_target(stream: &str, session_epoch: u64, lease_epoch: u64, source: Option<&str>) -> Result<Holder, WireError> {
-    let human = source != Some("protocol");
     core()
-        .input(stream, session_epoch, lease_epoch, human)
+        .input(stream, session_epoch, lease_epoch, claims_size(source))
         .map_err(|e| core_err("write", stream, e))
+}
+
+/// 터미널 응답(`protocol`) · 마우스(`mouse`)는 주인을 바꾸지 않는다. 모르는 값 · 없음은 키로 친다(옛 프런트 · 안전한 쪽).
+fn claims_size(source: Option<&str>) -> bool {
+    !matches!(source, Some("protocol" | "mouse"))
 }
 
 #[derive(Deserialize)]
@@ -370,7 +374,7 @@ struct Write {
     #[serde(flatten)]
     lease: LeaseArgs,
     data: String,
-    /// `keyboard` · `paste` · `protocol`.
+    /// `keyboard` · `paste` · `mouse` · `protocol`.
     #[serde(default)]
     source: Option<String>,
 }
@@ -478,4 +482,20 @@ struct WindowIds {
     /// 그 세대(`subGen`)만 지운다 — 같은 라벨의 새 페이지가 건 구독은 그대로다.
     #[serde(default)]
     producer_subs: Vec<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::claims_size;
+
+    /// 마우스는 셸에는 가지만 크기 주인은 그대로다 — 옛 프런트(출처 없음)와 모르는 값은 예전처럼 주인이 된다.
+    #[test]
+    fn only_keys_and_pastes_claim_the_size() {
+        assert!(claims_size(Some("keyboard")));
+        assert!(claims_size(Some("paste")));
+        assert!(!claims_size(Some("mouse")));
+        assert!(!claims_size(Some("protocol")));
+        assert!(claims_size(None));
+        assert!(claims_size(Some("stylus")));
+    }
 }

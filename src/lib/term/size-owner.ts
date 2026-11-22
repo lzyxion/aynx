@@ -1,6 +1,6 @@
-// 크기 주인 — 여러 창이 한 세션을 볼 때 PTY 크기는 마지막으로 사람이 입력한 쪽의 것이다(서버 `session_core::viewers`).
-// - 터미널 응답(`protocol`)은 주인일 때만 보낸다 — 둘 다 답하면 셸 입력에 답이 두 번 샌다. 사람 입력은 언제나 보낸다.
-// - 사람이 치면 서버 이벤트를 기다리지 않고 먼저 주인으로 친다 — 그 틈에 온 질의에 답해야 한다.
+// 크기 주인 — 여러 창이 한 세션을 볼 때 PTY 크기는 마지막으로 키를 치거나 붙여넣은 쪽의 것이다(서버 `session_core::viewers`).
+// - 터미널 응답(`protocol`)은 주인일 때만 보낸다 — 둘 다 답하면 셸 입력에 답이 두 번 샌다. 사람 입력(마우스 포함)은 언제나 보낸다.
+// - 키 · 붙여넣기는 서버 이벤트를 기다리지 않고 먼저 주인으로 친다 — 그 틈에 온 질의에 답해야 한다. 마우스는 주인을 바꾸지 않는다.
 // - 주인이 아니면 주인의 크기로 그린다(제 상자에 맞추지 않는다). resize 는 그래도 보낸다 — 서버가 적어 두었다가 이 쪽이 치는 순간 건다.
 
 import type { SessionLease } from "$lib/session/contract";
@@ -52,9 +52,9 @@ export function shouldSendInput(source: InputSource, owner: boolean): boolean {
   return source !== "protocol" || owner;
 }
 
-/** 서버 규칙과 같아야 한다 — 사람 입력 · 자격 있음 */
+/** 서버 `input_target` 과 같아야 한다 — 키 · 붙여넣기 · 자격 있음 */
 export function claimsOwnership(source: InputSource, eligible: boolean): boolean {
-  return eligible && source !== "protocol";
+  return eligible && (source === "keyboard" || source === "paste");
 }
 
 /** 맞출 수 없으면(숨은 상자) `null` — 부르는 쪽이 건드리지 않는다 */

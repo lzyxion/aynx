@@ -37,14 +37,30 @@ describe("placeCard", () => {
     expect(placeCard({ width: 1000, height: 1000 }, { width: 700, height: 300 }, card)?.side).toBe("below");
   });
 
-  it("gives up when the region is only slightly smaller", () => {
-    expect(placeCard({ width: 1000, height: 600 }, { width: 900, height: 560 }, card)).toBeNull();
+  it("lays the card over the bottom-right corner when there is no empty space", () => {
+    expect(placeCard({ width: 1000, height: 600 }, { width: 900, height: 560 }, card)).toEqual({
+      side: "over",
+      left: 1000 - 260 - CARD_GAP,
+      top: 600 - 120 - CARD_GAP,
+    });
     // 영역이 상자보다 커도(스크롤) 빈 자리는 없다.
-    expect(placeCard({ width: 500, height: 300 }, { width: 900, height: 900 }, card)).toBeNull();
+    expect(placeCard({ width: 500, height: 300 }, { width: 900, height: 900 }, card)).toEqual({
+      side: "over",
+      left: 500 - 260 - CARD_GAP,
+      top: 300 - 120 - CARD_GAP,
+    });
   });
 
-  it("stays inside a short box", () => {
+  it("gives up when the box cannot hold the card", () => {
     expect(placeCard({ width: 1000, height: 130 }, { width: 300, height: 100 }, card)).toBeNull();
+    expect(placeCard({ width: 1000, height: 143 }, { width: 1000, height: 143 }, card)).toBeNull();
+    expect(placeCard({ width: 283, height: 600 }, { width: 900, height: 900 }, card)).toBeNull();
+    // 꼭 맞으면 들어간다.
+    expect(placeCard({ width: 284, height: 144 }, { width: 900, height: 900 }, card)).toEqual({
+      side: "over",
+      left: CARD_GAP,
+      top: CARD_GAP,
+    });
   });
 });
 

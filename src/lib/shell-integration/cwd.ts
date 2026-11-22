@@ -29,6 +29,17 @@ export function parseOsc7Cwd(data: string): string | null {
   return stripped === "" ? null : stripped;
 }
 
+/**
+ * 버퍼 끝에 붙일 OSC 7 — 화면 직렬화는 폴더를 싣지 않아, 빠지면 다시 붙은 창이 다음 프롬프트까지 폴더를 모른다.
+ * 파서를 거쳐 같은 값으로 돌아오지 않는 경로(상대 · UNC 등)는 싣지 않는다 — 틀린 폴더보다 칩이 없는 편이 낫다.
+ */
+export function cwdSuffix(cwd: string | null | undefined): string {
+  if (!cwd) return "";
+  const path = cwd.replace(/[%\s\u0000-\u001f\u007f-\u009f]/g, (c) => encodeURIComponent(c));
+  const body = `file://${path.startsWith("/") ? "" : "/"}${path}`;
+  return parseOsc7Cwd(body) === cwd ? `\x1b]7;${body}\x07` : "";
+}
+
 const WSL_UNC = "\\\\wsl.localhost\\";
 
 /**

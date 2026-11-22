@@ -9,6 +9,7 @@ import {
 } from "$lib/block-history";
 import {
   attachShellIntegration,
+  cwdSuffix,
   foldStatus,
   paneBadgeInput,
   parseMarker,
@@ -157,6 +158,54 @@ describe("parseOsc7Cwd", () => {
     expect(parseOsc7Cwd("file://MYBOOK/tmp")).toBe("/tmp");
     // 호스트가 없는 서버(`hostname` 도 없어 localhost 로 떨어진 경우)도 같은 답.
     expect(parseOsc7Cwd("file://localhost/home/me")).toBe("/home/me");
+  });
+});
+
+describe("cwdSuffix", () => {
+  const PREFIX = "\x1b]7;";
+  const SUFFIX = "\x07";
+  const bodyOf = (s: string): string => {
+    expect(s.startsWith(PREFIX)).toBe(true);
+    expect(s.endsWith(SUFFIX)).toBe(true);
+    return s.slice(PREFIX.length, s.length - SUFFIX.length);
+  };
+
+  it("파서를 거치면 원래 폴더로 돌아온다", () => {
+    for (const cwd of [
+      "/home/me/work",
+      "/home/a b",
+      "/tmp/x ",
+      "/tmp/100%",
+      "/tmp/a%20b",
+      "C:/프로젝트",
+      "C:/Users/x",
+      "C:\\Users\\x",
+      "C:/",
+      "/",
+    ]) {
+      expect(parseOsc7Cwd(bodyOf(cwdSuffix(cwd)))).toBe(cwd);
+    }
+  });
+
+  it("제어 문자는 인코딩한다 — 본문에 날것으로 남지 않고 왕복도 된다", () => {
+    for (const cwd of ["/tmp/a\x07b", "/tmp/a\x1bb", "/tmp/a\nb", "/tmp/a\x9cb", "/tmp/a\x7fb"]) {
+      const body = bodyOf(cwdSuffix(cwd));
+      // eslint-disable-next-line no-control-regex
+      expect(body).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+      expect(parseOsc7Cwd(body)).toBe(cwd);
+    }
+  });
+
+  it("폴더가 없으면 빈 문자열", () => {
+    expect(cwdSuffix(null)).toBe("");
+    expect(cwdSuffix(undefined)).toBe("");
+    expect(cwdSuffix("")).toBe("");
+  });
+
+  it("되돌아오지 않는 경로는 싣지 않는다", () => {
+    expect(cwdSuffix("relative/dir")).toBe("");
+    expect(cwdSuffix("~")).toBe("");
+    expect(cwdSuffix("\\\\server\\share")).toBe("");
   });
 });
 

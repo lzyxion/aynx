@@ -301,6 +301,16 @@ node scripts/dev/run-harness.mjs flat-corner-harness.mjs <outdir> --size 1100x70
 node scripts/dev/run-harness.mjs file-ui-remote-harness.mjs <outdir> --size 1100x800
 ```
 
+## mirror-layout-anim-harness.mjs — 원격 창의 배치 애니메이션
+
+원격 창 흉내로 뜨고 `mirror-layout` 방송으로 파일 타일(세션 없음)을 세운 뒤 스냅숏을 바꿔 민다. 첫 스냅숏 · 비율만 = `.host.anim` 없음 · 곧바로 새 자리,
+분할 · 자리 바꾸기 = `anim` 과 상자의 위치 · 크기 트랜지션(260ms 뒤 걷힘), 닫기 = 유령 하나 + `anim`, 폭 400(폰 배치)의 분할 = `anim` 없음.
+타일 id 꼬리는 숫자로 둔다 — 상자 순서가 `paneOrder` 라 숫자가 없으면 자리 바꾸기에 DOM 노드가 옮겨져 트랜지션이 끊긴다.
+
+```bash
+node scripts/dev/run-harness.mjs mirror-layout-anim-harness.mjs <outdir> --size 1100x800
+```
+
 ## file-ui-keep-harness.mjs — 파일 타일 보기 설정 유지
 
 숨김 · 보기 · 장소 · 미리 보기 · 크기의 F5 유지 · 새 타일 = 마지막 값 · 다른 타일 · 복원은 그대로 · 설정 기본 보기와의 관계 · 원격 파일 타일 · 복제 · 망가진 값(헤드리스 스텁).
@@ -391,6 +401,28 @@ osc52 query → writes: 1 reads: 0 new invokes: 0
   (docs/log/2026-09-28-clipboard-plugin.md). **읽기 요청(`?`) 줄의
   `writes 1 · reads 0 · new invokes 0`** 이 요점이다: 아무 답도 나가지 않았다는 뜻이고,
   그것이 이 기능의 유일한 보안 불변이다.
+
+## input-source-harness.mjs — 터미널 입력의 출처(크기 주인 판정)
+
+`term/input-source.ts` · `Terminal.svelte` 의 `inputContext`. `new-shell-cwd-harness` 스텁의 줄임판(가짜 로컬 세션 · `window.__feed`)에 셸 타일
+하나를 열고, **신뢰된 입력**(CDP `Input.dispatchMouseEvent` · `Input.dispatchKeyEvent`)을 쏴 `write_session` 의 `source` 를 본다 — 일반 화면의 키 =
+`keyboard` · 대체 화면(`?1049h`, 마우스 추적 없음)의 휠 → 방향키 = `mouse` · 그 직후 키 = `keyboard` · `?1000h ?1006h` 의 클릭 → SGR = `mouse` ·
+Ctrl+F3(`ESC[1;5R`) = `keyboard`. 합성 `dispatchEvent` 로 바꾸면 안 된다 — 신뢰된 이벤트는 리스너 사이에 마이크로태스크가 돌아, 구간 깃발을
+마이크로태스크로 내리는 결함을 합성 이벤트는 재현하지 못한다(그 결함이면 휠 · Ctrl+F3 두 줄이 FAIL).
+
+```bash
+node scripts/dev/run-harness.mjs input-source-harness.mjs <outdir>   # 약 15초 · <outdir>/input-source.png
+```
+
+## size-notice-harness.mjs — 다른 기기 크기 안내의 카드(옆/아래 빈자리 · 겹친 카드 · ✕)
+
+`input-source-harness` 스텁에 임대를 싣고 `window.__emit('session-size-owner', …)` 로 주인을 바꿔, 작은 주인 크기 = 빈자리 카드 · 큰 주인 크기 = 상자 안 오른쪽 아래에 겹친 카드(✕) · ✕ → 꼬리표 단추 → 팝 · 다시 주인이 됐다 잃으면 카드가 다시 뜸 · [이 창 크기로] → `claim_session_size` 를 본다.
+
+```bash
+node scripts/dev/run-harness.mjs size-notice-harness.mjs <outdir>   # 약 15초 · <outdir>/side.png · over.png
+```
+
+`mobile-fit-harness.mjs` — 폰 배치의 ⤢ 가 카드의 [이 창 크기로] 노릇: 꺼짐 = 자격 없이 붙음 · ⤢ = 자격 있게 다시 붙어 키 없이 `claim_session_size` · 다른 쪽이 주인(이벤트) = ⤢ 저절로 꺼짐 · 다시 켜기 · 끄기(`node scripts/dev/run-harness.mjs mobile-fit-harness.mjs <outdir> --size 400x844` → `fit-on.png` · `fit-off.png`).
 
 ## keygen-harness.mjs — 호스트 폼과 공개키 설치 고르개를 스텁 위에서 몰아 본다
 

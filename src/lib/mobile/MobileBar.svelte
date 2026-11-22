@@ -164,7 +164,7 @@
       aria-pressed={fitThisDevice()}
       title={fitThisDevice() ? t("app.mobile.fit.on") : t("app.mobile.fit.off")}
       aria-label={t("app.mobile.fit")}
-      onclick={() => setFitThisDevice(!fitThisDevice())}><UiIcon name="maximize" size={18} /></button
+      onclick={() => setFitThisDevice(!fitThisDevice())}><UiIcon name={fitThisDevice() ? "restore" : "maximize"} size={18} /></button
     >
   {/if}
 </div>

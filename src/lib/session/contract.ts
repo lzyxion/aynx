@@ -92,7 +92,7 @@ export interface SessionHandle {
   readonly ownerSize?: { cols: number; rows: number };
   /** 옛 서버는 없다 */
   readonly ownerPrimary?: boolean;
-  /** 세션 서버가 오케스트레이션 작업자 타일의 사람 개입(잠금 · 초안)을 `source` 로 가른다 — 터미널 응답만 `protocol` 이다 */
+  /** 세션 서버가 `source` 로 크기 주인을 가른다(키 · 붙여넣기만 주인이 된다 — `term/input-source.ts`). 없으면 키다 */
   write(data: string, source?: InputSource): void;
   resize(cols: number, rows: number): void;
   /** 셸에 아무것도 쓰지 않고 이 쪽을 크기 주인으로 삼는다 — 자격이 없거나(폰) 실패면 `false` */

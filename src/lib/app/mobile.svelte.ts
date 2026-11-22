@@ -23,6 +23,8 @@ import {
   type ThemePref,
 } from "$lib/mobile/prefs";
 import {
+  claimsOnAttach,
+  dropsFitOnLoss,
   isHandheld,
   isMobileLayout,
   MOBILE_MAX_WIDTH,
@@ -190,6 +192,14 @@ export function handheld(): boolean {
 
 export function viewerEligible(): boolean {
   return sizeOwnerEligible(device());
+}
+
+export function claimSizeOnAttach(): boolean {
+  return claimsOnAttach(device());
+}
+
+export function dropFitOnOwnerLoss(tileShown: boolean, wasOwner: boolean, nowOwner: boolean): void {
+  if (dropsFitOnLoss(device(), tileShown, wasOwner, nowOwner)) setFitThisDevice(false);
 }
 
 export function viewerWanted(tileShown: boolean): boolean {
