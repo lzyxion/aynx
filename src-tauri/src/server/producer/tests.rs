@@ -519,7 +519,9 @@ mod live {
         assert!(decide("deny", 2).err().unwrap().message.contains("[unknown-request]"), "둘째 창의 다른 결정");
         let evs = wait_ev(&chat, |e| e["t"] == "permissionResolved");
         assert_eq!(evs.iter().filter(|e| e["ev"]["t"] == "permissionResolved").count(), 1);
-        let ended = wait_body(&chat, |b| b["ev"]["t"] == "turnEnded" && b["seq"].as_u64() > evs.last().unwrap()["seq"].as_u64());
+        // 기준은 결정 사건의 seq — `wait_body` 는 그때까지 쌓인 전부를 돌려주니 `evs.last()` 는 이미 둘째 턴 끝일 수 있다.
+        let resolved = evs.iter().find(|e| e["ev"]["t"] == "permissionResolved").unwrap()["seq"].as_u64();
+        let ended = wait_body(&chat, |b| b["ev"]["t"] == "turnEnded" && b["seq"].as_u64() > resolved);
         assert_eq!(ended.iter().filter(|e| e["ev"]["t"] == "turnStarted").count(), 2, "턴 둘(재전송은 턴을 세우지 않는다)");
         ok("producer_chat_close", json!({ "chat": chat }));
         teardown(&root);

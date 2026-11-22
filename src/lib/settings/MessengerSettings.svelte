@@ -39,7 +39,6 @@
   import {
     accordionEdges,
     BOT_CHANNELS,
-    botHandle,
     channelConnected,
     DUAL_CHANNELS,
     dualHead,
@@ -251,11 +250,7 @@
       send={rules[c.id]}
       onSendChange={(on) => setMessengerChannel(c.id, on)}
       {head}
-      aside={head.aside === "bot"
-        ? botHandle(bots[c.id]?.bot ?? null, c.id)
-        : head.aside === "conflict"
-          ? t("settings.messenger.status.conflict")
-          : ""}
+      aside={head.aside === "conflict" ? t("settings.messenger.status.conflict") : ""}
       anchorFor={!chatRowShown(c.id) ? c.chatId : undefined}
     >
       {#if c.id !== "telegram"}

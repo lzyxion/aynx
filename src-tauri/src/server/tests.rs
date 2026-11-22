@@ -661,9 +661,6 @@ pub(in crate::server) mod live {
         // GUI 쪽 서버 확인 — 상대(서버)는 이 프로세스다.
         assert_eq!(peer.pid, Some(std::process::id()));
         assert!(os::same_exe(peer.image.as_deref().unwrap(), &own));
-        // 찾기 파일이 섰다.
-        let d = discovery::read(&disc).expect("server.json");
-        assert_eq!((d.pid, d.pipe.as_str(), d.launch_mode.as_str()), (std::process::id(), pipe.as_str(), "breakaway"));
 
         // 둘째 서버는 선점에서 진다(err 5) — 조용히 끝난다.
         let second = serve::run(config(&pipe, None, vec![own.clone()], Duration::from_secs(60))).await;
@@ -671,6 +668,9 @@ pub(in crate::server) mod live {
 
         // hello 전에는 판에 무관하지 않은 op 를 받지 않는다.
         assert_eq!(err_code(call(&mut s, 1, Grade::Read, "ping", json!(null)).await), code::NEED_HELLO);
+        // 찾기 파일이 섰다 — 첫 응답 뒤에 본다(파이프는 서버가 찾기 파일을 쓰기 전에 열려, 붙자마자 읽으면 아직 없을 수 있다).
+        let d = discovery::read(&disc).expect("server.json");
+        assert_eq!((d.pid, d.pipe.as_str(), d.launch_mode.as_str()), (std::process::id(), pipe.as_str(), "breakaway"));
         // 판이 안 겹치면 거부.
         assert_eq!(err_code(call(&mut s, 2, Grade::Read, "hello", hello(90, 99)).await), code::PROTOCOL_MISMATCH);
         // 겹치면(GUI 가 더 새로워도) 붙는다.

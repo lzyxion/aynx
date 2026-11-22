@@ -423,6 +423,15 @@ async fn check_token(client: &reqwest::Client, cfg: &Config, token: &Token) -> R
     }
 }
 
+/// 실패는 이름 없음.
+async fn bot_name(client: &reqwest::Client, cfg: &Config, token: &Token) -> Option<String> {
+    match token {
+        Token::Telegram(t) => tg::check_token(client, cfg, t).await.ok().flatten(),
+        Token::Discord(t) => dc::check_token(client, cfg, t).await.ok().flatten(),
+        Token::Slack(t) => sl::bot_name(client, cfg, t).await,
+    }
+}
+
 /// 코어의 [`Chan::forget_chat`] 과 같은 때, 다리 잠금 밖에서 부른다.
 fn forget_transport(chan: Channel) {
     match chan {
@@ -584,7 +593,27 @@ pub(crate) fn start(cfg: Config) {
     for &chan in CHANNELS {
         forget_transport(chan);
         restart(chan);
+        learn_bot_name(chan);
     }
+}
+
+/// 봇 이름은 파일에 두지 않는다 — 서버가 뜰 때 한 번 묻는다. 실패하면 다음 토큰 등록 · 서버 시작까지 비어 있다(다시 묻지 않는다).
+fn learn_bot_name(chan: Channel) {
+    let Some(rt) = state().rt.clone() else { return };
+    rt.spawn(async move {
+        let Some((client, cfg, token)) = hands(chan, None) else { return };
+        let Some(name) = bot_name(&client, &cfg, &token).await else { return };
+        {
+            let mut s = state();
+            let c = s.chan(chan);
+            // 묻는 사이 토큰이 바뀌었으면 버린다.
+            if c.token.as_ref() != Some(&token) {
+                return;
+            }
+            c.bot = Some(name);
+        }
+        emit("bot", chan);
+    });
 }
 
 /// 토큰이 없으면 멈춘다.

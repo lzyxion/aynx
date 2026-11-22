@@ -18,6 +18,7 @@ import {
   parseBotStatus,
   parseHookStatus,
   SLACK_MANIFEST,
+  splitAtMark,
   telegramHead,
   tokenFields,
   webhookHead,
@@ -136,6 +137,13 @@ describe("Telegram 의 연결 · 이름", () => {
     expect(formatPairCode("482913")).toBe("482 913");
     expect(formatPairCode("48291")).toBe("48291");
   });
+
+  it("안내 문장을 봇 이름 자리에서 가른다 — 자리가 한 번이 아니면 가르지 않는다", () => {
+    expect(splitAtMark("폰에서 \u0000 에게 보내세요", "\u0000")).toEqual(["폰에서 ", " 에게 보내세요"]);
+    expect(splitAtMark("\u0000 first", "\u0000")).toEqual(["", " first"]);
+    expect(splitAtMark("자리가 없다", "\u0000")).toBeNull();
+    expect(splitAtMark("\u0000 둘 \u0000", "\u0000")).toBeNull();
+  });
 });
 
 describe("머리줄 상태 칩", () => {
@@ -148,13 +156,13 @@ describe("머리줄 상태 칩", () => {
     expect(webhookHead(true, false).chips).toEqual([{ tone: "idle", key: "settings.messenger.status.paused" }]);
   });
 
-  it("Telegram — 연결 안 됨 · 계정 연결 대기(+ 봇 이름) · 보내는 중 · 말하기 켜짐", () => {
+  it("Telegram — 연결 안 됨 · 계정 연결 대기(봇 이름은 머리줄에 없다) · 보내는 중 · 말하기 켜짐", () => {
     expect(keys(botHead(null, true, false))).toEqual(["off:none"]);
     expect(keys(botHead({ ...base, configured: false }, true, true))).toEqual(["off:none"]);
     const waiting = botHead(base, true, true);
     expect(keys(waiting)).toEqual(["idle:pairing"]);
-    expect(waiting.aside).toBe("bot");
-    expect(botHead({ ...base, bot: null }, true, false).aside).toBeNull();
+    expect(base.bot).toBeTruthy();
+    expect(waiting.aside).toBeNull();
     expect(keys(botHead({ ...base, paired: true }, true, false))).toEqual(["ok:sending"]);
     expect(keys(botHead({ ...base, paired: true }, false, false))).toEqual(["idle:paused"]);
     expect(keys(botHead({ ...base, paired: true }, true, true))).toEqual(["ok:sending", "ok:chat"]);
@@ -200,7 +208,7 @@ describe("Discord 머리 — 방식대로", () => {
     expect(keys(dualHead("webhook", null, false, false))).toEqual(["idle:paused"]);
     const waiting = dualHead("bot", base, true, false);
     expect(keys(waiting)).toEqual(["idle:pairing"]);
-    expect(waiting.aside).toBe("bot");
+    expect(waiting.aside).toBeNull();
     expect(keys(dualHead("bot", { ...base, paired: true }, true, true))).toEqual(["ok:sending", "ok:chat"]);
     expect(keys(dualHead("bot", { ...base, paired: true, link: "error" }, true, false))).toEqual(["ok:sending", "bad:no_receive"]);
   });

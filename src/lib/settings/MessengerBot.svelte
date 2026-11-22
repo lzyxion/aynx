@@ -12,6 +12,7 @@
     formatPairCode,
     joinTokens,
     parseBotStatus,
+    splitAtMark,
     tokenFields,
     type BotChannel,
     type BotStatus,
@@ -78,6 +79,9 @@
   const chatId = $derived(`messenger-channel-${channel}-chat`);
   const homeOnly = $derived(isRemote ? t("settings.remote.homeOnly") : undefined);
   const bot = $derived(botHandle(status?.bot ?? null, channel));
+  /** 안내 문장에서 봇 이름만 강조해 그리려고 가른다 — 이름을 모르면 문장을 통째로 그린다(채널 이름이 그 자리에 든다) */
+  const BOT_MARK = "\u0000";
+  const pairParts = $derived(bot ? splitAtMark(t(text.pairHowto, { bot: BOT_MARK }), BOT_MARK) : null);
 
   function message(e: unknown): string {
     return stripReason(e instanceof Error ? e.message : String(e));
@@ -158,7 +162,9 @@
 {:else if !status.paired}
   <div class="srow pair-row" data-messenger-pairing={status.pending ? "pending" : "idle"}>
     <span class="name">{t("settings.messenger.bot.pair.label")}</span>
-    <p class="footnote">{t(text.pairHowto, { bot: bot || name })}</p>
+    <p class="footnote">
+      {#if pairParts}{pairParts[0]}<strong class="bot-name">{bot}</strong>{pairParts[1]}{:else}{t(text.pairHowto, { bot: bot || name })}{/if}
+    </p>
     {#if status.pending}
       {@const pending = status.pending}
       <div class="pair" role="group" aria-label={t("settings.messenger.bot.pair.label")}>
@@ -245,6 +251,11 @@
 
   .rejection {
     color: var(--err);
+  }
+
+  .bot-name {
+    font-weight: var(--fw-semibold);
+    color: var(--accent);
   }
 
   .srow.pair-row > .pair {

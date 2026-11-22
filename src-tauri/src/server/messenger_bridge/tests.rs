@@ -1052,6 +1052,8 @@ fn live_card_buttons_with_fake_telegram() {
     let op = |name: &str, body: Value| rt.block_on(handle(name, body));
     wait_for("롱폴 ok", || op("messenger_bot_status", Value::Null).unwrap()["link"] == "ok");
     assert_eq!(op("messenger_bot_status", Value::Null).unwrap()["paired"], true);
+    // 토큰 파일이 이미 있는 시작(서버를 다시 띄움) — 봇 이름을 다시 묻는다.
+    wait_for("봇 이름", || op("messenger_bot_status", Value::Null).unwrap()["bot"] == "aynx_test_bot");
 
     let emit: crate::server::signal_http::Emit = Arc::new(|_| {});
     let plane = crate::server::signal_http::start(emit, None).expect("평면");

@@ -393,7 +393,13 @@ await sleep(600);
 
 // ── 3. 토큰만 · 짝 없음 ─────────────────────────────────────────────────────
 const pairIdle = await evj(`(() => { const c = ${CH("telegram")}; return { pairing: c.querySelector('[data-messenger-pairing]')?.dataset.messengerPairing ?? null, head: c.querySelector('[data-messenger-state]').textContent.replace(/\\s+/g, ' ').trim(), toggle: !!document.getElementById('messenger-telegram'), open: c.hasAttribute('data-messenger-open') }; })()`);
-check(pairIdle.pairing === "idle" && /계정 연결 대기/.test(pairIdle.head) && /@my_aynx_bot/.test(pairIdle.head), `토큰만 = 계정 연결 안내 · 머리 칩 + 봇 이름 (${pairIdle.head})`);
+check(pairIdle.pairing === "idle" && /계정 연결 대기/.test(pairIdle.head) && !/my_aynx_bot/.test(pairIdle.head), `토큰만 = 계정 연결 안내 · 머리줄에는 봇 이름이 없다 (${pairIdle.head})`);
+{
+  // 봇 이름은 계정 연결 줄의 안내 문장 안에서 강조한다(굵게 · 강조색)
+  const n = await evj(`(() => { const row = ${CH("telegram")}.querySelector('[data-messenger-pairing]'); const b = row.querySelector('.bot-name'); const p = row.querySelector('.footnote'); return { name: b?.textContent ?? null, weight: b ? getComputedStyle(b).fontWeight : null, color: b ? getComputedStyle(b).color : null, base: getComputedStyle(p).color, text: p.textContent.replace(/\\s+/g, ' ').trim() }; })()`);
+  check(n.name === "@my_aynx_bot" && Number(n.weight) >= 600 && n.color !== n.base, `계정 연결 줄 = 봇 이름 강조 (${JSON.stringify(n)})`);
+  check(/Telegram 에서 @my_aynx_bot 에게 아무 글이나/.test(n.text), `안내 문장은 그대로 이어진다 (${n.text})`);
+}
 check(!pairIdle.toggle, "짝 전에는 Telegram 보내기 스위치가 없다");
 {
   const k = await tgKind();
@@ -589,7 +595,11 @@ check(
   `바꾼 뒤 = 연결 방식[봇] · 계정 연결 · 봇 연결 해제(웹훅 줄 없음) (${JSON.stringify(d.names)})`,
 );
 check(d.kind === "봇" && d.kindFirst, `바꾼 뒤 머리줄 첫 칩 = 봇 (${d.kind})`);
-check(/계정 연결 대기/.test(d.head) && /aynx-bot/.test(d.head) && !/@aynx-bot/.test(d.head) && !d.toggle, `머리 = 계정 연결 대기 + aynx-bot(@ 없음) · 보내기 스위치 없음 (${d.head})`);
+check(/계정 연결 대기/.test(d.head) && !/aynx-bot/.test(d.head) && !d.toggle, `머리 = 계정 연결 대기(봇 이름 없음) · 보내기 스위치 없음 (${d.head})`);
+{
+  const name = await evj(`${CH("discord")}.querySelector('[data-messenger-pairing] .bot-name')?.textContent ?? null`);
+  check(name === "aynx-bot", `계정 연결 줄의 봇 이름 = aynx-bot(@ 없음) (${name})`);
+}
 check(/DM/.test(d.text) && /같은 서버/.test(d.text), `짝짓기 요령 = DM · 설치 또는 같은 서버 (${d.text})`);
 await shotChannels("11b-discord-bot-pairing");
 

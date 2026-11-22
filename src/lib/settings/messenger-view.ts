@@ -175,6 +175,12 @@ export function botHandle(bot: string | null, channel: BotChannel = "telegram"):
   return bot.startsWith("@") ? bot : `@${bot}`;
 }
 
+/** 문장을 `mark` 앞뒤로 가른다(그 자리에 이름을 따로 그린다) — `mark` 가 한 번이 아니면 `null` */
+export function splitAtMark(sentence: string, mark: string): [string, string] | null {
+  const parts = sentence.split(mark);
+  return parts.length === 2 ? [parts[0], parts[1]] : null;
+}
+
 export function formatPairCode(code: string): string {
   return /^\d{6}$/.test(code) ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
 }
@@ -188,7 +194,7 @@ export interface ChannelHead {
   /** 종류 칩이다 — 상태가 아니다 */
   kind?: Key | null;
   chips: ChannelChip[];
-  aside: "bot" | "conflict" | null;
+  aside: "conflict" | null;
 }
 
 function sendChip(send: boolean): ChannelChip {
@@ -209,7 +215,6 @@ export function botHead(s: BotStatus | null, send: boolean, chat: boolean): Chan
   let aside: ChannelHead["aside"] = null;
   if (!s.paired) {
     chips.push({ tone: "idle", key: "settings.messenger.status.pairing" });
-    if (s.bot) aside = "bot";
   } else {
     chips.push(sendChip(send));
     if (chat) chips.push({ tone: "ok", key: "settings.messenger.status.chat" });

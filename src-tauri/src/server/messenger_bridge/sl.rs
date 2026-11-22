@@ -539,6 +539,11 @@ pub(crate) async fn check_token(client: &reqwest::Client, cfg: &Config, token: &
     }
 }
 
+/// 이름만 — `apps.connections.open` 은 부르지 않는다(받기 고리가 같은 때 부른다 · 분당 한도가 낮다).
+pub(crate) async fn bot_name(client: &reqwest::Client, cfg: &Config, token: &BotToken) -> Option<String> {
+    call(client, &cfg.slack.api, token.bot(), "auth.test", None).await.ok().as_ref().and_then(parse_auth)
+}
+
 // ---------------------------------------------------------------------------
 // 받은 것
 // ---------------------------------------------------------------------------
