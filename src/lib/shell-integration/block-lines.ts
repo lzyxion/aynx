@@ -45,7 +45,7 @@ export function restoreMarkers(s: SiState, entries: readonly MarkerDistance[]): 
     if (!marker) continue;
     s.blockLines.set(blockId, marker);
     count++;
-    // 실패 표시만 다시 그린다 — 성공 · 실행 중 띠까지 되살리는 것은 재발을 보기 전의 기계다 (CLAUDE.md).
+    // 실패 표시만 다시 그린다 — 성공 · 실행 중 띠까지 되살리는 것은 재발을 보기 전의 기계다 (AGENTS.md).
     const exit = exits.get(blockId);
     if (exit !== undefined && exit !== null && exit !== 0) {
       s.restored.push(...decorate(s, marker, "fail", "", blockId));

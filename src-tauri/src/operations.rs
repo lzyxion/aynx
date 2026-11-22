@@ -1,7 +1,7 @@
 //! 작업안 저장소 + 실행 브로커 — AI(MCP)가 적은 계획을 사람이 앱에서 승인하면 SSH exec 로 돌려 대상별 결과를 모은다.
 //! 저장소·결과·실행기·만료·감사 · 사전 정책 자동 승인의 시계(`auto::sweep`)는 세션 서버에 산다(`approval::OpsPlane`) — GUI 에는 같은 이름의 Tauri 명령 껍데기만 남는다.
 //!
-//! ## 불변식 — AI(MCP)는 실행 경로에 닿지 못한다 (CLAUDE.md "보안 제약" — docs/invariants.md 전문 4)
+//! ## 불변식 — AI(MCP)는 실행 경로에 닿지 못한다 (AGENTS.md "보안 제약" — docs/invariants.md 전문 4)
 //!
 //! - **승인·취소는 Tauri 명령([`approve_operation`](approval::approve_operation)·[`cancel_operation`](approval::cancel_operation))뿐, MCP 에 없다.**
 //!   승인 등급 프레임(`ops_approve`)을 만드는 곳은 `approval::approve_operation` 하나다. 자동 승인은 서버 안 함수 호출 `approve_in(method: auto)` 이다(파이프 프레임 아님).

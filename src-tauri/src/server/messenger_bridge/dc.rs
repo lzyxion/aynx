@@ -7,7 +7,7 @@
 //! - 로그에는 고정 글자 · 오류 종류([`err_kind`]) · 닫힘 코드 숫자만 싣는다. 누름의 콜백 토큰도 주소에만 든다(로그 · 오류 문구에 없다).
 //! - **멘션은 늘 막는다** — 보내기 · 바꿔 쓰기 · 후속 글마다 `"allowed_mentions": {"parse": []}`.
 //! - **IDENTIFY 예산**(24시간에 1000번 — 넘으면 Discord 가 토큰을 바꾼다): RESUME 을 먼저 쓰고, [`FATAL_CLOSE`] 면 고리를 끝낸다. 갓 IDENTIFY 한
-//!   세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 를 물러난다(`logic::Flap`). 그 밖의 방어 기계는 없다(CLAUDE.md "작업 방식").
+//!   세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 를 물러난다(`logic::Flap`). 그 밖의 방어 기계는 없다(AGENTS.md "작업 방식").
 //! - Telegram 의 409 같은 것은 없다 — 같은 봇을 두 프로그램이 받으면 둘 다 사건을 받는다.
 //! - REST 의 429 는 평소 일이다 — `retry_after`(최대 [`RETRY_CAP`])만큼 쉬고 **한 번만** 다시 보낸다. 큐는 없다.
 //! - `content` 2000자를 무엇으로 세는지 문서에 없다 — UTF-16 단위로 보수적으로 재고 [`CONTENT_ROOM`] 까지만 쓴다.

@@ -1385,7 +1385,7 @@ async fn choose_tmux_name(
     use_tmux: bool,
 ) -> Option<(String, bool)> {
     // 알고 받은 경쟁: 같은 호스트에 두 타일을 동시에 열면 같은 번호를 고를 수 있다 — 결과는 같은 tmux 세션을 함께 보는 것이라
-    // 눈에 보이고 되돌릴 수 있어, 겪기 전에 직렬화 잠금을 세우지 않는다(CLAUDE.md "방어 기계를 미리 늘리지 않는다").
+    // 눈에 보이고 되돌릴 수 있어, 겪기 전에 직렬화 잠금을 세우지 않는다(AGENTS.md "방어 기계를 미리 늘리지 않는다").
     if !use_tmux {
         return None;
     }

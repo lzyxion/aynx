@@ -6,7 +6,7 @@
 //! - Tauri 명령은 재수출로 등록되지 않는다 — `lib.rs` 는 `mcp::register::mcp_status` 처럼 정의 경로를 쓴다.
 //! - `mcp/state.rs` = GUI 우편함 `McpState` · 서버 `McpSignal` · `mcp/server.rs` = `mcp.json` 쓰기(주인은 세션 서버).
 //!
-//! ## 불변식 (CLAUDE.md "보안 제약" — docs/invariants.md 전문 1 · 4 · 9 · 11)
+//! ## 불변식 (AGENTS.md "보안 제약" — docs/invariants.md 전문 1 · 4 · 9 · 11)
 //!
 //! - CLI 전역 등록은 만들지 않는다 — 로컬 AI 타일 · 감싸개 셸 타일에만 실행 설정으로 싣고([`crate::agent_mcp`]), 시작 때 이 인스턴스의 이전 등록만 걷는다.
 //! - 127.0.0.1 바인딩만 · 모든 요청에 Bearer 필수(`http.rs`).

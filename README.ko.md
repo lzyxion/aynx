@@ -81,7 +81,7 @@ npm run tauri build   # 설치 관리자: src-tauri/target/release/bundle/{nsis,
 
 ## 문서
 
-[시작하기](docs/user/getting-started.ko.md) · [전체 기능](docs/features.ko.md) · [보안](docs/security.ko.md)
+[시작하기](docs/user/getting-started.ko.md) · [전체 기능](docs/features.ko.md) · [보안](docs/security.ko.md) · [취약점 신고](SECURITY.ko.md)
 
 사용자 안내(영어): [설정](docs/user/settings.md) · [호스트](docs/user/hosts.md) · [프로젝트](docs/user/projects.md) · [파일 · 문서 타일](docs/user/files.md) · [쿼리 타일](docs/user/query-tile.md) · [세션과 작업안](docs/user/dashboard.md) · [오케스트레이션](docs/user/orchestration.md) · [원격 접속](docs/user/remote-web.md) · [메신저](docs/user/messenger.md) · [단축키](docs/user/shortcuts.md)
 

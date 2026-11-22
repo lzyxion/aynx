@@ -177,7 +177,7 @@ fn ssh_dir() -> Result<PathBuf, String> {
         })
 }
 
-/// 디렉터리를 만들고 **권한을 좁힌다** — OS 를 타는 이 모듈의 유일한 자리(CLAUDE.md).
+/// 디렉터리를 만들고 **권한을 좁힌다** — OS 를 타는 이 모듈의 유일한 자리(AGENTS.md).
 /// `~/.ssh` 가 남에게 열려 있으면 sshd · ssh 가 키를 거부한다(`StrictModes`).
 #[cfg(unix)]
 fn restrict_dir(dir: &Path) -> Result<(), String> {

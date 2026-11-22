@@ -107,7 +107,7 @@ impl Cursor {
     }
 }
 
-/// 이 파일 손잡이의 식별 — **OS 를 타는 곳은 이 함수 하나**(CLAUDE.md — 몸통만 `cfg` 로 가른다).
+/// 이 파일 손잡이의 식별 — **OS 를 타는 곳은 이 함수 하나**(AGENTS.md — 몸통만 `cfg` 로 가른다).
 #[cfg(windows)]
 fn file_identity(f: &File) -> Option<String> {
     use std::os::windows::io::AsRawHandle;

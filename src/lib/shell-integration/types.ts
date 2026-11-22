@@ -66,7 +66,7 @@ export interface ShellIntegration extends CommandApi {
   restoreMarkers(entries: readonly MarkerDistance[]): number;
   /** `null` = 입력 모드가 아니다. 창 밖에서 두드릴 창구가 아니라 `CommandApi` 에 두지 않는다 (docs/log/2026-09-16-snippets.md) */
   inputAnchor(): InputAnchor | null;
-  /** 진단 카운터 — 자가 회복은 일부러 넣지 않는다 (CLAUDE.md 원칙) */
+  /** 진단 카운터 — 자가 회복은 일부러 넣지 않는다 (AGENTS.md 원칙) */
   diagnostics(): MarkerDiagnostics;
 }
 

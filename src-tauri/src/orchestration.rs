@@ -1,7 +1,7 @@
 //! **오케스트레이션** — 조정자 AI(프로듀서 채팅)가 작업자 AI 에게 일을 맡기고 사람이 감독한다. 세션 서버의 AI 평면이 쥐어 GUI 없이도 Run 이 산다.
 //! 설계: docs/log/2026-10-14-orchestration-design.md · 2026-10-15-orchestration-integration-design.md · 2026-10-16-orchestration-headless-design.md · 2026-10-30-orchestration-structured-producer.md
 //!
-//! ## 불변식(CLAUDE.md "보안 제약" · 설계 결정 절)
+//! ## 불변식(AGENTS.md "보안 제약" · 설계 결정 절)
 //!
 //! - **역할 토큰 · 채팅 토큰은 같은 계정 안의 보안 경계가 아니다**(설계 C-1 (가)) — 방어선은 맡긴 역할의 권한 + 사람 감독이다(→ docs/invariants.md 전문 9).
 //! - 역할은 **서버 표에서만** 읽는다. 조정자의 조율은 자기 Run 안에서만(다른 Run 은 `not-found`).

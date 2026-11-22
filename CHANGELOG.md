@@ -19,6 +19,7 @@ Write the next version's section before tagging it — the release workflow stop
 - **The chat box gives your message the full width**: in the side chat and the AI tile chat view, **+**, the model and **Send** sit on a row below the text, the model name now shows on phones too, and the box grows with wrapped lines (up to 6) before it scrolls.
 - Fixed: the conversation history view did not show the **Open elsewhere** chip for a conversation that was still open outside Aynx.
 - Fixed: opening the usage view from the command palette left the keyboard nowhere, and closing it with Escape did not return the keyboard to the tile.
+- Fixed: Claude artists and the producer got no project instructions when `CLAUDE.md` only imported `AGENTS.md` with `@AGENTS.md`, or when the repository had only `AGENTS.md`.
 
 ## [0.1.5] - 2026-11-20
 

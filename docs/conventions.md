@@ -70,7 +70,7 @@ npm run check && npm run build && npm test
 
 설정·스텁 규칙·대상/제외 표는 [2026-09-05-vitest.md](log/2026-09-05-vitest.md).
 
-그 뒤로 둘이 더 붙었다(`check:cycles` · `check:bundle`) — 지금의 게이트 줄은 루트 `CLAUDE.md` 의
+그 뒤로 둘이 더 붙었다(`check:cycles` · `check:bundle`) — 지금의 게이트 줄은 루트 `AGENTS.md` 의
 "커밋 전 게이트" 가 기준이다.
 
 ```
@@ -205,7 +205,7 @@ import { t } from "$lib/i18n/i18n.svelte.js";
 그 값은 프런트가 방금 `open_ssh_session` 에 실어 보낸 바로 그 값이라 새로 여는 문이 아니다.
 
 같은 이유로 **AI(MCP)에게는 어떤 문도 열려 있지 않다**: 볼트는 Tauri 명령 전용이다
-(CLAUDE.md 의 "approve 는 Tauri 전용, MCP 아님" 과 같은 결).
+(docs/invariants.md 전문 4 의 "approve 는 Tauri 전용, MCP 아님" 과 같은 결).
 
 ## 크롬 글자를 얹는 상자는 크롬 면 — `--surface-tile` 은 터미널 색으로 그리는 것만
 

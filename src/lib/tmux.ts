@@ -43,7 +43,7 @@ export function isSafeTmuxName(name: string): boolean {
  * 엔터는 `\r` — 접속 한 줄(`tmux_bootstrap`)과 같은, 사람이 친 것과 같은 바이트다.
  * 알고 받은 한계: 그 순간 전체 화면 프로그램(vim · less · top)이 돌면 그 프로그램이 이 입력을 받는다.
  * prefix 키를 대신 보내는 길은 쓰지 않는다 — 사용자가 prefix 를 바꿨으면 조용히 엉뚱한 키가 된다.
- * 사람이 누른 항목이 내는, 앱이 조립한 고정 한 줄이다 — 원시 문자열을 PTY 에 미는 길이 아니다(CLAUDE.md 보안 제약).
+ * 사람이 누른 항목이 내는, 앱이 조립한 고정 한 줄이다 — 원시 문자열을 PTY 에 미는 길이 아니다(AGENTS.md 보안 제약).
  */
 export function tmuxSwitchCommand(name: string): string {
   return `tmux switch-client -t ${shQuote(name)}\r`;

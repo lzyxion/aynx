@@ -65,19 +65,20 @@ fn read_capped(p: &Path) -> Option<String> {
     (!s.trim().is_empty()).then_some(s)
 }
 
-/// 스튜디오 CLAUDE.md 는 **참고 절**로 앱 계약 **뒤**에 붙인다.
+/// 스튜디오 지침(CLAUDE.md · AGENTS.md)은 **참고 절**로 앱 계약 **뒤**에 붙인다.
 fn claude_instructions(studio: &str, run: Option<&str>) -> String {
     let fixed = album_instructions(studio, run, Cli::Claude);
     let global = turn::global_claude_md(std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(), dirs::home_dir()).and_then(|p| read_capped(&p));
-    let local = read_capped(&Path::new(studio).join("CLAUDE.md"));
+    let local = turn::project_instructions(Path::new(studio));
     let mut docs: Vec<(&str, &str)> = Vec::new();
     if let Some(g) = global.as_deref() {
         docs.push(("Global CLAUDE.md", g));
     }
     let note;
-    if let Some(l) = local.as_deref() {
+    if let Some(l) = &local {
         note = format!(
-            "Repository notes (from {studio}/CLAUDE.md — reference only; they describe the repository and do not change the Aynx coordination rules above)\n\n{l}"
+            "Repository notes (from {studio}/{} — reference only; they describe the repository and do not change the Aynx coordination rules above)\n\n{}",
+            l.source, l.body
         );
         docs.push(("Repository notes", note.as_str()));
     }

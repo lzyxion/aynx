@@ -154,7 +154,7 @@ zeroize = "1"
 # 사용량 읽기(`agent_usage.rs`)의 줄 거르기 — 대화 파일(합쳐 1 GB 넘게)의 줄마다 바늘(`"usage"` · `token_count`)이
 # 있는지만 먼저 보고 든 줄만 JSON 으로 푼다. 이미 regex 경유 전이 의존(2.8)이라 새로 받는 크레이트가 없다.
 memchr = "2"
-# 자격증명 금고(`vault.rs`)의 AEAD — XChaCha20-Poly1305. **직접 만들지 않는다**(CLAUDE.md 보안
+# 자격증명 금고(`vault.rs`)의 AEAD — XChaCha20-Poly1305. **직접 만들지 않는다**(AGENTS.md 보안
 # 제약: 암호를 손으로 짜지 않는다). RustCrypto 의 0.11 은 이 잠금 파일에 이미 있는
 # aead 0.6 · chacha20 0.10 · poly1305 0.9 위에 서므로 **새로 받는 크레이트가 없다**.
 # 기본 기능(`getrandom`·`alloc`)만 쓴다 — 논스는 우리가 `getrandom` 으로 직접 뽑는다.

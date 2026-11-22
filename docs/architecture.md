@@ -1,6 +1,6 @@
 # 아키텍처
 
-[`CLAUDE.md`](../CLAUDE.md) 의 "아키텍처 한눈에" 의 전문이다. 요약과 어긋나면 여기 문장이 기준이다.
+[`AGENTS.md`](../AGENTS.md) 의 "아키텍처 한눈에" 의 전문이다. 요약과 어긋나면 여기 문장이 기준이다.
 보안 제약의 전문은 [invariants.md](invariants.md) 에 있다.
 
 **고칠 파일은 지도에서 먼저 찾는다** — 백엔드 [docs/modules.md](modules.md) ·

@@ -361,13 +361,17 @@ fn launch_writer(o: &Arc<Orchestration>, t: &Table, mut job: LaunchJob, guard: &
     let (append_file, instructions_sha) = match cli {
         WorkerCli::Claude => {
             let global = global_claude_md();
-            let local = read_capped(&Path::new(&created.path).join("CLAUDE.md"));
+            let local = turn::project_instructions(Path::new(&created.path));
             let mut docs: Vec<(&str, &str)> = Vec::new();
             if let Some(g) = global.as_deref() {
                 docs.push(("User instructions (~/.claude/CLAUDE.md)", g));
             }
-            if let Some(l) = local.as_deref() {
-                docs.push(("Project instructions (CLAUDE.md in your worktree)", l));
+            if let Some(l) = &local {
+                let name = match l.source {
+                    "AGENTS.md" => "Project instructions (AGENTS.md in your worktree)",
+                    _ => "Project instructions (CLAUDE.md in your worktree)",
+                };
+                docs.push((name, &l.body));
             }
             let body = turn::instructions_text(spawn::WORKER_FIXED_INSTRUCTIONS, role.instructions.as_deref(), &docs);
             write_instructions(&run_dir, &job.attempt_id, n, body, &mut files)?

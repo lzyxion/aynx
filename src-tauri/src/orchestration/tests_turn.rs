@@ -297,6 +297,126 @@ fn turn_instructions_file_is_reclaimed() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+fn put(root: &Path, rel: &str, body: &str) {
+    let p = root.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, body).unwrap();
+}
+
+fn doc(root: &Path) -> (String, String) {
+    let d = project_instructions(root).unwrap();
+    (d.source.to_string(), d.body)
+}
+
+/// 저장소 지침 — CLAUDE.md(없거나 비면 AGENTS.md) + `@` 불러오기(root 안 실제 파일만 · 코드 안 아님 · 깊이 4 · 한 번씩).
+#[test]
+fn project_instructions_resolve_imports() {
+    let r = scratch("proj-none");
+    assert!(project_instructions(&r).is_none());
+    put(&r, "CLAUDE.md", " \n");
+    assert!(project_instructions(&r).is_none(), "빈 CLAUDE.md 는 없는 것");
+    put(&r, "AGENTS.md", "AGENTS_BODY");
+    assert_eq!(doc(&r), ("AGENTS.md".into(), "AGENTS_BODY".into()));
+    put(&r, "CLAUDE.md", "CLAUDE_BODY");
+    assert_eq!(doc(&r), ("CLAUDE.md".into(), "CLAUDE_BODY".into()), "둘 다 있으면 CLAUDE.md");
+    let _ = std::fs::remove_dir_all(&r);
+
+    let r = scratch("proj-claude-only");
+    put(&r, "CLAUDE.md", "ONLY");
+    assert_eq!(doc(&r), ("CLAUDE.md".into(), "ONLY".into()));
+    let _ = std::fs::remove_dir_all(&r);
+
+    // `@AGENTS.md` 한 줄 · 문장 속 + 끝 문장 부호 · 같은 파일은 한 번
+    let r = scratch("proj-import");
+    put(&r, "CLAUDE.md", "@AGENTS.md\nSee @AGENTS.md.\n");
+    put(&r, "AGENTS.md", "AG_RULES");
+    let (src, body) = doc(&r);
+    assert_eq!(src, "CLAUDE.md");
+    assert_eq!(body, "@AGENTS.md\nSee @AGENTS.md.\n\n\n--- AGENTS.md (imported) ---\n\nAG_RULES");
+    let _ = std::fs::remove_dir_all(&r);
+
+    let r = scratch("proj-sentence");
+    put(&r, "CLAUDE.md", "Read the rules (see @docs/rules.md), then @docs/style.md;");
+    put(&r, "docs/rules.md", "RULES @sub/deep.md");
+    put(&r, "docs/sub/deep.md", "DEEP");
+    put(&r, "docs/style.md", "STYLE");
+    let (_, body) = doc(&r);
+    let (a, b, c) = (body.find("--- docs/rules.md").unwrap(), body.find("--- docs/sub/deep.md").unwrap(), body.find("--- docs/style.md").unwrap());
+    assert!(a < b && b < c, "처음 나온 차례 · 하위 파일은 자기 폴더 기준: {body}");
+    assert!(body.contains("DEEP") && body.contains("STYLE"));
+    let _ = std::fs::remove_dir_all(&r);
+
+    // 코드 안 · 없는 파일 · 패키지 이름 · 메일 · root 밖 · 절대 경로는 원문 그대로
+    let r = scratch("proj-skip");
+    let outside = scratch("proj-outside");
+    put(&outside, "secret.md", "OUTSIDE_SECRET");
+    let abs = outside.join("secret.md").to_string_lossy().into_owned();
+    let rel_out = format!("../{}/secret.md", outside.file_name().unwrap().to_string_lossy());
+    let text = format!(
+        "Use `@code.md` here\n```\n@fenced.md\n```\n~~~md\n@tilde.md\n~~~\n@missing.md\nnpm i @anthropic-ai/claude-code\nmail a@code.md\n@{rel_out}\n@{abs}\n@~/x.md\n@docs\n"
+    );
+    put(&r, "CLAUDE.md", &text);
+    for f in ["code.md", "fenced.md", "tilde.md"] {
+        put(&r, f, "SHOULD_NOT_LOAD");
+    }
+    put(&r, "docs/keep.md", "x");
+    assert_eq!(doc(&r).1, text);
+    let _ = std::fs::remove_dir_all(&r);
+
+    // 순환 A → B → A 는 한 번씩
+    let r = scratch("proj-cycle");
+    put(&r, "CLAUDE.md", "@a.md");
+    put(&r, "a.md", "A @b.md");
+    put(&r, "b.md", "B @a.md @CLAUDE.md");
+    let (_, body) = doc(&r);
+    assert_eq!(body.matches("(imported)").count(), 2, "{body}");
+    assert_eq!(body.matches("--- a.md").count(), 1);
+    let _ = std::fs::remove_dir_all(&r);
+
+    // 깊이 — 본문에서 4단계까지, 5단계째는 안 풂
+    let r = scratch("proj-depth");
+    put(&r, "CLAUDE.md", "@d1.md");
+    for i in 1..=5 {
+        put(&r, &format!("d{i}.md"), &format!("L{i} @d{}.md", i + 1));
+    }
+    let (_, body) = doc(&r);
+    assert!(body.contains("--- d4.md") && !body.contains("--- d5.md"), "{body}");
+    let _ = std::fs::remove_dir_all(&r);
+
+    // 밖을 가리키는 디렉터리 링크(심볼릭 링크 · 정션) — 만들 수 없는 환경이면 건너뛴다
+    let r = scratch("proj-link");
+    put(&r, "CLAUDE.md", "@out/secret.md");
+    if link_dir(&outside, &r.join("out")) {
+        assert_eq!(doc(&r).1, "@out/secret.md");
+    } else {
+        eprintln!("project_instructions_resolve_imports: 디렉터리 링크를 만들 수 없어 링크 경우를 건너뜀");
+    }
+    let _ = std::fs::remove_dir_all(&r);
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
+fn link_dir(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(target, link).is_ok()
+            || std::process::Command::new("cmd")
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .is_ok_and(|o| o.status.success())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, link);
+        false
+    }
+}
+
 /// 7-2 `turn_args_label_has_no_prompt`(D11) — 턴 기록(영속 · 보드 · 감사로 가는 것)에는 프롬프트 · 지침 본문 · 토큰 · 설정 파일 경로 ·
 /// 대화 id 가 없다. 권한 표시 칸만.
 #[test]

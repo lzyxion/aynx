@@ -6,7 +6,8 @@
 //! - 애매하면 성공이 아니다 — 이상한 줄은 세고 버리고, init · result 없음 · 종료 코드와 result 불일치 · 다른 대화 id 는 실패다.
 //! - 턴 기록의 `args` 는 권한 표시 전용 — 프롬프트 · 지침 본문 · 토큰 · 설정 파일 경로 없음.
 
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -405,6 +406,129 @@ pub(crate) fn global_claude_md(config_dir: Option<&std::ffi::OsStr>, home: Optio
         None => home?.join(".claude"),
     };
     Some(dir.join("CLAUDE.md"))
+}
+
+const IMPORT_DEPTH: usize = 4;
+const IMPORT_FILES_MAX: usize = 32;
+
+pub(crate) struct ProjectDoc {
+    /// `"CLAUDE.md"` · `"AGENTS.md"`
+    pub source: &'static str,
+    pub body: String,
+}
+
+/// 저장소 지침 — `CLAUDE.md`(없거나 비면 `AGENTS.md`)와 그 안의 `@경로` 불러오기를 본문 뒤에 덧붙인다.
+pub(crate) fn project_instructions(root: &Path) -> Option<ProjectDoc> {
+    let (source, body) = ["CLAUDE.md", "AGENTS.md"].into_iter().find_map(|name| read_capped(&root.join(name)).map(|b| (name, b)))?;
+    let Ok(base) = std::fs::canonicalize(root) else { return Some(ProjectDoc { source, body }) };
+    let mut seen: HashSet<PathBuf> = std::fs::canonicalize(root.join(source)).into_iter().collect();
+    let mut found: Vec<(PathBuf, String)> = Vec::new();
+    let mut total = body.len();
+    collect_imports(&base, &base, &import_refs(&body), 1, &mut seen, &mut found, &mut total);
+    let mut out = body;
+    for (path, text) in found {
+        let rel = path.strip_prefix(&base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        out.push_str(&format!("\n\n--- {rel} (imported) ---\n\n"));
+        out.push_str(&text);
+    }
+    Some(ProjectDoc { source, body: out })
+}
+
+fn collect_imports(
+    base: &Path,
+    dir: &Path,
+    refs: &[String],
+    depth: usize,
+    seen: &mut HashSet<PathBuf>,
+    found: &mut Vec<(PathBuf, String)>,
+    total: &mut usize,
+) {
+    for raw in refs {
+        if found.len() >= IMPORT_FILES_MAX || *total >= INSTRUCTIONS_DOC_MAX {
+            return;
+        }
+        let Some(path) = resolve_import(base, dir, raw) else { continue };
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        let Some(text) = read_capped(&path) else { continue };
+        *total += text.len();
+        let inner = if depth < IMPORT_DEPTH { import_refs(&text) } else { Vec::new() };
+        let parent = path.parent().map(Path::to_path_buf).unwrap_or_else(|| base.to_path_buf());
+        found.push((path, text));
+        collect_imports(base, &parent, &inner, depth + 1, seen, found, total);
+    }
+}
+
+/// `root` 밖은 풀지 않는다 — 저장소 글(작업자가 고칠 수 있다)이 `@` 로 계정의 다른 파일을 시스템 지침에 끌어 오는 길이 된다.
+/// 판정은 canonicalize 뒤 접두사라 밖을 가리키는 심볼릭 링크 · 정션도 걸린다.
+fn resolve_import(base: &Path, dir: &Path, raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim_end_matches(['.', ',', ';', ':', ')']);
+    [raw, trimmed].into_iter().find_map(|cand| {
+        let p = Path::new(cand);
+        if cand.is_empty() || cand.starts_with('~') || p.components().any(|c| matches!(c, std::path::Component::Prefix(_) | std::path::Component::RootDir)) {
+            return None;
+        }
+        let canon = std::fs::canonicalize(dir.join(p)).ok()?;
+        (canon.starts_with(base) && canon.is_file()).then_some(canon)
+    })
+}
+
+/// Claude Code 의 `@경로` — 줄 머리 또는 공백 뒤의 `@` 에 이은 공백 아닌 글자열. 펜스 블록 · 인라인 코드 안은 아니다.
+fn import_refs(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut fence: Option<(char, usize)> = None;
+    for line in text.lines() {
+        let t = line.trim_start();
+        let mark = t.chars().next().filter(|c| *c == '`' || *c == '~');
+        if let Some(c) = mark {
+            let n = t.chars().take_while(|x| *x == c).count();
+            if n >= 3 {
+                match fence {
+                    None => fence = Some((c, n)),
+                    Some((fc, fnn)) if fc == c && n >= fnn && t[n..].trim().is_empty() => fence = None,
+                    _ => {}
+                }
+                continue;
+            }
+        }
+        if fence.is_some() {
+            continue;
+        }
+        let b = line.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] == b'`' {
+                let run = b[i..].iter().take_while(|x| **x == b'`').count();
+                // 같은 길이의 닫는 줄이 있을 때만 코드다 — 없으면 글자 그대로
+                let close = (i + run..b.len()).find(|&j| b[j] == b'`' && b[j..].iter().take_while(|x| **x == b'`').count() == run && b[j - 1] != b'`');
+                i = match close {
+                    Some(j) => j + run,
+                    None => i + run,
+                };
+                continue;
+            }
+            if b[i] == b'@' && (i == 0 || b[i - 1].is_ascii_whitespace()) {
+                let end = line[i + 1..].find(char::is_whitespace).map_or(line.len(), |e| i + 1 + e);
+                if end > i + 1 {
+                    out.push(line[i + 1..end].to_owned());
+                }
+                i = end;
+                continue;
+            }
+            i += 1;
+        }
+    }
+    out
+}
+
+fn read_capped(p: &Path) -> Option<String> {
+    use std::io::Read;
+    let f = std::fs::File::open(p).ok()?;
+    let mut buf = Vec::new();
+    f.take(INSTRUCTIONS_DOC_MAX as u64 + 4).read_to_end(&mut buf).ok()?;
+    let s = String::from_utf8_lossy(&buf).into_owned();
+    (!s.trim().is_empty()).then_some(s)
 }
 
 /// 턴 자원 파일 — `Drop` 이 지우므로 턴 끝 확인(트리 0 · 파이프 EOF) 전에는 떨어뜨리지 않는다(시험 `turn_instructions_file_is_reclaimed`).

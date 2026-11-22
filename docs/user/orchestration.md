@@ -94,7 +94,9 @@ A Reviewer is always read-only — instead of a permission field it has an accep
 - **An allowed command also entrusts the scripts that command calls.** `npm run` and the like call the `package.json` scripts, and the artist can change those.
 - Artists have **no permission prompts.** The CLI refuses anything outside the delegated scope without asking, and the artist reports **Blocked** ([Blocked](#blocked)).
 - Artists do not inherit allow rules, hooks or plugins from user or project settings (the app controls this through arguments). Claude artists do not read the global
-  `~/.claude/CLAUDE.md` on their own, so the app includes it along with the artist's instructions. Codex artists always load `~/.codex/AGENTS.md`.
+  `~/.claude/CLAUDE.md` on their own, so the app includes it along with the artist's instructions. The repository's `CLAUDE.md` (or `AGENTS.md` if
+  there is no `CLAUDE.md`) is included the same way, with the files it imports with `@`; imports that point outside the repository are left out.
+  Codex artists always load `~/.codex/AGENTS.md`.
 - Network access is always on for Codex artists.
 
 **Acceptance rules** — "Needs N pass(es) to accept" on a Reviewer row (0–3; 0 means no required review). For the producer to accept a track, the current configuration's pass count must be met. If it is not,

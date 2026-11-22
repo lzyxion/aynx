@@ -27,7 +27,7 @@
 //! `[messenger] include_conversation`(안 정하면 켬)이면 에이전트 알림에 대화 제목 · 마지막 답 앞부분을 싣는다. 프런트는 대화의 가리킴만
 //! 넘기고 글자를 모른다 — 그 글자는 프런트로 돌아가지 않고, 로그·오류 문구에 없고([`conversation_lines`] 는 `Result` 가 아니다), `Debug` 도 없다.
 //!
-//! 재시도 큐 · 속도 제한기는 두지 않는다 — 실패(429 포함)는 그대로 `Err` 로 올라간다(CLAUDE.md "방어 기계를 미리 늘리지 않는다").
+//! 재시도 큐 · 속도 제한기는 두지 않는다 — 실패(429 포함)는 그대로 `Err` 로 올라간다(AGENTS.md "방어 기계를 미리 늘리지 않는다").
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

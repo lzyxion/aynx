@@ -27,7 +27,7 @@ import { focusTile, tabOfPane } from "$lib/app/tabs.svelte.js";
 import { glowTile } from "$lib/app/tile-glow.svelte.js";
 import { openSideChatFromAlert } from "$lib/app/side-chat-open";
 
-/** 에이전트 알림 배너의 저장소 — 창 하나에 한 벌 · 메모리에만 산다(알림 센터와 같은 이유 — CLAUDE.md "보안 제약") */
+/** 에이전트 알림 배너의 저장소 — 창 하나에 한 벌 · 메모리에만 산다(알림 센터와 같은 이유 — AGENTS.md "보안 제약") */
 
 let state = $state<BannerState>(EMPTY_BANNERS);
 let seq = 0;

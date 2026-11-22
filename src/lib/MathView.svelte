@@ -27,7 +27,7 @@
    * KaTeX 는 원문 글자를 모두 이스케이프하고 `trust: false` 라 HTML 을 낳는 명령(`\href` · `\url` · `\includegraphics` · `\html*`)은 글자로 떨어진다.
    * 선택은 `math-text.ts` 의 `katexOptions` 한 곳, 넣는 곳은 아래 `$effect` 의 `innerHTML` 한 곳뿐이다.
    * 알고 받은 권고 GHSA-238p-pmpm-9mq7(0.16.x — 이미 오염된 프로토타입이 trust 를 우회) — 앞서 다른 경로로 `Object.prototype` 이 오염돼야 성립하고
-   * 선택 객체는 매번 새로 만든다. 고친 판(0.18.2~)은 mermaid 가 끌어오는 판과 갈려 같은 판을 쓴다 — mermaid 를 올릴 때 함께 본다.
+   * 선택 객체는 매번 새로 만든다. 고친 판은 0.18.2~ — mermaid 12.3 이 제 katex 0.18.x 를 따로 들고 오니, 올리면 한 벌로 합쳐진다.
    * 뿌리의 `data-math` 로 문서 안 검색(`doc-find-dom.ts`)이 수식을 건너뛴다 — KaTeX 출력은 HTML 과 숨긴 MathML 에 같은 글자가 두 번 있다.
    */
   import CodeView from "$lib/CodeView.svelte";

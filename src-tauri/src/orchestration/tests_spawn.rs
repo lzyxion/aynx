@@ -897,7 +897,7 @@ fn callers(name: &str) -> Vec<String> {
 }
 
 /// 헤드리스 설계 7-2 `server_spawns_only_turns_and_verify`(옛 `server_spawns_only_workers_and_verify` — 3a 에서 작업자도 헤드리스 턴이 됐다:
-/// 이 시험과 CLAUDE.md "서버가 GUI 요청 없이 띄우는 것" 문장을 함께 고쳤다). 서버가 GUI 요청 없이 띄우는 것은 **헤드리스 턴**(작업자 · 해결자 ·
+/// 이 시험과 docs/architecture.md "서버가 GUI 요청 없이 띄우는 것" 문장을 함께 고쳤다). 서버가 GUI 요청 없이 띄우는 것은 **헤드리스 턴**(작업자 · 해결자 ·
 /// 검토자 — 셸 없는 CLI 하나 · 파이프 · 생성과 동시에 Job · 세션 · PTY 아님)과 **수락 전 검증**뿐이고, 둘의 OS 몸은 `os::spawn_in_job` 하나다.
 #[test]
 fn server_spawns_only_turns_and_verify() {
@@ -907,7 +907,7 @@ fn server_spawns_only_turns_and_verify() {
     //   하나에서만 온다(통합 설계 8절).
     assert_eq!(callers("verify_spawn"), vec!["src/orchestration/verify.rs".to_string()]);
     // (사이드 채팅 v2 2단계) 셋째 — 사이드 채팅 프로세스(GUI 요청 op `side_chat_send` 의 게으른 띄우기 하나 ·
-    // 시험 `server::tests_side_chat::side_chat_spawns_only_from_the_send_op`). CLAUDE.md "③ 사이드 채팅 프로세스" 문장과 함께 고쳤다.
+    // 시험 `server::tests_side_chat::side_chat_spawns_only_from_the_send_op`). docs/architecture.md "③ 사이드 채팅 프로세스" 문장과 함께 고쳤다.
     // (오케스트레이션 2단계 단계 1) 그 몸은 공용 채팅 프로세스 코어 `server/chat_proc/spawn.rs` 의 `start` 로 옮겨 갔다 — 생성은 여전히 하나이고,
     // 코어의 `start` 를 부르는 곳은 사이드 채팅 표(`server/side_chat.rs` 의 `spawn` — `op_send` 하나)뿐이다.
     assert_eq!(
