@@ -12,14 +12,22 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-22
+
+If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and side chat permission modes need the new one.
+
 ### What's new
 
-- **Side chat permission modes**: a chip next to the model switches each chat between **Manual** (asks with a card) and **Auto** (the app answers file changes, commands and MCP tool calls for you). Permission cards gain **Allow in this chat**, which stops asking about that kind in that chat; the chip menu lists what you allowed, and × asks again. New chats start in the mode you picked last.
-- **Settings › MCP no longer has "Don't ask in side chat"**: side chat MCP tools now follow the chat's permission mode, so a server you had set not to ask will ask once in Manual.
-- **The chat box gives your message the full width**: in the side chat and the AI tile chat view, **+**, the model and **Send** sit on a row below the text, the model name now shows on phones too, and the box grows with wrapped lines (up to 6) before it scrolls.
-- Fixed: the conversation history view did not show the **Open elsewhere** chip for a conversation that was still open outside Aynx.
-- Fixed: opening the usage view from the command palette left the keyboard nowhere, and closing it with Escape did not return the keyboard to the tile.
+- **Side chat permission modes**: a chip next to the model switches each chat between **Manual** (asks with a card) and **Auto** (the app answers file changes, commands and MCP tool calls for you). Cards gain **Allow in this chat**, and the chip menu lists what you allowed. **Don't ask in side chat** in Settings › MCP is gone — MCP tools follow the chat's mode.
+- **The chat box gives your message the full width**: in the side chat and the AI tile chat view, **+**, the model and **Send** sit on a row below the text, and the box grows up to 6 lines.
+- **Clicking or scrolling in a remote window no longer resizes the terminal**: only typing, pasting or the size card's buttons take the size. When there is no room beside the terminal, the size card sits over its bottom-right corner and can be closed.
+- **On a phone, ⤢ fits the terminal to the screen right away**, without typing, and turns itself off when the main PC takes the size back.
+- Remote windows animate layout changes (split, close, move, new tab, maximize) the way the main PC does.
+- **Settings › Messenger** highlights the bot's name in the account connection steps.
+- Fixed: after a reload or moving a tile to another window, a terminal's folder and branch chips were wrong or empty until the next prompt.
 - Fixed: Settings › Messenger lost the bot's name after the session server restarted.
+- Fixed: the conversation history view did not show the **Open elsewhere** chip for a conversation that was still open outside Aynx.
+- Fixed: opening the usage view from the command palette left the keyboard nowhere, and closing it with Escape did not return it to the tile.
 - Fixed: Claude artists and the producer got no project instructions when `CLAUDE.md` only imported `AGENTS.md` with `@AGENTS.md`, or when the repository had only `AGENTS.md`.
 
 ## [0.1.5] - 2026-11-20
@@ -136,7 +144,8 @@ The app was renamed from **AYNX** to **Aynx**. Uninstall the previous version be
 
 - First public release.
 
-[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/lzyxion/aynx/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/lzyxion/aynx/releases/tag/v0.1.6
 [0.1.5]: https://github.com/lzyxion/aynx/releases/tag/v0.1.5
 [0.1.4]: https://github.com/lzyxion/aynx/releases/tag/v0.1.4
 [0.1.3]: https://github.com/lzyxion/aynx/releases/tag/v0.1.3
