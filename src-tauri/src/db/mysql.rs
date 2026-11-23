@@ -43,7 +43,7 @@ use super::net::{self, disconnected, Life, NetTarget, OpenError, OpenSecrets, Tr
 use super::tls;
 use super::value::{self, approx_len};
 use super::detail::{self, ConstraintOut, ForeignKeyOut, IndexOut, TableDetail, TriggerOut};
-use super::{cap_objects, objects_json, ColumnOut, Dialect, EngineError, ObjectOut, QueryOut, RunEnd, RESPONSE_MAX, RUN_SAVEPOINT};
+use super::{cap_objects, comment_of, objects_json, ColumnOut, Dialect, EngineError, ObjectOut, QueryOut, RunEnd, RESPONSE_MAX, RUN_SAVEPOINT};
 use crate::errors::{with_reason, DB_AUTH, DB_PASSWORD, DB_STORED_REJECTED};
 use crate::i18n::tr;
 use crate::db::conns::DbTlsMode;
@@ -782,12 +782,13 @@ impl Mysql {
         let mut c = self.try_conn()?;
         self.meta_prelude(&mut c, timeout_ms).await?;
         let limit = (super::OBJECTS_MAX + 1) as u64;
-        type Routine = (String, String, Option<String>, Option<String>);
-        type Lists = (Vec<(String, String)>, Vec<Routine>);
+        type Rel = (String, String, Option<String>, Option<u64>);
+        type Routine = (String, String, Option<String>, Option<String>, Option<String>);
+        type Lists = (Vec<Rel>, Vec<Routine>);
         let r: Result<Lists, mysql_async::Error> = async {
-            let rels: Vec<(String, String)> = c
+            let rels: Vec<Rel> = c
                 .exec(
-                    "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES \
+                    "SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT, TABLE_ROWS FROM information_schema.TABLES \
                      WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) ORDER BY TABLE_NAME LIMIT ?",
                     (schema, limit),
                 )
@@ -798,7 +799,7 @@ impl Mysql {
                      (SELECT GROUP_CONCAT(CONCAT_WS(' ', IF(p.ROUTINE_TYPE = 'FUNCTION', NULL, p.PARAMETER_MODE), p.PARAMETER_NAME, \n                     p.DTD_IDENTIFIER) \
                      ORDER BY p.ORDINAL_POSITION SEPARATOR ', ') FROM information_schema.PARAMETERS p \
                      WHERE p.SPECIFIC_SCHEMA = r.ROUTINE_SCHEMA AND p.SPECIFIC_NAME = r.SPECIFIC_NAME \
-                     AND p.ROUTINE_TYPE = r.ROUTINE_TYPE AND p.ORDINAL_POSITION > 0) \
+                     AND p.ROUTINE_TYPE = r.ROUTINE_TYPE AND p.ORDINAL_POSITION > 0), r.ROUTINE_COMMENT \
                      FROM information_schema.ROUTINES r \
                      WHERE r.ROUTINE_SCHEMA = COALESCE(?, DATABASE()) AND r.ROUTINE_TYPE IN ('FUNCTION', 'PROCEDURE') \
                      ORDER BY r.ROUTINE_NAME LIMIT ?",
@@ -813,15 +814,16 @@ impl Mysql {
         reset.map_err(|e| self.err(e))?;
         let rels: Vec<ObjectOut> = rels
             .into_iter()
-            .map(|(name, ty)| ObjectOut::new(table_kind(&ty), name))
+            .map(|(name, ty, comment, rows)| table_object(name, &ty, comment, rows))
             .collect();
         let routines: Vec<ObjectOut> = routines
             .into_iter()
-            .map(|(name, ty, returns, args)| {
+            .map(|(name, ty, returns, args, comment)| {
                 let procedure = ty == "PROCEDURE";
                 ObjectOut {
                     args: Some(args.unwrap_or_default()),
                     returns: if procedure { None } else { returns },
+                    comment: comment_of(comment),
                     ..ObjectOut::new(if procedure { "procedure" } else { "function" }, name)
                 }
             })
@@ -838,16 +840,16 @@ impl Mysql {
         let mut c = self.try_conn()?;
         self.meta_prelude(&mut c, timeout_ms).await?;
         let limit = (super::OBJECTS_MAX + 1) as u64;
-        type ColRow = (String, String, String, Option<String>, u64);
+        type ColRow = (String, String, String, Option<String>, u64, Option<String>);
         type IdxRow = (String, i64, Option<String>, Option<i64>, String, Option<String>);
         type ConRow = (String, String, Option<String>, Option<String>);
         type FkRow = (String, String, String, String, String, String, String, Option<String>, Option<String>);
         type TrgRow = (String, String, String, Option<String>);
-        type Lists = (Vec<ColRow>, Vec<IdxRow>, Vec<ConRow>, Vec<FkRow>, Vec<FkRow>, Vec<TrgRow>);
+        type Lists = (Vec<ColRow>, Vec<IdxRow>, Vec<ConRow>, Vec<FkRow>, Vec<FkRow>, Vec<TrgRow>, Option<(String, Option<String>)>);
         let r: Result<Lists, mysql_async::Error> = async {
             let columns: Vec<ColRow> = c
                 .exec(
-                    "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, COALESCE(k.ORDINAL_POSITION, 0) \
+                    "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, COALESCE(k.ORDINAL_POSITION, 0), c.COLUMN_COMMENT \
                      FROM information_schema.COLUMNS c \
                      LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA = c.TABLE_SCHEMA \
                      AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_NAME = c.COLUMN_NAME AND k.CONSTRAINT_NAME = 'PRIMARY' \
@@ -857,8 +859,15 @@ impl Mysql {
                 )
                 .await?;
             if columns.is_empty() {
-                return Ok((columns, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()));
+                return Ok((columns, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), None));
             }
+            let head: Option<(String, Option<String>)> = c
+                .exec_first(
+                    "SELECT TABLE_TYPE, TABLE_COMMENT FROM information_schema.TABLES \
+                     WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?",
+                    (schema, table),
+                )
+                .await?;
             let has: Vec<(String, String)> = c
                 .exec(
                     "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'information_schema' \
@@ -890,11 +899,11 @@ impl Mysql {
                     (schema, table, limit),
                 )
                 .await?;
-            Ok((columns, indexes, constraints, fks, refs, triggers))
+            Ok((columns, indexes, constraints, fks, refs, triggers, head))
         }
         .await;
         let reset = cleanup(&mut c, self.flavor.reset_sql()).await;
-        let (columns, indexes, constraints, fks, refs, triggers) = r.map_err(|e| self.err(e))?;
+        let (columns, indexes, constraints, fks, refs, triggers, head) = r.map_err(|e| self.err(e))?;
         reset.map_err(|e| self.err(e))?;
         if columns.is_empty() {
             return Err(EngineError::Message(tr!(
@@ -904,9 +913,9 @@ impl Mysql {
         }
         let columns: Vec<Value> = columns
             .into_iter()
-            .map(|(name, ty, nullable, default, pk)| {
+            .map(|(name, ty, nullable, default, pk, comment)| {
                 let default = self.flavor.column_default(default);
-                json!({ "name": name, "type": ty, "notNull": nullable == "NO", "default": default, "pk": pk })
+                detail::column_json(name, ty, nullable == "NO", default, pk as i64, comment)
             })
             .collect();
         let indexes = detail::group_runs(indexes, |r| r.0.clone())
@@ -938,6 +947,7 @@ impl Mysql {
             })
             .collect();
         Ok(TableDetail {
+            comment: head.and_then(|(ty, comment)| table_object(String::new(), &ty, comment, None).comment),
             columns,
             indexes,
             constraints,
@@ -1365,6 +1375,16 @@ pub(crate) fn table_kind(ty: &str) -> &'static str {
         "sequence"
     } else {
         "table"
+    }
+}
+
+/// 뷰의 `TABLE_COMMENT` 는 설명이 아니라 글자 `VIEW` 이고(뷰에는 설명이 없다), `TABLE_ROWS` 는 테이블만 뜻이 있다(시퀀스는 싣지 않는다).
+pub(crate) fn table_object(name: String, ty: &str, comment: Option<String>, rows: Option<u64>) -> ObjectOut {
+    let kind = table_kind(ty);
+    ObjectOut {
+        comment: if kind == "view" { None } else { comment_of(comment) },
+        rows: if kind == "table" { rows } else { None },
+        ..ObjectOut::new(kind, name)
     }
 }
 

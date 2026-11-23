@@ -6,7 +6,7 @@
   import SchemaTree from "$lib/query/SchemaTree.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { runAfterClose } from "$lib/browser/menu-runner";
-  import type { DbDefinitionTarget, DbOpened } from "$lib/query/query-backend";
+  import type { DbDefinitionTarget, DbObjectKind, DbOpened } from "$lib/query/query-backend";
   import type { queryTreeLayout } from "$lib/pane/head-span";
   import type { TreeRelation } from "$lib/query/schema-tree";
   import type { CatalogNote } from "$lib/query/sql-completer";
@@ -30,6 +30,7 @@
     dragTree,
     splitKey,
     oncatalog,
+    onlist,
   }: {
     treeDrop: { x: number; y: number; w: number; h: number } | null;
     treeLayout: ReturnType<typeof queryTreeLayout>;
@@ -50,10 +51,11 @@
     dragTree: (ev: PointerEvent) => void;
     splitKey: (ev: KeyboardEvent, which: "tree" | "split") => void;
     oncatalog?: (n: CatalogNote) => void;
+    onlist: (schema: string, kind: DbObjectKind | null) => void;
   } = $props();
 </script>
 
-<!-- 떠 있는 패널이면 편집기로 가는 조작이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행) -->
+<!-- 떠 있는 패널이면 편집기 · 탭으로 가는 조작이 패널을 먼저 닫는다(`runAfterClose` — 닫기 → 실행) -->
 {#snippet schemaTree(drop: boolean)}
   {#if opened}
     <SchemaTree
@@ -70,6 +72,7 @@
       ondefinition={defineFromTree}
       oncontext={openTreeMenu}
       {oncatalog}
+      onlist={drop ? (schema, kind) => runAfterClose(closeTreeDrop, () => onlist(schema, kind)) : onlist}
     />
   {:else}
     <p class="side-note">{conn.state === "connecting" ? t("pane.query.state.connecting") : t("pane.query.state.closed")}</p>

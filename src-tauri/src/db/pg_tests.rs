@@ -336,8 +336,16 @@ async fn pg_direct_end_to_end() {
     assert_eq!(s["schemas"][0], json!({ "name": "public" }), "{s}");
     let o = pg.objects(Some("public"), 5000).await.unwrap();
     let objs = o["objects"].as_array().unwrap();
+    // 테이블류의 `rows` 는 자동 분석 때마다 달라 빼고 본다.
     for (n, k) in [("pt_t", "table"), ("pt_v", "view"), ("pt_m", "matview"), ("pt_seq", "sequence"), ("pt_t_id_seq", "sequence")] {
-        assert!(objs.contains(&json!({ "name": n, "kind": k })), "{n}: {o}");
+        assert!(
+            objs.iter().any(|x| {
+                let mut x = x.clone();
+                x.as_object_mut().unwrap().remove("rows");
+                x == json!({ "name": n, "kind": k })
+            }),
+            "{n}: {o}"
+        );
     }
     assert!(objs.contains(&json!({ "name": "pt_e1", "kind": "type", "sub": "enum" })), "{o}");
     assert!(!s.to_string().contains("pg_catalog") && !s.to_string().contains("information_schema"));
@@ -484,10 +492,22 @@ async fn pg_schema_tree_objects() {
          DROP SERVER IF EXISTS pt_fdw CASCADE;
          CREATE SERVER pt_fdw FOREIGN DATA WRAPPER postgres_fdw;
          CREATE FOREIGN TABLE ft1(id int) SERVER pt_fdw;
+         INSERT INTO t1 VALUES (1, 'a'), (2, 'b'), (3, 'c');
+         INSERT INTO logs VALUES ('2026-02-01', 'x'), ('2026-03-01', 'y');
+         ANALYZE t1; ANALYZE logs_2026;
+         COMMENT ON TABLE t1 IS '고객 목록';
+         COMMENT ON VIEW v1 IS '뷰 설명';
+         COMMENT ON COLUMN t1.label IS '이름';
+         COMMENT ON COLUMN v1.id IS '번호';
+         COMMENT ON FUNCTION f1(integer) IS '하나';
+         COMMENT ON PROCEDURE p1(integer) IS '절차';
+         COMMENT ON TYPE e1 IS '열거';
          RESET search_path;"#,
     )
     .await
     .unwrap();
+    a.batch_execute(&format!(r#"COMMENT ON SEQUENCE "pt tree""x".s1 IS '{}'"#, "가".repeat(200))).await.unwrap();
+    let version: i32 = a.query_one("SELECT current_setting('server_version_num')::int4", &[]).await.unwrap().get(0);
     let pg = Pg::connect("pt-tree", engine_target(&cfg, &su), secrets(Some(&su_pw))).await.expect("엔진 연결");
     let schema = "pt tree\"x";
     let s = pg.schema(5000).await.unwrap();
@@ -506,7 +526,17 @@ async fn pg_schema_tree_objects() {
     let o = first.unwrap();
     println!("MEASURE tree objects: {o}");
     let objs = o["objects"].as_array().unwrap();
-    let has = |want: Value| assert!(objs.contains(&want), "{want}: {o}");
+    // 설명 · 추정 행 수는 아래에서 따로 — 여기서는 그 둘을 빼고 같은지 본다.
+    let has = |want: Value| {
+        let hit = objs.iter().any(|x| {
+            let mut x = x.clone();
+            let m = x.as_object_mut().unwrap();
+            m.remove("comment");
+            m.remove("rows");
+            x == want
+        });
+        assert!(hit, "{want}: {o}");
+    };
     has(json!({ "kind": "table", "name": "t1" }));
     has(json!({ "kind": "table", "name": "logs", "sub": "partitioned" }));
     has(json!({ "kind": "view", "name": "v1" }));
@@ -528,6 +558,26 @@ async fn pg_schema_tree_objects() {
     assert!(!named("r1_multirange") && objs.iter().filter(|x| x["name"] == "r1").count() == 1, "범위 형의 생성자 함수는 빠진다");
     let types: Vec<&str> = objs.iter().filter(|x| x["kind"] == "type").map(|x| x["name"].as_str().unwrap()).collect();
     assert_eq!(types, ["c1", "d1", "e1", "r1"], "배열 형(_e1) · 표의 행 형(t1 · v1) · 다중 범위는 빠진다");
+    let one = |kind: &str, name: &str| objs.iter().find(|x| x["kind"] == kind && x["name"] == name).unwrap_or_else(|| panic!("{name}: {o}"));
+    assert_eq!(one("table", "t1")["comment"], "고객 목록");
+    assert_eq!(one("table", "t1")["rows"], 3, "ANALYZE 뒤 추정치");
+    assert_eq!(one("view", "v1")["comment"], "뷰 설명");
+    assert_eq!(one("procedure", "p1")["comment"], "절차");
+    assert_eq!(one("type", "e1")["comment"], "열거");
+    assert!(objs.iter().any(|x| x["name"] == "f1" && x["args"] == "a integer" && x["comment"] == "하나"), "{o}");
+    assert!(objs.iter().any(|x| x["name"] == "f1" && x["args"] == "a text, b text" && x.get("comment").is_none()), "{o}");
+    let long = one("sequence", "s1")["comment"].as_str().unwrap();
+    assert!(long.ends_with('…') && long.len() <= super::COMMENT_MAX, "{long}");
+    for (kind, name) in [("view", "v1"), ("sequence", "s1"), ("type", "e1"), ("procedure", "p1")] {
+        assert!(one(kind, name).get("rows").is_none(), "{name}: 행 수는 테이블류만");
+    }
+    // 분할 부모는 잎의 합 — `pg_partition_tree` 가 없는 12 아래는 없다.
+    let logs = one("table", "logs");
+    if version >= 120_000 {
+        assert_eq!(logs["rows"], 2, "{o}");
+    } else {
+        assert!(logs.get("rows").is_none(), "{o}");
+    }
     assert_eq!(o["truncated"], json!([]));
     for bad in ["nope", "public' OR '1'='1", "x\"; DROP TABLE t1; --"] {
         let e = pg.objects(Some(bad), 5000).await.unwrap();
@@ -535,6 +585,14 @@ async fn pg_schema_tree_objects() {
     }
     let c = pg.table_detail(Some(schema), "t1", 5000).await.unwrap();
     assert_eq!(c["columns"][0]["name"], "id");
+    // 구조의 설명 — 없는 컬럼은 키가 없다.
+    assert_eq!(c["comment"], "고객 목록", "{c}");
+    assert!(c["columns"][0].get("comment").is_none(), "{c}");
+    assert_eq!(c["columns"][1]["comment"], "이름", "{c}");
+    let v = pg.table_detail(Some(schema), "v1", 5000).await.unwrap();
+    assert_eq!((v["comment"].as_str(), v["columns"][0]["comment"].as_str()), (Some("뷰 설명"), Some("번호")), "{v}");
+    let l = pg.table_detail(Some(schema), "logs", 5000).await.unwrap();
+    assert!(l.get("comment").is_none(), "{l}");
     pg.shutdown();
     a.batch_execute(r#"DROP SCHEMA "pt tree""x" CASCADE; DROP SERVER IF EXISTS pt_fdw CASCADE;"#).await.unwrap();
 }

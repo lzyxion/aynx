@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DbDialect, DbObject, DbTableDetail } from "./query-backend";
-import { blockInsert, definitionName, definitionTarget, sameTarget } from "./definition";
+import { blockInsert, definitionName, definitionTarget, objectTarget, sameTarget } from "./definition";
 import type { DetailLeaf, TreeRow } from "./schema-tree";
 
 const obj = (schema: string, object: DbObject): TreeRow => ({ type: "object", key: "k", level: 1, schema, object, expandable: false, expanded: false });
@@ -57,6 +57,12 @@ describe("DDL 보기 — 어느 줄에 서나", () => {
       kind: "table",
       name: "logs_1",
     });
+  });
+
+  it("객체 목록 탭의 줄 — 트리의 객체 줄과 같은 대상", () => {
+    const f: DbObject = { kind: "function", name: "f", args: "a integer", comment: "설명", rows: 3 };
+    expect(objectTarget("postgres", "public", f)).toEqual(definitionTarget("postgres", obj("public", f)));
+    expect(objectTarget("mysql", "shop", { kind: "matview", name: "m" }), "방언이 받지 않는 종류").toBeNull();
   });
 
   it("컬럼 · 스키마 · 폴더 · 안내 줄에는 없다", () => {

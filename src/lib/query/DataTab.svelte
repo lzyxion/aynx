@@ -552,6 +552,13 @@
         <div class="band err" role="alert">{detail.message}</div>
       {:else}
         {@const d = detail.value}
+        {@const commented = d.columns.some((c) => c.comment)}
+        {#if d.comment}
+          <section data-query-struct-comment>
+            <h4>{t("pane.query.data.col.comment")}</h4>
+            <p class="tcomment">{d.comment}</p>
+          </section>
+        {/if}
         <section>
           <h4>{partLabel("columns")} <span class="cnt">{d.columns.length}</span></h4>
           <table>
@@ -559,7 +566,7 @@
               ><tr
                 ><th>{t("pane.query.data.col.name")}</th><th>{t("pane.query.data.col.type")}</th><th>{t("pane.query.data.col.null")}</th><th
                   >{t("pane.query.data.col.default")}</th
-                ><th>PK</th></tr
+                ><th>PK</th>{#if commented}<th class="cm" data-query-struct-comment-col>{t("pane.query.data.col.comment")}</th>{/if}</tr
               ></thead
             >
             <tbody>
@@ -567,7 +574,7 @@
                 <tr
                   ><td class="nm">{c.name}</td><td class="mono">{c.type}</td><td>{c.notNull ? "NOT NULL" : ""}</td><td class="mono">{c.default ?? ""}</td><td
                     >{c.pk > 0 ? c.pk : ""}</td
-                  ></tr
+                  >{#if commented}<td class="cm">{c.comment ?? ""}</td>{/if}</tr
                 >
               {/each}
             </tbody>
@@ -910,6 +917,13 @@
     margin-top: 12px;
   }
 
+  .tcomment {
+    margin: 0;
+    padding: 3px 8px;
+    border-bottom: 1px solid var(--line);
+    overflow-wrap: anywhere;
+  }
+
   .tlink {
     padding: 0;
     font: inherit;
@@ -966,6 +980,16 @@
   td.mono {
     font-family: var(--font-mono);
     word-break: break-all;
+  }
+
+  /* 폭을 정하지 않으면 긴 설명의 max-content 가 표 폭을 다 가져가 형 · NULL 칸이 한 글자 폭으로 눌린다 */
+  th.cm {
+    width: 33%;
+  }
+
+  td.cm {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .ddl {

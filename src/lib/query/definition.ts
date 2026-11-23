@@ -1,7 +1,7 @@
 /**
  * DDL 읽기 전용 보기의 규칙 — 쓰기 · 실행은 없다(보기 · 복사 · 편집기에 넣기뿐).
  */
-import type { DbDefinitionKind, DbDefinitionTarget, DbDialect } from "./query-backend";
+import type { DbDefinitionKind, DbDefinitionTarget, DbDialect, DbObject } from "./query-backend";
 import type { TreeRow } from "./schema-tree";
 
 /** Rust `db::definition` 이 주는 종류와 맞춘다 */
@@ -15,12 +15,14 @@ function allowed(dialect: DbDialect, t: DbDefinitionTarget): DbDefinitionTarget 
   return DEFINITION_KINDS[dialect].includes(t.kind) && t.name ? t : null;
 }
 
+/** 트리의 객체 줄 · 객체 목록 탭의 줄이 함께 쓴다 */
+export function objectTarget(dialect: DbDialect, schema: string, o: DbObject): DbDefinitionTarget | null {
+  return allowed(dialect, { schema, kind: o.kind, name: o.name, ...(o.args !== undefined ? { args: o.args } : {}) });
+}
+
 /** `null` 이면 그 줄에는 "DDL 보기" 가 서지 않는다 */
 export function definitionTarget(dialect: DbDialect, r: TreeRow): DbDefinitionTarget | null {
-  if (r.type === "object") {
-    const o = r.object;
-    return allowed(dialect, { schema: r.schema, kind: o.kind, name: o.name, ...(o.args !== undefined ? { args: o.args } : {}) });
-  }
+  if (r.type === "object") return objectTarget(dialect, r.schema, r.object);
   if (r.type !== "leaf") return null;
   const l = r.leaf;
   switch (l.part) {

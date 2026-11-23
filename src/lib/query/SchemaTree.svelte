@@ -55,6 +55,8 @@
    * - 서버는 연결당 작업 하나만 받는다(Busy) — 트리의 읽기는 줄 세워 하나씩 보내고, 쿼리가 도는 동안(`busy`)은 읽어야 하는 펼치기 · 새로 고침을 막는다.
    * - 서버 검색 op 를 두지 않은 까닭: 스키마 하나를 펴는 왕복이 그 스키마의 이름을 다 가져오므로 [모두 읽기]는 스키마 수만큼의
    *   왕복이면 끝나고, 새 op 는 엔진 셋에 문장 · 상한 · 시험을 하나씩 더 늘린다.
+   * - 줄의 두 번 누르기 — 관계 · 파티션 = 데이터 탭, 스키마 · 종류 폴더 = 객체 목록 탭(`onlist`). 두 번째 누름(`detail > 1`)은
+   *   한 번 누르기 동작을 되풀이하지 않는다(폴더가 도로 접히거나 이름이 두 번 들어가지 않게).
    */
   let {
     handle,
@@ -69,6 +71,7 @@
     ondefinition,
     oncontext,
     oncatalog,
+    onlist,
   }: {
     handle: number;
     lease: number;
@@ -86,6 +89,8 @@
     /** 메뉴는 부르는 쪽이 타일 컨테이너 밖에 그린다 */
     oncontext: (ev: MouseEvent, target: DbDefinitionTarget, title: string, rel: TreeRelation | null) => void;
     oncatalog?: (n: CatalogNote) => void;
+    /** `kind` 가 `null` 이면 스키마 줄 — 목록 탭이 첫 종류(이미 열린 탭이면 보던 종류)를 보인다 */
+    onlist?: (schema: string, kind: DbObjectKind | null) => void;
   } = $props();
 
   let schemas = $state<string[] | null>(null);
@@ -572,8 +577,12 @@
               .join("\n")}
             data-query-tree-row="column"
             onfocus={() => (focusKey = r.key)}
-            onclick={() => {
+            onmousedown={(ev) => {
+              if (ev.detail > 1) ev.preventDefault();
+            }}
+            onclick={(ev) => {
               focusKey = r.key;
+              if (ev.detail > 1) return;
               activate(r);
             }}
           >
@@ -616,16 +625,19 @@
               // 두 번 누르기가 이름 글자를 골라(파랗게) 칠하지 않게
               if (ev.detail > 1) ev.preventDefault();
             }}
-            onclick={() => {
+            onclick={(ev) => {
               focusKey = r.key;
               // 관계 · 파티션 줄의 한 번 누르기는 고르기만 — 펼치기/접기는 › 화살표(·→/←)로만, 데이터 탭은 두 번 누르기(아래).
               // 줄 누르기로 펼치면 두 번 누르기(데이터 탭)마다 구조 폴더가 함께 열려 버린다(2026-11-10 사용자 결정)
               if (relationOf(r)) return;
+              if (ev.detail > 1) return;
               if (!blocked) activate(r);
             }}
             ondblclick={() => {
               const rel = relationOf(r);
               if (rel) onopen(rel);
+              else if (r.type === "schema") onlist?.(r.schema, null);
+              else if (r.type === "folder") onlist?.(r.schema, r.folder.kind);
             }}
             oncontextmenu={(ev) => openContext(ev, r)}
           >

@@ -18,6 +18,11 @@ describe("DB 타일의 F5", () => {
     expect(tileRefreshOf(key(), on)).toBe("tree");
   });
 
+  it("객체 목록 탭이면 그 목록", () => {
+    expect(tileRefreshOf(key(), { ...on, listTab: true })).toBe("list");
+    expect(tileRefreshOf(key({ ctrlKey: true }), { ...on, listTab: true })).toBeNull();
+  });
+
   it("선택된 타일이 아니거나 모달이 떠 있으면 앱의 몫", () => {
     expect(tileRefreshOf(key(), { ...on, selected: false })).toBeNull();
     expect(tileRefreshOf(key(), { ...on, modal: true })).toBeNull();

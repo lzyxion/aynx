@@ -394,12 +394,39 @@ async fn direct(var: &str, want_mariadb: bool) {
     if want_mariadb {
         a.query_drop("CREATE SEQUENCE pt8.pt_seq").await.unwrap();
     }
+    // `ANALYZE TABLE` 이 MySQL 8 의 `information_schema` 통계 캐시도 새로 한다.
+    a.query_drop(format!(
+        "ALTER TABLE pt8.pt_d COMMENT = '숫자', MODIFY d INT COMMENT '값'; ALTER TABLE pt8.pt_sink COMMENT = '{}'; ALTER FUNCTION pt8.pt_fn COMMENT '합'; \
+         ANALYZE TABLE pt8.pt_t, pt8.pt_d, pt8.pt_big",
+        "가".repeat(200)
+    ))
+    .await
+    .unwrap();
     let o = my.objects(Some("pt8"), 5000).await.unwrap();
     println!("MEASURE[{tag}] objects pt8: {o}");
     assert_eq!(my.objects(None, 5000).await.unwrap(), o, "기본 데이터베이스");
-    // MariaDB 는 정수 형에 표시 폭을 붙인다(`int(11)`).
+    // MariaDB 는 정수 형에 표시 폭을 붙인다(`int(11)`). 설명 · 추정 행 수는 아래에서 따로 — 여기서는 그 둘을 빼고 같은지 본다.
     let objs: Vec<Value> = serde_json::from_str(&o["objects"].to_string().replace("(11)", "")).unwrap();
-    let has = |want: Value| assert!(objs.contains(&want), "{want}: {o}");
+    let has = |want: Value| {
+        let hit = objs.iter().any(|x| {
+            let mut x = x.clone();
+            let m = x.as_object_mut().unwrap();
+            m.remove("comment");
+            m.remove("rows");
+            x == want
+        });
+        assert!(hit, "{want}: {o}");
+    };
+    let one = |name: &str| objs.iter().find(|x| x["name"] == name).unwrap_or_else(|| panic!("{name}: {o}"));
+    assert_eq!(one("pt_d")["comment"], "숫자");
+    assert_eq!(one("pt_fn")["comment"], "합");
+    let long = one("pt_sink")["comment"].as_str().unwrap();
+    assert!(long.ends_with('…') && long.len() <= super::COMMENT_MAX, "{long}");
+    assert!(one("pt_v").get("comment").is_none() && one("pt_v").get("rows").is_none(), "뷰의 'VIEW' 글자 · 행 수는 버린다: {o}");
+    assert!(one("pt_t").get("comment").is_none(), "빈 설명은 칸이 없다: {o}");
+    assert!(one("pt_proc").get("comment").is_none() && one("pt_proc").get("rows").is_none(), "{o}");
+    // InnoDB 의 `TABLE_ROWS` 는 추정치라 정확한 값은 보지 않는다.
+    assert!(one("pt_d")["rows"].as_u64().is_some() && one("pt_big")["rows"].as_u64().unwrap_or(0) > 0, "{o}");
     for (n, k) in [("pt_t", "table"), ("pt_v", "view"), ("pt_big", "table")] {
         has(json!({ "name": n, "kind": k }));
     }
@@ -426,6 +453,12 @@ async fn direct(var: &str, want_mariadb: bool) {
     assert_eq!(c["columns"][1]["pk"], 0);
     assert!(c["columns"][1]["default"].as_str().unwrap().contains('x'));
     assert_eq!(c["columns"][2]["notNull"], false);
+    // 구조의 설명 — 빈 설명 · 뷰의 'VIEW' 글자는 키가 없다.
+    assert!(c.get("comment").is_none() && c["columns"][0].get("comment").is_none(), "{c}");
+    let d = my.table_detail(None, "pt_d", 5000).await.unwrap();
+    assert_eq!((d["comment"].as_str(), d["columns"][0]["comment"].as_str()), (Some("숫자"), Some("값")), "{d}");
+    let v = my.table_detail(None, "pt_v", 5000).await.unwrap();
+    assert!(v.get("comment").is_none(), "{v}");
     assert!(emsg(&my.table_detail(Some("pt8"), "nope", 5000).await.unwrap_err()).contains("nope"));
     detail_folders(&mut a, &my, &reader, tag, want_mariadb).await;
 

@@ -50,6 +50,18 @@ export interface QueryScript {
   sql?: string;
   /** 있으면 데이터 탭 — 이 칸을 모르는 예전 빌드는 빈 쿼리 탭으로 읽는다 */
   data?: QueryDataTab;
+  /** 있으면 객체 목록 탭(`data` 와 배타 · 둘 다 오면 `data`) — 예전 빌드는 빈 쿼리 탭으로 읽는다 */
+  list?: QueryListTab;
+}
+
+/** `query-backend` 의 `DbObjectKind` 와 같은 글자 — 배치 파일에 남는다 */
+export const QUERY_LIST_KINDS = ["table", "view", "matview", "foreign", "function", "procedure", "sequence", "type"] as const;
+export type QueryListKind = (typeof QUERY_LIST_KINDS)[number];
+
+/** 찾기 글 · 정렬은 저장하지 않는다 */
+export interface QueryListTab {
+  schema: string;
+  kind?: QueryListKind;
 }
 
 export const QUERY_DATA_KINDS = ["table", "view", "matview", "foreign", "partition"] as const;
@@ -84,6 +96,16 @@ export function canonDataTab(v: unknown): QueryDataTab | null {
   return d;
 }
 
+/** 모르는 `kind`(다음 판의 종류)는 버리고 탭은 남긴다 — 첫 종류를 보인다 */
+export function canonListTab(v: unknown): QueryListTab | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!nameOk(o.schema)) return null;
+  const l: QueryListTab = { schema: o.schema };
+  if (typeof o.kind === "string" && (QUERY_LIST_KINDS as readonly string[]).includes(o.kind)) l.kind = o.kind as QueryListKind;
+  return l;
+}
+
 export function storedDraft(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() !== "" && v.length <= QUERY_DRAFT_MAX ? v : undefined;
 }
@@ -110,6 +132,13 @@ export function canonQueryTabs(raw: { sql?: unknown; scripts?: unknown; active?:
         list.push({ n, data });
         continue;
       }
+      if (o.list !== undefined) {
+        const lt = canonListTab(o.list);
+        if (!lt) continue;
+        seen.add(n);
+        list.push({ n, list: lt });
+        continue;
+      }
       seen.add(n);
       const s: QueryScript = { n };
       const title = typeof o.title === "string" ? o.title.trim().slice(0, QUERY_SCRIPT_TITLE_MAX) : "";
@@ -123,7 +152,7 @@ export function canonQueryTabs(raw: { sql?: unknown; scripts?: unknown; active?:
     const sql = storedDraft(raw.sql);
     return sql === undefined ? {} : { sql };
   }
-  if (list.length === 1 && list[0].n === 1 && list[0].title === undefined && list[0].data === undefined) {
+  if (list.length === 1 && list[0].n === 1 && list[0].title === undefined && list[0].data === undefined && list[0].list === undefined) {
     return list[0].sql === undefined ? {} : { sql: list[0].sql };
   }
   const active = typeof raw.active === "number" && list.some((s) => s.n === raw.active) ? raw.active : list[0].n;

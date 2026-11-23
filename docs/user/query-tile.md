@@ -108,7 +108,7 @@ Only the banner shown when the connection is lost ("The connection was lost · [
 <a id="tabs"></a>
 ### Script tabs
 
-- Split SQL into several sheets within one tile (not the same as the app's **tabs**, so they are always called "script tabs"). **[+]** or `Ctrl+T` creates a new script tab. **×**, the middle button or `Ctrl+W` closes one (if it has text, you are asked once). Closing the last one leaves an empty screen with **New query** and **Open SQL file…**; the next time the tile opens it starts again with "Query 1". Rename by **double-clicking** or with `F2` (Enter = rename, Esc = cancel, empty = the default name "Query N"), and **drag** to change the order. Up to 20.
+- Split SQL into several sheets within one tile (not the same as the app's **tabs**, so they are always called "script tabs"). **[+]** or `Ctrl+T` creates a new script tab. **×**, the middle button or `Ctrl+W` closes one (if it has text, you are asked once). Closing the last one leaves an empty screen with **New query** and **Open SQL file…**; the next time the tile opens it starts again with "Query 1". Rename by **double-clicking** or with `F2` (Enter = rename, Esc = cancel, empty = the default name "Query N"), and **drag** to change the order. Up to 20 (data tabs and object list tabs count too).
 - `Ctrl+T` and `Ctrl+W` work **only while this tile has focus**. The app's tab open and close keys are `Ctrl+Shift+T` and `Ctrl+Shift+W`, so they do not collide (if you bind the same combination to a global shortcut in settings, the global one wins).
 - **●** = unsaved changes. A script tab's text is saved in the tile (up to 32 KiB per script tab, and it survives an app restart). Shortly after you edit, it saves and the ● disappears. Text over 32 KiB is not saved, so the ● stays.
 - **Results are separate per script tab.** Switching script tabs shows that tab's last result and run marks (results are not saved, so restarting the app leaves the pane empty).
@@ -161,8 +161,9 @@ The tree on the left goes down, as in DBeaver, as **schema → folders by kind �
 - Up to **5,000 objects per kind group** are read at a time (and 5,000 per folder under a table). If there are more, `+` is added to the folder count and the line "Only the first 5000 are shown" appears.
 - **Clicking**
   - Tables, views and partitions: **a single click only selects** (the editor text is not touched; to expand or collapse its structure folders, click the `›` arrow or press `→`/`←`), and **a double-click or `Enter` opens its [data tab](#data-tab)**. Right-click has **View data** and **Insert SELECT** (the old click — replaces the current query tab's text with `SELECT * FROM "schema"."table" LIMIT 100;`, without running it).
+  - Schemas and kind folders (Tables, Views, Functions …): a single click expands or collapses, and **a double-click opens the [object list tab](#object-list)** of that schema (the second click of a double-click does not fold it back).
   - **Foreign Keys and Referenced By move the tree to the table on the other side**: they expand that schema and folder and select that table (reading the schema if it has not been read yet). If the table is not in the tree (a schema not listed, for example), its name goes into the editor.
-  - Other leaves (functions, sequences, columns, indexes, constraints, triggers …) insert the quoted name **at the editor cursor** (functions and procedures include the opening parenthesis, as in `"public"."f1"(`).
+  - Other leaves (functions, sequences, columns, indexes, constraints, triggers …) insert the quoted name **at the editor cursor** (functions and procedures include the opening parenthesis, as in `"public"."f1"(`). A double-click inserts it once.
 - What each engine does not provide: SQLite has no constraint or foreign key names (they are shown without names), and an expression index shows `expr` instead of the expression text (the definition is in the tooltip). MySQL and MariaDB triggers are visible only with the `TRIGGER` privilege, and MariaDB does not give an account with only the `SELECT` privilege the ON UPDATE and ON DELETE of foreign keys.
 - **Keyboard** — In the tree, `↑`/`↓` move, `→` expands (or goes to the first child if expanded), `←` collapses (or goes to the parent if collapsed), `Home`/`End`, `Enter` is the same as clicking (on a table, view or partition it opens the data tab), `F4` is [View DDL](#ddl), and `Ctrl+F` or `Ctrl+I` goes to the [Find names](#filter) field.
 - The expanded state stays **as long as the tile lives**, even if the tree is hidden and shown or the connection is reopened. **Refresh** at the top reads again and keeps what is expanded. After an app restart, the tree starts collapsed (not saved).
@@ -187,6 +188,7 @@ Typing in the **Find names** field below the tree's head (**`Ctrl+F`**, or **`Ct
 - **Only names already read** are filtered (case-insensitive, partial match). Targets are object names (tables, views, functions …) and structure names under tables (columns, indexes, constraints, foreign keys, triggers, partitions). Names under a table match only after that table has been expanded and read once.
 - Ancestors of matches expand by themselves, and branches with no match are hidden. Under a table whose name matches, things stay as you expanded them.
 - **`Esc`** clears (pressing again on the empty field goes to the tree). `↓` and `Enter` go to the tree. Clearing restores the shape expanded before the search.
+- While an [object list tab](#object-list) is shown, `Ctrl+F` goes to that tab's **Find** field instead (pressed inside the tree, it still goes to the tree's field).
 - Schemas not yet read are counted by "N schemas not read yet · [Read all]" at the top. [Read all] reads each schema once (this takes time on a large database). The server is not asked anything else.
 
 <a id="ddl"></a>
@@ -224,7 +226,7 @@ Typing in the **Find names** field below the tree's head (**`Ctrl+F`**, or **`Ct
 
 Double-click a table, view or partition in the tree (or press `Enter`, or right-click → **View data**) to open its **data tab** beside the query tabs (grid icon + object name — the schema is in the tooltip). **One tab per object**: if it is already open, the app goes to it. There are no preview tabs. Close it with **×** like a query tab (no question — there is no text to lose).
 
-- **[Data | Structure | DDL]** at the top. **Structure** shows the columns, indexes, constraints, foreign keys, referenced by, triggers and partitions as tables (empty sections are hidden). **DDL** is the same read-only view as [View DDL](#ddl) (hidden when the engine gives no DDL for that kind); **Insert into editor** puts it into a new query tab.
+- **[Data | Structure | DDL]** at the top. **Structure** shows the columns, indexes, constraints, foreign keys, referenced by, triggers and partitions as tables (empty sections are hidden). If the table has a comment, a **Comment** section shows it above the columns; if any column has a comment, a **Comment** column appears at the right end of the columns table (PostgreSQL and MySQL/MariaDB — SQLite has no comments; read-only, and the AI's `db_describe_table` does not include them). **DDL** is the same read-only view as [View DDL](#ddl) (hidden when the engine gives no DDL for that kind); **Insert into editor** puts it into a new query tab.
 - **WHERE** — type the condition only (`id > 10 AND name LIKE 'a%'`), then press `Enter` (`Esc` reverts). **Refresh** queries again. The field autocompletes the table's columns and condition keywords the same way as the editor.
 - **Sorting** — click a column header: ascending ▲ → descending ▼ → none. It queries again with `ORDER BY` (rows already received are not sorted on screen).
 - **Pages** — ‹ › moves page by page with `LIMIT`/`OFFSET`, 100 rows per page by default (500 or 1,000 can be picked). The total is not counted (no `COUNT(*)`) — one extra row is read only to know whether there is a next page. The data tab uses its own page size, not the result row limit of query tabs.
@@ -238,6 +240,25 @@ Double-click a table, view or partition in the tree (or press `Enter`, or right-
 - One job at a time per connection: while a query runs (or the tree is reading), the data tab waits and then loads by itself; while the data tab loads, [Run] waits, and [Cancel] in either place stops it.
 - The condition, sort and page size are saved with the tile and come back after a restart (the rows are not saved — the tab queries again when shown). Editing cells, adding or deleting rows are not built.
 
+<a id="object-list"></a>
+## Object list tab
+
+Double-click a schema (a database for MySQL/MariaDB) or a kind folder in the tree to open the schema's **object list tab** beside the query tabs (list icon + schema name). **One tab per schema**: if it is already open, the app goes to it. A schema double-click shows the first kind (or, for an open tab, the kind you were looking at), and a folder double-click shows that kind. Close it with **×** (no question). It has no rename and no save.
+
+```text
+ Tables 12 │ Views 3 │ Functions 5 │ Sequences 2          ⌕ Find          ⟳
+ Name                Kind           Rows   Comment
+ orders                           12,840   Customer orders
+ events              partitioned   1,020   —
+```
+
+- **The kind buttons** show only the kinds that exist in that schema, with their counts (`5000+` when cut at 5,000, with "Only the first 5000 are shown" below the list). The chosen kind is saved with the tile; the find text and the sort are not.
+- **Columns** — tables, materialized views and foreign tables: Name · Kind · Rows · Comment; views, sequences and types: Name · Kind · Comment; functions: Name · Arguments · Returns · Comment; procedures: Name · Arguments · Comment. SQLite has no Rows or Comment column. A missing value is a dim `—`. On a narrow tile the Comment column goes first, then Kind and Returns.
+- **Rows is the engine's estimate**, not a count (no `COUNT(*)`): PostgreSQL's planner statistics (a partitioned table sums its partitions on 12+; on versions before 14 a table never analyzed shows 0), MySQL and MariaDB `TABLE_ROWS` for tables (an estimate for InnoDB). Comments are cut at 256 bytes and shown on one line (hover for the received text).
+- **Find** narrows the shown kind by name (case-insensitive, partial match). Click **Name** or **Rows** in the header to sort: ascending ▲ → descending ▼ → none (rows without an estimate stay at the bottom).
+- A double-click or `Enter` on a row opens a table or view's [data tab](#data-tab), and the [DDL](#ddl) of anything else. Right-click has the same menu as the tree. Keyboard: `↑`/`↓`, `Home`/`End`, `PageUp`/`PageDown`, `Enter`, `F4` (View DDL), `Shift+F10` (menu), `Ctrl+F`/`Ctrl+I` (to Find — `Esc` clears, again goes back to the list). `F5` or ⟳ reads the schema again.
+- The list uses what the tree already read; a schema never expanded is read once when the tab is shown (one job at a time per connection, so it waits while a query runs).
+
 <a id="not-built"></a>
 ## What is not built
 
@@ -245,12 +266,13 @@ A query tile is **a window for quickly looking into a database during server wor
 
 | Included | Not included |
 | --- | --- |
-| Object list (schemas, folders by kind) | Screens that create or change objects (table, index and constraint editors, a "New table…" menu) |
+| Object list (schemas, folders by kind, the [object list tab](#object-list) — name, kind, estimated rows, comment) | Screens that create or change objects (table, index and constraint editors, a "New table…" menu) |
 | Table structure (columns, indexes, constraints, foreign keys, referenced by, triggers, partitions) | Editing cells in the result grid and writing them to the database |
 | [Data tab](#data-tab) (read-only — condition, sort, pages) | Adding or deleting rows from the data tab |
 | [Read-only DDL view](#ddl) (right-click, `F4` — copy and insert into editor only) | Managing roles, privileges and tablespaces, or editing or running in the DDL pane |
 | [Tree name find](#filter) (over names already read — `Ctrl+F`, `Ctrl+I`) | ER diagrams, schema comparison, import/export wizards |
 | | Rarely viewed objects such as operators, collations and operator classes |
+| | Size, owner and privilege columns in the object list |
 
 Operational information (running queries, locks) is a second-phase candidate, considered only as a read-only view.
 

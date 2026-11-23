@@ -169,6 +169,10 @@ export interface DbObject {
   /** 엔진의 SQL 글자 — 괄호 없이 */
   args?: string;
   returns?: string;
+  /** 엔진의 설명(256 B 에서 잘림) — 없거나 옛 서버면 칸이 없다 */
+  comment?: string;
+  /** 통계의 추정 행 수(관계류만) — 모르면 칸이 없다 */
+  rows?: number;
 }
 
 /** `truncated` = 상한에서 잘린 종류 */
@@ -184,6 +188,7 @@ export interface DbTableColumn {
   notNull: boolean;
   default: string | null;
   pk: number;
+  comment?: string;
 }
 
 /** Rust `db::detail::IndexOut`. `columns` 의 `null` = 식 */
@@ -235,6 +240,7 @@ export interface DbPartition {
 
 /** `truncated` = 상한에서 잘린 칸 이름 */
 export interface DbTableDetail {
+  comment?: string;
   columns: DbTableColumn[];
   indexes: DbIndex[];
   constraints: DbConstraint[];

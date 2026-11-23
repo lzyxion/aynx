@@ -745,6 +745,7 @@ pub(crate) async fn run(grant: &Grant, req: AiRequest, src: &PasswordSource) -> 
                 s => s.table_detail(schema.as_deref(), &table),
                 p => p.table_detail(schema.as_deref(), &table, ms).await,
                 m => m.table_detail(schema.as_deref(), &table, ms).await)?;
+            let v = cap_describe(v);
             let rows = v.get("columns").and_then(Value::as_array).map(|a| a.len() as u64);
             AiOutcome { value: v, rows }
         }
@@ -910,16 +911,35 @@ pub(crate) fn shape_query(out: QueryOut, budget: &mut usize) -> (Value, u64) {
     (v, n)
 }
 
+/// 설명 · 추정 행 수는 사람 화면 전용이라 지운다 — MCP `db_list_objects` 의 출력 모양과 상한은 그대로.
 pub(crate) fn cap_objects(mut v: Value) -> Value {
     let capped = match v.get_mut("objects").and_then(Value::as_array_mut) {
-        Some(a) if a.len() > OBJECTS_MAX => {
+        Some(a) => {
+            for o in a.iter_mut().filter_map(Value::as_object_mut) {
+                o.remove("comment");
+                o.remove("rows");
+            }
+            let over = a.len() > OBJECTS_MAX;
             a.truncate(OBJECTS_MAX);
-            true
+            over
         }
-        _ => false,
+        None => false,
     };
     if capped {
         v["objectsCapped"] = json!(true);
+    }
+    v
+}
+
+/// 테이블 · 컬럼 설명은 사람 화면 전용이라 지운다 — MCP `db_describe_table` 의 출력 모양은 그대로.
+pub(crate) fn cap_describe(mut v: Value) -> Value {
+    if let Some(o) = v.as_object_mut() {
+        o.remove("comment");
+    }
+    if let Some(a) = v.get_mut("columns").and_then(Value::as_array_mut) {
+        for c in a.iter_mut().filter_map(Value::as_object_mut) {
+            c.remove("comment");
+        }
     }
     v
 }
@@ -1043,6 +1063,34 @@ mod tests {
         assert_eq!(v["objectsCapped"], json!(true));
         let small = cap_objects(json!({ "objects": [], "truncated": [] }));
         assert!(small.get("objectsCapped").is_none());
+        // 설명 · 추정 행 수는 AI 쪽에 없다.
+        let o = cap_objects(json!({
+            "objects": [{ "kind": "table", "name": "t", "sub": "partitioned", "comment": "고객", "rows": 12 }],
+            "truncated": []
+        }));
+        assert_eq!(o["objects"], json!([{ "kind": "table", "name": "t", "sub": "partitioned" }]));
+        assert!(o.get("objectsCapped").is_none());
+        // 테이블 · 컬럼 설명도 AI 쪽에 없다.
+        let t = cap_describe(json!({
+            "comment": "고객",
+            "columns": [
+                { "name": "id", "type": "int", "notNull": true, "default": null, "pk": 1, "comment": "번호" },
+                { "name": "n", "type": "text", "notNull": false, "default": null, "pk": 0 }
+            ],
+            "indexes": [],
+            "truncated": []
+        }));
+        assert_eq!(
+            t,
+            json!({
+                "columns": [
+                    { "name": "id", "type": "int", "notNull": true, "default": null, "pk": 1 },
+                    { "name": "n", "type": "text", "notNull": false, "default": null, "pk": 0 }
+                ],
+                "indexes": [],
+                "truncated": []
+            })
+        );
         let d = cap_definition(json!({ "sql": "x".repeat(DEFINITION_MAX + 10), "reconstructed": false, "truncated": false }));
         assert_eq!(d["sql"].as_str().unwrap().len(), DEFINITION_MAX);
         assert_eq!(d["truncated"], json!(true));

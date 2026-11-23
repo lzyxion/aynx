@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { QUERY_DRAFT_MAX, QUERY_SCRIPTS_MAX, canonQueryTabs } from "$lib/session";
-import { NO_TAB, addTab, closeTab, closeTabsN, tabsToCloseN, moveTab, renameTab, savedText, setTabText, tabDirty, tabsFromSpec, toScripts, type ScriptTab } from "./script-tabs";
+import { QUERY_DRAFT_MAX, QUERY_SCRIPTS_MAX, canonListTab, canonQueryTabs } from "$lib/session";
+import {
+  NO_TAB,
+  addTab,
+  closeTab,
+  closeTabsN,
+  findListTab,
+  isScriptTab,
+  tabsToCloseN,
+  moveTab,
+  renameTab,
+  savedText,
+  setTabList,
+  setTabText,
+  tabDirty,
+  tabsFromSpec,
+  toScripts,
+  type ScriptTab,
+} from "./script-tabs";
 
 const tab = (n: number, text = "", title?: string): ScriptTab => ({ n, text, ...(title ? { title } : {}) });
 
@@ -137,5 +154,52 @@ describe("tabDirty — ●", () => {
   it("상한을 넘는 글은 저장되지 않으니 늘 ●", () => {
     const big = "x".repeat(QUERY_DRAFT_MAX + 1);
     expect(tabDirty(tab(1, big), big)).toBe(true);
+  });
+});
+
+describe("객체 목록 탭 — 저장 · 탭 규칙", () => {
+  it("canonListTab — 스키마는 이름 규칙 · 모르는 종류는 버리고 탭은 남긴다", () => {
+    expect(canonListTab({ schema: "public", kind: "view" })).toEqual({ schema: "public", kind: "view" });
+    expect(canonListTab({ kind: "nope", schema: "public" })).toEqual({ schema: "public" });
+    expect(canonListTab({ schema: "" })).toBeNull();
+    expect(canonListTab({ schema: "x".repeat(513) })).toBeNull();
+    expect(canonListTab("public")).toBeNull();
+  });
+
+  it("canonQueryTabs — list 갈래 · data 가 이긴다 · 하나여도 접지 않는다", () => {
+    expect(canonQueryTabs({ scripts: [{ n: 1, list: { kind: "table", schema: "public", extra: 1 } }] })).toEqual({
+      scripts: [{ n: 1, list: { schema: "public", kind: "table" } }],
+      active: 1,
+    });
+    const both = canonQueryTabs({ scripts: [{ n: 1 }, { n: 2, data: { kind: "table", name: "t" }, list: { schema: "s" } }], active: 2 });
+    expect(both.scripts?.[1]).toEqual({ n: 2, data: { kind: "table", name: "t" } });
+    expect(canonQueryTabs({ scripts: [{ n: 1, sql: "A" }, { n: 2, list: { schema: "" } }], active: 2 })).toEqual({ sql: "A" });
+  });
+
+  it("명세 ↔ 탭 왕복 — SQL · 이름은 싣지 않는다", () => {
+    const { tabs, active } = tabsFromSpec({ scripts: [{ n: 1 }, { n: 3, list: { schema: "public" }, sql: "x", title: "y" } as never], active: 3 });
+    expect(active).toBe(3);
+    expect(tabs[1]).toEqual({ n: 3, text: "", list: { schema: "public" } });
+    expect(toScripts(tabs)).toEqual([{ n: 1 }, { n: 3, list: { schema: "public" } }]);
+  });
+
+  it("스크립트 탭 판정 · ● 없음 · 이름 바꾸기 막힘", () => {
+    const l: ScriptTab = { n: 2, text: "", list: { schema: "s" } };
+    expect(isScriptTab(l)).toBe(false);
+    expect(isScriptTab({ data: { kind: "table", name: "t" } })).toBe(false);
+    expect(isScriptTab(tab(1))).toBe(true);
+    expect(tabDirty(l, "SELECT 1")).toBe(false);
+    expect(renameTab([l], 2, "x")).toEqual([l]);
+  });
+
+  it("스키마 하나에 탭 하나 · 종류 바꾸기 · 20개 셈에 든다", () => {
+    const a = addTab([tab(1)], { list: { schema: "public" } })!;
+    expect(a.tabs[1]).toEqual({ n: 2, text: "", list: { schema: "public" } });
+    expect(findListTab(a.tabs, "public")?.n).toBe(2);
+    expect(findListTab(a.tabs, "other")).toBeNull();
+    expect(setTabList(a.tabs, 2, { schema: "public", kind: "view" })[1].list).toEqual({ schema: "public", kind: "view" });
+    expect(setTabList(a.tabs, 1, { schema: "public" })[0], "스크립트 탭은 그대로").toBe(a.tabs[0]);
+    const full = Array.from({ length: QUERY_SCRIPTS_MAX }, (_, i) => tab(i + 1));
+    expect(addTab(full, { list: { schema: "public" } })).toBeNull();
   });
 });

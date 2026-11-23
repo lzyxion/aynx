@@ -56,7 +56,7 @@ use super::pg_value::{self, Raw};
 use super::tls;
 use super::value::{self, approx_len};
 use super::detail::{self, ConstraintOut, ForeignKeyOut, IndexOut, PartitionOut, TableDetail, TriggerOut};
-use super::{cap_objects, objects_json, ColumnOut, Dialect, EngineError, ObjectOut, QueryOut, RunEnd, RESPONSE_MAX, RUN_SAVEPOINT};
+use super::{cap_objects, comment_of, objects_json, ColumnOut, Dialect, EngineError, ObjectOut, QueryOut, RunEnd, RESPONSE_MAX, RUN_SAVEPOINT};
 use crate::errors::{with_reason, DB_AUTH, DB_PASSWORD, DB_STORED_REJECTED};
 use crate::i18n::tr;
 use crate::db::conns::DbTlsMode;
@@ -1236,22 +1236,11 @@ async fn objects_in(tx: &Transaction<'_>, schema: &str) -> Result<Value, tokio_p
         .query_one("SELECT current_setting('server_version_num')::int4", &[])
         .await?
         .get(0);
-    let rels = tx
-        .query(
-            "SELECT c.relname::text, c.relkind::text \
-             FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-             WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S') \
-             AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i \
-             JOIN pg_catalog.pg_class pc ON pc.oid = i.inhparent \
-             WHERE i.inhrelid = c.oid AND pc.relkind = 'p') \
-             ORDER BY c.relname LIMIT $2",
-            &[&schema, &limit],
-        )
-        .await?;
+    let rels = tx.query(rel_sql(version), &[&schema, &limit]).await?;
     let funcs = tx.query(proc_sql(version), &[&schema, &limit]).await?;
     let types = tx
         .query(
-            "SELECT t.typname::text, t.typtype::text \
+            "SELECT t.typname::text, t.typtype::text, pg_catalog.obj_description(t.oid, 'pg_type') \
              FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace \
              WHERE n.nspname = $1 \
              AND (t.typtype IN ('e', 'd', 'r') OR (t.typtype = 'c' AND EXISTS (SELECT 1 FROM pg_catalog.pg_class c \
@@ -1266,7 +1255,12 @@ async fn objects_in(tx: &Transaction<'_>, schema: &str) -> Result<Value, tokio_p
         .iter()
         .map(|r| {
             let (kind, sub) = rel_object(&r.get::<_, String>(1));
-            ObjectOut { sub, ..ObjectOut::new(kind, r.get(0)) }
+            ObjectOut {
+                sub,
+                comment: comment_of(r.get(2)),
+                rows: rel_rows(r.get(3)),
+                ..ObjectOut::new(kind, r.get(0))
+            }
         })
         .collect();
     let funcs: Vec<ObjectOut> = funcs
@@ -1277,6 +1271,7 @@ async fn objects_in(tx: &Transaction<'_>, schema: &str) -> Result<Value, tokio_p
                 sub,
                 args: Some(r.get(2)),
                 returns: r.get(3),
+                comment: comment_of(r.get(4)),
                 ..ObjectOut::new(kind, r.get(0))
             }
         })
@@ -1285,6 +1280,7 @@ async fn objects_in(tx: &Transaction<'_>, schema: &str) -> Result<Value, tokio_p
         .iter()
         .map(|r| ObjectOut {
             sub: type_sub(&r.get::<_, String>(1)),
+            comment: comment_of(r.get(2)),
             ..ObjectOut::new("type", r.get(0))
         })
         .collect();
@@ -1303,6 +1299,7 @@ async fn table_detail_in(tx: &Transaction<'_>, schema: &str, table: &str) -> Res
     };
     let oid: u32 = rel.get(0);
     let partitioned = rel.get::<_, String>(1) == "p";
+    let comment = comment_of(rel.get(2));
     let version: i32 = tx
         .query_one("SELECT current_setting('server_version_num')::int4", &[])
         .await?
@@ -1331,17 +1328,10 @@ async fn table_detail_in(tx: &Transaction<'_>, schema: &str, table: &str) -> Res
     };
     Ok(Some(
         TableDetail {
+            comment,
             columns: columns
                 .iter()
-                .map(|r| {
-                    json!({
-                        "name": r.get::<_, String>(0),
-                        "type": r.get::<_, String>(1),
-                        "notNull": r.get::<_, bool>(2),
-                        "default": r.get::<_, Option<String>>(3),
-                        "pk": r.get::<_, i32>(4),
-                    })
-                })
+                .map(|r| detail::column_json(r.get(0), r.get(1), r.get(2), r.get(3), r.get::<_, i32>(4).into(), r.get(5)))
                 .collect(),
             indexes: indexes
                 .iter()
@@ -1595,18 +1585,57 @@ pub(crate) fn type_sub(k: &str) -> Option<&'static str> {
     }
 }
 
+/// 두 갈래는 분할 부모(`p`)의 행 수 식만 다르다.
+macro_rules! rel_select {
+    ($partitioned:literal) => {
+        concat!(
+            "SELECT c.relname::text, c.relkind::text, pg_catalog.obj_description(c.oid, 'pg_class'), \
+             CASE WHEN c.relkind IN ('r', 'm', 'f') AND c.reltuples >= 0 THEN c.reltuples::float8 ",
+            $partitioned,
+            " END \
+             FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S') \
+             AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i \
+             JOIN pg_catalog.pg_class pc ON pc.oid = i.inhparent \
+             WHERE i.inhrelid = c.oid AND pc.relkind = 'p') \
+             ORDER BY c.relname LIMIT $2"
+        )
+    };
+}
+
+/// 넷째 칸 = 추정 행 수. `reltuples` 는 분석 전이면 -1(14 아래는 0 이라 그대로 0)이고, 분할 부모는 잎의 합 — `pg_partition_tree` 가
+/// 12 부터라 그 아래는 부모의 행 수가 없다.
+pub(crate) fn rel_sql(server_version_num: i32) -> &'static str {
+    if server_version_num >= 120_000 {
+        rel_select!(
+            "WHEN c.relkind = 'p' THEN (SELECT sum(pc.reltuples)::float8 \
+             FROM pg_catalog.pg_partition_tree(c.oid) pt JOIN pg_catalog.pg_class pc ON pc.oid = pt.relid \
+             WHERE pt.isleaf AND pc.reltuples >= 0)"
+        )
+    } else {
+        rel_select!("")
+    }
+}
+
+/// 음수 · NaN 은 `None`(`as` 가 0 으로 만들지 않게).
+pub(crate) fn rel_rows(v: Option<f64>) -> Option<u64> {
+    v.filter(|n| *n >= 0.0).map(|n| n.round() as u64)
+}
+
 /// 확장이 만든 함수(`deptype = 'e'`)와 서버가 딸려 만든 함수(`'i'` — 범위 형의 생성자)는 뺀다.
 pub(crate) fn proc_sql(server_version_num: i32) -> &'static str {
     if server_version_num >= 110_000 {
         "SELECT p.proname::text, p.prokind::text, pg_catalog.pg_get_function_identity_arguments(p.oid), \
-         CASE WHEN p.prokind = 'p' THEN NULL ELSE pg_catalog.pg_get_function_result(p.oid) END \
+         CASE WHEN p.prokind = 'p' THEN NULL ELSE pg_catalog.pg_get_function_result(p.oid) END, \
+         pg_catalog.obj_description(p.oid, 'pg_proc') \
          FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
          WHERE n.nspname = $1 AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d \
          WHERE d.classid = 'pg_catalog.pg_proc'::regclass AND d.objid = p.oid AND d.deptype IN ('e', 'i')) \
          ORDER BY p.proname, 3 LIMIT $2"
     } else {
         "SELECT p.proname::text, CASE WHEN p.proisagg THEN 'a' WHEN p.proiswindow THEN 'w' ELSE 'f' END, \
-         pg_catalog.pg_get_function_identity_arguments(p.oid), pg_catalog.pg_get_function_result(p.oid) \
+         pg_catalog.pg_get_function_identity_arguments(p.oid), pg_catalog.pg_get_function_result(p.oid), \
+         pg_catalog.obj_description(p.oid, 'pg_proc') \
          FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
          WHERE n.nspname = $1 AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d \
          WHERE d.classid = 'pg_catalog.pg_proc'::regclass AND d.objid = p.oid AND d.deptype IN ('e', 'i')) \

@@ -100,8 +100,11 @@
         use:tabContext={x.n}
         data-query-tab-n={x.n}
         data-query-tab-data={x.data ? x.data.kind : undefined}
+        data-query-tab-list={x.list ? x.list.schema : undefined}
+        title={x.list ? t("pane.query.list.tab.title", { name: x.list.schema }) : undefined}
       >
-        {#if x.data}<span class="stab-icon" aria-hidden="true"><UiIcon name={x.data.kind === "table" || x.data.kind === "partition" ? "grid" : "view-compact"} size={12} /></span>{/if}
+        {#if x.data}<span class="stab-icon" aria-hidden="true"><UiIcon name={x.data.kind === "table" || x.data.kind === "partition" ? "grid" : "view-compact"} size={12} /></span
+          >{:else if x.list}<span class="stab-icon" aria-hidden="true"><UiIcon name="list" size={12} /></span>{/if}
         {#if renaming === x.n}
           <input
             class="stab-rename"

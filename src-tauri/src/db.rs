@@ -145,6 +145,12 @@ pub(crate) struct ObjectOut {
     pub args: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub returns: Option<String>,
+    /// 사람 화면 전용 — AI 쪽은 [`ai::cap_objects`] 가 이 칸과 `rows` 를 지운다. 늘 [`comment_of`] 를 거친다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// 엔진 통계의 추정치(PG `reltuples` · MySQL `TABLE_ROWS`) — 테이블류만.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<u64>,
 }
 
 impl ObjectOut {
@@ -155,8 +161,26 @@ impl ObjectOut {
             sub: None,
             args: None,
             returns: None,
+            comment: None,
+            rows: None,
         }
     }
+}
+
+/// 객체 · 컬럼 설명의 바이트 상한(`…` 포함) — 한 스키마에 종류마다 [`OBJECTS_MAX`] 줄이 실려도 응답이 [`RESPONSE_MAX`] 에 들게.
+pub(crate) const COMMENT_MAX: usize = 256;
+
+pub(crate) fn comment_of(c: Option<String>) -> Option<String> {
+    let mut s = c.filter(|s| !s.trim().is_empty())?;
+    if s.len() > COMMENT_MAX {
+        let mut end = COMMENT_MAX - '…'.len_utf8();
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+        s.push('…');
+    }
+    Some(s)
 }
 
 pub(crate) fn cap_objects(mut rows: Vec<ObjectOut>, kinds: &[&'static str], truncated: &mut Vec<&'static str>) -> Vec<ObjectOut> {

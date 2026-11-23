@@ -20,6 +20,8 @@ Write the next version's section before tagging it — the release workflow stop
 - Finding in a document starts with the text you selected.
 - **Images in the file tile's Icons view** show the image itself instead of a file picture (only what is on screen is read; up to 20 MB locally, 2 MB for remote files or in a remote window).
 - The AI tile chat view now follows **Terminal opacity**, so the wallpaper shows through it as it does through the terminal.
+- **Object list tab in query tiles**: double-click a schema or a kind folder in the schema tree to list its tables, views, functions and more, with estimated rows and comments.
+- **Comments in a table's Structure view**: the table comment above the columns, and a Comment column when any column has one.
 
 ## [0.1.6] - 2026-11-22
 

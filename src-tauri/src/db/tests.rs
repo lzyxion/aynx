@@ -643,6 +643,51 @@ fn objects_cap_marks_the_kinds_of_that_query() {
         objects_json(vec![f], vec![]),
         json!({ "objects": [{ "kind": "function", "name": "f", "sub": "aggregate", "args": "a integer", "returns": "integer" }], "truncated": [] })
     );
+    let t = ObjectOut {
+        comment: Some("고객".into()),
+        rows: Some(0),
+        ..ObjectOut::new("table", "t".into())
+    };
+    assert_eq!(
+        objects_json(vec![t], vec![]),
+        json!({ "objects": [{ "kind": "table", "name": "t", "comment": "고객", "rows": 0 }], "truncated": [] })
+    );
+}
+
+#[test]
+fn object_comment_is_capped_on_char_boundary() {
+    use super::{comment_of, COMMENT_MAX};
+    assert_eq!(comment_of(None), None);
+    assert_eq!(comment_of(Some(String::new())), None);
+    assert_eq!(comment_of(Some(" \n\t".into())), None);
+    assert_eq!(comment_of(Some("a".repeat(COMMENT_MAX))).unwrap().len(), COMMENT_MAX);
+    let long = comment_of(Some("a".repeat(COMMENT_MAX + 1))).unwrap();
+    assert!(long.ends_with('…') && long.len() == COMMENT_MAX, "{}", long.len());
+    // 3 바이트 글자 — 자른 자리가 글자 한가운데여도 경계로 물러난다.
+    let ko = comment_of(Some("가".repeat(100))).unwrap();
+    assert!(ko.ends_with('…') && ko.len() <= COMMENT_MAX, "{}", ko.len());
+    assert_eq!(ko.trim_end_matches('…').chars().count(), (COMMENT_MAX - 3) / 3);
+}
+
+#[test]
+fn engine_object_comment_and_rows() {
+    use super::mysql::table_object;
+    use super::pg::{rel_rows, rel_sql};
+    // 12 아래에는 `pg_partition_tree` 가 없다.
+    assert!(rel_sql(120_000).contains("pg_partition_tree") && !rel_sql(110_000).contains("pg_partition_tree"));
+    for v in [100_000, 170_000] {
+        let s = rel_sql(v);
+        assert!(s.contains("obj_description(c.oid, 'pg_class')") && s.contains("reltuples >= 0"), "{s}");
+        assert!(s.contains("n.nspname = $1") && s.contains("LIMIT $2"), "스키마·상한은 바인드 인자");
+    }
+    assert_eq!([rel_rows(None), rel_rows(Some(-1.0)), rel_rows(Some(f64::NAN))], [None, None, None]);
+    assert_eq!([rel_rows(Some(0.0)), rel_rows(Some(41.6))], [Some(0), Some(42)]);
+    let t = table_object("t".into(), "BASE TABLE", Some("고객".into()), Some(7));
+    assert_eq!((t.kind, t.comment.as_deref(), t.rows), ("table", Some("고객"), Some(7)));
+    let v = table_object("v".into(), "VIEW", Some("VIEW".into()), None);
+    assert_eq!((v.kind, v.comment, v.rows), ("view", None, None));
+    let s = table_object("s".into(), "SEQUENCE", Some(String::new()), Some(1));
+    assert_eq!((s.kind, s.comment, s.rows), ("sequence", None, None));
 }
 
 #[test]
@@ -668,6 +713,7 @@ fn engine_object_kind_maps() {
     assert!(proc_sql(100_000).contains("proisagg"));
     for v in [96_000, 160_000] {
         assert!(proc_sql(v).contains("n.nspname = $1") && proc_sql(v).contains("LIMIT $2"), "스키마·상한은 바인드 인자");
+        assert!(proc_sql(v).contains("obj_description(p.oid, 'pg_proc')"));
     }
     assert_eq!(table_kind("BASE TABLE"), "table");
     assert_eq!(table_kind("SYSTEM VERSIONED"), "table");
@@ -792,7 +838,7 @@ fn sqlite_table_detail_folders() {
 #[test]
 fn detail_pure_helpers() {
     use super::detail::{
-        group_runs, pg_constraint_type, pg_fk_action, pg_fk_sql, pg_index_sql, pg_trigger_detail, sqlite_checks, sqlite_trigger_detail,
+        column_json, group_runs, pg_constraint_type, pg_fk_action, pg_fk_sql, pg_index_sql, pg_trigger_detail, sqlite_checks, sqlite_trigger_detail,
         TableDetail, TriggerOut, PG_COLUMNS, PG_CONSTRAINTS, PG_PARTITIONS, PG_REL, PG_TRIGGERS,
     };
     use super::mysql::{mysql_constraint_sql, mysql_fk_sql, mysql_index_column, mysql_index_sql};
@@ -850,6 +896,16 @@ fn detail_pure_helpers() {
     assert_eq!(j["triggers"].as_array().unwrap().len(), OBJECTS_MAX);
     assert_eq!(j["truncated"], json!(["triggers"]));
     assert_eq!(j["foreignKeys"], json!([]));
+    // 설명이 없으면 키가 없다(옛 화면 · 옛 서버와 같은 꼴).
+    assert!(j.get("comment").is_none());
+    let plain = column_json("id".into(), "int".into(), true, None, 1, Some("  ".into()));
+    assert_eq!(plain, json!({ "name": "id", "type": "int", "notNull": true, "default": null, "pk": 1 }));
+    let c = column_json("n".into(), "text".into(), false, Some("''".into()), 0, Some("이름".into()));
+    assert_eq!(c["comment"], json!("이름"));
+    let long = column_json("n".into(), "text".into(), false, None, 0, Some("a".repeat(1000)));
+    assert_eq!(long["comment"].as_str().unwrap().len(), super::COMMENT_MAX);
+    let d = TableDetail { comment: Some("고객".into()), ..TableDetail::default() };
+    assert_eq!(d.json()["comment"], json!("고객"));
 }
 
 fn def_target(schema: Option<&str>, kind: &str, name: &str, table: Option<&str>) -> super::definition::DefTarget {

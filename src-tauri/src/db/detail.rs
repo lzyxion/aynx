@@ -6,7 +6,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use super::OBJECTS_MAX;
+use super::{comment_of, OBJECTS_MAX};
 
 /// `columns` 의 `null` 은 식(SQLite 는 식 글자를 주지 않는다).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -70,10 +70,13 @@ pub(crate) struct PartitionOut {
     pub sub: Option<&'static str>,
 }
 
-/// `columns` 는 `db_objects` 이전의 컬럼 꼴 그대로(`{name, type, notNull, default, pk}`).
+/// `columns` 는 `db_objects` 이전의 컬럼 꼴 그대로(`{name, type, notNull, default, pk}`) + 설명이 있으면 `comment`([`column_json`]).
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TableDetail {
+    /// 사람 화면 전용 — AI 쪽은 `ai::cap_describe` 가 이 칸과 컬럼의 `comment` 를 지운다. 늘 [`comment_of`] 를 거친다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
     pub columns: Vec<Value>,
     pub indexes: Vec<IndexOut>,
     pub constraints: Vec<ConstraintOut>,
@@ -101,6 +104,15 @@ impl TableDetail {
     pub(crate) fn json(self) -> Value {
         serde_json::to_value(self.capped()).unwrap_or(Value::Null)
     }
+}
+
+/// 설명이 없으면 `comment` 키를 싣지 않는다(옛 화면과 같은 꼴).
+pub(crate) fn column_json(name: String, ty: String, not_null: bool, default: Option<String>, pk: i64, comment: Option<String>) -> Value {
+    let mut v = serde_json::json!({ "name": name, "type": ty, "notNull": not_null, "default": default, "pk": pk });
+    if let Some(c) = comment_of(comment) {
+        v["comment"] = Value::String(c);
+    }
+    v
 }
 
 fn cap<T>(v: &mut Vec<T>, part: &'static str, truncated: &mut Vec<&'static str>) {
@@ -171,13 +183,14 @@ pub(crate) fn pg_trigger_detail(tgtype: i32) -> String {
     format!("{timing} {}", events.join(" OR "))
 }
 
-pub(crate) const PG_REL: &str = "SELECT c.oid, c.relkind::text FROM pg_catalog.pg_class c \
+pub(crate) const PG_REL: &str = "SELECT c.oid, c.relkind::text, pg_catalog.obj_description(c.oid, 'pg_class') FROM pg_catalog.pg_class c \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2";
 
 /// `pk` = 기본 키 안의 순번(0 = 아님).
 pub(crate) const PG_COLUMNS: &str = "SELECT a.attname::text, pg_catalog.format_type(a.atttypid, a.atttypmod), a.attnotnull, \
      pg_catalog.pg_get_expr(d.adbin, d.adrelid), \
-     COALESCE((SELECT k.n FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(att, n) WHERE k.att = a.attnum), 0)::int4 \
+     COALESCE((SELECT k.n FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(att, n) WHERE k.att = a.attnum), 0)::int4, \
+     pg_catalog.col_description(a.attrelid, a.attnum) \
      FROM pg_catalog.pg_attribute a \
      LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = a.attrelid AND i.indisprimary \

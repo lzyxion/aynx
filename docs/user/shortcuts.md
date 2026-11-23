@@ -68,7 +68,7 @@ here. The combinations below are defaults — ones you changed in Settings › S
 - `Ctrl+F` finds in **this tile**, and `Ctrl+Shift+F` finds in all terminals. `Ctrl+F` in a terminal tile is the find window narrowed to that one terminal,
   with the syntax floating in one line at the bottom of the find window. Other tiles have their own find:
   - An AI tile's **conversation** face — a find bar within the conversation · a document tile — a find bar within the document (the editor's find while editing) · a diff tile — a find bar within the expanded
-    patches · a query tile — a find bar within the results when the results table has focus, otherwise the name find field of the schema tree (the editor's find inside the SQL
+    patches · a query tile — a find bar within the results when the results table has focus, the Find field of an object list tab while one is shown, otherwise the name find field of the schema tree (the editor's find inside the SQL
     editor) · a file tile — the Find in folder row (the same as `Ctrl+I`).
   - Find bars all work the same way: `Enter` · `F3` next, `Shift+Enter` · `Shift+F3` previous, `Esc` close, [Aa] match case.
   - Tiles with no find (branch · orchestration · start screen) find in all terminals.

@@ -15,10 +15,11 @@
   import { createToggleMotion, sidePanelGrow } from "$lib/browser/tree-accordion";
   import DefinitionView from "$lib/query/DefinitionView.svelte";
   import DataTab from "$lib/query/DataTab.svelte";
+  import ObjectList from "$lib/query/ObjectList.svelte";
   import { dataSelectSql, pageSizeOf } from "$lib/query/data-tab";
   import TreeMenu from "$lib/query/TreeMenu.svelte";
   import ScriptTabMenu from "$lib/query/ScriptTabMenu.svelte";
-  import { NO_TAB, tabsToCloseN } from "$lib/query/script-tabs";
+  import { NO_TAB, isScriptTab, tabsToCloseN } from "$lib/query/script-tabs";
   import { tileRefreshOf } from "$lib/query/tile-refresh";
   import { focusedPane } from "$lib/app/tabs.svelte.js";
   import { anyModalOpen } from "$lib/app/keys.svelte.js";
@@ -31,7 +32,7 @@
   import { stripReason } from "$lib/error-reason";
   import { QUERY_ROW_LIMITS, QUERY_ROWS_DEFAULT, paneName, type PaneSpec, type QueryRowLimit } from "$lib/session";
   import { selectStarSql } from "$lib/query/sql-quote";
-  import { createSqlCompleter } from "$lib/query/sql-completer";
+  import { createSqlCompleter, type CatalogNote } from "$lib/query/sql-completer";
   import { createScriptTabs, docKey } from "$lib/query/script-controller.svelte.js";
   import { createQuerySession } from "$lib/query/query-session.svelte.js";
   import {
@@ -40,6 +41,8 @@
     type DbDefinition,
     type DbDefinitionTarget,
     type DbDialect,
+    type DbObjectKind,
+    type DbObjects,
     type DbTxView,
   } from "$lib/query/query-backend";
   import { formatClock, txOpen } from "$lib/query/tx-work";
@@ -190,6 +193,12 @@
   function openFind(): boolean {
     const el = document.activeElement;
     if (outEl && el instanceof Element && outEl.contains(el) && openFindZoneIn(outEl)) return true;
+    // 목록 탭이 보이면 그 찾기 칸(트리 안에서 누른 것만 트리로) — `dataEl` 갈래보다 먼저: 숨은 데이터 탭의 찾기 자리를 집지 않게
+    const list = activeList ? listRefs[sc.activeN] : undefined;
+    if (list && !(el instanceof Element && el.closest("[data-query-schema]"))) {
+      list.focusFilter();
+      return true;
+    }
     if (dataEl && el instanceof Element && dataEl.contains(el) && openFindZoneIn(dataEl)) return true;
     if (treeLayout.narrow) {
       if (!ses.opened) return false;
@@ -239,7 +248,7 @@
 
   function selectInto(obj: TreeRelation) {
     const sql = selectStarSql(dialect, obj.schema, obj.name);
-    if (activeData || noTab) {
+    if (sqlHidden) {
       sc.openSql(sql);
       return;
     }
@@ -247,10 +256,12 @@
     editor.setText(sql);
   }
 
-  // ── 데이터 탭 ───────────────────────────────────────────────────────────
+  // ── 데이터 탭 · 객체 목록 탭 ────────────────────────────────────────────
   const activeData = $derived(sc.activeTab?.data ?? null);
+  const activeList = $derived(sc.activeTab?.list ?? null);
   const noTab = $derived(sc.tabs.length === 0);
-  const sqlHidden = $derived(activeData !== null || noTab);
+  /** 편집기 · 실행 줄 · 결과 칸이 숨는다(데이터 탭 · 목록 탭 · 탭 없음) */
+  const sqlHidden = $derived(activeData !== null || activeList !== null || noTab);
   let emptyNewBtn = $state<HTMLButtonElement | null>(null);
   // 마지막 탭을 닫으면 포커스가 `body` 로 빠져 타일의 `Ctrl+T` · `Ctrl+O` 가 닿지 않는다 — 선택된 타일일 때만 [새 쿼리] 로 옮긴다.
   $effect(() => {
@@ -263,7 +274,7 @@
       if (!rootEl || noTab || focusedPane()?.id !== pane.id) return;
       const a = document.activeElement;
       if (a && a !== document.body && !rootEl.contains(a)) return;
-      if (activeData) {
+      if (sqlHidden) {
         // 숨은 편집기(`.gone`)도 DOM 에 살아 포커스가 그 안에 남았다가 `body` 로 빠진다 — 그래서 "보이는 탭 안" 으로 가른다.
         const shown = dataEl?.querySelector<HTMLElement>(".data-tab.on");
         if (!shown?.contains(a)) rootEl.focus({ preventScroll: true });
@@ -277,13 +288,32 @@
   function ensureSqlTab() {
     if (noTab) sc.newTab();
   }
-  /** 한 번 보인 데이터 탭은 숨어도 산다(쪽 · 결과 유지) */
+  /** 한 번 보인 데이터 탭 · 목록 탭은 숨어도 산다(쪽 · 결과 · 찾기 글 유지) */
   let dataSeen = $state<number[]>([]);
   $effect(() => {
     const n = sc.activeN;
-    if (activeData && !untrack(() => dataSeen).includes(n)) dataSeen = [...untrack(() => dataSeen), n];
+    if ((activeData || activeList) && !untrack(() => dataSeen).includes(n)) dataSeen = [...untrack(() => dataSeen), n];
   });
-  const dataTabs = $derived(sc.tabs.filter((x) => x.data && dataSeen.includes(x.n)));
+  const dataTabs = $derived(sc.tabs.filter((x) => !isScriptTab(x) && dataSeen.includes(x.n)));
+
+  // ── 객체 목록의 사본 ────────────────────────────────────────────────────
+  // 트리 · 목록 탭이 읽은 스키마의 객체 — 목록 탭이 같은 왕복을 되풀이하지 않게. 지금 연결(`handle:lease`)의 것만 둔다.
+  const connKey = $derived(ses.opened ? `${ses.opened.handle}:${ses.opened.lease}` : "");
+  let catalog = $state<{ conn: string; objects: Record<string, DbObjects> }>({ conn: "", objects: {} });
+  $effect(() => {
+    const c = connKey;
+    if (untrack(() => catalog.conn) !== c) catalog = { conn: c, objects: {} };
+  });
+  function noteCatalog(n: CatalogNote) {
+    completer.note(n);
+    if (n.kind !== "objects" || `${n.handle}:${n.lease}` !== connKey) return;
+    catalog = { conn: connKey, objects: { ...catalog.objects, [n.schema]: n.objects } };
+  }
+  function onListLoaded(schema: string, v: DbObjects) {
+    const o = ses.opened;
+    if (o) noteCatalog({ handle: o.handle, lease: o.lease, kind: "objects", schema, objects: v });
+  }
+  const openList = (schema: string, kind: DbObjectKind | null) => sc.openList(schema, kind ?? undefined);
 
   function insertName(text: string) {
     ensureSqlTab();
@@ -348,21 +378,25 @@
   function openTabMenu(ev: MouseEvent, n: number) {
     const x = sc.tabs.find((y) => y.n === n);
     if (!x) return;
-    tabMenu = { n, title: sc.tabLabel(x), data: !!x.data, x: ev.clientX, y: ev.clientY };
+    tabMenu = { n, title: sc.tabLabel(x), data: !isScriptTab(x), x: ev.clientX, y: ev.clientY };
   }
   const closeTabMenu = () => (tabMenu = null);
 
   const dataRefs: Record<number, ReturnType<typeof DataTab> | undefined> = {};
+  // `$state` — 평범한 객체의 칸에 `bind:this` 하면 Svelte 가 `binding_property_non_reactive` 를 경고한다
+  const listRefs = $state<Record<number, ReturnType<typeof ObjectList> | undefined>>({});
   function onWindowF5(ev: KeyboardEvent) {
     const what = tileRefreshOf(ev, {
       selected: visible && focusedPane()?.id === pane.id,
       modal: anyModalOpen(),
       dataTab: activeData !== null,
+      listTab: activeList !== null,
     });
     if (!what) return;
     ev.preventDefault();
     if (ev.repeat) return;
     if (what === "data") dataRefs[sc.activeN]?.refresh();
+    else if (what === "list") listRefs[sc.activeN]?.refresh();
     else tree?.refresh();
   }
 
@@ -392,12 +426,14 @@
     if (sources.length > 0) void openSqlSources(sources, openSqlFile);
   }
 
+  /** DDL 칸은 스크립트 탭 아래에 선다 — 데이터 탭 · 목록 탭을 보는 중이면 스크립트 탭으로 먼저 간다 */
   function defineFromTree(d: DbDefinitionTarget) {
     const fromDrop = treeDrop !== null;
     closeTreeDrop();
-    ensureSqlTab();
+    if (sqlHidden) sc.showScriptTab();
     void showDefinition(d);
-    if (fromDrop) editor?.focus();
+    // 방금 스크립트 탭으로 왔으면 편집기가 아직 `.gone` 이다 — `tick` 뒤에
+    if (fromDrop) void tick().then(() => editor?.focus());
   }
 
   // ── 배치 — 트리 폭 · 편집기 높이(타일 메모리에만) ──────────────────────
@@ -420,7 +456,7 @@
   let treeDrop = $state<{ x: number; y: number; w: number; h: number } | null>(null);
   // 트리가 서 있을 때만 센다 — 읽는 도중 숨은 트리의 값이 남아 데이터 탭이 영영 기다리지 않게
   const treeBusyReading = $derived(treeReading && (treeShown || treeDrop !== null));
-  // 데이터 탭이 표 구조를 읽는 중 — 서버는 연결당 작업 하나라 트리 · 다른 데이터 탭이 기다린다
+  // 데이터 탭이 표 구조를 · 목록 탭이 객체를 읽는 중 — 서버는 연결당 작업 하나라 트리 · 다른 탭이 기다린다
   let dataMeta = $state(0);
 
   const completer = createSqlCompleter({
@@ -581,9 +617,13 @@
       });
       return;
     }
-    // 결과 행은 넣지 않는다
-    const whole = activeData ? dataSelectSql(dialect, activeData, 0, pageSizeOf(activeData), false) : (editor?.getText() ?? "");
-    const sel = activeData ? { from: 0, to: 0 } : (editor?.selection() ?? { from: 0, to: 0 });
+    // 결과 행은 넣지 않는다 — 목록 탭은 SQL 이 없다(설명 · 행 수도 넣지 않는다)
+    const whole = activeData
+      ? dataSelectSql(dialect, activeData, 0, pageSizeOf(activeData), false)
+      : activeList
+        ? ""
+        : (editor?.getText() ?? "");
+    const sel = activeData || activeList ? { from: 0, to: 0 } : (editor?.selection() ?? { from: 0, to: 0 });
     const picked = sel.to > sel.from ? whole.slice(sel.from, sel.to) : "";
     const sql = picked.trim() !== "" ? picked : whole;
     const text = buildDbAskText(
@@ -631,8 +671,8 @@
       else void closeTabHere(sc.activeN);
       return;
     }
-    // 데이터 탭이 보이는 중의 `Ctrl+S` 는 받지 않는다(창 키가 브라우저 기본 동작만 끊는다)
-    if ((combo === FILE_OPEN || (combo === FILE_SAVE && !activeData)) && !globalCombos.has(combo) && sc.renaming === null) {
+    // 데이터 탭 · 목록 탭이 보이는 중의 `Ctrl+S` 는 받지 않는다(창 키가 브라우저 기본 동작만 끊는다)
+    if ((combo === FILE_OPEN || (combo === FILE_SAVE && !sqlHidden)) && !globalCombos.has(combo) && sc.renaming === null) {
       ev.preventDefault();
       ev.stopPropagation();
       if (combo === FILE_OPEN) void pickSqlFiles();
@@ -791,36 +831,64 @@
           {treeDropKey}
           {dragTree}
           {splitKey}
-          oncatalog={completer.note}
+          oncatalog={noteCatalog}
+          onlist={openList}
         />
       </div>
     {/if}
     <div class="work" bind:clientHeight={bodyH} bind:clientWidth={workW}>
       {#if dataTabs.length > 0}
-        <div class="data-tabs" class:shown={activeData !== null} bind:this={dataEl}>
+        <div class="data-tabs" class:shown={activeData !== null || activeList !== null} bind:this={dataEl}>
           {#each dataTabs as x (x.n)}
             <div class="data-tab" class:on={x.n === sc.activeN}>
-              <DataTab
-                bind:this={dataRefs[x.n]}
-                n={x.n}
-                data={x.data!}
-                {dialect}
-                opened={ses.opened}
-                visible={x.n === sc.activeN && visible}
-                waiting={ses.runOff || treeBusyReading || dataMeta > 0}
-                treeReading={treeBusyReading}
-                inWork={txOpen(ses.tx)}
-                running={ses.running?.tab === x.n}
-                runData={ses.runData}
-                oncancel={ses.cancel}
-                onchange={(d) => sc.setData(x.n, d)}
-                onopensql={sc.openSql}
-                onlost={ses.lostIfReopen}
-                onmeta={(on) => (dataMeta = Math.max(0, dataMeta + (on ? 1 : -1)))}
-                onfollow={(f) => sc.openDataWhere({ schema: f.schema, name: f.name }, f.where)}
-                onopendata={(o) => sc.openData({ kind: "table", ...(o.schema !== null ? { schema: o.schema } : {}), name: o.name })}
-                poke={sc.dataPoke(x.n)}
-              />
+              {#if x.list}
+                <ObjectList
+                  bind:this={listRefs[x.n]}
+                  n={x.n}
+                  list={x.list}
+                  {dialect}
+                  opened={ses.opened}
+                  objects={catalog.conn === connKey ? catalog.objects[x.list.schema] : undefined}
+                  visible={x.n === sc.activeN && visible}
+                  waiting={ses.runOff || treeBusyReading || dataMeta > 0}
+                  treeReading={treeBusyReading}
+                  onchange={(l) => sc.setList(x.n, l)}
+                  onloaded={onListLoaded}
+                  onmeta={(on) => (dataMeta = Math.max(0, dataMeta + (on ? 1 : -1)))}
+                  onlost={ses.lostIfReopen}
+                  onopen={(rel) => {
+                    openData(rel);
+                    refocusAfterClose();
+                  }}
+                  ondefinition={(d) => {
+                    defineFromTree(d);
+                    refocusAfterClose();
+                  }}
+                  oncontext={openTreeMenu}
+                />
+              {:else}
+                <DataTab
+                  bind:this={dataRefs[x.n]}
+                  n={x.n}
+                  data={x.data!}
+                  {dialect}
+                  opened={ses.opened}
+                  visible={x.n === sc.activeN && visible}
+                  waiting={ses.runOff || treeBusyReading || dataMeta > 0}
+                  treeReading={treeBusyReading}
+                  inWork={txOpen(ses.tx)}
+                  running={ses.running?.tab === x.n}
+                  runData={ses.runData}
+                  oncancel={ses.cancel}
+                  onchange={(d) => sc.setData(x.n, d)}
+                  onopensql={sc.openSql}
+                  onlost={ses.lostIfReopen}
+                  onmeta={(on) => (dataMeta = Math.max(0, dataMeta + (on ? 1 : -1)))}
+                  onfollow={(f) => sc.openDataWhere({ schema: f.schema, name: f.name }, f.where)}
+                  onopendata={(o) => sc.openData({ kind: "table", ...(o.schema !== null ? { schema: o.schema } : {}), name: o.name })}
+                  poke={sc.dataPoke(x.n)}
+                />
+              {/if}
             </div>
           {/each}
         </div>
@@ -1008,7 +1076,8 @@
     {treeDropKey}
     {dragTree}
     {splitKey}
-    oncatalog={completer.note}
+    oncatalog={noteCatalog}
+    onlist={openList}
   />
 {/if}
 

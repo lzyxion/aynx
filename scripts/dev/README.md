@@ -240,6 +240,34 @@ node scripts/dev/run-harness.mjs query-side-harness.mjs <outdir> --size 1400x900
   화살표 ← → · Shift (e) 480px 에서 저절로 숨고 900px 로 돌아올 때 전환 없음 · 좁은 토글 = 떠 있는 패널 · Esc
 - (f) 켠 토글 · 열린 드롭다운 단추의 계산된 바탕색 = `--accent-soft`(문서 곁 패널 단추의 켬과 같은 토큰) · 끈 토글은 투명 (g) 콘솔 오류 0
 
+## query-list-harness.mjs — 쿼리(DB) 타일의 객체 목록 탭
+
+`query/ObjectList.svelte` · `object-list.ts` · `SchemaTree` 의 `onlist` · `ev.detail > 1` 가드(2026-11-23). 스텁은 `query-side-harness` 바탕에 연결 둘(PG `shop` ·
+SQLite `side.db`)을 두고, `db_open` 이 핸들마다 dialect 를 적어 `db_schema` · `db_objects` 가 그 dialect 로 답한다(PG = `public` · `audit`(테이블 81 — 스크롤용),
+SQLite = `main`). `db_objects` 는 `comment` · `rows` 를 싣고 `window.__objDelay` 만큼 늦게 답하며, `window.__trunc = { 스키마: [종류] }` 면 그 종류를 잘렸다고 답한다.
+`db_table_detail` · `db_definition` · `db_query`(데이터 탭) · `db_tx` 도 스텁이다. 배치 저장은 `workspace-stub` → sessionStorage(`h.ws`)로 다시 읽기를 넘긴다
+(`file-ui-keep-harness` 와 같은 길). 두 번 누르기는 진짜 마우스(`clickCount` 1 → 2), 우클릭은 합성 `contextmenu`(blocks 절).
+
+```bash
+node scripts/dev/run-harness.mjs query-list-harness.mjs <outdir> --size 1400x900
+#   → l1-table-dark · l2-function · l3-filter · l7-data-tab · l6-sqlite · l5-narrow-400 · l5-narrow-300 · s1-struct-comment · s2-struct-plain ·
+#     s3-struct-narrow-420 · l1b-table-dark-final · l4-table-light (.png)
+```
+
+- ① 접힌 스키마 두 번 누르기 = 목록 탭 하나 · 펼친 채 · `db_objects` 1번(트리와 목록이 두 번 읽지 않음 — 호출자는 스택으로 찍는다) ② 다시 = 탭 그대로 ·
+  다른 스키마 = 둘째 탭 ③ 폴더 두 번 누르기 = 종류 바뀜 · 폴더 한 번만 토글 · 종류 단추 개수 ④ 종류별 칸 · 행 글자(천 단위 · "—") · 긴 설명 말줄임
+- ⑤ 찾기(강조 · `일치/전체` · nomatch · Esc 두 번 · 표 · 탭 머리에서 Ctrl+F · Ctrl+I) ⑥ 정렬(이름 · 행 — 행 없는 줄은 늘 아래 · `aria-sort`)
+  ⑦ 키보드(↓ ↑ Home End · 스크롤 · Enter = 데이터 탭 / DDL · F4 · 겹지정 함수는 `args`) ⑧ 두 번 누르기 · 우클릭 메뉴 항목을 실제로 누름 ·
+  위 줄 높이 = 데이터 탭 하위 탭 줄 ⑨ 트리 함수 · 컬럼 줄 두 번 누르기 = 편집기에 이름 한 번 ⑩ 데이터 탭 중 트리 F4 = 쿼리 탭 + DDL
+- ⑪ ⟳ · F5(`.spinning` · `aria-busy` · 한 번 더 읽음) ⑬ 저장 모양 `{ n, list: { schema, kind } }` · 다시 읽기 뒤 같은 종류 ⑫ 트리가 읽지 않은 스키마 ·
+  사이드를 접은 채 처음 보는 목록 탭이 직접 읽음 ⑭ × · Ctrl+W 확인 없음 · 이름 바꾸기 없음 · 탭 메뉴 = 닫기류 · Ctrl+S 저장 대화 없음
+- ⑮ SQLite = 행 · 설명 칸 없음 ⑯ 400 · 300px 에서 설명 → 종류 · 반환 숨음 · 떠 있는 트리의 스키마 두 번 누르기 ⑰ `4+` · truncated 줄 ⑱ 라이트 · 콘솔 0
+- ⑲ 데이터 탭 › 구조의 설명(스텁 `db_table_detail` 은 customers 에만 `comment` — 2026-11-23): 컬럼 절 위 '설명' 절(머리가 컬럼 절 머리와 같은 꼴) · 맨 오른쪽 설명 칸 ·
+  설명 없는 테이블은 절 · 칸 없음 · 420px 에서 긴 설명이 여러 줄 · 가로 넘침 없음
+- **Ctrl+W 는 합성 keydown 으로 보낸다** — Chromium 의 예약 단축키라 CDP 로 보내면 페이지가 막아도 헤드리스 탭 자체가 닫힌다(WebView2 앱에서는 페이지가 받는다).
+- 판정에서 빼고 수만 찍는 기존 경고 둘: 데이터 탭의 `bind:this={dataRefs[x.n]}`(`binding_property_non_reactive`) · 다시 읽기 부팅의 `MessengerSettings`
+  `assignment_value_stale` — 이 기능 밖이다.
+
 ## msg-actions-harness.mjs — 대화의 말 복사 (사이드 채팅 · AI 타일 대화 면)
 
 `TranscriptBody` 의 `copyable`(2026-11-14 — 목업 F1 · `transcript.ts` 의 `agentTurnCopies`). 스텁은 `code-to-term-chat-harness` 를 줄인 것이고,

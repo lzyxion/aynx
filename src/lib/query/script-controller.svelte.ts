@@ -3,14 +3,17 @@ import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
 import { noteQueryTabs } from "$lib/app/query.svelte.js";
 import { t } from "$lib/i18n/i18n.svelte.js";
 import { toast } from "$lib/toast.svelte.js";
-import { QUERY_SCRIPTS_MAX, type PaneSpec, type QueryDataTab } from "$lib/session";
+import { QUERY_SCRIPTS_MAX, type PaneSpec, type QueryDataTab, type QueryListTab } from "$lib/session";
 import {
   addTab,
   closeTab,
   closeTabsN,
   findDataTab,
+  findListTab,
+  isScriptTab,
   tabsToCloseN,
   setTabData,
+  setTabList,
   moveTab,
   renameTab,
   savedText,
@@ -46,7 +49,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
   let tabs = $state<ScriptTab[]>(initTabs.tabs);
   let activeN = $state(initTabs.active);
   const activeTab = $derived<ScriptTab | null>(tabs.find((x) => x.n === activeN) ?? tabs[0] ?? null);
-  const tabLabel = (x: ScriptTab) => (x.data ? x.data.name : (x.title ?? t("pane.query.tab.name", { n: x.n })));
+  const tabLabel = (x: ScriptTab) => (x.data ? x.data.name : x.list ? x.list.schema : (x.title ?? t("pane.query.tab.name", { n: x.n })));
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   function flushTabs() {
@@ -67,10 +70,14 @@ export function createScriptTabs(h: ScriptTabsHost) {
   }
   const dirtyOf = (x: ScriptTab) => tabDirty(x, savedText(h.pane.query ?? {}, x.n));
 
+  /** `showScriptTab` 이 돌아갈 곳 — 저장하지 않는다 */
+  let lastScriptN: number | null = initTabs.tabs.some((x) => x.n === initTabs.active && isScriptTab(x)) ? initTabs.active : null;
+
   function pickTab(n: number) {
     if (n === activeN || !tabs.some((x) => x.n === n)) return;
     const next = tabs.find((x) => x.n === n)!;
     activeN = n;
+    if (isScriptTab(next)) lastScriptN = n;
     h.editor?.switchTo(docKey(n), next.text);
     flushTabs();
   }
@@ -106,6 +113,40 @@ export function createScriptTabs(h: ScriptTabsHost) {
     }
     tabs = r.tabs;
     pickTab(r.n);
+  }
+
+  /** 있는 탭이면 `kind` 가 주어졌을 때만 종류를 바꾼다(스키마 줄의 두 번 누르기는 보던 종류를 남긴다) */
+  function openList(schema: string, kind?: QueryListTab["kind"]) {
+    const have = findListTab(tabs, schema);
+    if (have?.list) {
+      if (kind !== undefined && have.list.kind !== kind) {
+        tabs = setTabList(tabs, have.n, { schema, kind });
+        flushTabs();
+      }
+      pickTab(have.n);
+      return;
+    }
+    const r = addTab(tabs, { list: { schema, ...(kind !== undefined ? { kind } : {}) } });
+    if (!r) {
+      toast.info(t("pane.query.tab.full", { n: QUERY_SCRIPTS_MAX }));
+      return;
+    }
+    tabs = r.tabs;
+    pickTab(r.n);
+  }
+
+  function setList(n: number, list: QueryListTab) {
+    tabs = setTabList(tabs, n, list);
+    flushTabs();
+  }
+
+  /** 마지막으로 고른 스크립트 탭 → 남은 첫 스크립트 탭 → 새 탭 */
+  function showScriptTab() {
+    const cur = tabs.find((x) => x.n === activeN);
+    if (cur && isScriptTab(cur)) return;
+    const back = tabs.find((x) => x.n === lastScriptN && isScriptTab(x)) ?? tabs.find(isScriptTab);
+    if (back) pickTab(back.n);
+    else newTab();
   }
 
   /** 바깥이 조건을 덮은 데이터 탭의 회차 — `DataTab` 의 `poke`. 저장하지 않는다 */
@@ -152,7 +193,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
 
   function liveText(n: number): string | null {
     const x = tabs.find((y) => y.n === n);
-    if (!x || x.data) return null;
+    if (!x || !isScriptTab(x)) return null;
     return h.editor?.textOf(docKey(n)) ?? x.text;
   }
 
@@ -164,7 +205,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
   async function closeTabN(n: number) {
     const x = tabs.find((y) => y.n === n);
     if (!x) return;
-    const text = x.data ? "" : (h.editor?.textOf(docKey(n)) ?? x.text);
+    const text = isScriptTab(x) ? (h.editor?.textOf(docKey(n)) ?? x.text) : "";
     if (text.trim() !== "") {
       let ok = false;
       try {
@@ -198,7 +239,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
     const pick = () => tabsToCloseN(tabs, n, which).map((m) => tabs.find((y) => y.n === m)!);
     const first = pick();
     if (first.length === 0) return;
-    const withText = first.filter((x) => !x.data && (h.editor?.textOf(docKey(x.n)) ?? x.text).trim() !== "");
+    const withText = first.filter((x) => isScriptTab(x) && (h.editor?.textOf(docKey(x.n)) ?? x.text).trim() !== "");
     if (withText.length > 0) {
       let ok = false;
       try {
@@ -239,7 +280,7 @@ export function createScriptTabs(h: ScriptTabsHost) {
   let renameText = $state("");
   function startRename(n: number) {
     const x = tabs.find((y) => y.n === n);
-    if (!x || x.data) return;
+    if (!x || !isScriptTab(x)) return;
     renaming = n;
     renameText = tabLabel(x);
   }
@@ -325,6 +366,9 @@ export function createScriptTabs(h: ScriptTabsHost) {
     pickTab,
     newTab,
     openData,
+    openList,
+    setList,
+    showScriptTab,
     openSql,
     openFile,
     liveText,
