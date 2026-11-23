@@ -1,11 +1,23 @@
 /** 문서 타일 본문 우클릭 메뉴의 항목 — 순수 층. 무리 순서는 다른 우클릭 메뉴와 같은 규칙(링크 → 클립보드 → 찾기 → 이 문서의 일). */
 
-import { newDocItem, type PaneMenuItem, type PaneMenuRow } from "$lib/pane/pane-menu";
+import { isGroup, newDocItem, type PaneMenuItem, type PaneMenuRow } from "$lib/pane/pane-menu";
 import type { DocFormat } from "$lib/doc-format";
 import type { Tr } from "$lib/session";
 
 /** `pane/pane-tools.svelte.ts` 의 `TOOL_ACTION_PREFIX` 와 같은 값(그 모듈은 룬 상태라 순수 층에서 부르지 않는다) */
 const TOOL_ACTION_PREFIX = "tool:";
+
+/**
+ * 본문 메뉴에서 줄을 골라 남긴다 — 폰의 띠 ⋯(띠에 있는 줄을 뺀다) · 링크를 길게 눌렀을 때(링크 줄만).
+ * `keep` 은 문서 줄의 열쇠를 받는다. 옆목록 · 문서 줄이 아닌 것은 `others` 를 따른다. 맨 위에 남은 구분선은 걷는다.
+ */
+export function pickDocRows(rows: readonly PaneMenuRow[], keep: (key: string) => boolean, others: boolean): PaneMenuRow[] {
+  const out = rows.filter((row) =>
+    !isGroup(row) && row.action.startsWith(TOOL_ACTION_PREFIX) ? keep(row.action.slice(TOOL_ACTION_PREFIX.length)) : others,
+  );
+  if (out.length > 0 && out[0].separator) out[0] = { ...out[0], separator: false };
+  return out;
+}
 
 export type DocMenuKey =
   | "open-link"

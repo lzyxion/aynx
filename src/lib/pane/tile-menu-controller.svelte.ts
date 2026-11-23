@@ -56,6 +56,9 @@ export interface TileMenu {
     snippet: SnippetSource | null;
     ask: AskBlockRef | null;
     selection?: string | null;
+    barEdits?: boolean;
+    /** AI 타일의 대화 면에서 열었다 — 복사는 `selection`, 링크 복사는 `link` 스냅숏으로 하고 나머지 둘은 이 손잡이로 */
+    convo?: { selectAll(): void; openLink(): void };
   } | null;
   /** 문서 타일 본문 우클릭 — `term` 과 같이 누른 순간의 스냅샷이다 */
   doc?: { rows: PaneMenuRow[]; run: (key: string) => void } | null;
@@ -147,6 +150,8 @@ export function createTileMenu(h: TileMenuHost) {
       askBlock: term.ask,
       askHint: displayCombo(effectiveCombo("ask-ai-block", h.keybindings)),
       sideChat: currentWindowLabel() === "main",
+      barEdits: term.barEdits,
+      convo: term.convo !== undefined,
     };
     return terminalMenuItems(menuBox.pane.kind, termCtx, tr);
   });
@@ -203,12 +208,22 @@ export function createTileMenu(h: TileMenuHost) {
     runOnMenu(() => menuBox, () => closeTileMenu("back"), fn);
   }
 
+  /** 대화 면의 복사 — 터미널 타일의 복사와 같은 한 줄로 알린다 */
+  function copyConvoText(text: string | null) {
+    if (text === null || text === "") return;
+    void writeClipboard(text).then((ok) =>
+      ok ? h.notice?.(tr("pane.term.clipboard.copied")) : toast.error(tr("pane.term.clipboard.write_failed")),
+    );
+  }
+
   function runMenuAction(action: PaneMenuAction) {
     // `runTileMenu` 가 뜨는 것은 대상 타일뿐이다 — 좌표 · 명령 · 블록 · 고른 글 · 문서 `run` 은 닫히는 순간 사라져 여기서 미리 뜬다
     const at = tileMenu === null ? null : { left: tileMenu.left, top: tileMenu.top };
     const snip = tileMenu?.term?.snippet ?? null;
     const ask = tileMenu?.term?.ask ?? null;
     const sel = tileMenu?.term?.selection ?? null;
+    const convo = tileMenu?.term?.convo ?? null;
+    const link = tileMenu?.term?.link ?? null;
     const docRun = tileMenu?.doc?.run ?? null;
     if (docRun !== null && action.startsWith(TOOL_ACTION_PREFIX)) {
       const key = action.slice(TOOL_ACTION_PREFIX.length);
@@ -258,15 +273,15 @@ export function createTileMenu(h: TileMenuHost) {
         case "session-log":
           return termActionsOf(m.pane.id)?.openLog();
         case "open-link":
-          return termActionsOf(m.pane.id)?.openLink();
+          return convo !== null ? convo.openLink() : termActionsOf(m.pane.id)?.openLink();
         case "copy-link":
-          return termActionsOf(m.pane.id)?.copyLink();
+          return convo !== null ? copyConvoText(link) : termActionsOf(m.pane.id)?.copyLink();
         case "copy":
-          return termActionsOf(m.pane.id)?.copySelection();
+          return convo !== null ? copyConvoText(sel) : termActionsOf(m.pane.id)?.copySelection();
         case "paste":
           return termActionsOf(m.pane.id)?.paste();
         case "select-all":
-          return termActionsOf(m.pane.id)?.selectAll();
+          return convo !== null ? convo.selectAll() : termActionsOf(m.pane.id)?.selectAll();
         case "clear-screen":
           return termActionsOf(m.pane.id)?.clear();
         case "save-snippet":

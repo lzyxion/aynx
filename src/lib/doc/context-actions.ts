@@ -34,7 +34,8 @@ export interface ReadMenuActions {
   openLink(href: string): void;
   openDocLink(href: string): void;
   openPreviewDocLink(href: string): void;
-  openFind(): boolean;
+  /** `seed` = 고른 글 — 찾을 말로 들어간다 */
+  openFind(seed?: string): boolean;
   startEdit(): void;
 }
 
@@ -53,7 +54,7 @@ export function runReadMenu(key: string, at: { box: Element; link: string | null
     case "select-all":
       return selectAllIn(at.box);
     case "find":
-      return void a.openFind();
+      return void a.openFind(at.sel);
     case "edit":
       return a.startEdit();
   }

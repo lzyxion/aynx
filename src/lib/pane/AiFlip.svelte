@@ -8,6 +8,13 @@
    */
   import { onDestroy, tick, untrack, type Snippet } from "svelte";
   import TranscriptBody from "$lib/TranscriptBody.svelte";
+  import TouchSelection from "$lib/term/TouchSelection.svelte";
+  import ImageMenu from "$lib/ImageMenu.svelte";
+  import { createTextSelectBar } from "$lib/text-select-bar.svelte.js";
+  import { selectAllIn } from "$lib/doc/context-actions";
+  import { commandsOf } from "$lib/shell-integration";
+  import { writeClipboard } from "$lib/clipboard";
+  import type { TileMenu } from "$lib/pane/tile-menu-controller.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { stripReason, hasReason } from "$lib/error-reason";
   import {
@@ -116,12 +123,15 @@
     sessionId = null,
     shown = true,
     onopenpath,
+    onmenu,
     children,
   }: {
     pane: PaneSpec;
     sessionId?: number | null;
     shown?: boolean;
     onopenpath?: (target: NonNullable<ResolvedPath>, line?: number) => void;
+    /** 대화 면 본문의 메뉴를 열어 달라 — 터미널 본문 우클릭과 같은 타일 메뉴(`convo` 가 실린다) */
+    onmenu?: (x: number, y: number, ctx: NonNullable<TileMenu["term"]>) => void;
     children: Snippet;
   } = $props();
 
@@ -948,12 +958,77 @@
     }
   }
 
-  /** IME 가 첫 글자부터 켜져 있게 키보드를 입력 칸으로 돌려준다 */
+  // ── 대화 면 본문의 메뉴 — 터미널 면과 같은 타일 메뉴(붙여넣기 · 화면 지우기만 없다). 폰은 고른 글 위의 띠로 연다 ──
+  const convoSel = createTextSelectBar({
+    body: () => bodyEl,
+    box: () => convoEl,
+    on: () => phone && view === "convo" && shown,
+  });
+
+  function openConvoMenu(x: number, y: number, text: string, linkEl: HTMLElement | null, barEdits: boolean): void {
+    const body = bodyEl;
+    if (!onmenu || !body) return;
+    onmenu(x, y, {
+      link: linkEl?.getAttribute("data-href") ?? linkEl?.getAttribute("data-path") ?? null,
+      hasSelection: text !== "",
+      hasOutput: commandsOf(pane.id)?.canCopyOutput() ?? false,
+      snippet: null,
+      ask: null,
+      selection: text === "" ? null : text,
+      barEdits,
+      convo: {
+        selectAll: () => selectAllIn(body),
+        // 누른 것과 같은 길 — 경로 링크 · 문서 링크 · 바깥 링크를 본문의 클릭 처리가 가른다
+        openLink: () => {
+          if (linkEl?.isConnected) linkEl.click();
+        },
+      },
+    });
+  }
+
+  function onConvoContextMenu(ev: MouseEvent): void {
+    const target = ev.target instanceof Element ? ev.target : null;
+    // 그림 메뉴가 먼저 잡았거나(`defaultPrevented`) 글 칸 · 단추 위면 비켜 선다 — 링크 칩(`button[data-href]`)은 링크다
+    if (ev.defaultPrevented || !onmenu || !target || !bodyEl?.contains(target)) return;
+    if (target.closest("input, textarea, [contenteditable], button:not([data-href])")) return;
+    ev.preventDefault();
+    const linkEl = target.closest<HTMLElement>("[data-href], [data-path-link]");
+    // 손가락의 길게 누르기는 브라우저가 글을 고른다 — 브라우저의 띠만 막고(위 `preventDefault`) 메뉴는 앱 띠의 ⋯ 가 연다.
+    // 링크 위에서만 링크 줄 둘을 작은 메뉴로 낸다(띠에는 링크가 없다).
+    if (convoSel.byTouch(ev)) {
+      const link = linkEl?.getAttribute("data-href") ?? linkEl?.getAttribute("data-path") ?? null;
+      if (linkEl === null || link === null) return;
+      convoSel.clear();
+      linkMenu = {
+        x: ev.clientX,
+        y: ev.clientY,
+        run: (id) => {
+          if (id === "copy-link") {
+            void writeClipboard(link).then((ok) => showNotice(t(ok ? "pane.term.clipboard.copied" : "pane.term.clipboard.write_failed")));
+          } else if (linkEl.isConnected) linkEl.click();
+        },
+      };
+      return;
+    }
+    openConvoMenu(ev.clientX, ev.clientY, convoSel.text(), linkEl, false);
+  }
+
+  /** 폰에서 링크를 길게 눌렀을 때의 작은 메뉴 — 링크는 누른 순간의 것(메뉴가 닫힌 뒤 불린다) */
+  let linkMenu = $state<{ x: number; y: number; run: (id: string) => void } | null>(null);
+
+  function copyConvoBar(): void {
+    const text = convoSel.bar?.text ?? "";
+    if (text === "") return;
+    void writeClipboard(text).then((ok) => showNotice(t(ok ? "pane.term.clipboard.copied" : "pane.term.clipboard.write_failed")));
+    convoSel.clear();
+  }
+
+  /** IME 가 첫 글자부터 켜져 있게 키보드를 입력 칸으로 돌려준다 — 링크를 길게 눌러 메뉴가 뜬 채 손가락을 뗀 것이면 두지 않는다(메뉴 밑에서 키보드가 올라온다) */
   function onConvoPointerUp(ev: PointerEvent): void {
     const target = ev.target instanceof Element ? ev.target : null;
     if (target?.closest("button, input, textarea, select, a[href], [data-path-link], [data-find-bar]")) return;
     requestAnimationFrame(() => {
-      if (view === "convo" && !hasConvoSelection()) focusComposer();
+      if (view === "convo" && linkMenu === null && !hasConvoSelection()) focusComposer();
     });
   }
 
@@ -1039,7 +1114,36 @@
       role="region"
       data-flip-convo
       onpointerup={onConvoPointerUp}
+      oncontextmenu={onConvoContextMenu}
+      ontouchstart={convoSel.onTouch}
+      ontouchend={convoSel.onTouch}
+      ontouchcancel={convoSel.onTouch}
     >
+      {#if convoSel.bar}
+        <TouchSelection
+          start={null}
+          end={null}
+          barTop={convoSel.bar.top}
+          oncopy={copyConvoBar}
+          onselectall={() => bodyEl && selectAllIn(bodyEl)}
+          onmore={(x, y) => openConvoMenu(x, y, convoSel.bar?.text ?? "", null, true)}
+        />
+      {/if}
+      {#if linkMenu}
+        <ImageMenu
+          actions={[]}
+          x={linkMenu.x}
+          y={linkMenu.y}
+          before={[
+            { id: "open-link", label: t("pane.menu.open_link") },
+            { id: "copy-link", label: t("pane.menu.copy_link") },
+          ]}
+          label={t("pane.flip.convo.aria")}
+          onclose={() => (linkMenu = null)}
+          onpick={() => {}}
+          onextra={linkMenu.run}
+        />
+      {/if}
       <DomFindBar bind:this={finder} root={bodyEl} scroller={() => bodyEl} label={t("pane.flip.find")} onclose={onFindClose} />
       {#if convKey === null}
         <div class="blank" data-flip-blank>

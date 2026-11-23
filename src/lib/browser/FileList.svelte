@@ -17,6 +17,7 @@
   import { extBadge } from "$lib/browser/file-view";
   import type { FileView } from "$lib/session";
   import { t } from "$lib/i18n/i18n.svelte.js";
+  import { handheld } from "$lib/app/mobile.svelte.js";
 
   /**
    * 파일 목록 상자 — 그림만 그린다. 상태를 여기 두면 키보드(창 전역)와 목록이 서로 다른 선택을 보게 된다.
@@ -72,6 +73,9 @@
     matched?: ReadonlySet<string>;
     el?: HTMLDivElement | null;
   } = $props();
+
+  /** 폰 · 터치 원격 창은 줄을 끌지 않는다 — 길게 누르기가 끌기로 먹히면 줄의 메뉴(`contextmenu`)에 닿을 길이 없다 */
+  const touchOnly = $derived(handheld());
 
   const filtering = $derived(filter.trim() !== "");
 
@@ -200,7 +204,7 @@
           aria-expanded={row.expandable ? row.expanded : undefined}
           role="button"
           tabindex="-1"
-          draggable={drag.canDrag(entry.path)}
+          draggable={!touchOnly && drag.canDrag(entry.path)}
           title={entry.symlinkTarget ? `${entry.path} → ${entry.symlinkTarget}` : entry.path}
           onclick={(ev) => selection.click(ev, row.id, order)}
           ondblclick={() => onopen(entry)}

@@ -169,6 +169,10 @@ export interface TermMenuCtx extends PaneMenuCtx {
   askBlock?: { fromRow: boolean } | null;
   askHint?: string;
   sideChat?: boolean;
+  /** 손가락으로 고른 선택의 띠(`term/TouchSelection.svelte`)에서 ⋯ 로 열었다 — 띠에 있는 복사 · 붙여넣기 · 모두 선택을 뺀다 */
+  barEdits?: boolean;
+  /** AI 타일의 대화 면에서 열었다 — 같은 메뉴에서 붙여넣기 · 화면 지우기만 뺀다 */
+  convo?: boolean;
 }
 
 export interface SnippetSource {
@@ -417,34 +421,22 @@ export function terminalMenuItems(kind: PaneKind, ctx: TermMenuCtx, tr: Tr): Pan
     );
   }
 
-  const editFirst = items.length > 0;
-  if (ctx.hasSelection) {
-    items.push({
-      action: "copy",
-      label: tr("pane.menu.copy"),
-      icon: "copy",
-      separator: editFirst,
-    });
+  // 편집 묶음 — 띠가 이미 낸 줄(`barEdits`)과 대화 면에 없는 것(붙여넣을 자리 · 지울 화면)을 뺀다
+  const edit: PaneMenuItem[] = [];
+  if (!ctx.barEdits) {
+    if (ctx.hasSelection) edit.push({ action: "copy", label: tr("pane.menu.copy"), icon: "copy" });
+    if (!ctx.convo) edit.push({ action: "paste", label: tr("pane.menu.paste"), icon: "paste" });
+    edit.push({ action: "select-all", label: tr("pane.menu.select_all"), icon: "select-all" });
   }
-  items.push(
-    {
-      action: "paste",
-      label: tr("pane.menu.paste"),
-      icon: "paste",
-      separator: editFirst && !ctx.hasSelection,
-    },
-    { action: "select-all", label: tr("pane.menu.select_all"), icon: "select-all" },
-    {
-      action: "clear-screen",
-      label: tr("pane.menu.clear"),
-      icon: "erase",
-      title: tr("pane.menu.clear.title"),
-    },
-  );
+  if (!ctx.convo) {
+    edit.push({ action: "clear-screen", label: tr("pane.menu.clear"), icon: "erase", title: tr("pane.menu.clear.title") });
+  }
+  if (edit.length > 0 && items.length > 0) edit[0] = { ...edit[0], separator: true };
+  items.push(...edit);
 
   const rest = menuItemsFor(kind, ctx, tr);
   const output = rest.find((row) => rowId(row) === "output");
-  if (output) items.push({ ...output, separator: true });
+  if (output) items.push({ ...output, separator: items.length > 0 });
 
   // 블록이 없으면(셸 통합 없음 · tmux 간이 모드) 넘길 것이 영영 없어 흐리게가 아니라 아예 없다 — 스니펫 줄도 같다
   if (!ctx.screenOnly && ctx.askBlock) {
@@ -481,7 +473,7 @@ export function terminalMenuItems(kind: PaneKind, ctx: TermMenuCtx, tr: Tr): Pan
 
   const tail = dropRows(rest, ["output", "server"]);
   for (const [i, item] of tail.entries()) {
-    items.push(i === 0 ? { ...item, separator: true } : item);
+    items.push(i === 0 ? { ...item, separator: items.length > 0 } : item);
   }
   return items;
 }

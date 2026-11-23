@@ -487,6 +487,23 @@ describe("terminalMenuItems — 묶음 넷", () => {
     expect(termActions("local")).not.toContain("copy");
   });
 
+  it("띠의 ⋯ 로 열면 띠에 있는 복사 · 붙여넣기 · 모두 선택이 빠진다 — 나머지는 그대로", () => {
+    const sel: TermMenuCtx = { ...bare, hasSelection: true };
+    const drop = ["copy", "paste", "select-all"];
+    expect(termActions("local", { ...sel, barEdits: true })).toEqual(termActions("local", sel).filter((a) => !drop.includes(a)));
+    expect(termActions("local", { ...sel, barEdits: true })[0]).toBe("clear-screen");
+  });
+
+  it("대화 면에서 열면 붙여넣기 · 화면 지우기만 빠진다 — 띠의 ⋯ 면 편집 묶음이 통째로 없다", () => {
+    const sel: TermMenuCtx = { ...bare, hasSelection: true };
+    const drop = ["paste", "clear-screen"];
+    expect(termActions("local", { ...sel, convo: true })).toEqual(termActions("local", sel).filter((a) => !drop.includes(a)));
+    expect(termActions("local", { ...bare, convo: true })[0]).toBe("select-all");
+    const bar = terminalMenuItems("local", { ...sel, convo: true, barEdits: true }, ko);
+    expect(bar.map(rowId)).not.toContain("select-all");
+    expect((bar[0] as { separator?: boolean }).separator ?? false).toBe(false); // 맨 위 줄 위에는 선이 없다
+  });
+
   it("링크 위에서 누르면 링크 둘이 **맨 위**로 온다", () => {
     const ctx: TermMenuCtx = { ...bare, link: "https://example.com/x", hasSelection: true };
     expect(termActions("ssh", ctx).slice(0, 3)).toEqual(["open-link", "copy-link", "copy"]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems, type DocMenuCtx } from "./doc-menu";
+import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems, pickDocRows, type DocMenuCtx } from "./doc-menu";
 import { isGroup, rowId, type PaneMenuRow } from "$lib/pane/pane-menu";
 import { UI_ICONS } from "$lib/ui-icons.generated";
 
@@ -25,6 +25,16 @@ describe("docMenuItems — 읽기", () => {
     expect(ids(rows)).toEqual(["open-link", "copy-link", "copy", "select-all", "find", "edit"]);
     expect(seps(rows)).toEqual(["copy", "find", "edit"]);
     expect(rows[0].separator).toBeFalsy();
+  });
+
+  it("pickDocRows — 띠의 ⋯ 는 복사 · 모두 선택을 빼고, 링크 메뉴는 링크 줄만 · 맨 위 구분선은 걷는다", () => {
+    const rows = docMenuItems({ ...read, link: "https://x", hasSelection: true }, tr);
+    const bar = pickDocRows(rows, (k) => k !== "copy" && k !== "select-all", true);
+    expect(ids(bar)).toEqual(["open-link", "copy-link", "find", "edit"]);
+    const noLink = pickDocRows(docMenuItems({ ...read, hasSelection: true }, tr), (k) => k !== "copy" && k !== "select-all", true);
+    expect(ids(noLink)).toEqual(["find", "edit"]);
+    expect(noLink[0].separator).toBeFalsy();
+    expect(ids(pickDocRows(rows, (k) => k === "open-link" || k === "copy-link", false))).toEqual(["open-link", "copy-link"]);
   });
 
   it("고른 글 · 링크가 없으면 모두 선택부터 — 편집할 수 없으면 편집이 없다", () => {

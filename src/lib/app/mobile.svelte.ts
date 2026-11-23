@@ -92,7 +92,10 @@ export function startMobile(): void {
   // 화면 키보드 · 주소 줄을 뺀 높이 — 키 띠가 키보드 밑에 숨지 않게 모바일 배치가 `--app-h` 로 쓴다.
   const vv = window.visualViewport;
   if (vv) {
-    const setHeight = () => document.documentElement.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
+    const setHeight = () => {
+      if (!heightHeld) document.documentElement.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
+    };
+    applyHeight = setHeight;
     setHeight();
     vv.addEventListener("resize", setHeight);
   }
@@ -173,6 +176,19 @@ export function registerLineField(el: HTMLInputElement): () => void {
   return () => {
     if (lineField === el) lineField = null;
   };
+}
+
+let heightHeld = false;
+let applyHeight: () => void = () => {};
+
+/**
+ * 터미널에서 손가락으로 고르는 동안 `--app-h` 를 붙잡는다 — 키보드가 올라와 있을 때 길게 누르면 Android 가 입력 칸의 포커스를 걷어
+ * 키보드가 내려가고, 그때 화면이 늘어나면 끌던 자리가 밀린다. 풀 때 지금 높이로 맞춘다.
+ */
+export function holdAppHeight(on: boolean): void {
+  if (heightHeld === on) return;
+  heightHeld = on;
+  if (!on) applyHeight();
 }
 
 export function focusLineField(): boolean {

@@ -767,6 +767,10 @@
             sessionId={sessionOf?.(item.pane.id) ?? null}
             shown={item.shown}
             onopenpath={(target, line) => onopenpath?.(item.tab.id, item.pane.id, target, line)}
+            onmenu={(x, y, ctx) => {
+              tmc.tileMenuTrigger = null;
+              openTileMenu(item, x, y, ctx);
+            }}
           >
             <Terminal
               pane={item.pane}

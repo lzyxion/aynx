@@ -80,8 +80,12 @@
   import DomFindBar from "$lib/DomFindBar.svelte";
   import { DirtyBinding } from "$lib/doc-dirty-table";
   import { runOnMenu } from "$lib/browser/menu-runner";
-  import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems } from "$lib/doc-menu";
-  import { runEditMenu, runReadMenu, selectionIn, type ReadMenuActions } from "$lib/doc/context-actions";
+  import { DOC_TOOL_EDIT_EXTERNAL, DOC_TOOL_EXTERNAL, docExternalItems, docMenuItems, pickDocRows } from "$lib/doc-menu";
+  import { runEditMenu, runReadMenu, selectAllIn, selectionIn, type ReadMenuActions } from "$lib/doc/context-actions";
+  import { toast } from "$lib/toast.svelte.js";
+  import { createTextSelectBar } from "$lib/text-select-bar.svelte.js";
+  import TouchSelection from "$lib/term/TouchSelection.svelte";
+  import { handheld } from "$lib/app/mobile.svelte.js";
   import type { PaneMenuRow } from "$lib/pane/pane-menu";
   import { formatSize } from "$lib/sftp-browser";
   import type { DocEditView, DocMode } from "$lib/session";
@@ -802,16 +806,21 @@
     (dc.editing && compare !== null) || (!dc.editing && dc.file !== null && !dc.file.binary && text !== ""),
   );
 
-  /** 찾을 글이 없으면 `false` — 터미널 검색으로 넘어간다 */
-  function openFind(): boolean {
-    if (dc.editing && compare !== null) return finder?.show() ?? false;
+  /**
+   * 찾을 글이 없으면 `false` — 터미널 검색으로 넘어간다.
+   * `seed` 가 없으면 지금 본문에서 고른 글 — 고르고 찾기를 열면 그 말로 찾는다(편집기는 제 찾기 띠가 고른 글을 스스로 넣는다)
+   */
+  function openFind(seed?: string): boolean {
+    const box = readBox();
+    const picked = seed ?? (box ? selectionIn(box) : "");
+    if (dc.editing && compare !== null) return finder?.show(picked) ?? false;
     if (dc.editing) {
       if (!editor) return false;
       editor.openSearch();
       return true;
     }
     if (!findable) return false;
-    return finder?.show() ?? false;
+    return finder?.show(picked) ?? false;
   }
 
   $effect(() => {
@@ -846,12 +855,33 @@
       onmenu(ev.clientX, ev.clientY, { rows, run: (key) => runEditMenu(ed, key, sel, dc.save) });
       return;
     }
-    const box = (compare !== null ? compareEl : dc.editing ? previewPageEl : rendered ? pageEl : bodyEl?.querySelector("[data-code-view]")) ?? bodyEl;
+    const box = readBox();
     if (!box) return;
     const link = target.closest("[data-href]")?.getAttribute("data-href") ?? null;
-    const sel = selectionIn(box);
+    // 손가락의 길게 누르기는 브라우저가 글을 고른다 — 브라우저의 띠만 막고(위 `preventDefault`) 앱 띠가 선다.
+    // 링크 위에서는 링크 줄 둘, 고를 글이 없는 빈 곳에서는 본문 메뉴를 낸다.
+    if (textSel.byTouch(ev)) {
+      if (link !== null) {
+        textSel.clear();
+        openReadMenu(ev.clientX, ev.clientY, link, "", "link");
+      } else if (!textSel.pickedAt(ev.clientX, ev.clientY)) {
+        openReadMenu(ev.clientX, ev.clientY, null, selectionIn(box), "all");
+      }
+      return;
+    }
+    openReadMenu(ev.clientX, ev.clientY, link, selectionIn(box), "all");
+  }
+
+  /** 읽는 면의 본문 상자 — 고른 글 · 모두 선택의 범위 */
+  const readBox = (): HTMLElement | null =>
+    (compare !== null ? compareEl : dc.editing ? previewPageEl : rendered ? pageEl : (bodyEl?.querySelector<HTMLElement>("[data-code-view]") ?? null)) ?? bodyEl;
+
+  /** `only` — `bar` = 폰의 띠 ⋯(띠에 있는 복사 · 모두 선택을 뺀다) · `link` = 폰에서 링크를 길게 눌렀다(링크 줄만) */
+  function openReadMenu(x: number, y: number, link: string | null, sel: string, only: "all" | "bar" | "link"): void {
+    const box = readBox();
+    if (!box || !onmenu) return;
     const canEdit = !dc.editing && dc.file !== null && editBlockOf(dc.file) === null && backend.canWrite && !offline;
-    const rows = docMenuItems(
+    const all = docMenuItems(
       {
         mode: "read",
         link,
@@ -865,7 +895,28 @@
       },
       t,
     );
-    onmenu(ev.clientX, ev.clientY, { rows, run: (key) => runReadMenu(key, { box, link, sel }, readActions) });
+    const rows =
+      only === "bar"
+        ? pickDocRows(all, (key) => key !== "copy" && key !== "select-all", true)
+        : only === "link"
+          ? pickDocRows(all, (key) => key === "open-link" || key === "copy-link", false)
+          : all;
+    if (rows.length === 0) return;
+    onmenu(x, y, { rows, run: (key) => runReadMenu(key, { box, link, sel }, readActions) });
+  }
+
+  // 폰 · 태블릿에서 고른 글 위의 띠 — 고르기 · 손잡이는 브라우저 것이다(AI 타일 대화 면과 같은 길)
+  const textSel = createTextSelectBar({ body: readBox, box: () => bodyEl, on: () => handheld() });
+
+  /** 띠는 누르면 사라질 뿐이라 됐는지 알린다(본문 메뉴의 [복사]는 조용하다) */
+  function copyBar(): void {
+    const text = textSel.bar?.text ?? "";
+    if (text !== "") {
+      void writeClipboard(text).then((ok) =>
+        ok ? toast.info(t("pane.term.clipboard.copied")) : toast.error(t("files.doc.menu.copy.fail")),
+      );
+    }
+    textSel.clear();
   }
 
   $effect(() => {
@@ -1511,7 +1562,28 @@
       </div>
     {/if}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="body" class:md={rendered} bind:this={bodyEl} oncontextmenu={onBodyContextMenu}>
+    <div
+      class="body"
+      class:md={rendered}
+      bind:this={bodyEl}
+      oncontextmenu={onBodyContextMenu}
+      ontouchstart={textSel.onTouch}
+      ontouchend={textSel.onTouch}
+      ontouchcancel={textSel.onTouch}
+    >
+      {#if textSel.bar}
+        <TouchSelection
+          start={null}
+          end={null}
+          barTop={textSel.bar.top}
+          oncopy={copyBar}
+          onselectall={() => {
+            const box = readBox();
+            if (box) selectAllIn(box);
+          }}
+          onmore={(x, y) => openReadMenu(x, y, null, textSel.bar?.text ?? "", "bar")}
+        />
+      {/if}
       {#if dc.editing && dc.file}
         <DocEditPane
           bind:editor
@@ -1903,6 +1975,8 @@
   }
 
   .body {
+    /* 폰의 고른 글 띠(`TouchSelection`)가 이 상자 기준으로 선다 */
+    position: relative;
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;

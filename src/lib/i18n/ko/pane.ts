@@ -396,6 +396,7 @@ export const pane = {
   "term.clipboard.read_failed": "클립보드를 읽지 못했습니다",
   // 복사 하나에 한 줄 — 사람이 한 복사도 OSC 52 원격 복사도 이 문구 하나다.
   "term.clipboard.copied": "클립보드에 복사됨",
+  "term.touchsel.bar": "고른 글",
   "term.link.open_failed": "링크를 열지 못했습니다",
   // ── 스크롤백 내보내기 · 세션 로그 (docs/log/2026-09-17-scrollback-export-and-logs.md) ──
   // 경로는 자리표시자 하나다 — 이어 붙이면 영어 어순이 깨진다 (conventions 의 i18n 규칙).

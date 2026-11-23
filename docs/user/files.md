@@ -200,6 +200,7 @@ A document tile has a side panel on each side of the body. Each one has a button
 ### Find in document
 
 Pressing `Ctrl+F` with focus on a document tile opens a find field below the toolbar (in preview, source and code files alike).
+If text is selected in the document, its first line goes into the field and is found right away (the same from [Find] in the right-click menu).
 `Enter` · `F3` for next, `Shift+Enter` · `Shift+F3` for previous, `Esc` to close, and [Aa] matches case. During editing, the editor's find and replace opens.
 `Ctrl+F` finds **within that tile** on any tile. A file tile opens the Find in folder row (same as `Ctrl+I`). What it means per tile is in the find section of
 [shortcuts](shortcuts.md#find).

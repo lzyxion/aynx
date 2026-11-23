@@ -25,6 +25,13 @@
   import { sessionOfFsKey } from "$lib/fs-drop-route";
   import { LOCAL_KEY } from "$lib/fs-backend";
   import { showNotice } from "$lib/app/notice";
+  import { createTextSelectBar } from "$lib/text-select-bar.svelte.js";
+  import TouchSelection from "$lib/term/TouchSelection.svelte";
+  import ImageMenu from "$lib/ImageMenu.svelte";
+  import type { ImageMenuExtra } from "$lib/image-menu";
+  import { selectAllIn } from "$lib/doc/context-actions";
+  import { writeClipboard } from "$lib/clipboard";
+  import { handheld } from "$lib/app/mobile.svelte.js";
   import { baseName, SIDE_CHAT_ATTACH_MAX_BYTES, type SentPic } from "$lib/pane/composer-attachments";
   import {
     clearComposerAttachments,
@@ -411,6 +418,56 @@
   let finder = $state<ReturnType<typeof DomFindBar> | null>(null);
   let bodyEl = $state<HTMLElement | null>(null);
 
+  // ── 본문의 글 메뉴 — 마우스는 우클릭 메뉴, 폰 · 태블릿은 고른 글 위의 띠(AI 타일 대화 면과 같은 길 · 타일 메뉴 줄은 없다) ──
+  let faceEl = $state<HTMLElement | null>(null);
+  const textSel = createTextSelectBar({ body: () => bodyEl, box: () => faceEl, on: () => handheld() });
+  /** 줄 · 고른 글 · 링크는 누른 순간의 것 — 메뉴가 닫힌 뒤 불린다 */
+  let textMenu = $state<{ x: number; y: number; rows: ImageMenuExtra[]; run: (id: string) => void } | null>(null);
+
+  function copyPicked(text: string): void {
+    if (text === "") return;
+    void writeClipboard(text).then((ok) => showNotice(t(ok ? "pane.term.clipboard.copied" : "pane.term.clipboard.write_failed")));
+  }
+
+  function onBodyContextMenu(ev: MouseEvent): void {
+    const target = ev.target instanceof Element ? ev.target : null;
+    const body = bodyEl;
+    // 그림 메뉴가 먼저 잡았거나(`defaultPrevented`) 글 칸 · 단추 위면 비켜 선다 — 링크 칩(`button[data-href]`)은 링크다
+    if (ev.defaultPrevented || !target || !body?.contains(target)) return;
+    if (target.closest("input, textarea, [contenteditable], button:not([data-href])")) return;
+    ev.preventDefault();
+    const linkEl = target.closest<HTMLElement>("[data-href], [data-path-link]");
+    const link = linkEl?.getAttribute("data-href") ?? linkEl?.getAttribute("data-path") ?? null;
+    // 손가락의 길게 누르기는 브라우저가 글을 고른다 — 브라우저의 띠만 막고 앱 띠가 선다. 링크 위에서만 링크 줄 둘을 낸다(띠에는 링크가 없다).
+    const touch = textSel.byTouch(ev);
+    if (touch && link === null) return;
+    if (touch) textSel.clear();
+    const text = touch ? "" : textSel.text();
+    const rows: ImageMenuExtra[] = [];
+    if (link !== null) {
+      rows.push({ id: "open-link", label: t("pane.menu.open_link") }, { id: "copy-link", label: t("pane.menu.copy_link") });
+    }
+    if (text !== "") rows.push({ id: "copy", label: t("pane.menu.copy") });
+    if (!touch) rows.push({ id: "select-all", label: t("pane.menu.select_all") });
+    textMenu = {
+      x: ev.clientX,
+      y: ev.clientY,
+      rows,
+      run: (id) => {
+        if (id === "copy") copyPicked(text);
+        else if (id === "copy-link") copyPicked(link ?? "");
+        else if (id === "select-all") selectAllIn(body);
+        // 누른 것과 같은 길 — 경로 링크 · 바깥 링크를 본문의 클릭 처리가 가른다
+        else if (id === "open-link" && linkEl?.isConnected) linkEl.click();
+      },
+    };
+  }
+
+  function copyBar(): void {
+    copyPicked(textSel.bar?.text ?? "");
+    textSel.clear();
+  }
+
   function onKeydownCapture(ev: KeyboardEvent): void {
     if (ev.isComposing) return;
     const combo = comboFromEvent(ev);
@@ -522,7 +579,33 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="face" role="region" aria-label={t("app.chatDock.convo.aria")} data-side-chat-face={chatId} onkeydowncapture={onKeydownCapture}>
+<div
+  class="face"
+  role="region"
+  aria-label={t("app.chatDock.convo.aria")}
+  data-side-chat-face={chatId}
+  bind:this={faceEl}
+  onkeydowncapture={onKeydownCapture}
+  oncontextmenu={onBodyContextMenu}
+  ontouchstart={textSel.onTouch}
+  ontouchend={textSel.onTouch}
+  ontouchcancel={textSel.onTouch}
+>
+  {#if textSel.bar}
+    <TouchSelection start={null} end={null} barTop={textSel.bar.top} oncopy={copyBar} onselectall={() => bodyEl && selectAllIn(bodyEl)} />
+  {/if}
+  {#if textMenu}
+    <ImageMenu
+      actions={[]}
+      x={textMenu.x}
+      y={textMenu.y}
+      before={textMenu.rows}
+      label={t("app.chatDock.convo.aria")}
+      onclose={() => (textMenu = null)}
+      onpick={() => {}}
+      onextra={textMenu.run}
+    />
+  {/if}
   <DomFindBar bind:this={finder} root={bodyEl} scroller={() => bodyEl} label={t("pane.flip.find")} onclose={onFindClose} />
   {#if live?.error}
     <div class="error" role="alert" data-side-chat-error>

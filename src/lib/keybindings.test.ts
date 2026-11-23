@@ -775,7 +775,7 @@ describe("isBrowserChromeCombo — 앱이 뜻을 두지 않은 웹뷰 기본 동
  */
 function target(
   tagName: string,
-  opts: { contentEditable?: boolean; inXterm?: boolean; imeProxy?: boolean; type?: string; inEditor?: boolean; terminalKeys?: boolean } = {},
+  opts: { contentEditable?: boolean; inXterm?: boolean; imeProxy?: boolean; type?: string; inEditor?: boolean; terminalKeys?: boolean; inLink?: boolean } = {},
 ): EventTarget {
   return {
     tagName,
@@ -783,6 +783,7 @@ function target(
     ...(opts.type !== undefined ? { type: opts.type } : {}),
     closest: (sel: string) =>
       (sel === ".xterm" && opts.inXterm) ||
+      (sel === ".xterm, a, img, video" && (opts.inXterm || opts.inLink)) ||
       (sel === "[data-ime-proxy]" && opts.imeProxy) ||
       (sel === ".cm-editor" && opts.inEditor) ||
       (sel === "[data-terminal-keys]" && opts.terminalKeys)
@@ -820,6 +821,13 @@ describe("shouldBlockNativeContextMenu — 창 전역에서 웹뷰 메뉴를 막
     expect(
       shouldBlockNativeContextMenu(target("DIV", { contentEditable: true, inXterm: true }), false),
     ).toBe(true);
+  });
+
+  it("폰 취급 원격 창은 글 위에서 막지 않는다 — 링크 · 그림 · 터미널 · 타깃 없음은 그대로 막는다", () => {
+    expect(shouldBlockNativeContextMenu(target("DIV"), false, true)).toBe(false);
+    expect(shouldBlockNativeContextMenu(target("SPAN", { inLink: true }), false, true)).toBe(true);
+    expect(shouldBlockNativeContextMenu(target("TEXTAREA", { inXterm: true }), false, true)).toBe(true);
+    expect(shouldBlockNativeContextMenu(null, false, true)).toBe(true);
   });
 
   it("`isEditableTarget` 과 같은 판정을 쓴다 (둘이 갈리면 키 가드와 어긋난다)", () => {

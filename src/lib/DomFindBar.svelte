@@ -34,8 +34,11 @@
     return open;
   }
 
-  export function show(): boolean {
+  /** `seed` = 고른 글 — 있으면 찾을 말로 넣는다(첫 줄만 · 비었으면 치던 말을 그대로 둔다) */
+  export function show(seed = ""): boolean {
     if (!root) return false;
+    const line = seed.trim().split(/\r?\n/)[0]?.trim().slice(0, 200) ?? "";
+    if (line !== "") query = line;
     open = true;
     void tick().then(() => bar?.focus());
     return true;

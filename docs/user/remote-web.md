@@ -232,7 +232,12 @@ Phones and tablets open the same address too, and **they can do the same as a PC
   browser only**, and the main PC's settings do not change (they apply only to the phone screen). **Main PC** — auto-approval can be changed only on the main PC, so only its current
   state shows · notification settings. **Manage this device** — Lock now (same as the status bar lock — the vault locks too) · Disconnect (closes this remote session —
   opening it again shows the unlock screen) · Unpair this device (to use it again, allow it anew on the main PC). [Open all settings] at the very bottom is the same settings screen as on a PC.
-- **Scroll · copy**: drag the terminal up and down to see past output. **Long-press** to show a menu (Paste · Select all · Copy …).
+- **Scroll · copy**: drag the terminal up and down to see past output. **Long-press** a word to select it, and keep your finger down and drag to
+  extend the selection (hold your finger at the top or bottom edge to scroll on while selecting) — when you lift, **two handles** stand at the ends of the selection and a small bar shows above it (**Copy · Paste · Select all · ⋯**).
+  Drag a handle to move that end; **⋯** opens the tile menu (without the three rows already on the bar). Long-pressing an empty spot shows the tile menu right away. Tap the terminal to
+  clear the selection. If the on-screen keyboard is up, it goes down when you long-press; the screen keeps its height until you lift, so the text does not move under your finger. On an AI tile's **conversation face**, in the **side chat** and in a **document tile**, long-press selects text the way the browser does (its own handles), and the app's bar (**Copy · Select all**) shows
+  above the selection in place of the browser's — on the conversation face and in a document tile the bar also has **⋯**, which opens the rest of that menu. Long-pressing a **link** there shows **Open link · Copy link**, and long-pressing an empty spot of a document shows its body menu (Select all · Find · Edit · New document).
+  In a **file tile**, long-press a row for its menu (rows do not drag on a phone or touch device).
 - **Data · battery**: terminal tiles not on screen, and terminals while the phone browser is in the background, stop receiving after a short while. When you return, the output from that gap
   is received and drawn (if too much piled up, there is a "some output was lost" notice). If you return after a long time in the background and the connection is cut, the page reloads and
   reattaches (right away, unless the remote lock screen is up).
@@ -252,6 +257,6 @@ Phones and tablets open the same address too, and **they can do the same as a PC
 - The main PC's file and folder pickers, opening the main PC's Explorer, dragging out to Explorer, detaching a tile to a new window and opening in the main PC's editor do not work remotely —
   the rows that need them are hidden, or (query tiles) use this device's own picker and downloads instead.
 - A phone has no **split line dragging or drag and drop** (it is a screen that views one tile at a time). To change the layout, use + in the top strip (this tab or a new tab) and close with × on the picker screen or in the tile ⋯ menu (splitting is done on the main PC or a PC remote).
-- There is no finger selection of part of the text inside a terminal — long-press for **Select all · Copy**, or use block copy.
+- Full-screen programs (vim, htop …) have no scrollback, so finger selection there covers only what is on screen.
 - There is no pinch zoom that enlarges only the terminal text (the browser's own zoom works).
 - The gateway screens (pairing · unlock) use the language set on the main PC.

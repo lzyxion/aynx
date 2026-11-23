@@ -385,6 +385,7 @@ export const pane: Record<keyof typeof koPane, string> = {
   "term.clipboard.write_failed": "Could not write to the clipboard",
   "term.clipboard.read_failed": "Could not read the clipboard",
   "term.clipboard.copied": "Copied to clipboard",
+  "term.touchsel.bar": "Selected text",
   "term.link.open_failed": "Could not open the link",
   "term.scrollback.saved": "Saved: {path}",
   "term.scrollback.reveal": "Open folder",

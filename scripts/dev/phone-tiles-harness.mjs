@@ -23,6 +23,7 @@ await new Promise((r) => (ws.onopen = r));
 let seq = 0;
 const pending = new Map();
 const errors = [];
+let booted = false;
 const IGNORE = /stub:|mirror-|\[aynx\]/;
 ws.onmessage = (m) => {
   const d = JSON.parse(m.data);
@@ -158,6 +159,9 @@ const boot = async () => {
   const before = await ev(`performance.timeOrigin`);
   await send("Page.reload", { ignoreCache: true });
   await waitFor(`performance.timeOrigin !== ${before}`, 15000);
+  // 러너가 스텁 없이 띄운 첫 적재의 콘솔 오류(`Runtime.enable` 이 되돌려 준다)는 세지 않는다 — 스텁을 건 첫 새로고침부터 센다.
+  if (!booted) errors.length = 0;
+  booted = true;
   const ok = await waitFor(`!!document.querySelector('.mobile-bar') && !document.querySelector('.splash') && performance.getEntriesByType('resource').some(r => r.name.includes('app/tabs.svelte'))`, 25000);
   await sleep(900);
   return ok;

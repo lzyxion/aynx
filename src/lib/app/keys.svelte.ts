@@ -65,6 +65,7 @@ import { raiseVeil } from "$lib/app/veil.svelte.js";
 import { openQuitDialog, quitDialogOpen } from "$lib/app/quit-dialog.svelte.js";
 import { updateCardOpen } from "$lib/app/updater.svelte.js";
 import { isRemote } from "$lib/app/window.svelte.js";
+import { handheld } from "$lib/app/mobile.svelte.js";
 import { openNextAgentBanner } from "$lib/app/agent-banners.svelte.js";
 import { openBranchGraphHere } from "$lib/app/branch-graph.svelte.js";
 import { closeDbWriteConfirm, dbPickerVisible, dbWriteConfirmVisible, escapeDbPicker, openDbPicker } from "$lib/app/query.svelte.js";
@@ -746,5 +747,5 @@ export function blockStrayNavButton(ev: MouseEvent): void {
  * 버블 단계로 달아야 한다 — 캡처로 달면 앱 메뉴의 `preventDefault` 보다 먼저 돌아 언제나 막는다. 예외 판정은 [`shouldBlockNativeContextMenu`] 한 곳이다.
  */
 export function blockNativeContextMenu(ev: MouseEvent): void {
-  if (shouldBlockNativeContextMenu(ev.target, ev.defaultPrevented)) ev.preventDefault();
+  if (shouldBlockNativeContextMenu(ev.target, ev.defaultPrevented, handheld())) ev.preventDefault();
 }

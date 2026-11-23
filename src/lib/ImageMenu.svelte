@@ -17,7 +17,10 @@
     before = [],
     after = [],
     onextra,
+    label,
   }: {
+    /** 그림이 아닌 자리(사이드 채팅 본문의 글 메뉴 — 그림 줄 없이 `before` 만)의 메뉴 이름 */
+    label?: string;
     actions: readonly ImageMenuAction[];
     x: number;
     y: number;
@@ -88,7 +91,7 @@
     class="ctx-menu menu-surface"
     role="menu"
     tabindex="-1"
-    aria-label={t("files.doc.md.image.menu.aria")}
+    aria-label={label ?? t("files.doc.md.image.menu.aria")}
     data-image-menu
     style:left="{x}px"
     style:top="{y}px"

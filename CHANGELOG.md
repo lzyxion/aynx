@@ -12,6 +12,13 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+### What's new
+
+- **Select text with your finger in a remote window**: long-press a word in a terminal and drag to extend it. When you lift, two handles and a small bar (**Copy · Paste · Select all · ⋯**) appear. The AI tile chat view, the side chat and document tiles show the same bar in place of the browser's.
+- **Long-press menus on phones**: links and link chips (**Open link · Copy link**), rows in a file tile, and an empty spot of a document.
+- The AI tile chat view and the side chat have a right-click menu on the main PC too (links, copy, select all).
+- Finding in a document starts with the text you selected.
+
 ## [0.1.6] - 2026-11-22
 
 If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and side chat permission modes need the new one.

@@ -316,14 +316,20 @@ export function isControlOwnedKey(
 /**
  * 창 전역에서 웹뷰의 기본 우클릭 메뉴를 막는다 — 예외는 앱이 이미 메뉴를 세운 것(`defaultPrevented`) · 편집 필드 · 문서 편집기 안.
  * 창 리스너는 반드시 버블 단계여야 한다 — 캡처로 달면 앱 메뉴보다 먼저 돌아 언제나 "막는다" 가 된다 (docs/log/2026-09-08-native-context-menu.md).
+ * `handheld`(원격 창의 폰 · 터치 기기)는 글 위에서 막지 않는다 — Android Chrome 은 고른 글의 [복사] 띠를 `contextmenu` 길로 띄워서,
+ * 막으면 선택만 되고 복사할 길이 없다. 링크 · 그림 · 터미널 위는 브라우저 메뉴가 서므로 그대로 막는다.
  */
 export function shouldBlockNativeContextMenu(
   target: EventTarget | null,
   defaultPrevented: boolean,
+  handheld = false,
 ): boolean {
   if (defaultPrevented) return false;
   if (isInDocEditor(target)) return false;
-  return !isEditableTarget(target);
+  if (isEditableTarget(target)) return false;
+  if (!handheld) return true;
+  const el = asElement(target);
+  return !el || !!el.closest(".xterm, a, img, video");
 }
 
 // ── 문서 편집기의 키 경계 ── (docs/log/2026-09-27-doc-edit.md)

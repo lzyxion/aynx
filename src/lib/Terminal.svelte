@@ -141,6 +141,7 @@
     domRendererOnly,
     dropFitOnOwnerLoss,
     focusLineField,
+    holdAppHeight,
     handheld,
     lineFieldMode,
     mobileLayout,
@@ -152,7 +153,9 @@
     pageShown,
   } from "$lib/app/mobile.svelte.js";
   import { ctrlOf } from "$lib/mobile/keys";
-  import { TouchGestures, attachTouchGestures, wheelLines } from "$lib/term/touch-gestures";
+  import { TouchGestures, attachTouchGestures, wheelLines, type TouchGrab } from "$lib/term/touch-gestures";
+  import { TOUCH_BAR_H, dragRange, grabEnds, placeSelection, wordSpan, type CellKind, type Pt, type WordSpan } from "$lib/term/touch-select";
+  import TouchSelection from "$lib/term/TouchSelection.svelte";
   import { encodingSuffix, watchMouseEncoding } from "$lib/term/mouse-encoding";
   import { parkDelayMs } from "$lib/mobile/policy";
   import type { AskBlockRef } from "$lib/ask-ai";
@@ -231,6 +234,7 @@
         snippet: SnippetSource | null;
         ask: AskBlockRef | null;
         selection: string | null;
+        barEdits?: boolean;
       },
     ) => void;
     confirmHostKey?: ConfirmHostKey;
@@ -392,6 +396,9 @@
   };
 
   let toast = $state<{ text: string; ok: boolean } | null>(null);
+  /** 손가락으로 고른 선택의 손잡이 · 띠(`null` = 없음) — 자리와 손잡이는 `mount()` 의 터치 고리가 채운다 */
+  let touchSel = $state<{ start: Pt | null; end: Pt | null; barTop: number | null } | null>(null);
+  let touchSelRun: { copy(): void; paste(): void; selectAll(): void; more(x: number, y: number): void } | null = null;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   const TOAST_MS = 2500;
 
@@ -2352,13 +2359,19 @@
     textarea?.addEventListener("compositionend", onCompositionEnd);
 
     // ── 우클릭 · 선택 자동 복사 · 붙여넣기 가로채기 ──
+    // 손가락으로 고른 것은 자동 복사하지 않는다 — 띠가 [복사]를 낸다. `select()` 는 이 사건을 그 자리에서 낸다.
+    let touchSelecting = false;
     t.onSelectionChange(() => {
-      if (settings.rightClick !== "paste") return;
+      // 탭 · 마우스로 선택이 풀리면 손잡이도 걷는다. 남아 있으면(끌기 · [모두 선택]) 자리를 다시 잰다.
+      if (t.hasSelection()) placeTouchSel();
+      else dropTouchSel();
+      if (settings.rightClick !== "paste" || touchSelecting) return;
       if (t.getSelection() === "") return;
       clip.markSelectionDirty();
     });
 
-    const openMenuAt = (x: number, y: number) => {
+    /** `barEdits` = 띠의 ⋯ 로 열었다 — 띠에 있는 복사 · 붙여넣기 · 모두 선택 줄을 뺀다 */
+    const openMenuAt = (x: number, y: number, barEdits = false) => {
       menuLink = hoveredLink;
       onmenu?.(x, y, {
         link: menuLink,
@@ -2367,16 +2380,148 @@
         snippet: snippetSourceAt(t, y),
         ask: askRefAt(t, y),
         selection: t.hasSelection() ? t.getSelection().slice(0, 64 * 1024) : null,
+        barEdits,
       });
     };
 
     // ── 터치 ──
+    /** 화면 좌표 → 버퍼 칸(줄은 절대 줄) · 화면 밖은 가장자리 칸 */
+    const touchCell = (x: number, y: number) => {
+      const box = t.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
+      if (!box || box.width <= 0 || box.height <= 0 || t.cols <= 0 || t.rows <= 0) return null;
+      const col = Math.min(t.cols - 1, Math.max(0, Math.floor(((x - box.left) / box.width) * t.cols)));
+      const row = Math.min(t.rows - 1, Math.max(0, Math.floor(((y - box.top) / box.height) * t.rows)));
+      return { col, row: t.buffer.active.viewportY + row };
+    };
+    /** 고르다 닿은 가장자리 — 스크롤백이 그쪽으로 남았을 때만(-1 위 · 1 아래). alt 화면은 스크롤백이 없어 0. */
+    const touchEdge = (y: number) => {
+      const buf = t.buffer.active;
+      const screen = t.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
+      if (!screen || buf.type !== "normal" || t.rows <= 0) return 0;
+      // 다른 창 크기로 그리는 상자는 화면이 보이는 자리보다 클 수 있다 — 보이는 쪽 가장자리로 잰다.
+      const view = root.getBoundingClientRect();
+      const rowH = screen.height / t.rows;
+      if (y < Math.max(screen.top, view.top) + rowH) return buf.viewportY > 0 ? -1 : 0;
+      if (y > Math.min(screen.bottom, view.bottom) - rowH) return buf.viewportY < buf.baseY ? 1 : 0;
+      return 0;
+    };
+    const touchSelect = (col: number, row: number, length: number) => {
+      touchSelecting = true;
+      try {
+        t.select(col, row, length);
+      } finally {
+        touchSelecting = false;
+      }
+    };
+    let touchAnchor: WordSpan | null = null;
+    /** 손가락으로 고른 선택이 서 있다 — 손잡이를 그린다 */
+    let touchSelOn = false;
+    /** 고르는 중 — 띠를 숨긴다 */
+    let touchDragging = false;
+    /** 손잡이를 잡은 손가락과 움직이는 끝 칸 가운데의 어긋남 — 끄는 내내 뺀다(손잡이는 줄 아래에 달려 있다) */
+    let touchLift = { x: 0, y: 0 };
+    const dropTouchSel = () => {
+      touchSelOn = false;
+      touchSel = null;
+    };
+    const placeTouchSel = () => {
+      if (!touchSelOn) return;
+      const sel = t.getSelectionPosition();
+      const screen = t.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
+      if (!sel || !screen || t.cols <= 0 || t.rows <= 0) {
+        touchSel = null;
+        return;
+      }
+      const view = root.getBoundingClientRect();
+      // 원격의 UI 크기는 루트 CSS zoom 이다 — 잰 값(화면 px)을 상자 안의 px 로 되돌린다.
+      const zoom = root.offsetWidth > 0 && view.width > 0 ? view.width / root.offsetWidth : 1;
+      const p = placeSelection(
+        sel,
+        {
+          left: (screen.left - view.left) / zoom,
+          top: (screen.top - view.top) / zoom,
+          cellW: screen.width / t.cols / zoom,
+          cellH: screen.height / t.rows / zoom,
+          rows: t.rows,
+          viewportY: t.buffer.active.viewportY,
+          viewW: view.width / zoom,
+          viewH: view.height / zoom,
+        },
+        TOUCH_BAR_H,
+      );
+      touchSel = { start: p.start, end: p.end, barTop: touchDragging ? null : p.barTop };
+    };
+    const touchGrab: TouchGrab = (target, x, y) => {
+      const el = target instanceof Element ? target : null;
+      const which = el?.closest<HTMLElement>("[data-term-handle]")?.dataset.termHandle;
+      if (which !== "start" && which !== "end") return el?.closest("[data-term-touch-ui]") ? "ignore" : null;
+      const sel = t.getSelectionPosition();
+      const screen = t.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
+      if (!sel || !screen || t.cols <= 0 || t.rows <= 0) return "ignore";
+      const ends = grabEnds(which, sel, t.cols);
+      touchAnchor = ends.anchor;
+      touchLift = {
+        x: x - (screen.left + ((ends.moving.col + 0.5) * screen.width) / t.cols),
+        y: y - (screen.top + ((ends.moving.row - t.buffer.active.viewportY + 0.5) * screen.height) / t.rows),
+      };
+      touchDragging = true;
+      holdAppHeight(true);
+      placeTouchSel();
+      return "select";
+    };
+    touchSelRun = {
+      copy: () => {
+        void clip.copySelection();
+        t.clearSelection();
+      },
+      paste: () => {
+        t.clearSelection();
+        void clip.pasteFromClipboard();
+      },
+      selectAll: () => t.selectAll(),
+      more: (x, y) => openMenuAt(x, y, true),
+    };
     const touch = new TouchGestures({
       rowHeight: () => (t.element && t.rows > 0 ? (t.element.querySelector(".xterm-screen")?.clientHeight ?? 0) / t.rows : 0),
       scrollLines: (n, x, y) => {
         if (t.element && (t.buffer.active.type !== "normal" || t.modes.mouseTrackingMode !== "none")) wheelLines(t.element, n, x, y);
         else t.scrollLines(n);
       },
+      selectStart: (x, y) => {
+        const at = touchCell(x, y);
+        const line = at ? t.buffer.active.getLine(at.row) : undefined;
+        if (!at || !line) return false;
+        const kind = (col: number): CellKind => {
+          const cell = line.getCell(col);
+          if (!cell) return "blank";
+          if (cell.getWidth() === 0) return "tail";
+          return cell.getChars().trim() === "" ? "blank" : "text";
+        };
+        const word = wordSpan(kind, t.cols, at.row, at.col);
+        if (!word) return false;
+        touchAnchor = word;
+        touchLift = { x: 0, y: 0 };
+        touchDragging = true;
+        dropTouchSel();
+        touchSelect(word.start, word.row, word.end - word.start + 1);
+        holdAppHeight(true);
+        return true;
+      },
+      // 걷힌 고르기(손가락 둘)도 선택이 남았으면 손잡이를 세운다 — 안 세우면 고친 범위를 다시 잡을 길이 없다.
+      selectEnd: () => {
+        touchDragging = false;
+        holdAppHeight(false);
+        touchSelOn = t.hasSelection();
+        placeTouchSel();
+      },
+      selectTo: (x, y) => {
+        const at = touchCell(x - touchLift.x, y - touchLift.y);
+        if (!at || !touchAnchor) return 0;
+        const r = dragRange(touchAnchor, at, t.cols);
+        touchSelect(r.col, r.row, r.length);
+        return touchEdge(y - touchLift.y);
+      },
+      selectScroll: (dir) => t.scrollLines(dir),
       longPress: (x, y) => openMenuAt(x, y),
     });
 
@@ -2384,8 +2529,9 @@
     const onContextMenu = (ev: MouseEvent) => {
       ev.preventDefault();
       ev.stopPropagation();
-      // Android 는 길게 누르기 뒤 `contextmenu` 도 낸다 — 두 번 열지 않는다.
-      if (touch.justLongPressed()) return;
+      // Android 는 길게 누르면 `contextmenu` 도 낸다 — 터치 몸짓이 받아 두 번 열지 않는다.
+      if (touch.nativeLongPress()) return;
+      if (ev.target instanceof Element && ev.target.closest("[data-term-touch-ui]")) return;
       const wantsMenu = handheld() || (settings.rightClick === "menu" ? !ev.shiftKey : ev.shiftKey);
       if (!wantsMenu) {
         void clip.pasteFromClipboard();
@@ -2419,7 +2565,21 @@
 
     const root = container.parentElement ?? container;
     root.addEventListener("contextmenu", onContextMenu);
-    const untouch = viewer ? attachTouchGestures(root, touch) : () => {};
+    // 손가락이 닿은 채 온 `contextmenu`(Android 길게 누르기)는 캡처로 xterm 보다 먼저 받는다 — xterm 의 처리기는 textarea 에 포커스를 줘서
+    // 폰 키보드가 올라오고, 그러면 화면이 밀려 끌던 자리가 어긋난다.
+    const onTouchContextMenu = (ev: MouseEvent) => {
+      if (touch.down()) onContextMenu(ev);
+    };
+    root.addEventListener("contextmenu", onTouchContextMenu, true);
+    const untouch = viewer ? attachTouchGestures(root, touch, touchGrab) : () => {};
+    // 손잡이 · 띠는 화면이 움직일 때마다 다시 잰다 — 스크롤백 · 크기 · 다른 창 크기 상자의 가로 스크롤.
+    const touchSelRo = new ResizeObserver(placeTouchSel);
+    if (viewer) {
+      touchSelRo.observe(root);
+      t.onScroll(placeTouchSel);
+      t.onResize(placeTouchSel);
+      container.addEventListener("scroll", placeTouchSel, { passive: true });
+    }
     const unHandheld = (viewer && handheld() ? attachHandheldInput(t, container) : null) ?? (() => {});
     const onFocusIn = (ev: FocusEvent) => {
       if (ev.target !== t.textarea || !lineFieldMode()) return;
@@ -2483,7 +2643,12 @@
       forgetReportedCwd(pane.id);
       screenEl?.removeEventListener("mousedown", onLinkMouseDown);
       root.removeEventListener("contextmenu", onContextMenu);
+      root.removeEventListener("contextmenu", onTouchContextMenu, true);
       untouch();
+      touchSelRo.disconnect();
+      container.removeEventListener("scroll", placeTouchSel);
+      touchSelRun = null;
+      touchSel = null;
       unHandheld();
       container.removeEventListener("focusin", onFocusIn, true);
       container.removeEventListener("paste", onPasteEvent, true);
@@ -2621,6 +2786,18 @@
     {reconnectEnded}
     {onclose}
   />
+
+  {#if touchSel}
+    <TouchSelection
+      start={touchSel.start}
+      end={touchSel.end}
+      barTop={touchSel.barTop}
+      oncopy={() => touchSelRun?.copy()}
+      onpaste={() => touchSelRun?.paste()}
+      onselectall={() => touchSelRun?.selectAll()}
+      onmore={(x, y) => touchSelRun?.more(x, y)}
+    />
+  {/if}
 
   {#if toast}
     <div class="toast glass-raised" class:ok={toast.ok} role="status">{toast.text}</div>
