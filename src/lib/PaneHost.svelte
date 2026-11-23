@@ -561,6 +561,7 @@
 >
   {#each boxes as item (item.pane.id)}
     {@const localOrchScreen = isRemote && !!item.tab.orch && !!albumScreens[item.tab.id]?.path}
+    {@const flipFace = isTerminalPane(item.pane) && canFlipPane(item.pane) ? flipViewOf(item.pane.id) : null}
     <!--
       키는 pane.id — 트리 모양 · 소속 탭이 바뀌어도 이 상자는 산다. `out:` 은 두지 않는다 — 상자가 사는 동안
       `<Terminal>` 도 살고 그 언마운트가 곧 세션 종료다. 닫힘의 모양은 `.tile-ghosts` 층의 복제본이 그린다.
@@ -572,6 +573,8 @@
       class:chrome={!isTerminalPane(item.pane) && !item.pane.startProject}
       class:start={!!item.pane.startProject}
       class:bare={item.pane.kind === "start" && !item.pane.startProject && item.paneCount === 1}
+      class:flips={flipFace !== null}
+      class:talk={flipFace === "convo"}
       class:glass-tile={!isTerminalPane(item.pane) && !(item.pane.kind === "start" && !item.pane.startProject)}
       class:hidden={localOrchScreen ? item.pane.kind !== "run" || (item.tab.id !== activeId && item.tab.id !== leavingId) : !item.shown}
       class:leaving={item.tab.id === leavingId}
@@ -603,7 +606,7 @@
           aiMenuOpen={ai.aiMenu?.paneId === item.pane.id || dbm.at?.paneId === item.pane.id}
           zoomed={item.zoomed}
           {zoomCombo}
-          flip={isTerminalPane(item.pane) && canFlipPane(item.pane) ? flipViewOf(item.pane.id) : null}
+          flip={flipFace}
           {flipCombo}
           onflip={(v) => setFlipView(item.pane.id, v)}
           menuOpen={tmc.tileMenu?.paneId === item.pane.id}

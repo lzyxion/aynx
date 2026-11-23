@@ -18,6 +18,8 @@ Write the next version's section before tagging it — the release workflow stop
 - **Long-press menus on phones**: links and link chips (**Open link · Copy link**), rows in a file tile, and an empty spot of a document.
 - The AI tile chat view and the side chat have a right-click menu on the main PC too (links, copy, select all).
 - Finding in a document starts with the text you selected.
+- **Images in the file tile's Icons view** show the image itself instead of a file picture (only what is on screen is read; up to 20 MB locally, 2 MB for remote files or in a remote window).
+- The AI tile chat view now follows **Terminal opacity**, so the wallpaper shows through it as it does through the terminal.
 
 ## [0.1.6] - 2026-11-22
 

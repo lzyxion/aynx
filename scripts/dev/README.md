@@ -319,6 +319,20 @@ node scripts/dev/run-harness.mjs mirror-layout-anim-harness.mjs <outdir> --size 
 node scripts/dev/run-harness.mjs file-ui-keep-harness.mjs <outdir> --size 1100x800
 ```
 
+## file-thumbs-harness.mjs — 파일 타일 아이콘 보기의 그림 썸네일 · 경로 칸 ⟳ 회전
+
+`browser/thumbs.ts` · `thumbs.svelte.ts` · `FileList` 의 `use:thumbs.watch` · `LocationBar` 의 `spin()`(2026-11-23). `file-glyphs-harness` 스텁에 그림 230장 남짓(가로 · 세로 · 투명 PNG ·
+크기 있는/viewBox 만 SVG · GIF · JPG · WebP · 깨진 `broken.png` · 목록 크기 25 MB `huge.png`)을 더했고, `local_read_preview` 는 OffscreenCanvas 로 만든 진짜 바이트를
+`window.__readDelay` 뒤에 준다(진행 중 수 `__maxInflight` · 읽은 경로 `__reads` · mtime 은 `__mt`). 보이는 칸(±64px)만 · 동시 ≤ 3 · 읽는 중 dim · 상자 = 글리프 · 비율 ·
+huge 는 안 읽음 · broken 은 한 번 · ⟳ = 다시 안 읽음(mtime 바뀐 것만) · 보기 왕복 · 확대 = 추가 읽기 없음 · 클릭/더블클릭/우클릭 · `img` draggable=false ·
+타일 닫기 = 만든 Blob URL 다 거둠(`URL.createObjectURL` 을 감싸 셈) · ⟳ 회전(⟳ · 메뉴 새로고침 · 머리줄 배치 · 몸 배치 · 폴더 이동은 안 돎) · 라이트 · 콘솔 예외 0.
+포인터를 비킬 때 창 오른쪽 끝으로 보내지 않는다 — 채팅 독이 호버로 열려 머리줄 ⟳ 를 덮는다.
+
+```bash
+node scripts/dev/run-harness.mjs file-thumbs-harness.mjs <outdir> --size 1100x800
+#   → thumbs-loading.png · thumbs-dark.png · thumbs-zoom-max.png · thumbs-light.png
+```
+
 ## agent-seen-harness.mjs — 완료 확인 공유
 
 `app/agent-seen.svelte.ts`(2026-11-04). 원격 창 흉내 + 탭 직접 세우기 · 신호는 `fakeAgentSignal` · 다른 창의 몫은 `window.__emit('agent-seen', …)` 주입. 표식 → 보기 → op 한 번 · 수신(옛 seq · 권한 배너 유지) · 숨김/가림막/비포커스/입력 없음 · 폰 solo · 스냅숏으로 깨어남을 판정한다. `REPRO=1` 이면 폰 자체의 지우기까지만(고치기 전 코드 재현용). 서버 왕복은 Rust 시험이 본다.
@@ -1438,6 +1452,10 @@ node scripts/dev/run-harness.mjs ai-flip-harness.mjs <outdir> --size 1280x860
 도구에 스피너 · 머리줄 로딩 없음 · 끝나면 둘 다 없음(`flip-working.png`) ⑯ 훅 10판 `session` 신호로 연결 · 상태 그대로 ⑰ 새 id →
 대화 면이 그 대화로 ⑱ F5 — `probe_session`/`attach_session` 스텁으로 재부착 · 연결이 타일 명세 사본으로 살아남음(`flip-after-f5.png`).
 ⑨ 는 이제 빈 면 + 입력 칸(문구 없음).
+⑲ 터미널 투명도 — 기록 스크롤 상자 · 머리줄에서 타일 상자까지 겹친 배경을 합성해 견준다: 100 이면 대화 면이 불투명 크롬 면 색 ·
+60 이면 본문 · 머리줄 모두 칠한 층 하나(상자) · 알파 0.6 · 크롬 면 색(터미널 바탕 안 섞임) · 터미널 면으로 돌아오면 `--term-bg` 0.6 ·
+넘기는 동안 프레임마다 머리줄 · 상자의 `--flip-ink` 가 같음 · 라이트 크롬 + 어두운 터미널에서도 같은 합성. 뒤에 줄무늬를 깔아 찍는다
+(`talk-opacity-60-*.png`).
 
 ## block-view-harness.mjs — 명령 블록 리치 보기 카드 (블록 단추 · 커지기 · 형식 · 닫기)
 

@@ -221,6 +221,7 @@ The opacity of the app chrome (sidebar, tab bar, docks, glass panels) and of til
 The opacity of the terminal area (where text sits). 100% is opaque.
 
 - Lowering it lets the wallpaper (or the app background if there is none) show through behind the terminal area.
+- The chat view of an AI tile follows the same value, so flipping the tile keeps the same see-through. Code blocks, cards and the chat box stay opaque.
 - This area is for reading text, so it is easier to read when set higher than chrome opacity (for example, chrome 40% and terminal 85%).
 
 <a id="app-icon"></a>

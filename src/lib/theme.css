@@ -94,6 +94,8 @@
      터미널 칸을 칠하는 층은 `--term-bg-fill` 하나다 — `.term` · `.xterm-viewport` · xterm 캔버스 배경은 비워 둔다(겹쳐 칠하면 알파가 곱해진다) */
   --term-opacity: 1;
   --term-bg-fill: color-mix(in srgb, var(--term-bg) calc(var(--term-opacity) * 100%), transparent);
+  /* AI 타일 대화 면의 판 — 색은 크롬 면, 진하기는 터미널 투명도(넘겨도 판의 진하기가 같다) */
+  --talk-bg-fill: color-mix(in srgb, var(--surface-raised-solid) calc(var(--term-opacity) * 100%), transparent);
   --bg-overlay: color-mix(in srgb, var(--m3-surface-container-lowest) 62%, transparent);
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
   --shadow-tile: 0 1px 2px rgba(0, 0, 0, 0.3), 0 3px 10px rgba(0, 0, 0, 0.18);
@@ -663,6 +665,19 @@ body {
   background-clip: padding-box;
   /* 안쪽 z-index(배너 · 헤더)가 페이지 층위로 새어 모달을 덮지 않게 */
   isolation: isolate;
+}
+
+/*
+ * AI 타일 — 대화 면이면 판 자체가 대화 면 색이 된다. 그 위의 대화 층(`pane/AiFlip`) · 머리줄은 칠하지 않는다(겹치면 알파가 곱해진다).
+ * `--flip-ink` 는 넘기는 동안 `pane/flip-motion.ts` 가 머리줄과 같은 계단으로 붙잡는다 — 클래스만 보면 판이 머리줄 글자보다 먼저 바뀐다.
+ */
+.tile-frame.flips {
+  --flip-ink: 0;
+  background: color-mix(in srgb, var(--talk-bg-fill) calc(var(--flip-ink) * 100%), var(--term-bg-fill));
+}
+
+.tile-frame.flips.talk {
+  --flip-ink: 1;
 }
 
 /* 크롬 타일은 안쪽 면만 칠한다 — 반투명 배경을 겹치지 않는다 */

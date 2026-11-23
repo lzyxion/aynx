@@ -13,6 +13,7 @@
   import type { SelectionController } from "$lib/browser/selection-controller.svelte";
   import type { MarqueeController } from "$lib/browser/marquee.svelte";
   import type { DragController } from "$lib/browser/drag-controller.svelte";
+  import type { FileThumbs } from "$lib/browser/thumbs.svelte";
   import { dropDirOf, nameMatch, type FileTreeRow } from "$lib/file-tree";
   import { extBadge } from "$lib/browser/file-view";
   import type { FileView } from "$lib/session";
@@ -31,6 +32,7 @@
     order,
     marquee,
     drag,
+    thumbs,
     backendKey,
     cwd,
     hasCwd,
@@ -55,6 +57,7 @@
     order: readonly string[];
     marquee: MarqueeController;
     drag: DragController;
+    thumbs: FileThumbs;
     backendKey: string;
     cwd: string;
     hasCwd: boolean;
@@ -185,6 +188,7 @@
         {@const glyph = glyphOf(entry)}
         {@const target = dropDirOf(row)}
         {@const badge = mode === "icons" && (glyph === "file" || glyph === "link") && iconScale >= 1 ? extBadge(entry.name) : null}
+        {@const pic = mode === "icons" && thumbs.wants(entry)}
         <!-- `data-inner-drop-files` 를 보고 `PaneHost` 가 타일 전체 OS 파일 하이라이트를 양보한다 -->
         <div
           class="row"
@@ -215,6 +219,7 @@
           ondragover={(ev) => drag.dirDragOver(ev, target, tree)}
           ondragleave={() => drag.dirDragLeave(target)}
           ondrop={(ev) => drag.applyDrop(ev, target, tree)}
+          use:thumbs.watch={pic ? entry : null}
           onkeydown={(ev) => {
             // 줄 자체는 키를 처리하지 않는다 (창 전역의 `onKeydown` 이 주인이다). 다만
             // 포커스가 줄에 있을 때 Enter·Space 가 **클릭으로 합성되는 것**은 막아야
@@ -224,8 +229,18 @@
         >
           {#if mode === "icons"}
             <!-- 글리프 크기는 `size` 가 아니라 CSS(`--tile-icon-size × --icon-scale`)가 정한다 — 단계를 바꿀 때 다시 그리지 않는다 -->
-            <span class="glyph big" class:folder-ink={glyph === "dir" || glyph === "dirlink"}>
-              <UiIcon name={GLYPH_ICON[glyph]} size={36} filled={glyph === "dir"} />
+            {@const thumb = pic ? thumbs.urlOf(entry) : undefined}
+            <span
+              class="glyph big"
+              class:folder-ink={glyph === "dir" || glyph === "dirlink"}
+              class:dim={pic && !thumb && thumbs.isPending(entry)}
+            >
+              {#if thumb}
+                <!-- 끌기를 막아야 줄(`.row`)의 끌기가 그림 끌기로 먹히지 않는다 -->
+                <img class="thumb" src={thumb} alt="" draggable="false" />
+              {:else}
+                <UiIcon name={GLYPH_ICON[glyph]} size={36} filled={glyph === "dir"} />
+              {/if}
             </span>
             {#if badge}<span class="badge">{badge}</span>{/if}
             <span class="name">{@render nameOf(entry.name)}</span>
@@ -416,9 +431,34 @@
     text-align: center;
   }
 
-  .glyph.big :global(svg) {
+  .glyph.big :global(svg),
+  .thumb {
     width: calc(var(--tile-icon-size) * var(--icon-scale));
     height: calc(var(--tile-icon-size) * var(--icon-scale));
+  }
+
+  /* 남는 자리는 옅은 격자 — 투명한 그림이 바탕에 묻히지 않게 */
+  .thumb {
+    --thumb-check: color-mix(in srgb, var(--fg-3) 14%, transparent);
+    display: block;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    background: repeating-conic-gradient(var(--thumb-check) 0 25%, transparent 0 50%) 0 0 / 8px 8px;
+    pointer-events: none;
+  }
+
+  /* 지연 — 로컬에서 금방 끝나는 읽기에 깜빡이지 않는다 */
+  .glyph.big.dim {
+    animation: thumb-dim 120ms ease 200ms both;
+  }
+
+  @keyframes thumb-dim {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.45;
+    }
   }
 
   .badge {

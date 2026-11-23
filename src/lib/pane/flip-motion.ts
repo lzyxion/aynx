@@ -38,7 +38,7 @@ export function registerFlipHead(paneId: string, head: HTMLElement): () => void 
   };
 }
 
-/** `AiFlip` · `PaneHeader` 의 클래스와 같은 값이어야 한다 */
+/** `AiFlip` · `PaneHeader` · `theme.css`(`.tile-frame.flips`)의 클래스와 같은 값이어야 한다 */
 const TERM_LAYER: Record<Face, string> = { term: "none", convo: "translateX(-100%)" };
 const CONVO_LAYER: Record<Face, string> = { term: "translateX(100%)", convo: "none" };
 const INK: Record<Face, string> = { term: "0", convo: "1" };
@@ -117,5 +117,6 @@ export class FlipMotion {
     hold(termEl, "transform", TERM_LAYER);
     hold(convoEl, "transform", CONVO_LAYER);
     hold(heads.get(paneId), "--flip-ink", INK);
+    hold(box, "--flip-ink", INK); // 판 색(`theme.css` 의 `.tile-frame.flips`) — 머리줄 글자와 같은 박자
   }
 }

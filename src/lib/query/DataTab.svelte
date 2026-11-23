@@ -356,7 +356,17 @@
     }
   }
 
+  // ↻ 는 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다(브랜치 타일과 같은 규칙)
+  let subSpinning = $state(false);
+  let dataSpinning = $state(false);
+  const subReading = $derived(
+    sub === "structure" ? detail === null || detail.state === "loading" : sub === "ddl" ? ddl === null || ddl.state === "loading" : false,
+  );
+  /** 데이터 ↻ 는 읽는 동안 [취소] 로 바뀌어 없다 — 다시 서면 남은 바퀴를 채우고 멈춘다 */
+  const dataReading = $derived(needLoad || loading);
+
   function refreshSub() {
+    subSpinning = true;
     if (sub === "structure") detail = null;
     else if (sub === "ddl") ddl = null;
   }
@@ -368,6 +378,7 @@
       return;
     }
     if (running || busy || inWork || !opened) return;
+    dataSpinning = true;
     if (whereDirty) applyWhere();
     else reload();
   }
@@ -445,11 +456,16 @@
     {#if sub !== "data"}
       <button
         type="button"
-        class="tbtn"
+        class="tbtn refresh"
+        class:spinning={subSpinning}
         title={t("pane.query.data.refresh.title")}
         aria-label={t("pane.query.data.refresh")}
+        aria-busy={subReading}
         disabled={waiting}
-        onclick={refreshSub}><UiIcon name="refresh" size={12} /></button
+        onclick={refreshSub}
+        onanimationiteration={() => {
+          if (!subReading) subSpinning = false;
+        }}><UiIcon name="refresh" size={12} /></button
       >
     {/if}
   </div>
@@ -481,11 +497,16 @@
       {:else}
         <button
           type="button"
-          class="tbtn"
+          class="tbtn refresh"
+          class:spinning={dataSpinning}
           title={t("pane.query.data.refresh.title")}
           aria-label={t("pane.query.data.refresh")}
+          aria-busy={dataReading}
           disabled={busy || inWork || !opened}
           onclick={refresh}
+          onanimationiteration={() => {
+            if (!dataReading) dataSpinning = false;
+          }}
           data-query-data-refresh><UiIcon name="refresh" size={12} /></button
         >
       {/if}
@@ -817,6 +838,34 @@
   .tbtn:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+
+  /* 도는 동안은 흐리지 않는다 — 눌러서 돌고 있다는 것이 곧 응답이다 */
+  .tbtn.refresh.spinning {
+    opacity: 1;
+  }
+
+  .tbtn.refresh.spinning :global(svg) {
+    animation: data-tab-spin 0.9s linear infinite;
+  }
+
+  @keyframes data-tab-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* 움직임 줄임이면 돌리지 않고 흐리게만 — 바퀴 끝 이벤트가 없으니 흐림은 `aria-busy` 를 따른다 */
+  @media (prefers-reduced-motion: reduce) {
+    .tbtn.refresh.spinning :global(svg) {
+      animation: none;
+    }
+    .tbtn.refresh.spinning {
+      opacity: 0.45;
+    }
+    .tbtn.refresh.spinning:not([aria-busy="true"]) {
+      opacity: 1;
+    }
   }
 
   .band {

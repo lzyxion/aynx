@@ -23,6 +23,8 @@ the path field stays at the width it had when things collapsed, and shrinks only
 Shortcuts still work when collapsed.
 
 - **Icons** is a grid of large pictures. A small extension label sits under file pictures. Size is set with the slider in the status line or `Ctrl+wheel`.
+  Image files show the image itself in place of the picture. Only the items on screen are read (more as you scroll), up to 20 MB for local files
+  and 2 MB for remote files or in a remote window. Larger images, and images that cannot be read, keep the plain picture. Animated GIFs show their first frame.
 - **Compact** fills from top to bottom, and columns grow sideways (scroll sideways).
 - **Details** is a list with Name · Size · Modified · Permissions columns. The arrow in front of a folder (or `→` · `←`) expands and collapses it
   in place. Double-click or `Enter` goes into that folder. (The former "tree view" and "navigate view" were merged into this view.)

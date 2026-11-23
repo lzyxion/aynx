@@ -12,7 +12,8 @@
 // + \r ⑬ 권한 대기 — "터미널에서 답하기 →" ⑭ 입력 칸 알약(placeholder · 44px · 칸 안 보내기 단추) · 내 말 오른쪽 말풍선 ⑮ 실행 중 신호면
 // 점 셋 · 끝의 결과 없는 도구에 스피너 · 머리줄에 로딩 없음 · 끝나면 둘 다 없음 ⑨ 대화를 모르는 AI 타일 — 빈 면 + 입력 칸(문구 없음)
 // ⑯ 훅 10판 `session`(SessionStart) 신호로 연결 · 상태는 그대로 ⑰ 새 id 의 session → 대화 면이 그 대화로 ⑱ F5(재부착 스텁) 뒤에도 연결 유지
-// (타일 명세 사본 → 표) · 대화 면이 그 대화를 읽음 ⑩ 콘솔 오류 0.
+// (타일 명세 사본 → 표) · 대화 면이 그 대화를 읽음 ⑲ 터미널 투명도 — 대화 면 · 머리줄도 판 한 겹으로 같은 진하기 · 넘기는 동안 판과
+// 머리줄 글자가 같은 계단 ⑩ 콘솔 오류 0.
 //
 //   node scripts/dev/run-harness.mjs ai-flip-harness.mjs <outdir> --size 1280x860
 //     → <outdir>/flip-term.png · flip-mid.png · flip-convo.png · flip-follow.png · flip-unknown.png
@@ -426,6 +427,97 @@ await sleep(1200);
 check("⑰ new session id → convo reads that conversation", await ev(`window.__txCalls[window.__txCalls.length - 1]?.id ?? null`), CONV2);
 await key("Escape", "Escape");
 await sleep(400);
+
+// ⑲ 터미널 투명도 — 대화 면도 따른다. 칠하는 층은 타일 상자 하나(`theme.css` 의 `.tile-frame.flips`)라 겹친 배경의 합성이 곧 판이다.
+// 본문 줄(기록 스크롤 상자 → 상자) · 머리줄 줄(머리줄 → 상자)을 위에서 아래로 합성해 알파 · 색을 견준다.
+const SET = importApp("lib/settings.svelte.ts");
+const MODE = importApp("lib/mode.svelte.ts");
+const setTermOpacity = async (pct) => { await ev(`(async () => (await ${SET}).setTermOpacity(${pct}))()`); await sleep(300); };
+const plate = async (paneId) =>
+  JSON.parse(await ev(`(() => {
+    const parse = (s) => { const m = s.match(/[\\d.]+/g)?.map(Number) ?? [0, 0, 0, 0];
+      return s.startsWith('color(') ? { r: m[0] * 255, g: m[1] * 255, b: m[2] * 255, a: m[3] ?? 1 } : { r: m[0], g: m[1], b: m[2], a: m[3] ?? 1 }; };
+    const box = document.querySelector('.pane-box[data-pane="${paneId}"]');
+    // 위에서 아래로(start → box) 겹친 배경을 "over" 로 합성한다
+    const stack = (start) => { const out = { r: 0, g: 0, b: 0, a: 0 }; const layers = [];
+      for (let el = start; el; el = el.parentElement) { const c = parse(getComputedStyle(el).backgroundColor); if (c.a > 0) layers.push(c); if (el === box) break; }
+      for (const c of layers.reverse()) { const a = c.a + out.a * (1 - c.a); for (const k of ['r', 'g', 'b']) out[k] = a ? (c[k] * c.a + out[k] * out.a * (1 - c.a)) / a : 0; out.a = a; }
+      return { r: Math.round(out.r), g: Math.round(out.g), b: Math.round(out.b), a: Math.round(out.a * 100) / 100, n: layers.length }; };
+    const probe = (v) => { const d = document.createElement('div'); d.style.background = 'var(' + v + ')'; box.appendChild(d); const c = parse(getComputedStyle(d).backgroundColor); d.remove(); return { r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b), a: Math.round(c.a * 100) / 100 }; };
+    const talk = box.querySelector('[data-flip-convo] [data-viewer-body]') ?? box.querySelector('[data-flip-convo]');
+    const term = box.querySelector('[data-flip-term] .xterm-screen') ?? box.querySelector('[data-flip-term]');
+    const head = box.querySelector('[data-pane-head]');
+    const code = box.querySelector('[data-flip-convo] [data-code-block]'); const field = box.querySelector('[data-flip-convo] [data-flip-input]')?.closest('.wrap');
+    return JSON.stringify({ view: box.querySelector('.flip')?.dataset.flip ?? null, body: talk ? stack(talk) : null, code: code ? stack(code) : null, field: field ? stack(field) : null, term: term ? stack(term) : null, head: head ? stack(head) : null,
+      panel: probe('--surface-raised-solid'), termBg: probe('--term-bg'), headFg: (() => { const c = parse(getComputedStyle(head).color); return { r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b) }; })(), fg1: probe('--fg-1') });
+  })()`));
+const sameRgb = (a, b) => Math.abs(a.r - b.r) <= 1 && Math.abs(a.g - b.g) <= 1 && Math.abs(a.b - b.b) <= 1;
+const flipTo = async (v) => { await ev(`document.querySelector('[data-pane="${ai.id}"] [data-flip-to="${v}"]').click()`); await sleep(900); };
+// 넘기는 동안 프레임마다 머리줄 · 상자의 `--flip-ink` 를 읽는다 — 어긋난 프레임이 없어야 판 색과 글자색이 짝이 맞는다
+const inkTrace = async (v) =>
+  JSON.parse(await ev(`(async () => { const box = document.querySelector('.pane-box[data-pane="${ai.id}"]'); const head = box.querySelector('[data-pane-head]');
+    const read = (el) => getComputedStyle(el).getPropertyValue('--flip-ink').trim(); const seen = [];
+    box.querySelector('[data-flip-to="${v}"]').click();
+    const t0 = performance.now();
+    while (performance.now() - t0 < 900) { await new Promise((r) => requestAnimationFrame(r)); seen.push([read(head), read(box)]); }
+    return JSON.stringify({ frames: seen.length, mismatched: seen.filter(([h, b]) => Number(h) !== Number(b)).length, first: seen[0], last: seen[seen.length - 1], kinds: [...new Set(seen.map(([h]) => Number(h)))] }); })()`));
+
+// ⑬ 의 권한 대기를 걷는다 — 입력 칸이 서야 그 상자를 잰다
+await ev(fakeAgentSignal({ stream: ai.stream, event: "stop", session: CONV2, cli: "claude" }));
+await sleep(400);
+check("⑲ shell tile box doesn't flip", await ev(`(() => { const b = document.querySelector('.pane-box[data-pane="${shell.id}"]'); return [b.classList.contains('flips'), b.classList.contains('talk')]; })()`), [false, false]);
+// 100(기본) — 대화 면은 지금처럼 불투명한 크롬 면 색
+await flipTo("convo");
+const p100 = await plate(ai.id);
+console.log("plate@100:", JSON.stringify(p100));
+check("⑲ 100: convo body opaque · panel colour", [p100.view, p100.body.a, sameRgb(p100.body, p100.panel)], ["convo", 1, true]);
+check("⑲ 100: convo head opaque · panel colour", [p100.head.a, sameRgb(p100.head, p100.panel)], [1, true]);
+check("⑲ 100: one painted layer under body/head (the box)", [p100.body.n, p100.head.n], [1, 1]);
+// 60 — 본문 · 머리줄 모두 한 겹 0.6, 색은 크롬 면 그대로(터미널 바탕이 섞이지 않는다)
+await setTermOpacity(60);
+const p60 = await plate(ai.id);
+console.log("plate@60 convo:", JSON.stringify(p60));
+check("⑲ 60: convo body alpha 0.6 · panel colour (no term-bg mixed)", [p60.body.a, sameRgb(p60.body, p60.panel), p60.body.n], [0.6, true, 1]);
+check("⑲ 60: convo head alpha 0.6 · panel colour", [p60.head.a, sameRgb(p60.head, p60.panel), p60.head.n], [0.6, true, 1]);
+// 판 위의 물건(코드 블록 · 입력 칸)은 판이 비쳐도 불투명 — 색은 100 일 때와 몇 단 안(글래스의 흰 기를 뺀 식)
+const near = (a, b, d) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b)) <= d;
+console.log("objects 100 → 60:", JSON.stringify([p100.code, p60.code]));
+check("⑲ 60: code block · composer box stay opaque, colour within 12 of 100", [p60.code?.a, p60.field?.a, near(p60.code, p100.code, 12), near(p60.field, p100.field, 12)], [1, 1, true, true]);
+await shot("talk-opacity-60-convo-dark.png");
+await flipTo("term");
+const t60 = await plate(ai.id);
+console.log("plate@60 term:", JSON.stringify(t60));
+check("⑲ 60: back on term → box is term-bg-fill again (same alpha as convo)", [t60.view, t60.term.a, sameRgb(t60.term, t60.termBg), t60.head.a === p60.body.a], ["term", 0.6, true, true]);
+await shot("talk-opacity-60-term-dark.png");
+// 넘기는 동안 — 머리줄 글자와 판 색이 같은 계단으로 바뀐다
+const toConvo = await inkTrace("convo");
+check("⑲ flip → convo: head ink = box ink every frame · ends at 1", [toConvo.mismatched, toConvo.last, toConvo.kinds.length, toConvo.frames > 10], [0, ["1", "1"], 2, true]);
+const toTerm = await inkTrace("term");
+check("⑲ flip → term: head ink = box ink every frame · ends at 0", [toTerm.mismatched, toTerm.last, toTerm.kinds.length], [0, ["0", "0"], 2]);
+// 뒤에 무늬를 깔아 비침을 눈으로 본다(하네스 창 바탕은 단색이다)
+await ev(`(() => { const s = document.createElement('style'); s.id = 'h-stripes'; s.textContent = '.tile-canvas { background: repeating-linear-gradient(45deg, #d04040 0 24px, #f0d040 24px 48px, #3060d0 48px 72px) !important; }'; document.head.appendChild(s); return 1; })()`);
+await shot("talk-opacity-60-term-stripes-dark.png");
+await flipTo("convo");
+await shot("talk-opacity-60-convo-stripes-dark.png");
+// 라이트 크롬 + 어두운 터미널 — 대화 면에 검은 기가 돌지 않는다
+await ev(`(async () => { (await ${MODE}).setAppMode('light'); })()`);
+await sleep(500);
+await ev(`(async () => (await ${SET}).setTermPreset('aynx-dark'))()`);
+await sleep(500);
+const l60 = await plate(ai.id);
+console.log("plate@60 light chrome + dark term:", JSON.stringify(l60));
+check("⑲ light chrome + dark term: convo body/head = light panel at 0.6", [l60.body.a, sameRgb(l60.body, l60.panel), l60.head.a, sameRgb(l60.head, l60.panel), l60.panel.r > 180], [0.6, true, 0.6, true, true]);
+check("⑲ light chrome: head ink = chrome text on convo", sameRgb(l60.headFg, l60.fg1), true);
+check("⑲ light chrome: code block · composer box opaque", [l60.code?.a, l60.field?.a], [1, 1]);
+await shot("talk-opacity-60-convo-stripes-light.png");
+await flipTo("term");
+await shot("talk-opacity-60-term-stripes-light.png");
+await ev(`(async () => { (await ${MODE}).setAppMode('dark'); })()`);
+await sleep(500);
+await ev(`(async () => (await ${SET}).setTermPreset('aynx-dark'))()`);
+await ev(`(document.getElementById('h-stripes')?.remove(), 1)`);
+await setTermOpacity(100);
+check("⑲ restored: term face · term-bg opaque", await (async () => { const p = await plate(ai.id); return [p.view, p.term.a]; })(), ["term", 1]);
 
 // ⑱ F5 — 산 세션에 다시 붙은 타일은 연결을 그대로 안다(타일 명세의 사본 → 표)
 await sleep(800); // 배치 자동 저장

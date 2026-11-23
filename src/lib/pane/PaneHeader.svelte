@@ -533,7 +533,7 @@
   }
 
   /*
-   * 터미널 · AI 타일 — 머리줄을 칠하지 않아 타일 판(`--term-bg-fill`)이 비친다. AI 권한 승인 · 자동 · 모두 색은 단계 신호라
+   * 터미널 · AI 타일 — 머리줄을 칠하지 않아 타일 판(터미널 면 `--term-bg-fill` · 대화 면 `--talk-bg-fill`)이 비친다. AI 권한 승인 · 자동 · 모두 색은 단계 신호라
    * 터미널 글자색으로 바꾸지 않고 터미널 바탕 기준(`theme.css` 의 `--ai-term-lv*`)으로 바꿔 입는다.
    */
   .pane-head.term {
@@ -552,13 +552,16 @@
     color: var(--head-fg);
   }
 
-  /* `--flip-ink`(0 터미널 · 1 대화)는 `pane/flip-motion.ts` 가 수로 등록한다 — 뒤집는 동안은 그쪽 계단 키프레임이 정한다 */
+  /*
+   * `--flip-ink`(0 터미널 · 1 대화)는 `pane/flip-motion.ts` 가 수로 등록한다 — 뒤집는 동안은 그쪽 계단 키프레임이 정한다.
+   * 판 색은 타일 상자의 `--flip-ink` 가 같은 계단으로 바꾼다(`theme.css` 의 `.tile-frame.flips`).
+   */
   .pane-head.term {
     --flip-ink: 0;
     --head-fg: color-mix(in srgb, var(--fg-1) calc(var(--flip-ink) * 100%), var(--term-fg));
     --logo-mono: color-mix(in srgb, var(--logo-mono-chrome) calc(var(--flip-ink) * 100%), var(--term-fg));
     --logo-mono-inverse: color-mix(in srgb, var(--logo-mono-chrome-inverse) calc(var(--flip-ink) * 100%), var(--term-bg));
-    background: color-mix(in srgb, var(--surface-raised-solid) calc(var(--flip-ink) * 100%), transparent);
+    background: none;
     /* 미니 게이지의 찬 막대(`--ai-c` ← `--ai-lv*`)는 칩 안에서 같은 값으로 다시 선언한다(아래 `.ai-chip`) */
     --head-ai-lv2: color-mix(in srgb, var(--ai-lv2) calc(var(--flip-ink) * 100%), var(--ai-term-lv2));
     --head-ai-lv3: color-mix(in srgb, var(--ai-lv3) calc(var(--flip-ink) * 100%), var(--ai-term-lv3));

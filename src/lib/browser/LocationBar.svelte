@@ -14,6 +14,7 @@
     /** `""` 는 합성 루트라 `null` 과 반드시 구분한다 */
     dropTarget = null,
     disabled = false,
+    busy = false,
     placeholder = "",
     draft = $bindable(""),
     flat = false,
@@ -30,6 +31,8 @@
     current: string;
     dropTarget?: string | null;
     disabled?: boolean;
+    /** 목록을 읽는 중 — 폴더 이동에서도 참이라 ⟳ 는 `spin()` 을 받았을 때만 돈다 */
+    busy?: boolean;
     placeholder?: string;
     draft?: string;
     flat?: boolean;
@@ -49,6 +52,12 @@
   let submitting = false;
   let inputEl = $state<HTMLInputElement | null>(null);
   let crumbsEl = $state<HTMLDivElement | null>(null);
+  /** 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다(브랜치 타일과 같은 규칙) */
+  let spinning = $state(false);
+
+  export function spin(): void {
+    spinning = true;
+  }
 
   export async function edit(): Promise<void> {
     if (disabled) return;
@@ -163,11 +172,16 @@
   <button
     type="button"
     class="loc-btn"
+    class:spinning
     data-head-act
     title={t("files.toolbar.refresh")}
     aria-label={t("files.toolbar.refresh")}
+    aria-busy={spinning && busy}
     {disabled}
-    onclick={onrefresh}><UiIcon name="refresh" size={13} /></button
+    onclick={onrefresh}
+    onanimationiteration={() => {
+      if (!busy) spinning = false;
+    }}><UiIcon name="refresh" size={13} /></button
   >
 </div>
 
@@ -324,5 +338,24 @@
   .loc-btn:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .loc-btn.spinning :global(svg) {
+    animation: loc-spin 0.9s linear infinite;
+  }
+
+  @keyframes loc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loc-btn.spinning :global(svg) {
+      animation: none;
+    }
+    .loc-btn[aria-busy="true"] :global(svg) {
+      opacity: 0.5;
+    }
   }
 </style>

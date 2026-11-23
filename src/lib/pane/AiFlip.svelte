@@ -1322,18 +1322,28 @@
     pointer-events: none;
   }
 
+  /* 칠하지 않는다 — 대화 면의 판은 타일 상자(`theme.css` 의 `.tile-frame.flips.talk`)가 깐다. 여기도 칠하면 터미널 투명도가 두 번 곱해진다 */
   .talk {
     display: flex;
     flex-direction: column;
     min-height: 0;
     font-family: var(--font-ui);
     color: var(--fg-1);
-    background: var(--surface-raised-solid);
     transform: translateX(100%);
   }
 
   .talk.on {
     transform: none;
+  }
+
+  /*
+   * 판이 비치면 그 위의 물건(입력 칸 · 코드 블록 · 카드)은 크롬 면 색 위에 합성한 불투명 우물로 — 반투명 우물이면 글자 뒤로 월페이퍼가 보인다.
+   * 100 일 때는 건드리지 않는다 — 판이 불투명이라 원래 우물이 곧 그 색이다. 여기 식은 글래스의 흰 기(`--glass-ink-field`)를 빼서 그 색과 몇 단 다르다.
+   */
+  @container not style(--term-opacity: 1) {
+    .talk {
+      --surface-field: color-mix(in srgb, var(--surface-field-solid) var(--glass-dense, var(--chrome-pct)), var(--surface-raised-solid));
+    }
   }
 
   .blank {

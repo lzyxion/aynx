@@ -42,6 +42,8 @@
   let callsError = $state<string | null>(null);
   let now = $state(Date.now());
   let refreshing = $state(false);
+  /** 누른 것만 — 5초 자동 새로 고침은 돌지 않는다 · 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다 */
+  let spinning = $state(false);
 
   /** 값은 서버가 싣는 도구 묶음 이름이고 문구 키 `settings.ai.sessions.group.<g>` 가 된다 */
   const GROUP_ORDER = ["read", "plan", "db", "tile", "coordinator", "worker", "reviewer"];
@@ -211,8 +213,15 @@
 
   <div class="list-head">
     <h4 class="subhead" id="ai-mcp-sessions-calls">{t("settings.ai.sessions.view.calls")}</h4>
-    <button type="button" class="btn btn-sm btn-secondary refresh" disabled={refreshing}
-      onclick={() => void refresh()}>
+    <button type="button" class="btn btn-sm btn-secondary refresh" class:spinning disabled={refreshing}
+      aria-busy={refreshing}
+      onclick={() => {
+        spinning = true;
+        void refresh();
+      }}
+      onanimationiteration={() => {
+        if (!refreshing) spinning = false;
+      }}>
       <UiIcon name="refresh" size={12} />
       <span>{t("settings.ai.sessions.view.refresh")}</span>
     </button>
@@ -311,6 +320,30 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+  }
+  /* 도는 동안은 흐리지 않는다 — 눌러서 돌고 있다는 것이 곧 응답이다 */
+  .refresh.spinning {
+    opacity: 1;
+  }
+  .refresh.spinning :global(svg) {
+    animation: mcp-sessions-spin 0.9s linear infinite;
+  }
+  @keyframes mcp-sessions-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  /* 움직임 줄임이면 돌리지 않고 흐리게만 — 바퀴 끝 이벤트가 없으니 흐림은 `aria-busy` 를 따른다 */
+  @media (prefers-reduced-motion: reduce) {
+    .refresh.spinning :global(svg) {
+      animation: none;
+    }
+    .refresh.spinning {
+      opacity: 0.45;
+    }
+    .refresh.spinning:not([aria-busy="true"]) {
+      opacity: 1;
+    }
   }
   .slist-pill.code {
     font-family: var(--font-mono);

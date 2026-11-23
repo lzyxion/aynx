@@ -53,6 +53,7 @@
   import { FileMenuController } from "$lib/browser/file-menu-controller.svelte";
   import { FileActions } from "$lib/browser/file-actions";
   import { FileKeys } from "$lib/browser/file-keys";
+  import { FileThumbs } from "$lib/browser/thumbs.svelte";
   import { displayCombo, effectiveCombo, resolveBindings } from "$lib/keybindings";
   import { registerTileFind } from "$lib/app/tile-find";
   import { settings } from "$lib/settings.svelte.js";
@@ -364,6 +365,35 @@
   /** 셸에 넘길 수 있는 것은 로컬에 실제로 있는 경로뿐이다 · 원격 창은 끌어 나갈 곳이 메인 PC 의 탐색기라 없다 */
   const canExport = $derived(isLocal && !offline && !isRemote);
 
+  // ── 아이콘 보기의 그림 칸 ── 원격 창이면 로컬 타일의 바이트도 네트워크를 탄다(`isRemote`)
+
+  const thumbs = new FileThumbs({
+    get backend() {
+      return backend;
+    },
+    get offline() {
+      return offline;
+    },
+    get isLocal() {
+      return isLocal;
+    },
+    remoteWindow: isRemote,
+  });
+
+  $effect(() => {
+    const el = listEl;
+    if (!el || view !== "icons") return;
+    return untrack(() => thumbs.attach(el));
+  });
+
+  // 같은 칸이 다시 붙은 백엔드의 열쇠로 바뀐다 — 관찰자는 이미 보이는 칸을 다시 알려 주지 않는다
+  $effect(() => {
+    void backend.key;
+    if (!offline) untrack(() => thumbs.revisit());
+  });
+
+  $effect(() => () => thumbs.dispose());
+
   // ── 다중 선택 ── id 는 항목의 절대 경로다
 
   const sel = createSelection();
@@ -669,7 +699,9 @@
     else void ls.load(ls.cwd, selPaths);
   });
 
+  /** 사람이 부른 새로고침(⟳ · 메뉴 · 다시 시도)만 — 자동 · 신호 · 재연결 길은 `ls.load` 를 바로 불러 ⟳ 가 돌지 않는다 */
   function refresh() {
+    locationBar?.spin();
     spaceTick += 1;
     if (!ls.hasCwd) void ls.loadStart();
     else void ls.load(ls.cwd, selPaths);
@@ -852,6 +884,7 @@
         current={ls.cwd}
         dropTarget={drag.dropDir}
         disabled={offline}
+        busy={ls.loading}
         flat={head}
         placeholder={backend.sep === "\\"
           ? t("files.browser.path.placeholder")
@@ -951,6 +984,7 @@
         {order}
         {marquee}
         {drag}
+        {thumbs}
         backendKey={backend.key}
         cwd={ls.cwd}
         hasCwd={ls.hasCwd}

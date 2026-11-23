@@ -102,6 +102,9 @@
     loading: boolean;
     load: () => Promise<void>;
   } = $props();
+
+  /** 빨리 끝나도 한 바퀴는 채운 뒤 바퀴 끝에서 멈춘다(브랜치 타일과 같은 규칙) */
+  let spinning = $state(false);
 </script>
 
 <div class="bar" class:inhead={head}>
@@ -289,15 +292,23 @@
   {/if}
   <button
     type="button"
-    class="btn ico"
+    class="btn ico refresh"
+    class:spinning
     data-head-act
     title={t("files.doc.refresh")}
     data-tip-sub={autoInfo}
     aria-label={t("files.doc.refresh")}
+    aria-busy={loading}
     onpointerenter={() => (infoNow = Date.now())}
     onfocus={() => (infoNow = Date.now())}
     disabled={offline || loading}
-    onclick={() => void load()}><UiIcon name="refresh" size={13} /></button
+    onclick={() => {
+      spinning = true;
+      void load();
+    }}
+    onanimationiteration={() => {
+      if (!loading) spinning = false;
+    }}><UiIcon name="refresh" size={13} /></button
   >
   {#if outlineSlot}
     {#if narrow && hasOutline}{@render outlineDropButton()}{:else}{@render outlineToggle()}{/if}
@@ -415,5 +426,33 @@
 
   .seg:focus {
     outline: none;
+  }
+
+  /* 도는 동안은 흐리지 않는다 — 눌러서 돌고 있다는 것이 곧 응답이다 */
+  .btn.refresh.spinning {
+    opacity: 1;
+  }
+
+  .btn.refresh.spinning :global(svg) {
+    animation: doc-spin 0.9s linear infinite;
+  }
+
+  @keyframes doc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* 움직임 줄임이면 돌리지 않고 흐리게만 — 바퀴 끝 이벤트가 없으니 흐림은 `aria-busy` 를 따른다 */
+  @media (prefers-reduced-motion: reduce) {
+    .btn.refresh.spinning :global(svg) {
+      animation: none;
+    }
+    .btn.refresh.spinning {
+      opacity: 0.4;
+    }
+    .btn.refresh.spinning:not([aria-busy="true"]) {
+      opacity: 1;
+    }
   }
 </style>
