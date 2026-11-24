@@ -12,20 +12,20 @@ Write the next version's section before tagging it — the release workflow stop
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-24
+
+If you install this version by hand instead of updating from inside the app, use **End all sessions** from the tray once afterwards. The session server changed, and the messenger changes need the new one.
+
 ### What's new
 
-- **Select text with your finger in a remote window**: long-press a word in a terminal and drag to extend it. When you lift, two handles and a small bar (**Copy · Paste · Select all · ⋯**) appear. The AI tile chat view, the side chat and document tiles show the same bar in place of the browser's.
-- **Long-press menus on phones**: links and link chips (**Open link · Copy link**), rows in a file tile, and an empty spot of a document.
-- The AI tile chat view and the side chat have a right-click menu on the main PC too (links, copy, select all).
-- Finding in a document starts with the text you selected.
-- **Images in the file tile's Icons view** show the image itself instead of a file picture (only what is on screen is read; up to 20 MB locally, 2 MB for remote files or in a remote window).
-- The AI tile chat view now follows **Terminal opacity**, so the wallpaper shows through it as it does through the terminal.
-- **Object list tab in query tiles**: double-click a schema or a kind folder in the schema tree to list its tables, views, functions and more, with estimated rows and comments.
-- **Comments in a table's Structure view**: the table comment above the columns, and a Comment column when any column has one.
+- **Select text with your finger in a remote window**: long-press a word in a terminal and drag to extend it. Two handles and a small bar (**Copy · Paste · Select all · ⋯**) appear. The AI tile chat view, the side chat and document tiles show the same bar, and links, file rows and documents have long-press menus.
 - **Messenger answers arrive formatted**: Markdown in an AI answer or a notification excerpt (bold, italic, code, code blocks, lists, quotes) shows as formatting on Telegram, Discord and Slack instead of `**raw marks**`. Tables arrive as code blocks, and links stay plain text.
 - **Messenger messages say which conversation they are from**: answers, permission prompts and the tile picker add the conversation title to the tile name, so two AI tiles in one folder can be told apart.
 - **Shorter tile menus**: **Split · Detach**, **Conversations** and **This block** are submenus, in the same place in every tile. **Allow AI to read** and **Join broadcast input** have icons, with the check mark at the end of the row.
+- **Object list tab in query tiles**: double-click a schema or a kind folder in the schema tree to list its tables, views, functions and more, with estimated rows and comments. A table's Structure view shows the table and column comments.
+- **Images in the file tile's Icons view** show the image itself instead of a file picture.
 - **Settings › Instructions** is split into **My instructions** and **Instruction files**: each instruction shows the file it is written to, and each file shows whether it is up to date.
+- The AI tile chat view follows **Terminal opacity** and, like the side chat, has a right-click menu (links, copy, select all). Finding in a document starts with the text you selected.
 - Fixed: the side chat warned about the CLI version on every new Claude Code or Codex release. It now warns only for older or unknown versions.
 - Fixed: pressing **Stop** in an AI tile's chat view showed a notice asking to reinstall the hooks.
 

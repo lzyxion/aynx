@@ -1,6 +1,6 @@
 [package]
 name = "aynx"
-version = "0.1.6"
+version = "0.1.7"
 description = "A Hyprland-style workspace for AI coding agents."
 authors = ["lzyxion"]
 license = "MIT"
