@@ -163,3 +163,90 @@ export function groupInstructionChanges(changes: readonly FileChange[]): Instruc
     Number(canApplyInstructions(b.changes)) - Number(canApplyInstructions(a.changes)) || a.id.localeCompare(b.id),
   );
 }
+
+type PendingAction = "create" | "update" | "delete";
+const isPending = (change: FileChange): change is FileChange & { action: PendingAction } =>
+  change.action === "create" || change.action === "update" || change.action === "delete";
+
+export function pendingInstructionCount(changes: readonly FileChange[]): number {
+  return changes.filter(isPending).length;
+}
+
+/** 블록도 없고 바꿀 것도 없는 줄은 앱이 건드리지 않는 파일이라 요약에서 숨긴다 */
+export function instructionFileVisible(change: FileChange): boolean {
+  return change.block !== null || change.action !== "unchanged";
+}
+
+export type InstructionFileStatus =
+  | { kind: "error" }
+  | { kind: "pending"; action: PendingAction | null; count: number }
+  | { kind: "skipped" }
+  | { kind: "same" };
+
+export function instructionFileStatus(changes: readonly FileChange[]): InstructionFileStatus {
+  if (changes.some((change) => change.action === "error")) return { kind: "error" };
+  const pending = changes.filter(isPending);
+  if (pending.length > 0) return { kind: "pending", action: pending.length === 1 ? pending[0].action : null, count: pending.length };
+  if (changes.length > 0 && changes.every((change) => change.action === "skipped")) return { kind: "skipped" };
+  return { kind: "same" };
+}
+
+export interface InstructionFileRow {
+  key: string;
+  /** 워크트리 안 상대 경로(프로젝트에서 접은 줄). null 이면 `changes[0].path` 를 그대로 보인다 */
+  relative: string | null;
+  changes: FileChange[];
+  agent: string | null;
+  instructions: string[];
+  duplicates: string[];
+  /** 접은 줄 가운데 첫 오류 · 건너뜀 사유 */
+  reason: string | null;
+  status: InstructionFileStatus;
+}
+
+export interface InstructionFileGroup {
+  id: string;
+  scope: FileChange["scope"];
+  host: string | null;
+  projectId: string | null;
+  firstPath: string;
+  rows: InstructionFileRow[];
+}
+
+const union = (lists: string[][]): string[] => [...new Set(lists.flat())].sort((a, b) => a.localeCompare(b));
+
+/** 요약의 "지침 파일" — 프로젝트는 워크트리마다 같은 (하위 폴더, 파일 이름) 줄을 하나로 접는다. 폴더 경로뿐인 줄(건너뜀 등)은 접지 않는다. */
+export function instructionFileGroups(changes: readonly FileChange[]): InstructionFileGroup[] {
+  return groupInstructionChanges(changes.filter(instructionFileVisible)).map((group) => {
+    const all = [...group.changes, ...group.unchanged];
+    const folded = new Map<string, { relative: string | null; changes: FileChange[] }>();
+    for (const change of all) {
+      const name = change.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "";
+      const file = group.scope === "project" && /\.md$/i.test(name);
+      const relative = file ? (change.subpath ? change.subpath + "/" : "") + name : null;
+      const key = relative !== null ? "rel:" + relative : "path:" + change.path;
+      const entry = folded.get(key);
+      if (entry) entry.changes.push(change);
+      else folded.set(key, { relative, changes: [change] });
+    }
+    const rows = [...folded].map(([key, entry]): InstructionFileRow => ({
+      key,
+      relative: entry.relative,
+      changes: entry.changes,
+      agent: entry.changes[0].agent,
+      instructions: union(entry.changes.map((change) => change.instructions)),
+      duplicates: union(entry.changes.map((change) => change.duplicates)),
+      reason: entry.changes.find((change) => change.reason && (change.action === "error" || change.action === "skipped"))?.reason ?? null,
+      status: instructionFileStatus(entry.changes),
+    })).sort((a, b) => (a.relative ?? a.changes[0].path).localeCompare(b.relative ?? b.changes[0].path));
+    return { id: group.id, scope: group.scope, host: group.host, projectId: group.projectId, firstPath: all[0].path, rows };
+  });
+}
+
+/** 지침 하나가 들어가는 파일 — 첫 경로와 나머지 수. 표시 경로가 같은 줄은 하나로 센다. */
+export function instructionTargetSummary(
+  name: string, changes: readonly FileChange[], display: (change: FileChange) => string,
+): { first: string; more: number } | null {
+  const paths = [...new Set(changes.filter((change) => change.instructions.includes(name)).map(display))];
+  return paths.length > 0 ? { first: paths[0], more: paths.length - 1 } : null;
+}

@@ -449,12 +449,11 @@ fn fit_pick(label: &str, title: Option<&str>, tail: &str) -> String {
     }
 }
 
-/// 이름표가 서로 겹치는 것만 ` — <제목>` 을 붙이고, 그래도 같은 글자면 ` (1)` · ` (2)` 를 붙인다.
+/// 제목이 있으면 ` — <제목>` 을 붙이고, 그래도 같은 글자면 ` (1)` · ` (2)` 를 붙인다.
 pub(crate) fn pick_labels(items: &[(String, Option<String>)]) -> Vec<String> {
-    let dup = |l: &str| items.iter().filter(|(x, _)| x == l).count() > 1;
     let mut out: Vec<String> = items
         .iter()
-        .map(|(l, t)| if dup(l) { fit_pick(l, t.as_deref(), "") } else { l.chars().take(PICK_LABEL_MAX).collect() })
+        .map(|(l, t)| if t.is_some() { fit_pick(l, t.as_deref(), "") } else { l.chars().take(PICK_LABEL_MAX).collect() })
         .collect();
     let first = out.clone();
     let mut seen: HashMap<String, usize> = HashMap::new();
@@ -467,6 +466,14 @@ pub(crate) fn pick_labels(items: &[(String, Option<String>)]) -> Vec<String> {
         out[i] = fit_pick(l, t.as_deref(), &format!(" ({k})"));
     }
     out
+}
+
+/// 다리 글(답 머리줄 · 카드 · `→`)의 타일 이름. 번호는 붙이지 않는다(고르기와 집합이 달라 어긋난다).
+pub(crate) fn named(label: &str, title: Option<&str>) -> String {
+    match title {
+        Some(t) => fit_pick(label, Some(t), ""),
+        None => label.to_string(),
+    }
 }
 
 /// 64바이트 안 — 스트림 id 를 싣지 않는다.
@@ -943,6 +950,35 @@ pub(crate) fn split_by(text: &str, max: usize, parts: usize, more: &str, width: 
         }
     }
     out
+}
+
+/// 나눈 답 조각이 울타리 코드 블록 가운데서 끊기면 그 조각 끝에서 닫고 다음 조각 머리에서 다시 연다 — 조각마다 따로 해석하므로.
+/// 마지막 조각 끝의 `more` 줄은 닫는 울타리 **뒤**에 둔다(코드 블록 안에 들지 않게). 더한 울타리 줄의 자리는 전송의 나누기가 남겨 둔다.
+pub(crate) fn mend_fences(parts: Vec<String>, more: &str) -> Vec<String> {
+    let tail = format!("\n{more}");
+    let n = parts.len();
+    let mut reopen: Option<String> = None;
+    parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, part)| {
+            let (body, tailed) = match part.strip_suffix(tail.as_str()) {
+                Some(b) if i + 1 == n => (b.to_string(), true),
+                _ => (part, false),
+            };
+            let mut out = reopen.take().map(|o| format!("{o}\n")).unwrap_or_default();
+            out.push_str(&body);
+            if let Some(f) = crate::messenger::md::unclosed_fence(&out) {
+                out.push('\n');
+                out.push_str(&f.closer());
+                reopen = Some(f.opener());
+            }
+            if tailed {
+                out.push_str(&tail);
+            }
+            out
+        })
+        .collect()
 }
 
 /// 갓 붙은 연결이 곧 죽기를 거듭할 때의 물러남 — 두 배씩 늘고, 오래 산 연결 뒤에는 처음으로.

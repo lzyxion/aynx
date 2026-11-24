@@ -1,11 +1,14 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import {
-    agentArgsTargets, instructionSave, instructionsList, sideChatInstructionsLoad,
-    type AgentArgsTarget, type Instruction, type InstructionList,
+    agentArgsTargets, instructionSave, instructionsList, instructionsPreview, sideChatInstructionsLoad,
+    type AgentArgsTarget, type FileChange, type Instruction, type InstructionList,
   } from "$lib/context";
   import { projects } from "$lib/app/project-list.svelte.js";
-  import { formToInstruction, instructionToForm } from "$lib/settings/model/instruction-form";
+  import {
+    displayInstructionPath, formToInstruction, instructionFileGroups, instructionTargetSummary, instructionToForm,
+    pendingInstructionCount, type InstructionFileGroup, type InstructionFileRow,
+  } from "$lib/settings/model/instruction-form";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { stripReason } from "$lib/error-reason";
   import UiIcon from "$lib/UiIcon.svelte";
@@ -33,6 +36,17 @@
   let importedCount = $state(0);
   let importFailures = $state<{ source: string; reason: string }[]>([]);
   let request = 0;
+  /** 지침 파일 상태 — 목록 읽기와 따로 돈다(원격은 연결을 빌려 몇 초 걸린다). 다시 읽는 동안 지난 결과를 둔다. */
+  let preview = $state<FileChange[] | null>(null);
+  let previewLoading = $state(false);
+  let previewError = $state<string | null>(null);
+  let previewRequest = 0;
+  const fileGroups = $derived(preview ? instructionFileGroups(preview) : []);
+  const pendingCount = $derived(preview ? pendingInstructionCount(preview) : 0);
+  const actionKeys = {
+    create: "settings.instructions.action.create", update: "settings.instructions.action.update",
+    delete: "settings.instructions.action.delete",
+  } as const;
 
   type View = { kind: "summary" } | { kind: "add" } | { kind: "edit"; name: string } | { kind: "apply" } | { kind: "import" } | { kind: "side-chat" };
   let view = $state<View>({ kind: "summary" });
@@ -52,7 +66,9 @@
   $effect(() => {
     if (!active) {
       request++;
+      previewRequest++;
       loading = false;
+      previewLoading = false;
       untrack(() => void closeSub(false));
     } else untrack(() => void refresh());
   });
@@ -73,11 +89,63 @@
       targets = agents.filter((agent) => agent.id === "claude" || agent.id === "codex");
       if (targets.length === 0) targets = [{ id: "claude", display: "Claude Code" }, { id: "codex", display: "Codex" }];
       onloaded?.();
+      void loadPreview();
     } catch (e) {
       if (current === request) error = stripReason(typeof e === "string" ? e : e instanceof Error ? e.message : t("settings.instructions.error.load"));
     } finally {
       if (current === request) loading = false;
     }
+  }
+
+  async function loadPreview(): Promise<void> {
+    if (!active) return;
+    const current = ++previewRequest;
+    previewLoading = true;
+    try {
+      const changes = await instructionsPreview();
+      if (current !== previewRequest) return;
+      preview = changes;
+      previewError = null;
+    } catch (e) {
+      if (current !== previewRequest) return;
+      preview = null;
+      previewError = stripReason(typeof e === "string" ? e : e instanceof Error ? e.message : t("settings.instructions.error.preview"));
+    } finally {
+      if (current === previewRequest) previewLoading = false;
+    }
+  }
+
+  function projectBase(projectId: string | null): string | null {
+    return projectId ? projects().find((project) => project.id === projectId)?.path ?? null : null;
+  }
+  function displayPath(change: FileChange): string {
+    return displayInstructionPath(change.path, change.scope === "project" ? projectBase(change.projectId) : null);
+  }
+  function groupLabel(group: InstructionFileGroup): string {
+    const name = group.scope === "global" ? t("settings.instructions.scope.global")
+      : group.projectId ? projects().find((project) => project.id === group.projectId)?.name ?? t("settings.instructions.project.unknown", { id: group.projectId })
+        : displayInstructionPath(group.firstPath, null).replace(/\/[^/]*$/, "");
+    return group.host ? `${name} (${group.host})` : name;
+  }
+  function fileTitle(row: InstructionFileRow): string {
+    return row.relative ?? displayPath(row.changes[0]);
+  }
+  function fileDetail(row: InstructionFileRow, scope: InstructionFileGroup["scope"]): string {
+    if (row.relative === null && row.reason && row.instructions.length === 0) return stripReason(row.reason);
+    const parts: string[] = [];
+    if (scope === "global") parts.push(targets.find((target) => target.id === row.agent)?.display ?? row.agent ?? "");
+    else if (row.changes.length > 1) parts.push(t("settings.instructions.files.worktrees", { count: row.changes.length }));
+    if (row.instructions.length > 0) parts.push(t("settings.instructions.files.count", { count: row.instructions.length }));
+    return parts.filter(Boolean).join(" · ");
+  }
+  function fileState(row: InstructionFileRow): { tone: "bad" | "warn" | "idle" | "ok"; text: string } {
+    const status = row.status;
+    if (status.kind === "error") return { tone: "bad", text: t("settings.instructions.action.error") };
+    if (status.kind === "pending") return { tone: "warn", text: status.action
+      ? t("settings.instructions.files.state.pending", { action: t(actionKeys[status.action]) })
+      : t("settings.instructions.files.state.pending.count", { count: status.count }) };
+    if (status.kind === "skipped") return { tone: "idle", text: t("settings.instructions.files.state.skipped") };
+    return { tone: "ok", text: t("settings.instructions.files.state.same") };
   }
 
   function openSub(next: View): void {
@@ -95,6 +163,8 @@
     const fromSide = view.kind === "side-chat";
     dir = returnFocus ? "back" : null;
     view = { kind: "summary" };
+    // 저장 · 삭제 · 가져오기 · 반영 뒤 모두 이 길로 돌아온다
+    void loadPreview();
     if (!returnFocus) return;
     await tick();
     const el = name === null ? (fromApply ? applyBtn : fromImport ? importBtn : fromSide ? sideBtn : addBtn)
@@ -144,6 +214,7 @@
       const saved = await instructionSave(next, item.name);
       put(saved, item.name);
       notice = "saved";
+      void loadPreview();
     } catch (e) {
       put(item, next.name);
       error = stripReason(typeof e === "string" ? e : e instanceof Error ? e.message : t("settings.instructions.error.save"));
@@ -182,28 +253,6 @@
         {#snippet note()}{t("settings.instructions.note")}{/snippet}
       </InfoNote>
     </p>
-    <p class="footnote">{t("settings.instructions.footnote")}</p>
-
-    <h4 class="subhead">{t("settings.instructions.side_chat.subhead")}</h4>
-    <ul class="slist" aria-label={t("settings.instructions.side_chat.subhead")}>
-      <li class="slist-row">
-        <button type="button" id="instructions-side-chat" class="slist-open" bind:this={sideBtn}
-          disabled={loading || saving || sideText === null} aria-label={t("settings.instructions.side_chat.edit.aria")}
-          onclick={() => openSub({ kind: "side-chat" })}>
-          <span class="slist-lead" aria-hidden="true"><UiIcon name="chat" size={16} /></span>
-          <span class="slist-text">
-            <span class="slist-title">
-              <span class="slist-name">{t("settings.instructions.side_chat.name")}</span>
-              {#if sideText !== null}
-                <StatusChip tone={sideText.trim() ? "ok" : "off"}>{t(sideText.trim() ? "settings.instructions.side_chat.state.set" : "settings.instructions.side_chat.state.empty")}</StatusChip>
-              {/if}
-            </span>
-          </span>
-        </button>
-        <span class="slist-trail"><span class="slist-chev" aria-hidden="true"><UiIcon name="chevron" size={16} /></span></span>
-      </li>
-    </ul>
-    {#if sideText === null && !loading}<p class="error" role="alert">{t("settings.instructions.side_chat.error.load")}</p>{/if}
 
     <div class="list-head">
       <h4 class="subhead">{t("settings.instructions.list.subhead")}</h4>
@@ -233,6 +282,7 @@
       {#if list.items.length > 0}
         <ul class="slist instruction-rows" aria-label={t("settings.instructions.list")}>
           {#each list.items as item (item.name)}
+            {@const target = item.enabled && preview ? instructionTargetSummary(item.name, preview, displayPath) : null}
             <li class="slist-row instruction-row" class:off={!item.enabled}>
               <!-- 칩 · 스위치는 이 단추 밖에 따로 선다 — 단추 안 단추는 무효 마크업이다 -->
               <button type="button" class="slist-open instruction-open" data-name={item.name} disabled={loading || saving}
@@ -244,7 +294,14 @@
                     <span class="slist-name">{item.description || item.name}</span>
                     <span class="slist-pill scope" class:project={item.scope === "project"} title={scopeLabel(item)}>{scopeLabel(item)}</span>
                   </span>
-                  {#if item.description}<span class="slist-sup instruction-detail" title={item.name}><span class="slist-mono">{item.name}</span></span>{/if}
+                  {#if !item.enabled}
+                    <span class="slist-sup instruction-detail">{t("settings.instructions.off")}</span>
+                  {:else if target}
+                    <span class="slist-sup instruction-detail target" title={target.first}>
+                      <UiIcon name="arrow-right" size={12} /><span class="slist-mono target-path">{target.first}</span>
+                      {#if target.more > 0}<span class="target-more">{t("settings.instructions.target.more", { count: target.more })}</span>{/if}
+                    </span>
+                  {:else if item.description}<span class="slist-sup instruction-detail" title={item.name}><span class="slist-mono">{item.name}</span></span>{/if}
                 </span>
               </button>
               <span class="slist-trail">
@@ -276,20 +333,97 @@
     {#each list.broken as broken (broken.name)}
       <p class="broken" role="alert">{t("settings.instructions.broken", { name: broken.name, reason: stripReason(broken.reason) })}</p>
     {/each}
-    <button type="button" id="instructions-apply" class="btn btn-sm btn-secondary apply" bind:this={applyBtn}
-      disabled={loading || saving} onclick={() => openSub({ kind: "apply" })}>
-      {t("settings.instructions.preview.open")}<UiIcon name="chevron" size={12} />
-    </button>
+
+    <div class="list-head">
+      <h4 class="subhead">{t("settings.instructions.files.subhead")}</h4>
+      <div class="size-row">
+        {#if previewLoading}
+          <span class="file-state" role="status">{t("settings.instructions.files.checking")}</span>
+        {:else if preview}
+          <span class="file-state" role="status"><i class="dot" class:warn={pendingCount > 0} aria-hidden="true"></i>{pendingCount > 0
+            ? t("settings.instructions.files.pending", { count: pendingCount }) : t("settings.instructions.files.clean")}</span>
+        {/if}
+        <button type="button" id="instructions-apply" class="btn btn-sm instruction-action {pendingCount > 0 ? 'btn-primary' : 'btn-secondary'}"
+          bind:this={applyBtn} disabled={loading || saving} onclick={() => openSub({ kind: "apply" })}>
+          <span>{t(pendingCount > 0 ? "settings.instructions.preview.open" : "settings.instructions.files.preview")}</span><UiIcon name="chevron" size={12} />
+        </button>
+      </div>
+    </div>
+    <p class="note files-note">{t("settings.instructions.files.note")}</p>
+    {#if previewError}
+      <p class="error" role="alert">{previewError}</p>
+      <button type="button" class="btn btn-sm btn-ghost" disabled={previewLoading} onclick={() => void loadPreview()}>{t("settings.instructions.retry")}</button>
+    {:else if preview && fileGroups.length === 0}
+      <p class="slist-empty">{t("settings.instructions.files.empty")}</p>
+    {/if}
+    {#each fileGroups as group (group.id)}
+      <p class="file-group">{groupLabel(group)}</p>
+      <ul class="slist" aria-label={groupLabel(group)}>
+        {#each group.rows as row (row.key)}
+          {@const title = fileTitle(row)}
+          {@const detail = fileDetail(row, group.scope)}
+          {@const chip = fileState(row)}
+          <li class="slist-row">
+            <button type="button" class="slist-open file-open" disabled={loading || saving}
+              aria-label={t("settings.instructions.files.open.aria", { path: title })} onclick={() => openSub({ kind: "apply" })}>
+              <span class="slist-lead" aria-hidden="true"><UiIcon name="file-text" size={16} /></span>
+              <span class="slist-text">
+                <span class="slist-title">
+                  <span class="slist-name mono" title={row.changes[0].path}>{title}</span>
+                  <StatusChip tone={chip.tone} title={row.reason ? stripReason(row.reason) : undefined}>{chip.text}</StatusChip>
+                </span>
+                {#if detail || row.duplicates.length > 0}
+                  <span class="slist-sup">{detail}{#if row.duplicates.length > 0}<span class="dup" title={row.duplicates.join(", ")}>{detail ? " · " : ""}{t("settings.instructions.files.duplicates")}</span>{/if}</span>
+                {/if}
+              </span>
+            </button>
+            <span class="slist-trail"><span class="slist-chev" aria-hidden="true"><UiIcon name="chevron" size={16} /></span></span>
+          </li>
+        {/each}
+      </ul>
+    {/each}
+
+    <h4 class="subhead">{t("settings.instructions.side_chat.subhead")}</h4>
+    <ul class="slist" aria-label={t("settings.instructions.side_chat.subhead")}>
+      <li class="slist-row">
+        <button type="button" id="instructions-side-chat" class="slist-open" bind:this={sideBtn}
+          disabled={loading || saving || sideText === null} aria-label={t("settings.instructions.side_chat.edit.aria")}
+          onclick={() => openSub({ kind: "side-chat" })}>
+          <span class="slist-lead" aria-hidden="true"><UiIcon name="chat" size={16} /></span>
+          <span class="slist-text">
+            <span class="slist-title">
+              <span class="slist-name">{t("settings.instructions.side_chat.name")}</span>
+              {#if sideText !== null}
+                <StatusChip tone={sideText.trim() ? "ok" : "off"}>{t(sideText.trim() ? "settings.instructions.side_chat.state.set" : "settings.instructions.side_chat.state.empty")}</StatusChip>
+              {/if}
+            </span>
+            <span class="slist-sup">{t("settings.instructions.side_chat.detail")}</span>
+          </span>
+        </button>
+        <span class="slist-trail"><span class="slist-chev" aria-hidden="true"><UiIcon name="chevron" size={16} /></span></span>
+      </li>
+    </ul>
+    {#if sideText === null && !loading}<p class="error" role="alert">{t("settings.instructions.side_chat.error.load")}</p>{/if}
   {/if}
 </SubViewStack>
 
 <style>
-  .instruction-action, .apply { display: inline-flex; align-items: center; gap: var(--space-1); }
+  .instruction-action { display: inline-flex; align-items: center; gap: var(--space-1); }
   .note { font-size: var(--t-xs); color: var(--fg-2); line-height: 1.5; }
   .notice { margin-top: 0; }
+  .files-note { margin: 0 0 var(--space-2); }
   .error, .broken { font-size: var(--t-xs); color: var(--err); overflow-wrap: anywhere; }
   /* 범위는 분류라 제3색 — 강조색은 선택 · 주 동작에 남긴다 */
   .scope.project { color: var(--tertiary); background: var(--tertiary-soft); }
   .instruction-agents { display: inline-flex; align-items: center; gap: var(--space-1); }
-  .apply { margin-top: var(--space-3); }
+  .target { display: flex; align-items: center; gap: var(--space-1); }
+  .target-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .target-more { flex: 0 0 auto; }
+  .file-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--fg-2); white-space: nowrap; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .file-group { margin: var(--space-3) 0 var(--space-1); font-size: var(--t-xs); color: var(--fg-2); overflow-wrap: anywhere; }
+  /* 공용 `.slist-name` 이 UI 글꼴을 쥐고 있어 세 클래스로 덮는다 */
+  .slist .slist-name.mono { font-family: var(--font-mono); }
+  .dup { color: var(--warn); }
 </style>

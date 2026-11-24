@@ -362,7 +362,8 @@ pub(crate) fn interrupt(stream: &str) -> Option<Value> {
         event: SignalEvent::Interrupt,
         detail: None,
         session: None,
-        version: None,
+        // 서버가 만든 신호다 — 판을 비우면 화면이 옛 판 훅으로 읽고 다시 설치를 권한다
+        version: Some(crate::agent_hooks::SCRIPT_VERSION),
         agent: None,
         cli: cur.cli,
     };
@@ -548,6 +549,7 @@ mod tests {
         assert_eq!(p["completed"], false);
         assert_eq!(p["notify"], false);
         assert_eq!(p["cli"], "claude");
+        assert_eq!(p["hookVersion"], p["hookLatest"], "옛 판 훅 알림이 뜨지 않는다");
         assert!(interrupt(s).is_none(), "이미 끝이면 그대로");
         forget(s);
     }

@@ -677,6 +677,12 @@ export interface FileChange {
   action: "create" | "update" | "delete" | "unchanged" | "skipped" | "error";
   reason: string | null;
   block: string | null;
+  /** 프로젝트 하위 폴더(저장소 상대). 루트 · 전역은 null */
+  subpath: string | null;
+  /** 이 파일의 관리 블록에 들어가는 지침 이름(이름순) */
+  instructions: string[];
+  /** 그 가운데 본문이 관리 블록 밖에도 그대로 있는 지침 */
+  duplicates: string[];
 }
 
 export function instructionsList(): Promise<InstructionList> {

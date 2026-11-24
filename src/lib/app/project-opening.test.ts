@@ -101,7 +101,7 @@ it("new local worktree waits for instructions before preparing or opening its ti
   await vi.waitFor(() => expect(state.applyInstructions).toHaveBeenCalledExactlyOnceWith(project.id, path));
   expect(state.start).not.toHaveBeenCalled();
   expect(state.newTab).not.toHaveBeenCalled();
-  finish([{ path: path + "/AGENTS.md", scope: "project", projectId: project.id, host: null, agent: null, action: "create", reason: null, block: "body" }]);
+  finish([{ path: path + "/AGENTS.md", scope: "project", projectId: project.id, host: null, agent: null, action: "create", reason: null, block: "body", subpath: null, instructions: [], duplicates: [] }]);
   await opening;
   expect(state.start).toHaveBeenCalledWith(project.id, path);
   expect(state.newTab).toHaveBeenCalledWith(expect.anything(), "api · feature", path, project.id);
@@ -115,7 +115,7 @@ it.each(["reject", "error", "skipped"])("new worktree still opens after instruct
   if (failure === "reject") {
     state.applyInstructions.mockRejectedValueOnce(new Error("[not-empty] failed"));
   } else {
-    state.applyInstructions.mockResolvedValueOnce([{ path: path + "/AGENTS.md", scope: "project", projectId: project.id, host: null, agent: null, action: failure as "error" | "skipped", reason: "[not-empty] failed", block: null }]);
+    state.applyInstructions.mockResolvedValueOnce([{ path: path + "/AGENTS.md", scope: "project", projectId: project.id, host: null, agent: null, action: failure as "error" | "skipped", reason: "[not-empty] failed", block: null, subpath: null, instructions: [], duplicates: [] }]);
   }
   await openProjectInNewWorktree(project, "feature");
   expect(state.newTab).toHaveBeenCalledWith(expect.anything(), "api · feature", path, project.id);

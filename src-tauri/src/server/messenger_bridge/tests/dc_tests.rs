@@ -342,15 +342,16 @@ fn live_bridge_with_fake_discord() {
     let arrow = fake.posts().into_iter().rfind(|v| v["content"] == "→ claude · local-s1").unwrap();
     assert_eq!(arrow["message_reference"], json!({ "message_id": src.to_string(), "fail_if_not_exists": false }));
 
-    // 다리 턴의 끝 → 답 전문(2000자 안 · 기호는 걷는다 · 머리 줄만 굵게) · 그 답에 답장하면 그 타일로.
+    // 다리 턴의 끝 → 답 전문(2000자 안 · 답의 서식은 Discord 마크다운 · 멘션 꼴은 걷는다) · 그 답에 답장하면 그 타일로.
     let before = fake.posts().len();
     on_turn_event("local-s1", TurnEvent::Done, Some("claude"), Some("c1".into()));
     wait_for("답", || fake.posts().len() >= before + 3);
     let posts = fake.posts();
     let answer = posts[before]["content"].as_str().unwrap().to_string();
-    assert!(answer.starts_with("**🟢 claude · local-s1**\nDONE \\<ok\\> & "), "{answer}");
+    assert!(answer.starts_with("**🟢 claude · local-s1**\nDONE \\<ok\\> & **굵게**는 `a*b` "), "{answer}");
     assert!(posts[before..].iter().all(|v| dc::units(v["content"].as_str().unwrap()) <= dc::CONTENT_MAX && v["flags"] == 4));
-    assert_eq!(answer.matches("**").count(), 2, "굵게는 머리 줄 하나");
+    assert_eq!(answer.matches("**").count(), 4, "굵게는 머리 줄과 답의 굵게 하나");
+    assert!(posts[before..].iter().all(|v| v["allowed_mentions"]["parse"] == json!([])));
     let answer_id = posts[before]["_id"].as_i64().unwrap();
     fake.dm(42, "next", 0, Some(answer_id));
     wait_for("답장 넣기", || env.writes.lock().unwrap().len() == 4);

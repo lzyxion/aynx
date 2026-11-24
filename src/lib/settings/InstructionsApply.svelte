@@ -73,6 +73,7 @@
       <span class="badge">{t(actionKeys[row.action])}</span>
       <span class="path" title={row.path}>{displayInstructionPath(row.path, base)}</span>
       {#if row.reason}<span class="reason">{stripReason(row.reason)}</span>{/if}
+      {#if row.duplicates.length > 0}<span class="reason dup">{t("settings.instructions.preview.duplicates", { names: row.duplicates.join(", ") })}</span>{/if}
     </summary>
     {#if row.block !== null}<pre>{row.block}</pre>{:else}<p class="note block-empty">{t("settings.instructions.block.empty")}</p>{/if}
   </details>
@@ -121,6 +122,7 @@
   .badge { display: inline-block; padding: 2px var(--space-1); margin-right: var(--space-2); background: var(--surface-hover); border-radius: var(--radius-sm); font-family: var(--font-ui); }
   .path { font-family: var(--font-mono); }
   .reason { display: block; margin-top: var(--space-1); color: var(--fg-2); line-height: 1.5; }
+  .reason.dup { color: var(--warn); }
   .failure { border-color: var(--err); background: var(--err-soft); }
   .failure .badge, .failure .reason { color: var(--err); }
   .skipped .badge { color: var(--fg-2); }

@@ -426,6 +426,27 @@ fn claude_handshake_failure_and_untested_version() {
     assert_eq!(a.encode_set_model("x y"), Err("bad-model"));
 }
 
+#[test]
+fn tested_versions_are_a_range_not_a_list() {
+    for v in ["2.1.309", "2.1.312", "2.1.331"] {
+        assert!(claude::tested(Some(v)), "{v}");
+    }
+    for v in [Some("2.1.308"), Some("2.2.0"), Some("3.0.0"), Some("2.1.331-beta"), Some("2.1"), Some(""), None] {
+        assert!(!claude::tested(v), "{v:?}");
+    }
+    for v in ["0.163.0", "0.165.0", "0.171.0"] {
+        assert!(codex::tested(Some(v)), "{v}");
+    }
+    for v in [Some("0.162.9"), Some("1.0.0"), Some("0.171.0-alpha.1"), None] {
+        assert!(!codex::tested(v), "{v:?}");
+    }
+    assert_eq!(semver3("2.1.331"), Some([2, 1, 331]));
+    assert_eq!(semver3("2..1"), None);
+    assert_eq!(semver3("2.1.3.4"), None);
+    assert_eq!(semver3("+2.1.3"), None);
+    assert_eq!(semver3("2.1.99999999999999999999"), None);
+}
+
 // ---------------------------------------------------------------------------
 // Codex
 // ---------------------------------------------------------------------------

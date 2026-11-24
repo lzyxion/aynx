@@ -229,7 +229,7 @@ const rowY = async (text) =>
   const at = JSON.parse(await rowY("PS C:"));
   await ev(`document.elementFromPoint(${at.x}, ${at.y}).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: ${at.x}, clientY: ${at.y} }))`);
   await sleep(300);
-  check("① no block → menu row absent", await ev(`[...document.querySelectorAll('.tilemenu *')].some((e) => e.textContent.includes('AI 에게 묻기'))`), false);
+  check("① no block → menu row absent", await ev(`!document.querySelector('.tilemenu [data-flyout="block"]') && ![...document.querySelectorAll('.tilemenu *')].some((e) => e.textContent.includes('AI 에게 묻기'))`), true);
   await key("Escape", "Escape");
 }
 
@@ -433,10 +433,14 @@ await sleep(300);
   const at = JSON.parse(await rowY("git pull"));
   await ev(`document.elementFromPoint(${at.x}, ${at.y}).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: ${at.x}, clientY: ${at.y} }))`);
   await sleep(300);
-  const item = await ev(`(() => { const b = [...document.querySelectorAll('.tilemenu button')].find((e) => e.textContent.includes('AI 에게 묻기')); return b ? b.textContent.replace(/\\s+/g, ' ').trim() : null; })()`);
-  check("⑩ menu row (this block · hint)", item, "이 블록을 AI 에게 묻기…Ctrl+Shift+X");
+  // 블록 줄은 스니펫 저장과 함께 "이 블록 ▸" 옆목록에 든다 — 옆목록을 먼저 연다
+  check("⑩ block flyout row", await ev(`document.querySelector('.tilemenu [data-flyout="block"]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`), "이 블록");
+  await ev(`document.querySelector('.tilemenu [data-flyout="block"]').click()`);
+  await sleep(300);
+  const item = await ev(`(() => { const b = document.querySelector('.flyout [data-action="ask-ai"]'); return b ? b.textContent.replace(/\\s+/g, ' ').trim() : null; })()`);
+  check("⑩ menu row (in block flyout · hint)", item, "AI 에게 묻기…Ctrl+Shift+X");
   await shot("ask-ai-menu.png");
-  await ev(`[...document.querySelectorAll('.tilemenu button')].find((e) => e.textContent.includes('AI 에게 묻기')).click()`);
+  await ev(`document.querySelector('.flyout [data-action="ask-ai"]').click()`);
   await sleep(500);
   check("⑩ menu closed · picker open", [await ev(`!!document.querySelector('.tilemenu')`), !!(await readPicker())], [false, true]);
   // 골라진 줄은 마지막에 쓴 AI 타일(⑨ 의 다른 탭 claude)이다 — 어디로 갔든 새 쓰기 하나를 본다

@@ -268,6 +268,17 @@ pub(crate) fn str_of(v: &Value) -> Option<String> {
     v.as_str().map(str::to_string)
 }
 
+/// `"2.1.331"` → `[2, 1, 331]`. 시험판 꼬리 · 빈 조각 · 조각 수가 다르면 `None` — 부르는 쪽이 확인하지 않은 버전으로 본다.
+pub(crate) fn semver3(s: &str) -> Option<[u64; 3]> {
+    let mut out = [0u64; 3];
+    let mut parts = s.split('.');
+    for slot in &mut out {
+        let p = parts.next().filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))?;
+        *slot = p.parse().ok()?;
+    }
+    parts.next().is_none().then_some(out)
+}
+
 /// 프로듀서 지침 머리글의 틀 — 갈라 온 Codex 프로듀서의 첫 사람 글 앞에 붙는다(`thread/fork` 에 실은 `developerInstructions` 는 서지 않는다).
 /// 사이에는 프로듀서 고정 지침만 든다 — 사람 · AI 글은 넣지 않는다. 깨움 틀(`orchestration::wake::PREFIX`)과 다른 글자로 시작해야 기록 판독이 섞지 않는다.
 pub(crate) const BRIEF_OPEN: &str = "[Aynx producer brief — fixed app text for this chat, not from the person]\n";

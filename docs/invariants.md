@@ -100,7 +100,7 @@
   (다리가 시작한 턴 · 단추 달린 권한 알림을 보낸 턴)의 카드만(단추는 그 스트림을 돌보는 채널마다 · 먼저 온 누름이 이긴다), 결정은 그 CLI 의 훅 응답으로만(PTY 아님 · 원격 웹의 카드 결정과 같은 등급 · 질문 카드 · 세션 허용은 없음).
   **작업안 승인 · AI 권한 · 위임 · 앨범 · 볼트로 가는 길은 없다**(시험 `bridge_has_no_approval_path` — 승인 대기는 알림만). 가림막이 걸려 있어도 받는다(자리를 비운
   동안 쓰는 기능 — 사용자 결정). 턴의 답 전문과 권한 물음의 도구 이름 · 입력 한 줄, 그리고 타일을 가리키는 글자 — 이름표(AI CLI 이름과 프로젝트 / 워크트리 — 프로젝트 밖이면 폴더 이름) ·
-  이름표가 겹칠 때의 대화 제목 · 기다리는 타일이 없을 때의 타일별 상태 한 줄(실행 중 · 권한 대기 …) — 가 메신저 회사 서버를 지난다(켠 사람에게만 ·
+  대화 제목 · 기다리는 타일이 없을 때의 타일별 상태 한 줄(실행 중 · 권한 대기 …) — 가 메신저 회사 서버를 지난다(켠 사람에게만 ·
   짝지은 대화방으로만 · 다리 턴의 답은 그 글이 온 채널로만 — Slack 은 답장 대신 스레드라, 스레드 안의 글로 시작한 턴의 답 · 권한 물음은 그 스레드로 간다). 지난 글(서버가 꺼져 있던 동안 쌓인 것)은 넣지 않는다.
 
 <a id="inv-5"></a>
@@ -111,7 +111,7 @@
 <a id="inv-6"></a>
 ## 6. 메신저 웹훅 URL · 봇 토큰
 
-- **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook` · `<설정 루트>/telegram-bot` · `<설정 루트>/discord-bot` · `<설정 루트>/slack-bot`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나 · 봇은 이름까지), 멘션은 늘 막는다(Discord `allowed_mentions` — 웹훅 · 봇 모두 · Slack `& < >` 걷기 — 웹훅 · 봇의 알림 글, 봇이 옮기는 남의 글자는 서식 · 멘션 · 링크로 읽히지 않는 글 조각(`rich_text`)으로 · Telegram HTML 걷기). **Discord · Slack 은 채널마다 한 번에 한 방식**이다 — 다른 방식을 등록하면 앞의 방식의 파일을 지운다(봇 토큰을 등록하면 웹훅 파일을, 봇을 웹훅으로 바꾸면 봇 토큰 · 짝지은 계정을 — 화면이 바꾸기를 확인받은 뒤 · **어느 쪽이든 메인 PC 에서만**). 그 길(`messenger_replace_bot_with_webhook` — 주소 검사 → 봇 해제 → 저장) 밖에서는 봇이 있는 동안 웹훅 등록을 거절한다(알림은 웹훅이 있으면 웹훅, 없으면 봇) →
+- **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일(`<설정 루트>/discord-webhook` · `<설정 루트>/slack-webhook` · `<설정 루트>/telegram-bot` · `<설정 루트>/discord-bot` · `<설정 루트>/slack-bot`)에만** — 프런트·MCP·로그·`Debug` 로 나가지 않고(`configured` 하나 · 봇은 이름까지), 멘션은 늘 막는다(Discord `allowed_mentions` — 웹훅 · 봇 모두 · Slack `& < >` 걷기 — 웹훅 · 봇의 알림 글, 봇이 옮기는 남의 글자는 멘션 · 링크로 읽히지 않는 글 조각(`rich_text`)으로 — AI 답의 서식은 조각의 style 로만 · Telegram HTML 걷기 · AI 답과 대화 발췌의 마크다운은 서식으로 그리되 링크는 글자(`글자 (주소)`)로 — 글자를 주소로 가린 링크를 만들지 않는다). **Discord · Slack 은 채널마다 한 번에 한 방식**이다 — 다른 방식을 등록하면 앞의 방식의 파일을 지운다(봇 토큰을 등록하면 웹훅 파일을, 봇을 웹훅으로 바꾸면 봇 토큰 · 짝지은 계정을 — 화면이 바꾸기를 확인받은 뒤 · **어느 쪽이든 메인 PC 에서만**). 그 길(`messenger_replace_bot_with_webhook` — 주소 검사 → 봇 해제 → 저장) 밖에서는 봇이 있는 동안 웹훅 등록을 거절한다(알림은 웹훅이 있으면 웹훅, 없으면 봇) →
   [docs/log/2026-09-27-discord-notify.md](log/2026-09-27-discord-notify.md) ·
   [docs/log/2026-09-28-messenger-channels.md](log/2026-09-28-messenger-channels.md).
 - **봇 토큰을 읽는 것은 세션 서버뿐이다** — GUI 는 등록 때 서버 op 로 넘길 뿐이고(시험 `gui_never_reads_the_token_file`), Telegram · Discord · Slack 봇의 보내기 · 받기는 전부 세션 서버가 한다. **봇 토큰이 나가는 곳은 그 메신저의 API 뿐이다** — Telegram 은 `api.telegram.org`, Discord 는 REST `discord.com` 과 게이트웨이 `discord.gg` 도메인(Discord 가 알려 주는 재개 주소도 `wss` 이고 그 도메인일 때만 쓴다 — 시험 `responses_and_close_codes`), Slack 은 `slack.com` 도메인(토큰 둘 — 봇 토큰 · 앱 토큰 — 이 한 파일 `slack-bot` 에 있고 둘 다 Web API `slack.com/api` 에만 싣는다 · 받기(Socket Mode)는 Slack 이 알려 주는 주소가 `wss` 이고 그 도메인일 때만 붙으며 그 주소에는 토큰을 싣지 않는다 — 시험 `responses_urls_and_threads`). 짝지은 계정(`<설정 루트>/telegram-chat` · `<설정 루트>/discord-chat` · `<설정 루트>/slack-chat`)도 같은 자리 · 같은 제외(개발 폴더 씨앗 · 설정 옮기기)다. 토큰 등록 · 계정 허용 · 해제 · 봇을 웹훅으로 바꾸기는 채널 모두 **메인 PC 에서만**(`remote/deny.rs` HOME_ONLY) →

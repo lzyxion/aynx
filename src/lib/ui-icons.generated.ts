@@ -921,4 +921,9 @@ export const UI_ICONS: Readonly<Record<string, UiIcon>> = {
     viewBox: "0 0 24 24",
     body: "<path fill=\"currentColor\" d=\"M4 20q-.825 0-1.412-.587T2 18V6q0-.825.588-1.412T4 4h16q.825 0 1.413.588T22 6v12q0 .825-.587 1.413T20 20zm0-2h16V6H4zm0 0V6zm8-5h6q.425 0 .713-.288T19 12V8q0-.425-.288-.712T18 7h-6q-.425 0-.712.288T11 8v4q0 .425.288.713T12 13m1-2V9h4v2z\"/>",
   },
+  "arrow-right": {
+    source: "material-symbols:arrow-forward-rounded",
+    viewBox: "0 0 24 24",
+    body: "<path fill=\"currentColor\" d=\"M16.175 13H5q-.425 0-.712-.288T4 12t.288-.712T5 11h11.175l-4.9-4.9q-.3-.3-.288-.7t.313-.7q.3-.275.7-.288t.7.288l6.6 6.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-6.6 6.6q-.275.275-.687.275T11.3 19.3q-.3-.3-.3-.712t.3-.713z\"/>",
+  },
 };

@@ -130,7 +130,7 @@ Starting an album from a remote web window asks for the master password again.
 <a id="fork"></a>
 ### Continue in orchestration
 
-**Continue in orchestration** in the AI tile menu forks that tile's conversation into a **new album draft with the repository and CLI locked**. The original tile stays as it is. The app determines the repository from the conversation's
+**Continue in orchestration** in the AI tile menu (under **Conversations ▸**) forks that tile's conversation into a **new album draft with the repository and CLI locked**. The original tile stays as it is. The app determines the repository from the conversation's
 folder (it does not open unless that is a main repository). The album comes into being only after a person sets the configuration and first message and sends them — the tile does not open the album. This item appears only on local AI tiles that
 know their conversation (after the AI has answered once).
 

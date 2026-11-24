@@ -23,9 +23,12 @@ impl FakeFs {
         }
     }
     fn plan(&self, project: &Project, path: &str, body: Option<&str>) -> Vec<FileChange> {
-        plan_snapshot(project, path, "/home/me", body, self.snapshot(path), false)
+        plan_snapshot(project, path, "/home/me", &Composed::text(body), self.snapshot(path), false)
     }
     fn plan_subpath(&self, projects: &[&Project], wt: &str, subpath: Option<&str>, body: Option<&str>) -> Vec<FileChange> {
+        self.plan_composed(projects, wt, subpath, &Composed::text(body))
+    }
+    fn plan_composed(&self, projects: &[&Project], wt: &str, subpath: Option<&str>, composed: &Composed<'_>) -> Vec<FileChange> {
         let path = subpath.map_or_else(|| wt.to_owned(), |subpath| crate::sftp::join_remote(wt, subpath));
         let mut snapshot = self.snapshot(&path);
         snapshot.other_claude = Ok(claude_directories(subpath).iter().any(|directory| {
@@ -34,7 +37,7 @@ impl FakeFs {
                 !(directory == path && *name == "CLAUDE.md") && self.files.contains_key(&crate::sftp::join_remote(&directory, name))
             })
         }));
-        plan_subpath_snapshot(projects, wt, "/home/me", subpath, body, snapshot, false)
+        plan_subpath_snapshot(projects, wt, "/home/me", subpath, composed, snapshot, false)
     }
     fn plan_projects(&self, projects: &[Project], library: &[Instruction], worktrees: &dyn Fn(&Project) -> Vec<String>) -> Vec<FileChange> {
         let mut rows = Vec::new();
@@ -46,8 +49,8 @@ impl FakeFs {
             }
             for (path, projects) in groups {
                 for subpath in project_subpaths(library, &projects, &written::Written::new()) {
-                    let body = projects_subpath_body(library, &projects, subpath.as_deref());
-                    rows.extend(self.plan_subpath(&projects, &path, subpath.as_deref(), body.as_deref()));
+                    let composed = projects_subpath_composed(library, &projects, subpath.as_deref());
+                    rows.extend(self.plan_composed(&projects, &path, subpath.as_deref(), &composed));
                 }
             }
         }
@@ -151,7 +154,7 @@ fn broken_and_unreadable_files_do_not_hide_other_rows_or_leak_body() {
     assert_eq!(rows[1].action, Action::Update);
     let mut snapshot = fs.snapshot(path);
     snapshot.agents = Err("permission denied".into());
-    assert_eq!(plan_snapshot(&project, path, "/home/me", Some("new"), snapshot, false)[0].action, Action::Error);
+    assert_eq!(plan_snapshot(&project, path, "/home/me", &Composed::text(Some("new")), snapshot, false)[0].action, Action::Error);
 }
 
 #[test]
@@ -228,6 +231,23 @@ fn shared_worktree_unions_project_items_once_per_file() {
     assert_eq!(reversed_rows.len(), 2);
     assert!(reversed_rows.iter().all(|row| row.project_id.as_deref() == Some("b")));
     assert_eq!(reversed_rows[0].block, rows[0].block);
+}
+
+#[test]
+fn remote_rows_name_instructions_and_find_duplicates_from_the_snapshot() {
+    let path = "/home/me/api";
+    let project = remote("p", "dev", "~/api");
+    let mut kept = super::super::tests::project_item("p", "KEPT_RULE");
+    kept.name = "kept".into();
+    let mut moved = super::super::tests::project_item("p", "MOVED_RULE");
+    moved.name = "moved".into();
+    let mut fs = FakeFs::tree(path);
+    fs.files.insert(format!("{path}/AGENTS.md"), "human\r\nKEPT_RULE\r\n".into());
+    let rows = fs.plan_projects(std::slice::from_ref(&project), &[moved, kept], &|project| vec![project.path.clone()]);
+    assert_eq!(rows[0].instructions, ["kept", "moved"]);
+    assert_eq!(rows[0].duplicates, ["kept"]);
+    assert!(rows[1].instructions.is_empty() && rows[1].duplicates.is_empty());
+    assert!(no_connection(&project).instructions.is_empty());
 }
 
 #[test]

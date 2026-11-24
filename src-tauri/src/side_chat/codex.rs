@@ -14,14 +14,19 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use serde_json::{json, Value};
 
 use super::event::{
-    cap, effort_ok, image_markdown, mcp_summary, model_ok, one_line, str_of, uuid_ok, word_ok, Cli, Decision, Dropped, Ev, Mode, Outcome, PermKind, ResolvedBy, Step,
+    cap, effort_ok, image_markdown, mcp_summary, model_ok, one_line, semver3, str_of, uuid_ok, word_ok, Cli, Decision, Dropped, Ev, Mode, Outcome, PermKind, ResolvedBy, Step,
     UserImage,
 };
 use super::Adapter;
 
-/// 다르면 `notice{untested-version}` 만.
-pub(crate) const TESTED_VERSION: &str = "0.165.0";
-pub(crate) const TESTED_VERSIONS: [&str; 2] = ["0.163.0", TESTED_VERSION];
+/// 확인한 버전의 시작 — CLI 가 며칠마다 올라 정확 일치로는 경고가 늘 뜨니 0.x 안에서 이 버전 이상을 받는다(0.x 는 minor 로 오른다).
+/// 그 밖(낮은 버전 · 1.0 이상 · 못 읽은 버전)은 `notice{untested-version}` 만 낸다.
+pub(crate) const TESTED_FROM: [u64; 3] = [0, 163, 0];
+
+pub(crate) fn tested(version: Option<&str>) -> bool {
+    version.and_then(semver3).is_some_and(|v| v[0] == 0 && v >= TESTED_FROM)
+}
+
 const UNSUPPORTED: i64 = -32601;
 
 pub(crate) struct Opts<'a> {
@@ -297,7 +302,7 @@ impl Codex {
             efforts,
             conversation_id: self.thread.clone(),
         }];
-        if !self.version.as_deref().is_some_and(|v| TESTED_VERSIONS.contains(&v)) {
+        if !tested(self.version.as_deref()) {
             evs.push(Ev::Notice { code: "untested-version", detail: self.version.clone() });
         }
         evs

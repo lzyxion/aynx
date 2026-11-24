@@ -1,14 +1,14 @@
 /**
  * 타일 ⋯ 메뉴 · 터미널 우클릭 메뉴의 항목 목록 — 순수 함수라 종류별 목록이 테스트로 고정된다.
- * SFTP 타일 · 원격 문서 타일은 옆 터미널의 세션을 빌려 쓰므로 분리가 빠진다(`startPaneTear` 와 같은 판정).
+ * 분할 · 분리는 모든 타일에서 "분할 · 분리 ▸" 한 줄이다. SFTP 타일 · 원격 문서 타일은 옆 터미널의 세션을 빌려 쓰므로
+ * 그 안에서 분리가 빠지고 라벨이 "분할" 이 된다(`startPaneTear` 와 같은 판정).
  * 지금 못 쓰는 줄은 숨기지 않고 흐리게 둔다 — 기능이 있다는 사실과 어디서 켜는지가 툴팁에서 읽혀야 한다.
  */
 
 import { hasSession, type PaneKind, type Tr } from "$lib/session";
 import { snippetSaveLabel } from "$lib/snippets";
-import { AI_STAGES, AI_STAGE_NAME, type AiStage } from "$lib/delegation";
-import { DB_AI_LEVELS, DB_AI_NAME, type DbAiLevel } from "$lib/db-ai";
-import { gaugeIconName, gaugeIndex } from "$lib/ai-gauge";
+import { AI_STAGE_NAME, type AiStage } from "$lib/delegation";
+import { DB_AI_NAME, type DbAiLevel } from "$lib/db-ai";
 
 /** 누른 결과를 상위 콜백으로 잇는 열쇠다(`PaneHost` 의 `runTileMenu`) */
 export type PaneMenuAction =
@@ -66,7 +66,18 @@ export interface PaneMenuItem {
 }
 
 /** `data-flyout` 속성으로 그대로 나간다 — 헤드리스 스크립트가 겨누는 이름 */
-export type PaneFlyoutId = "server" | "output" | "format" | "paragraph" | "insert" | "copy-as" | "filter" | "refs";
+export type PaneFlyoutId =
+  | "split"
+  | "convo"
+  | "block"
+  | "server"
+  | "output"
+  | "format"
+  | "paragraph"
+  | "insert"
+  | "copy-as"
+  | "filter"
+  | "refs";
 
 /** 옆목록(`▸`)을 여는 줄 — 한 켜만 판다(목록 안의 `▸` 는 만들지 않는다) */
 export interface PaneMenuGroup {
@@ -132,9 +143,9 @@ export interface PaneMenuCtx {
   borrowed?: boolean;
   /** 위 띠 ⋯(`MobileBar`)로 연 메뉴에만 넘긴다. `flip` = AI 타일의 지금 면(넘길 수 없으면 `null`) */
   phone?: { flip: "term" | "convo" | null };
-  /** 폰 배치 — 분할 둘 · 분리를 그리지 않는다 */
+  /** 폰 배치 — "분할 · 분리 ▸" 를 그리지 않는다 */
   solo?: boolean;
-  /** 오케스트레이션 탭은 앱이 배치를 쥐므로 분할 둘 · 분리를 그리지 않는다 */
+  /** 오케스트레이션 탭은 앱이 배치를 쥐므로 "분할 · 분리 ▸" 를 그리지 않는다 */
   orchTab?: boolean;
   orchContinue?: boolean;
   /** 머리줄 ⋯ · 머리줄 우클릭에만 넘긴다 — 메뉴 맨 위에 얹힌다 */
@@ -199,37 +210,44 @@ function phoneRows(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenuItem[] {
 }
 
 export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenuRow[] {
-  const phone = phoneRows(kind, ctx, tr);
-  const tools = ctx.tools ?? [];
-  const lead = phone.length + tools.length;
-  const items: PaneMenuRow[] = [...phone, ...tools];
+  const items: PaneMenuRow[] = [];
+  // 원격 창의 새 창은 메인 PC 의 창이라 `open_tear_window` 를 `remote/deny.rs` 가 거절한다
+  const detachable =
+    kind !== "sftp" &&
+    kind !== "start" &&
+    ctx.borrowed !== true &&
+    ctx.solo !== true &&
+    ctx.orchTab !== true &&
+    ctx.remoteWindow !== true;
+  // 어느 메뉴에서나 맨 첫 줄 — 도구 줄보다도 위다(폰 줄은 `solo` 라 함께 서지 않는다)
   if (ctx.solo !== true && ctx.orchTab !== true) {
+    const split: PaneMenuItem[] = [
+      { action: "split-row", label: tr("pane.menu.split_row"), icon: "split-h" },
+      { action: "split-col", label: tr("pane.menu.split_col"), icon: "split-v" },
+    ];
+    if (detachable) split.push({ action: "detach", label: tr("pane.menu.detach"), icon: "window" });
     items.push(
-      {
-        action: "split-row",
-        label: tr("pane.menu.split_row"),
-        icon: "split-h",
-        ...(lead > 0 ? { separator: true } : {}),
-      },
-      {
-        action: "split-col",
-        label: tr("pane.menu.split_col"),
-        icon: "split-v",
-      },
+      detachable
+        ? flyoutRow("split", tr("pane.menu.splitDetach"), "layout", tr("pane.menu.splitDetach.title"), split)
+        : flyoutRow("split", tr("pane.menu.split"), "layout", tr("pane.menu.split.title"), split),
     );
   }
+  const lead = [...phoneRows(kind, ctx, tr), ...(ctx.tools ?? [])];
+  const leadHead = lead[0];
+  if (leadHead !== undefined) lead[0] = { ...leadHead, separator: true };
+  items.push(...lead);
 
+  const convo: PaneMenuItem[] = [];
   if (hasSession(kind)) {
-    items.push({
+    convo.push({
       action: "folder-conversations",
       label: tr("pane.menu.folder_conversations"),
       icon: "conversations",
-      separator: true,
       hint: ctx.folderConvoHint || undefined,
     });
   }
   if (kind === "local" && ctx.sideChatFork === true) {
-    items.push({
+    convo.push({
       action: "continue-side-chat",
       label: tr("pane.menu.continueSideChat"),
       icon: "side-panel",
@@ -237,12 +255,16 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
     });
   }
   if (kind === "local" && ctx.orchContinue === true) {
-    items.push({
+    convo.push({
       action: "continue-orchestration",
       label: tr("pane.menu.continueOrch"),
       icon: "orchestra",
       title: tr("pane.menu.continueOrch.title"),
     });
+  }
+  // 하나뿐이어도 묶는다 — 대화를 알게 되는 순간 지난 대화 줄이 묶음에 들어갔다 나왔다 하면 손이 자리를 잃는다
+  if (convo.length > 0) {
+    items.push(flyoutRow("convo", tr("pane.menu.convo"), "conversations", tr("pane.menu.convo.title"), convo));
   }
 
   if (kind === "ssh") {
@@ -311,7 +333,8 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
             action: "ai-permission",
             separator: true,
             label: tr("pane.menu.aiperm"),
-            icon: gaugeIconName(gaugeIndex(AI_STAGES, ctx.aiStage)),
+            // 단계는 머리줄 칩의 게이지가 말한다 — 메뉴 줄은 단계와 무관한 고정 그림
+            icon: "shield-check",
             disabled: ctx.aiStage == null,
             title:
               ctx.aiStage == null
@@ -323,7 +346,8 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
             action: "toggle-ai-read",
             separator: true,
             label: tr("pane.menu.aiRead"),
-            icon: ctx.shared ? "check" : null,
+            // 머리줄 눈 칩과 같은 그림 — 켜짐 ✓ 는 `PaneMenu` 가 줄 끝에 그린다
+            icon: "ai-read",
             checkbox: true,
             checked: ctx.shared,
             title: tr("pane.menu.aiRead.title"),
@@ -333,7 +357,7 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
       {
         action: "toggle-sync",
         label: tr("pane.menu.sync"),
-        icon: ctx.included ? "check" : null,
+        icon: "keyboard",
         checkbox: true,
         checked: ctx.included,
         disabled: !ctx.syncOn,
@@ -348,7 +372,7 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
       action: "ai-permission",
       separator: true,
       label: tr("pane.menu.aiperm"),
-      icon: gaugeIconName(gaugeIndex(DB_AI_LEVELS, db?.level)),
+      icon: "shield-check",
       disabled: db === null,
       title:
         db === null
@@ -375,27 +399,11 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
   }
   if (kind === "doc" && ctx.docNew != null) items.push(newDocItem(ctx.docNew, tr));
 
-  // 원격 창의 새 창은 메인 PC 의 창이라 `open_tear_window` 를 `remote/deny.rs` 가 거절한다
-  const detachable =
-    kind !== "sftp" &&
-    kind !== "start" &&
-    ctx.borrowed !== true &&
-    ctx.solo !== true &&
-    ctx.orchTab !== true &&
-    ctx.remoteWindow !== true;
-  if (detachable) {
-    items.push({
-      action: "detach",
-      label: tr("pane.menu.detach"),
-      icon: "window",
-      separator: true,
-    });
-  }
   items.push({
     action: "close",
     label: tr("pane.menu.close"),
     icon: "close",
-    separator: !detachable,
+    separator: true,
   });
   const first = items[0];
   if (first !== undefined && first.separator === true) items[0] = { ...first, separator: undefined };
@@ -404,10 +412,15 @@ export function menuItemsFor(kind: PaneKind, ctx: PaneMenuCtx, tr: Tr): PaneMenu
 
 /**
  * 헤더 ⋯ 메뉴와 한 정의다 — 머리줄을 끈 사람에게 타일 조작으로 가는 유일한 마우스 길이라 새 항목이 저절로 따라와야 한다.
- * "출력 ▸" 은 편집 묶음 바로 아래로 끌어올리고, "서버 ▸" 는 ⋯ 전용이다(우클릭은 화면 위 몸짓 — 팔레트 · `Ctrl+Shift+O` 가 같은 곳으로 간다).
+ * 맨 위는 ⋯ 와 같은 "분할 · 분리 ▸", 그 아래 링크 · 편집 묶음 · 우클릭한 자리에 하는 일(고른 글자의 사이드 채팅 · "이 블록 ▸" ·
+ * 끌어올린 "출력 ▸")이 오고, 그 뒤가 ⋯ 의 나머지다.
+ * "서버 ▸" 는 ⋯ 전용이다(우클릭은 화면 위 몸짓 — 팔레트 · `Ctrl+Shift+O` 가 같은 곳으로 간다).
  */
 export function terminalMenuItems(kind: PaneKind, ctx: TermMenuCtx, tr: Tr): PaneMenuRow[] {
   const items: PaneMenuRow[] = [];
+  const rest = menuItemsFor(kind, ctx, tr);
+  const split = rest.find((row) => rowId(row) === "split");
+  if (split) items.push({ ...split, separator: undefined });
 
   if (ctx.link !== null) {
     items.push(
@@ -416,6 +429,7 @@ export function terminalMenuItems(kind: PaneKind, ctx: TermMenuCtx, tr: Tr): Pan
         label: tr("pane.menu.open_link"),
         icon: "external",
         title: ctx.link,
+        ...(items.length > 0 ? { separator: true } : {}),
       },
       { action: "copy-link", label: tr("pane.menu.copy_link"), icon: "copy", title: ctx.link },
     );
@@ -434,44 +448,79 @@ export function terminalMenuItems(kind: PaneKind, ctx: TermMenuCtx, tr: Tr): Pan
   if (edit.length > 0 && items.length > 0) edit[0] = { ...edit[0], separator: true };
   items.push(...edit);
 
-  const rest = menuItemsFor(kind, ctx, tr);
-  const output = rest.find((row) => rowId(row) === "output");
-  if (output) items.push({ ...output, separator: items.length > 0 });
+  const sideChat = ctx.sideChat === true && (kind === "local" || kind === "ssh");
+  const at = items.length;
 
-  // 블록이 없으면(셸 통합 없음 · tmux 간이 모드) 넘길 것이 영영 없어 흐리게가 아니라 아예 없다 — 스니펫 줄도 같다
-  if (!ctx.screenOnly && ctx.askBlock) {
-    items.push({
-      action: "ask-ai",
-      label: ctx.askBlock.fromRow ? tr("pane.menu.askai.row") : tr("pane.menu.askai.last"),
-      icon: "ai",
-      title: tr("pane.menu.askai.title"),
-      hint: ctx.askHint || undefined,
-    });
-  }
-  const sideChatSource = ctx.hasSelection || (!ctx.screenOnly && !!ctx.askBlock);
-  if (ctx.sideChat && (kind === "local" || kind === "ssh") && sideChatSource) {
+  // 고른 글자에 하는 일이라 "이 블록 ▸" 에 넣지 않는다
+  if (sideChat && ctx.hasSelection) {
     items.push({
       action: "ask-side-chat",
       label: tr("pane.menu.askSideChat"),
       icon: "side-panel",
-      title: ctx.hasSelection ? tr("pane.menu.askSideChat.selection") : tr("pane.menu.askSideChat.block"),
+      title: tr("pane.menu.askSideChat.selection"),
     });
   }
 
+  // 블록이 없으면(셸 통합 없음 · tmux 간이 모드) 넘길 것이 영영 없어 흐리게가 아니라 아예 없다.
+  // `askBlock` · `snippet` 은 `block-target.ts` 의 같은 판정에서 나와 함께 있고 `fromRow` 도 같다
+  const block: { item: PaneMenuItem; short: string }[] = [];
+  if (!ctx.screenOnly && ctx.askBlock) {
+    block.push({
+      item: {
+        action: "ask-ai",
+        label: ctx.askBlock.fromRow ? tr("pane.menu.askai.row") : tr("pane.menu.askai.last"),
+        icon: "ai",
+        title: tr("pane.menu.askai.title"),
+        hint: ctx.askHint || undefined,
+      },
+      short: tr("pane.menu.askai.short"),
+    });
+    if (sideChat && !ctx.hasSelection) {
+      const label = tr("pane.menu.askSideChat");
+      block.push({
+        item: { action: "ask-side-chat", label, icon: "side-panel", title: tr("pane.menu.askSideChat.block") },
+        short: label,
+      });
+    }
+  }
   if (!ctx.screenOnly && ctx.snippet !== null) {
-    items.push({
-      action: "save-snippet",
-      label: ctx.snippet.fromRow
-        ? tr("pane.menu.snippet.row", { name: snippetSaveLabel(ctx.snippet.command) })
-        : tr("pane.menu.snippet.last"),
-      icon: "bookmark",
-      title: ctx.snippet.fromRow
-        ? tr("pane.menu.snippet.row.title")
-        : tr("pane.menu.snippet.last.title"),
+    block.push({
+      item: {
+        action: "save-snippet",
+        label: ctx.snippet.fromRow
+          ? tr("pane.menu.snippet.row", { name: snippetSaveLabel(ctx.snippet.command) })
+          : tr("pane.menu.snippet.last"),
+        icon: "bookmark",
+        title: ctx.snippet.fromRow
+          ? tr("pane.menu.snippet.row.title")
+          : tr("pane.menu.snippet.last.title"),
+      },
+      short: tr("pane.menu.snippet.short"),
     });
   }
+  if (block.length >= 2) {
+    const fromRow = (ctx.askBlock ?? ctx.snippet)?.fromRow !== false;
+    items.push({
+      ...flyoutRow(
+        "block",
+        tr(fromRow ? "pane.menu.block.row" : "pane.menu.block.last"),
+        "command",
+        tr("pane.menu.block.title"),
+        block.map((b) => ({ ...b.item, label: b.short })),
+      ),
+      separator: undefined,
+    });
+  } else if (block[0] !== undefined) {
+    items.push(block[0].item);
+  }
 
-  const tail = dropRows(rest, ["output", "server"]);
+  const output = rest.find((row) => rowId(row) === "output");
+  if (output) items.push({ ...output, separator: undefined });
+  // 이 묶음의 선은 첫 줄 하나만 인다
+  const head = items[at];
+  if (head !== undefined) items[at] = { ...head, separator: at > 0 || undefined };
+
+  const tail = dropRows(rest, ["split", "output", "server"]);
   for (const [i, item] of tail.entries()) {
     items.push(i === 0 ? { ...item, separator: items.length > 0 } : item);
   }

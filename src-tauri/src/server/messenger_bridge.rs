@@ -7,7 +7,8 @@
 //! - **채널마다 계정 하나**와 자기 상태(토큰 · 짝 · 고리 · 고르기 · 다리 턴 · 돌봄 · 카드)를 갖는다. 다리 턴의 답은 그 글이 온 채널로만 ·
 //!   카드 누름은 먼저 온 것이 이긴다(`resolve_from_bridge` 는 두 번째부터 "이미").
 //! - Discord · Slack 은 **DM 만**이고 멘션은 늘 막는다.
-//! - 코어는 채널 서식을 짓지 않는다 — 보내는 글은 중립 [`Text`].
+//! - 코어는 채널 서식을 짓지 않는다 — 보내는 글은 중립 [`Text`]. 마크다운으로 읽는 것은 다리 턴의 답 전문([`Text::Markdown`])뿐이고,
+//!   우리 문구 · 이름표 · 사용자 글자는 글자 그대로다. 어느 쪽이든 링크 · 멘션은 만들지 않는다.
 //!
 //! ## 불변식
 //!
@@ -102,7 +103,7 @@ pub(crate) trait Env: Send + Sync {
     fn answer(&self, cli: &str, convo: Option<&str>) -> (Option<String>, Option<u64>);
     /// 블로킹.
     fn fallback_label(&self, stream: &str) -> String;
-    /// 블로킹. 겹친 고르기 단추에만 쓴다.
+    /// 블로킹. 고르기 단추와 다리 글의 타일 이름([`named_of`])에 붙인다.
     fn title(&self, stream: &str) -> Option<String>;
 }
 
@@ -312,8 +313,10 @@ pub(crate) struct ButtonPress {
 
 /// 채널 서식은 전송이 짓는다.
 pub(crate) enum Text {
-    /// 나누기 · 상한은 코어가 맞췄다.
+    /// 나누기 · 상한은 코어가 맞췄다. 몸은 글자 그대로(서식으로 읽지 않는다).
     Lines { head: Option<String>, body: String },
+    /// AI 답 전문의 한 조각 — 몸은 마크다운 원문이고 전송이 `messenger::md` 로 그 채널의 서식을 입힌다. 나누기 · 상한 · 울타리 잇기는 코어가 맞췄다.
+    Markdown { head: Option<String>, body: String },
     /// 그 채널로 **이미 그린** 글(`messenger.rs`) — 전송이 상한 안으로 자른다.
     Rendered { text: String, tail: Option<String> },
 }
@@ -726,6 +729,15 @@ async fn label_of(cfg: &Config, stream: &str) -> String {
     blocking(move || env.fallback_label(&s)).await.unwrap_or_else(|| stream.to_string())
 }
 
+/// 다리가 보내는 글의 타일 이름 — 대화 제목이 있으면 붙인다(고르기 단추와 같은 규칙 · 번호 없음).
+async fn named_of(cfg: &Config, stream: &str) -> String {
+    let label = label_of(cfg, stream).await;
+    let env = cfg.env.clone();
+    let s = stream.to_string();
+    let title = blocking(move || env.title(&s)).await.flatten();
+    logic::named(&label, title.as_deref())
+}
+
 async fn on_paired(chan: Channel, cfg: &Arc<Config>, m: Incoming) {
     let chat = m.chat_id;
     let text = match logic::clean_text(m.text.as_deref().unwrap_or("")) {
@@ -799,22 +811,15 @@ async fn on_paired(chan: Channel, cfg: &Arc<Config>, m: Incoming) {
     }
 }
 
-/// 이름표가 겹치는 것만 대화 제목을 읽는다(블로킹 풀).
+/// 대화 제목은 블로킹 풀에서 읽는다.
 async fn pick_labels_of(cfg: &Config, streams: &[String]) -> Vec<String> {
-    let mut labels = Vec::new();
-    for st in streams {
-        labels.push(label_of(cfg, st).await);
-    }
     let mut items: Vec<(String, Option<String>)> = Vec::new();
-    for (i, st) in streams.iter().enumerate() {
-        let title = if labels.iter().filter(|l| **l == labels[i]).count() > 1 {
-            let env = cfg.env.clone();
-            let s = st.clone();
-            blocking(move || env.title(&s)).await.flatten()
-        } else {
-            None
-        };
-        items.push((labels[i].clone(), title));
+    for st in streams {
+        let label = label_of(cfg, st).await;
+        let env = cfg.env.clone();
+        let s = st.clone();
+        let title = blocking(move || env.title(&s)).await.flatten();
+        items.push((label, title));
     }
     logic::pick_labels(&items)
 }
@@ -861,7 +866,7 @@ async fn deliver(chan: Channel, cfg: &Arc<Config>, chat: i64, source: i64, strea
         Ok(()) => {
             let label = match shown {
                 Some(l) => l,
-                None => label_of(cfg, stream).await,
+                None => named_of(cfg, stream).await,
             };
             format!("→ {label}")
         }
@@ -1004,7 +1009,7 @@ pub(crate) fn on_turn_event(stream: &str, ev: TurnEvent, cli: Option<&'static st
                         c.tending.fire(&stream, seq) && c.turns.first_ask(&stream)
                     };
                     if go {
-                        let label = label_of(&cfg, &stream).await;
+                        let label = named_of(&cfg, &stream).await;
                         let t = tr!(ko: "🟡 확인 필요 · {label} — 앱에서 답하세요", en: "🟡 Needs action · {label} — answer in the app");
                         send_plain_text(chan, chat, &t, anchor, Some(&stream)).await;
                     }
@@ -1123,7 +1128,7 @@ async fn after_card_sent(chan: Channel, chat: i64, id: &str, message_id: Option<
 #[allow(clippy::too_many_arguments)]
 async fn card_request(chan: Channel, cfg: &Arc<Config>, chat: i64, id: &str, stream: &str, question: bool, tool: &str, summary: &str) {
     let on = !question && chat_on(chan, cfg).await;
-    let label = label_of(cfg, stream).await;
+    let label = named_of(cfg, stream).await;
     let anchor = turn_anchor(chan, state().chan(chan).turns.source(stream));
     if on {
         let mid = send(chan, chat, &Text::plain(logic::card_text(&label, tool, summary)), anchor, &logic::card_buttons(id), Some(stream)).await;
@@ -1225,7 +1230,7 @@ async fn settled_answer(cfg: &Arc<Config>, cli: &'static str, convo: Option<Stri
 }
 
 async fn send_answer(chan: Channel, cfg: &Arc<Config>, chat: i64, stream: &str, cli: Option<&'static str>, convo: Option<String>, anchor: Option<i64>) {
-    let label = label_of(cfg, stream).await;
+    let label = named_of(cfg, stream).await;
     let text = match cli {
         Some(cli) => settled_answer(cfg, cli, convo).await,
         None => None,
@@ -1237,8 +1242,9 @@ async fn send_answer(chan: Channel, cfg: &Arc<Config>, chat: i64, stream: &str, 
         return;
     };
     let more = tr!(ko: "… (앱에서 전체 보기)", en: "… (see the full reply in the app)");
-    for (i, part) in split_answer(chan, &head, &text, &more).into_iter().enumerate() {
-        let t = if i == 0 { Text::headed(head.clone(), part) } else { Text::plain(part) };
+    let parts = logic::mend_fences(split_answer(chan, &head, &text, &more), &more);
+    for (i, part) in parts.into_iter().enumerate() {
+        let t = Text::Markdown { head: (i == 0).then(|| head.clone()), body: part };
         send(chan, chat, &t, anchor, &[], Some(stream)).await;
     }
 }
@@ -1367,7 +1373,7 @@ async fn permission_notice(chan: Channel, chat: i64, stream: &str, rendered: &st
             .collect()
     };
     let (first, rest) = opened.split_first()?;
-    let label = label_of(&cfg, stream).await;
+    let label = named_of(&cfg, stream).await;
     let text = Text::Rendered { text: rendered.to_string(), tail: (!has_tool).then(|| logic::tool_line(&first.2, &first.3)) };
     let mid = send(chan, chat, &text, None, &logic::card_buttons(&first.0), Some(stream)).await;
     after_card_sent(chan, chat, &first.0, mid, &label).await;

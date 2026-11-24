@@ -22,6 +22,9 @@
 //! Slack 은 남의 글자의 `& < >` 걷기가 곧 멘션·링크 차단이다 — `link_names` 를 싣지 않아 맨글자 `@channel` 도 풀리지 않는다(실기 미확인 —
 //! Slack 문서 기준). Slack 서식 기호(`* _ ~ \``)는 걷지 않는다 — 백슬래시 이스케이프가 없고, 그 기호는 모양만 바꿀 뿐 링크 · 멘션을 만들지 못한다.
 //!
+//! 대화 발췌는 마크다운으로 해석한다([`md`]) — Telegram · Discord 는 굵게 · 코드 같은 서식으로, Slack mrkdwn 은 낱말 경계가 없으면
+//! `*굵게*는` 을 그리지 못하므로 기호를 걷은 평문으로. 링크는 어느 채널에서도 누를 수 없는 글자다.
+//!
 //! ## 대화에서 나온 글자 — 켠 사람에게만, Rust 안에서만
 //!
 //! `[messenger] include_conversation`(안 정하면 켬)이면 에이전트 알림에 대화 제목 · 마지막 답 앞부분을 싣는다. 프런트는 대화의 가리킴만
@@ -34,6 +37,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::i18n::tr;
+
+pub(crate) mod md;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -175,16 +180,7 @@ impl Channel {
     fn escape(self, text: &str) -> String {
         let flat = collapse(text);
         match self {
-            Channel::Discord => {
-                let mut out = String::with_capacity(flat.len() + 8);
-                for c in flat.chars() {
-                    if DISCORD_MARKDOWN_CHARS.contains(&c) {
-                        out.push('\\');
-                    }
-                    out.push(c);
-                }
-                out
-            }
+            Channel::Discord => md::escape_discord(&flat),
             // mrkdwn 제어 글자 셋 — 멘션(`<!everyone>` · `<@U…>`)과 링크(`<url|글자>`)는 전부 `<…>` 라 이것으로 막힌다.
             Channel::Slack => flat
                 .replace('&', "&amp;")
@@ -212,12 +208,21 @@ impl Channel {
         }
     }
 
+    /// 발췌 한 줄 — 서식은 Telegram · Discord 만, Slack 은 기호를 걷은 평문(머리말).
+    fn excerpt(self, line: &md::Line) -> String {
+        match self {
+            Channel::Discord => md::inline_discord(&line.items),
+            Channel::Slack => self.escape(&line.text()),
+            Channel::Telegram => md::inline_html(&line.items),
+        }
+    }
+
     fn render_convo_line_raw(self, line: &ConvoLine) -> String {
         match line {
             ConvoLine::Title(t) => format!("「{}」", self.escape(t)),
             ConvoLine::Excerpt(lines) => lines
                 .iter()
-                .map(|l| format!("> {}", self.escape(l)))
+                .map(|l| format!("> {}", self.excerpt(l)))
                 .collect::<Vec<_>>()
                 .join("\n"),
             ConvoLine::PendingTool { name, input } => {
@@ -560,45 +565,31 @@ enum AgentEvent {
 /// 서식 없는 구조(걷지 않았다). `Debug` 없음 — 대화 글자가 `{:?}` 로 흐를 틈을 두지 않는다.
 enum ConvoLine {
     Title(String),
-    Excerpt(Vec<String>),
+    Excerpt(Vec<md::Line>),
     PendingTool { name: String, input: Option<String> },
 }
 
-fn tidy_line(line: &str) -> String {
-    let mut l = line.trim();
-    let unhashed = l.trim_start_matches('#');
-    if unhashed.len() != l.len() && (unhashed.is_empty() || unhashed.starts_with(' ')) {
-        l = unhashed.trim_start();
-    }
-    let flat = collapse(l);
-    for p in ["- ", "* ", "+ "] {
-        if let Some(rest) = flat.strip_prefix(p) {
-            return format!("· {rest}");
-        }
-    }
-    flat
-}
-
-fn is_noise_line(line: &str) -> bool {
-    let l = line.trim();
-    l.starts_with("```") || (l.chars().count() >= 3 && l.chars().all(|c| matches!(c, '-' | '*' | '_')))
-}
-
-fn paragraphs(text: &str) -> Vec<Vec<String>> {
-    let mut out: Vec<Vec<String>> = Vec::new();
-    let mut cur: Vec<String> = Vec::new();
-    for raw in text.lines() {
-        if is_noise_line(raw) {
-            continue;
-        }
-        let l = tidy_line(raw);
-        if l.is_empty() {
-            if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
+/// 다리 답과 같은 해석기([`md::parse`]) — 코드 블록 · 표의 줄은 인라인 해석 없이 코드 줄로, 가로줄 · 울타리는 문단 사이로.
+fn paragraphs(text: &str) -> Vec<Vec<md::Line>> {
+    let mut out: Vec<Vec<md::Line>> = Vec::new();
+    let mut cur: Vec<md::Line> = Vec::new();
+    for b in md::parse(text) {
+        match b {
+            md::Block::Line(l) => {
+                let l = l.squash();
+                if l.visible() > 0 {
+                    cur.push(l);
+                }
             }
-            continue;
+            md::Block::Code { text, .. } => {
+                cur.extend(text.lines().map(collapse).filter(|l| !l.is_empty()).map(md::Line::code));
+            }
+            md::Block::Blank => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
         }
-        cur.push(l);
     }
     if !cur.is_empty() {
         out.push(cur);
@@ -606,22 +597,25 @@ fn paragraphs(text: &str) -> Vec<Vec<String>> {
     out
 }
 
-fn mark_cut(lines: &mut [String]) {
+fn mark_cut(lines: &mut [md::Line]) {
     if let Some(last) = lines.last_mut() {
-        if !last.ends_with('…') {
-            last.push('…');
-        }
+        last.mark_cut();
     }
 }
 
-fn fit_lines(lines: &[String], max_lines: usize, max_chars: usize) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+fn visible(lines: &[md::Line]) -> usize {
+    lines.iter().map(md::Line::visible).sum()
+}
+
+/// 상한은 **보이는 글자**로 잰다 — 자른 줄도 열린 서식을 닫는다([`md::Line::truncate`]).
+fn fit_lines(lines: &[md::Line], max_lines: usize, max_chars: usize) -> Vec<md::Line> {
+    let mut out: Vec<md::Line> = Vec::new();
     let mut used = 0usize;
     for l in lines {
         if out.len() >= max_lines {
             break;
         }
-        let n = l.chars().count();
+        let n = l.visible();
         if used + n <= max_chars {
             out.push(l.clone());
             used += n;
@@ -629,7 +623,7 @@ fn fit_lines(lines: &[String], max_lines: usize, max_chars: usize) -> Vec<String
         }
         let rest = max_chars.saturating_sub(used);
         if rest >= 12 || out.is_empty() {
-            out.push(truncate_chars(l, rest.max(1)));
+            out.push(l.truncate(rest.max(1)));
         } else {
             mark_cut(&mut out);
         }
@@ -642,27 +636,26 @@ fn fit_lines(lines: &[String], max_lines: usize, max_chars: usize) -> Vec<String
 }
 
 /// 넘치면 첫 문단 + `…` + 끝 문단 — 끝 문단이 먼저 자리를 잡는다(답 끝의 "다음으로 …할까요?" 가 폰에서 판단할 거리라서).
-fn excerpt_lines(text: &str) -> Vec<String> {
+fn excerpt_lines(text: &str) -> Vec<md::Line> {
     let paras = paragraphs(text);
     if paras.is_empty() {
         return Vec::new();
     }
-    let all: Vec<String> = paras.concat();
-    let total: usize = all.iter().map(|l| l.chars().count()).sum();
-    if all.len() <= EXCERPT_MAX_LINES && total <= EXCERPT_MAX_CHARS {
+    let all: Vec<md::Line> = paras.concat();
+    if all.len() <= EXCERPT_MAX_LINES && visible(&all) <= EXCERPT_MAX_CHARS {
         return all;
     }
     if paras.len() < 2 {
         return fit_lines(&all, EXCERPT_MAX_LINES, EXCERPT_MAX_CHARS);
     }
     let last = fit_lines(&paras[paras.len() - 1], EXCERPT_MAX_LINES - 2, EXCERPT_MAX_CHARS - 80);
-    let used: usize = last.iter().map(|l| l.chars().count()).sum::<usize>() + 1;
+    let used = visible(&last) + 1;
     let mut out = fit_lines(
         &paras[0],
         EXCERPT_MAX_LINES - last.len() - 1,
         EXCERPT_MAX_CHARS.saturating_sub(used),
     );
-    out.push("…".to_string());
+    out.push(md::Line::plain("…"));
     out.extend(last);
     out
 }

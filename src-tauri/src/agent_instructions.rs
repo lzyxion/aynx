@@ -512,15 +512,50 @@ fn block_range(text: &str, dev: bool) -> Result<Option<std::ops::Range<usize>>, 
     }
 }
 
+#[cfg(test)]
 fn compose(items: &[Instruction]) -> Option<String> {
-    if items.is_empty() {
-        return None;
+    Composed::of(items.iter().collect()).body
+}
+
+/// 관리 블록 본문과 그것을 이룬 켜진 지침(이름순).
+#[derive(Default)]
+struct Composed<'a> {
+    body: Option<String>,
+    items: Vec<&'a Instruction>,
+}
+
+impl<'a> Composed<'a> {
+    fn of(mut items: Vec<&'a Instruction>) -> Self {
+        items.sort_by(|a, b| a.name.cmp(&b.name));
+        let body = (!items.is_empty()).then(|| items.iter().map(|item| {
+            format!("## {}\n\n{}", item.description.as_deref().unwrap_or(&item.name), item.body.trim())
+        }).collect::<Vec<_>>().join("\n\n"));
+        Self { body, items }
     }
-    let mut items: Vec<&Instruction> = items.iter().collect();
-    items.sort_by(|a, b| a.name.cmp(&b.name));
-    Some(items.into_iter().map(|item| {
-        format!("## {}\n\n{}", item.description.as_deref().unwrap_or(&item.name), item.body.trim())
-    }).collect::<Vec<_>>().join("\n\n"))
+
+    #[cfg(test)]
+    fn text(body: Option<&str>) -> Self {
+        Self { body: body.map(str::to_owned), items: Vec::new() }
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.items.iter().map(|item| item.name.clone()).collect()
+    }
+
+    /// 가져온 원문을 지우지 않아 블록 안팎에 두 번 실린 지침 — 단순 포함 검사뿐이다.
+    fn duplicates(&self, existing: &str) -> Vec<String> {
+        let Ok(outside) = strip_import_blocks(existing) else { return Vec::new(); };
+        let outside = lf(&outside);
+        self.items.iter().filter(|item| {
+            let body = lf(&item.body);
+            let body = body.trim();
+            !body.is_empty() && outside.contains(body)
+        }).map(|item| item.name.clone()).collect()
+    }
+}
+
+fn lf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn normalize_newlines(text: &str, newline: &str) -> String {
@@ -626,13 +661,16 @@ pub struct FileChange {
     pub action: Action,
     pub reason: Option<String>,
     pub block: Option<String>,
+    pub subpath: Option<String>,
+    /// 블록을 이루는 켜진 지침의 이름뿐이다 — 본문은 싣지 않는다.
+    pub instructions: Vec<String>,
+    /// `instructions` 가운데 본문이 블록 밖에도 그대로 남은 것.
+    pub duplicates: Vec<String>,
     /// 미리 보기 밖에는 나가지 않는다 — 실제 쓰기는 계산한 바이트·경로 그대로다.
     #[serde(skip)]
     edit: Edit,
     #[serde(skip)]
     file_path: PathBuf,
-    #[serde(skip)]
-    subpath: Option<String>,
     #[serde(skip)]
     owners: Vec<String>,
     #[serde(skip)]
@@ -660,8 +698,9 @@ fn change(path: &Path, scope: Scope, project: Option<&str>, agent: Option<&str>,
         path: path.to_string_lossy().into_owned(), scope,
         project_id: project.map(str::to_owned), host: None, agent: agent.map(str::to_owned),
         action: Action::Unchanged, reason: None, block: body.map(str::to_owned),
+        subpath: None, instructions: Vec::new(), duplicates: Vec::new(),
         edit: Edit::Unchanged, file_path: path.to_owned(),
-        subpath: None, owners: project.into_iter().map(str::to_owned).collect(),
+        owners: project.into_iter().map(str::to_owned).collect(),
         missing_subfolder: false, attempted_write: false,
     }
 }
@@ -694,6 +733,15 @@ fn plan_file_snapshot(mut row: FileChange, existing: Result<Option<String>, Stri
     }
 }
 
+fn plan_composed(mut row: FileChange, existing: Result<Option<String>, String>, composed: &Composed<'_>, dev: bool) -> FileChange {
+    row.instructions = composed.names();
+    if let Ok(Some(text)) = &existing {
+        row.duplicates = composed.duplicates(text);
+    }
+    plan_file_snapshot(row, existing, composed.body.as_deref(), dev)
+}
+
+#[cfg(test)]
 fn plan_file(path: &Path, scope: Scope, project: Option<&str>, agent: Option<&str>, body: Option<&str>, dev: bool) -> FileChange {
     plan_file_snapshot(change(path, scope, project, agent, body), read_text(path), body, dev)
 }
@@ -785,7 +833,7 @@ fn subfolder_missing() -> String {
     tr!(ko: "하위 폴더가 없습니다", en: "The subfolder does not exist")
 }
 
-fn project_snapshot(row: FileChange, body: Option<&str>, snapshot: ProjectSnapshot, dev: bool) -> Vec<FileChange> {
+fn project_snapshot(row: FileChange, composed: &Composed<'_>, snapshot: ProjectSnapshot, dev: bool) -> Vec<FileChange> {
     match snapshot.directory {
         Err(reason) => return vec![failed(row, reason)],
         Ok(false) => {
@@ -807,8 +855,8 @@ fn project_snapshot(row: FileChange, body: Option<&str>, snapshot: ProjectSnapsh
     claude.path = format!("{}/CLAUDE.md", claude.path.trim_end_matches(['/', '\\']));
     claude.agent = Some("claude".into());
     vec![
-        plan_file_snapshot(agents, snapshot.agents, body, dev),
-        claude_project_snapshot(claude, snapshot.claude, snapshot.other_claude, body.is_some(), dev),
+        plan_composed(agents, snapshot.agents, composed, dev),
+        claude_project_snapshot(claude, snapshot.claude, snapshot.other_claude, composed.body.is_some(), dev),
     ]
 }
 
@@ -845,14 +893,19 @@ fn local_snapshot(wt: &Path, subpath: Option<&str>, has_body: bool) -> ProjectSn
     ProjectSnapshot { directory, agents: read_text(&path.join("AGENTS.md")), claude: read_text(&path.join("CLAUDE.md")), other_claude }
 }
 
-fn projects_subpath_body(library: &[Instruction], projects: &[&Project], subpath: Option<&str>) -> Option<String> {
-    let mut items: Vec<Instruction> = library.iter().filter(|item| {
+fn projects_subpath_composed<'a>(library: &'a [Instruction], projects: &[&Project], subpath: Option<&str>) -> Composed<'a> {
+    let mut items: Vec<&Instruction> = library.iter().filter(|item| {
         item.enabled && item.scope == Scope::Project && item.subpath.as_deref() == subpath
             && projects.iter().any(|project| item.projects.contains(&project.id))
-    }).cloned().collect();
+    }).collect();
     items.sort_by(|a, b| a.name.cmp(&b.name));
     items.dedup_by(|a, b| a.name == b.name);
-    compose(&items)
+    Composed::of(items)
+}
+
+#[cfg(test)]
+fn projects_subpath_body(library: &[Instruction], projects: &[&Project], subpath: Option<&str>) -> Option<String> {
+    projects_subpath_composed(library, projects, subpath).body
 }
 
 #[cfg(test)]
@@ -899,12 +952,11 @@ fn plan_with_written(env: &PlanEnv<'_>, library: &[Instruction], projects: &[Pro
                 rows.push(row);
                 continue;
             }
-            let items: Vec<Instruction> = library.iter().filter(|item| {
+            let composed = Composed::of(library.iter().filter(|item| {
                 item.enabled && item.scope == Scope::Global
                     && item.targets.iter().any(|id| id == "*" || target_id(id) == agent)
-            }).cloned().collect();
-            let body = compose(&items);
-            rows.push(plan_file(path, Scope::Global, None, Some(agent), body.as_deref(), env.dev));
+            }).collect());
+            rows.push(plan_composed(change(path, Scope::Global, None, Some(agent), None), read_text(path), &composed, env.dev));
         }
     }
     let mut groups: Vec<(PathBuf, Vec<&Project>)> = Vec::new();
@@ -939,10 +991,10 @@ fn plan_with_written(env: &PlanEnv<'_>, library: &[Instruction], projects: &[Pro
     for (wt, projects) in groups {
         let project = projects[0];
         for subpath in project_subpaths(library, &projects, written) {
-            let body = projects_subpath_body(library, &projects, subpath.as_deref());
+            let composed = projects_subpath_composed(library, &projects, subpath.as_deref());
             let path = subpath.as_deref().map_or_else(|| wt.clone(), |subpath| wt.join(subpath));
             let row = tracked(change(&path, Scope::Project, Some(&project.id), None, None), &projects, subpath.as_deref());
-            rows.extend(project_snapshot(row, body.as_deref(), local_snapshot(&wt, subpath.as_deref(), body.is_some()), env.dev));
+            rows.extend(project_snapshot(row, &composed, local_snapshot(&wt, subpath.as_deref(), composed.body.is_some()), env.dev));
         }
     }
     rows
@@ -1054,7 +1106,7 @@ fn import_file(source: ImportSource, project: Option<&Project>, used: &mut HashS
                 } else {
                     candidate.body = outside;
                 }
-                candidate.body = candidate.body.replace("\r\n", "\n").replace('\r', "\n").trim().to_owned();
+                candidate.body = lf(&candidate.body).trim().to_owned();
                 if candidate.body.is_empty() {
                     return None;
                 }

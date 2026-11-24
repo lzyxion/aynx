@@ -302,7 +302,8 @@ fn cut_at_units(text: &str, max: usize) -> usize {
     text.len()
 }
 
-/// 걷기 **뒤** 글자를 재므로(보수적) 상한은 지켜진다. 엔티티 · 태그 한가운데서 자르지 않는다.
+/// 걷기 **뒤** 글자를 재므로(보수적) 상한은 지켜진다. 엔티티 · 태그 한가운데서 자르지 않고, 열린 채 남은 태그는 안쪽부터 닫는다
+/// (짝이 틀린 HTML 은 Telegram 이 글 전체를 거절한다). 닫는 태그는 엔티티 해석 뒤 글자 수에 들지 않는다.
 pub(crate) fn clip_html(html: &str, max: usize) -> String {
     if units(html) <= max {
         return html.to_string();
@@ -321,11 +322,30 @@ pub(crate) fn clip_html(html: &str, max: usize) -> String {
         }
     }
     let mut out = html[..cut].to_string();
-    if out.matches("<b>").count() > out.matches("</b>").count() {
-        out.push_str("</b>");
-    }
+    out.push_str(&closing_tags(&out));
     out.push('…');
     out
+}
+
+/// 열린 채 남은 태그의 닫는 태그들(안쪽부터).
+fn closing_tags(html: &str) -> String {
+    let mut open: Vec<&str> = Vec::new();
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        let after = &rest[lt + 1..];
+        let Some(gt) = after.find('>') else { break };
+        let tag = &after[..gt];
+        match tag.strip_prefix('/') {
+            Some(name) => {
+                if open.last() == Some(&name) {
+                    open.pop();
+                }
+            }
+            None => open.push(tag.split_whitespace().next().unwrap_or("")),
+        }
+        rest = &after[gt + 1..];
+    }
+    open.iter().rev().filter(|n| !n.is_empty()).map(|n| format!("</{n}>")).collect()
 }
 
 /// 걷기 **전** 평문을 나눈다 — 부르는 쪽이 조각마다 걷는다(엔티티 해석 뒤 길이 = 걷기 전 길이).
@@ -452,6 +472,14 @@ mod tests {
         assert!(units(&c) <= 20 && c.ends_with("</b>…"), "{c}");
         let e = clip_html(&format!("{}&amp;tail-tail-tail", "a".repeat(8)), 18);
         assert_eq!(e, format!("{}…", "a".repeat(8)), "엔티티 한가운데서 자르지 않는다");
+        // 열린 태그는 안쪽부터 모두 닫는다 · 태그 한가운데서 자르지 않는다
+        let n = clip_html(&format!("<blockquote><b>a <i>b {}</i></b></blockquote>", "c".repeat(50)), 40);
+        assert!(n.ends_with("</i></b></blockquote>…"), "{n}");
+        crate::messenger::md::tests::balanced(n.trim_end_matches('…')).unwrap();
+        let k = clip_html(&format!("<b>a</b> <code>{}</code>", "c".repeat(50)), 30);
+        assert!(k.ends_with("</code>…"), "{k}");
+        let t = clip_html(&format!("{}<blockquote>x</blockquote>", "a".repeat(15)), 12);
+        assert!(!t.contains('<'), "{t}");
     }
 
     #[test]

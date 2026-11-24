@@ -547,6 +547,8 @@ const WANTED = [
   // 이미지 타일(2026-11-14) — 타일 아이콘 · 작은 지도(축소 그림 + 보는 사각형)
   ["image", "material-symbols:image-outline-rounded"],
   ["minimap", "material-symbols:picture-in-picture-outline-rounded"],
+  // 설정 › 지침 — 지침이 써지는 파일(`→ 경로`)
+  ["arrow-right", "material-symbols:arrow-forward-rounded"],
 ];
 
 /**

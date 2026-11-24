@@ -10,6 +10,7 @@ import {
   type PaneFlyoutId,
   type PaneMenuAction,
   type PaneMenuCtx,
+  type PaneMenuGroup,
   type PaneMenuItem,
   type PaneMenuRow,
   type TermMenuCtx,
@@ -84,29 +85,25 @@ const termItem = (kind: PaneKind, action: PaneMenuAction, ctx: TermMenuCtx = bar
   flatten(terminalMenuItems(kind, ctx, ko)).find((i) => i.action === action);
 
 describe("menuItemsFor — 종류별 항목 표", () => {
-  it("SSH 타일은 아홉 줄 — 접힌 묶음 둘(서버·출력)을 포함해서", () => {
+  it("SSH 타일은 일곱 줄 — 접힌 묶음 셋(분할 · 분리 · 서버 · 출력)을 포함해서", () => {
     expect(actionsOf("ssh")).toEqual([
-      "split-row",
-      "split-col",
-      "folder-conversations",
+      "split",
+      "convo",
       "server",
       "output",
       "ai-permission",
       "toggle-sync",
-      "detach",
       "close",
     ]);
   });
 
   it("로컬 셸에는 '서버' 묶음이 없다 (거기 든 셋이 전부 SSH 세션에 거는 것이다)", () => {
     expect(actionsOf("local")).toEqual([
-      "split-row",
-      "split-col",
-      "folder-conversations",
+      "split",
+      "convo",
       "output",
       "toggle-ai-read",
       "toggle-sync",
-      "detach",
       "close",
     ]);
   });
@@ -114,31 +111,26 @@ describe("menuItemsFor — 종류별 항목 표", () => {
   it.each<PaneKind>(["localfs", "doc"])(
     "%s 타일에는 분할·분리·닫기뿐이다 (복사할 출력도 공유할 세션도 없다)",
     (kind) => {
-      expect(actionsOf(kind)).toEqual([
-        "split-row",
-        "split-col",
-        "detach",
-        "close",
-      ]);
+      expect(actionsOf(kind)).toEqual(["split", "close"]);
+      expect(flyoutOf(kind, "split")).toEqual(["split-row", "split-col", "detach"]);
     },
   );
 
-  it("SFTP 타일에서는 **분리가 빠진다** — 옆 터미널의 세션을 빌려 쓴다", () => {
-    expect(actionsOf("sftp")).toEqual([
-      "split-row",
-      "split-col",
-      "close",
-    ]);
+  it("SFTP 타일에서는 **분리가 빠진다** — 옆 터미널의 세션을 빌려 쓴다 · 묶음 이름은 '분할'", () => {
+    expect(actionsOf("sftp")).toEqual(["split", "close"]);
+    expect(flyoutOf("sftp", "split")).toEqual(["split-row", "split-col"]);
+    expect(groupOf("sftp", "split")?.label).toBe("분할");
+    expect(groupOf("localfs", "split")?.label).toBe("분할 · 분리");
+    expect(menuItemsFor("sftp", off, en).filter(isGroup)[0]?.label).toBe("Split");
+    expect(menuItemsFor("localfs", off, en).filter(isGroup)[0]?.label).toBe("Split · Detach");
   });
 
   it("원격 문서 타일(`borrowed`)도 분리가 빠진다 — SFTP 와 같은 이유 · 로컬 문서는 남는다", () => {
     const borrowed = { ...off, borrowed: true };
-    expect(actionsOf("doc", borrowed)).toEqual([
-      "split-row",
-      "split-col",
-      "close",
-    ]);
-    expect(actionsOf("doc")).toContain("detach");
+    expect(actionsOf("doc", borrowed)).toEqual(["split", "close"]);
+    expect(flyoutOf("doc", "split", borrowed)).toEqual(["split-row", "split-col"]);
+    expect(groupOf("doc", "split", borrowed)?.label).toBe("분할");
+    expect(flyoutOf("doc", "split")).toContain("detach");
     // 선도 SFTP 와 같이 닫기 앞으로 옮겨 온다
     const seps = menuItemsFor("doc", borrowed, ko)
       .filter((i) => i.separator)
@@ -148,7 +140,7 @@ describe("menuItemsFor — 종류별 항목 표", () => {
 
   it("문서 타일에 경로가 있으면 '경로 복사' 가 분할 뒤 · 분리 앞에 선다(10-20 — 머리줄의 경로 글자를 걷은 자리)", () => {
     const local = { ...off, docPath: { path: "C:/notes/a.md", alias: "" } };
-    expect(actionsOf("doc", local)).toEqual(["split-row", "split-col", "copy-path", "detach", "close"]);
+    expect(actionsOf("doc", local)).toEqual(["split", "copy-path", "close"]);
     const item = itemOf("doc", "copy-path", local);
     expect(item?.label).toBe("경로 복사");
     expect(item?.icon).toBe("copy");
@@ -161,14 +153,15 @@ describe("menuItemsFor — 종류별 항목 표", () => {
 
   it("원격 문서의 '경로 복사' 말풍선은 `별칭:경로` — 분리는 빠지고 경로 복사는 남는다", () => {
     const remote = { ...off, borrowed: true, docPath: { path: "/srv/app/README.md", alias: "dev-01" } };
-    expect(actionsOf("doc", remote)).toEqual(["split-row", "split-col", "copy-path", "close"]);
+    expect(actionsOf("doc", remote)).toEqual(["split", "copy-path", "close"]);
+    expect(flyoutOf("doc", "split", remote)).not.toContain("detach");
     expect(itemOf("doc", "copy-path", remote)?.title).toBe("dev-01:/srv/app/README.md");
     expect(docPathShown({ path: "/srv/a", alias: "" })).toBe("/srv/a");
   });
 
   it("문서 타일의 '새 문서…' 는 경로 복사 아래 선 하나 뒤 — 흐리면 까닭 · `null` 이면 없음 · 다른 종류에는 없다", () => {
     const local = { ...off, docPath: { path: "C:/notes/a.md", alias: "" }, docNew: true };
-    expect(actionsOf("doc", local)).toEqual(["split-row", "split-col", "copy-path", "new-doc", "detach", "close"]);
+    expect(actionsOf("doc", local)).toEqual(["split", "copy-path", "new-doc", "close"]);
     const item = itemOf("doc", "new-doc", local);
     expect(item?.label).toBe("새 문서…");
     expect(item?.separator).toBe(true);
@@ -185,7 +178,7 @@ describe("menuItemsFor — 종류별 항목 표", () => {
   it("문서 타일이 맡긴 '이 파일' 줄(`fileTools` — 외부 열기)은 '경로 복사' 바로 위 — 선은 묶음 첫 줄에만(2026-11-19)", () => {
     const ext: PaneMenuItem = { action: "tool:external", label: "x", icon: "external", separator: true };
     const local = { ...off, docPath: { path: "C:/notes/a.md", alias: "" }, docNew: true, fileTools: [ext] };
-    expect(actionsOf("doc", local)).toEqual(["split-row", "split-col", "tool:external", "copy-path", "new-doc", "detach", "close"]);
+    expect(actionsOf("doc", local)).toEqual(["split", "tool:external", "copy-path", "new-doc", "close"]);
     expect(itemOf("doc", "tool:external", local)?.separator).toBe(true);
     expect(itemOf("doc", "copy-path", local)?.separator).toBeFalsy();
   });
@@ -193,7 +186,7 @@ describe("menuItemsFor — 종류별 항목 표", () => {
   it("경로가 비어 '경로 복사' 가 없으면 '이 파일' 줄이 선을 단다", () => {
     const ext: PaneMenuItem = { action: "tool:external", label: "x", icon: "external" };
     const ctx = { ...off, docPath: null, fileTools: [ext] };
-    expect(actionsOf("doc", ctx)).toEqual(["split-row", "split-col", "tool:external", "detach", "close"]);
+    expect(actionsOf("doc", ctx)).toEqual(["split", "tool:external", "close"]);
     expect(itemOf("doc", "tool:external", ctx)?.separator).toBe(true);
   });
 
@@ -213,29 +206,41 @@ describe("menuItemsFor — 종류별 항목 표", () => {
   });
 
   it("시작 타일도 분리가 없다 (옮겨 봐야 같은 안내 화면이다)", () => {
-    expect(actionsOf("start")).toEqual([
-      "split-row",
-      "split-col",
-      "close",
-    ]);
+    expect(actionsOf("start")).toEqual(["split", "close"]);
+    expect(flyoutOf("start", "split")).toEqual(["split-row", "split-col"]);
   });
 
-  it("분할 둘과 닫기는 **모든 종류**에 있다", () => {
-    const kinds: PaneKind[] = ["ssh", "local", "sftp", "localfs", "start", "doc"];
+  it("'분할 · 분리 ▸'(분할 둘이 든)는 **모든 종류**의 첫 줄 · 닫기는 끝 줄이다", () => {
+    const kinds: PaneKind[] = ["ssh", "local", "sftp", "localfs", "start", "doc", "query", "image", "branches"];
     for (const kind of kinds) {
       const actions = actionsOf(kind);
-      expect(actions.slice(0, 2)).toEqual(["split-row", "split-col"]);
-      expect(actions.at(-1)).toBe("close");
+      expect(actions[0], kind).toBe("split");
+      expect(flyoutOf(kind, "split")?.slice(0, 2), kind).toEqual(["split-row", "split-col"]);
+      expect(actions.at(-1), kind).toBe("close");
+      // 분리는 묶음 안에만 있다
+      expect(actions, kind).not.toContain("detach");
     }
+  });
+
+  it("'분할 · 분리 ▸' 의 모양 — 그림 · 말풍선 · 흐림 없음 · 자식 셋의 그림", () => {
+    const g = groupOf("local", "split");
+    expect(g?.icon).toBe("layout");
+    expect(UI_ICONS).toHaveProperty("layout");
+    expect(g?.title).toBe(ko("pane.menu.splitDetach.title"));
+    expect(g?.disabled).toBeUndefined();
+    expect(groupOf("sftp", "split")?.title).toBe(ko("pane.menu.split.title"));
+    expect(g?.children.map((c) => c.icon)).toEqual(["split-h", "split-v", "window"]);
   });
 });
 
 describe("menuItemsFor — 토글 상태", () => {
-  it("로컬 타일은 체크 줄 'AI 읽기 허용'(11-18) — 켜졌으면 ✓ · 권한 묶음의 선을 이고 · 'AI 권한…' 줄은 없다", () => {
+  it("로컬 타일은 체크 줄 'AI 읽기 허용'(11-18) — 앞자리는 늘 눈 그림 · 켜짐은 `checked` · 권한 묶음의 선을 이고 · 'AI 권한…' 줄은 없다", () => {
     const offItem = itemOf("local", "toggle-ai-read", off);
     expect(offItem?.checkbox).toBe(true);
     expect(offItem?.checked).toBe(false);
-    expect(offItem?.icon).toBeNull();
+    // 머리줄 눈 칩과 같은 그림 — 켬끔과 무관하다(✓ 는 `PaneMenu` 가 줄 끝에 그린다)
+    expect(offItem?.icon).toBe("ai-read");
+    expect(UI_ICONS).toHaveProperty("ai-read");
     expect(offItem?.disabled).toBeUndefined();
     expect(offItem?.separator).toBe(true);
     expect(offItem?.label).toBe("AI 읽기 허용");
@@ -243,7 +248,7 @@ describe("menuItemsFor — 토글 상태", () => {
 
     const onItem = itemOf("local", "toggle-ai-read", { ...off, shared: true });
     expect(onItem?.checked).toBe(true);
-    expect(onItem?.icon).toBe("check");
+    expect(onItem?.icon).toBe("ai-read");
     // 원격 단계는 로컬 줄에 뜻이 없다
     expect(itemOf("local", "toggle-ai-read", { ...off, shared: true, aiStage: "all" })).toEqual(onItem);
     expect(itemOf("local", "ai-permission", off)).toBeUndefined();
@@ -264,13 +269,16 @@ describe("menuItemsFor — 토글 상태", () => {
     expect(src("./pane-menu.ts")).not.toContain("noAiRow");
   });
 
-  it("원격 타일은 체크가 아니라 'AI 권한…' — 그림과 툴팁이 호스트 단계를 말한다", () => {
+  it("원격 타일은 체크가 아니라 'AI 권한…' — 그림은 고정(방패) · 툴팁이 호스트 단계를 말한다", () => {
     const item = itemOf("ssh", "ai-permission", { ...off, aiStage: "approve" });
     expect(item?.checkbox).toBeUndefined();
     expect(item?.disabled).toBe(false);
-    // 앞자리 그림은 게이지 글리프 — 머리줄 칩의 미니 게이지와 같은 꼴(승인 후 실행 = 자리 2 · 막대 둘)
-    expect(item?.icon).toBe("ai-gauge-2");
-    expect(UI_ICONS).toHaveProperty("ai-gauge-2");
+    // 단계는 머리줄 칩의 게이지가 말한다 — 메뉴 줄은 사이드 채팅 권한 모드(Manual)와 같은 방패 그림 하나
+    expect(item?.icon).toBe("shield-check");
+    expect(UI_ICONS).toHaveProperty("shield-check");
+    for (const stage of [null, "off", "read", "approve", "auto", "all"] as const) {
+      expect(itemOf("ssh", "ai-permission", { ...off, aiStage: stage })?.icon, String(stage)).toBe("shield-check");
+    }
     expect(item?.title).toContain("Ask");
     // 원격 타일의 로컬 토글 값은 뜻이 없다 — 켜져 있어도 줄은 같다
     expect(itemOf("ssh", "ai-permission", { ...off, aiStage: "approve", shared: true })).toEqual(item);
@@ -279,7 +287,7 @@ describe("menuItemsFor — 토글 상태", () => {
   it("호스트 목록에 없는 원격 타일(빠른 접속)은 'AI 권한…' 이 흐리고 이유를 말한다", () => {
     const item = itemOf("ssh", "ai-permission", { ...off, aiStage: null });
     expect(item?.disabled).toBe(true);
-    expect(item?.icon).toBe("ai-gauge-0");
+    expect(item?.icon).toBe("shield-check");
     expect(item?.title).toBe("호스트로 저장하면 AI 권한을 줄 수 있습니다");
     // 영어 사전도 같은 자리를 채운다
     const en1 = flatten(menuItemsFor("ssh", { ...off, aiStage: null }, en)).find((i) => i.action === "ai-permission");
@@ -287,18 +295,19 @@ describe("menuItemsFor — 토글 상태", () => {
   });
 
   it("쿼리 타일(10-14)은 'AI 권한…' 한 줄 — DB 연결의 단계 · 풀림 · 목록에 없는 연결은 흐림", () => {
-    expect(actionsOf("query", off)).toEqual(["split-row", "split-col", "ai-permission", "detach", "close"]);
+    expect(actionsOf("query", off)).toEqual(["split", "ai-permission", "close"]);
     const item = itemOf("query", "ai-permission", { ...off, dbAi: { level: "schema", broken: false } });
     expect(item?.disabled).toBe(false);
-    expect(item?.icon).toBe("ai-gauge-1");
+    expect(item?.icon).toBe("shield-check");
     expect(item?.title).toBe("Schema — 이 DB 연결에 적용됩니다");
     const broken = itemOf("query", "ai-permission", { ...off, dbAi: { level: "off", broken: true } });
     expect(broken?.disabled).toBe(false);
     expect(broken?.title).toContain("풀려");
-    expect(broken?.icon).toBe("ai-gauge-0");
-    // 모두 승인은 막대 넷 — 호스트 · DB 가 같은 자리면 같은 그림이다
-    expect(itemOf("query", "ai-permission", { ...off, dbAi: { level: "all", broken: false } })?.icon).toBe("ai-gauge-4");
-    expect(itemOf("ssh", "ai-permission", { ...off, aiStage: "all" })?.icon).toBe("ai-gauge-4");
+    expect(broken?.icon).toBe("shield-check");
+    // 단계와 무관한 같은 그림 — 연결이 목록에 없어도 같다
+    expect(itemOf("query", "ai-permission", { ...off, dbAi: { level: "all", broken: false } })?.icon).toBe("shield-check");
+    expect(itemOf("query", "ai-permission", { ...off, dbAi: null })?.icon).toBe("shield-check");
+    expect(src("./pane-menu.ts")).not.toContain("gaugeIconName");
     expect(itemOf("query", "ai-permission", { ...off, dbAi: null })?.disabled).toBe(true);
     // 다른 종류에는 서지 않는다
     expect(itemOf("run", "ai-permission", { ...off, dbAi: { level: "read", broken: false } })).toBeUndefined();
@@ -310,15 +319,16 @@ describe("menuItemsFor — 토글 상태", () => {
     expect(item?.title).toContain("탭을 우클릭해 켜세요");
   });
 
-  it("탭이 켜져 있으면 누를 수 있고, 포함 여부가 ✓ 로 뜬다", () => {
+  it("탭이 켜져 있으면 누를 수 있고, 포함 여부는 `checked`(✓ 는 줄 끝) — 앞자리는 늘 키보드 그림", () => {
     const notIn = itemOf("ssh", "toggle-sync", { ...off, syncOn: true });
     expect(notIn?.disabled).toBe(false);
     expect(notIn?.checked).toBe(false);
-    expect(notIn?.icon).toBeNull();
+    expect(notIn?.icon).toBe("keyboard");
+    expect(UI_ICONS).toHaveProperty("keyboard");
 
     const isIn = itemOf("ssh", "toggle-sync", { ...off, syncOn: true, included: true });
     expect(isIn?.checked).toBe(true);
-    expect(isIn?.icon).toBe("check");
+    expect(isIn?.icon).toBe("keyboard");
     expect(isIn?.title).toContain("Ctrl+클릭");
   });
 
@@ -329,16 +339,16 @@ describe("menuItemsFor — 토글 상태", () => {
 });
 
 describe("menuItemsFor — 구분선", () => {
-  it("SSH 타일은 여섯 묶음으로 갈린다: 분할 / 지난 대화 / 서버 / 출력 / 권한 / 치우기", () => {
+  it("SSH 타일은 여섯 묶음으로 갈린다: 분할 · 분리 / 지난 대화 / 서버 / 출력 / 권한 / 닫기", () => {
     const marks = menuItemsFor("ssh", off, ko)
       .filter((i) => i.separator)
       .map(rowId);
-    expect(marks).toEqual(["folder-conversations", "server", "output", "ai-permission", "detach"]);
+    expect(marks).toEqual(["convo", "server", "output", "ai-permission", "close"]);
   });
 
   it("이 폴더의 지난 대화 — 터미널 타일에만 · 단축키 글자는 부르는 쪽이 넘긴 그대로", () => {
     for (const kind of ["localfs", "sftp", "start", "doc"] as const) {
-      expect(actionsOf(kind), kind).not.toContain("folder-conversations");
+      expect(itemOf(kind, "folder-conversations"), kind).toBeUndefined();
     }
     expect(itemOf("local", "folder-conversations")?.label).toBe("이 폴더의 지난 대화");
     expect(itemOf("local", "folder-conversations")?.icon).toBe("conversations");
@@ -350,32 +360,62 @@ describe("menuItemsFor — 구분선", () => {
     expect(itemOf("local", "folder-conversations", { ...off, folderConvoHint: "" })?.hint).toBeUndefined();
   });
 
-  it("사이드 채팅에서 이어 가기(사이드 채팅 v2 6단계) — 로컬 타일 · 부르는 쪽이 대화를 안다고 할 때만 · 지난 대화 바로 아래 · 두 메뉴 모두", () => {
-    expect(actionsOf("local"), "대화를 모른다").not.toContain("continue-side-chat");
+  it("사이드 채팅에서 이어 가기(사이드 채팅 v2 6단계) — 로컬 타일 · 부르는 쪽이 대화를 안다고 할 때만 · '대화 ▸' 의 지난 대화 바로 아래 · 두 메뉴 모두", () => {
+    expect(itemOf("local", "continue-side-chat"), "대화를 모른다").toBeUndefined();
     const on = { ...off, sideChatFork: true };
-    const acts = actionsOf("local", on);
-    expect(acts.indexOf("continue-side-chat")).toBe(acts.indexOf("folder-conversations") + 1);
+    expect(flyoutOf("local", "convo", on)).toEqual(["folder-conversations", "continue-side-chat"]);
     for (const kind of ["ssh", "localfs", "doc", "query"] as const) {
-      expect(actionsOf(kind, on), kind).not.toContain("continue-side-chat");
+      expect(itemOf(kind, "continue-side-chat", on), kind).toBeUndefined();
     }
     const item = itemOf("local", "continue-side-chat", on);
     expect(item?.label).toBe("사이드 채팅에서 이어 가기");
+    expect(item?.title).toBe(ko("pane.menu.continueSideChat.title"));
     expect(item?.separator).toBeUndefined();
     expect(UI_ICONS).toHaveProperty(item?.icon ?? "");
-    expect(terminalMenuItems("local", { ...bare, sideChatFork: true }, ko).map(rowId)).toContain("continue-side-chat");
-    expect(menuItemsFor("local", on, en).find((r) => rowId(r) === "continue-side-chat")?.label).toBe("Continue in side chat");
+    expect(terminalMenuItems("local", { ...bare, sideChatFork: true }, ko).map(rowId)).toContain("convo");
+    expect(flatten(menuItemsFor("local", on, en)).find((i) => i.action === "continue-side-chat")?.label).toBe("Continue in side chat");
   });
 
-  it("분리가 빠진 타일에서는 마지막 선이 **닫기 앞**으로 옮겨 온다", () => {
+  it("'대화 ▸' — 지난 대화 하나뿐이어도 묶는다(일반 터미널 · 원격 타일) · 자리는 선을 인 한 줄 · 안의 지난 대화는 단축키 글자 유지", () => {
+    const hint = { ...off, folderConvoHint: "Ctrl+Shift+Y" };
+    for (const [kind, ctx] of [
+      ["local", hint],
+      ["ssh", hint],
+      ["local", { ...hint, sideChatFork: true }],
+      ["local", { ...hint, orchContinue: true }],
+      ["local", { ...hint, sideChatFork: true, orchContinue: true }],
+    ] as const) {
+      const rows = menuItemsFor(kind, ctx, ko);
+      expect(rows.map(rowId), kind).not.toContain("folder-conversations");
+      const at = rows.findIndex((r) => rowId(r) === "convo");
+      expect(at, kind).toBe(1);
+      const g = rows[at] as PaneMenuGroup;
+      expect([g.label, g.icon, g.separator, g.title, g.disabled]).toEqual(["대화", "conversations", true, ko("pane.menu.convo.title"), undefined]);
+      expect(g.children[0]).toMatchObject({ action: "folder-conversations", hint: "Ctrl+Shift+Y" });
+    }
+    expect(flyoutOf("local", "convo", hint)).toEqual(["folder-conversations"]);
+    expect(flyoutOf("ssh", "convo", { ...hint, sideChatFork: true, orchContinue: true })).toEqual(["folder-conversations"]);
+    expect(flyoutOf("local", "convo", { ...hint, sideChatFork: true, orchContinue: true })).toEqual([
+      "folder-conversations",
+      "continue-side-chat",
+      "continue-orchestration",
+    ]);
+    // 세션이 없는 타일에는 묶음째 없다
+    for (const kind of ["localfs", "sftp", "doc", "query"] as const) expect(actionsOf(kind, { ...hint, sideChatFork: true }), kind).not.toContain("convo");
+    expect(menuItemsFor("local", off, en).filter(isGroup).find((x) => x.flyout === "convo")?.label).toBe("Conversations");
+  });
+
+  it("닫기는 늘 선을 인다 — 분리가 있든 없든", () => {
     const seps = (kind: PaneKind) =>
       menuItemsFor(kind, off, ko)
         .filter((i) => i.separator)
         .map(rowId);
     expect(seps("sftp")).toEqual(["close"]);
     expect(seps("start")).toEqual(["close"]);
+    expect(seps("localfs")).toEqual(["close"]);
   });
 
-  it("첫 묶음(분할)에는 선이 없다", () => {
+  it("첫 묶음(분할 · 분리)에는 선이 없다", () => {
     expect(menuItemsFor("ssh", off, ko)[0]?.separator).toBeUndefined();
     expect(menuItemsFor("localfs", off, ko)[0]?.separator).toBeUndefined();
   });
@@ -450,20 +490,38 @@ describe("menuItemsFor — 아이콘과 이름", () => {
 // ---------------------------------------------------------------------------
 
 describe("terminalMenuItems — 묶음 넷", () => {
-  it("링크도 선택도 없으면 붙여넣기부터 시작한다", () => {
+  it("'분할 · 분리 ▸' 가 맨 첫 줄 · 링크도 선택도 없으면 그 아래 붙여넣기부터", () => {
     expect(termActions("ssh")).toEqual([
+      "split",
       "paste",
       "select-all",
       "clear-screen",
       "output",
-      "split-row",
-      "split-col",
-      "folder-conversations",
+      "convo",
       "ai-permission",
       "toggle-sync",
-      "detach",
       "close",
     ]);
+  });
+
+  it("'분할 · 분리 ▸' 는 링크 · 편집 묶음 · 대화 면 · 띠 ⋯ 어디서 열어도 맨 첫 줄이고 선이 없다", () => {
+    for (const ctx of [
+      bare,
+      { ...bare, link: "https://x", hasSelection: true },
+      { ...bare, hasSelection: true, barEdits: true },
+      { ...bare, convo: true },
+      { ...bare, convo: true, barEdits: true, hasSelection: true },
+    ]) {
+      const rows = terminalMenuItems("local", ctx, ko);
+      expect(rowId(rows[0])).toBe("split");
+      expect(rows[0].separator).toBeUndefined();
+      expect(rows.filter((r) => rowId(r) === "split")).toHaveLength(1);
+      expect(rows[1].separator).toBe(true);
+    }
+    // 분리가 없는 타일은 "분할 ▸" 로 · 폰 · 오케스트레이션 탭은 묶음이 없다
+    expect(terminalMenuItems("local", { ...bare, remoteWindow: true }, ko)[0].label).toBe("분할");
+    expect(termActions("local", { ...bare, solo: true })[0]).toBe("paste");
+    expect(termActions("local", { ...bare, orchTab: true })).not.toContain("split");
   });
 
   /**
@@ -477,8 +535,8 @@ describe("terminalMenuItems — 묶음 넷", () => {
     expect(actionsOf("ssh")).toContain("server");
   });
 
-  it("선택이 있을 때만 '복사' 가 맨 앞에 붙는다", () => {
-    expect(termActions("local", { ...bare, hasSelection: true }).slice(0, 4)).toEqual([
+  it("선택이 있을 때만 '복사' 가 편집 묶음 맨 앞에 붙는다", () => {
+    expect(termActions("local", { ...bare, hasSelection: true }).slice(1, 5)).toEqual([
       "copy",
       "paste",
       "select-all",
@@ -491,29 +549,29 @@ describe("terminalMenuItems — 묶음 넷", () => {
     const sel: TermMenuCtx = { ...bare, hasSelection: true };
     const drop = ["copy", "paste", "select-all"];
     expect(termActions("local", { ...sel, barEdits: true })).toEqual(termActions("local", sel).filter((a) => !drop.includes(a)));
-    expect(termActions("local", { ...sel, barEdits: true })[0]).toBe("clear-screen");
+    expect(termActions("local", { ...sel, barEdits: true }).slice(0, 2)).toEqual(["split", "clear-screen"]);
   });
 
   it("대화 면에서 열면 붙여넣기 · 화면 지우기만 빠진다 — 띠의 ⋯ 면 편집 묶음이 통째로 없다", () => {
     const sel: TermMenuCtx = { ...bare, hasSelection: true };
     const drop = ["paste", "clear-screen"];
     expect(termActions("local", { ...sel, convo: true })).toEqual(termActions("local", sel).filter((a) => !drop.includes(a)));
-    expect(termActions("local", { ...bare, convo: true })[0]).toBe("select-all");
+    expect(termActions("local", { ...bare, convo: true }).slice(0, 2)).toEqual(["split", "select-all"]);
     const bar = terminalMenuItems("local", { ...sel, convo: true, barEdits: true }, ko);
     expect(bar.map(rowId)).not.toContain("select-all");
-    expect((bar[0] as { separator?: boolean }).separator ?? false).toBe(false); // 맨 위 줄 위에는 선이 없다
+    expect(bar[0].separator ?? false).toBe(false); // 맨 위 줄 위에는 선이 없다
   });
 
-  it("링크 위에서 누르면 링크 둘이 **맨 위**로 온다", () => {
+  it("링크 위에서 누르면 링크 둘이 분할 묶음 바로 아래로 온다", () => {
     const ctx: TermMenuCtx = { ...bare, link: "https://example.com/x", hasSelection: true };
-    expect(termActions("ssh", ctx).slice(0, 3)).toEqual(["open-link", "copy-link", "copy"]);
+    expect(termActions("ssh", ctx).slice(0, 4)).toEqual(["split", "open-link", "copy-link", "copy"]);
     // 주소는 툴팁으로 보인다 — 라벨을 길게 늘이면 메뉴 폭이 링크 길이를 따라간다.
     expect(termItem("ssh", "open-link", ctx)?.title).toBe("https://example.com/x");
   });
 
-  it("아래 절반은 헤더 ⋯ 의 목록 **그대로**다 ('출력' 은 위로, '서버' 는 아예 빠진다)", () => {
+  it("아래 절반은 헤더 ⋯ 의 목록 **그대로**다 ('분할' · '출력' 은 위로, '서버' 는 아예 빠진다)", () => {
     for (const kind of ["ssh", "local"] as const) {
-      const moved = ["output", "server"];
+      const moved = ["split", "output", "server"];
       const header = actionsOf(kind).filter((a) => !moved.includes(a));
       expect(termActions(kind).slice(-header.length)).toEqual(header);
     }
@@ -530,24 +588,33 @@ describe("terminalMenuItems — 구분선", () => {
       .filter((i) => i.separator)
       .map(rowId);
 
-  it("링크가 없으면 편집 묶음이 첫 줄이라 선이 없다", () => {
-    // 편집 셋(붙여넣기…화면 지우기) 뒤로 묶음이 갈린다: 출력 / 타일 배치 / 지난 대화 /
-    // 공유·동시 입력 / 치우기. 헤더 ⋯ 의 경계가 그대로 살아 있다.
-    expect(seps(bare)).toEqual(["output", "split-row", "folder-conversations", "ai-permission", "detach"]);
+  it("분할 아래 편집 묶음부터 묶음마다 선 하나", () => {
+    // 분할 · 분리 / 편집 셋 / 출력 / 지난 대화 / 공유·동시 입력 / 닫기. 헤더 ⋯ 의 경계가 그대로 살아 있다.
+    expect(seps(bare)).toEqual(["paste", "output", "convo", "ai-permission", "close"]);
   });
 
-  it("링크가 있으면 그 아래 첫 항목이 선을 이고 온다", () => {
-    expect(seps({ ...bare, link: "https://x", hasSelection: false })[0]).toBe("paste");
-    expect(seps({ ...bare, link: "https://x", hasSelection: true })[0]).toBe("copy");
+  it("우클릭한 자리의 묶음(고른 글자의 사이드 채팅 · 이 블록 · 출력)은 첫 줄만 선을 인다", () => {
+    const block: TermMenuCtx = { ...onRow, askBlock: { fromRow: true }, sideChat: true };
+    expect(seps(block)).toEqual(["paste", "block", "convo", "ai-permission", "close"]);
+    expect(seps({ ...block, hasSelection: true })).toEqual(["copy", "ask-side-chat", "convo", "ai-permission", "close"]);
+    // 편집 묶음이 통째로 빠지면 분할 바로 아래 묶음이 선을 인다
+    const top = terminalMenuItems("local", { ...block, convo: true, barEdits: true }, ko);
+    expect(top.slice(0, 2).map(rowId)).toEqual(["split", "block"]);
+    expect(top[1].separator).toBe(true);
   });
 
-  it("빠져나간 두 묶음이 이고 있던 경계는 **다음 줄이 물려받는다**", () => {
+  it("링크가 있으면 링크와 그 아래 첫 항목이 각각 선을 인다", () => {
+    expect(seps({ ...bare, link: "https://x", hasSelection: false }).slice(0, 2)).toEqual(["open-link", "paste"]);
+    expect(seps({ ...bare, link: "https://x", hasSelection: true }).slice(0, 2)).toEqual(["open-link", "copy"]);
+  });
+
+  it("빠져나간 묶음이 이고 있던 경계는 **다음 줄이 물려받는다**", () => {
     // 헤더 메뉴에서는 그 선을 `server`·`output` 이 이고 있었다 — 둘 다 이 목록에서 빠지면
-    // 뒤따르는 `split-row` 가 경계를 물려받는다 (안 그러면 편집 묶음에 그대로 붙는다).
+    // 뒤따르는 지난 대화가 경계를 이어 인다 (안 그러면 출력 묶음에 그대로 붙는다).
     const items = terminalMenuItems("ssh", bare, ko);
-    const split = items.findIndex((i) => rowId(i) === "split-row");
-    expect(rowId(items[split - 1])).toBe("output");
-    expect(items[split].separator).toBe(true);
+    const at = items.findIndex((i) => rowId(i) === "convo");
+    expect(rowId(items[at - 1])).toBe("output");
+    expect(items[at].separator).toBe(true);
   });
 });
 
@@ -684,7 +751,7 @@ describe("menuItemsFor — '출력' 묶음 (복사 · 스크롤백 저장 · 세
       ]);
     }
     // 터미널 우클릭 메뉴도 같은 정의 — 같이 빠진다
-    const group = terminalMenuItems("ssh", { ...bare, remoteWindow: true }, ko).filter(isGroup)[0];
+    const group = terminalMenuItems("ssh", { ...bare, remoteWindow: true }, ko).filter(isGroup).find((g) => g.flyout === "output")!;
     expect(group.children.map((c) => c.action)).toEqual(["copy-output"]);
     // 남은 한 줄이 흐리면 부모도 흐리다(전부 흐린 묶음 규칙 그대로)
     expect(groupOf("ssh", "output", remote)?.disabled).toBe(true);
@@ -694,7 +761,7 @@ describe("menuItemsFor — '출력' 묶음 (복사 · 스크롤백 저장 · 세
     const list = termActions("ssh");
     expect(list.indexOf("output")).toBe(list.indexOf("clear-screen") + 1);
     // 안에 든 셋은 헤더 ⋯ 와 같은 순서 그대로다 (한 정의의 두 가지).
-    const group = terminalMenuItems("ssh", bare, ko).filter(isGroup)[0];
+    const group = terminalMenuItems("ssh", bare, ko).filter(isGroup).find((g) => g.flyout === "output")!;
     expect(group.children.map((c) => c.action)).toEqual([
       "copy-output",
       "save-scrollback",
@@ -781,9 +848,10 @@ describe("terminalMenuItems — 스니펫으로 저장", () => {
     expect(termActions("ssh", { ...onRow, screenOnly: true })).not.toContain("save-snippet");
   });
 
-  it("끌어올린 '출력' 묶음 **바로 아래**다 (대상이 같은 화면·명령이다)", () => {
+  it("혼자면 펼친 줄로 끌어올린 '출력' 묶음 **바로 위**다 (대상이 같은 화면·명령이다)", () => {
     const list = termActions("local", onRow);
-    expect(list.indexOf("save-snippet")).toBe(list.indexOf("output") + 1);
+    expect(list.indexOf("save-snippet")).toBe(list.indexOf("output") - 1);
+    expect(list).not.toContain("block");
   });
 
   it("헤더 ⋯ 메뉴에는 없다 — 그쪽에는 가리킨 줄이 없다", () => {
@@ -797,8 +865,8 @@ describe("문구는 사전을 거친다 — 같은 표, 다른 언어", () => {
     const koItems = menuItemsFor("ssh", off, ko);
     const enItems = menuItemsFor("ssh", off, en);
     expect(enItems.map(rowId)).toEqual(koItems.map(rowId));
-    expect(enItems.find((i) => rowId(i) === "split-row")?.label).toBe("Split left and right");
-    expect(enItems.find((i) => rowId(i) === "detach")?.label).toBe("Detach to a new window");
+    expect(flatten(enItems).find((i) => i.action === "split-row")?.label).toBe("Split left and right");
+    expect(flatten(enItems).find((i) => i.action === "detach")?.label).toBe("Detach to a new window");
     // 묶음 줄과 그 안의 줄도 함께 갈아입는다.
     expect(enItems.find((i) => rowId(i) === "output")?.label).toBe("Output");
     expect(enItems.find((i) => rowId(i) === "server")?.label).toBe("Server");
@@ -816,38 +884,60 @@ describe("terminalMenuItems — 이 블록을 AI 에게 묻기 (docs/log/2026-09
   const withBlock: TermMenuCtx = { ...onRow, askBlock: { fromRow: true }, askHint: "Ctrl+Shift+X" };
 
   it("블록이 없으면(셸 통합이 없는 타일) 줄이 아예 없다", () => {
-    expect(termActions("local")).not.toContain("ask-ai");
-    expect(termActions("local", { ...bare, askBlock: null })).not.toContain("ask-ai");
+    expect(termItem("local", "ask-ai")).toBeUndefined();
+    expect(termActions("local", { ...bare, askBlock: null })).not.toContain("block");
   });
 
-  it("출력 바로 아래, 스니펫 위 — 누른 줄이면 '이 블록을', 아니면 '마지막 블록을', 단축키 글자가 붙는다", () => {
+  const blockGroup = (kind: PaneKind, ctx: TermMenuCtx) =>
+    terminalMenuItems(kind, ctx, ko)
+      .filter(isGroup)
+      .find((g) => g.flyout === "block");
+
+  it("스니펫과 함께 '이 블록 ▸' 으로 묶여 출력 바로 위 — 누른 줄이면 '이 블록', 아니면 '마지막 블록' · 안의 라벨은 짧고 단축키 글자가 붙는다", () => {
     const list = termActions("local", withBlock);
-    expect(list.indexOf("ask-ai")).toBe(list.indexOf("output") + 1);
-    expect(list.indexOf("save-snippet")).toBe(list.indexOf("ask-ai") + 1);
+    expect(list.indexOf("block")).toBe(list.indexOf("output") - 1);
+    expect(list).not.toContain("ask-ai");
+    const g = blockGroup("local", withBlock);
+    expect([g?.label, g?.icon, g?.title]).toEqual(["이 블록", "command", ko("pane.menu.block.title")]);
+    expect(UI_ICONS).toHaveProperty("command");
+    expect(g?.children.map((c) => c.action)).toEqual(["ask-ai", "save-snippet"]);
     const item = termItem("local", "ask-ai", withBlock);
-    expect(item?.label).toBe("이 블록을 AI 에게 묻기…");
+    expect(item?.label).toBe("AI 에게 묻기…");
+    expect(item?.title).toBe(ko("pane.menu.askai.title"));
     expect(item?.hint).toBe("Ctrl+Shift+X");
     expect(item?.icon).toBe("ai");
-    expect(termItem("ssh", "ask-ai", { ...withBlock, askBlock: { fromRow: false } })?.label).toBe(
-      "마지막 블록을 AI 에게 묻기…",
-    );
+    const snip = termItem("local", "save-snippet", withBlock);
+    expect([snip?.label, snip?.title]).toEqual(["스니펫으로 저장", ko("pane.menu.snippet.row.title")]);
+    const last: TermMenuCtx = { ...withBlock, askBlock: { fromRow: false }, snippet: { command: "make", fromRow: false } };
+    expect(blockGroup("ssh", last)?.label).toBe("마지막 블록");
+    expect(termItem("ssh", "save-snippet", last)?.title).toBe(ko("pane.menu.snippet.last.title"));
+    expect(terminalMenuItems("ssh", last, en).filter(isGroup).find((x) => x.flyout === "block")?.label).toBe("Last block");
+  });
+
+  it("블록에 하는 일이 하나뿐이면 묶지 않고 지금 라벨 그대로 펼친다", () => {
+    const askOnly: TermMenuCtx = { ...bare, askBlock: { fromRow: true }, askHint: "Ctrl+Shift+X" };
+    expect(termActions("local", askOnly)).not.toContain("block");
+    expect(termItem("local", "ask-ai", askOnly)?.label).toBe("이 블록을 AI 에게 묻기…");
+    expect(termItem("local", "ask-ai", { ...askOnly, askBlock: { fromRow: false } })?.label).toBe("마지막 블록을 AI 에게 묻기…");
   });
 
   it("간이 모드(tmux 타일)에는 없다 · 헤더 ⋯ 에는 없다", () => {
-    expect(termActions("ssh", { ...withBlock, screenOnly: true })).not.toContain("ask-ai");
-    expect(actionsOf("local")).not.toContain("ask-ai");
+    expect(termItem("ssh", "ask-ai", { ...withBlock, screenOnly: true })).toBeUndefined();
+    expect(termActions("ssh", { ...withBlock, screenOnly: true })).not.toContain("block");
+    expect(itemOf("local", "ask-ai")).toBeUndefined();
   });
 });
 
 describe("menuItemsFor — 폰의 머리줄 줄들(`phone` · 10-20)", () => {
   it("`phone` 이 없으면(데스크톱 · 길게 누르기) 예전 목록 그대로다", () => {
     expect(actionsOf("local")).toEqual(actionsOf("local", { ...off, phone: undefined }));
-    expect(actionsOf("local")[0]).toBe("split-row");
+    expect(actionsOf("local")[0]).toBe("split");
   });
 
-  it("AI 타일 넘기기 · 폴더(로컬) · 브랜치가 맨 위에 서고 분할이 선을 인다(조정자 타일의 Run 줄은 2단계 단계 6 에서 걷었다)", () => {
-    const rows = menuItemsFor("local", { ...off, phone: { flip: "term" } }, ko);
-    expect(rows.slice(0, 4).map(rowId)).toEqual(["flip", "files", "branches", "split-row"]);
+  // `phone` 은 폰 배치(`solo`)에서만 넘어온다 — 그래서 "분할 · 분리 ▸" 와 함께 서지 않는다
+  it("AI 타일 넘기기 · 폴더(로컬) · 브랜치가 맨 위에 서고 다음 줄이 선을 인다(조정자 타일의 Run 줄은 2단계 단계 6 에서 걷었다)", () => {
+    const rows = menuItemsFor("local", { ...off, solo: true, phone: { flip: "term" } }, ko);
+    expect(rows.slice(0, 4).map(rowId)).toEqual(["flip", "files", "branches", "convo"]);
     const flip = rows[0] as PaneMenuItem;
     expect(flip.label).toBe(ko("pane.flip.toConvo"));
     expect(flip.icon).toBe("conversations");
@@ -855,32 +945,33 @@ describe("menuItemsFor — 폰의 머리줄 줄들(`phone` · 10-20)", () => {
   });
 
   it("원격은 폴더 줄이 없다('서버 ▸ 원격 파일' 이 같은 일) · 대화 면이면 터미널로", () => {
-    const rows = menuItemsFor("ssh", { ...off, phone: { flip: "convo" } }, ko);
-    expect(rows.slice(0, 3).map(rowId)).toEqual(["flip", "branches", "split-row"]);
+    const rows = menuItemsFor("ssh", { ...off, solo: true, phone: { flip: "convo" } }, ko);
+    expect(rows.slice(0, 3).map(rowId)).toEqual(["flip", "branches", "convo"]);
     expect((rows[0] as PaneMenuItem).label).toBe(ko("pane.flip.toTerm"));
   });
 
-  it("터미널이 아닌 타일은 줄이 없어 분할에 선도 없다", () => {
-    const rows = menuItemsFor("localfs", { ...off, phone: { flip: null } }, ko);
-    expect(rowId(rows[0])).toBe("split-row");
-    expect((rows[0] as PaneMenuItem).separator).toBeUndefined();
+  it("터미널이 아닌 타일은 줄이 없어 맨 윗줄(닫기)에 선도 없다", () => {
+    const rows = menuItemsFor("localfs", { ...off, solo: true, phone: { flip: null } }, ko);
+    expect(rowId(rows[0])).toBe("close");
+    expect(rows[0].separator).toBeUndefined();
   });
 
   it("줄 그림이 생성 목록에 있다", () => {
-    const rows = menuItemsFor("local", { ...off, phone: { flip: "convo" } }, ko);
+    const rows = menuItemsFor("local", { ...off, solo: true, phone: { flip: "convo" } }, ko);
     for (const r of rows.slice(0, 4)) expect(UI_ICONS[(r as PaneMenuItem).icon as keyof typeof UI_ICONS]).toBeDefined();
   });
 });
 
-describe("폰 배치(`solo` · 10-20) — 분할 둘 · 새 창으로 분리가 빠진다", () => {
-  const PHONE_GONE = ["split-row", "split-col", "detach"] as const;
+describe("폰 배치(`solo` · 10-20) — '분할 · 분리 ▸'(분할 둘 · 새 창으로 분리)가 빠진다", () => {
+  const PHONE_GONE = ["split", "split-row", "split-col", "detach"] as const;
+  const flatIds = (rows: readonly PaneMenuRow[]) => [...rows.map(rowId), ...flatten(rows).map((i) => i.action)];
   const KINDS: PaneKind[] = ["local", "ssh", "query", "localfs", "branches", "doc", "sftp"];
 
   it("위 띠 ⋯(`phone` + `solo`) — 모든 종류에서 세 줄이 없고 나머지는 그대로다", () => {
     for (const kind of KINDS) {
       const desk = actionsOf(kind);
       const phone = actionsOf(kind, { ...off, solo: true });
-      for (const id of PHONE_GONE) expect(phone).not.toContain(id);
+      for (const id of PHONE_GONE) expect(flatIds(menuItemsFor(kind, { ...off, solo: true }, ko))).not.toContain(id);
       expect(phone).toEqual(desk.filter((id) => !(PHONE_GONE as readonly string[]).includes(id)));
     }
   });
@@ -888,19 +979,19 @@ describe("폰 배치(`solo` · 10-20) — 분할 둘 · 새 창으로 분리가 
   it("터미널 길게 누르기 메뉴에도 없다", () => {
     for (const kind of ["local", "ssh"] as PaneKind[]) {
       const list = termActions(kind, { ...bare, solo: true });
-      for (const id of PHONE_GONE) expect(list).not.toContain(id);
+      for (const id of PHONE_GONE) expect(flatIds(terminalMenuItems(kind, { ...bare, solo: true }, ko))).not.toContain(id);
       expect(list).toContain("close");
     }
   });
 
-  it("데스크톱(`solo` 없음)은 예전 그대로 세 줄이 있다", () => {
-    for (const id of PHONE_GONE) expect(actionsOf("local")).toContain(id);
-    for (const id of PHONE_GONE) expect(termActions("ssh")).toContain(id);
+  it("데스크톱(`solo` 없음)은 묶음과 그 안의 세 줄이 있다", () => {
+    for (const id of PHONE_GONE) expect(flatIds(menuItemsFor("local", off, ko))).toContain(id);
+    for (const id of PHONE_GONE) expect(flatIds(terminalMenuItems("ssh", bare, ko))).toContain(id);
   });
 
   it("머리줄 줄 뒤 첫 줄이 선을 이고, 머리줄 줄이 없으면 맨 윗줄에 선이 없다", () => {
     const rows = menuItemsFor("local", { ...off, solo: true, phone: { flip: "term" } }, ko);
-    expect(rows.slice(0, 4).map(rowId)).toEqual(["flip", "files", "branches", "folder-conversations"]);
+    expect(rows.slice(0, 4).map(rowId)).toEqual(["flip", "files", "branches", "convo"]);
     expect((rows[3] as PaneMenuItem).separator).toBe(true);
     const bareRows = menuItemsFor("localfs", { ...off, solo: true, phone: { flip: null } }, ko);
     expect(bareRows.map(rowId)).toEqual(["close"]);
@@ -911,15 +1002,18 @@ describe("폰 배치(`solo` · 10-20) — 분할 둘 · 새 창으로 분리가 
 describe("원격 창(`remoteWindow`) — 메인 PC 의 편집기 · 창을 띄우는 줄이 빠진다", () => {
   const KINDS: PaneKind[] = ["local", "ssh", "query", "localfs", "branches", "doc", "sftp"];
 
-  it("[새 창으로 분리]가 모든 종류에서 없고, 닫기 앞 선은 닫기가 인다", () => {
+  it("[새 창으로 분리]가 모든 종류에서 없어 묶음 이름이 '분할' 이고, 닫기는 선을 인다", () => {
     for (const kind of KINDS) {
       const rows = menuItemsFor(kind, { ...off, remoteWindow: true }, ko);
-      expect(rows.map(rowId), kind).not.toContain("detach");
+      expect(flatten(rows).map((i) => i.action), kind).not.toContain("detach");
+      expect(flyoutOf(kind, "split", { ...off, remoteWindow: true }), kind).toEqual(["split-row", "split-col"]);
+      expect(groupOf(kind, "split", { ...off, remoteWindow: true })?.label, kind).toBe("분할");
       const close = rows.find((r) => rowId(r) === "close") as PaneMenuItem;
       expect(close.separator, kind).toBe(true);
     }
     // 터미널 우클릭 메뉴도 같은 정의
-    expect(termActions("ssh", { ...bare, remoteWindow: true })).not.toContain("detach");
+    expect(termItem("ssh", "detach", { ...bare, remoteWindow: true })).toBeUndefined();
+    expect(termItem("ssh", "split-row", { ...bare, remoteWindow: true })).toBeDefined();
   });
 
   it("서버 ▸ 에 [원격 파일 편집…]이 없다 (포워딩 · 원격 파일 · tmux 는 그대로)", () => {
@@ -933,7 +1027,7 @@ describe("원격 창(`remoteWindow`) — 메인 PC 의 편집기 · 창을 띄�
 
   it("메인 PC 창(명시 false · 값 없음)은 예전 그대로다", () => {
     for (const ctx of [off, { ...off, remoteWindow: false }]) {
-      expect(actionsOf("local", ctx)).toContain("detach");
+      expect(flyoutOf("local", "split", ctx)).toContain("detach");
       expect(flyoutOf("ssh", "server", ctx)).toEqual(["forward", "sftp", "edit-remote"]);
     }
   });
@@ -945,11 +1039,16 @@ describe("타일이 맡긴 도구 줄(`tools` · 2026-10-20 파일 타일 B안) 
     { action: "tool:places", label: "장소 패널", icon: "check", checkbox: true, checked: true },
   ];
 
-  it("맨 위에 서고, 그 뒤 타일 항목(분할부터)이 선 하나로 갈린다", () => {
+  it("'분할 · 분리 ▸' 바로 아래에 서고 첫 도구 줄이 선을 인다 — 그 뒤 타일 항목도 선 하나로 갈린다", () => {
     const rows = menuItemsFor("localfs", { ...off, tools }, ko);
-    expect(rows.map(rowId)).toEqual(["tool:hidden", "tool:places", ...actionsOf("localfs")]);
-    expect(rows[0].separator).not.toBe(true);
-    expect(rows[2].separator).toBe(true);
+    expect(rows.map(rowId)).toEqual(["split", "tool:hidden", "tool:places", "close"]);
+    expect(rows[0].separator).toBeUndefined();
+    expect(rows[1].separator).toBe(true);
+    expect(rows[2].separator).not.toBe(true);
+    expect(rows[3].separator).toBe(true);
+    // 도구 줄이 선을 달고 와도 첫 줄은 분할이다
+    const doc = menuItemsFor("doc", { ...off, tools: [{ ...tools[0], separator: true }] }, ko);
+    expect(doc.slice(0, 2).map(rowId)).toEqual(["split", "tool:hidden"]);
   });
 
   it("넘기지 않으면(터미널 우클릭 · 머리줄이 없는 타일) 예전 그대로다", () => {
@@ -961,11 +1060,25 @@ describe("타일이 맡긴 도구 줄(`tools` · 2026-10-20 파일 타일 B안) 
 describe("terminalMenuItems — 사이드 채팅에 묻기(사이드 채팅 v2 5단계 · 결정 11)", () => {
   const withBlock: TermMenuCtx = { ...onRow, askBlock: { fromRow: true }, sideChat: true };
 
-  it("주 창(sideChat)에서 블록이나 고른 글자가 있을 때만 — AI 에게 묻기 바로 아래", () => {
-    const list = termActions("local", withBlock);
-    expect(list.indexOf("ask-side-chat")).toBe(list.indexOf("ask-ai") + 1);
+  it("주 창(sideChat)에서 블록이 있으면 '이 블록 ▸' 의 AI 에게 묻기 바로 아래", () => {
+    const g = terminalMenuItems("local", withBlock, ko)
+      .filter(isGroup)
+      .find((x) => x.flyout === "block");
+    expect(g?.children.map((c) => c.action)).toEqual(["ask-ai", "ask-side-chat", "save-snippet"]);
     expect(termItem("ssh", "ask-side-chat", withBlock)?.label).toBe("사이드 채팅에 묻기");
     expect(termItem("local", "ask-side-chat", withBlock)?.title).toContain("블록");
+  });
+
+  it("고른 글자가 있으면 선택에 하는 일이라 묶음 밖의 펼친 줄 — 편집 묶음 바로 아래 · 블록 묶음 위", () => {
+    const withSel: TermMenuCtx = { ...withBlock, hasSelection: true };
+    const list = termActions("local", withSel);
+    expect(list.indexOf("ask-side-chat")).toBe(list.indexOf("clear-screen") + 1);
+    expect(list.indexOf("block")).toBe(list.indexOf("ask-side-chat") + 1);
+    const g = terminalMenuItems("local", withSel, ko)
+      .filter(isGroup)
+      .find((x) => x.flyout === "block");
+    expect(g?.children.map((c) => c.action)).toEqual(["ask-ai", "save-snippet"]);
+    expect(termItem("local", "ask-side-chat", withSel)?.title).toContain("고른 글자");
     // 고른 글자만 있어도(블록 없음 · tmux 간이 모드) 선다 — 말풍선이 글자를 말한다
     const sel: TermMenuCtx = { ...bare, hasSelection: true, sideChat: true, screenOnly: true };
     expect(termActions("ssh", sel)).toContain("ask-side-chat");
@@ -973,9 +1086,9 @@ describe("terminalMenuItems — 사이드 채팅에 묻기(사이드 채팅 v2 5
   });
 
   it("주 창이 아니거나 넘길 것이 없으면 없다", () => {
-    expect(termActions("local", { ...withBlock, sideChat: false })).not.toContain("ask-side-chat");
-    expect(termActions("local", { ...bare, sideChat: true })).not.toContain("ask-side-chat");
-    expect(termActions("local", { ...withBlock, screenOnly: true })).not.toContain("ask-side-chat");
+    expect(termItem("local", "ask-side-chat", { ...withBlock, sideChat: false })).toBeUndefined();
+    expect(termItem("local", "ask-side-chat", { ...bare, sideChat: true })).toBeUndefined();
+    expect(termItem("local", "ask-side-chat", { ...withBlock, screenOnly: true })).toBeUndefined();
   });
 });
 
@@ -983,22 +1096,27 @@ describe("오케스트레이션 탭(2026-10-29 — 노트 D11 · 0-3 Q1=B)", () 
   const ids = (rows: PaneMenuRow[]) => rows.map(rowId);
   it("탭 밖의 로컬 AI 타일에만 [오케스트레이션으로 이어 가기]", () => {
     const on = menuItemsFor("local", { ...off, orchContinue: true }, ko);
-    expect(ids(on)).toContain("continue-orchestration");
-    const item = on.find((r) => rowId(r) === "continue-orchestration") as PaneMenuItem;
-    expect(item.label).toBe(ko("pane.menu.continueOrch"));
+    // 지난 대화와 함께 '대화 ▸' 에 든다
+    expect(flyoutOf("local", "convo", { ...off, orchContinue: true })).toEqual(["folder-conversations", "continue-orchestration"]);
+    const item = flatten(on).find((i) => i.action === "continue-orchestration") as PaneMenuItem;
+    expect(item.label).toBe("오케스트레이션으로 이어 가기");
+    expect(flatten(menuItemsFor("local", { ...off, orchContinue: true }, en)).find((i) => i.action === "continue-orchestration")?.label).toBe("Continue in orchestration");
     // 대화·저장소를 고정한 초안 — 사이드 채팅 이어 가기와 같은 무리에 나란히.
     expect(item.title).toBe(ko("pane.menu.continueOrch.title"));
     expect(item.title).toContain("새 앨범 초안");
-    const both = ids(menuItemsFor("local", { ...off, orchContinue: true, sideChatFork: true }, ko));
+    const both = flyoutOf("local", "convo", { ...off, orchContinue: true, sideChatFork: true }) ?? [];
     expect(both.indexOf("continue-orchestration")).toBe(both.indexOf("continue-side-chat") + 1);
     expect(UI_ICONS).toHaveProperty(item.icon!);
-    expect(ids(menuItemsFor("local", off, ko))).not.toContain("continue-orchestration");
-    expect(ids(menuItemsFor("ssh", { ...off, orchContinue: true }, ko))).not.toContain("continue-orchestration");
+    expect(itemOf("local", "continue-orchestration")).toBeUndefined();
+    expect(itemOf("ssh", "continue-orchestration", { ...off, orchContinue: true })).toBeUndefined();
   });
-  it("오케스트레이션 탭의 타일 — 분할 둘 · 새 창으로 분리를 그리지 않는다(닫기는 남는다)", () => {
+  it("오케스트레이션 탭의 타일 — '분할 · 분리 ▸' 를 그리지 않는다(닫기는 남는다)", () => {
     const rows = ids(menuItemsFor("local", { ...off, orchTab: true }, ko));
-    for (const gone of ["split-row", "split-col", "detach"]) expect(rows).not.toContain(gone);
+    expect(rows).not.toContain("split");
+    for (const gone of ["split-row", "split-col", "detach"] as const) expect(itemOf("local", gone, { ...off, orchTab: true })).toBeUndefined();
     expect(rows).toContain("close");
-    expect(ids(menuItemsFor("run", { ...off, orchTab: true }, en))).not.toContain("split-row");
+    expect(rows[0]).toBe("convo");
+    expect(menuItemsFor("local", { ...off, orchTab: true }, ko)[0].separator).toBeUndefined();
+    expect(ids(menuItemsFor("run", { ...off, orchTab: true }, en))).not.toContain("split");
   });
 });

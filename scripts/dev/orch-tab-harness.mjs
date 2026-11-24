@@ -612,20 +612,23 @@ check("⑤ 보통 탭의 AI 타일", [s.orch, s.leaves.map((l) => l.kind)], [nul
 const menuRows = async () => {
   await ev(`document.querySelector('[data-pane="${aiId}"] [data-pane-head]')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 100 }))`);
   await sleep(300);
-  return JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')].map(b => b.textContent.trim()))`));
+  // 지난 대화 · 이어 가기는 "대화 ▸" 옆목록에 든다 — 열어서 그 줄까지 `data-action` · `data-flyout` 으로 센다
+  await ev(`document.querySelector('.tilemenu [data-flyout="convo"]')?.click()`);
+  await sleep(300);
+  return JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')].map(b => b.dataset.action ?? b.dataset.flyout ?? ''))`));
 };
 const closeMenu = async () => { await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))`); await sleep(200); };
 let rows5 = await menuRows();
-check("⑤ 대화를 모르는 타일 — [오케스트레이션으로 이어 가기] 없음", rows5.some((x) => x.includes("오케스트레이션으로 이어 가기")), false);
+check("⑤ 대화를 모르는 타일 — \"대화 ▸\" 에 지난 대화만 · [오케스트레이션으로 이어 가기] 없음", [rows5.includes("convo"), rows5.includes("continue-orchestration"), rows5.includes("folder-conversations")], [true, false, true]);
 await closeMenu();
 await ev(`(async () => (await ${importApp("app/agent-sessions.svelte.ts")}).linkAgentSession(${JSON.stringify(aiId)}, 'claude', ${JSON.stringify(FORK_SRC)}))()`);
 rows5 = await menuRows();
-const iSide = rows5.findIndex((x) => x.includes("사이드 채팅에서 이어 가기"));
-const iOrch = rows5.findIndex((x) => x.includes("오케스트레이션으로 이어 가기"));
-check("⑤ 대화를 알면 줄이 선다 — 사이드 채팅 갈라 오기 바로 아래", [iOrch >= 0, iOrch === iSide + 1], [true, true]);
+const iSide = rows5.indexOf("continue-side-chat");
+const iOrch = rows5.indexOf("continue-orchestration");
+check("⑤ 대화를 알면 줄이 선다 — \"대화 ▸\" 안 사이드 채팅 갈라 오기 바로 아래", [rows5.includes("folder-conversations"), iOrch >= 0, iOrch === iSide + 1], [true, true, true]);
 await shot("s5-fork-menu.png");
 // F2가 대체한 fork fresh/스튜디오 안내 검사는 v3-fork의 probe·잠긴 초안·시작 몸 검사로 옮겼다.
-await ev(`[...document.querySelectorAll('[role="menuitem"]')].find(b => b.textContent.includes('오케스트레이션으로 이어 가기')).click()`);
+await ev(`document.querySelector('.flyout [data-action="continue-orchestration"]').click()`);
 await need(`!!document.querySelector('${H} [data-new-repo-locked]') && document.querySelector('${H} [data-new-model]')?.value === 'opus'`);
 await sendLegacyAlbum('run-fork-legacy', '갈라 온 앨범', '원본 대화를 이어서 나눠 줘');
 s = await tabState();

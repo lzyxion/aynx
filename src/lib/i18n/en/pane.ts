@@ -173,7 +173,16 @@ export const pane: Record<keyof typeof koPane, string> = {
   "menu.split_row": "Split left and right",
   "menu.split_col": "Split top and bottom",
   "menu.folder_conversations": "Past conversations in this folder",
-  // The two rows that open a flyout (docs/log/2026-09-17-tile-menu-flyouts.md)
+  // Rows that open a flyout (docs/log/2026-09-17-tile-menu-flyouts.md)
+  "menu.splitDetach": "Split · Detach",
+  "menu.splitDetach.title": "Split this tile or detach it to a new window",
+  "menu.split": "Split",
+  "menu.split.title": "Split this tile left/right or top/bottom",
+  "menu.convo": "Conversations",
+  "menu.convo.title": "Open past conversations or continue this one elsewhere",
+  "menu.block.row": "This block",
+  "menu.block.last": "Last block",
+  "menu.block.title": "Ask AI about this command block or save it as a snippet",
   "menu.server": "Server",
   "menu.server.title": "Things you do to this server — port forwarding, remote files, remote edit",
   "menu.output": "Output",
@@ -218,12 +227,14 @@ export const pane: Record<keyof typeof koPane, string> = {
   "menu.select_all": "Select all",
   "menu.clear": "Clear screen",
   "menu.clear.title": "Clears this tile's screen and scrollback (does not send clear to the shell)",
+  "menu.snippet.short": "Save as snippet",
   "menu.snippet.row": "Save as snippet: {name}",
   "menu.snippet.row.title": "Saves this line's command under a name (you can edit it before saving)",
   "menu.snippet.last": "Save last command as snippet",
   "menu.snippet.last.title":
     "No command under the cursor, so this tile's last command is saved instead",
 
+  "menu.askai.short": "Ask AI…",
   "menu.askai.row": "Ask AI about this block…",
   "menu.askai.last": "Ask AI about the last block…",
   "menu.askai.title":

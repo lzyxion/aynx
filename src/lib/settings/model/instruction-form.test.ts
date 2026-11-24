@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { FileChange, ImportCandidate, Instruction } from "$lib/context";
 import {
   canApplyInstructions, displayInstructionPath, emptyInstructionForm, formToInstruction, groupInstructionChanges,
-  instructionFormProblems, instructionNameOk, instructionProblemKeys, instructionToForm, normalizeInstructionSubpath,
-  importSelectionToInstruction, selectedImportInstructions, type InstructionForm,
+  instructionFileGroups, instructionFileStatus, instructionFileVisible, instructionFormProblems, instructionNameOk,
+  instructionProblemKeys, instructionTargetSummary, instructionToForm, normalizeInstructionSubpath,
+  importSelectionToInstruction, pendingInstructionCount, selectedImportInstructions, type InstructionForm,
 } from "./instruction-form";
 
 const form = (patch: Partial<InstructionForm> = {}): InstructionForm => ({
@@ -11,7 +12,7 @@ const form = (patch: Partial<InstructionForm> = {}): InstructionForm => ({
 });
 const change = (patch: Partial<FileChange> = {}): FileChange => ({
   path: "/home/user/.claude/CLAUDE.md", scope: "global", projectId: null, host: null, agent: "claude",
-  action: "update", reason: null, block: "## Response\nBe concise.\n", ...patch,
+  action: "update", reason: null, block: "## Response\nBe concise.\n", subpath: null, instructions: [], duplicates: [], ...patch,
 });
 
 describe("지침 폼", () => {
@@ -159,6 +160,79 @@ describe("미리 보기 · 반영 목록", () => {
     ]);
     expect(groups).toHaveLength(2);
     expect(groups.find((group) => group.id === "project:C:/repo")?.changes).toHaveLength(2);
+  });
+});
+
+describe("요약의 지침 파일", () => {
+  const project = (path: string, patch: Partial<FileChange> = {}) =>
+    change({ scope: "project", projectId: "p1", agent: null, path, action: "unchanged", ...patch });
+
+  it("블록이 없고 바꿀 것도 없는 줄만 숨긴다", () => {
+    expect(instructionFileVisible(change({ action: "unchanged", block: null }))).toBe(false);
+    expect(instructionFileVisible(change({ action: "unchanged" }))).toBe(true);
+    for (const action of ["create", "update", "delete", "skipped", "error"] as const)
+      expect(instructionFileVisible(change({ action, block: null })), action).toBe(true);
+    expect(pendingInstructionCount([change({ action: "create" }), change({ action: "delete" }), change({ action: "skipped" }), change({ action: "unchanged" })])).toBe(2);
+  });
+
+  it("칩 판정 — 오류 > 반영 전(한 줄이면 동작, 여럿이면 수) > 건너뜀뿐 > 같음", () => {
+    expect(instructionFileStatus([change({ action: "update" }), change({ action: "error" })])).toEqual({ kind: "error" });
+    expect(instructionFileStatus([change({ action: "create" }), change({ action: "unchanged" })])).toEqual({ kind: "pending", action: "create", count: 1 });
+    expect(instructionFileStatus([change({ action: "create" }), change({ action: "update" })])).toEqual({ kind: "pending", action: null, count: 2 });
+    expect(instructionFileStatus([change({ action: "skipped" }), change({ action: "skipped" })])).toEqual({ kind: "skipped" });
+    expect(instructionFileStatus([change({ action: "skipped" }), change({ action: "unchanged" })])).toEqual({ kind: "same" });
+    expect(instructionFileStatus([change({ action: "unchanged" })])).toEqual({ kind: "same" });
+  });
+
+  it("프로젝트는 워크트리마다 같은 (하위 폴더, 파일 이름) 줄을 접고 지침 · 같은 글을 합친다", () => {
+    const groups = instructionFileGroups([
+      project("C:\\src\\proj\\AGENTS.md", { instructions: ["a", "b"], duplicates: ["b"] }),
+      project("C:\\src\\proj-wt1\\AGENTS.md", { action: "create", instructions: ["a", "b"] }),
+      project("C:\\src\\proj-wt2\\AGENTS.md", { instructions: ["b", "a"] }),
+      project("C:\\src\\proj\\CLAUDE.md", { block: null }),
+      project("C:\\src\\proj\\CLAUDE.md", { block: "@AGENTS.md" }),
+      project("C:\\src\\proj\\packages\\api\\AGENTS.md", { subpath: "packages/api", instructions: ["c"] }),
+      project("C:\\src\\proj-wt1\\packages\\api\\AGENTS.md", { subpath: "packages/api", instructions: ["c"] }),
+    ]);
+    expect(groups).toHaveLength(1);
+    const rows = groups[0].rows;
+    expect(rows.map((row) => [row.relative, row.changes.length])).toEqual([
+      ["AGENTS.md", 3], ["CLAUDE.md", 1], ["packages/api/AGENTS.md", 2],
+    ]);
+    expect(rows[0]).toMatchObject({ instructions: ["a", "b"], duplicates: ["b"], status: { kind: "pending", action: "create", count: 1 } });
+    expect(rows[1]).toMatchObject({ instructions: [], status: { kind: "same" } });
+    expect(rows[2].status).toEqual({ kind: "same" });
+  });
+
+  it("폴더 경로뿐인 줄(건너뜀)은 접지 않고 사유를 남긴다 · 전역은 파일마다 한 줄", () => {
+    const groups = instructionFileGroups([
+      change({ path: "C:/Users/me/.claude/CLAUDE.md", agent: "claude", instructions: ["a"] }),
+      change({ path: "C:/Users/me/.codex/AGENTS.md", agent: "codex", action: "unchanged", instructions: ["a"] }),
+      change({ path: "C:/Users/me/.codex/AGENTS.md.bak", agent: "codex", action: "unchanged", block: null }),
+      project("~/projects/api", { projectId: "p2", host: "dev-01", action: "skipped", reason: "연결 없음", block: null }),
+      project("~/projects/api-wt", { projectId: "p2", host: "dev-01", action: "skipped", reason: "연결 없음", block: null }),
+    ]);
+    expect(groups.map((group) => group.id)).toEqual(["global", "project:p2"]);
+    expect(groups[0].rows.map((row) => [row.relative, row.agent, row.status.kind])).toEqual([
+      [null, "claude", "pending"], [null, "codex", "same"],
+    ]);
+    expect(groups[1].host).toBe("dev-01");
+    expect(groups[1].rows.map((row) => [row.relative, row.reason, row.status.kind])).toEqual([
+      [null, "연결 없음", "skipped"], [null, "연결 없음", "skipped"],
+    ]);
+  });
+
+  it("지침별 경로 — 첫 경로와 '외 N개', 같은 표시 경로는 한 번", () => {
+    const rows = [
+      change({ path: "/p/AGENTS.md", scope: "project", instructions: ["a"] }),
+      change({ path: "/p-wt/AGENTS.md", scope: "project", instructions: ["a", "b"] }),
+      change({ path: "/p-wt/AGENTS.md", scope: "project", instructions: ["a"] }),
+      change({ path: "/q/AGENTS.md", scope: "project", instructions: [] }),
+    ];
+    const display = (row: FileChange) => row.path.slice(1);
+    expect(instructionTargetSummary("a", rows, display)).toEqual({ first: "p/AGENTS.md", more: 1 });
+    expect(instructionTargetSummary("b", rows, display)).toEqual({ first: "p-wt/AGENTS.md", more: 0 });
+    expect(instructionTargetSummary("z", rows, display)).toBeNull();
   });
 });
 

@@ -118,7 +118,7 @@ const STUB = `
     agent_hooks_targets: [{ id: 'claude', display: 'Claude Code', needsTrustNote: false }, { id: 'codex', display: 'Codex', needsTrustNote: true }],
     agent_args_targets: [{ id: 'claude', display: 'Claude Code' }, { id: 'codex', display: 'Codex' }],
     agent_launch_preview: { line: 'claude', error: null, dangerous: [] }, agent_mcp_validate: null,
-    load_snippets: null, save_snippets: null, host_history_list: {}, projects_list: [{ id: 'P1', name: 'proj', host: null, path: 'C:\\\\src\\\\proj', shell: null, command: '', tmux: false, worktreeDir: null }],
+    load_snippets: null, save_snippets: null, host_history_list: {}, projects_list: [{ id: 'P1', name: 'proj', host: null, path: 'C:\\\\src\\\\proj', shell: null, command: '', tmux: false, worktreeDir: null }, { id: 'P2', name: 'api', host: 'dev-01', path: '~/projects/api', shell: null, command: '', tmux: false, worktreeDir: null }],
     session_stats: { bytes: 0 }, local_cwd: null, report_session: null, update_session_context: null, push_session_block: null,
     drop_session: null, resize_session: null, write_session: null, close_session: null, reap_window_sessions: null,
     vault_status: { state: 'unlocked', hasMaster: false, entryCount: 3 },
@@ -143,9 +143,24 @@ const STUB = `
     agent_sessions_list: { groups: [], others: [], othersMore: false },
     term_theme_list: [], restore_done_sessions: { closed: 0, unclaimed: 0 }, git_worktree_list: [],
     side_chats_load: { json: null, rev: 1 }, side_chat_list: [], agent_states_snapshot: [],
-    instructions_list: { items: [{ name: 'house-style', description: '공용 코드 규칙', targets: ['*'], enabled: true, scope: 'global', projects: [], subpath: null, body: '# rules' }], broken: [] },
+    // 지침 요약 — 전역 켜짐 · 프로젝트 · 꺼짐 하나씩, 미리 보기는 전역 고침 · 워크트리 셋 중 하나 만듦 · 블록 밖 같은 글 · 원격 건너뜀
+    instructions_list: { items: [
+      { name: 'house-style', description: '공용 코드 규칙', targets: ['*'], enabled: true, scope: 'global', projects: [], subpath: null, body: '# rules' },
+      { name: 'proj-rules', description: '프로젝트 규칙', targets: ['*'], enabled: true, scope: 'project', projects: ['P1', 'P2'], subpath: null, body: '# proj' },
+      { name: 'old-notes', description: null, targets: ['claude'], enabled: false, scope: 'global', projects: [], subpath: null, body: '# old' },
+    ], broken: [] },
     side_chat_instructions_load: '답은 한국어로.',
-    instructions_import_candidates: [], instructions_preview: { changes: [] },
+    instructions_import_candidates: [],
+    instructions_preview: [
+      { path: 'C:\\\\Users\\\\me\\\\.claude\\\\CLAUDE.md', host: null, scope: 'global', projectId: null, agent: 'claude', action: 'update', reason: null, block: '## 공용 코드 규칙', subpath: null, instructions: ['house-style'], duplicates: [] },
+      { path: 'C:\\\\Users\\\\me\\\\.codex\\\\AGENTS.md', host: null, scope: 'global', projectId: null, agent: 'codex', action: 'unchanged', reason: null, block: '## 공용 코드 규칙', subpath: null, instructions: ['house-style'], duplicates: [] },
+      { path: 'C:\\\\src\\\\proj\\\\AGENTS.md', host: null, scope: 'project', projectId: 'P1', agent: null, action: 'unchanged', reason: null, block: '## 프로젝트 규칙', subpath: null, instructions: ['proj-rules'], duplicates: ['proj-rules'] },
+      { path: 'C:\\\\src\\\\proj\\\\CLAUDE.md', host: null, scope: 'project', projectId: 'P1', agent: null, action: 'unchanged', reason: null, block: null, subpath: null, instructions: [], duplicates: [] },
+      { path: 'C:\\\\src\\\\proj-wt1\\\\AGENTS.md', host: null, scope: 'project', projectId: 'P1', agent: null, action: 'create', reason: null, block: '## 프로젝트 규칙', subpath: null, instructions: ['proj-rules'], duplicates: [] },
+      { path: 'C:\\\\src\\\\proj-wt1\\\\CLAUDE.md', host: null, scope: 'project', projectId: 'P1', agent: null, action: 'unchanged', reason: null, block: null, subpath: null, instructions: [], duplicates: [] },
+      { path: 'C:\\\\src\\\\proj-wt2\\\\AGENTS.md', host: null, scope: 'project', projectId: 'P1', agent: null, action: 'unchanged', reason: null, block: '## 프로젝트 규칙', subpath: null, instructions: ['proj-rules'], duplicates: [] },
+      { path: '~/projects/api', host: 'dev-01', scope: 'project', projectId: 'P2', agent: null, action: 'skipped', reason: '열린 연결이 없습니다 — 타일을 열고 다시 미리 보세요', block: null, subpath: null, instructions: [], duplicates: [] },
+    ],
     load_tab_templates: TPL, save_tab_templates: null,
     remote_status: { enabled: true, listening: true, port: 8765, host: 'mypc.tail1234.ts.net', funnel: 'off', tailscaleCli: true },
     remote_serve_status: { state: 'ours' }, remote_devices_list: [], remote_log: [],
@@ -446,6 +461,10 @@ await openSection("general"); await openSection("mcp");
 await ev(`(document.querySelector('${VIS} #ai-mcp-sessions .slist-open') ?? document.querySelector('${VIS} .slist-open'))?.click()`); await sleep(600);
 console.log("chip mcp session server:", await shot("chip-mcp-session-server"));
 await openSection("general"); await openSection("instructions");
+await sleep(300); // 지침 파일 미리 보기는 목록 뒤에 따로 읽는다
+console.log("chip instructions summary:", await shot("chip-instructions-summary"));
+await ev(`(() => { const p = document.querySelector('.settings-panel'); if (p) p.scrollTop = p.scrollHeight; return 1; })()`);
+await sleep(200);
 console.log("chip instructions side chat:", await shot("chip-instructions-sidechat"));
 await openSection("general"); await openSection("ai");
 await ev(`document.querySelector('${VIS} .slist-open')?.click()`); await sleep(600);

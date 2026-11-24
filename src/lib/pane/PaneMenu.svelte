@@ -235,6 +235,11 @@
   }
 </script>
 
+<!-- 켜고 끄는 줄의 ✓ — 앞자리는 그 줄의 그림이라 끝 칸에 둔다(꺼져 있어도 칸 폭은 남긴다) -->
+{#snippet checkMark(on: boolean)}
+  <span class="tick" aria-hidden="true">{#if on}<UiIcon name="check" size={14} />{/if}</span>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="tilemenu menu-surface"
@@ -275,7 +280,7 @@
       <button
         type="button"
         class="item menu-row"
-        class:hinted={!!item.hint}
+        class:hinted={!!item.hint || item.checkbox}
         role={item.checkbox ? "menuitemcheckbox" : "menuitem"}
         aria-checked={item.checkbox ? item.checked : undefined}
         data-action={item.action}
@@ -286,7 +291,7 @@
         <!-- `.mark` 안에는 공백도 넣지 않는다 — inline-flex 칸이라 공백 노드가 flex 항목이 되어 아이콘이 밀린다 -->
         <span class="mark menu-mark"
           >{#if item.icon}<UiIcon name={item.icon} size={14} />{/if}</span
-        >{item.label}{#if item.hint}<kbd class="menu-kbd" data-menu-hint>{item.hint}</kbd>{/if}
+        >{item.label}{#if item.hint}<kbd class="menu-kbd" data-menu-hint>{item.hint}</kbd>{/if}{#if item.checkbox}{@render checkMark(item.checked === true)}{/if}
       </button>
     {/if}
   {/each}
@@ -308,7 +313,7 @@
       <button
         type="button"
         class="item menu-row"
-        class:hinted={!!child.hint}
+        class:hinted={!!child.hint || child.checkbox}
         role={child.checkbox ? "menuitemcheckbox" : "menuitem"}
         aria-checked={child.checkbox ? child.checked : undefined}
         data-action={child.action}
@@ -321,7 +326,7 @@
               name={child.icon}
               size={14}
             />{/if}</span
-        >{child.label}{#if child.hint}<kbd class="menu-kbd" data-menu-hint>{child.hint}</kbd>{/if}
+        >{child.label}{#if child.hint}<kbd class="menu-kbd" data-menu-hint>{child.hint}</kbd>{/if}{#if child.checkbox}{@render checkMark(child.checked === true)}{/if}
       </button>
     {/each}
   </div>
@@ -346,6 +351,23 @@
   .item.hinted {
     display: flex;
     align-items: center;
+  }
+
+  /* 단축키가 없으면 끝으로 밀고, 있으면 단축키 바로 뒤 — 단축키 → ✓ 순 */
+  .tick {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    margin-left: auto;
+    padding-left: var(--space-3);
+    color: var(--fg-2);
+  }
+
+  .menu-kbd + .tick {
+    margin-left: var(--space-2);
+    padding-left: 0;
   }
 
   .item.parent .chev {

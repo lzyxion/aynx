@@ -76,7 +76,8 @@ export function toPaneMenuItems(tools: readonly ToolbarTool[], hintOf: (action: 
     return {
       action: `tool:${tool.id}`,
       label: tool.label,
-      icon: check ? (tool.pressed ? "check" : null) : tool.icon,
+      // 켜짐 ✓ 는 `PaneMenu` 가 줄 오른쪽 끝에 그린다 — 앞자리는 늘 도구의 그림이다
+      icon: tool.icon,
       ...(check ? { checkbox: true, checked: tool.pressed } : {}),
       ...(tool.disabled ? { disabled: true, title: tool.title ?? tool.label } : {}),
       ...(tool.sep ? { separator: true } : {}),

@@ -13,14 +13,19 @@ use std::collections::{BTreeMap, VecDeque};
 use serde_json::{json, Value};
 
 use super::event::{
-    cap, effort_ok, mcp_summary, model_ok, one_line, split_mcp_tool, str_of, uuid_ok, word_ok, Cli, Decision, Dropped, Ev, Mode, Outcome, PermKind, ResolvedBy, Step,
+    cap, effort_ok, mcp_summary, model_ok, one_line, semver3, split_mcp_tool, str_of, uuid_ok, word_ok, Cli, Decision, Dropped, Ev, Mode, Outcome, PermKind, ResolvedBy, Step,
     UserImage, DETAIL_MAX,
 };
 use super::Adapter;
 
-/// 확인한 버전 — 다르면 `notice{untested-version}` 만 낸다.
-pub(crate) const TESTED_VERSION: &str = "2.1.312";
-pub(crate) const TESTED_VERSIONS: [&str; 2] = ["2.1.309", TESTED_VERSION];
+/// 확인한 버전의 시작 — CLI 가 며칠마다 올라 정확 일치로는 경고가 늘 뜨니 같은 major · minor 의 이 patch 이상을 받는다.
+/// 그 밖(낮은 버전 · 계열이 바뀐 버전 · 못 읽은 버전)은 `notice{untested-version}` 만 낸다.
+pub(crate) const TESTED_FROM: [u64; 3] = [2, 1, 309];
+
+pub(crate) fn tested(version: Option<&str>) -> bool {
+    version.and_then(semver3).is_some_and(|v| v[..2] == TESTED_FROM[..2] && v[2] >= TESTED_FROM[2])
+}
+
 /// `--settings` 파일의 본문 — 훅을 모두 끈다(판정형 턴 후보 B 와 같다).
 pub(crate) const SETTINGS_JSON: &str = r#"{"disableAllHooks":true}"#;
 /// `--mcp-config` 파일의 기본 본문 — MCP 없음(세션 서버의 MCP 포트가 없거나 채팅 토큰을 못 뽑았을 때).
@@ -253,7 +258,7 @@ impl Claude {
                     efforts: self.efforts.clone(),
                     conversation_id: Some(self.conversation.clone()),
                 }];
-                if !version.as_deref().is_some_and(|v| TESTED_VERSIONS.contains(&v)) {
+                if !tested(version.as_deref()) {
                     evs.push(Ev::Notice { code: "untested-version", detail: version });
                 }
                 Step { evs, stdin: Vec::new() }

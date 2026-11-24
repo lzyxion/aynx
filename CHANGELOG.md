@@ -22,6 +22,12 @@ Write the next version's section before tagging it — the release workflow stop
 - The AI tile chat view now follows **Terminal opacity**, so the wallpaper shows through it as it does through the terminal.
 - **Object list tab in query tiles**: double-click a schema or a kind folder in the schema tree to list its tables, views, functions and more, with estimated rows and comments.
 - **Comments in a table's Structure view**: the table comment above the columns, and a Comment column when any column has one.
+- **Messenger answers arrive formatted**: Markdown in an AI answer or a notification excerpt (bold, italic, code, code blocks, lists, quotes) shows as formatting on Telegram, Discord and Slack instead of `**raw marks**`. Tables arrive as code blocks, and links stay plain text.
+- **Messenger messages say which conversation they are from**: answers, permission prompts and the tile picker add the conversation title to the tile name, so two AI tiles in one folder can be told apart.
+- **Shorter tile menus**: **Split · Detach**, **Conversations** and **This block** are submenus, in the same place in every tile. **Allow AI to read** and **Join broadcast input** have icons, with the check mark at the end of the row.
+- **Settings › Instructions** is split into **My instructions** and **Instruction files**: each instruction shows the file it is written to, and each file shows whether it is up to date.
+- Fixed: the side chat warned about the CLI version on every new Claude Code or Codex release. It now warns only for older or unknown versions.
+- Fixed: pressing **Stop** in an AI tile's chat view showed a notice asking to reinstall the hooks.
 
 ## [0.1.6] - 2026-11-22
 

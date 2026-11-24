@@ -469,8 +469,11 @@ async function runF2(h, only) {
     await until(`window.__calls.some(([c]) => c === 'producer_fork_probe')`);
     check('fork: 저장소 아님은 원래 타일 유지', (await tabState()).id, source.id);
     await ev(`window.__forkNotRepo = false; document.querySelector('[data-pane="${pane}"] [data-pane-head]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 100 }))`);
-    await until(`[...document.querySelectorAll('[role="menuitem"]')].some(b => b.textContent.includes('오케스트레이션으로 이어 가기'))`);
-    await ev(`[...document.querySelectorAll('[role="menuitem"]')].find(b => b.textContent.includes('오케스트레이션으로 이어 가기')).click()`);
+    // 지난 대화와 함께 "대화 ▸" 옆목록에 든다
+    await until(`!!document.querySelector('.tilemenu [data-flyout="convo"]')`);
+    await ev(`document.querySelector('.tilemenu [data-flyout="convo"]').click()`);
+    await until(`!!document.querySelector('.flyout [data-action="continue-orchestration"]')`);
+    await ev(`document.querySelector('.flyout [data-action="continue-orchestration"]').click()`);
     await until(`!!document.querySelector('${q('[data-new-repo-locked]')}') && document.querySelector('${q('[data-new-model]')}')?.value === 'haiku'`);
     check('fork: 초안에서 채팅을 열지 않음', (await calls('producer_chat_open')).length, 0);
     await until(`document.querySelectorAll('${q('[data-new-repo]')}').length === 2`);

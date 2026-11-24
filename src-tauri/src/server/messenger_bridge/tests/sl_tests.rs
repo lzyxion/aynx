@@ -353,7 +353,7 @@ fn live_bridge_with_fake_slack() {
     assert!(arrow.get("thread_ts").is_none(), "맨 위 글에는 맨 위로");
     assert_eq!(arrow["blocks"][0]["type"], "rich_text");
 
-    // 다리 턴의 끝 → 답 전문(rich_text 한 블록 — 굵은 머리 조각 + 몸 · 기호가 글자 그대로 · 2900 단위 안).
+    // 다리 턴의 끝 → 답 전문(rich_text 한 블록 — 굵은 머리 조각 + 몸 · 답의 서식은 조각의 style · 멘션 꼴은 글자 그대로 · 2900 단위 안).
     let before = fake.posts().len();
     on_turn_event("local-s1", TurnEvent::Done, Some("claude"), Some("c1".into()));
     wait_for("답", || fake.posts().len() >= before + 2);
@@ -362,7 +362,10 @@ fn live_bridge_with_fake_slack() {
     let pieces = &answer["blocks"][0]["elements"][0]["elements"];
     assert_eq!(answer["blocks"][0]["type"], "rich_text");
     assert_eq!(pieces[0], json!({ "type": "text", "text": "🟢 claude · local-s1", "style": { "bold": true } }));
-    assert!(pieces[1]["text"].as_str().unwrap().starts_with("\nDONE <ok> & "), "{answer}");
+    assert_eq!(pieces[1], json!({ "type": "text", "text": "\nDONE <ok> & " }), "{answer}");
+    assert_eq!(pieces[2], json!({ "type": "text", "text": "굵게", "style": { "bold": true } }));
+    assert_eq!(pieces[4], json!({ "type": "text", "text": "a*b", "style": { "code": true } }));
+    assert!(!answer.to_string().contains("\"link\"") && !answer.to_string().contains("\"user\""), "링크 · 멘션 요소는 없다");
     assert!(answer["text"].as_str().unwrap().contains("&lt;ok&gt; &amp;"), "미리 보기 글은 걷는다");
     for p in &posts[before..] {
         for b in p["blocks"].as_array().unwrap() {

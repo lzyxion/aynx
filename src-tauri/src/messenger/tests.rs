@@ -141,8 +141,9 @@ fn slack_render_shapes() {
 
 #[test]
 fn slack_conversation_lines_keep_our_quote_marker() {
+    // 발췌는 마크다운으로 해석하되 Slack mrkdwn 에는 기호를 걷은 평문 — 자동 링크 `<url|글자>` 는 주소 글자로 풀리고 멘션 꼴은 걷힌다
     let t = tail_of(
-        Some("see <https://evil|here> & more\nlines"),
+        Some("see <!here> <@U1> & <https://evil|here> **more**\nlines"),
         Some("Bash<x>"),
     );
     let stop: Vec<String> = conversation_block(AgentEvent::Stop, Some("제목 <!here>"), &t)
@@ -153,7 +154,7 @@ fn slack_conversation_lines_keep_our_quote_marker() {
         stop,
         vec![
             "「제목 &lt;!here&gt;」".to_string(),
-            "> see &lt;https://evil|here&gt; &amp; more\n> lines".to_string(),
+            "> see &lt;!here&gt; &lt;@U1&gt; &amp; https://evil|here more\n> lines".to_string(),
         ]
     );
     let perm: Vec<String> = conversation_block(AgentEvent::Permission, None, &t)
@@ -171,7 +172,7 @@ fn slack_conversation_lines_keep_our_quote_marker() {
     );
     assert_eq!(
         body,
-        "*p* — e\n1분 00초\n> see &lt;https://evil|here&gt; &amp; more\n> lines"
+        "*p* — e\n1분 00초\n> see &lt;!here&gt; &lt;@U1&gt; &amp; https://evil|here more\n> lines"
     );
 }
 
@@ -386,22 +387,27 @@ fn clip_cuts_on_char_boundary() {
     assert_eq!(clip("a\n\n b", 10), "a b");
 }
 
-fn chars(lines: &[String]) -> usize {
-    lines.iter().map(|l| l.chars().count()).sum()
+fn chars(lines: &[md::Line]) -> usize {
+    lines.iter().map(md::Line::visible).sum()
+}
+
+fn texts(lines: &[md::Line]) -> Vec<String> {
+    lines.iter().map(md::Line::text).collect()
 }
 
 #[test]
 fn excerpt_keeps_lines_and_tidies_markdown() {
-    let x = excerpt_lines("## 바뀐 것\n- `a.ts` — 고침\n* b\n+ c\n\n```rust\nlet x = 1;\n```\n---\n다음으로 할까요?");
-    assert_eq!(
-        x,
-        vec!["바뀐 것", "· `a.ts` — 고침", "· b", "· c", "let x = 1;", "다음으로 할까요?"]
-            .into_iter()
-            .map(String::from)
-            .collect::<Vec<_>>()
-    );
+    let x = excerpt_lines("## 바뀐 것\n- `a.ts` — 고침\n* b\n+ c\n\n```rust\nlet x = 1;\n# 주석 · - 목록 아님\n```\n---\n다음으로 할까요?");
+    assert_eq!(texts(&x), ["바뀐 것", "• a.ts — 고침", "• b", "• c", "let x = 1;", "# 주석 · - 목록 아님", "다음으로 할까요?"]);
+    // 서식은 Discord · Telegram 에서 그대로 서식 — 제목 = 굵은 줄 · 코드 블록의 줄 = 인라인 코드(그 안은 해석하지 않는다)
+    let lines: Vec<String> = x.iter().map(|l| D.excerpt(l)).collect();
+    assert_eq!(lines[0], "**바뀐 것**");
+    assert_eq!(lines[1], "• `a.ts` — 고침");
+    assert_eq!(lines[5], "`# 주석 · - 목록 아님`");
+    assert_eq!(Channel::Telegram.excerpt(&x[4]), "<code>let x = 1;</code>");
+    assert_eq!(S.excerpt(&x[0]), "바뀐 것", "Slack 은 기호를 걷은 평문");
     // `#해시` 처럼 공백이 없는 `#` 는 제목이 아니다 — 그대로.
-    assert_eq!(excerpt_lines("#123 고침"), vec!["#123 고침".to_string()]);
+    assert_eq!(texts(&excerpt_lines("#123 고침")), ["#123 고침"]);
     assert!(excerpt_lines(" \n \n").is_empty());
 }
 
@@ -409,32 +415,46 @@ fn excerpt_keeps_lines_and_tidies_markdown() {
 fn excerpt_long_keeps_first_and_last_paragraph() {
     let middle = "가운데 ".repeat(60);
     let text = format!("첫 문단입니다.\n\n{middle}\n\n{middle}\n\n다음으로 비밀번호 칸도 고칠까요?");
-    let x = excerpt_lines(&text);
+    let x = texts(&excerpt_lines(&text));
     assert_eq!(x.first().map(String::as_str), Some("첫 문단입니다."));
     assert_eq!(x.last().map(String::as_str), Some("다음으로 비밀번호 칸도 고칠까요?"), "끝 문단이 먼저 자리를 잡는다");
     assert!(x.iter().any(|l| l == "…"), "{x:?}");
-    assert!(chars(&x) <= EXCERPT_MAX_CHARS && x.len() <= EXCERPT_MAX_LINES, "{x:?}");
+    let x = excerpt_lines(&text);
+    assert!(chars(&x) <= EXCERPT_MAX_CHARS && x.len() <= EXCERPT_MAX_LINES);
 
     // 줄이 많으면 8줄 안
     let many: String = (0..20).map(|i| format!("- 항목 {i}\n")).collect();
-    let x = excerpt_lines(&many);
+    let x = texts(&excerpt_lines(&many));
     assert_eq!(x.len(), EXCERPT_MAX_LINES);
     assert!(x.last().unwrap().ends_with('…'), "{x:?}");
 
     // 문단 하나가 너무 길면 앞에서부터 자른다(글자 경계)
-    let x = excerpt_lines(&"가".repeat(900));
+    let x = texts(&excerpt_lines(&"가".repeat(900)));
     assert_eq!(x.len(), 1);
     assert_eq!(x[0].chars().count(), EXCERPT_MAX_CHARS);
     assert!(x[0].ends_with('…'));
+
+    // 상한은 보이는 글자로 — 서식 기호는 글자 수를 먹지 않고, 굵게 가운데서 잘려도 닫힌다
+    let bold = format!("**{}**", "가".repeat(900));
+    let x = excerpt_lines(&bold);
+    assert_eq!(chars(&x), EXCERPT_MAX_CHARS);
+    let tg = Channel::Telegram.excerpt(&x[0]);
+    assert!(tg.starts_with("<b>") && tg.ends_with("</b>…"), "{tg}");
+    crate::messenger::md::tests::balanced(&tg).unwrap();
+    let dc = D.excerpt(&x[0]);
+    assert!(dc.starts_with("**") && dc.ends_with("**…"), "{dc}");
 }
 
+/// 발췌는 마크다운으로 그리되 남의 글자는 줄마다 걷는다 — 멘션 · 링크는 어느 채널에서도 서식으로 읽히지 않는다.
 #[test]
 fn excerpt_lines_are_escaped_one_by_one() {
-    let t = tail_of(Some("<@123> **굵게**\n\n> 인용 [x](y)"), None);
+    let t = tail_of(Some("<@123> **굵게**는\n\n> 인용 [x](y)"), None);
     let d = rendered(&conversation_block(AgentEvent::Stop, None, &t));
-    assert_eq!(d, vec![r"> \<@123\> \*\*굵게\*\*".to_string() + "\n" + r"> \> 인용 \[x\]\(y\)"]);
+    assert_eq!(d, vec![r"> \<@123\> **굵게**는".to_string() + "\n" + r"> 인용 x \(y\)"]);
     let s: Vec<String> = conversation_block(AgentEvent::Stop, None, &t).iter().map(|l| S.render_convo_line(l)).collect();
-    assert_eq!(s, vec!["> &lt;@123&gt; **굵게**\n> &gt; 인용 [x](y)".to_string()]);
+    assert_eq!(s, vec!["> &lt;@123&gt; 굵게는\n> 인용 x (y)".to_string()]);
+    let tg: Vec<String> = conversation_block(AgentEvent::Stop, None, &t).iter().map(|l| Channel::Telegram.render_convo_line(l)).collect();
+    assert_eq!(tg, vec!["&gt; &lt;@123&gt; <b>굵게</b>는\n&gt; 인용 x (y)".to_string()]);
 }
 
 #[test]
@@ -490,7 +510,7 @@ fn conversation_block_shapes() {
         rendered(&stop),
         vec![
             r"「알림 \[센터\]」".to_string(),
-            "> Split the \\*\\*center\\*\\*\n> into two.".to_string()
+            "> Split the **center**\n> into two.".to_string()
         ]
     );
     let perm = rendered(&conversation_block(AgentEvent::Permission, None, &t));
@@ -511,7 +531,7 @@ fn conversation_block_shapes() {
     assert_eq!(D.render(&msg("aynx", "p", "e", ""), &[]), "**p** — e");
     assert_eq!(
         D.render(&msg("aynx", "p", "e", "1분 00초"), &stop),
-        "**p** — e\n1분 00초\n「알림 \\[센터\\]」\n> Split the \\*\\*center\\*\\*\n> into two."
+        "**p** — e\n1분 00초\n「알림 \\[센터\\]」\n> Split the **center**\n> into two."
     );
 }
 
@@ -662,7 +682,7 @@ fn telegram_renders_escaped_html() {
     assert_eq!(Channel::Slack.secret_files(), ["slack-webhook", "slack-bot"]);
     assert_eq!(Channel::Slack.bot_file(), Some("slack-bot"));
     let m = msg("aynx", "<a href=x>tile</a>", "턴 끝 & 다음", "2분").graded(Some(Grade::Done));
-    let s = T.render(&m, &[ConvoLine::Excerpt(vec!["<b>굵게</b> & 끝".into()])]);
+    let s = T.render(&m, &[ConvoLine::Excerpt(vec![md::Line::plain("<b>굵게</b> & 끝")])]);
     assert!(s.starts_with("🟢 <b>"), "{s}");
     assert!(s.contains("&lt;a href=x&gt;tile&lt;/a&gt;") && s.contains("턴 끝 &amp; 다음"), "{s}");
     assert!(s.contains("&gt; &lt;b&gt;굵게&lt;/b&gt; &amp; 끝"), "{s}");

@@ -7,6 +7,7 @@
   import { stripReason } from "$lib/error-reason";
   import SettingsSubView from "./SettingsSubView.svelte";
   import Dropdown from "$lib/Dropdown.svelte";
+  import UiIcon from "$lib/UiIcon.svelte";
 
   // 가져오기는 라이브러리로 복사만 한다. 원본 읽기는 백엔드, 원본 수정은 하지 않는다.
   let { onback, onimported, onbusy }: {
@@ -91,7 +92,7 @@
 
 <SettingsSubView title={t("settings.instructions.import")} back={t("settings.instructions.back")}
   backAria={t("settings.instructions.back.aria")} onback={() => { if (!busy) onback(); }}>
-  <p class="note copy-note">{t("settings.instructions.import.copy")}</p>
+  <p class="copy-note" role="note"><UiIcon name="warning" size={14} /><span>{t("settings.instructions.import.copy")}</span></p>
   <div class="source-field">
     <label id="{uid}-source-label" for="{uid}-source">{t("settings.instructions.import.source")}</label>
     <Dropdown id="{uid}-source" bind:value={source} options={sourceOptions} disabled={busy}
@@ -139,7 +140,8 @@
 
 <style>
   .note { font-size: var(--t-xs); color: var(--fg-2); line-height: 1.6; margin: 0 0 var(--space-2); }
-  .copy-note { color: var(--fg-1); }
+  .copy-note { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); font-size: var(--t-xs); line-height: 1.6; color: var(--on-warn-soft); background: var(--warn-soft); border-radius: var(--radius-sm); }
+  .copy-note :global(svg) { flex: 0 0 auto; margin-top: 2px; color: var(--warn); }
   .source-field { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-3) 0; }
   label { color: var(--fg-2); font-size: var(--t-xs); }
   .value { width: 100%; min-width: 0; box-sizing: border-box; background: var(--surface-field); color: var(--fg-1); }

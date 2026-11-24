@@ -168,7 +168,8 @@ export function createTileMenu(h: TileMenuHost) {
     tileMenu = {
       tabId: item.tab.id,
       paneId: item.pane.id,
-      // 넘침은 최대 폭으로 잰다. 옆목록이 있는 문서 메뉴는 그 폭만큼 더 비운다 — 모자라면 `placeFlyout` 이 옆목록을 왼쪽으로 넘긴다
+      // 넘침은 최대 폭으로 잰다. 옆목록이 있는 문서 메뉴는 그 폭만큼 더 비운다 — 모자라면 `placeFlyout` 이 옆목록을 왼쪽으로 넘긴다.
+      // 타일 메뉴(⋯ · 터미널)는 비우지 않는다 — ⋯ 단추 밑에 붙어 있어야 하고, 옆목록은 왼쪽으로 넘어가면 된다
       left: Math.max(
         8,
         Math.min(x, window.innerWidth - TILE_MENU_MAX_WIDTH - 8 - (doc?.rows.some(isGroup) ? FLYOUT_GAP + FLYOUT_EST_WIDTH : 0)),

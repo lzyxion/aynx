@@ -5,7 +5,8 @@
 //! - **PTY · 카드 결정 · 승인으로 가는 길이 없다** — 코어의 입구만 부른다(시험 `pty_writes_have_two_sites` · `bridge_has_no_approval_path` 가
 //!   이 파일도 훑는다).
 //! - 로그에는 고정 글자 · 오류 종류([`err_kind`]) · 닫힘 코드 숫자만 싣는다. 누름의 콜백 토큰도 주소에만 든다(로그 · 오류 문구에 없다).
-//! - **멘션은 늘 막는다** — 보내기 · 바꿔 쓰기 · 후속 글마다 `"allowed_mentions": {"parse": []}`.
+//! - **멘션은 늘 막는다** — 보내기 · 바꿔 쓰기 · 후속 글마다 `"allowed_mentions": {"parse": []}`. 답 전문의 서식(`messenger::md`)도 글자는
+//!   마크다운 기호를 걷어 싣는다 — `<@…>` · 가린 링크 `[..](..)` 가 서식으로 읽히지 않는다.
 //! - **IDENTIFY 예산**(24시간에 1000번 — 넘으면 Discord 가 토큰을 바꾼다): RESUME 을 먼저 쓰고, [`FATAL_CLOSE`] 면 고리를 끝낸다. 갓 IDENTIFY 한
 //!   세션이 [`Conf::stable`] 안에 죽으면 다음 IDENTIFY 를 물러난다(`logic::Flap`). 그 밖의 방어 기계는 없다(AGENTS.md "작업 방식").
 //! - Telegram 의 409 같은 것은 없다 — 같은 봇을 두 프로그램이 받으면 둘 다 사건을 받는다.
@@ -24,7 +25,7 @@ use tokio_tungstenite::tungstenite::Message;
 use super::logic::Button;
 use super::sock::{self, Event, Ws};
 use super::{ButtonPress, Config, Incoming, Link, Text};
-use crate::messenger::Channel;
+use crate::messenger::{md, Channel};
 use crate::server::log;
 
 const CHAN: Channel = Channel::Discord;
@@ -137,14 +138,7 @@ fn hands(gen: Option<u64>) -> Option<(reqwest::Client, Arc<Config>, BotToken)> {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 8);
-    for c in text.chars() {
-        if MARKDOWN.contains(&c) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
+    md::escape_discord(text)
 }
 
 pub(crate) fn units(text: &str) -> usize {
@@ -160,10 +154,29 @@ fn escaped_units(text: &str) -> usize {
     text.chars().map(width).sum()
 }
 
-/// 조각의 길이는 **걷은 뒤**로 잰다 — 부르는 쪽이 조각마다 걷는다(기호가 많은 답도 한 통 상한 안).
+/// 마크다운으로 그린 뒤의 길이 상한 — 글자 기호는 걷기 `\` 로 둘, `#`(제목 → `**…**`) · `|`(표 → 코드 블록 울타리)는 셋으로 친다.
+fn md_width(c: char) -> usize {
+    width(c) + usize::from(c == '#' || c == '|')
+}
+
+/// 코어가 울타리를 잇느라 더하는 닫는 줄(4자)과 다시 여는 줄(울타리 3 + 언어 20 + 줄바꿈)의 자리.
+const FENCE_ROOM: usize = 32;
+
+/// 조각의 길이는 **그린 뒤**로 잰다 — 부르는 쪽이 조각마다 그린다(기호가 많은 답도 한 통 상한 안).
 pub(crate) fn split_answer(head: &str, body: &str, more: &str) -> Vec<String> {
-    let room = CONTENT_ROOM.saturating_sub(escaped_units(head) + 4 + 1 + 4);
-    super::logic::split_by(body, room, MAX_PARTS, more, width)
+    let room = CONTENT_ROOM.saturating_sub(escaped_units(head) + 4 + 1 + 4 + FENCE_ROOM);
+    super::logic::split_by(body, room, MAX_PARTS, more, md_width)
+}
+
+/// 답 전문 한 조각 — 머리 줄은 글자 그대로 굵게, 몸은 `md` 의 Discord 마크다운.
+fn markdown(head: Option<&str>, body: &str) -> String {
+    let body = md::discord(&md::parse(body));
+    match head {
+        Some(h) => format!("**{}**\n{body}", escape(h)),
+        // 빈 글은 Discord 가 거절한다
+        None if body.trim().is_empty() => "…".to_string(),
+        None => body,
+    }
 }
 
 /// 걷기 `\` 와 그 짝 사이를 가르지 않는다.
@@ -198,6 +211,8 @@ pub(crate) fn render(t: &Text) -> String {
     match t {
         Text::Lines { head: None, body } => clip(&escape(body), CONTENT_ROOM),
         Text::Lines { head: Some(h), body } => clip(&format!("**{}**\n{}", escape(h), escape(body)), CONTENT_ROOM),
+        // 나누기가 그린 뒤 길이로 자리를 잡았다 — 자르기는 코드 span 같은 드문 꼴에서 넘칠 때의 울타리일 뿐이다
+        Text::Markdown { head, body } => clip(&markdown(head.as_deref(), body), CONTENT_ROOM),
         Text::Rendered { text, tail: None } => clip(text, CONTENT_ROOM),
         Text::Rendered { text, tail: Some(tail) } => {
             let tail = clip(&escape(tail), CONTENT_ROOM / 2);
@@ -702,17 +717,29 @@ mod tests {
     fn escape_and_split() {
         assert_eq!(escape("**b** _i_ `c` <@1> [l](u)\nx"), r"\*\*b\*\* \_i\_ \`c\` \<@1\> \[l\]\(u\)".to_string() + "\nx");
         assert_eq!(render(&Text::headed("🟢 a*b", "x_y")), "**🟢 a\\*b**\nx\\_y");
-        // 기호뿐인 답도 걷은 뒤 상한 안 · 최대 5통 · 꼬리
-        let body = "*".repeat(30_000);
+        // 기호뿐인 답도 그린 뒤 상한 안 · 최대 5통 · 꼬리 · 울타리를 이어도(코어 `mend_fences`) 자르기 울타리에 닿지 않는다
         let head = "🟢 proj / wt";
-        let parts = split_answer(head, &body, "… (more)");
-        assert_eq!(parts.len(), MAX_PARTS);
-        for (i, p) in parts.iter().enumerate() {
-            let r = if i == 0 { render(&Text::headed(head, p.as_str())) } else { render(&Text::plain(p.as_str())) };
-            assert!(units(&r) <= CONTENT_ROOM && CONTENT_ROOM < CONTENT_MAX, "{i}: {}", units(&r));
-            assert!(!r.ends_with('…'), "나눈 조각은 렌더가 자르지 않는다: {i}");
+        let more = "… (more)";
+        let bodies = [
+            "*_~`[]()<>#|\\".repeat(3000),
+            "*a_".repeat(10_000),
+            format!("앞\n```rust\n{}```\n끝", "let x = `a` < 1 && *p; // **\n".repeat(400)),
+            format!("# 제목\n| a | b |\n|---|---|\n{}", "| x_y | <z> |\n".repeat(600)),
+            "## h\n- **굵게**는 `c` [l](https://x.y) _i_ ~~s~~ <@1>\n> q *i*\n".repeat(300),
+        ];
+        for body in &bodies {
+            let parts = super::super::logic::mend_fences(split_answer(head, body, more), more);
+            assert_eq!(parts.len(), MAX_PARTS);
+            for (i, p) in parts.iter().enumerate() {
+                let r = markdown((i == 0).then_some(head), p);
+                assert!(units(&r) <= CONTENT_ROOM && CONTENT_ROOM < CONTENT_MAX, "{i}: {}", units(&r));
+            }
+            assert!(parts[4].ends_with("\n… (more)"));
         }
-        assert!(parts[4].ends_with("… (more)"));
+        // 마크다운 답 — 서식은 Discord 기호 · 남의 글자의 멘션 · 가린 링크는 걷는다
+        let r = render(&Text::Markdown { head: Some("🟢 a*b".into()), body: "**굵게**는 `x` [l](https://e.x) <@1>".into() });
+        assert_eq!(r, r"**🟢 a\*b**".to_string() + "\n" + r"**굵게**는 `x` l \(https://e.x\) \<@1\>");
+        assert_eq!(render(&Text::Markdown { head: None, body: "---".into() }), "…");
         // 문단에서 가른다
         let t = format!("{}\n\n{}", "a".repeat(1500), "b".repeat(1500));
         assert_eq!(split_answer("h", &t, "…"), ["a".repeat(1500), "b".repeat(1500)]);

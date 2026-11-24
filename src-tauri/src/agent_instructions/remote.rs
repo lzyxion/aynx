@@ -54,14 +54,14 @@ fn timed_out() -> String {
 /// 파일 글자는 Debug 에 싣지 않는다.
 type Snapshot = ProjectSnapshot;
 
-fn plan_subpath_snapshot(projects: &[&Project], path: &str, home: &str, subpath: Option<&str>, body: Option<&str>, snapshot: Snapshot, dev: bool) -> Vec<FileChange> {
+fn plan_subpath_snapshot(projects: &[&Project], path: &str, home: &str, subpath: Option<&str>, composed: &Composed<'_>, snapshot: Snapshot, dev: bool) -> Vec<FileChange> {
     let path = subpath.map_or_else(|| path.to_owned(), |subpath| crate::sftp::join_remote(path, subpath));
     let row = tracked(remote_row(&path, Some(home), projects[0], None), projects, subpath);
-    project_snapshot(row, body, snapshot, dev)
+    project_snapshot(row, composed, snapshot, dev)
 }
 
-fn plan_snapshot(project: &Project, path: &str, home: &str, body: Option<&str>, snapshot: Snapshot, dev: bool) -> Vec<FileChange> {
-    plan_subpath_snapshot(&[project], path, home, None, body, snapshot, dev)
+fn plan_snapshot(project: &Project, path: &str, home: &str, composed: &Composed<'_>, snapshot: Snapshot, dev: bool) -> Vec<FileChange> {
+    plan_subpath_snapshot(&[project], path, home, None, composed, snapshot, dev)
 }
 
 fn absent(error: &SftpError) -> bool {
@@ -266,7 +266,7 @@ pub(super) async fn host(app: &tauri::AppHandle, library: &[Instruction], projec
                     rows.push(failed(error_row, reason));
                 }
             }
-            Ok(Ok(None)) => rows.extend(plan_snapshot(project, &root, &home, None, Snapshot {
+            Ok(Ok(None)) => rows.extend(plan_snapshot(project, &root, &home, &Composed::default(), Snapshot {
                 directory: Ok(false), agents: Ok(None), claude: Ok(None), other_claude: Ok(false),
             }, crate::instance::DEV)),
             Ok(Err(reason)) => rows.push(failed(error_row, reason)),
@@ -276,14 +276,14 @@ pub(super) async fn host(app: &tauri::AppHandle, library: &[Instruction], projec
     for (path, projects) in groups {
         let deadline = tokio::time::Instant::now() + PROJECT_TIMEOUT;
         for subpath in project_subpaths(library, &projects, written) {
-            let body = projects_subpath_body(library, &projects, subpath.as_deref());
+            let composed = projects_subpath_composed(library, &projects, subpath.as_deref());
             let snapshot = tokio::time::timeout_at(deadline,
-                snapshot(session, &sftp, &path, subpath.as_deref(), body.is_some())).await;
+                snapshot(session, &sftp, &path, subpath.as_deref(), composed.body.is_some())).await;
             let snapshot = match snapshot {
                 Ok(snapshot) => snapshot,
                 Err(_) => Snapshot { directory: Err(timed_out()), agents: Ok(None), claude: Ok(None), other_claude: Ok(false) },
             };
-            let mut planned = plan_subpath_snapshot(&projects, &path, &home, subpath.as_deref(), body.as_deref(), snapshot, crate::instance::DEV);
+            let mut planned = plan_subpath_snapshot(&projects, &path, &home, subpath.as_deref(), &composed, snapshot, crate::instance::DEV);
             if apply {
                 if tokio::time::timeout_at(deadline, apply_rows(session, &sftp, &mut planned)).await.is_err() {
                     mark_timeout(&mut planned);
@@ -330,9 +330,9 @@ pub(crate) async fn apply_worktree(handle: &crate::ssh::SessionHandle, session: 
         let has_items = library.iter().any(|item| item.enabled && item.scope == Scope::Project && item.projects.contains(&project.id));
         for subpath in project_subpaths(&library, &[project], &written) {
             if subpath.is_none() && !has_items { continue; }
-            let body = projects_subpath_body(&library, &[project], subpath.as_deref());
-            let snapshot = snapshot(session, &sftp, &path, subpath.as_deref(), body.is_some()).await;
-            let planned = plan_subpath_snapshot(&[project], &path, &home, subpath.as_deref(), body.as_deref(), snapshot, crate::instance::DEV);
+            let composed = projects_subpath_composed(&library, &[project], subpath.as_deref());
+            let snapshot = snapshot(session, &sftp, &path, subpath.as_deref(), composed.body.is_some()).await;
+            let planned = plan_subpath_snapshot(&[project], &path, &home, subpath.as_deref(), &composed, snapshot, crate::instance::DEV);
             let offset = rows.len();
             rows.extend(planned);
             apply_rows(session, &sftp, &mut rows[offset..]).await;

@@ -347,8 +347,8 @@ When to show the name tag and button row on a tile (tile menu · maximize · clo
 - **2+ tiles**: hidden when there is one tile.
 - **Hidden**: no header, shortcuts only. Close (`Ctrl+D`) and the maximize, SFTP and remote editing shortcuts still
   work, but tearing a tile out to a new window by dragging its header, and the tile menu, are unavailable.
-- The tile menu contains split · Port forwarding… · Edit remote file… · AI access… ·
-  Join broadcast input · Detach to a new window. Right-clicking the header opens the same menu.
+- The tile menu contains **Split · Detach ▸** (split left and right · split top and bottom · detach to a new window) · Port forwarding… · Edit remote file… · AI access… ·
+  Join broadcast input. Right-clicking the header opens the same menu.
 - The header of a remote tile always shows the AI permission chip (the level name Off · Read · Ask · Auto · YOLO and a small gauge; when off, an empty gauge + dimmed **Off**). Pressing it changes the level and the headless connection on the spot. See [AI permission in host settings](hosts.md#host-ai).
   A remote tile not in the host list (quick connect) shows a dimmed **Off** chip that cannot be pressed. Its tooltip says "Save it as a host to give the AI access".
   Local tiles (shell tiles and AI tiles running Claude Code or Codex alike) have no gauge: the tile menu has an **Allow AI to read** check row
@@ -750,8 +750,20 @@ Pressing expand (⌄) on the **Aynx session server row** at the top of the list 
 
 <a id="instructions-list"></a>
 Settings › **Instructions** manages the markdown instructions that Claude Code and Codex read, in one place.
+The screen has two groups: **My instructions** is where you write them, and **Instruction files** shows the files they are written to.
+**Side chat** instructions sit at the bottom; they are never written to files and apply from the next new chat.
+
 Use **Add instruction ›** or **Edit ›** in the list to set the name, description, scope and body.
 The description becomes the `##` heading inside the managed block, and the name is used if it is empty.
+The second line of an enabled instruction shows the file it goes into (`→ path`, plus "+N more" when there are several).
+A disabled instruction shows **Off · not written to files**.
+
+**Instruction files** lists only files the app writes a managed block to. Project files are folded across worktrees,
+so `AGENTS.md` appears once with "N worktrees". Each row has a state chip: **Up to date**, **Not applied** (with the action or
+the number of files), **Not checked** (for example, a remote project with no open connection) or **Error**.
+**Same text outside the block** means an instruction's body also exists outside the managed block in that file —
+remove it there so the agent reads it once. The header shows how many changes are waiting; **Preview** (or **Preview · Apply**
+when something is waiting) and any row open the preview screen. The state is read again whenever the list changes.
 
 <a id="instructions-add"></a>
 Add, save and delete, as well as the list's on switch and target chips, **save immediately** to
@@ -814,11 +826,12 @@ It imports the body with release and dev managed blocks stripped out, and files 
 Files with broken markers appear as rows that cannot be selected, along with the reason.
 Choose checkboxes and names, expand a body to check it, then press **[Import]**. If one row fails, the other candidates keep being saved.
 
-**Importing makes a copy.** The original file keeps its content, so applying adds the same content again inside the block.
-To avoid duplicates, remove it from the original or turn off the imported instruction.
+**Importing makes a copy.** The original text stays in its file, so applying adds the same content again inside the block.
+Remove it from the original; until then the file shows **Same text outside the block**.
 
 <a id="instructions-apply"></a>
-**Preview · Apply ›** shows the action and reason per path. Expand a row to check the new block, then press **[Apply]**.
+**Preview · Apply ›** shows the action and reason per path, and a warning when the same text is also outside the block.
+Expand a row to check the new block, then press **[Apply]**.
 Unchanged files are collapsed into a count, and you can apply only when there is a file to create, change or delete.
 Check the error rows in the apply results, and use **Preview again** to read the current file state.
 
@@ -968,16 +981,16 @@ Sends notifications to your phone through a messenger while you are away from th
 
 **Off by default**, and can be turned on only at the main PC, separately for a Discord bot, a Slack bot and Telegram. When on, the linked account of that channel (for Discord and Slack, in direct messages with the bot) can send messages to local Claude Code and Codex tiles and get the answers back. An answer goes back to the channel your message came from.
 
-- **Reply to a message from the bot** (a notification, an answer, or a `→ tile` line) to send your message to the tile it came from. A message that is not a reply goes to the only tile waiting for input; if several are waiting, the bot asks you to pick one. Tiles are named by agent and project / worktree (for example `Claude Code · aynx / main`), or by the folder name outside a project; when two tiles have the same name, the conversation title is added.
+- **Reply to a message from the bot** (a notification, an answer, or a `→ tile` line) to send your message to the tile it came from. A message that is not a reply goes to the only tile waiting for input; if several are waiting, the bot asks you to pick one. Tiles are named by agent and project / worktree (for example `Claude Code · aynx / main`), or by the folder name outside a project, followed by the conversation title when there is one.
 - **On Slack, use a thread instead of a reply**: post in the thread of the bot's message to send your message to that tile; the answer and any permission prompts of that turn arrive in the same thread. The answer to a message sent outside a thread arrives as a new message.
-- When the turn ends, the **full answer** arrives in the chat (split into several messages if long). On Discord a message holds up to 2,000 characters, on Slack about 3,000 and on Telegram 4,096; an answer uses at most 5 messages (4 on Telegram), and a longer answer is cut and ends with "see the full reply in the app". Discord and Slack formatting characters in the answer are shown as typed, not as formatting, and on Slack links in the answer arrive as plain text that cannot be clicked.
+- When the turn ends, the **full answer** arrives in the chat (split into several messages if long). On Discord a message holds up to 2,000 characters, on Slack about 3,000 and on Telegram 4,096; an answer uses at most 5 messages (4 on Telegram), and a longer answer is cut and ends with "see the full reply in the app". The answer's Markdown arrives as formatting on all three channels — bold, italic, strikethrough, inline code and code blocks, with headings as bold lines, list items as `•` lines and tables as code blocks — and a link in it arrives as plain text, `text (address)`, never as a clickable label. Discord and Telegram still make a bare address clickable, as they do in any message; Slack shows it as text.
 - A message is delivered only when the agent in that tile has finished a turn and is waiting for input. The bot tells you why otherwise: still running, waiting on a permission prompt, the agent has exited, text is already typed in the input line, or the tile is remote (not supported yet). When no tile is waiting, it lists each AI tile with its reason. The first message to a newly started agent must be sent at the PC.
 - **Permission prompts**: when the agent asks for permission during a turn you started from the messenger — or a permission notification reaches the messenger while you are away — the message has **Allow** and **Deny** buttons. If more than one channel shows buttons for the same prompt, the first press counts. Questions the agent asks you (with choices) still have to be answered in the app. Buttons arrive only when the agent actually asks: an agent in a mode that does not ask (for example Claude Code's auto mode) just goes ahead.
 - Messages sent while the PC or the app was off are not delivered later.
 - It keeps working while the privacy veil is up.
 - Task plan approvals are never answered from the messenger — they arrive as notifications only.
 
-The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names, and conversation titles when two tiles share a name) pass through the servers of the messenger you use (Telegram's, Discord's or Slack's).
+The full answers, the tool name and a one-line summary of what a permission prompt asks, and the names that identify your tiles (tile names and conversation titles) pass through the servers of the messenger you use (Telegram's, Discord's or Slack's).
 
 ---
 

@@ -1105,6 +1105,98 @@ fn history_retains_real_write_failure_and_rejects_corrupt_paths_without_home_acc
 }
 
 #[test]
+fn rows_name_global_instructions_per_agent_without_disabled() {
+    let temp = Temp::new();
+    let roots = |_path: &Path| Vec::new();
+    let mut environment = env(&roots);
+    environment.claude_global = Some(temp.path("claude/CLAUDE.md"));
+    environment.codex_global = Some(temp.path("codex/AGENTS.md"));
+    let mut claude = item("zeta", "CLAUDE_ONLY");
+    claude.targets = vec!["claude".into()];
+    let mut disabled = item("off", "DISABLED");
+    disabled.enabled = false;
+    let rows = plan(&environment, &[claude, item("both", "BOTH"), disabled, project_item("p", "PROJECT")], &[]);
+    assert_eq!(row(&rows, &temp.path("claude/CLAUDE.md")).instructions, ["both", "zeta"]);
+    assert_eq!(row(&rows, &temp.path("codex/AGENTS.md")).instructions, ["both"]);
+    assert!(rows.iter().all(|row| row.subpath.is_none() && row.duplicates.is_empty()));
+}
+
+#[test]
+fn rows_name_project_instructions_per_subpath_and_claude_rows_stay_empty() {
+    let temp = Temp::new();
+    let wt = temp.path("repo");
+    std::fs::create_dir_all(wt.join("pkg/api")).unwrap();
+    let roots = |_path: &Path| vec![wt.clone()];
+    let projects = [project("p", &wt)];
+    let mut root_b = project_item("p", "ROOT_B");
+    root_b.name = "root-b".into();
+    let mut root_a = project_item("p", "ROOT_A");
+    root_a.name = "root-a".into();
+    let mut disabled = project_item("p", "DISABLED");
+    disabled.name = "root-off".into();
+    disabled.enabled = false;
+    let library = [root_b, subpath_item("api", "p", "pkg/api", "API_RULE"), root_a, disabled];
+    let rows = plan(&env(&roots), &library, &projects);
+    let root = row(&rows, &wt.join("AGENTS.md"));
+    assert_eq!((root.instructions.as_slice(), root.subpath.as_deref()), (["root-a".to_owned(), "root-b".to_owned()].as_slice(), None));
+    let api = row(&rows, &wt.join("pkg/api/AGENTS.md"));
+    assert_eq!((api.instructions.as_slice(), api.subpath.as_deref()), (["api".to_owned()].as_slice(), Some("pkg/api")));
+    for claude in [wt.join("CLAUDE.md"), wt.join("pkg/api/CLAUDE.md")] {
+        assert!(row(&rows, &claude).instructions.is_empty());
+    }
+    assert_eq!(row(&rows, &wt.join("pkg/api/CLAUDE.md")).subpath.as_deref(), Some("pkg/api"));
+}
+
+#[test]
+fn duplicates_are_bodies_left_outside_the_block_even_with_crlf() {
+    let temp = Temp::new();
+    let roots = |_path: &Path| Vec::new();
+    let mut environment = env(&roots);
+    environment.claude_global = Some(temp.path("claude/CLAUDE.md"));
+    environment.codex_global = Some(temp.path("codex/AGENTS.md"));
+    let text = format!("intro\r\nfirst line\r\nsecond line\r\n\r\n{}", managed_block("INSIDE_ONLY", false, "\r\n", true));
+    temp.write("claude/CLAUDE.md", &text);
+    let library = [item("left", "\n first line\nsecond line \n"), item("inside", "INSIDE_ONLY"), item("absent", "NOT_THERE"), item("blank", "  \n")];
+    let rows = plan(&environment, &library, &[]);
+    let claude = row(&rows, &temp.path("claude/CLAUDE.md"));
+    assert_eq!(claude.instructions, ["absent", "blank", "inside", "left"]);
+    assert_eq!(claude.duplicates, ["left"]);
+    assert_eq!(claude.action, Action::Update);
+    let codex = row(&rows, &temp.path("codex/AGENTS.md"));
+    assert_eq!((codex.action, codex.duplicates.is_empty()), (Action::Create, true));
+    temp.write("claude/CLAUDE.md", "first line\nsecond line\n<!-- aynx:begin -->\n");
+    let broken = plan(&environment, &library, &[]);
+    let claude = row(&broken, &temp.path("claude/CLAUDE.md"));
+    assert_eq!((claude.action, claude.duplicates.is_empty()), (Action::Error, true));
+}
+
+#[test]
+fn project_duplicates_read_the_planned_agents_file() {
+    let temp = Temp::new();
+    let wt = temp.path("repo");
+    std::fs::create_dir_all(&wt).unwrap();
+    temp.write("repo/AGENTS.md", "# human\nPROJECT_RULE\n");
+    let roots = |_path: &Path| vec![wt.clone()];
+    let rows = plan(&env(&roots), &[project_item("p", "PROJECT_RULE")], &[project("p", &wt)]);
+    assert_eq!(row(&rows, &wt.join("AGENTS.md")).duplicates, ["project"]);
+    assert!(row(&rows, &wt.join("CLAUDE.md")).duplicates.is_empty());
+}
+
+#[test]
+fn file_change_serializes_names_and_subpath_in_camel_case_without_bodies() {
+    let mut value = change(Path::new("/repo/pkg/AGENTS.md"), Scope::Project, Some("p"), None, None);
+    value.subpath = Some("pkg".into());
+    value.instructions = vec!["rule".into()];
+    value.duplicates = vec!["rule".into()];
+    let json = serde_json::to_value(&value).unwrap();
+    assert_eq!(json["subpath"], "pkg");
+    assert_eq!(json["instructions"], serde_json::json!(["rule"]));
+    assert_eq!(json["duplicates"], serde_json::json!(["rule"]));
+    assert_eq!(json["projectId"], "p");
+    assert!(json.get("edit").is_none() && json.get("owners").is_none());
+}
+
+#[test]
 fn single_worktree_plans_subpaths_and_records_without_enumerating_other_worktrees() {
     let temp = Temp::new();
     let main = temp.path("main");

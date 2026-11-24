@@ -6,8 +6,9 @@
 //! - **토큰이 둘이다** — 봇 토큰(Web API 에만)과 앱 수준 토큰(`apps.connections.open` 에만). **토큰이 나가는 곳은 `slack.com` 뿐이다** — REST 바탕은
 //!   [`API_BASE`] 하나, WebSocket 은 `wss` 이고 호스트가 `slack.com` · `*.slack.com` 일 때만 붙는다([`socket_url_ok`] · 시험 `responses_urls_and_threads`).
 //!   그 주소에는 토큰을 싣지 않고 주소도 로그에 싣지 않는다. 로그에는 고정 글자 · 오류 종류([`err_kind`])만.
-//! - **멘션은 늘 막는다** — 남의 글자는 `rich_text` 블록의 글 조각으로(서식 · 멘션 · 링크로 읽히지 않는다), 그려 둔 알림 글은 `mrkdwn` 에
-//!   `verbatim: true`, 미리 보기 `text` 도 `& < >` 를 걷는다. **`plain_text` section 은 쓰지 않는다** — Slack 웹이 그 글의 줄바꿈을 접는다.
+//! - **멘션은 늘 막는다** — 남의 글자는 `rich_text` 블록의 글 조각(`text`)으로만(멘션 · 링크로 읽히지 않는다 — 답 전문의 서식은 조각의
+//!   `style` · `rich_text_preformatted` · `rich_text_quote` 로만 입힌다), 그려 둔 알림 글은 `mrkdwn` 에 `verbatim: true`, 미리 보기 `text` 도
+//!   `& < >` 를 걷는다. **`plain_text` section 은 쓰지 않는다** — Slack 웹이 그 글의 줄바꿈을 접는다.
 //! - **id 는 `i64`** — 사용자 · 대화방 id 는 36진수로 읽고 되돌려 같은 글자일 때만([`id_num`]), 메시지 id 는 `ts` → `초 × 10⁶ + 마이크로초`([`ts_num`]).
 //! - **스레드 = 답장** — Slack DM 에는 답장이 없고 스레드뿐이다. 스레드 안의 글에는 그 스레드로 답한다([`Threads`]).
 //! - 방어 기계: 30초마다 Ping · 75초 조용하면 다시 붙기(반쯤 죽은 TCP) · 갓 붙은 연결이 곧 죽기를 거듭하면 물러남(`logic::Flap` — `refresh_requested`
@@ -27,7 +28,7 @@ use tokio_tungstenite::tungstenite::Message;
 use super::logic::{Button, Flap};
 use super::sock::{self, Event, Ws};
 use super::{ButtonPress, Config, Incoming, Link, Text};
-use crate::messenger::Channel;
+use crate::messenger::{md, Channel};
 use crate::server::log;
 
 const CHAN: Channel = Channel::Slack;
@@ -327,12 +328,15 @@ fn section_mrkdwn(text: &str) -> Value {
     json!({ "type": "section", "text": { "type": "mrkdwn", "text": clip_mrkdwn(text, TEXT_ROOM), "verbatim": true } })
 }
 
+fn clean_head(head: Option<&str>) -> Option<String> {
+    head.map(|h| h.chars().filter(|c| !c.is_control()).collect::<String>())
+        .map(|h| clip_plain(h.trim(), HEAD_ROOM))
+        .filter(|h| !h.is_empty())
+}
+
 /// 남의 글자는 이 블록으로만 싣는다 — 서식 · 멘션 · 링크로 읽히지 않고 줄바꿈이 산다(머리말).
 fn rich(head: Option<&str>, body: &str) -> Option<Value> {
-    let head: Option<String> = head
-        .map(|h| h.chars().filter(|c| !c.is_control()).collect::<String>())
-        .map(|h| clip_plain(h.trim(), HEAD_ROOM))
-        .filter(|h| !h.is_empty());
+    let head = clean_head(head);
     let body = Some(clip_plain(body, TEXT_ROOM)).filter(|b| !b.trim().is_empty());
     let mut els = Vec::new();
     if let Some(h) = &head {
@@ -344,10 +348,102 @@ fn rich(head: Option<&str>, body: &str) -> Option<Value> {
     (!els.is_empty()).then(|| json!({ "type": "rich_text", "elements": [{ "type": "rich_text_section", "elements": els }] }))
 }
 
+/// `rich_text` 하나를 쌓는 손 — 글 조각은 `text` 뿐(멘션 · 링크 요소를 만들지 않는다) · 보이는 글자는 [`TEXT_ROOM`] 안.
+struct Rich {
+    els: Vec<Value>,
+    sec: Vec<Value>,
+    quote: bool,
+    /// 다음 조각 앞에 둘 줄바꿈 수 — 같은 묶음 안에서만.
+    breaks: usize,
+    room: usize,
+}
+
+impl Rich {
+    fn piece(&mut self, text: &str, style: [bool; 4]) {
+        if text.is_empty() || self.room == 0 {
+            return;
+        }
+        let t = clip_plain(text, self.room);
+        self.room = self.room.saturating_sub(units(&t));
+        // 줄바꿈은 서식 없는 조각에 — 서식 있는 조각이면 따로 둔다(코드 · 굵게가 줄바꿈에 번지지 않게)
+        let breaks = if self.sec.is_empty() { String::new() } else { "\n".repeat(self.breaks) };
+        self.breaks = 0;
+        let plain = style.iter().all(|s| !s);
+        if !plain && !breaks.is_empty() {
+            self.sec.push(json!({ "type": "text", "text": breaks }));
+        }
+        let t = if plain { format!("{breaks}{t}") } else { t };
+        let mut el = json!({ "type": "text", "text": t });
+        let names = ["bold", "italic", "strike", "code"];
+        let on: serde_json::Map<String, Value> = names.iter().zip(style).filter(|(_, s)| *s).map(|(n, _)| (n.to_string(), json!(true))).collect();
+        if !on.is_empty() {
+            el["style"] = Value::Object(on);
+        }
+        self.sec.push(el);
+    }
+
+    fn flush(&mut self) {
+        if !self.sec.is_empty() {
+            let kind = if self.quote { "rich_text_quote" } else { "rich_text_section" };
+            self.els.push(json!({ "type": kind, "elements": std::mem::take(&mut self.sec) }));
+        }
+        self.breaks = 0;
+    }
+}
+
+/// 답 전문 — 굵게 · 기울임 · 취소선 · 코드는 조각의 `style`, 코드 블록 · 표는 `rich_text_preformatted`, 인용은 `rich_text_quote`.
+/// 목록은 `• ` 글자 줄(`rich_text_list` 는 쓰지 않는다).
+fn rich_markdown(head: Option<&str>, body: &str) -> Option<Value> {
+    let mut r = Rich { els: Vec::new(), sec: Vec::new(), quote: false, breaks: 0, room: TEXT_ROOM };
+    if let Some(h) = clean_head(head) {
+        r.sec.push(json!({ "type": "text", "text": h, "style": { "bold": true } }));
+        r.breaks = 1;
+    }
+    for b in md::parse(body) {
+        match b {
+            md::Block::Line(l) => {
+                if l.quote != r.quote {
+                    r.flush();
+                    r.quote = l.quote;
+                }
+                let mut style = [false; 4];
+                for it in &l.items {
+                    match it {
+                        md::Inline::Open(m) | md::Inline::Close(m) => {
+                            let i = match m {
+                                md::Mark::Bold => 0,
+                                md::Mark::Italic => 1,
+                                md::Mark::Strike => 2,
+                            };
+                            style[i] = matches!(it, md::Inline::Open(_));
+                        }
+                        md::Inline::Text(s) => r.piece(s, style),
+                        md::Inline::Code(s) => r.piece(s, [style[0], style[1], style[2], true]),
+                    }
+                }
+                r.breaks += 1;
+            }
+            md::Block::Blank if r.quote => r.flush(),
+            md::Block::Blank => r.breaks += 1,
+            md::Block::Code { text, .. } => {
+                r.flush();
+                if r.room > 0 {
+                    let t = clip_plain(&text, r.room);
+                    r.room = r.room.saturating_sub(units(&t));
+                    r.els.push(json!({ "type": "rich_text_preformatted", "elements": [{ "type": "text", "text": t }] }));
+                }
+            }
+        }
+    }
+    r.flush();
+    (!r.els.is_empty()).then(|| json!({ "type": "rich_text", "elements": r.els }))
+}
+
 pub(crate) fn blocks(t: &Text) -> Vec<Value> {
     let mut out = Vec::new();
     match t {
         Text::Lines { head, body } => out.extend(rich(head.as_deref(), body)),
+        Text::Markdown { head, body } => out.extend(rich_markdown(head.as_deref(), body)),
         Text::Rendered { text, tail } => {
             if !text.trim().is_empty() {
                 out.push(section_mrkdwn(text));
@@ -366,6 +462,15 @@ pub(crate) fn fallback(t: &Text) -> String {
     let s = match t {
         Text::Lines { head: Some(h), body } => clip_mrkdwn(&escape(&format!("{h}\n{body}")), FALLBACK_ROOM),
         Text::Lines { head: None, body } => clip_mrkdwn(&escape(body), FALLBACK_ROOM),
+        // 기호를 걷은 평문
+        Text::Markdown { head, body } => {
+            let plain = md::plain(&md::parse(body));
+            let s = match head {
+                Some(h) => format!("{h}\n{plain}"),
+                None => plain,
+            };
+            clip_mrkdwn(&escape(&s), FALLBACK_ROOM)
+        }
         Text::Rendered { text, .. } => clip_mrkdwn(text, FALLBACK_ROOM),
     };
     if s.trim().is_empty() {
@@ -903,6 +1008,56 @@ mod tests {
         assert!(units(big[0]["text"]["text"].as_str().unwrap()) <= TEXT_ROOM);
         assert_eq!(fallback(&Text::headed("h", "<b> & c")), "h\n&lt;b&gt; &amp; c");
         assert!(units(&fallback(&Text::plain("x".repeat(5000)))) <= FALLBACK_ROOM);
+    }
+
+    /// 답 전문 — 서식은 글 조각의 style · 코드 블록 = preformatted · 인용 = quote · 목록은 `• ` 글자 · 멘션 · 링크 요소 없음.
+    #[test]
+    fn markdown_answer_blocks() {
+        let t = Text::Markdown {
+            head: Some("🟢 h".into()),
+            body: "**굵게**는 *기울임* ~~취소~~ `a*b` <@U1> [l](https://e.x)\n- 목록\n\n> 인용 **q**\n```\nlet *p;\n```\n끝".into(),
+        };
+        let b = blocks(&t);
+        assert_eq!(b.len(), 1);
+        assert_eq!(
+            b[0],
+            json!({ "type": "rich_text", "elements": [
+                { "type": "rich_text_section", "elements": [
+                    { "type": "text", "text": "🟢 h", "style": { "bold": true } },
+                    { "type": "text", "text": "\n" },
+                    { "type": "text", "text": "굵게", "style": { "bold": true } },
+                    { "type": "text", "text": "는 " },
+                    { "type": "text", "text": "기울임", "style": { "italic": true } },
+                    { "type": "text", "text": " " },
+                    { "type": "text", "text": "취소", "style": { "strike": true } },
+                    { "type": "text", "text": " " },
+                    { "type": "text", "text": "a*b", "style": { "code": true } },
+                    { "type": "text", "text": " <@U1> l (https://e.x)" },
+                    { "type": "text", "text": "\n• 목록" },
+                ] },
+                { "type": "rich_text_quote", "elements": [
+                    { "type": "text", "text": "인용 " },
+                    { "type": "text", "text": "q", "style": { "bold": true } },
+                ] },
+                { "type": "rich_text_preformatted", "elements": [{ "type": "text", "text": "let *p;" }] },
+                { "type": "rich_text_section", "elements": [{ "type": "text", "text": "끝" }] },
+            ] })
+        );
+        assert_eq!(fallback(&t), "🟢 h\n굵게는 기울임 취소 a*b &lt;@U1&gt; l (https://e.x)\n• 목록\n\n인용 q\nlet *p;\n끝");
+        assert_eq!(blocks(&Text::Markdown { head: None, body: "---".into() }).len(), 1, "빈 글도 블록 하나");
+        // 나눈 조각 — 보이는 글자가 자리 안(서식 기호를 걷으면 원문보다 늘지 않는다)
+        let body = "**굵게** `c` > x\n```\ncode\n".repeat(800);
+        for p in super::super::logic::mend_fences(split_answer("h", &body, "… (more)"), "… (more)") {
+            let b = blocks(&Text::Markdown { head: None, body: p });
+            let total: usize = b[0]["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|e| e["elements"].as_array().cloned().unwrap_or_default())
+                .map(|e| units(e["text"].as_str().unwrap()))
+                .sum();
+            assert!(total <= TEXT_ROOM, "{total}");
+        }
     }
 
     #[test]

@@ -189,8 +189,8 @@ Phones and tablets open the same address too, and **they can do the same as a PC
   **New tab** at the bottom of that screen opens the open sheet below, set to **New tab**. The **gear** in the head is the phone settings screen.
 - **Tile menu**: the **⋯** to the right of the top strip's pill opens the same menu as the ⋯ in a PC tile header (Server › Forwarding · remote files · tmux sessions · AI permissions ·
   output · close …). Buttons that exist only in the header also appear at the top of this menu — **Switch to conversation / Switch to terminal** on AI tiles,
-  **Open folder** on local terminals, **Open branch tile**. A phone is always one tile in one window, so **Split left and right · Split top and bottom · Detach to a new window** are not in this
-  menu or the long-press menu (PCs and wide remote windows still have them). The menu you get by long-pressing the terminal (copy, paste …) is unchanged.
+  **Open folder** on local terminals, **Open branch tile**. A phone is always one tile in one window, so **Split · Detach ▸** (split left and right · split top and bottom · detach to a new window) is not in this
+  menu or the long-press menu (PCs have it, and wide remote windows have it as **Split ▸** without detach). The menu you get by long-pressing the terminal (copy, paste …) is unchanged.
 - **Open sheet**: pressing **+** in the top strip (or New tab on the picker screen) brings up a sheet from the bottom — New tile (default shell · each enabled AI agent ·
   local files), recent hosts (a green dot if connected), **All hosts · projects · DB**, past conversations, task plans (with the number awaiting review), and at the bottom [Alerts] and
   [Settings]. At the top, **[This tab | New tab]** picks where it opens:

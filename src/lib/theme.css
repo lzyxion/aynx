@@ -902,7 +902,7 @@ body {
   border-top: 1px solid var(--line);
 }
 
-/* 앞자리 그림 칸은 비어 있어도 폭을 차지한다 — ✓ 가 있는 줄과 없는 줄의 글자가 같은 x 에서 시작한다 */
+/* 앞자리 그림 칸은 비어 있어도 폭을 차지한다 — 그림이 있는 줄과 없는 줄의 글자가 같은 x 에서 시작한다 */
 .menu-mark {
   display: inline-flex;
   flex: none;

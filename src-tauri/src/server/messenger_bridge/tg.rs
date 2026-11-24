@@ -13,7 +13,7 @@ use super::logic::Button;
 use super::{ButtonPress, Config, Incoming, Link, Text, REQUEST_TIMEOUT};
 use crate::server::log;
 use crate::i18n::tr;
-use crate::messenger::Channel;
+use crate::messenger::{md, Channel};
 pub(crate) use crate::telegram::BotToken;
 use crate::telegram::{self, Api, ApiFail, UpdateKind};
 
@@ -144,11 +144,21 @@ fn press(c: telegram::Callback) -> ButtonPress {
     ButtonPress { from_id: c.from_id, chat_id: c.chat_id, message_id: c.message_id, data: c.data, ack: super::Ack::Telegram(c.id) }
 }
 
-/// 평문은 `& < >` 를 걷는다(→ docs/invariants.md 전문 6). 나누기 · 상한은 코어가 맞췄다.
+/// 글자는 늘 `& < >` 를 걷는다(→ docs/invariants.md 전문 6) — 태그는 우리 것뿐이다. 답 전문은 `md` 의 HTML(구성상 짝이 맞는다 —
+/// 틀리면 Telegram 이 글 전체를 거절한다). 나누기 · 상한은 코어가 맞췄다(4096 은 해석 뒤 글자 — 서식 기호를 걷으면 원문보다 늘지 않는다).
 pub(crate) fn render(t: &Text) -> String {
     match t {
         Text::Lines { head: None, body } => telegram::escape_html(body),
         Text::Lines { head: Some(h), body } => format!("<b>{}</b>\n{}", telegram::escape_html(h), telegram::escape_html(body)),
+        Text::Markdown { head, body } => {
+            let body = md::html(&md::parse(body));
+            match head {
+                Some(h) => format!("<b>{}</b>\n{body}", telegram::escape_html(h)),
+                // 빈 글은 Telegram 이 거절한다
+                None if body.trim().is_empty() => "…".to_string(),
+                None => body,
+            }
+        }
         Text::Rendered { text, tail: None } => telegram::clip_html(text, telegram::TEXT_MAX),
         Text::Rendered { text, tail: Some(tail) } => {
             let tail = telegram::escape_html(tail);

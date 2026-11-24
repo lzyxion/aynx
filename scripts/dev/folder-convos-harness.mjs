@@ -315,13 +315,16 @@ check(backFocus === shellA, `닫으면 키보드는 연 타일로 (${backFocus})
 
 // ── ⑩ ⋯ 메뉴 · 팔레트 줄 ──────────────────────────────────────────────────
 await ev(`document.querySelector('.pane-box[data-pane="${shellA}"] [data-tile-menu-btn]').click()`); await sleep(400);
-const menuRow = await ev(`(() => { const b = document.querySelector('.tilemenu [data-action="folder-conversations"]'); return b ? b.textContent.replace(/\\s+/g, ' ').trim() + '|' + (b.querySelector('[data-menu-hint]')?.textContent.trim() ?? '') : null; })()`);
+// 지난 대화는 늘 "대화 ▸" 옆목록 안에 있다 — 줄 하나뿐이어도 먼저 연다
+check((await ev(`document.querySelector('.tilemenu [data-flyout="convo"]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`)) === "대화", "⋯ 메뉴에 \"대화 ▸\" 줄");
+await ev(`document.querySelector('.tilemenu [data-flyout="convo"]').click()`); await sleep(300);
+const menuRow = await ev(`(() => { const b = document.querySelector('.flyout [data-action="folder-conversations"]'); return b ? b.textContent.replace(/\\s+/g, ' ').trim() + '|' + (b.querySelector('[data-menu-hint]')?.textContent.trim() ?? '') : null; })()`);
 check(menuRow === "이 폴더의 지난 대화Ctrl+Shift+Y|Ctrl+Shift+Y", `⋯ 메뉴에 "이 폴더의 지난 대화" + 단축키 글자 (${menuRow})`);
-const menuFits = await ev(`(() => { const b = document.querySelector('.tilemenu [data-action="folder-conversations"]'); return b.scrollWidth <= b.clientWidth + 1; })()`);
+const menuFits = await ev(`(() => { const b = document.querySelector('.flyout [data-action="folder-conversations"]'); return b.scrollWidth <= b.clientWidth + 1; })()`);
 check(menuFits === true, "메뉴 줄이 잘리지 않는다");
-check((await ev(`!!document.querySelector('.tilemenu [data-action="folder-conversations"] ${CONVO_ICON}')`)) === true, "⋯ 메뉴 아이콘 = conversations(forum)");
+check((await ev(`!!document.querySelector('.flyout [data-action="folder-conversations"] ${CONVO_ICON}')`)) === true, "⋯ 메뉴 아이콘 = conversations(forum)");
 console.log("capture:", await shot("fconv-menu.png"));
-await ev(`document.querySelector('.tilemenu [data-action="folder-conversations"]').click()`); await sleep(500);
+await ev(`document.querySelector('.flyout [data-action="folder-conversations"]').click()`); await sleep(500);
 const anchor = await ev(`(async () => { const f = await ${fcMod}; return f.folderConversationsAnchor()?.paneId ?? null; })()`);
 check((await ev(`!!${PICK}`)) && anchor === shellA && (await picker()).focusIn, `⋯ 메뉴 → 같은 목록 · 그 타일 기준 · 입력칸 포커스 (${anchor})`);
 await key("KeyY", CTRL | SHIFT, "Y"); await sleep(300);

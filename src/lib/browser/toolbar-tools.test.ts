@@ -111,7 +111,7 @@ describe("fileMenuTools — ⋯ 에 설 도구 줄(2026-10-20 B안)", () => {
 describe("toPaneMenuItems — 타일 ⋯ 의 줄로", () => {
   const run = () => {};
 
-  it("액션은 `tool:<id>` · 켜고 끄는 줄은 체크 관례(켜졌을 때만 check) · 단축키 글자", () => {
+  it("액션은 `tool:<id>` · 켜고 끄는 줄도 앞자리는 제 그림(켜짐은 `checked` — ✓ 는 줄 끝에 그린다) · 단축키 글자", () => {
     const items = toPaneMenuItems(
       [
         { id: "newfolder", icon: "folder-plus", label: "새 폴더", run },
@@ -123,8 +123,8 @@ describe("toPaneMenuItems — 타일 ⋯ 의 줄로", () => {
     expect(items.map((i) => i.action)).toEqual(["tool:newfolder", "tool:places", "tool:preview"]);
     expect(items[0]).toMatchObject({ icon: "folder-plus", hint: undefined });
     expect(items[0].checkbox).toBeUndefined();
-    expect(items[1]).toMatchObject({ icon: null, checkbox: true, checked: false, hint: "F9" });
-    expect(items[2]).toMatchObject({ icon: "check", checkbox: true, checked: true, hint: "F11", separator: true });
+    expect(items[1]).toMatchObject({ icon: "layout", checkbox: true, checked: false, hint: "F9" });
+    expect(items[2]).toMatchObject({ icon: "preview", checkbox: true, checked: true, hint: "F11", separator: true });
   });
 
   it("흐린 줄에만 툴팁(왜 못 누르는지)", () => {

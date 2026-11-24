@@ -3,6 +3,7 @@
 use super::logic::*;
 use super::*;
 use crate::telegram::Api;
+use crate::messenger::md::tests as md_tests;
 use crate::agent_state::Phase;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -146,7 +147,7 @@ fn routing_tables() {
     assert_eq!((display("claude"), display("codex")), ("Claude Code", "Codex"), "RealEnv 이 쓰는 표시 이름 표");
 }
 
-/// 실기 후속(2026-11-19) — "기다리는 타일이 없다" 의 까닭 줄 · 겹친 고르기 단추 · 제목 걷기.
+/// 실기 후속(2026-11-19) — "기다리는 타일이 없다" 의 까닭 줄 · 고르기 단추의 제목 · 제목 걷기.
 #[test]
 fn nowhere_lines_and_pick_labels() {
     let head = nowhere_text(&[]);
@@ -171,10 +172,10 @@ fn nowhere_lines_and_pick_labels() {
     assert_eq!(clean_title("  Fix\n the\t\u{1b}  bug "), Some("Fix the bug".into()));
     assert_eq!(clean_title(" \n "), None);
     let it = |l: &str, t: Option<&str>| (l.to_string(), t.map(str::to_string));
-    // 안 겹치면 그대로(제목을 붙이지 않는다)
-    assert_eq!(pick_labels(&[it("a", Some("T1")), it("b", Some("T2"))]), ["a", "b"]);
-    // 겹친 것만 제목
+    // 안 겹쳐도 제목을 붙인다 · 제목이 없으면 이름표 그대로
+    assert_eq!(pick_labels(&[it("a", Some("T1")), it("b", Some("T2"))]), ["a — T1", "b — T2"]);
     assert_eq!(pick_labels(&[it("p", Some("T1")), it("p", Some("T2")), it("q", None)]), ["p — T1", "p — T2", "q"]);
+    assert_eq!(pick_labels(&[it("a", None), it("b", Some("T"))]), ["a", "b — T"]);
     // 제목까지 같음 · 제목 없음 → 번호
     assert_eq!(pick_labels(&[it("p", Some("T")), it("p", Some("T")), it("p", None)]), ["p — T (1)", "p — T (2)", "p"]);
     assert_eq!(pick_labels(&[it("p", None), it("p", None)]), ["p (1)", "p (2)"]);
@@ -189,7 +190,16 @@ fn nowhere_lines_and_pick_labels() {
     let big = "x".repeat(70);
     let got = pick_labels(&[it(&big, Some("T")), it(&big, Some("U"))]);
     assert!(got.iter().all(|g| g.chars().count() <= PICK_LABEL_MAX) && got[0].ends_with(" (1)"), "{got:?}");
-    assert_eq!(pick_labels(&[it(&big, None)])[0].chars().count(), PICK_LABEL_MAX, "안 겹치면 60자에서 자른다(지금 그대로)");
+    assert_eq!(pick_labels(&[it(&big, None)])[0].chars().count(), PICK_LABEL_MAX, "제목이 없으면 60자에서 자른다(지금 그대로)");
+
+    // 다리 글의 타일 이름 — 제목이 없으면 이름표 그대로(자르지 않는다) · 있으면 고르기와 같은 60자 맞추기
+    assert_eq!(named("proj / wt", None), "proj / wt");
+    assert_eq!(named(&big, None), big);
+    assert_eq!(named("proj / wt", Some("Fix the bug")), "proj / wt — Fix the bug");
+    let got = named("proj / wt", Some(&long));
+    assert_eq!(got.chars().count(), PICK_LABEL_MAX, "{got}");
+    assert!(got.starts_with("proj / wt — 가") && got.ends_with('…'), "{got}");
+    assert_eq!(named(&big, Some("T")).chars().count(), PICK_LABEL_MAX, "이름표만으로 넘치면 이름표를 자른다");
 }
 
 /// 실기 후속(2026-11-19) — 다리 턴의 답은 대화 파일이 다 쓰인 뒤의 글: (a) 첫 읽기 None → 다음 글 (b) 앞 글 → 파일이 자란 뒤의 마지막 글
@@ -362,6 +372,49 @@ fn card_message_text() {
         tg::split_answer(&format!("🟢 {label}"), &body, more),
         crate::telegram::split_text(&body, crate::telegram::TEXT_MAX - (crate::telegram::units(label) + 8), crate::telegram::MAX_PARTS, more)
     );
+}
+
+/// 답 전문 — 조각이 울타리 가운데서 끊기면 닫고 다음 조각에서 다시 연다 · 꼬리 줄은 코드 블록 밖.
+#[test]
+fn answer_parts_mend_fences() {
+    let parts = mend_fences(vec!["a\n```rust\nx".into(), "y\n```\nb".into()], "M");
+    assert_eq!(parts, ["a\n```rust\nx\n```", "```rust\ny\n```\nb"]);
+    assert_eq!(mend_fences(vec!["```\nx\nM".into()], "M"), ["```\nx\n```\nM"], "꼬리는 닫은 뒤에");
+    assert_eq!(mend_fences(vec!["p\nM".into(), "q".into()], "M"), ["p\nM", "q"], "꼬리는 마지막 조각에만");
+    let three = mend_fences(vec!["~~~~\na".into(), "b".into(), "c\n~~~~\nd".into()], "M");
+    assert_eq!(three, ["~~~~\na\n~~~~", "~~~~\nb\n~~~~", "~~~~\nc\n~~~~\nd"]);
+    assert!(mend_fences(Vec::new(), "M").is_empty());
+}
+
+/// 답 전문의 Telegram 모양 — 서식은 HTML · 나눈 조각마다 짝이 맞고 해석 뒤 4096 안 · 이어진 코드 블록은 다음 조각에서도 `<pre>`.
+#[test]
+fn telegram_answer_markdown() {
+    let t = Text::Markdown { head: Some("🟢 a<b".into()), body: "**굵게**는 `x<y` [링크](https://e.x) <@1>\n> 인용".into() };
+    assert_eq!(tg::render(&t), "<b>🟢 a&lt;b</b>\n<b>굵게</b>는 <code>x&lt;y</code> 링크 (https://e.x) &lt;@1&gt;\n<blockquote>인용</blockquote>");
+    assert_eq!(tg::render(&Text::Markdown { head: None, body: "---".into() }), "…", "빈 글은 보내지 못한다");
+    let more = "… (more)";
+    let head = "🟢 proj / wt";
+    let bodies = [
+        format!("앞\n```rust\n{}```\n끝", "let x = `a` < 1 && *p; // **\n".repeat(400)),
+        format!("# 제목\n| a | b |\n|---|---|\n{}", "| x & y | <z> |\n".repeat(600)),
+        "**굵게**는 `c` [l](https://x.y) _i_ ~~s~~ <@1> & \n".repeat(300),
+        "*a_".repeat(10_000),
+        "`".repeat(9000),
+    ];
+    for body in &bodies {
+        let parts = mend_fences(tg::split_answer(head, body, more), more);
+        assert!(parts.len() > 1);
+        for (i, p) in parts.iter().enumerate() {
+            let r = tg::render(&Text::Markdown { head: (i == 0).then(|| head.to_string()), body: p.clone() });
+            md_tests::balanced(&r).unwrap();
+            assert!(crate::telegram::units(&md_tests::visible_html(&r)) <= crate::telegram::TEXT_MAX, "{i}");
+        }
+    }
+    let parts = mend_fences(tg::split_answer(head, &bodies[0], more), more);
+    let second = tg::render(&Text::Markdown { head: None, body: parts[1].clone() });
+    assert!(second.starts_with("<pre>let x"), "{}", &second[..40]);
+    let last = tg::render(&Text::Markdown { head: None, body: parts.last().unwrap().clone() });
+    assert!(!last.contains("<pre>… (more)") && !last.ends_with("(more)</pre>"), "꼬리는 코드 블록 밖");
 }
 
 fn id32() -> String {
@@ -696,7 +749,7 @@ impl Env for FakeEnv {
     fn answer(&self, _cli: &str, _convo: Option<&str>) -> (Option<String>, Option<u64>) {
         let mut q = self.answers.lock().unwrap();
         match q.len() {
-            0 => (Some(format!("DONE <ok> & {}\n\n{}", "가".repeat(10), "z".repeat(5000))), Some(1)),
+            0 => (Some(format!("DONE <ok> & **굵게**는 `a*b` {}\n\n{}", "가".repeat(10), "z".repeat(5000))), Some(1)),
             1 => q[0].clone(),
             _ => q.pop_front().unwrap(),
         }
@@ -818,10 +871,13 @@ fn live_bridge_with_fake_telegram() {
     wait_for("답", || fake.texts().len() >= before + 2);
     let texts = fake.texts();
     let answer = &texts[before];
-    assert!(answer.starts_with("<b>🟢 claude · local-s1</b>\nDONE &lt;ok&gt; &amp; "), "{answer}");
-    // 상한은 엔티티 해석 뒤 글자로 잰다(Bot API) — 태그 · 엔티티를 풀어 센다.
-    let parsed = |t: &str| t.replace("<b>", "").replace("</b>", "").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
-    assert!(texts[before..].iter().all(|t| crate::telegram::units(&parsed(t)) <= crate::telegram::TEXT_MAX));
+    // 답 전문은 서식으로(마크다운 → HTML) · 남의 글자는 걷는다
+    assert!(answer.starts_with("<b>🟢 claude · local-s1</b>\nDONE &lt;ok&gt; &amp; <b>굵게</b>는 <code>a*b</code> "), "{answer}");
+    // 상한은 엔티티 해석 뒤 글자로 잰다(Bot API) — 태그 · 엔티티를 풀어 센다. 짝이 틀린 HTML 은 글 전체가 거절된다.
+    for t in &texts[before..] {
+        assert!(crate::telegram::units(&md_tests::visible_html(t)) <= crate::telegram::TEXT_MAX);
+        md_tests::balanced(t).unwrap();
+    }
     let answer_id = 1000 + sends_before;
     let before = fake.texts().len();
     rt.block_on(notify(Notice { text: "<b>턴 끝</b>".into(), stream: Some("local-s1".into()), kind: Some("stop".into()), label: Some("내 타일".into()), channel: None, has_tool: false })).unwrap();
@@ -868,7 +924,7 @@ fn live_bridge_with_fake_telegram() {
     on_turn_event("local-s2", TurnEvent::Asked, None, None);
     wait_for("확인 필요", || fake.texts().len() == before + 1);
 
-    // 실기 후속 — 이름표 미리 알리기(보내지 않는다) · 겹친 이름표는 대화 제목 · 고른 뒤 `→` 줄도 단추 글자.
+    // 실기 후속 — 이름표 미리 알리기(보내지 않는다) · 제목이 있는 단추는 대화 제목 · 고른 뒤 `→` 줄도 단추 글자.
     let before = fake.texts().len();
     op("messenger_bot_label", json!({ "stream": "local-s1", "label": "proj / wt" })).unwrap();
     op("messenger_bot_label", json!({ "stream": "local-s2", "label": "proj / wt\u{7}" })).unwrap();
@@ -877,7 +933,7 @@ fn live_bridge_with_fake_telegram() {
     let kb_count = || fake.sent().iter().filter(|(m, v)| m == "sendMessage" && v.get("reply_markup").is_some()).count();
     let kbs = kb_count();
     fake.message(42, "dup", now, None);
-    wait_for("겹친 단추", || kb_count() > kbs);
+    wait_for("제목 단추", || kb_count() > kbs);
     let (_, kb) = fake.sent().into_iter().rev().find(|(m, v)| m == "sendMessage" && v.get("reply_markup").is_some()).unwrap();
     let rows = kb["reply_markup"]["inline_keyboard"].as_array().unwrap().clone();
     let shown: Vec<&str> = rows.iter().map(|r| r[0]["text"].as_str().unwrap()).collect();
@@ -886,7 +942,15 @@ fn live_bridge_with_fake_telegram() {
     fake.push(json!({ "callback_query": { "id": "cb3", "from": { "id": 42 }, "message": { "message_id": 2, "chat": { "id": 42 } }, "data": data } }));
     wait_for("→ 단추 글자", || fake.sent().iter().any(|(m, v)| m == "editMessageText" && v["text"] == "→ proj / wt — Fix the bug"));
 
-    // 실기 후속 — 답 읽기가 끝까지 비면 "읽지 못했습니다".
+    // 답 머리줄에도 대화 제목(고르기와 같은 규칙 · 번호 없음).
+    let before = fake.texts().len();
+    on_turn_event("local-s1", TurnEvent::Done, Some("claude"), Some("c3".into()));
+    wait_for("제목 붙은 답", || fake.texts().len() >= before + 2);
+    std::thread::sleep(Duration::from_millis(200));
+    let answer = fake.texts()[before].clone();
+    assert!(answer.starts_with("<b>🟢 proj / wt — Fix the bug</b>\nDONE "), "{answer}");
+
+    // 실기 후속 — 답 읽기가 끝까지 비면 "읽지 못했습니다" · 제목이 없으면 이름표 그대로.
     *env.answers.lock().unwrap() = [(None, Some(5))].into_iter().collect();
     tend_as_bridge_turn("local-s2");
     let before = fake.texts().len();
@@ -894,7 +958,19 @@ fn live_bridge_with_fake_telegram() {
     wait_for("못 읽음", || fake.texts().len() > before);
     let t = fake.texts().last().cloned().unwrap();
     assert!(t.contains("답을 읽지 못했습니다") || t.contains("could not read the reply"), "{t}");
+    assert!(t.starts_with("<b>🟢 proj / wt</b>\n"), "{t}");
     env.answers.lock().unwrap().clear();
+
+    // 이름표가 겹치지 않아도 제목을 붙인다.
+    op("messenger_bot_label", json!({ "stream": "local-s2", "label": "solo" })).unwrap();
+    env.titles.lock().unwrap().insert("local-s2".into(), "Solo task".into());
+    tend_as_bridge_turn("local-s2");
+    let before = fake.texts().len();
+    on_turn_event("local-s2", TurnEvent::Done, Some("claude"), Some("c4".into()));
+    wait_for("홀로 답", || fake.texts().len() >= before + 2);
+    std::thread::sleep(Duration::from_millis(200));
+    let answer = fake.texts()[before].clone();
+    assert!(answer.starts_with("<b>🟢 solo — Solo task</b>\nDONE "), "{answer}");
 
     // 409 → 상태 conflict.
     fake.conflict.store(true, Ordering::SeqCst);
