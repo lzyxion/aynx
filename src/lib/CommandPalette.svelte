@@ -90,6 +90,7 @@
     conversations = [],
     conversationsLoading = false,
     onopenconversation,
+    onopenconversationchat,
     onviewconversation,
     usage = [],
     noAgents = false,
@@ -130,6 +131,8 @@
     conversationsLoading?: boolean;
     onopenconversation?: (agent: string, id: string, fork: boolean) => void;
     onviewconversation?: (agent: string, id: string) => void;
+    /** 넘기면 대화 줄의 Alt+Enter = 채팅으로 열기 — 켬은 prop 유무로만 안다 */
+    onopenconversationchat?: (agent: string, id: string) => void;
     usage?: readonly UsagePaletteEntry[];
     noAgents?: boolean;
     onopenusage?: () => void;
@@ -611,6 +614,22 @@
     return true;
   }
 
+  function chatOffered(item: PaletteItem): boolean {
+    if (item.kind !== "conversation" || item.entry === null || onopenconversationchat === undefined) return false;
+    return item.entry.state === "ok" && (item.entry.agent === "claude" || item.entry.agent === "codex");
+  }
+
+  /** 대화 줄의 `Alt` = 채팅으로 열기 — 다른 줄 · 다른 상태의 Alt+Enter 는 그냥 Enter */
+  function chatIfAsked(item: PaletteItem, ev: { altKey: boolean; ctrlKey: boolean; shiftKey: boolean }): boolean {
+    if (item.kind !== "conversation" || item.entry === null || !ev.altKey || ev.ctrlKey || ev.shiftKey || !chatOffered(item)) {
+      return false;
+    }
+    const { agent, id } = item.entry;
+    onclose();
+    onopenconversationchat?.(agent, id);
+    return true;
+  }
+
   function workspaceDeleteDisabled(item: PaletteItem): boolean {
     return item.kind === "action" && item.id === "delete-workspace" && !canDeleteWorkspace(workspaceList().length);
   }
@@ -720,7 +739,7 @@
     } else if (ev.key === "Enter") {
       ev.preventDefault();
       const item = items[sel];
-      if (item && !viewIfAsked(item, ev)) run(item, isVariant(item, ev));
+      if (item && !chatIfAsked(item, ev) && !viewIfAsked(item, ev)) run(item, isVariant(item, ev));
     }
   }
 
@@ -888,7 +907,8 @@
                     >{t("commands.palette.conversation.elsewhere")}</span
                   >
                 {/if}
-                <span class="tail">{item.tail}</span>
+                <!-- 힌트가 하나 늘면 560px 줄이 넘친다 — 고른 줄에서만 자리 · 시각을 걷는다 -->
+                {#if !(i === sel && chatOffered(item))}<span class="tail">{item.tail}</span>{/if}
               {:else}
                 <span class="lead"><UiIcon name="reset" size={14} /></span>
                 <span class="label muted">{item.empty}</span>
@@ -914,6 +934,9 @@
               <span class="keys" data-keys>
                 {#if item.kind === "conversation" && item.entry && onviewconversation}
                   <Keys combo="Ctrl+↵" /><span class="kl">{t("commands.palette.conversation.hint.ctrlEnter")}</span>
+                {/if}
+                {#if chatOffered(item)}
+                  <Keys combo="Alt+↵" /><span class="kl">{t("commands.palette.conversation.hint.altEnter")}</span>
                 {/if}
                 {#if v}
                   <Keys combo="{v.mod}+↵" /><span class="kl">{v.label}</span>

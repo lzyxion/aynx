@@ -603,3 +603,34 @@ fn claude_ignores_face_rule() {
     assert!(evs.iter().all(|e| e.body["t"] != "tui"));
     assert!(!t.tui_asking("s"));
 }
+
+/// 판정 몸을 뗀 `checked_answers` — 질문 순서 · 다듬은 답 · 머리 이름표(header → id → Qn). `answer_output` 은 같은 판정으로 같은 출력을 낸다(위 시험 그대로).
+#[test]
+fn checked_answers_matches_answer_output() {
+    let input = json!({ "questions": [
+        { "question": "Which size?", "header": "Size" },
+        { "question": "Which color?", "id": "color" },
+        { "question": "Why?" },
+    ] });
+    let given = json!({ "Why?": " because\u{7}\nso ", "Which color?": "Red", "Which size?": "big" });
+    let got = checked_answers(&input, &given).unwrap();
+    assert_eq!(
+        got,
+        vec![
+            ("Which size?".to_string(), "big".to_string(), "Size".to_string()),
+            ("Which color?".to_string(), "Red".to_string(), "color".to_string()),
+            ("Why?".to_string(), "because\nso".to_string(), "Q3".to_string()),
+        ]
+    );
+    let out = answer_output(Cli::Claude, "AskUserQuestion", &input, false, &given).unwrap();
+    let answers = &out["hookSpecificOutput"]["decision"]["updatedInput"]["answers"];
+    for (q, a, _) in &got {
+        assert_eq!(answers[q], json!(a), "{q}");
+    }
+    for bad in [json!({}), json!({ "Which size?": "big" }), json!({ "Which size?": "", "Which color?": "R", "Why?": "x" }), json!("x")] {
+        assert!(checked_answers(&input, &bad).is_none(), "{bad}");
+        assert!(answer_output(Cli::Claude, "AskUserQuestion", &input, false, &bad).is_none(), "{bad}");
+    }
+    assert!(checked_answers(&json!({ "questions": [] }), &json!({})).is_none());
+    assert!(checked_answers(&json!({ "questions": [{ "header": "no text" }] }), &json!({ "x": "y" })).is_none());
+}

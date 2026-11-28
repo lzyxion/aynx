@@ -47,6 +47,7 @@ fn request_timeout(op: &str) -> Duration {
         "forward_add" | "ssh_info" | "headless_close" => Duration::from_secs(30),
         // 보내기는 `side_chat_proxy::send_timeout` 을 따로 준다.
         "side_chat_open" | "side_chat_close" | "side_chat_attach" => Duration::from_secs(30),
+        "chat_tile_open" | "chat_tile_close" | "chat_tile_attach" | "chat_tile_subscribe" => Duration::from_secs(30),
         "messenger_bot_set_token" | "messenger_bot_pair" | "messenger_bot_test" | "messenger_bot_notify" => Duration::from_secs(30),
         // 몸의 시한(`timeoutMs`)은 서버가 지킨다 — 여기서는 넉넉한 바깥 상한.
         "ssh_exec" => Duration::from_secs(660),
@@ -155,6 +156,7 @@ fn on_event(_seq: u64, name: &str, body: &Value) {
         n if n == super::side_chat::EVENT => super::side_chat_proxy::on_event(app, body),
         // 같은 까닭으로 방송하지 않는다.
         n if n == super::producer::EVENT => super::producer_proxy::on_event(app, body),
+        n if n == super::chat_tile::EVENT => super::chat_tile_proxy::on_event(app, body),
         // 몸에 도구 입력 본문이 있어 방송하지 않는다 — 그 세션을 보는 창 중 통로를 건 창에만.
         n if n == crate::tile_permission::EVENT => super::tile_permission_proxy::on_event(app, body),
         n if RELAYED.contains(&n) => {

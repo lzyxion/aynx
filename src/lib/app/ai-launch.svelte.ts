@@ -9,6 +9,7 @@ import {
   refreshKnownAiClis,
   noteShellMenuAi,
   openAiPaneHere,
+  openChatTileHere,
   type FocusSnapshot,
 } from "$lib/app/panes.svelte.js";
 import { forgetFocusOrigin, rememberFocusOrigin, returnFocus } from "$lib/app/focus-return.svelte.js";
@@ -52,7 +53,7 @@ export async function openAiLaunchPicker(): Promise<void> {
     opening = false;
   }
   // 깔린 CLI 가 없으면 타일을 열지 않는다 — 셸이 `claude` 를 못 찾는다
-  const plan = planAiLaunch(offeredAiClis(detected, settings.disabledAgents), detected, lastShellMenuAi());
+  const plan = planAiLaunch(offeredAiClis(detected, settings.disabledAgents), detected, lastShellMenuAi(), settings.chatTile);
   if (plan.mode === "none") {
     noticeNoAiCli(detected);
     return;
@@ -73,8 +74,9 @@ export function closeAiLaunchPicker(back: boolean): void {
   else forgetFocusOrigin(FOCUS_KEY);
 }
 
-/** 상자가 `runOnMenu` 로 값을 스냅샷해 닫은 뒤 부른다(docs/conventions.md 의 메뉴 통로) */
-export function runAiLaunch(pick: { cli: AiLaunchCli; here: FocusSnapshot }): void {
+/** 상자가 `runOnMenu` 로 값을 스냅샷해 닫은 뒤 부른다(docs/conventions.md 의 메뉴 통로) · `chat` = 채팅 모양으로 */
+export function runAiLaunch(pick: { cli: AiLaunchCli; here: FocusSnapshot; chat?: boolean }): void {
   noteShellMenuAi(pick.cli.id);
-  void openAiPaneHere({ command: pick.cli.command, id: pick.cli.id }, pick.here);
+  const cli = { command: pick.cli.command, id: pick.cli.id };
+  void (pick.chat ? openChatTileHere(cli, pick.here) : openAiPaneHere(cli, pick.here));
 }

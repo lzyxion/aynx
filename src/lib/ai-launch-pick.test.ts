@@ -19,8 +19,8 @@ describe("planAiLaunch", () => {
       mode: "pick",
       selected: 0,
       rows: [
-        { cli: claude, installed: true, digit: "1" },
-        { cli: codex, installed: false, digit: "2" },
+        { cli: claude, installed: true, digit: "1", chat: false },
+        { cli: codex, installed: false, digit: "2", chat: false },
       ],
     });
   });
@@ -45,6 +45,29 @@ describe("planAiLaunch", () => {
     expect(plan.mode === "pick" && plan.rows.map((r) => r.digit)).toEqual([
       "1", "2", "3", "4", "5", "6", "7", "8", "9", null, null,
     ]);
+  });
+});
+
+describe("planAiLaunch — 채팅 모양(실험 설정)", () => {
+  const det = [
+    { id: "claude", installed: true },
+    { id: "codex", installed: true },
+  ];
+  const gemini = { command: "gemini", id: "gemini", name: "Gemini" };
+
+  it("설정 켬이면 Claude Code · Codex 줄에 chat: true · 모르는 CLI 는 false", () => {
+    const plan = planAiLaunch([claude, codex, gemini], det, null, true);
+    expect(plan.mode === "pick" && plan.rows.map((r) => r.chat)).toEqual([true, true, false]);
+  });
+
+  it("설정 끔이면 줄 모두 chat: false", () => {
+    const plan = planAiLaunch([claude, codex], det, null, false);
+    expect(plan.mode === "pick" && plan.rows.map((r) => r.chat)).toEqual([false, false]);
+  });
+
+  it("후보가 하나여도 [채팅] 이 있으면 상자를 띄운다 · 채팅 모양이 없는 CLI 하나면 곧바로", () => {
+    expect(planAiLaunch([codex], det, null, true)).toEqual({ mode: "pick", selected: 0, rows: [{ cli: codex, installed: true, digit: "1", chat: true }] });
+    expect(planAiLaunch([gemini], det, null, true)).toEqual({ mode: "direct", cli: gemini });
   });
 });
 

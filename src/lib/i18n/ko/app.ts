@@ -215,6 +215,7 @@ export const app = {
   "remoteReauth.what.orchestration_delete_archived": "보관한 앨범 영구 삭제",
   "remoteReauth.what.orchestration_merge": "앨범을 브랜치에 병합",
   "remoteReauth.what.set_session_ai_read": "이 타일의 AI 읽기 허용 켜기",
+  "remoteReauth.what.chat_tile_goal_start": "채팅 타일에서 목표 정하기 · 다시 켜기",
   "veil.gate.title": "잠김",
   "veil.gate.label": "마스터 암호",
   // 셋 모두 한 글자까지 같은 폼이다 — 마스터가 있는지 없는지를 화면이 말하지 않는다("빈 Enter 로 열린다" 를 바깥 사람에게 알리지 않게 · `Veil.svelte` 머리말).
@@ -405,6 +406,9 @@ export const app = {
   "dock.launch.installAiTip": "Claude Code · Codex 를 설치하면 이 자리에 나옵니다 — 설정 › AI 에이전트",
   "dock.launch.otherShells": "우클릭: 다른 셸",
   "dock.launch.orchestration": "오케스트레이션",
+  "dock.launch.terminal": "터미널",
+  "dock.launch.chat": "채팅",
+  "dock.launch.chatTip": "{name} — 채팅 모양으로 열기",
   "keepAwake.label": "잠자기 방지",
   "keepAwake.on": "잠자기 방지 켜짐",
   "keepAwake.off": "잠자기 방지 꺼짐",
@@ -497,6 +501,7 @@ export const app = {
   "chatDock.err.tooMany": "한 글에 사진 · 파일을 합쳐 8개까지 붙일 수 있습니다.",
   "chatDock.err.tooBig": "붙인 파일이 10 MB를 넘습니다.",
   "chatDock.err.attachment": "붙인 파일을 보내지 못했습니다 — 다시 붙여 보세요.",
+  "chatDock.err.inChatTile": "이 대화는 채팅 타일에 열려 있습니다 — 그 타일을 닫은 뒤 다시 해 보세요",
   "chatDock.err.cliNotFound": "이 CLI 의 실행 파일(.exe)을 PATH 에서 찾지 못했습니다 — 채팅은 npm 으로 설치한 .cmd 판을 쓰지 않습니다.",
   "chatDock.fork.unknown": "이 타일의 대화를 아직 모릅니다 — AI 에게 한 번 말을 건 뒤 다시 해 보세요",
   "chatDock.fork.failed": "사이드 채팅으로 이어 가지 못했습니다: {e}",
@@ -642,6 +647,8 @@ export const app = {
   // 권한 물음 알림 (docs/log/2026-09-25-shell-claude-signals.md)
   "agent.permission.body": "{agent} 가 권한을 묻고 있습니다",
   "agent.permission.toast": "{name} — {agent} 가 권한을 묻고 있습니다",
+  "agent.failed.body": "{agent} 답변이 실패했습니다",
+  "agent.failed.toast": "{name} — {agent} 답변이 실패했습니다",
   // 메신저 알림의 사건 문구 — 평문이다(서식은 Rust 가 채널마다 입힌다) · 머리(`**aynx · 이름** — `)는 코드가 붙인다 · `{outcome}` = `pane.block.toast.*`
   "messenger.command": "명령 {outcome}",
   "messenger.osc": "프로그램 알림 — {text}",
@@ -799,6 +806,8 @@ export const app = {
   // AI CLI 고르기 상자
   "ai.launch.aria": "열 AI CLI 고르기",
   "ai.launch.notInstalled": "설치 안 됨",
+  "ai.launch.terminal": "터미널",
+  "ai.launch.chat": "채팅",
 
   // ── 복원 · 재연결 ────────────────────────────────────────────────────────
   "restore.tabs": "탭 {count}개를 복원했습니다.",

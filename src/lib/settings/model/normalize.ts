@@ -238,6 +238,7 @@ export function sameSettings(a: AppSettings, b: AppSettings): boolean {
     (a.ai.mcp_sessions_enabled ?? true) === (b.ai.mcp_sessions_enabled ?? true) &&
     sameStringList(normalizeMcpSessionsAgents(a.ai.mcp_sessions_agents) ?? ["claude", "codex"], normalizeMcpSessionsAgents(b.ai.mcp_sessions_agents) ?? ["claude", "codex"]) &&
     sameStringList(a.ai.disabled_agents ?? [], b.ai.disabled_agents ?? []) &&
+    (a.ai.chat_tile === true) === (b.ai.chat_tile === true) &&
     a.wallpaper.file === b.wallpaper.file &&
     a.wallpaper.dim === b.wallpaper.dim &&
     a.wallpaper.blur === b.wallpaper.blur &&
@@ -432,6 +433,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
           : undefined,
       codex_no_daemon: typeof ai.codex_no_daemon === "boolean" ? ai.codex_no_daemon : undefined,
       claude_statusline: typeof ai.claude_statusline === "boolean" ? ai.claude_statusline : undefined,
+      chat_tile: ai.chat_tile === true ? true : undefined,
       // 옛 칸 `loading_art = "character"` 는 새 칸이 비었을 때만 `avatar` 로 옮기고 싣지 않는다 — Rust `sanitize` 도 같은 이사를 한다
       icon_style: known(ai.icon_style, AI_ICON_STYLES) ?? (ai.loading_art === "character" ? "avatar" : undefined),
       avatar_claude: avatarChoice(ai.avatar_claude, DEFAULT_AI_AVATARS.claude),

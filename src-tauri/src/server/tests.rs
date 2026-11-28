@@ -185,7 +185,7 @@ fn grades_are_checked_per_op() {
             frame::VAULT_VERIFY_PROTOCOL,
             frame::VIEWER_PROTOCOL
         ),
-        (7, 37, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+        (7, 43, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
     );
     // 판 22(타일 권한 카드 — `server::tile_permission`) — 스냅숏 = 읽기 · 사람의 결정 = 쓰기(승인 등급은 거부), MIN 은 그대로.
     assert_eq!(frame::TILE_PERMISSION_PROTOCOL, 22);
@@ -238,7 +238,44 @@ fn grades_are_checked_per_op() {
     assert_eq!(frame::DETACHED_DB_PROTOCOL, 29);
     // 판 30(데이터 탭의 읽기 전용 조회 — 새 op 없음 · `db_query` 의 `readOnly`) — MIN 은 그대로.
     assert_eq!(frame::DB_READ_QUERY_PROTOCOL, 30);
-    assert_eq!(frame::PROTOCOL_MAX, 37);
+    assert_eq!(frame::PROTOCOL_MAX, 43);
+    // 판 43(채팅 타일 review · goal · 속도 등급 · MCP 상태 op · 열기 몸 `tier` · 스냅숏 · 사건 넷) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_EXTRA_PROTOCOL, 43);
+    for op in ["chat_tile_review", "chat_tile_goal", "chat_tile_set_tier", "chat_tile_mcp_status"] {
+        assert!(frame::check_grade(op, Grade::Write).is_ok(), "{op}");
+        assert_eq!(frame::check_grade(op, Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED, "{op}");
+        assert_eq!(frame::check_grade(op, Grade::Read).unwrap_err().code, code::GRADE_MISMATCH, "{op}");
+        assert!(super::chat_tile::is_op(op), "{op}");
+    }
+    // 판 42(채팅 타일 되감기 op `chat_tile_rewind` · 스냅숏 `rewind` · `rewindGen` · 사건 `rewind` · `rewindCaps` · 기록 항목 `anchor`) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_REWIND_PROTOCOL, 42);
+    assert!(frame::check_grade("chat_tile_rewind", Grade::Write).is_ok());
+    assert_eq!(frame::check_grade("chat_tile_rewind", Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED);
+    assert_eq!(frame::check_grade("chat_tile_rewind", Grade::Read).unwrap_err().code, code::GRADE_MISMATCH);
+    assert!(super::chat_tile::is_op("chat_tile_rewind"));
+    // 판 38(채팅 모양 AI 타일 — 새 op `chat_tile_*` · 창 op 몸의 `chatTileSubs` · `chatTiles`) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_PROTOCOL, 38);
+    // 판 39(채팅 타일 보내기 몸의 `images` · `files` — 새 op 없음) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_ATTACH_PROTOCOL, 39);
+    // 판 40(채팅 타일 권한 모드 op · decide 의 `allowSession` · `answer` · 스냅숏 `permMode` · `cliMode`) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_PERM_PROTOCOL, 40);
+    // 판 41(채팅 타일 압축 op `chat_tile_compact` · 보내기 몸 `skills` · 스냅숏 `commands` · `context` · `lastCompaction`) — MIN 은 그대로.
+    assert_eq!(frame::CHAT_TILE_SLASH_PROTOCOL, 41);
+    assert!(frame::check_grade("chat_tile_compact", Grade::Write).is_ok());
+    assert_eq!(frame::check_grade("chat_tile_compact", Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED);
+    assert!(super::chat_tile::is_op("chat_tile_compact"));
+    for op in ["chat_tile_attach", "chat_tile_list"] {
+        assert!(frame::check_grade(op, Grade::Read).is_ok(), "{op}");
+        assert!(super::chat_tile::is_op(op), "{op}");
+    }
+    for op in [
+        "chat_tile_open", "chat_tile_send", "chat_tile_interrupt", "chat_tile_set_model", "chat_tile_set_effort", "chat_tile_set_perm_mode",
+        "chat_tile_decide", "chat_tile_close", "chat_tile_subscribe", "chat_tile_unsubscribe",
+    ] {
+        assert!(frame::check_grade(op, Grade::Write).is_ok(), "{op}");
+        assert_eq!(frame::check_grade(op, Grade::Approve).unwrap_err().code, code::APPROVE_REFUSED, "{op}");
+        assert!(super::chat_tile::is_op(op), "{op}");
+    }
     // 판 37(사이드 채팅 권한 모드 — 새 op 둘 · `side_chat_decide` 의 `remember`) — MIN 은 그대로.
     assert_eq!(frame::SIDE_CHAT_PERM_PROTOCOL, 37);
     // 판 36(메신저 다리 Slack — 새 op 없음 · 몸의 `channel`) — MIN 은 그대로.
@@ -2369,7 +2406,7 @@ pub(in crate::server) mod live {
         cfg.db_conns = Some(list.clone());
         let server = tokio::spawn(serve::run(cfg));
         let (mut a, _) = connect_retry(&pipe).await;
-        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 37);
+        assert_eq!(ok_body(call(&mut a, 1, Grade::Read, "hello", hello(7, frame::PROTOCOL_MAX)).await)["protocol"], 43);
         let db = super::super::db_ops::DB;
         let draft = |id: &str, path: &str| json!({ "id": id, "name": "초안", "engine": "sqlite", "path": path });
         let body = |stream: &str, conn: Value| json!({ "stream": stream, "conn": conn, "lang": "en" });
@@ -2604,9 +2641,9 @@ pub(in crate::server) mod live {
         async fn replay(a: &mut BoxStream, event: Event, label: &str) {
             for (i, op) in window_ops(event).iter().enumerate() {
                 let (name, body) = match op {
-                    WindowOp::Detach => ("detach_window", detach_body(label, Held::default(), &[])),
-                    WindowOp::KeepDbs => ("detach_window", keep_body(label, &[], &[])),
-                    WindowOp::Close => ("close_window", close_body(label, &[], &[], &[], &[])),
+                    WindowOp::Detach => ("detach_window", detach_body(label, Held::default(), &[], &[])),
+                    WindowOp::KeepDbs => ("detach_window", keep_body(label, &[], &[], &[])),
+                    WindowOp::Close => ("close_window", close_body(label, &[], &[], &[], &[], &[], &[])),
                 };
                 ok_body(call(a, 100 + i as u64, Grade::Write, name, body).await);
             }

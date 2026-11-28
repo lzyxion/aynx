@@ -13,6 +13,7 @@
   import DiffView from "$lib/DiffView.svelte";
   import RunBoard from "$lib/orchestration/RunBoard.svelte";
   import ProducerLeaf from "$lib/orchestration/player/ProducerLeaf.svelte";
+  import ChatTileLeaf from "$lib/chat-tile/ChatTileLeaf.svelte";
   import OrchTransportBar from "$lib/orchestration/OrchTransportBar.svelte";
   import { ORCH_BAR_PX } from "$lib/orchestration/orch-tab";
   import { openBranchGraphOfPane } from "$lib/app/branch-graph.svelte.js";
@@ -749,6 +750,9 @@
           {/if}
         {:else if item.pane.kind === "producer"}
           <ProducerLeaf pane={item.pane} visible={item.shown && !localOrchScreen} />
+        {:else if item.pane.kind === "chat"}
+          <!-- 이 갈래가 없으면 `{:else}` 로 떨어져 터미널이 선다 -->
+          <ChatTileLeaf pane={item.pane} visible={item.shown} />
         {:else if item.pane.kind === "run"}
           <RunBoard pane={item.pane} visible={localOrchScreen ? item.tab.id === activeId || item.tab.id === leavingId : item.shown} />
         {:else if item.pane.kind === "query"}

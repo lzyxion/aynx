@@ -13,6 +13,7 @@ import {
   newDiffPane,
   newRunPane,
   newProducerPane,
+  newChatTilePane,
   newQueryPane,
   canonQueryTabs,
   storedRowLimit,
@@ -37,6 +38,7 @@ import {
   type PaneNode,
   type PaneSpec,
   type ProducerSpec,
+  type ChatTileSpec,
   type OrchMark,
   type SplitDir,
   type TabSpec,
@@ -44,6 +46,7 @@ import {
 import { DOC_SPLIT_DEFAULT, clampDocSplit } from "$lib/doc-edit-preview";
 import { DOC_ZOOM_DEFAULT, clampDocZoom } from "$lib/doc-zoom";
 import { newProducerChatId, parseOrchMark, parseProducerSpec, saveOrchMark, saveProducerSpec } from "$lib/orchestration/orch-tab";
+import { parseChatTileSpec, saveChatTileSpec } from "$lib/chat-tile/spec";
 
 /**
  * 탭 배치 파일(`workspaces.json`)의 저장 · 복원 (docs/log/2026-09-03-workspace-restore.md).
@@ -94,6 +97,7 @@ export interface SavedLeaf {
   query?: SavedQuery;
   run?: { runId: string };
   producer?: ProducerSpec;
+  chat?: ChatTileSpec;
 }
 
 /** 키 순서가 늘 같아야 한다(자동 저장의 문자열 비교) */
@@ -231,6 +235,7 @@ function saveLeaf(pane: PaneSpec, workspaceKeys: boolean): SavedLeaf {
   }
   if (pane.kind === "run" && pane.run?.runId) out.run = { runId: pane.run.runId };
   if (pane.kind === "producer" && pane.producer) out.producer = saveProducerSpec(pane.producer);
+  if (pane.kind === "chat" && pane.chat) out.chat = saveChatTileSpec(pane.chat);
   return out;
 }
 
@@ -280,7 +285,7 @@ export function serialize(tabs: readonly TabSpec[], activeId: string | null): Ta
 // ---------------------------------------------------------------------------
 
 // 여기 없는 kind 의 잎이 하나라도 있으면 파일 전체가 `null` 로 떨어진다 — 새 타일 종류는 여기에 넣는다.
-const KNOWN_KINDS: readonly PaneKind[] = ["local", "ssh", "sftp", "localfs", "start", "doc", "image", "branches", "diff", "query", "run", "producer"];
+const KNOWN_KINDS: readonly PaneKind[] = ["local", "ssh", "sftp", "localfs", "start", "doc", "image", "branches", "diff", "query", "run", "producer", "chat"];
 
 // 걷은 종류 — 파일을 버리지 않고 잎만 뺀다. 지우면 옛 파일이 깨진다.
 export const RETIRED_KINDS: readonly string[] = ["plans"];
@@ -431,6 +436,10 @@ function parseLeaf(raw: Record<string, unknown>): SavedLeaf | null {
   if (out.kind === "producer") {
     const p = parseProducerSpec(raw.producer);
     if (p) out.producer = p;
+  }
+  if (out.kind === "chat") {
+    const c = parseChatTileSpec(raw.chat);
+    if (c) out.chat = c;
   }
   if (out.kind === "ssh" && !out.alias) return null;
   if (out.kind === "sftp" && !out.alias) return null;
@@ -603,6 +612,9 @@ function basePaneFrom(leaf: SavedLeaf, deferSsh: boolean, firstRun: boolean): Pa
       return newRunPane(leaf.run?.runId);
     case "producer":
       return newProducerPane(leaf.producer ?? { chatId: newProducerChatId(), cli: "claude", model: "", effort: "", studio: "" });
+    case "chat":
+      // 명세를 못 읽은 잎은 새 채팅으로 세우지 않는다 — 어느 대화였는지 모른다
+      return leaf.chat ? newChatTilePane(leaf.chat) : newStartPane();
     case "query":
       return newQueryPane(leaf.query ?? { connId: "" });
     default:

@@ -1,6 +1,6 @@
 <!--
   모바일 키 띠 · 입력 칸. 입력 칸이 기본이다 — 안드로이드 키보드(추천 낱말 줄)로 xterm 에 바로 치면 불안정하다.
-  보내는 곳은 사람 키 입력과 같은 문(`term-actions` · 출처 `keyboard`) 하나다. 지금 타일이 AI 대화 면 · 오케스트레이션 탭이면 띠를 숨긴다 —
+  보내는 곳은 사람 키 입력과 같은 문(`term-actions` · 출처 `keyboard`) 하나다. 지금 타일이 AI 대화 면 · 채팅 모양 AI 타일 · 오케스트레이션 탭이면 띠를 숨긴다 —
   언마운트하지 않는다(치던 글이 남는다). 숨을 때 끈적 Ctrl 을 푼다 — 안 그러면 대화 입력 칸의 글이 Ctrl 로 나간다.
 -->
 <script lang="ts">
@@ -17,17 +17,19 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { tick } from "svelte";
 
-  const target = $derived.by(() => {
+  const activePane = $derived.by(() => {
     const tab = currentWorkspaceTabs().find((x) => x.id === activeTabId());
     if (!tab) return null;
     const id = paneOf(tab);
-    const pane = listPanes(tab.root).find((p) => p.id === id);
-    return pane && hasSession(pane.kind) ? pane.id : null;
+    return listPanes(tab.root).find((p) => p.id === id) ?? null;
   });
+  const target = $derived(activePane && hasSession(activePane.kind) ? activePane.id : null);
 
   const orchTab = $derived(!!currentWorkspaceTabs().find((x) => x.id === activeTabId())?.orch);
-  /** 칸 · 키가 보이지 않는 CLI 로 새지 않게 */
-  const hidden = $derived(orchTab || (target !== null && flipViewOf(target) === "convo"));
+  /** 칸 · 키가 보이지 않는 CLI 로 새지 않게 — 채팅 모양 AI 타일은 제 입력 칸이 있다 */
+  const hidden = $derived(
+    orchTab || activePane?.kind === "chat" || (target !== null && flipViewOf(target) === "convo"),
+  );
   $effect(() => {
     if (hidden && stickyCtrl()) setStickyCtrl(false);
   });

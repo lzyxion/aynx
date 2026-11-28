@@ -3,6 +3,8 @@ import { isRemote } from "$lib/ipc";
 import { agentConversationLaunched, agentConversationLinks, agentSessionDelete, agentSessionLaunchSpec, agentSessionRename, agentSessionsList } from "$lib/context";
 import {
   buildScopes,
+  chatOpenBlockKey,
+  chatOpenState,
   conversationLinkKey,
   conversationPaletteEntries,
   deleteBlock,
@@ -21,6 +23,7 @@ import {
   switchesConversation,
   type AgentConversation,
   type AgentLink,
+  type ChatOpenState,
   type ConversationLinkRow,
   type ConversationList,
   type ConversationPaletteEntry,
@@ -49,10 +52,14 @@ import { t } from "$lib/i18n/i18n.svelte.js";
 import { stripReason } from "$lib/error-reason";
 import { settings } from "$lib/settings.svelte.js";
 import { conversationTarget, shouldShowStartScreen, type ConversationTarget } from "$lib/project-start";
-import { listPanes, newAiPane, newProjectStartPane, type PaneSpec } from "$lib/session";
+import { listPanes, newAiPane, newChatTilePane, newProjectStartPane, type PaneSpec } from "$lib/session";
 import { noteFolderOpened } from "$lib/app/recent-worktrees.svelte.js";
 import { focusAuxStream } from "$lib/app/workspace-status.svelte.js";
 import { sideChatConvMarkOf } from "$lib/app/side-chats.svelte.js";
+import { chatSpecWithConv, newChatTileId, paneStreamOf } from "$lib/chat-tile/spec";
+import { chatTileOpen } from "$lib/chat-tile/chat-tile-api";
+import { chatTileErrorText } from "$lib/chat-tile/chat-tile-text";
+import { isRemoteConversation } from "$lib/remote-conversations";
 
 /**
  * 지난 대화의 저장소 — 목록 한 벌과 타일 ↔ 대화 연결. 연결 표는 이 창의 타일만 안다 — 다른 창은 세션 서버 장부(`agent_conversation_links`)가 말한다.
@@ -314,6 +321,11 @@ export function scheduleConversationRefresh(): void {
 /** 같은 값이면 쓰지 않는다 — 배치 저장이 헛돌지 않게 */
 function persistLink(paneId: string, l: AgentLink | null): void {
   const p = findPaneAnywhere(paneId);
+  if (p?.kind === "chat") {
+    const next = chatSpecWithConv(p.chat, l?.id ?? null, isRemote);
+    if (next) p.chat = next;
+    return;
+  }
   if (!p || (p.kind !== "local" && p.kind !== "ssh")) return;
   if (l === null) {
     if (p.agentLink) delete p.agentLink;
@@ -358,6 +370,27 @@ export function seedAgentLink(pane: PaneSpec): void {
   if (pane.id in links || !pane.agentLink) return;
   links[pane.id] = { agent: pane.agentLink.agent, id: pane.agentLink.id.toLowerCase(), pending: false, launch: false };
   persistResumeAutorun(pane.id, pane.agentLink.agent, pane.agentLink.id);
+}
+
+/** 마운트 · 거울 반영 때 — 명세의 `conv` 로 연결 표만 세운다(저장하지 않는다 · 원격 창도) */
+export function seedChatTileLink(pane: PaneSpec): void {
+  if (pane.kind !== "chat" || !pane.chat?.conv) return;
+  const agent = pane.chat.cli;
+  const id = pane.chat.conv.toLowerCase();
+  const cur = links[pane.id];
+  if (cur && cur.agent === agent && cur.id === id) return;
+  links[pane.id] = { agent, id, pending: false, launch: false };
+}
+
+/** 서버가 그 채팅 잎의 대화 id 를 알렸을 때 — 원격 창은 연결의 주인이 아니다(메인 PC 거울이 `conv` 를 실어 온다) */
+export function noteChatTileConversation(paneId: string, cli: string, conv: string): void {
+  if (isRemote) return;
+  const cur = links[paneId];
+  if (cur && !cur.pending && cur.agent === cli && cur.id === conv.toLowerCase()) {
+    persistLink(paneId, cur);
+    return;
+  }
+  setLink(paneId, cli, conv, false);
 }
 
 /** 원격 창은 떼어 둔 동안 신호를 놓친다 — 연결의 주인은 신호를 놓치지 않는 메인 PC 다 */
@@ -443,15 +476,19 @@ export function linkedTile(agent: string, id: string): { tabId: string; paneId: 
     for (const pane of listPanes(tab.root)) {
       const l = links[pane.id];
       if (l && l.agent === agent && l.id === want) return { tabId: tab.id, paneId: pane.id };
+      // 채팅 잎은 마운트 전 · 그리지 않은 탭에서도 명세의 conv 로 열림이다
+      if (pane.kind === "chat" && pane.chat?.cli === agent && pane.chat.conv?.toLowerCase() === want) {
+        return { tabId: tab.id, paneId: pane.id };
+      }
     }
   }
   return null;
 }
 
-/** `AYNX_STREAM` = `historyStreamId ?? id` */
+/** `AYNX_STREAM` = `historyStreamId ?? id` · 채팅 잎은 `chatId` */
 function isThisWindowStream(stream: string): boolean {
   for (const tab of residentWindowTabs()) {
-    for (const pane of listPanes(tab.root)) if ((pane.historyStreamId ?? pane.id) === stream) return true;
+    for (const pane of listPanes(tab.root)) if (paneStreamOf(pane) === stream) return true;
   }
   return false;
 }
@@ -507,16 +544,86 @@ export async function openConversation(
   if (mode === "resume") links[pane.id] = { agent: s.agent, id: s.id.toLowerCase(), pending: true, launch: true };
   // 가져와 계속이면 원래 폴더가 아니라 새 타일이 서는 폴더
   const label = scopeLabelOf({ ...s, cwd: spec.cwd }, buildScopes(projects(), readyWorktrees, list, home).rows);
+  placeOpened(pane, spec.cwd, label, at, how);
+}
+
+/** 줄 · 시트 · 팔레트가 쓰는 판정 */
+export function conversationChatState(s: AgentConversation, now: number): ChatOpenState {
+  return chatOpenState(s, {
+    chatTile: settings.chatTile,
+    remote: isRemoteConversation(s),
+    open: conversationOpen(s),
+    elsewhere: conversationOpenElsewhere(s, now),
+    sideChat: sideChatConvMarkOf(s.agent, s.id) !== null,
+  });
+}
+
+/** 대화(`conversationLinkKey`)마다 진행 중인 채팅으로 열기 */
+const chatOpening = new Map<string, Promise<boolean>>();
+
+/**
+ * 같은 대화를 채팅 모양으로(fork 아님) — 서버에 먼저 세우고(띄우지 않음) 성공했을 때만 잎을 놓는다. 열려 있으면 그 타일로 간다.
+ * 거절이면 알림만(타일 없음) · 장부를 다시 읽는다. 참 = 열었거나 갔다.
+ */
+export function openConversationInChat(
+  s: AgentConversation,
+  at?: { tabId: string; paneId: string },
+  how: ConversationPlace = "replace",
+): Promise<boolean> {
+  // 열기가 끝나기 전의 두 번째 누름은 같은 약속을 받는다 — 서버에 두 항목을 세우지 않게
+  const key = conversationLinkKey(s.agent, s.id);
+  const running = chatOpening.get(key);
+  if (running) return running;
+  const p = openInChat(s, at, how).finally(() => chatOpening.delete(key));
+  chatOpening.set(key, p);
+  return p;
+}
+
+async function openInChat(s: AgentConversation, at: { tabId: string; paneId: string } | undefined, how: ConversationPlace): Promise<boolean> {
+  if (goToOpenConversation(s)) return true;
+  const st = conversationChatState(s, Date.now());
+  if (st !== "ok") {
+    const k = chatOpenBlockKey(st);
+    if (k) showNotice(t(k));
+    return false;
+  }
+  const cli = s.agent === "codex" ? "codex" : "claude";
+  const chat = newChatTileId();
+  let snap;
+  try {
+    snap = await chatTileOpen({ chat, cli, model: "", effort: null, mode: { kind: "resume", conv: s.id } });
+  } catch (e) {
+    showNotice(chatTileErrorText(e));
+    void loadConversationLinks();
+    return false;
+  }
+  const conv = s.id.toLowerCase();
+  const pane = newChatTilePane({ chatId: chat, cli, model: "", effort: "", cwd: snap.cwd, conv });
+  // 잎이 마운트되기 전에도 "열림"(`seedChatTileLink` 와 같은 값)
+  links[pane.id] = { agent: cli, id: conv, pending: false, launch: false };
+  const label = scopeLabelOf({ ...s, cwd: snap.cwd }, buildScopes(projects(), readyWorktrees, list, home).rows);
+  placeOpened(pane, snap.cwd, label, at, how);
+  return true;
+}
+
+/** 터미널 · 채팅 모양이 같이 쓰는 자리 · 포커스 */
+function placeOpened(
+  pane: PaneSpec,
+  cwd: string,
+  label: string,
+  at: { tabId: string; paneId: string } | undefined,
+  how: ConversationPlace,
+): void {
   // 폰은 타일 하나만 그려서 옆에 끼우면 새 타일이 보이지 않는다
   if (how === "tab") {
     openInNewTab(pane, label);
-    noteFolderOpened(null, spec.cwd);
+    noteFolderOpened(null, cwd);
     const tab = tabOfPane(pane.id);
     if (tab) focusTile(tab.id, pane.id);
     return;
   }
   if (at && how === "beside" && openPaneBeside(at.tabId, at.paneId, pane)) {
-    noteFolderOpened(null, spec.cwd);
+    noteFolderOpened(null, cwd);
     const tab = tabOfPane(pane.id);
     if (tab) focusTile(tab.id, pane.id);
     glowTile(pane.id, "ok");
@@ -525,9 +632,9 @@ export async function openConversation(
   // 자리는 명세를 받은 뒤에 고른다 — 그 사이 탭이 닫히거나 바뀌었을 수 있다
   const target: ConversationTarget = at && how === "replace"
     ? { kind: "replace", reason: "startScreen", tabId: at.tabId, paneId: at.paneId }
-    : conversationTarget(currentWorkspaceTabs(), activeTabId(), spec.cwd);
+    : conversationTarget(currentWorkspaceTabs(), activeTabId(), cwd);
   placeConversationPane(pane, target, label);
-  noteFolderOpened(null, spec.cwd);
+  noteFolderOpened(null, cwd);
   const tab = tabOfPane(pane.id);
   if (tab) focusTile(tab.id, pane.id);
 }
@@ -568,9 +675,14 @@ export function openConversationById(
   id: string,
   fork: boolean,
   elsewhere: (agent: string, id: string) => void,
+  chat = false,
 ): void {
   const s = flatConversations(list).find((c) => c.agent === agent && c.id === id);
   if (!s) return;
+  if (chat) {
+    void openConversationInChat(s);
+    return;
+  }
   if (!fork && conversationOpenElsewhere(s, Date.now())) {
     elsewhere(s.agent, s.id);
     return;

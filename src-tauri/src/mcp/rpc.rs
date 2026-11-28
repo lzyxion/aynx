@@ -135,7 +135,7 @@ pub(crate) fn dispatch_as(
                 Caller::SideChat { .. } => Instructions::SideChat,
                 Caller::Producer { .. } | Caller::Coordinator { .. } => Instructions::Album,
                 Caller::Global => Instructions::Base,
-                Caller::Tile { .. } => Instructions::TileHint,
+                Caller::Tile { .. } | Caller::ChatTile { .. } => Instructions::TileHint,
             };
             RpcReply::Json(ok_response(&id, initialize_result_for(kind)))
         }

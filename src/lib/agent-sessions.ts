@@ -1,4 +1,5 @@
 /** 지난 대화 목록의 순수 층 — 제목은 사용자 글자일 수 있어 화면에만 쓴다 · 로그·설정·MCP 로 보내지 않는다 */
+import type { Key } from "$lib/i18n/keys";
 import type { Project, WorktreeInfo } from "$lib/projects";
 
 /** Rust `TitleSource` (소문자) */
@@ -498,6 +499,39 @@ export function conversationPaletteEntries(
       state: open ? "open" : !s.cwdExists ? "missing" : openElsewhere(s, now, false, releasedAt(s.agent, s.id)) ? "elsewhere" : "ok",
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// 채팅으로 열기
+// ---------------------------------------------------------------------------
+
+/** 지난 대화 줄의 [채팅으로 열기] — `hidden` 이면 단추를 그리지 않는다(오늘 UI 그대로) */
+export type ChatOpenState = "hidden" | "ok" | "missing" | "elsewhere" | "sideChat";
+
+/** 순서가 판정이다 — 열림이 경로 없음보다, 경로 없음이 사이드 채팅보다, 사이드 채팅이 밖에서 열림보다 먼저 */
+export function chatOpenState(
+  s: Pick<AgentConversation, "agent" | "cwdExists">,
+  o: { chatTile: boolean; remote: boolean; open: boolean; elsewhere: boolean; sideChat: boolean },
+): ChatOpenState {
+  if (!o.chatTile || o.remote || o.open || (s.agent !== "claude" && s.agent !== "codex")) return "hidden";
+  if (!s.cwdExists) return "missing";
+  if (o.sideChat) return "sideChat";
+  if (o.elsewhere) return "elsewhere";
+  return "ok";
+}
+
+/** 흐린 단추의 툴팁 — ok · hidden 이면 null */
+export function chatOpenBlockKey(st: ChatOpenState): Key | null {
+  switch (st) {
+    case "missing":
+      return "board.convo.missing.title";
+    case "sideChat":
+      return "board.convo.openChat.sideChat";
+    case "elsewhere":
+      return "board.convo.openChat.elsewhere";
+    default:
+      return null;
+  }
 }
 
 /** 부분수열(`fuzzyMatch`)은 쓰지 않는다 — 제목이 긴 문장이라 거의 다 걸린다 */

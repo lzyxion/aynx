@@ -111,6 +111,7 @@ fn sample() -> AppSettings {
             loading_art: None,
             mcp_sessions_enabled: Some(false),
             mcp_sessions_agents: Some(vec!["codex".to_string()]),
+            chat_tile: Some(true),
             disabled_agents: vec!["codex".to_string()],
             mcp_servers: vec![crate::agent_mcp::McpServer {
                 project_id: None,
@@ -258,6 +259,7 @@ fn unset_fields_are_not_written() {
     assert!(text.contains("font_size = 14"), "{text}");
     assert!(!text.contains("accent"), "{text}");
     assert!(!text.contains("font_family"), "{text}");
+    assert!(!text.contains("chat_tile"), "{text}");
 }
 
 #[test]

@@ -201,7 +201,7 @@ impl Core {
                 self.pending.remove(request_id);
             }
             // 화면 칩의 사실(외부 MCP 이름 · 사이드 채팅의 권한 모드)이라 지금 턴 꼬리에 넣지 않는다 — 스냅숏의 칸이 맞춘다.
-            Ev::McpServers { .. } | Ev::PermPolicy { .. } => return,
+            Ev::McpServers { .. } | Ev::PermPolicy { .. } | Ev::CliMode { .. } | Ev::Commands { .. } | Ev::ContextUsage { .. } | Ev::Rewind { .. } | Ev::RewindCaps { .. } | Ev::McpStatus { .. } | Ev::Goal { .. } | Ev::ServiceTiers { .. } => return,
             Ev::Exited { .. } => {
                 self.status = Status::Stopped;
                 self.live_turn.clear();

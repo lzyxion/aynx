@@ -74,7 +74,11 @@ fn side_chat_spawns_only_from_the_send_op() {
     // (2단계 단계 2) 프로듀서 레지스트리가 더해졌다 — 그쪽 불변식은 `server::producer::tests::producer_spawns_only_from_dispatch`.
     let mut starts: Vec<String> = sources().into_iter().filter(|(_, s)| s.contains("chat_proc::start(")).map(|(n, _)| n).collect();
     starts.sort();
-    assert_eq!(starts, vec!["src/server/producer/mod.rs".to_string(), "src/server/side_chat.rs".to_string()]);
+    // 채팅 모양 AI 타일도 같은 코어 — 그쪽 판정은 `server::chat_tile::tests::chat_tile_spawns_only_from_the_send_op`.
+    assert_eq!(
+        starts,
+        vec!["src/server/chat_tile/mod.rs".to_string(), "src/server/producer/mod.rs".to_string(), "src/server/side_chat.rs".to_string()]
+    );
     assert_eq!(SRC.matches("spawn(&chat, &mut st)").count(), 1, "띄우기를 부르는 곳은 하나");
     assert!(body_of(SRC, "fn op_send(").contains("spawn(&chat, &mut st)?"));
     assert!(SRC.contains("\"side_chat_send\" => op_send(body(b)?)"));
@@ -186,7 +190,12 @@ fn side_chat_stdin_only_human() {
     for (name, src) in sources() {
         // (2단계 단계 2) 프로듀서 레지스트리도 같은 어댑터 얼굴로 사람 글 · 결정을 짓는다 — 그 판정은 `server::producer::tests` 의
         // `producer_stdin_only_human_or_wake`(전송기 하나 · 사람 op 에서만).
-        if name.starts_with("src/side_chat/") || name == "src/server/side_chat.rs" || name.starts_with("src/server/producer/") {
+        // 채팅 타일 표의 판정은 `server::chat_tile::tests::chat_tile_stdin_only_human`.
+        if name.starts_with("src/side_chat/")
+            || name == "src/server/side_chat.rs"
+            || name.starts_with("src/server/producer/")
+            || name.starts_with("src/server/chat_tile/")
+        {
             continue;
         }
         for bad in ["encode_user(", "encode_decision(", "encode_interrupt(", "encode_set_model(", "encode_set_effort(", "link_header(", "link_headers("] {
@@ -396,15 +405,17 @@ fn side_chat_ops_have_grades() {
 // ---------------------------------------------------------------------------
 
 /// 이 환경이 있을 때만 [`fake_cli`] 가 가짜 Claude 로 돈다.
-const FAKE_ENV: &str = "AYNX_TEST_SIDE_CHAT_FAKE";
+pub(super) const FAKE_ENV: &str = "AYNX_TEST_SIDE_CHAT_FAKE";
 /// 이 환경이 있으면 가짜 CLI 가 받은 stdin 줄을 그 파일에 덧붙인다(5단계 — 연결 머리글 시험).
-const STDIN_LOG_ENV: &str = "AYNX_TEST_SIDE_CHAT_STDIN";
+pub(super) const STDIN_LOG_ENV: &str = "AYNX_TEST_SIDE_CHAT_STDIN";
 /// 이 환경이 있으면 가짜 CLI 가 띄워진 폴더(cwd)를 그 파일에 적는다(6단계 — 갈라 오기 시험).
-const CWD_LOG_ENV: &str = "AYNX_TEST_SIDE_CHAT_CWD";
+pub(super) const CWD_LOG_ENV: &str = "AYNX_TEST_SIDE_CHAT_CWD";
 /// 이 환경이 있으면 둘째 글의 권한 요청이 `WebFetch` 대신 `Read` 다(프로듀서 단계 5 — 카드 · 결정 1회 시험).
 const PERM_READ_ENV: &str = "AYNX_TEST_SIDE_CHAT_PERM_READ";
+/// 이 환경(Claude 기록 루트)이 있으면 가짜 CLI 가 대화 되감기 답 뒤에 `proj-dir/*.jsonl` 에 되감기 표지를 덧붙인다.
+pub(super) const REWIND_MARK_ENV: &str = "AYNX_TEST_CHAT_TILE_REWIND_MARK";
 /// 다시 띄울 때 고르는 시험 이름(libtest `--exact`).
-const FAKE_TEST: &str = "server::tests_side_chat::fake_cli";
+pub(super) const FAKE_TEST: &str = "server::tests_side_chat::fake_cli";
 const CLAUDE_FIX: &str = include_str!("../side_chat/fixtures/claude-2.1.309.jsonl");
 
 /// 가짜 Claude(`-p` stream-json) — stdin 줄마다 길이를 stderr 로 되돌리고(메아리), 재료의 줄을 낸다:
@@ -453,6 +464,21 @@ fn run_fake() -> i32 {
                 let id = v["request_id"].as_str().unwrap_or("");
                 emit(&[&fix[0].replace("\"request_id\":\"r1\"", &format!("\"request_id\":\"{id}\""))]);
             }
+            // (채팅 타일 되감기 시험) 실측 답의 꼴 — 파일 미리 보기는 cwd 안 파일 하나
+            (Some("control_request"), Some(kind @ ("rewind_files" | "rewind_conversation"))) => {
+                let id = v["request_id"].as_str().unwrap_or("");
+                let cwd = std::env::current_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                let body = match (kind, v["request"]["dry_run"] == true) {
+                    ("rewind_files", true) => serde_json::json!({"canRewind": true, "filesChanged": [format!("{cwd}\\a.txt")], "insertions": 1, "deletions": 1}),
+                    ("rewind_files", false) => serde_json::json!({"canRewind": true, "skippedLinks": 0}),
+                    _ => serde_json::json!({"rewound": true, "targetMessageUuid": v["request"]["target_message_uuid"], "prefillText": "x", "precedingAssistantUuid": null}),
+                };
+                let ok = serde_json::json!({"type": "control_response", "response": {"subtype": "success", "request_id": id, "response": body}});
+                emit(&[&ok.to_string()]);
+                if kind == "rewind_conversation" {
+                    late_rewind_mark(v["request"]["target_message_uuid"].as_str().unwrap_or(""));
+                }
+            }
             (Some("user"), _) => {
                 turn += 1;
                 match turn {
@@ -492,6 +518,29 @@ fn run_fake() -> i32 {
         }
     }
     0
+}
+
+/// (채팅 타일 되감기 시험) 진짜 CLI 처럼 답 **뒤에** 기록에 표지를 덧붙인다 — `<루트>/mark-delay.txt` 가 늦출 ms(없으면 0) · `never` 면 쓰지 않는다.
+fn late_rewind_mark(cut: &str) {
+    let Some(root) = std::env::var_os(REWIND_MARK_ENV).map(std::path::PathBuf::from) else { return };
+    let delay = std::fs::read_to_string(root.join("mark-delay.txt")).unwrap_or_default();
+    let delay = delay.trim();
+    if delay == "never" {
+        return;
+    }
+    let ms: u64 = delay.parse().unwrap_or(0);
+    let mark = serde_json::json!({"type": "last-prompt", "leafUuid": null, "rewound": true, "cutUuid": cut}).to_string();
+    std::thread::spawn(move || {
+        use std::io::Write;
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+        for e in std::fs::read_dir(root.join("proj-dir")).into_iter().flatten().flatten() {
+            if e.path().extension().is_some_and(|x| x == "jsonl") {
+                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(e.path()) {
+                    let _ = writeln!(f, "{mark}");
+                }
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,8 @@
   import { relativeTime } from "$lib/history-search";
   import { placeDefaultPalette, type CanvasRect } from "$lib/launcher";
   import { comboFromEvent, effectiveCombo, type Overrides } from "$lib/keybindings";
-  import { shortenHome, type AgentConversation } from "$lib/agent-sessions";
+  import { chatOpenBlockKey, shortenHome, type AgentConversation, type ChatOpenState } from "$lib/agent-sessions";
+  import { settings } from "$lib/settings.svelte.js";
   import { folderNameOf } from "$lib/pane-chips";
   import { formatTokens, usageKey } from "$lib/agent-usage";
   import {
@@ -40,6 +41,7 @@
     conversationDeleting,
     deleteBlockedReason,
     deleteConversation,
+    conversationChatState,
     conversationOpen,
     conversationOpenOtherWindow,
     renameBlockedReason,
@@ -112,6 +114,13 @@
   const readAgo = $derived(remote && rh ? minutesSince(rh.readAt, now) : null);
 
   const keyOf = (s: AgentConversation) => `${s.agent}:${s.id}`;
+  /** 끄면 목록 DOM 이 오늘 그대로 — 원격 목록에는 채팅 모양이 없다 */
+  const chatOn = $derived(settings.chatTile && !remote);
+  const chatOf = (s: AgentConversation): ChatOpenState => (remote ? "hidden" : conversationChatState(s, now));
+  const chatBlockedOf = (s: AgentConversation): string | null => {
+    const k = chatOpenBlockKey(chatOf(s));
+    return k ? t(k) : null;
+  };
 
   function stateOf(s: AgentConversation): RowState {
     if (conversationOpen(s)) return "open";
@@ -175,6 +184,12 @@
     openFromPicker(s, "resume");
   }
 
+  function chat(s: AgentConversation): void {
+    if (chatOf(s) !== "ok") return;
+    confirmKey = null;
+    openFromPicker(s, "chat");
+  }
+
   function fork(s: AgentConversation): void {
     if (!s.cwdExists) return;
     openFromPicker(s, "fork");
@@ -203,7 +218,7 @@
       return;
     }
     const act = pickerActionForKey(ev);
-    if (act === null) return;
+    if (act === null || (act === "resumeChat" && !chatOn)) return;
     ev.preventDefault();
     ev.stopPropagation();
     const s = selIndex >= 0 ? rows[selIndex] : null;
@@ -222,6 +237,9 @@
         return;
       case "resume":
         if (s) resume(s);
+        return;
+      case "resumeChat":
+        if (s) chat(s);
         return;
       case "fork":
         if (s) fork(s);
@@ -447,6 +465,8 @@
                   ondelete={remote || isRemoteConversation(s) ? undefined : () => void deleteConversation(s)}
                   deleteBlocked={deleteBlockedReason(s, { open: st === "open", elsewhere: st === "elsewhere" })}
                   onprimary={() => resume(s)}
+                  onchat={chatOf(s) === "hidden" ? undefined : () => chat(s)}
+                  chatBlocked={chatBlockedOf(s)}
                   onmenu={onMenu}
                   onclosefocus={() => inputEl?.focus()}
                 />
@@ -474,6 +494,7 @@
         <span class="grp">{t("app.folderConvos.confirm.hint")}</span>
       {:else}
         <span class="grp primary"><Keys combo="Enter" />{t("app.folderConvos.keys.resume")}</span>
+        {#if chatOn}<span class="grp" data-fc-chat><Keys combo="Alt+Enter" />{t("board.convo.openChat")}</span>{/if}
         <span class="grp"><Keys combo="Shift+Enter" />{t("app.folderConvos.keys.fork")}</span>
         {#if selCanForkHere}
           <span class="grp" data-fc-fork-here><Keys combo="Ctrl+Shift+Enter" />{t("app.folderConvos.keys.forkHere")}</span>

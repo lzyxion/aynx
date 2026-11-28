@@ -1983,6 +1983,16 @@ fn requester_label_only_for_tile_callers_in_the_mirror() {
     assert_eq!(super::plan::requester_label(&Caller::Tile { stream: "nope".into() }, &m), None);
 }
 
+/// 시험 `chat_tile_requester_label_is_fixed` — 채팅 타일은 거울에 없어 고정 이름표(거울 내용과 무관).
+#[test]
+fn chat_tile_requester_label_is_fixed() {
+    use crate::orchestration::Caller;
+    let caller = Caller::ChatTile { chat: "web-1".into(), proc: crate::server::chat_proc::ProcId::next() };
+    let want = crate::i18n::tr!(ko: "채팅 모양 AI 타일", en: "AI tile (chat)");
+    assert_eq!(super::plan::requester_label(&caller, &plan_store()).as_deref(), Some(want.as_str()));
+    assert_eq!(super::plan::requester_label(&caller, &Default::default()).as_deref(), Some(want.as_str()));
+}
+
 #[test]
 fn create_plan_validates_optional_string_args_cwd_validate_idempotency_key() {
     // 세 선택 인자(cwd · validate · idempotencyKey)는 같은 규칙으로 검증한다 — 인자 이름만 다르다.

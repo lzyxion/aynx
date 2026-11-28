@@ -70,6 +70,7 @@ export const commands = {
   "palette.conversation.hint.enter": "재개",
   "palette.conversation.hint.shiftEnter": "새 대화로 계속",
   "palette.conversation.hint.ctrlEnter": "기록 보기",
+  "palette.conversation.hint.altEnter": "채팅으로 열기",
   "palette.conversation.missing": "경로 없음",
   "palette.conversation.elsewhere": "밖에서 열림",
   "palette.conversation.open": "열림",

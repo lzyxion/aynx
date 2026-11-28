@@ -31,6 +31,7 @@
     setAgentEnabled,
     setAgentExtraArgs,
     setAiStartDir,
+    setChatTile,
     setClaudeStatusline,
     setCodexNoDaemon,
   } from "$lib/settings.svelte.js";
@@ -261,6 +262,13 @@
           <UiIcon name="folder-open" size={13} />{t("settings.ai.start_dir.browse")}
         </button>
       {/if}
+    </div>
+  </div>
+  <!-- `[ai] chat_tile` — 새 타일 메뉴의 [채팅]만 가린다(이미 연 채팅 타일은 그대로 돈다) -->
+  <div class="srow">
+    <TipName id="ai-chat-tile" for="ai-chat-tile" label={t("settings.ai.chat_tile.label")} tip={t("settings.ai.chat_tile.note")} />
+    <div class="size-row">
+      <Toggle id="ai-chat-tile" checked={settings.chatTile} onchange={setChatTile} />
     </div>
   </div>
 </div>

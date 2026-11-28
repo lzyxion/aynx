@@ -1369,6 +1369,8 @@ export const settings = {
   "ai.start_dir.placeholder": "비워 두면 홈에서 엽니다",
   "ai.start_dir.browse": "찾아보기…",
   "ai.start_dir.dialog": "AI 타일을 열 폴더를 고르세요",
+  "ai.chat_tile.label": "채팅 모양 AI 타일 (실험)",
+  "ai.chat_tile.note": "새 타일 메뉴의 에이전트 줄에 [채팅]을 보입니다. 같은 CLI · 설정 · 지침 · MCP로 대화를 채팅 모양으로 엽니다. 로컬 폴더만 됩니다.",
   "ai.start_dir.note.before": "포커스된 로컬 터미널의 ",
   "ai.start_dir.note.term": "현재 폴더",
   "ai.start_dir.note.after": "가 있으면 그것이 우선이고, 이 값은 그게 없을 때(시작 화면·SSH 타일에서 열 때) 쓰입니다. 없는 폴더면 홈에서 열립니다.",

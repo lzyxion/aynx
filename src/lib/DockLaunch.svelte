@@ -13,7 +13,8 @@
   import { gridColumn, launchLayout, type LaunchCell } from "$lib/dock-launch-layout";
   import { effectiveDefaultShellId, offeredAiClis, shellInfoLabel, shellLabel, type AiCli, type ShellInfo } from "$lib/session";
   import { noneInstalled } from "$lib/app/ai-none-notice";
-  import { addLocal, detectedAiClis, knownAiClis, knownShellList, noteShellMenuAi, openAiPaneHere, refreshKnownAiClis } from "$lib/app/panes.svelte.js";
+  import { addLocal, detectedAiClis, knownAiClis, knownShellList, noteShellMenuAi, openAiPaneHere, openChatTileHere, refreshKnownAiClis } from "$lib/app/panes.svelte.js";
+  import { chatTileCli } from "$lib/ai-launch-pick";
   import { openSettingsAt } from "$lib/app/overlays.svelte.js";
   import { runAction } from "$lib/app/keys.svelte.js";
   import { displayCombo, effectiveCombo } from "$lib/keybindings";
@@ -26,6 +27,7 @@
    * 셸 메뉴에서 고른 셸은 그 한 번만 연다 — 설정의 기본 셸(`[shell] default`)은 건드리지 않는다.
    * 셸 메뉴 · 백드롭은 독 안의 DOM 이다 — 밖이면 독의 바깥 누르기 감지가 메뉴 줄을 누르는 순간 독을 접는다. 독이 쉬는 동안
    * `transform` 이 없고 흐림은 `::before` 에만 걸려(`theme.css`) 안쪽 `fixed` 의 기준은 창 그대로다.
+   * 채팅 모양 실험 설정이 켜지면 AI 칸은 한 줄씩 [터미널] [채팅] 둘을 든다 — 꺼지면 예전 배치 그대로다.
    */
   let {
     onclose,
@@ -80,6 +82,9 @@
       : ["localfs", "folder-conversations", "orchestration-start"],
   );
   const layout = $derived(launchLayout(noAiInstalled ? 1 : aiItems.length, iconKeys.length));
+  const chatOn = $derived(settings.chatTile && !noAiInstalled);
+  /** 채팅 모양이 켜지면 AI 칸마다 글 칸 두 열을 다 쓴다 — 단추 둘이 이름과 한 줄에 들어가야 한다 */
+  const aiCells = $derived(chatOn ? aiItems.map((_, i): LaunchCell => ({ row: 2 + i, col: 1, span: 2 })) : layout.ais);
   /** 목록에 없는 칸은 그리지 않으니 첫 자리로 둔다 */
   function iconAt(key: string): LaunchCell {
     return layout.icons[iconKeys.indexOf(key)] ?? { row: 1, col: 3, span: 1 };
@@ -174,6 +179,13 @@
     });
   }
 
+  function pickAiChat(cli: { command: string; id: string }): void {
+    runOnMenu(() => cli, close, (c) => {
+      noteShellMenuAi(c.id);
+      void openChatTileHere(c);
+    });
+  }
+
   function act(action: string): void {
     runAfterClose(close, () => runAction(action));
   }
@@ -232,12 +244,26 @@
   <!-- 모르는 CLI 에는 지어낸 로고를 붙이지 않는다 -->
   {#each aiItems as cli, i (cli.id)}
     {@const logo = aiIconName(cli.id)}
-    {@const at = layout.ais[i]}
-    <button type="button" class="tile text" data-launch="ai" data-ai-id={cli.id} title={cli.name} aria-label={cli.name}
-      onclick={() => pickAi(cli)} style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
-      <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
-      <span class="lbl">{cli.name}</span>
-    </button>
+    {@const at = aiCells[i]}
+    {#if chatOn && chatTileCli(cli.id)}
+      <div class="pair" role="group" aria-label={cli.name} data-launch-pair={cli.id}
+        style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
+        <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
+        <span class="lbl" title={cli.name}>{cli.name}</span>
+        <span class="choices">
+        <button type="button" class="choice" data-launch="ai" data-ai-id={cli.id} title={cli.name}
+          aria-label={`${cli.name} — ${t("app.dock.launch.terminal")}`} onclick={() => pickAi(cli)}>{t("app.dock.launch.terminal")}</button>
+        <button type="button" class="choice" data-launch="ai-chat" data-ai-id={cli.id} title={t("app.dock.launch.chatTip", { name: cli.name })}
+          aria-label={t("app.dock.launch.chatTip", { name: cli.name })} onclick={() => pickAiChat(cli)}>{t("app.dock.launch.chat")}</button>
+        </span>
+      </div>
+    {:else}
+      <button type="button" class="tile text" data-launch="ai" data-ai-id={cli.id} title={cli.name} aria-label={cli.name}
+        onclick={() => pickAi(cli)} style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
+        <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
+        <span class="lbl">{cli.name}</span>
+      </button>
+    {/if}
   {/each}
   {#if noAiInstalled}
     {@const at = layout.ais[0]}
@@ -349,6 +375,61 @@
     gap: 10px;
     padding: 0 var(--space-3) 0 8px;
     text-align: start;
+  }
+
+  /* 글 칸과 같은 알약 — 누르는 것은 안쪽 단추 둘이다 */
+  .pair {
+    --tile-face: var(--control-tile-bg);
+    box-sizing: border-box;
+    min-width: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px 0 8px;
+    font-family: var(--font-ui);
+    font-size: var(--t-sm);
+    font-weight: 500;
+    color: var(--fg-1);
+    background: var(--tile-face);
+    border-radius: 26px;
+    box-shadow: var(--glass-ctl-edge, none);
+    --mono-cut: var(--tile-face);
+  }
+
+  .pair .lbl {
+    flex: 1 1 auto;
+  }
+
+  /* 두 단추가 같은 폭 — 긴 쪽 글자에 맞춘다 */
+  .choices {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .choice {
+    height: 36px;
+    min-width: 48px;
+    padding: 0 10px;
+    font-family: var(--font-ui);
+    font-size: var(--t-xs);
+    font-weight: 500;
+    color: var(--fg-1);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    cursor: pointer;
+  }
+
+  .choice:hover {
+    background: var(--control-tile-bg-hover);
+  }
+
+  .choice:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   /* 판 위에 섞어 불투명하게 — 무늬 구멍이 같은 색으로 메워진다 */

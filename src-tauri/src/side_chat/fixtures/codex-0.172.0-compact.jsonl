@@ -1,0 +1,9 @@
+{"id":6,"result":{}}
+{"method":"thread/status/changed","params":{"threadId":"01a00000-0000-7000-8000-000000000001","status":{"type":"active","activeFlags":[]}}}
+{"method":"turn/started","params":{"threadId":"01a00000-0000-7000-8000-000000000001","turn":{"id":"01a00000-0000-7000-8000-0000000000c1","items":[],"status":"inProgress","error":null}}}
+{"method":"item/started","params":{"item":{"type":"contextCompaction","id":"01a00000-0000-7000-8000-0000000000c2","startedAtMs":1795811117530,"completedAtMs":null},"threadId":"01a00000-0000-7000-8000-000000000001","turnId":"01a00000-0000-7000-8000-0000000000c1"}}
+{"method":"thread/tokenUsage/updated","params":{"threadId":"01a00000-0000-7000-8000-000000000001","turnId":"01a00000-0000-7000-8000-0000000000c1","tokenUsage":{"total":{"totalTokens":47055,"inputTokens":47044,"cachedInputTokens":30976,"cacheWriteInputTokens":0,"outputTokens":11,"reasoningOutputTokens":0},"last":{"totalTokens":27489,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"modelContextWindow":258400}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":22,"windowDurationMins":10080}}}}
+{"method":"item/completed","params":{"item":{"type":"contextCompaction","id":"01a00000-0000-7000-8000-0000000000c2","startedAtMs":1795811117530,"completedAtMs":1795811120522},"threadId":"01a00000-0000-7000-8000-000000000001","turnId":"01a00000-0000-7000-8000-0000000000c1","contentTokenCount":null}}
+{"method":"thread/status/changed","params":{"threadId":"01a00000-0000-7000-8000-000000000001","status":{"type":"idle"}}}
+{"method":"turn/completed","params":{"threadId":"01a00000-0000-7000-8000-000000000001","turn":{"id":"01a00000-0000-7000-8000-0000000000c1","items":[],"status":"completed","error":null}}}

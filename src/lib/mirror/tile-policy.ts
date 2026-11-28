@@ -20,6 +20,7 @@ export function mirrorTileMode(kind: PaneKind | string): MirrorTileMode {
     case "diff":
     case "run":
     case "producer":
+    case "chat":
       return "render";
     default:
       return "own";

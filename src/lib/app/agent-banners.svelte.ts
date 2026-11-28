@@ -101,6 +101,12 @@ export function sideChatBannerSignal(sideChatId: string, kinds: readonly BannerK
   set(resolveBanner(state, { sideChatId }, "auto", Date.now(), kinds));
 }
 
+/** 채팅 잎 — 훅 신호가 없어 사건에서 고른 종류로 푼다(과녁은 터미널 타일과 같은 `paneId`) */
+export function chatTileBannerSignal(paneId: string, kinds: readonly BannerKind[]): void {
+  if (kinds.length === 0) return;
+  set(resolveBanner(state, paneId, "auto", Date.now(), kinds));
+}
+
 export function dropSideChatBanner(sideChatId: string): void {
   set(resolveBanner(state, { sideChatId }, "auto", Date.now()));
 }

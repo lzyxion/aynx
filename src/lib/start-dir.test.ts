@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adoptTab,
   leafOf,
+  newChatTilePane,
   newLocalFsPane,
   newLocalPane,
   newProjectStartPane,
@@ -62,6 +63,17 @@ describe("startDirFor — 새 셸·AI 타일이 뜰 폴더 (규칙 하나)", () 
   it("로컬 파일 타일 — 보고 있는 폴더", () => {
     expect(run(newLocalFsPane("C:\\docs"))).toBe("C:\\docs");
     expect(run(newLocalFsPane())).toBeUndefined();
+  });
+
+  it("채팅 타일 — 명세의 폴더(셸 · AI 둘 다) · 비었으면 모름 · 프로젝트 밖이면 프로젝트 폴더", () => {
+    const chat = (cwd: string) =>
+      newChatTilePane({ chatId: "ct-00000000-0000-0000-0000-000000000000", cli: "claude", model: "", effort: "", cwd });
+    expect(run(chat("C:\\work\\x"))).toBe("C:\\work\\x");
+    expect(run(chat("C:\\work\\x"), { purpose: "ai", aiStartDir: "D:\\ai" })).toBe("C:\\work\\x");
+    expect(run(chat(""))).toBeUndefined();
+    expect(run(chat("  "), { purpose: "ai", aiStartDir: "D:\\ai" })).toBe("D:\\ai");
+    expect(run(chat("C:\\src\\aynx\\src"), { projectFolder: PROJECT })).toBe("C:\\src\\aynx\\src");
+    expect(run(chat("C:\\Users\\me"), { projectFolder: PROJECT })).toBe(PROJECT);
   });
 
   it("SSH·SFTP 타일 — 원격 경로는 쓰지 않는다(focusedCwd 가 와도)", () => {

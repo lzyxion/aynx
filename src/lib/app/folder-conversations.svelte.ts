@@ -3,6 +3,7 @@ import {
   conversationList,
   ensureConversations,
   openConversation,
+  openConversationInChat,
   readyWorktrees,
 } from "$lib/app/agent-sessions.svelte.js";
 import { viewConversation } from "$lib/app/conversation-viewer.svelte.js";
@@ -51,6 +52,7 @@ function paneFolder(pane: PaneSpec): string | null {
     return pane.cwd?.trim() || null;
   }
   if (pane.kind === "start" && pane.startProject && !pane.startProject.host) return pane.startProject.folder;
+  if (pane.kind === "chat") return pane.chat?.cwd?.trim() || null;
   return null;
 }
 
@@ -150,12 +152,15 @@ export function toggleFolderConversations(): void {
 }
 
 /** 닫으며 포커스를 돌려주지 않는다 — 갈 곳을 이 동작이 정한다. `into` 는 로컬만 */
-export function openFromPicker(s: AgentConversation, mode: "resume" | "fork", into?: string): void {
+export function openFromPicker(s: AgentConversation, mode: "resume" | "fork" | "chat", into?: string): void {
+  // 채팅 모양은 로컬 대화만
+  if (mode === "chat" && isRemoteConversation(s)) return;
   const at = anchor;
   open = false;
   forgetFocusOrigin(FOCUS_KEY);
   const how = inNewTab ? "tab" : "beside";
-  if (isRemoteConversation(s)) void openRemoteConversation(s, mode, at ?? undefined, how);
+  if (mode === "chat") void openConversationInChat(s, at ?? undefined, how);
+  else if (isRemoteConversation(s)) void openRemoteConversation(s, mode, at ?? undefined, how);
   else void openConversation(s, mode, at ?? undefined, how, into);
 }
 

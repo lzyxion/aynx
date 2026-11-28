@@ -54,13 +54,24 @@ describe("isSideChatEvent", () => {
 
 describe("EV_TAGS", () => {
   it("Rust `Ev` 갈래(side_chat/event.rs)와 같은 꼬리표 목록이다 — 빠진 꼬리표는 버려져 seq 빈틈이 된다", () => {
-    const rs = readFileSync(new URL("../../src-tauri/src/side_chat/event.rs", import.meta.url), "utf8");
+    // autocrlf 로 꺼낸 작업 폴더는 CRLF 다 — 끝 줄 `}` 을 못 찾으면 뒤 enum(ReviewTarget · GoalAction)의 갈래까지 센다
+    const rs = readFileSync(new URL("../../src-tauri/src/side_chat/event.rs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
     const body = rs.slice(rs.indexOf("pub(crate) enum Ev {"));
     const block = body.slice(0, body.indexOf("\n}\n"));
     const tags = [...block.matchAll(/^ {4}([A-Z]\w*) \{/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
     expect(tags.length).toBeGreaterThanOrEqual(18);
     expect([...EV_TAGS].sort()).toEqual([...tags].sort());
     expect(isSideChatEvent(env("c1", 1, { t: "mcpServers", names: ["github"] }))).toBe(true);
+    expect(isSideChatEvent(env("c1", 1, { t: "cliMode", mode: "default", choices: ["default", "acceptEdits", "plan"] }))).toBe(true);
+    expect(isSideChatEvent(env("c1", 1, { t: "commands", commands: [{ name: "compact", description: "", hint: "", kind: "builtin", aliases: [] }], terminal: ["doctor"] }))).toBe(true);
+    expect(isSideChatEvent(env("c1", 1, { t: "contextUsage", used: 36149, window: 1000000, source: "turn" }))).toBe(true);
+    expect(isSideChatEvent(env("c1", 1, { t: "compaction", phase: "done", trigger: "manual", preTokens: 36241, postTokens: 8335 }))).toBe(true);
+    expect(isSideChatEvent(env("c1", 1, { t: "rewindCaps", files: true, conversation: true }))).toBe(true);
+    expect(
+      isSideChatEvent(
+        env("c1", 1, { t: "rewind", phase: "preview", anchor: "30b5bc5c-33b6-47d1-802c-c06d0d28a93a", scope: "files", can: true, files: ["src/a.ts"], moreFiles: 0, insertions: 12, deletions: 3, turns: null, skippedLinks: null, error: null }),
+      ),
+    ).toBe(true);
   });
 });
 

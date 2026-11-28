@@ -17,6 +17,7 @@ import {
   listAiClis,
   listShells,
   newAiPane,
+  newChatTilePane,
   newDocPane,
   newImagePane,
   newLocalFsPane,
@@ -54,6 +55,7 @@ import { dropDocDraft } from "$lib/app/doc-drafts.svelte.js";
 import { confirmUnsavedClose } from "$lib/app/unsaved-docs";
 import { focusPaneBody } from "$lib/pane/focus";
 import { isRemote } from "$lib/app/window.svelte.js";
+import { newChatTileId } from "$lib/chat-tile/spec";
 import {
   activeTab,
   adoptPane,
@@ -222,6 +224,18 @@ export async function openAiPaneHere(
   // 자리는 답을 받은 뒤에 잡는다 — 그 사이 탭이 닫혔어도 낡은 탭 객체에 끼워 넣지 않게
   openPaneHere(newAiPane(chosen.command, cwd));
   await ensureAiCliReady(chosen);
+}
+
+/**
+ * 채팅 모양 AI 타일 — 서버 표에 세우는 것은 잎이 마운트할 때고, CLI 는 첫 보내기가 띄운다.
+ * 폴더는 AI 타일과 같은 규칙(`startDirHere("ai")`) · 못 정하면 `""`(서버가 홈).
+ */
+export async function openChatTileHere(cli: { command: string; id: string }, at?: FocusSnapshot): Promise<void> {
+  const here = at ?? focusHere();
+  if (cli.id !== "claude" && cli.id !== "codex") return;
+  const dir = await startDirHere("ai", here);
+  openPaneHere(newChatTilePane({ chatId: newChatTileId(), cli: cli.id, model: "", effort: "", cwd: dir ?? "" }));
+  await ensureAiCliReady(cli);
 }
 
 async function ensureAiCliReady(chosen: { command: string; id: string }): Promise<void> {

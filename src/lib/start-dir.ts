@@ -6,7 +6,7 @@ import { listPanes, type PaneSpec, type TabSpec } from "$lib/session";
  * 프로젝트 탭에서는 포커스 타일의 폴더가 프로젝트 폴더 안일 때만 쓴다. 없는 폴더는 가리지 않는다 — 백엔드가 홈으로 떨어뜨린다(`pty.rs` 의 `spawn_cwd`).
  */
 export interface StartDirInput {
-  focused: Pick<PaneSpec, "kind" | "path"> | null;
+  focused: Pick<PaneSpec, "kind" | "path" | "chat"> | null;
   focusedCwd?: string | null;
   tab: Pick<TabSpec, "projectFolder" | "root"> | null;
   purpose: "shell" | "ai";
@@ -25,6 +25,8 @@ export function tabProjectFolder(tab: Pick<TabSpec, "projectFolder" | "root"> | 
 function focusedFolder(i: StartDirInput): string | null {
   const f = i.focused;
   if (f?.kind === "local") return i.focusedCwd?.trim() || null;
+  // 채팅 타일은 셸이 없다 — 명세의 폴더가 그 타일의 자리다
+  if (f?.kind === "chat") return f.chat?.cwd.trim() || null;
   // 파일 타일의 `path` 는 시작 자리가 아니라 **지금 보는 폴더**다
   if (f?.kind === "localfs") return f.path?.trim() || null;
   return null;

@@ -132,6 +132,12 @@ pub(crate) enum Ev {
         title: String,
         detail: String,
         tool_name: String,
+        /// 채팅 타일 어댑터만 채운다 — 사이드 채팅 · 프로듀서는 늘 None(몸에 칸이 없다).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input: Option<Value>,
+        /// 채팅 타일 어댑터만 — 늘 허용할 수 있을 때. 사이드 채팅 · 프로듀서는 늘 None(몸에 칸이 없다).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_allow: Option<SessionAllow>,
     },
     PermissionResolved {
         request_id: String,
@@ -171,11 +177,379 @@ pub(crate) enum Ev {
     McpServers {
         names: Vec<String>,
     },
+    /// 채팅 타일만 — CLI 자신의 권한 모드. `choices` = 칩이 고를 수 있는 값(어댑터가 정한다 · bypass · 묻지 않기 · 전체 접근은 들지 않는다).
+    /// `chosen` 은 어댑터가 채우지 않는다 — 세션 서버가 다시 띄울 때 쓸 값(사람이 고른 것)을 얹는다.
+    CliMode {
+        mode: String,
+        choices: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        chosen: Option<String>,
+    },
+    /// 채팅 타일만 — `/` 메뉴 재료. 같은 내용이면 되풀이하지 않는다.
+    Commands {
+        commands: Vec<SlashCommand>,
+        terminal: Vec<String>,
+    },
+    /// 채팅 타일만 — 맥락 사용량(받기만). `window` = 모르면 None. `source` = "turn" | "command" | "preCompact"(압축 전 값 · 다음 턴까지) | "tokenUsage".
+    ContextUsage {
+        used: u64,
+        window: Option<u64>,
+        source: &'static str,
+    },
+    /// 채팅 타일만 — 압축 표지(사람이 부른 것 · CLI 가 스스로 한 것 모두). Done 의 수는 모르면 None.
+    Compaction {
+        phase: CompactPhase,
+        trigger: Option<String>,
+        pre_tokens: Option<u64>,
+        post_tokens: Option<u64>,
+    },
+    /// 채팅 타일만 — 이 프로세스가 되감을 수 있는 범위. 준비 뒤 한 번(바뀌면 다시).
+    RewindCaps { files: bool, conversation: bool },
+    /// 채팅 타일만 — 사람이 부른 되감기의 답. `files` 는 cwd 안이면 cwd 기준 `/` 상대 경로 · 밖이면 받은 그대로(각각 [`REWIND_PATH_BYTES`] 에서 자름).
+    /// 미리 보기만 `files` · `insertions` · `deletions`(Claude) · `turns`(Codex · 모르면 None). `error` = CLI 가 준 글 한 줄(≤ 300 바이트).
+    Rewind {
+        phase: RewindPhase,
+        anchor: String,
+        scope: &'static str,
+        can: bool,
+        files: Vec<String>,
+        more_files: u32,
+        insertions: Option<u64>,
+        deletions: Option<u64>,
+        turns: Option<u32>,
+        skipped_links: Option<u64>,
+        error: Option<String>,
+    },
+    /// 채팅 타일만 — CLI 가 실은 MCP 서버의 상태(받기만 · 사람이 연 풍선의 읽기). `source` = "init" | "startup" | "list". 같은 내용이면 되풀이하지 않는다(`list` 는 늘 낸다).
+    McpStatus { servers: Vec<McpRow>, source: &'static str },
+    /// 채팅 타일만 — Codex 스레드 목표. None = 없음(지움).
+    Goal { goal: Option<GoalView> },
+    /// 채팅 타일만 — Codex 검토 표지. 결과 글은 뒤따르는 모델 글(`Text`)로 오고 표지에는 싣지 않는다(`text` 는 늘 None).
+    /// 끝 표지(`Done` · `Stopped`)는 검토 턴이 끝날 때 `TurnEnded` 바로 앞에 낸다 — 결과 글 뒤에 서게.
+    Review { phase: ReviewPhase, label: String, text: Option<String> },
+    /// 채팅 타일만 — Codex 모델마다 고를 수 있는 속도 등급 · 스레드의 지금 값.
+    ServiceTiers { by_model: BTreeMap<String, Vec<Tier>>, thread: Option<String> },
     /// 어댑터가 낼 때는 악수 실패(`protocol`)다 — 서버는 그 프로세스를 닫는다.
     Exited {
         code: Option<i32>,
         reason: &'static str,
     },
+}
+
+/// `/` 메뉴 한 줄 — 이름 · 설명은 CLI 가 알린 그대로([`slash_desc`] · 상한). 스킬 파일 경로 · 명령 몸은 싣지 않는다.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SlashCommand {
+    pub name: String,
+    /// ≤ 240 글자 · ≤ 300 바이트 · 없으면 ""
+    pub description: String,
+    /// Claude `argumentHint` ≤ 160 바이트 · Codex ""
+    pub hint: String,
+    /// "builtin" | "skill" | "command"
+    pub kind: &'static str,
+    /// ≤ 4 · 각각 [`slash_name_ok`]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CompactPhase {
+    Started,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RewindPhase {
+    Preview,
+    Done,
+    Failed,
+}
+
+/// 미리 보기 파일 목록 상한 · 경로 하나 상한(바이트).
+pub(crate) const REWIND_FILES_MAX: usize = 50;
+pub(crate) const REWIND_PATH_BYTES: usize = 512;
+const REWIND_ERROR_BYTES: usize = 300;
+
+/// 되감기 범위 낱말 — 이 셋 밖은 `None`.
+pub(crate) fn rewind_scope(s: &str) -> Option<&'static str> {
+    ["files", "conversation", "both"].into_iter().find(|x| *x == s)
+}
+
+/// [`Ev::Rewind`] 의 덧칸 — 비운 값이 기본.
+#[derive(Default)]
+pub(crate) struct RewindMore {
+    pub files: Vec<String>,
+    pub more_files: u32,
+    pub insertions: Option<u64>,
+    pub deletions: Option<u64>,
+    pub turns: Option<u32>,
+    pub skipped_links: Option<u64>,
+    pub error: Option<String>,
+}
+
+pub(crate) fn rewind_ev(phase: RewindPhase, anchor: &str, scope: &'static str, can: bool, m: RewindMore) -> Ev {
+    Ev::Rewind {
+        phase,
+        anchor: anchor.to_string(),
+        scope,
+        can,
+        files: m.files,
+        more_files: m.more_files,
+        insertions: m.insertions,
+        deletions: m.deletions,
+        turns: m.turns,
+        skipped_links: m.skipped_links,
+        error: m.error,
+    }
+}
+
+/// CLI 가 준 되감기 오류 글 — 한 줄 · 300 바이트.
+pub(crate) fn rewind_error(s: &str) -> String {
+    clip(&one_line(s), REWIND_ERROR_BYTES).0
+}
+
+/// MCP 상태 한 줄 — **허용 목록**: 이 다섯 칸 밖(값 · URL · 머리글 · 명령 · 인자 · 환경 · 오류 글 · 서버 정보 · 도구 이름)은 어댑터가 읽지도 싣지도 않는다.
+/// 낱말은 고정 표로만 옮긴다(CLI 글을 그대로 싣지 않는다).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct McpRow {
+    /// [`mcp_row_name`] 을 지난 것.
+    pub name: String,
+    /// "connected" | "connecting" | "needsAuth" | "failed" | "disabled" | "cancelled" | "unknown"
+    pub state: &'static str,
+    /// "oauth" | "bearer" | "notLoggedIn" | "none" · 모름 = None
+    pub auth: Option<&'static str>,
+    pub tools: Option<u32>,
+    /// Claude "user" | "project" | "local" | "cloud" | "plugin" | "app" | "other" · Codex "plugin" | "config"
+    pub scope: &'static str,
+}
+
+pub(crate) const MCP_ROWS_MAX: usize = 64;
+const MCP_NAME_BYTES: usize = 96;
+
+/// 한 줄 · 96 바이트 · 비면 `None`(그 줄은 버린다).
+pub(crate) fn mcp_row_name(s: &str) -> Option<String> {
+    let name = clip(&one_line(s), MCP_NAME_BYTES).0;
+    (!name.is_empty()).then_some(name)
+}
+
+/// 같은 이름은 첫 줄만 · [`MCP_ROWS_MAX`] 까지.
+pub(crate) fn push_mcp_row(out: &mut Vec<McpRow>, row: McpRow) {
+    if out.len() < MCP_ROWS_MAX && !out.iter().any(|r| r.name == row.name) {
+        out.push(row);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GoalView {
+    /// CLI 가 알린 그대로(줄바꿈 유지 · [`GOAL_VIEW_BYTES`] 에서 자름).
+    pub objective: String,
+    /// "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete" | "unknown"
+    pub status: &'static str,
+    pub tokens_used: u64,
+    pub token_budget: Option<u64>,
+    pub seconds_used: u64,
+    /// 이 프로세스가 도는 동안 Aynx 의 `set` 없이 선 목표(모델이 정한 것) — CLI 는 출처를 알리지 않는다. 붙을 때 이미 있던 목표는 출처를 몰라 false.
+    pub auto: bool,
+}
+
+/// 목표 글 상한(글자) — CLI 가 받는 상한과 같다.
+pub(crate) const OBJECTIVE_CHARS: usize = 4000;
+const GOAL_VIEW_BYTES: usize = 16 * 1024;
+/// 고를 수 있는 토큰 한도 — 이 다섯 밖은 서버가 거절한다.
+pub(crate) const GOAL_BUDGETS: [u64; 5] = [100_000, 250_000, 500_000, 1_000_000, 2_000_000];
+const GOAL_STATUSES: [&str; 6] = ["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"];
+
+/// `ThreadGoal` → 화면 꼴. 상태 낱말은 고정 표(모르면 "unknown") · 꼴이 틀리면 `None`.
+pub(crate) fn goal_view(g: &Value, auto: bool) -> Option<GoalView> {
+    let objective = g["objective"].as_str()?;
+    let status = g["status"].as_str().and_then(|s| GOAL_STATUSES.into_iter().find(|x| *x == s)).unwrap_or("unknown");
+    let n = |k: &str| g[k].as_u64().unwrap_or(0);
+    Some(GoalView {
+        objective: clip(objective, GOAL_VIEW_BYTES).0,
+        status,
+        tokens_used: n("tokensUsed"),
+        token_budget: g["tokenBudget"].as_u64(),
+        seconds_used: n("timeUsedSeconds"),
+        auto,
+    })
+}
+
+/// 사람 op 가 고른 목표 일 — 줄은 어댑터가 짓는다.
+pub(crate) enum GoalAction<'a> {
+    Set { objective: &'a str, budget: u64 },
+    Pause,
+    Resume,
+    Clear,
+}
+
+impl GoalAction<'_> {
+    pub(crate) fn word(&self) -> &'static str {
+        match self {
+            GoalAction::Set { .. } => "set",
+            GoalAction::Pause => "pause",
+            GoalAction::Resume => "resume",
+            GoalAction::Clear => "clear",
+        }
+    }
+}
+
+/// 검토 대상 — 서버가 [`review_target`] 로 본 것만 선다. `Debug` 를 파생하지 않는다(사람이 쓴 지침).
+#[derive(Clone, PartialEq)]
+pub(crate) enum ReviewTarget {
+    UncommittedChanges,
+    BaseBranch { branch: String },
+    Commit { sha: String },
+    Custom { instructions: String },
+}
+
+const REVIEW_BRANCH_BYTES: usize = 200;
+const REVIEW_INSTRUCTIONS_BYTES: usize = 4 * 1024;
+
+impl ReviewTarget {
+    /// 로그에 남겨도 되는 것은 이 낱말뿐이다.
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            ReviewTarget::UncommittedChanges => "uncommittedChanges",
+            ReviewTarget::BaseBranch { .. } => "baseBranch",
+            ReviewTarget::Commit { .. } => "commit",
+            ReviewTarget::Custom { .. } => "custom",
+        }
+    }
+
+    /// `review/start` 의 `target` (스키마 꼴 그대로).
+    pub(crate) fn cli_json(&self) -> Value {
+        match self {
+            ReviewTarget::UncommittedChanges => serde_json::json!({"type": "uncommittedChanges"}),
+            ReviewTarget::BaseBranch { branch } => serde_json::json!({"type": "baseBranch", "branch": branch}),
+            ReviewTarget::Commit { sha } => serde_json::json!({"type": "commit", "sha": sha}),
+            ReviewTarget::Custom { instructions } => serde_json::json!({"type": "custom", "instructions": instructions}),
+        }
+    }
+}
+
+/// 순수 — 열쇠는 `type` 과 그 종류의 칸 하나뿐. 브랜치 1–200 바이트 `[A-Za-z0-9._/-]` · `..` 없음 · 앞 `-` 없음 / sha 7–64 hex /
+/// 지침 1–4 KiB(다듬은 뒤) · 줄바꿈 밖 제어 문자 없음. **Aynx 는 git 을 부르지 않는다** — 있는지는 CLI 가 판정한다.
+pub(crate) fn review_target(v: &Value) -> Option<ReviewTarget> {
+    let o = v.as_object()?;
+    let field = |k: &str| -> Option<&str> { (o.len() == 2).then(|| o.get(k)?.as_str()).flatten() };
+    match o.get("type")?.as_str()? {
+        "uncommittedChanges" if o.len() == 1 => Some(ReviewTarget::UncommittedChanges),
+        "baseBranch" => {
+            let b = field("branch")?;
+            let ok = !b.is_empty()
+                && b.len() <= REVIEW_BRANCH_BYTES
+                && !b.starts_with('-')
+                && !b.contains("..")
+                && b.bytes().all(|c| c.is_ascii_alphanumeric() || b"._/-".contains(&c));
+            ok.then(|| ReviewTarget::BaseBranch { branch: b.to_string() })
+        }
+        "commit" => {
+            let s = field("sha")?;
+            ((7..=64).contains(&s.len()) && s.bytes().all(|c| c.is_ascii_hexdigit())).then(|| ReviewTarget::Commit { sha: s.to_string() })
+        }
+        "custom" => {
+            let i = field("instructions")?.trim();
+            let ok = !i.is_empty() && i.len() <= REVIEW_INSTRUCTIONS_BYTES && !i.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t');
+            ok.then(|| ReviewTarget::Custom { instructions: i.to_string() })
+        }
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ReviewPhase {
+    Started,
+    Done,
+    /// 검토 턴이 끊겨 끝났다 — CLI 는 끊긴 검토에도 끝 항목을 낸다.
+    Stopped,
+}
+
+/// 속도 등급 하나 — id 는 [`word_ok`] · 32 바이트 · 이름 40 · 설명 120 바이트(CLI 글 그대로).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct Tier {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+pub(crate) const TIER_ID_BYTES: usize = 32;
+const TIERS_PER_MODEL: usize = 8;
+
+/// 사람이 고를 수 있는 등급 id 의 꼴.
+pub(crate) fn tier_ok(s: &str) -> bool {
+    word_ok(s) && s.len() <= TIER_ID_BYTES
+}
+
+/// `model/list` 의 `serviceTiers[]` — 꼴이 맞는 것만 · 모델마다 8 개까지.
+pub(crate) fn tiers_of(list: &Value) -> Vec<Tier> {
+    let mut out: Vec<Tier> = Vec::new();
+    for t in list.as_array().into_iter().flatten() {
+        let Some(id) = t["id"].as_str().filter(|s| tier_ok(s)) else { continue };
+        if out.len() >= TIERS_PER_MODEL || out.iter().any(|x| x.id == id) {
+            continue;
+        }
+        let name = clip(&one_line(t["name"].as_str().unwrap_or(id)), 40).0;
+        let description = clip(&one_line(t["description"].as_str().unwrap_or("")), 120).0;
+        out.push(Tier { id: id.to_string(), name, description });
+    }
+    out
+}
+
+pub(crate) const COMMANDS_MAX: usize = 300;
+pub(crate) const ALIASES_MAX: usize = 4;
+const DESC_CHARS: usize = 240;
+const DESC_BYTES: usize = 300;
+pub(crate) const HINT_BYTES: usize = 160;
+/// `Commands` 사건 직렬화 상한 — 넘으면 설명을 비운다.
+const COMMANDS_EV_MAX: usize = 64 * 1024;
+
+/// 1–96 바이트 · ASCII 영숫자와 `-_:.` 만(실측 이름: `anthropic-skills:docx` · `__remote-workflow` · `code-review`).
+pub(crate) fn slash_name_ok(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 96 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(&b))
+}
+
+/// 한 줄 · 240 글자에서 자른 뒤 300 바이트 경계.
+pub(crate) fn slash_desc(s: &str) -> String {
+    let flat: String = s.trim().chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let mut out: String = flat.chars().take(DESC_CHARS).collect();
+    if flat.chars().count() > DESC_CHARS {
+        out.push('…');
+    }
+    clip(&out, DESC_BYTES).0
+}
+
+/// 64 KiB 를 넘으면 설명을 비운다(개수는 이미 [`COMMANDS_MAX`] 안).
+pub(crate) fn commands_ev(mut commands: Vec<SlashCommand>, terminal: Vec<String>) -> Ev {
+    commands.truncate(COMMANDS_MAX);
+    let ev = Ev::Commands { commands, terminal };
+    if serde_json::to_string(&ev).map_or(0, |s| s.len()) <= COMMANDS_EV_MAX {
+        return ev;
+    }
+    let Ev::Commands { mut commands, terminal } = ev else { unreachable!() };
+    for c in &mut commands {
+        c.description.clear();
+    }
+    Ev::Commands { commands, terminal }
+}
+
+/// [이 대화에서 늘 허용] 이 실을 것의 **요약** — 실을 값 자체(제안 · 결정 낱말)는 어댑터의 대기 장부에만 있다.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SessionAllow {
+    /// "mode" | "rules" | "dirs" | "command"
+    pub kind: &'static str,
+    pub detail: String,
+}
+
+/// 사람 결정 가운데 allow/deny 가 아닌 것 — `Debug` 를 파생하지 않는다(답 본문).
+pub(crate) enum TileAnswer<'a> {
+    AllowSession,
+    /// 질문 글 → 답 글
+    Answers(&'a Value),
 }
 
 /// stdin 줄은 끝 `\n` 없이.
@@ -247,6 +621,23 @@ pub(crate) fn cap(s: &str) -> String {
         end -= 1;
     }
     format!("{}\n…(잘림)", &s[..end])
+}
+
+/// 채팅 타일 권한 카드의 `input` — 직렬화가 [`DETAIL_MAX`] 를 넘으면 싣지 않는다(카드는 `detail` 로 그린다).
+pub(crate) fn tile_input(v: Value) -> Option<Value> {
+    (v.to_string().len() <= DETAIL_MAX).then_some(v)
+}
+
+/// 바이트 상한에서 글자 경계로 자른다 — 둘째 값 = 잘렸다.
+pub(crate) fn clip(s: &str, max: usize) -> (String, bool) {
+    if s.len() <= max {
+        return (s.to_string(), false);
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    (s[..end].to_string(), true)
 }
 
 /// `mcp__<서버>__<도구>` — Codex 어댑터도 Claude 와 같은 꼴로 낸다.
@@ -378,11 +769,16 @@ const FILE_REFS_MAX: usize = 8;
 
 /// `with_file_refs` 가 짓는 꼴 그대로 맨 끝이 꼬리일 때만 읽는다 — 닮은 글 · 가운데의 꼬리는 손대지 않는다.
 pub(crate) fn parse_file_refs(text: &str) -> Option<(Vec<String>, &str)> {
+    parse_file_refs_by(text, file_ref_name)
+}
+
+/// 같은 꼬리 꼴 — 경로 판정만 부르는 쪽이 준다(채팅 타일 꼬리는 앱 첨부 자리 `<root>/<64hex>/<이름>`).
+pub(crate) fn parse_file_refs_by(text: &str, name_of: impl Fn(&str) -> Option<String>) -> Option<(Vec<String>, &str)> {
     let mut names = Vec::new();
     let mut end = text.len();
     loop {
         let start = text[..end].rfind('\n').map_or(0, |i| i + 1);
-        let Some(name) = text[start..end].strip_prefix(FILE_REF_PREFIX).and_then(file_ref_name) else { break };
+        let Some(name) = text[start..end].strip_prefix(FILE_REF_PREFIX).and_then(&name_of) else { break };
         names.push(name);
         if names.len() > FILE_REFS_MAX {
             return None;

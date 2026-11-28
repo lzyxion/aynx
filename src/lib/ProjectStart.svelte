@@ -42,6 +42,7 @@
     conversationDeleting,
     deleteBlockedReason,
     deleteConversation,
+    conversationChatState,
     conversationOpen,
     conversationOpenOtherWindow,
     goToOpenConversation,
@@ -49,6 +50,7 @@
     linkOpenedConversation,
     loadConversations,
     openConversation,
+    openConversationInChat,
     readyWorktrees,
     renameConversation,
   } from "$lib/app/agent-sessions.svelte.js";
@@ -67,7 +69,7 @@
   import { sideChatConvBadge } from "$lib/side-chat";
   import { sideChatConvMarkOf } from "$lib/app/side-chats.svelte.js";
   import { formatTokens, usageKey } from "$lib/agent-usage";
-  import { pathKey, resumeAutorunFor, shortenHome, type AgentConversation } from "$lib/agent-sessions";
+  import { chatOpenBlockKey, pathKey, resumeAutorunFor, shortenHome, type AgentConversation, type ChatOpenState } from "$lib/agent-sessions";
   import { isRemote, paneForWorktree, projectTail, type Project } from "$lib/projects";
   import {
     effectiveDefaultShellId,
@@ -483,6 +485,25 @@
     else void openConversation(s, "resume", tab ? { tabId: tab.id, paneId } : undefined);
   }
 
+  /** 끄면 줄 DOM 이 오늘 그대로 — 원격 프로젝트 · SSH 대화에는 채팅 모양이 없다 */
+  const chatOn = $derived(settings.chatTile && remoteAlias === null);
+  function chatOf(s: AgentConversation): ChatOpenState {
+    return remoteAlias !== null || isRemoteConversation(s) ? "hidden" : conversationChatState(s, now);
+  }
+  function chatBlockedOf(s: AgentConversation): string | null {
+    const k = chatOpenBlockKey(chatOf(s));
+    return k ? t(k) : null;
+  }
+
+  /** 고른 템플릿은 쓰지 않고 거둔다 — 템플릿에는 채팅 잎이 없다 */
+  function chat(s: AgentConversation): void {
+    if (chatOf(s) !== "ok") return;
+    confirmKey = null;
+    armed = null;
+    const tab = tabOfPane(paneId);
+    void openConversationInChat(s, tab ? { tabId: tab.id, paneId } : undefined);
+  }
+
   /** 포커스를 되돌린다 — 확인 단추가 사라지며 포커스를 잃지 않게 */
   function cancelConfirm(): void {
     confirmKey = null;
@@ -574,6 +595,14 @@
       ev.preventDefault();
       ev.stopPropagation();
       forkHere(s);
+      return;
+    }
+    if ((ev.code === "Enter" || ev.code === "NumpadEnter") && ev.altKey && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey && !onButton && chatOn) {
+      const s = selIndex >= 0 ? visible[selIndex] : null;
+      if (!s) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      chat(s);
       return;
     }
     if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
@@ -904,6 +933,8 @@
                       ondelete={remoteAlias === null && !isRemoteConversation(s) ? () => void deleteConversation(s) : undefined}
                       deleteBlocked={deleteBlockedReason(s, { open: at, elsewhere: elsewhere.has(key) })}
                       onprimary={() => resume(s)}
+                      onchat={chatOf(s) === "hidden" ? undefined : () => chat(s)}
+                      chatBlocked={chatBlockedOf(s)}
                       onmenu={(open) => (menuOpen = open)}
                       onclosefocus={() => void focusSelected()}
                     />
@@ -941,6 +972,7 @@
       {#if convos.length > 0}
         <span><Keys combo="↑↓" /> {t("app.projectStart.keys.move")}</span>
         <span><Keys combo="Enter" /> {t("board.convo.resume")}</span>
+        {#if chatOn}<span data-start-chat-key><Keys combo="Alt+Enter" /> {t("board.convo.openChat")}</span>{/if}
         <span><Keys combo="Shift+Enter" /> {t("board.convo.fork")}</span>
         {#if forkHereSel}<span class="here"><Keys combo="Ctrl+Shift+Enter" /> {t("app.folderConvos.forkHere")}</span>{/if}
         <span><Keys combo="V" /> {t("app.projectStart.keys.view")}</span>

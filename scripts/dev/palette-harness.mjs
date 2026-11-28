@@ -18,7 +18,8 @@
 // 줄, Enter = 설정 독 · 터미널 섹션 · 그 스위치에 포커스 · `webgl`(영문)도 걸린다 · 빈 질의에는 설정 줄이
 // 없다 · 스위치 위 Space = 켬/끔 · **설정 모달이 떠 있으면 스위치 위에서도 `Ctrl+Shift+P` 가 쉰다**(설정이 모달 —
 // 1df6879 · docs/log/2026-10-02-settings-modal.md, 팔레트는 모듈로 연다) · 글자 칸(number)에서도 쉰다 · 터미널에서는 열린다 (docs/log/2026-09-25-editable-target.md) ⑤ 라이트 캡처 ⑥ 콘솔 예외 0.
-// PNG: `palette-dark.png` · `palette-settings.png` · `palette-light.png`.
+// Ⓒ 대화 줄 Alt+Enter = 채팅으로 열기(설정 끔이면 오늘의 Enter).
+// PNG: `palette-dark.png` · `palette-settings.png` · `palette-light.png` · `palette-chat.png`.
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
@@ -58,6 +59,12 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
     { id: 'P1', name: 'web-frontend', host: null, path: 'C:\\\\src\\\\web-frontend', shell: null, command: '', tmux: false },
     { id: 'P2', name: 'api', host: 'dev-01', path: '~/api', shell: null, command: '', tmux: false },
   ];
+  const FE = 'C:\\\\src\\\\web-frontend';
+  const cid = (i) => '11111111-2222-4333-8444-' + String(i).padStart(12, '0');
+  const C = (i, title, ago) => ({ agent: 'claude', id: cid(i), cwd: FE, branch: 'main', title, titleSource: 'ai', startedAt: NOW - ago - 3600e3, updatedAt: NOW - ago, model: null, forkedFrom: null, cwdExists: true });
+  const CONVS = [C(1, 'Alpha chat plan', 30 * 60e3), C(2, 'Beta terminal plan', 3 * 3600e3)];
+  window.__launch = []; window.__ctOpen = [];
+  const ctSnap = (chat) => ({ chat, cli: 'claude', model: '', effort: null, cwd: FE, epoch: 0, seq: 0, status: 'stopped', conversationId: null, mcpServers: [], liveTurn: [], pending: [] });
   const answers = {
     list_hosts: { hosts: HOSTS, warnings: [] },
     get_host_meta: META, list_group_meta: {}, list_host_meta: {},
@@ -89,6 +96,14 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       if (cmd === 'plugin:event|unlisten') return Promise.resolve(null);
       if (cmd === 'open_local_session') return Promise.resolve({ id: nextSession++, shell: args?.shell ?? 'pwsh' });
       if (cmd === 'open_ssh_session') return Promise.resolve({ id: nextSession++, tmux: null });
+      // 지난 대화(Ⓒ) — 팔레트의 대화 줄 · 채팅으로 열기
+      if (cmd === 'agent_sessions_list') return Promise.resolve({ groups: args.cwds.map((c) => ({ cwd: c, exists: true, sessions: c.toLowerCase().includes('web-frontend') ? CONVS : [], more: false })), others: [], othersMore: false });
+      if (cmd === 'agent_conversation_links') return Promise.resolve([]);
+      if (cmd === 'agent_session_launch_spec') { window.__launch.push(args); return Promise.resolve({ cwd: FE, command: 'claude --resume ' + args.id }); }
+      if (cmd === 'agent_autorun_command') return Promise.resolve(args.command);
+      if (cmd === 'chat_tile_open') { window.__ctOpen.push(args); return Promise.resolve(ctSnap(args.chat)); }
+      if (cmd === 'chat_tile_subscribe') return Promise.resolve({ subGen: 1, snapshot: ctSnap(args.chat) });
+      if (cmd === 'chat_tile_unsubscribe' || cmd === 'chat_tile_close') return Promise.resolve(true);
       return (cmd in answers) ? Promise.resolve(answers[cmd]) : Promise.reject(new Error('stub: ' + cmd));
     },
     transformCallback: (cb) => { const id = ++n; cbs.set(id, cb); return id; },
@@ -269,6 +284,40 @@ check((await ev(`getComputedStyle(${P}.querySelector('[data-row].sel')).backgrou
 console.log("capture:", await shot("palette-light.png"));
 await key("Escape"); await sleep(300);
 await ev(`(async () => { const m = await ${modeMod}; m.setAppMode('dark'); })()`); await sleep(300);
+
+// ── Ⓒ 대화 줄의 Alt+Enter = 채팅으로 열기 (docs/log/2026-11-28-chat-tile-stage2-contract.md 5-4) ─────────
+const ALT = 1;
+const setMod = importApp("lib/settings.svelte.ts");
+const setChat = async (on) => { await ev(`(async () => { const s = await ${setMod}; s.setChatTile(${on}); })()`); await sleep(200); };
+const convKeys = () => ev(`${P}?.querySelector('[data-row].sel [data-keys]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
+const chatLeaves = () => ev(`(async () => { const w = await ${tabsMod}; const walk = (n, o) => (n.type === 'leaf' ? o.push(n.pane) : (walk(n.a, o), walk(n.b, o)), o); return JSON.stringify(w.currentWorkspaceTabs().flatMap(t => walk(t.root, [])).filter(p => p.kind === 'chat').map(p => p.chat.conv)); })()`);
+const cid = (i) => "11111111-2222-4333-8444-" + String(i).padStart(12, "0");
+// C1 켬 → 힌트 Alt+↵ · Alt+Enter → chat_tile_open{resume} · 팔레트 닫힘
+await setChat(true);
+await openPalette(); await ev(`${P}.querySelector('input').focus()`); await type("대화 Alpha"); await sleep(600);
+check((await selLabel()) === "Alpha chat plan", `C1 대화 줄이 골라져 있다 (${await selLabel()})`);
+const k1 = await convKeys();
+check(k1?.includes("Alt+↵채팅으로 열기") === true, `C1 켬 → 고른 ok 줄 힌트에 Alt+↵ (${k1})`);
+const fitC = await ev(`(() => { const r = ${P}.querySelector('[data-row].sel'); const l = r.querySelector('.label'); const list = r.parentElement; return JSON.stringify({ over: r.scrollWidth > r.clientWidth + 1, hscroll: list.scrollWidth > list.clientWidth + 1, label: Math.round(l.getBoundingClientRect().width) }); })()`);
+const fc = JSON.parse(fitC);
+check(!fc.over && !fc.hscroll && fc.label >= 60, `C1 고른 줄이 넘치지 않고 제목이 보인다 (${fitC})`);
+console.log("capture:", await shot("palette-chat.png"));
+await key("Enter", ALT, "Enter"); await sleep(1000);
+const o1 = JSON.parse(await ev(`JSON.stringify(window.__ctOpen)`));
+check(o1.length === 1 && JSON.stringify(o1[0].mode) === JSON.stringify({ kind: "resume", conv: cid(1) }) && !(await ev(`!!${P}`)), `C1 Alt+Enter → chat_tile_open{resume} · 팔레트 닫힘 (${JSON.stringify(o1[0]?.mode)})`);
+check((await chatLeaves()) === JSON.stringify([cid(1)]) && (await ev(`window.__launch.length`)) === 0, `C1 채팅 잎 하나 · 터미널 명세 없음 (${await chatLeaves()})`);
+// C2 끔 → 힌트 없음 · Alt+Enter = 오늘의 Enter(재개)
+await setChat(false);
+// C1 의 포커스는 채팅 잎 입력 칸이다(글자 칸에서는 전역 키가 쉰다) — 놓고 연다
+await ev(`document.activeElement?.blur()`); await sleep(200);
+await openPalette(); await ev(`${P}.querySelector('input').focus()`); await type("대화 Beta"); await sleep(600);
+const k2 = await convKeys();
+check((await selLabel()) === "Beta terminal plan" && k2 !== null && !k2.includes("Alt"), `C2 끔 → 힌트 없음 (${k2})`);
+await key("Enter", ALT, "Enter"); await sleep(1000);
+const l2 = JSON.parse(await ev(`JSON.stringify(window.__launch)`));
+check(l2.length === 1 && l2[0].id === cid(2) && l2[0].mode === "resume" && JSON.parse(await ev(`JSON.stringify(window.__ctOpen)`)).length === 1, `C2 Alt+Enter = 재개(터미널) (${JSON.stringify(l2)})`);
+// 끝 — 만든 탭을 걷고 빈 탭 하나
+await ev(`(async () => { const w = await ${tabsMod}; const s = await ${importApp("lib/session.ts")}; for (const t of [...w.currentWorkspaceTabs()]) w.closeTab(t.id); w.openTab(s.newTab()); })()`); await sleep(400);
 
 check(errors.length === 0, `콘솔 예외 0 (${errors.join(" / ")})`);
 console.log(failed === 0 ? "ALL PASS" : `${failed} FAILED`);

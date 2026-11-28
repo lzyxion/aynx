@@ -354,6 +354,33 @@ pub(crate) fn codex_answer_reason(pairs: &[(String, String)]) -> String {
 }
 const QUESTIONS_MAX: usize = 8;
 
+/// 질문마다 사람 답 하나 — 수가 같고 · 비지 않고 · 2000자 이하 · 제어 문자(줄바꿈 빼고) 걷기. 돌려주는 순서 = 질문 순서: (질문 글, 다듬은 답, 머리 이름표).
+/// 채팅 타일(`side_chat`)도 같은 판정을 쓴다.
+pub(crate) fn checked_answers(input: &Value, answers: &Value) -> Option<Vec<(String, String, String)>> {
+    let list = input.get("questions")?.as_array()?;
+    let questions: Vec<&str> = list.iter().map(|q| q.get("question").and_then(Value::as_str)).collect::<Option<Vec<_>>>()?;
+    if questions.is_empty() || questions.len() > QUESTIONS_MAX {
+        return None;
+    }
+    let given = answers.as_object()?;
+    if given.len() != questions.len() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(questions.len());
+    for (i, q) in questions.into_iter().enumerate() {
+        let raw = given.get(q)?.as_str()?;
+        let a: String = raw.chars().filter(|c| !c.is_control() || *c == '\n').collect();
+        let a = a.trim();
+        if a.is_empty() || a.chars().count() > ANSWER_MAX_CHARS {
+            return None;
+        }
+        let s = |k: &str| list[i].get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+        let label = s("header").or_else(|| s("id")).unwrap_or_else(|| format!("Q{}", i + 1));
+        out.push((q.to_string(), a.to_string(), label));
+    }
+    Some(out)
+}
+
 /// **훅 응답으로만** CLI 에 간다(PTY 에 쓰지 않는다). Codex 는 훅으로 정식 답을 줄 길이 없어 `PreToolUse` 의 `deny` + 이유 글로 답을 전한다.
 /// 답은 사람이 카드에서 고르거나 친 글뿐이다(Tauri 명령 — MCP · AI 길 없음).
 pub(crate) fn answer_output(cli: Cli, tool: &str, input: &Value, truncated: bool, answers: &Value) -> Option<Value> {
@@ -365,28 +392,12 @@ pub(crate) fn answer_output(cli: Cli, tool: &str, input: &Value, truncated: bool
     if truncated {
         return None;
     }
-    let list = input.get("questions")?.as_array()?;
-    let questions: Vec<&str> = list.iter().map(|q| q.get("question").and_then(Value::as_str)).collect::<Option<Vec<_>>>()?;
-    if questions.is_empty() || questions.len() > QUESTIONS_MAX {
-        return None;
-    }
-    let given = answers.as_object()?;
-    if given.len() != questions.len() {
-        return None;
-    }
+    let checked = checked_answers(input, answers)?;
     let mut out = Map::new();
     let mut pairs = Vec::new();
-    for (i, q) in questions.into_iter().enumerate() {
-        let raw = given.get(q)?.as_str()?;
-        let a: String = raw.chars().filter(|c| !c.is_control() || *c == '\n').collect();
-        let a = a.trim();
-        if a.is_empty() || a.chars().count() > ANSWER_MAX_CHARS {
-            return None;
-        }
-        out.insert(q.to_string(), Value::String(a.to_string()));
-        let s = |k: &str| list[i].get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
-        let label = s("header").or_else(|| s("id")).unwrap_or_else(|| format!("Q{}", i + 1));
-        pairs.push((label, a.to_string()));
+    for (q, a, label) in checked {
+        out.insert(q, Value::String(a.clone()));
+        pairs.push((label, a));
     }
     if codex {
         return Some(json!({ "hookSpecificOutput": {

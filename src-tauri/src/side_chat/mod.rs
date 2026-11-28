@@ -2,7 +2,10 @@
 //! (docs/log/2026-10-23-side-chat-v2-design.md).
 //!
 //! **stdin 에 닿는 것은 사람이 보낸 글과 사람의 권한 결정뿐**(→ docs/invariants.md 전문 4) — 어댑터가 스스로 짓는 줄은 악수 · CLI 가 물은 것에 대한
-//! 고정 답(모르는 요청 거절 · 대화형 도구 거절)뿐이고, 사람 글은 [`Adapter::encode_user`] · 결정은 [`Adapter::encode_decision`] 으로만 든다.
+//! 고정 답(모르는 요청 거절 · 대화형 도구 거절) · 채팅 타일의 목록 읽기(Codex `skills/list` — 악수 끝 한 번) · 사람이 연 MCP 상태 읽기의 다음 쪽
+//! (Codex `mcpServerStatus/list`)뿐이고, 사람 글은 [`Adapter::encode_user`] · 결정은 [`Adapter::encode_decision`] 으로만 든다(채팅 타일은 더해 사람의 칩
+//! [`Adapter::encode_set_perm_mode`] · 늘 허용 · 질문 답 [`Adapter::encode_tile_answer`] · 압축 [`Adapter::encode_compact`] · 되감기 [`Adapter::encode_rewind`] ·
+//! 검토 [`Adapter::encode_review`] · 목표 [`Adapter::encode_goal`] · MCP 상태 읽기 [`Adapter::encode_mcp_status`]). 맥락 사용량 · MCP 상태 · 목표 상태는 CLI 가 알린 줄에서 받기만 한다.
 //! 권한 결정은 사람의 그 자리 결정, 또는 사람이 그 채팅에 정한 모드 · 허용 목록([`perm`])에 따라 세션 서버가 대신 낸 **허용**이다.
 //! 사람이 그 글에 붙인 그림(첨부 자리 안의 파일만 · 서버가 본다)도 그 사람 글의 일부로 같은 줄에 든다.
 
@@ -74,7 +77,8 @@ Web search (Aynx side chat):
 - If sources disagree or you could not confirm something, say so plainly.
 - Answer in the language the person writes in.";
 
-/// 두 어댑터의 같은 얼굴. 오류 값은 프런트가 받는 짧은 낱말(`not-ready` · `no-turn` · `bad-model` · `bad-effort` · `unknown-request`)이다.
+/// 두 어댑터의 같은 얼굴. 오류 값은 프런트가 받는 짧은 낱말(`not-ready` · `no-turn` · `bad-model` · `bad-effort` · `unknown-request` · `bad-mode` ·
+/// `bad-answer` · `no-session-allow` · `turn-running` · `bad-skill` · `unsupported` · `rewind-running` · `bad-anchor` · `bad-tier`)이다.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) trait Adapter: Send {
     fn cli(&self) -> Cli;
@@ -87,6 +91,43 @@ pub(crate) trait Adapter: Send {
     /// 다시 띄우지 않는다.
     fn encode_set_effort(&mut self, effort: Option<&str>) -> Result<Step, &'static str>;
     fn encode_decision(&mut self, request_id: &str, decision: Decision, message: Option<&str>) -> Result<Step, &'static str>;
+    /// 채팅 타일만 — 기본 몸 `Err("unsupported")`. 사이드 채팅 · 프로듀서 어댑터(같은 타입의 `tile: false`)와 `ProducerGuard` 는 이 몸을 쓴다.
+    fn encode_set_perm_mode(&mut self, _mode: &str) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — [이 대화에서 늘 허용] · 질문 답. 무엇을 실을지는 어댑터가 제 대기 장부에서 고른다(프런트가 보낸 글자를 믿지 않는다). 오류면 대기에서 빼지 않는다.
+    fn encode_tile_answer(&mut self, _request_id: &str, _answer: event::TileAnswer<'_>) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 사람이 부른 맥락 압축. 턴 중 · 보낸 글이 아직 턴을 열지 않았으면 `Err("turn-running")`.
+    fn encode_compact(&mut self, _instructions: Option<&str>) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 사람이 부른 되감기(미리 보기 · 실행). 답은 `Ev::Rewind` 로. `last_seen` = 서버가 기록에서 읽은 현재 갈래의 마지막 사람 말(Claude 대화 되감기만 쓴다).
+    /// 턴 중 · 보낸 글이 아직 턴을 열지 않았으면 `Err("turn-running")` · 답을 기다리는 되감기가 있으면 `Err("rewind-running")`.
+    fn encode_rewind(&mut self, _anchor: &str, _scope: &str, _dry_run: bool, _last_seen: Option<&str>) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 다음 `encode_user` 가 실을 스킬(이름 → 경로는 어댑터의 목록에서). stdin 을 짓지 않는다. 모르는 이름 `Err("bad-skill")`.
+    fn encode_tile_skills(&mut self, _names: &[String]) -> Result<(), &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 사람이 고른 검토(Codex). 턴 중 · 보낸 글이 아직 턴을 열지 않았으면 `Err("turn-running")`.
+    fn encode_review(&mut self, _target: &event::ReviewTarget) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 사람이 정한 · 멈춘 · 이어 간 · 지운 목표(Codex). `origin:"user"` 는 이 몸에서만 싣는다.
+    fn encode_goal(&mut self, _action: &event::GoalAction<'_>) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 다음 턴부터의 속도 등급(Codex · `None` = CLI 기본). stdin 을 짓지 않는다. 그 모델의 목록 밖이면 `Err("bad-tier")`.
+    fn encode_set_tier(&mut self, _tier: Option<&str>) -> Result<(), &'static str> {
+        Err("unsupported")
+    }
+    /// 채팅 타일만 — 사람이 연 MCP 상태 풍선의 읽기 한 번. 답은 `Ev::McpStatus{source:"list"}` 로.
+    fn encode_mcp_status(&mut self) -> Result<Step, &'static str> {
+        Err("unsupported")
+    }
     fn close_pending(&mut self) -> Vec<Ev>;
     fn dropped(&self) -> event::Dropped;
 }

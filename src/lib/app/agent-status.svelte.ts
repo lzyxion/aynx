@@ -24,6 +24,7 @@ import { clearSignalAttested, markAgentEnded, markSignalAttested, paneAi } from 
 import { activeTabId, focusTile, residentWindowTabs } from "$lib/app/tabs.svelte.js";
 import { clearAgentUnseen, hasAgentUnseen, markAgentUnseen } from "$lib/app/agent-unseen.svelte.js";
 import { veilVisible } from "$lib/app/veil.svelte.js";
+import { chatTileStatusOf } from "$lib/app/chat-tile-status.svelte.js";
 import { notifyAgent } from "$lib/app/agent-notify";
 import { agentBannerSignal, dropAgentBanner } from "$lib/app/agent-banners.svelte.js";
 import { agentNotifyKind } from "$lib/agent-notify";
@@ -398,6 +399,12 @@ export function tabAgents(): Record<string, TabDotAgent[]> {
           paneId: pane.id,
         };
       });
+    // 채팅 잎 — 점은 사건에서 짓고(`app/chat-tile-status`) 서브 에이전트 수는 모른다
+    for (const pane of listPanes(tab.root)) {
+      if (pane.kind !== "chat" || !pane.chat) continue;
+      const cli = pane.chat.cli;
+      agents.push({ name: aiDisplayName(cli) ?? cli, state: chatTileStatusOf(pane.id), subagents: 0, paneId: pane.id });
+    }
     if (agents.length > 0) out[tab.id] = agents;
   }
   return out;
@@ -406,8 +413,9 @@ export function tabAgents(): Record<string, TabDotAgent[]> {
 export function focusAgentIn(tabId: string): void {
   const tab = residentWindowTabs().find((t) => t.id === tabId);
   if (!tab) return;
-  const agents = listPanes(tab.root).filter(isLiveAgentPane);
-  const want = foldAgentStatus(agents.map(agentStatusOf));
-  const target = (want !== null ? agents.find((p) => agentStatusOf(p) === want) : undefined) ?? agents[0];
+  const agents = listPanes(tab.root).filter((p) => isLiveAgentPane(p) || (p.kind === "chat" && !!p.chat));
+  const stateOf = (p: PaneSpec) => (p.kind === "chat" ? chatTileStatusOf(p.id) : agentStatusOf(p));
+  const want = foldAgentStatus(agents.map(stateOf));
+  const target = (want !== null ? agents.find((p) => stateOf(p) === want) : undefined) ?? agents[0];
   if (target) focusTile(tabId, target.id);
 }

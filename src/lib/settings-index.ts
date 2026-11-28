@@ -124,6 +124,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
 
   // AI 에이전트
   row("ai", "settings.ai.start_dir.label", "ai-start-dir", "settings.ai.common.subhead"),
+  row("ai", "settings.ai.chat_tile.label", "ai-chat-tile", "settings.ai.common.subhead"),
   row("ai", "settings.ai.agent.enabled.label", agentAnchor("claude", "enabled"), "settings.ai.agent.claude"),
   row("ai", "settings.ai.hooks.label", agentAnchor("claude", "hooks"), "settings.ai.agent.claude"),
   row("ai", "settings.ai.claude_statusline.label", "ai-claude-statusline", "settings.ai.agent.claude"),

@@ -251,7 +251,10 @@ export function foldLive(s: LiveState, ev: SideChatEv): LiveState {
     }
     case "turnEnded": {
       // 끊긴 턴의 도구가 영영 돌지 않게
-      const entries = s.entries.map((e) => (e.kind === "tool" && !e.finished ? { ...e, finished: true } : e));
+      // 흐르던 글도 닫는다 — 다음 턴의 item 없는 조각(Claude)이 거기 붙지 않게
+      const entries = s.entries.map((e) =>
+        e.kind === "tool" && !e.finished ? { ...e, finished: true } : e.kind === "text" && !e.done ? { ...e, done: true } : e,
+      );
       let next: LiveState = {
         ...s,
         entries,
@@ -268,9 +271,37 @@ export function foldLive(s: LiveState, ev: SideChatEv): LiveState {
       return { ...s, effort: ev.effort };
     case "mcpServers":
       return { ...s, mcp: ev.names };
+    case "cliMode":
+    case "commands":
+    case "contextUsage":
+    case "rewindCaps":
+    case "rewind":
+    case "mcpStatus":
+    case "goal":
+    case "serviceTiers":
+      return s;
+    case "review": {
+      if (ev.phase === "started") return push(s, { kind: "notice", code: "reviewing", detail: ev.label });
+      // 끝 표지는 결과 글 뒤 — "검토하는 중" 줄을 걷고 꼬리 끝에 세운다
+      const i = lastIndex(s.entries, (e) => e.kind === "notice" && e.code === "reviewing" && e.n >= s.endedAt);
+      const base = i >= 0 ? { ...s, entries: s.entries.filter((_, k) => k !== i) } : s;
+      const withText = typeof ev.text === "string" && ev.text.trim() !== "" ? push(base, { kind: "text", item: `review:${base.next}`, text: ev.text, done: true }) : base;
+      return push(withText, { kind: "notice", code: ev.phase === "stopped" ? "review-stopped" : "reviewed", detail: ev.label });
+    }
+    case "compaction": {
+      if (ev.phase === "started") return push(s, { kind: "notice", code: "compacting", detail: ev.trigger });
+      const done = { kind: "notice" as const, code: "compacted", detail: compactNoticeDetail(ev.preTokens, ev.postTokens) };
+      const i = lastIndex(s.entries, (e) => e.kind === "notice" && e.code === "compacting" && e.n >= s.endedAt);
+      return i >= 0 ? replaceAt(s, i, { ...done, n: s.entries[i].n }) : push(s, done);
+    }
     case "notice": {
       if (ev.code === "untested-version") return { ...s, untested: ev.detail ?? "?" };
       if (ev.code === "conversation-changed") return { ...s, conversationId: ev.detail ?? s.conversationId };
+      // 채팅 타일 — 압축 실패 · 멈춤은 이 턴의 "압축하는 중" 줄을 갈음한다(돌던 표지가 남지 않게)
+      if (ev.code === "compact-failed" || ev.code === "compact-canceled") {
+        const i = lastIndex(s.entries, (e) => e.kind === "notice" && e.code === "compacting" && e.n >= s.endedAt);
+        if (i >= 0) return replaceAt(s, i, { kind: "notice", code: ev.code, detail: ev.detail, n: s.entries[i].n });
+      }
       return push(s, { kind: "notice", code: ev.code, detail: ev.detail });
     }
     case "exited": {
@@ -281,11 +312,30 @@ export function foldLive(s: LiveState, ev: SideChatEv): LiveState {
       const closed = { ...s, entries, status: "stopped" as const, ready: null };
       const done = s.status === "running" ? { ...closed, ended: s.ended + 1, endedAt: s.next } : closed;
       return push(
-        { ...done, entries: done.entries.map((e) => (e.kind === "tool" && !e.finished ? { ...e, finished: true } : e)) },
+        {
+          ...done,
+          entries: done.entries.map((e) =>
+            e.kind === "tool" && !e.finished ? { ...e, finished: true } : e.kind === "text" && !e.done ? { ...e, done: true } : e,
+          ),
+        },
         { kind: "exited", code: ev.code, reason: ev.reason },
       );
     }
   }
+}
+
+/** `"36241>8335"` · 모르는 쪽은 빈 글(`">8335"` · `""`) — 알림 `detail` 은 글 하나라서 */
+export function compactNoticeDetail(pre: number | null, post: number | null): string {
+  const n = (v: number | null) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? String(Math.round(v)) : "");
+  const a = n(pre);
+  const b = n(post);
+  return a === "" && b === "" ? "" : `${a}>${b}`;
+}
+
+export function parseCompactNotice(detail: string | null): { pre: number | null; post: number | null } {
+  const m = /^(\d*)>(\d*)$/.exec(detail ?? "");
+  if (!m) return { pre: null, post: null };
+  return { pre: m[1] === "" ? null : Number(m[1]), post: m[2] === "" ? null : Number(m[2]) };
 }
 
 export function foldAll(s: LiveState, evs: readonly SideChatEv[]): LiveState {

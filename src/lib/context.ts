@@ -420,6 +420,20 @@ export interface TranscriptItem {
   /** 표시용 — 앨범 기록과 맞춰야 깨움 표지다(Rust `parse_wake_note`) */
   wake?: TranscriptWakeTag | null;
   files?: string[];
+  /** 계획 줄 — Codex 계획 글(`assistant` · 본문은 `text`) · Claude `ExitPlanMode` 호출(`tool`). 옛 답에는 없다 */
+  plan?: TranscriptPlan | null;
+  /** 채팅 타일 되감기 기준점(Rust `anchor`) — 사람 말 줄만. 화면은 짓지 않고 그대로 돌려준다 */
+  anchor?: string | null;
+}
+
+/** Rust `PlanTag` — Claude 본문은 믿을 수 있는 출처에서만 온다(없으면 경로 · 결과만) */
+export interface TranscriptPlan {
+  body?: string;
+  bodyTruncated?: boolean;
+  file?: string;
+  outcome?: "approved" | "kept";
+  /** 계속 계획에 사람이 쓴 고칠 점 */
+  feedback?: string;
 }
 
 /** Rust `WakeTag` */

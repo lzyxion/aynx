@@ -73,10 +73,14 @@ pub(super) fn declaration_args(args: &Value) -> Result<(String, operations::Effe
     Ok((summary, effect))
 }
 
-/// 타일 토큰으로 왔고 그 타일이 거울에 있을 때만.
+/// 타일 토큰으로 왔고 그 타일이 거울에 있을 때만. 채팅 타일은 거울에 없어 고정 이름표.
 pub(super) fn requester_label(caller: &crate::orchestration::Caller, map: &HashMap<String, SessionContext>) -> Option<String> {
-    let crate::orchestration::Caller::Tile { stream } = caller else {
-        return None;
+    let stream = match caller {
+        crate::orchestration::Caller::Tile { stream } => stream,
+        crate::orchestration::Caller::ChatTile { .. } => {
+            return Some(crate::i18n::tr!(ko: "채팅 모양 AI 타일", en: "AI tile (chat)"));
+        }
+        _ => return None,
     };
     let c = map.get(stream)?;
     let label = c.label.trim();

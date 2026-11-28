@@ -123,6 +123,42 @@ export type ErrorReason =
   | "bad-effort"
   | "bad-link"
   | "too-many-links"
+  /** 채팅 모양 AI 타일(Rust `server::chat_tile`) — `wrong-chat-kind` = 다른 종류 채팅의 id(`ct-` · `pc-`) */
+  | "wrong-chat-kind"
+  | "bad-cwd"
+  | "conversation-busy"
+  | "chat-tile-off"
+  | "not-ready"
+  /** 채팅 타일의 권한 모드 · 결정 — `unsupported` = 그 어댑터가 받지 않는 동작 */
+  | "bad-mode"
+  | "bad-answer"
+  | "no-session-allow"
+  | "unsupported"
+  /** 채팅 타일의 압축 · 스킬 — `not-started` = 프로세스가 없다(압축 op 는 띄우지 않는다) */
+  | "turn-running"
+  | "not-started"
+  | "nothing-to-compact"
+  | "bad-instructions"
+  | "bad-skill"
+  /** 채팅 타일 되감기 — `rewind-timeout` · `rewind-failed` 는 프런트가 짓는 낱말(답이 오지 않음 · CLI 가 글 없이 거절) */
+  | "bad-anchor"
+  | "bad-scope"
+  | "nothing-to-rewind"
+  | "preview-first"
+  | "rewind-running"
+  | "rewind-timeout"
+  | "rewind-failed"
+  /** 채팅 타일 검토 · 목표 · 속도 · MCP 상태 */
+  | "bad-review-target"
+  | "bad-goal"
+  | "bad-objective"
+  | "bad-budget"
+  | "no-goal"
+  | "bad-tier"
+  | "mcp-status-busy"
+  /** 한 대화는 한 곳에서만 — 사이드 채팅 표 ↔ 채팅 타일 표 */
+  | "conversation-in-side-chat"
+  | "conversation-in-chat-tile"
   /** CLI 의 `.exe` 를 PATH 에서 못 찾음(Rust `orchestration::spawn::find_exe` — `.cmd` 는 받지 않는다) */
   | "cli-not-found"
   /** 사이드 채팅 첨부 판정(Rust `server::side_chat` 의 `images_in` · `files_in`) */
@@ -256,6 +292,36 @@ export const REASONS: readonly ErrorReason[] = [
   "bad-effort",
   "bad-link",
   "too-many-links",
+  "wrong-chat-kind",
+  "bad-cwd",
+  "conversation-busy",
+  "chat-tile-off",
+  "not-ready",
+  "bad-mode",
+  "bad-answer",
+  "no-session-allow",
+  "unsupported",
+  "turn-running",
+  "not-started",
+  "nothing-to-compact",
+  "bad-instructions",
+  "bad-skill",
+  "bad-anchor",
+  "bad-scope",
+  "nothing-to-rewind",
+  "preview-first",
+  "rewind-running",
+  "rewind-timeout",
+  "rewind-failed",
+  "bad-review-target",
+  "bad-goal",
+  "bad-objective",
+  "bad-budget",
+  "no-goal",
+  "bad-tier",
+  "mcp-status-busy",
+  "conversation-in-side-chat",
+  "conversation-in-chat-tile",
   "cli-not-found",
   "too-many-attachments",
   "too-many-images",

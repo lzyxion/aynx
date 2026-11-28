@@ -144,6 +144,7 @@ export function sanitizePane(p: PaneSpec): PaneSpec {
   keep("diff");
   keep("run");
   keep("producer");
+  keep("chat");
   keep("agentLink");
   const q = sanitizeQuery(p.query);
   if (q) out.query = q;

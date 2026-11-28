@@ -12,7 +12,7 @@ mod persistence;
 mod schema;
 
 pub use access::{
-    agent_extra_args, agent_mcp_prefs, app_icon, app_language, automation_prefs, claude_statusline, codex_no_daemon,
+    agent_extra_args, agent_mcp_prefs, app_icon, app_language, automation_prefs, chat_tile_enabled, claude_statusline, codex_no_daemon,
     idle_lock_min, local_shell_integration, remote_prefs, set_wallpaper_file, wallpaper_file_checked,
 };
 pub(crate) use access::{current_and_sanitized, messenger_include_conversation, messenger_prefs, set_remote_connected, tray_on_close};

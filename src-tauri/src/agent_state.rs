@@ -406,6 +406,15 @@ pub(crate) fn note_released(agent: &'static str, id: &str) {
     table().convos.mark_released(agent, id, crate::agent_signal::now_ms());
 }
 
+/// 신호 없이 대화를 쥐는 채팅 타일(`ct-…`)의 열림 — 끝날 때 [`release_stream`] 과 짝을 맞춘다.
+pub(crate) fn link_stream(agent: &'static str, id: &str, stream: &str) {
+    table().convos.link(agent, id, stream);
+}
+
+pub(crate) fn release_stream(agent: &'static str, id: &str, stream: &str) {
+    table().convos.release(agent, id, stream, crate::agent_signal::now_ms());
+}
+
 pub(crate) fn conversation_links() -> Vec<ConvoLinkRow> {
     table().conversation_links(crate::agent_signal::now_ms())
 }

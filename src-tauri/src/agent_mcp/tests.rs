@@ -683,7 +683,75 @@ fn tile_autorun_has_no_coordination_preallow() {
         // 세션 서버가 없으면 아무것도 싣지 않는다 · WSL 도.
         assert_eq!(with_servers("claude", Some("pwsh"), &[], Some("/tmp/a.json"), None), "claude");
         assert_eq!(with_servers("claude", Some("wsl:Ubuntu"), &[], Some("/tmp/a.json"), Some(&server)), "claude");
+        // 채팅 타일도 같다 — 조율 도구 · 외부 도구의 미리 허용이 인자에 없다.
+        use crate::side_chat::{claude, codex, event::Mode};
+        let sid = "11111111-2222-4333-8444-000000000001";
+        let c = claude::tile_argv(&claude::TileOpts {
+            exe: "claude.exe",
+            mode: Mode::Fresh,
+            session_id: sid,
+            model: "",
+            effort: None,
+            mcp_config_file: "C:/d/chat-tile/.run/x/mcp.json",
+            perm_mode: None,
+            cwd: "C:/src",
+            checkpoints: true,
+        })
+        .unwrap()
+        .join(" ");
+        let external = [stdio("play"), http("web")];
+        let x = codex::tile_argv(&codex::TileOpts {
+            exe: "codex.exe",
+            mode: Mode::Resume { conv: sid },
+            cwd: "C:/src",
+            model: "",
+            effort: None,
+            client_version: "0.0.0",
+            mcp: Some(codex::Mcp { name, url: "http://127.0.0.1:53812/mcp", token_env: crate::instance::mcp_token_env(dev), tools: &[] }),
+            external: &external,
+            perm_mode: None,
+        })
+        .unwrap()
+        .join(" ");
+        for line in [&c, &x] {
+            assert!(!line.contains("--allowedTools") && !line.contains("approval_mode"), "{line}");
+            for t in &all {
+                assert!(!line.contains(&format!("mcp__{name}__{t}")), "{t}: {line}");
+            }
+        }
     }
+}
+
+/// 시험 `chat_tile_selected_follows_ai_tile` — 채팅 타일의 외부 서버 고르기는 AI 타일(`enabled(servers_for_project(..))`)과 같다.
+#[test]
+fn chat_tile_selected_follows_ai_tile() {
+    let mut only_codex = http("only-codex");
+    only_codex.agents = Some(vec!["codex".into()]);
+    let mut none = stdio("none");
+    none.agents = Some(vec![]);
+    let mut off = stdio("off");
+    off.enabled = false;
+    let mut side = stdio("side");
+    side.side_chat = true;
+    let global = stdio("pg");
+    let mut project = global.clone();
+    project.project_id = Some("p1".into());
+    project.command = Some("uvx".into());
+    let mut project_off = stdio("play");
+    project_off.project_id = Some("p1".into());
+    project_off.enabled = false;
+    let all = vec![stdio("play"), only_codex, none, off, side, global.clone(), project.clone(), project_off];
+    let names = |v: Vec<McpServer>| v.into_iter().map(|s| s.name).collect::<Vec<_>>();
+    for agent in ["claude", "codex", "nope"] {
+        for p in [None, Some("p1"), Some("p2")] {
+            assert_eq!(chat_tile_selected(&all, agent, p), enabled(&servers_for_project(&all, p), agent), "{agent} {p:?}");
+        }
+    }
+    assert_eq!(names(chat_tile_selected(&all, "claude", None)), ["play", "side", "pg"]);
+    assert_eq!(names(chat_tile_selected(&all, "codex", None)), ["play", "only-codex", "side", "pg"]);
+    assert_eq!(chat_tile_selected(&all, "claude", Some("p1")).iter().find(|s| s.name == "pg"), Some(&project), "프로젝트 덮기");
+    assert!(!names(chat_tile_selected(&all, "claude", Some("p1"))).contains(&"play".to_string()), "꺼진 프로젝트 항목이 전역을 가린다");
+    assert!(chat_tile_selected(&all, "nope", None).is_empty());
 }
 
 /// 옛 조정자 역할 설정 파일 이름(`orch-run-<32 hex>-g<세대>.json`)은 시작 정리 대상이다 — (3차 6단계) 새로 쓰는 판이 없어 주장은 받지 않는다.

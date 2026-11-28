@@ -102,6 +102,8 @@ pub(crate) const REAUTH: &[&str] = &[
     "orchestration_delete_archived",
     // 사람이 읽지 않은 앨범의 코드를 main 에 넣는다. 미리 보기는 ALLOW.
     "orchestration_merge",
+    // 채팅 타일 Codex 목표 정하기 · 이어 하기 — CLI 가 새 사람 글 없이 턴을 이어 연다. 멈춤 · 지우기(`chat_tile_goal_stop`)는 ALLOW.
+    "chat_tile_goal_start",
 ];
 
 /// 원격에서 뜻이 없다 — 거절.
@@ -204,6 +206,11 @@ pub(crate) const ALLOW: &[&str] = &[
     "producer_chat_list",
     // 사건 본문은 그 연결의 창 통로에만.
     "producer_chat_subscribe", "producer_chat_unsubscribe",
+    // 채팅 모양 AI 타일 — 사람의 말 · 권한 카드 결정 · CLI 권한 모드(재확인 없음) · 압축 · 되감기(미리 보기 뒤 확인) · 검토 · 목표 멈춤 · 지우기 · 속도 · MCP 상태 읽기 ·
+    // 끊기 · 닫기 · 읽기. 원격이 이미 할 수 있는 "타일에 치기" 등급이다(칩은 TUI 의 Shift+Tab 과 같은 모드뿐 — bypass · 묻지 않기 · 전체 접근처럼 범위를 넓히는 값이 없다).
+    "chat_tile_open", "chat_tile_send", "chat_tile_interrupt", "chat_tile_set_model", "chat_tile_set_effort", "chat_tile_set_perm_mode", "chat_tile_decide",
+    "chat_tile_compact", "chat_tile_rewind", "chat_tile_close", "chat_tile_attach", "chat_tile_list", "chat_tile_subscribe", "chat_tile_unsubscribe",
+    "chat_tile_review", "chat_tile_goal_stop", "chat_tile_set_tier", "chat_tile_mcp_status",
     // 사이드 채팅 — 사람의 말 · 권한 결정(`side_chat_decide` · 권한 모드 · 허용 목록 포함, 재확인 없음) · 끊기 · 닫기 · 읽기는 원격이 이미 할 수 있는
     // "셸에 치기" 등급이다(docs/log/2026-11-01-remote-side-chat.md). 사건 본문은 그 채팅을 보는 창의 통로에만 간다.
     "side_chats_load", "side_chats_save", "side_chat_dir", "side_chat_remove",
@@ -347,6 +354,7 @@ pub(crate) fn command_label(cmd: &str) -> String {
         "orchestration_override_verify" => tr!(ko: "오케스트레이션 검증 실패 덮어쓰기", en: "overriding a failed orchestration verification"),
         "orchestration_delete_archived" => tr!(ko: "보관한 앨범 영구 삭제", en: "deleting an archived album forever"),
         "orchestration_merge" => tr!(ko: "앨범을 브랜치에 병합", en: "merging an album into a branch"),
+        "chat_tile_goal_start" => tr!(ko: "채팅 타일 목표 정하기 · 이어 하기", en: "setting or resuming a chat tile goal"),
         other => other.to_string(),
     }
 }
@@ -564,6 +572,19 @@ mod tests {
         ] {
             assert_eq!(class_of(c), Class::Allow, "{c}");
         }
+        // 채팅 타일 명령은 목표 정하기 · 이어 하기 밖은 ALLOW(권한 카드 `chat_tile_decide` · 권한 모드 칩 · 압축 · 되감기 · 검토 · 목표 멈춤 · 지우기 ·
+        // 속도 · MCP 상태도 재확인 없음). 스스로 도는 일을 거는 목표 시작만 재확인.
+        for c in [
+            "chat_tile_open", "chat_tile_send", "chat_tile_interrupt", "chat_tile_set_model", "chat_tile_set_effort", "chat_tile_set_perm_mode",
+            "chat_tile_decide", "chat_tile_compact", "chat_tile_rewind",
+            "chat_tile_close", "chat_tile_attach", "chat_tile_list", "chat_tile_subscribe", "chat_tile_unsubscribe",
+            "chat_tile_review", "chat_tile_goal_stop", "chat_tile_set_tier", "chat_tile_mcp_status",
+        ] {
+            assert_eq!(class_of(c), Class::Allow, "{c}");
+        }
+        assert_eq!(class_of("chat_tile_goal_start"), Class::Reauth);
+        assert_ne!(command_label("chat_tile_goal_start"), "chat_tile_goal_start");
+        assert_eq!(class_of("chat_tile_goal"), Class::Unknown, "목표 명령은 시작 · 멈춤 둘로만");
         // 원격에서도 허용하는 예외 · 거절 · 취소는 좁히기.
         for c in ["remote_device_revoke", "remote_status", "save_settings", "reject_operation", "cancel_operation", "vault_store_password"] {
             assert_eq!(class_of(c), Class::Allow, "{c}");

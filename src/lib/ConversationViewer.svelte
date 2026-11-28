@@ -18,8 +18,9 @@
   import { isRemoteConversation } from "$lib/remote-conversations";
   import { liveSessionFor } from "$lib/app/remote-home.svelte.js";
   import { openRemoteConversation, remoteConversations } from "$lib/app/remote-conversations.svelte.js";
-  import { flatConversations, shortenHome, type AgentConversation } from "$lib/agent-sessions";
+  import { chatOpenBlockKey, flatConversations, shortenHome, type AgentConversation } from "$lib/agent-sessions";
   import {
+    conversationChatState,
     conversationHome,
     conversationList,
     conversationOpenElsewhere,
@@ -29,6 +30,7 @@
     deleteConversation,
     goToOpenConversation,
     openConversation,
+    openConversationInChat,
   } from "$lib/app/agent-sessions.svelte.js";
   import {
     closeConversationView,
@@ -135,6 +137,22 @@
     closeConversationView(false);
     if (isRemoteConversation(s)) void openRemoteConversation(s, "resume", v.at, v.how);
     else void openConversation(s, "resume", v.at, v.how);
+  }
+
+  /** 끄면 머리 단추가 오늘 그대로 — Run 작업자 · 원격 대화에는 채팅 모양이 없다 */
+  const chatState = $derived(conv && !worker ? conversationChatState(conv, now) : "hidden");
+  const chatBlocked = $derived.by(() => {
+    const k = chatOpenBlockKey(chatState);
+    return k ? t(k) : null;
+  });
+
+  function openChat(): void {
+    const s = conv;
+    const v = view;
+    if (!s || !v || chatState !== "ok") return;
+    confirming = false;
+    closeConversationView(false);
+    void openConversationInChat(s, v.at, v.how);
   }
 
   function fork(): void {
@@ -280,13 +298,32 @@
               disabled={!conv.cwdExists}
               onclick={fork}>{t("board.convo.fork")}</button
             >
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              data-act="resume"
-              disabled={!conv.cwdExists}
-              onclick={resume}>{t("board.convo.resume")}</button
-            >
+            {#if chatState !== "hidden"}
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                data-act="resume"
+                title={conv.cwdExists ? undefined : t("board.convo.missing.title")}
+                disabled={!conv.cwdExists}
+                onclick={resume}>{t("board.convo.openTerminal")}</button
+              >
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                data-act="resume-chat"
+                title={chatBlocked ?? undefined}
+                disabled={chatBlocked !== null}
+                onclick={openChat}>{t("board.convo.openChat")}</button
+              >
+            {:else}
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                data-act="resume"
+                disabled={!conv.cwdExists}
+                onclick={resume}>{t("board.convo.resume")}</button
+              >
+            {/if}
           {/if}
         {/if}
       </div>

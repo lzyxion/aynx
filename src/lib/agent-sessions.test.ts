@@ -10,6 +10,8 @@ import {
   RELEASE_GRACE_MS,
   conversationQuery,
   buildScopes,
+  chatOpenBlockKey,
+  chatOpenState,
   deleteBlock,
   forkCountOf,
   flatConversations,
@@ -32,6 +34,8 @@ import {
   type ConversationList,
 } from "$lib/agent-sessions";
 import type { Project, WorktreeInfo } from "$lib/projects";
+import { chatSpecWithConv, paneStreamOf } from "$lib/chat-tile/spec";
+import type { ChatTileSpec } from "$lib/session/spec";
 
 const P = (id: string, name: string, path: string, host: string | null = null): Project => ({
   id,
@@ -513,5 +517,61 @@ describe("로컬 AI 타일 autorun → 마지막 대화의 재개 줄 (resumeAut
     expect(freshLaunchOf("claude --model opus")).toBe("claude --model opus");
     expect(freshLaunchOf(`claude --resume ${U} --fork-session`)).toBe(`claude --resume ${U} --fork-session`);
     expect(freshLaunchOf("npm run dev")).toBe("npm run dev");
+  });
+});
+
+describe("채팅 잎 — 한 곳 열림의 재료(isThisWindowStream · persistLink)", () => {
+  const ID = "ct-0f8fad5b-d9cb-469f-a165-70867728950e";
+  const CONV = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
+  const chat: ChatTileSpec = { chatId: ID, cli: "claude", model: "", effort: "", cwd: "" };
+
+  it("채팅 잎의 스트림은 chatId · 다른 잎은 historyStreamId ?? id", () => {
+    expect(paneStreamOf({ id: "pane-1", kind: "chat", chat })).toBe(ID);
+    expect(paneStreamOf({ id: "pane-2", kind: "local", historyStreamId: "s-1" })).toBe("s-1");
+    expect(paneStreamOf({ id: "pane-3", kind: "local" })).toBe("pane-3");
+  });
+
+  it("연결된 대화는 새 객체로 conv 에 · 같은 값 · 원격 창 · 연결 풀기(null)는 고치지 않는다", () => {
+    const next = chatSpecWithConv(chat, CONV, false);
+    expect(next).toEqual({ ...chat, conv: CONV });
+    expect(next).not.toBe(chat);
+    expect(chat.conv).toBeUndefined();
+    expect(chatSpecWithConv({ ...chat, conv: CONV }, CONV, false)).toBeNull();
+    expect(chatSpecWithConv(chat, CONV, true)).toBeNull();
+    expect(chatSpecWithConv({ ...chat, conv: CONV }, null, false)).toBeNull();
+    expect(chatSpecWithConv(undefined, CONV, false)).toBeNull();
+  });
+});
+
+describe("채팅으로 열기 — chatOpenState · chatOpenBlockKey", () => {
+  const ok = { chatTile: true, remote: false, open: false, elsewhere: false, sideChat: false };
+  const s = (agent = "claude", cwdExists = true) => ({ agent, cwdExists });
+
+  it("hidden — 설정 끔 · 원격 · 열림 · 다른 에이전트", () => {
+    expect(chatOpenState(s(), { ...ok, chatTile: false })).toBe("hidden");
+    expect(chatOpenState(s(), { ...ok, remote: true })).toBe("hidden");
+    expect(chatOpenState(s(), { ...ok, open: true })).toBe("hidden");
+    expect(chatOpenState(s("gemini"), ok)).toBe("hidden");
+    expect(chatOpenState(s("codex"), ok)).toBe("ok");
+    expect(chatOpenState(s("claude"), ok)).toBe("ok");
+  });
+
+  it("missing · sideChat · elsewhere — 순서가 판정이다", () => {
+    expect(chatOpenState(s("claude", false), ok)).toBe("missing");
+    expect(chatOpenState(s(), { ...ok, sideChat: true })).toBe("sideChat");
+    expect(chatOpenState(s(), { ...ok, elsewhere: true })).toBe("elsewhere");
+    // 열림 + 경로 없음 → hidden · 경로 없음 + 사이드 채팅 → missing · 사이드 채팅 + 밖에서 열림 → sideChat
+    expect(chatOpenState(s("claude", false), { ...ok, open: true })).toBe("hidden");
+    expect(chatOpenState(s("claude", false), { ...ok, sideChat: true })).toBe("missing");
+    expect(chatOpenState(s(), { ...ok, sideChat: true, elsewhere: true })).toBe("sideChat");
+    expect(chatOpenState(s("gemini", false), { ...ok, sideChat: true })).toBe("hidden");
+  });
+
+  it("chatOpenBlockKey — 흐림만 툴팁", () => {
+    expect(chatOpenBlockKey("ok")).toBeNull();
+    expect(chatOpenBlockKey("hidden")).toBeNull();
+    expect(chatOpenBlockKey("missing")).toBe("board.convo.missing.title");
+    expect(chatOpenBlockKey("sideChat")).toBe("board.convo.openChat.sideChat");
+    expect(chatOpenBlockKey("elsewhere")).toBe("board.convo.openChat.elsewhere");
   });
 });

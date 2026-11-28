@@ -39,10 +39,6 @@ cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
 - 릴리스: 버전은 `package.json` · `tauri.conf.json` · `Cargo.toml`(과 잠금 파일)을 함께 올리고, 노트를 **태그 전에 `CHANGELOG.md` 의
   그 버전 칸**에 쓴다. 태그 `vX.Y.Z` 는 **main CI 가 성공한 커밋**에 붙인다 — `release.yml` 이 초안을 올리고 공개는 사람이 한다.
 
-## 작업 방식
-
-**재발을 실제로 보기 전에는 방어 기계(자가 회복 등)를 미리 늘리지 않는다** — 최소 수정 우선.
-
 ## 주석 관리
 
 - 코드만으로 파악하기 어려운 제약, 예외 처리의 이유, 유지해야 할 동작을 주석에 기록한다.
@@ -80,7 +76,7 @@ cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
    디스크 · 설정 파일 · 프런트 · MCP RPC 에는 값이 없다. → [전문 3](docs/invariants.md#inv-3)
 4. **앱은 사용자가 명시적으로 위임한 범위 안에서만 실행한다** — 그 자리 사람 승인, 또는 **범위 · 한도가 명시된** 사전 정책. 원시
    `send_command` 는 만들지 않는다 · **AI 문자열→PTY 길은 없다** · AI 는 자기 실행을 **자가 승인 못 한다**(승인 등급 프레임은
-   `approve_operation` 하나). 메신저 다리와 사이드 채팅 권한 답의 범위도 이 절이 정한다.
+   `approve_operation` 하나). 메신저 다리와 사이드 채팅 · 채팅 타일 권한 답의 범위도 이 절이 정한다.
    `operations/auto.rs` · `server/messenger_bridge.rs` · `orchestration.rs` → [전문 4](docs/invariants.md#inv-4)
 5. 세션 로깅은 기본 꺼짐, **세션별 옵트인**. → [전문 5](docs/invariants.md#inv-5)
 6. **메신저 웹훅 URL · 봇 토큰은 채널마다 자기 파일에만** — 프런트 · MCP · 로그 · `Debug` 로 나가지 않고, 봇 토큰을 읽는 것은 세션 서버뿐이다. → [전문 6](docs/invariants.md#inv-6)

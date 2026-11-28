@@ -13,8 +13,8 @@ export const TAB_TEMPLATE_VERSION = 1;
 export const MAX_TEMPLATE_NAME = 60;
 export const MAX_TEMPLATES = 100;
 
-/** 복원해 봐야 뜻이 없는 한때의 자리 — 프로듀서 채팅은 앨범에 묶여 있다 */
-export const TEMPLATE_SKIP_KINDS: readonly PaneKind[] = ["start", "run", "producer"];
+/** 복원해 봐야 뜻이 없는 한때의 자리 — 프로듀서 채팅은 앨범에, 채팅 잎은 서버 항목 · 대화에 묶여 있다 */
+export const TEMPLATE_SKIP_KINDS: readonly PaneKind[] = ["start", "run", "producer", "chat"];
 
 export interface TabTemplate {
   id: string;

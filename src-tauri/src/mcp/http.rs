@@ -148,6 +148,9 @@ pub(crate) fn handle_request(
                 Some(crate::chat_token::Auth::Chat { chat, kind: crate::chat_token::ChatKind::Producer, proc }) => {
                     Some(crate::orchestration::Caller::Producer { chat, proc })
                 }
+                Some(crate::chat_token::Auth::Chat { chat, kind: crate::chat_token::ChatKind::Tile, proc }) => {
+                    Some(crate::orchestration::Caller::ChatTile { chat, proc })
+                }
                 Some(crate::chat_token::Auth::Stale) => {
                     respond(request, 401, &format!("{{\"error\":\"{}\"}}", crate::chat_token::STALE_CHAT_TOKEN));
                     return;

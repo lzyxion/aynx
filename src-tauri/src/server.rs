@@ -18,6 +18,8 @@
 pub(crate) mod ai;
 pub(crate) mod ai_proxy;
 pub(crate) mod chat_proc;
+pub(crate) mod chat_tile;
+pub(crate) mod chat_tile_proxy;
 pub(crate) mod client;
 pub(crate) mod credit;
 pub(crate) mod db_ops;

@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { listen } from "../ipc";
 import {
   onSideChatEvent,
@@ -91,6 +92,11 @@ const subs = new Map<string, () => void>();
 const joining = new Map<string, Promise<void>>();
 const buffers = new Map<string, SideChatEvent[]>();
 const resyncing = new Set<string>();
+/** 실패한 붙기 — 같은 뜻으로는 다시 열지 않거나(`settled`) 간격을 둔다 */
+const failedJoins = new Map<string, { key: string; at: number; settled: boolean }>();
+const JOIN_RETRY_MS = 3000;
+/** 저절로 풀리지 않는 거절 — 사람이 그 채팅을 떠났다 오거나 뜻을 바꿔야 다시 연다 */
+const SETTLED_REASON = /\[(bad-[a-z-]+|wrong-chat-kind|conversation-in-chat-tile|conversation-not-found|conversation-folder-missing|cli-not-found|main-window-only|server-outdated|too-many-links)\]/;
 let clientSeq = 0;
 let reconnectWatch = false;
 
@@ -111,6 +117,8 @@ export function shownSideChat(): string | null {
 }
 
 export function setShownSideChat(id: string | null): void {
+  // 떠났다 돌아오면 다시 한 번 연다 — 막힌 까닭(채팅 타일 등)을 사람이 풀었을 수 있다
+  if (shown !== null && shown !== id) failedJoins.delete(shown);
   shown = id;
   if (id && lives[id]?.unseen) lives[id].unseen = false;
 }
@@ -139,6 +147,7 @@ export function sideChatErrorText(e: unknown): string {
   if (hasReason(msg, "bad-effort")) return t("app.chatDock.err.badEffort");
   if (hasReason(msg, "bad-link")) return t("app.chatDock.err.badLink");
   if (hasReason(msg, "too-many-links")) return t("app.chatDock.err.tooManyLinks");
+  if (hasReason(msg, "conversation-in-chat-tile")) return t("app.chatDock.err.inChatTile");
   if (hasReason(msg, "conversation-not-found")) return t("app.chatDock.err.forkNotFound");
   if (hasReason(msg, "conversation-folder-missing")) return t("app.chatDock.err.forkFolder");
   if (hasReason(msg, "cli-not-found")) return t("app.chatDock.err.cliNotFound");
@@ -173,6 +182,7 @@ async function snapshotOf(tg: SideChatTarget): Promise<SideChatSnapshot> {
 }
 
 function adopt(id: string, cli: SideChatCli, snap: SideChatSnapshot, prev: SideChatLive | null): void {
+  failedJoins.delete(id);
   const same = prev !== null && prev.cli === cli;
   const state = seedLive(snap, same ? prev.state : null);
   const conv = snap.conversationId;
@@ -202,12 +212,25 @@ function adopt(id: string, cli: SideChatCli, snap: SideChatSnapshot, prev: SideC
   for (const e of buf) apply(id, e);
 }
 
+function joinKey(tg: SideChatTarget): string {
+  return JSON.stringify([tg.cli, tg.model, tg.effort, tg.conversation, tg.fork]);
+}
+
+/**
+ * 부르는 쪽 효과가 사본(`lives`)을 추적하지 않게 한다 — 추적하면 실패가 쓴 사본에 효과가 다시 돌아 open 이 끝없이 간다.
+ */
 export function joinSideChat(tg: SideChatTarget): Promise<void> {
+  return untrack(() => joinUntracked(tg));
+}
+
+function joinUntracked(tg: SideChatTarget): Promise<void> {
   targets.set(tg.id, tg);
   // 다시 맞추는 중(그동안 `attached` 가 거짓)이면 그쪽이 붙인다 — 여기서 새로 세우면 그 사이 보낸 내 말이 지워진다
   if (lives[tg.id]?.attached || resyncing.has(tg.id)) return Promise.resolve();
   const running = joining.get(tg.id);
   if (running) return running;
+  const failed = failedJoins.get(tg.id);
+  if (failed && failed.key === joinKey(tg) && (failed.settled || Date.now() - failed.at < JOIN_RETRY_MS)) return Promise.resolve();
   watchReconnect();
   const p = (async () => {
     try {
@@ -216,6 +239,7 @@ export function joinSideChat(tg: SideChatTarget): Promise<void> {
       const snap = await snapshotOf(tg);
       adopt(tg.id, tg.cli, snap, lives[tg.id] ?? null);
     } catch (e) {
+      failedJoins.set(tg.id, { key: joinKey(tg), at: Date.now(), settled: SETTLED_REASON.test(String(e)) });
       const prev = lives[tg.id];
       lives[tg.id] = {
         cli: tg.cli,
@@ -612,6 +636,7 @@ export async function closeSideChatLive(id: string): Promise<void> {
   subs.delete(id);
   targets.delete(id);
   buffers.delete(id);
+  failedJoins.delete(id);
   delete lives[id];
   await sideChatClose(id).catch(() => false);
 }

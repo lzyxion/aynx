@@ -76,6 +76,9 @@
     paths,
     codeActions,
     copyable = false,
+    cardItem,
+    itemCard,
+    userAction,
   }: {
     /** 바뀌면(열림 포함) 처음부터 · `null` 이면 아무것도 읽지 않는다 */
     convKey: string | null;
@@ -137,6 +140,11 @@
     /** 닫힌 블록에만 넘긴다(머리말) */
     codeActions?: ComponentProps<typeof MarkdownBlocks>["codeActions"];
     copyable?: boolean;
+    /** 참인 기록 줄은 줄 대신 `itemCard` 로 그린다(둘째 인자 = 받은 쪽의 마지막 그런 줄인가) — 없으면 모두 보통 줄 */
+    cardItem?: (item: TranscriptItem) => boolean;
+    itemCard?: Snippet<[TranscriptItem, boolean]>;
+    /** 받은 쪽 사람 줄의 복사 단추 곁에 그린다(꼬리 · 보내는 중 줄에는 없다) — 없으면 아무것도 그리지 않는다 */
+    userAction?: Snippet<[TranscriptItem]>;
   } = $props();
 
   /** 보내는 중 말풍선이 있으면 그 앞 턴은 끝난 것이다 */
@@ -181,6 +189,15 @@
   const shown = $derived(cut === null ? items : items.slice(0, cut));
 
   const noteUser = $derived(new Set(notes.filter((n) => n.user).map((n) => n.key)));
+
+  const carded = $derived.by(() => {
+    const ks = new Set<number>();
+    if (!cardItem || !itemCard) return { ks, last: -1 };
+    for (const x of shown) if (cardItem(x.item)) ks.add(x.k);
+    let last = -1;
+    for (const k of ks) last = k;
+    return { ks, last };
+  });
 
   const notePlace = $derived.by(() => {
     const after = new Map<number, string[]>();
@@ -585,6 +602,7 @@
   mark: { pill: string } | { note: string } | { hide: true } | null = null,
   copyText: string | null = null,
   sentPics: readonly SentPic[] = [],
+  acted = false,
 )}
   {#if item.role === "user" && mark && "hide" in mark}
     <!-- 같은 깨움을 꼬리가 지금 그린다 — 기록 쪽은 그리지 않는다 -->
@@ -633,7 +651,7 @@
       {#if item.truncated}<span class="cut">{t("board.viewer.truncated")}</span>{/if}
       {#if note}<span class="cut">{note}</span>{/if}
       {#if mark && "note" in mark}<span class="cut" data-wake-unrecorded>{mark.note}</span>{/if}
-      {#if utext.trim() !== ""}{@render msgCopy(utext, "user")}{/if}
+      {#if utext.trim() !== ""}{@render msgCopy(utext, "user", acted ? item : null)}{/if}
     </li>
   {:else if item.role === "assistant"}
     {@const parts = streaming && (diagrams || codeActions) ? splitOpenFence(item.text ?? "") : { done: item.text ?? "", open: null }}
@@ -690,7 +708,7 @@
   {/if}
 {/snippet}
 
-{#snippet msgCopy(text: string, side: "user" | "agent")}
+{#snippet msgCopy(text: string, side: "user" | "agent", actItem: TranscriptItem | null = null)}
   <span class="mcopy" class:user={side === "user"} data-msg-copy={side}>
     <button
       type="button"
@@ -699,6 +717,7 @@
       aria-label={t("board.viewer.copy")}
       onclick={() => void copyMessage(text)}><UiIcon name="copy" size={14} /></button
     >
+    {#if actItem && userAction}{@render userAction(actItem)}{/if}
   </span>
 {/snippet}
 
@@ -742,7 +761,7 @@
       <p class="quiet" data-viewer-loading>{t("board.viewer.loading")}</p>
     {:else if failed && items.length === 0 && live.length === 0}
       <p class="quiet" data-viewer-error>{failed}</p>
-    {:else if items.length === 0 && shownPending.length === 0 && live.length === 0}
+    {:else if items.length === 0 && shownPending.length === 0 && live.length === 0 && (notes.length === 0 || !noteCard)}
       <p class="quiet" data-viewer-empty>{emptyText ?? t("board.viewer.empty")}</p>
     {:else}
       {#if convKey !== null}
@@ -769,8 +788,10 @@
         {/each}
         {#each shown as { k, item } (k)}
           {@render lead(`h${k}`)}
-          {#if item.role !== "tool" || toolShown(`h${k}`)}
-            {@render row(item, toolOpen(`h${k}`, item, open.has(k)), () => toggle(k), running.has(k), false, null, false, [], marks.get(k) ?? null, agentCopies.get(`h${k}`) ?? null)}
+          {#if carded.ks.has(k) && itemCard}
+            <li class="item card" data-item="card">{@render itemCard(item, k === carded.last)}</li>
+          {:else if item.role !== "tool" || toolShown(`h${k}`)}
+            {@render row(item, toolOpen(`h${k}`, item, open.has(k)), () => toggle(k), running.has(k), false, null, false, [], marks.get(k) ?? null, agentCopies.get(`h${k}`) ?? null, [], true)}
           {/if}
           {#each notePlace.after.get(k) ?? [] as nk (nk)}
             <li class="item" class:card={!noteUser.has(nk)} class:user={noteUser.has(nk)} data-item="note">{@render noteCard?.(nk)}</li>

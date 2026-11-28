@@ -304,4 +304,7 @@ pub struct AiPrefs {
     pub mcp_sessions_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_sessions_agents: Option<Vec<String>>,
+    /// 채팅 모양 AI 타일(실험) — `Some(true)` 만 켬. 세션 서버가 새 채팅 타일을 열 때마다 다시 읽는다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_tile: Option<bool>,
 }

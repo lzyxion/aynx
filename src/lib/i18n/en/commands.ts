@@ -62,6 +62,7 @@ export const commands: Record<keyof typeof koCommands, string> = {
   "palette.conversation.hint.enter": "resume",
   "palette.conversation.hint.shiftEnter": "continue in new conversation",
   "palette.conversation.hint.ctrlEnter": "view transcript",
+  "palette.conversation.hint.altEnter": "open in chat",
   "palette.conversation.missing": "path missing",
   "palette.conversation.elsewhere": "Open elsewhere",
   "palette.conversation.open": "open",

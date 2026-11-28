@@ -4,6 +4,7 @@ import {
   leafOf,
   listPanes,
   newBranchesPane,
+  newChatTilePane,
   newDiffPane,
   newQueryPane,
   QUERY_DRAFT_MAX,
@@ -1298,3 +1299,43 @@ describe("빠른 접속 — adhoc 대상의 저장과 복원", () => {
   });
 });
 
+describe("채팅 모양 AI 타일 — 명세만 저장하고 같은 chatId 로 돌아온다", () => {
+  const chat = { chatId: "ct-0f8fad5b-d9cb-469f-a165-70867728950e", cli: "claude" as const, model: "opus", effort: "", cwd: "C:/src/proj", conv: "1b4e28ba-2fa1-11d2-883f-0016d3cca427" };
+
+  it("저장 ↔ 복원 왕복 — 세대 · 상태 · 스트림 키는 없다", () => {
+    const pane = newChatTilePane(chat);
+    const saved = serialize([tab("t1", leafOf(pane))], "t1");
+    const leaf = saved.workspaces[0].root;
+    expect(JSON.stringify(leaf)).toBe(JSON.stringify({ kind: "chat", chat }));
+    const { tabs: restored } = deserialize(mustParse(JSON.stringify(saved)));
+    const back = listPanes(restored[0].root)[0];
+    expect(back.kind).toBe("chat");
+    expect(back.chat).toEqual(chat);
+    expect(back.id).not.toBe(pane.id);
+    expect(back.historyStreamId).toBeUndefined();
+  });
+
+  it("권한 모드도 왕복한다 · 틀린 모드는 칸만 떨어진다", () => {
+    const withMode = { ...chat, permMode: "acceptEdits" };
+    const saved = serialize([tab("t1", leafOf(newChatTilePane(withMode)))], "t1");
+    expect(JSON.stringify(saved.workspaces[0].root)).toBe(JSON.stringify({ kind: "chat", chat: withMode }));
+    const back = listPanes(deserialize(mustParse(JSON.stringify(saved))).tabs[0].root)[0];
+    expect(back.chat).toEqual(withMode);
+    const file = mustParse(
+      JSON.stringify({ version: TAB_FILE_VERSION, activeIndex: 0, workspaces: [{ title: "a", root: { kind: "chat", chat: { ...chat, permMode: "bypassPermissions" } } }] }),
+    );
+    expect(file.workspaces[0].root).toEqual({ kind: "chat", chat });
+  });
+
+  it("KNOWN_KINDS 에 있다 — 채팅 잎 하나가 파일 전체를 버리지 않는다", () => {
+    expect(parseNode({ kind: "chat", chat })).toEqual({ kind: "chat", chat });
+  });
+
+  it("틀린 chat 명세는 칸만 떨어지고 잎은 시작 타일로 선다", () => {
+    for (const bad of [undefined, { ...chat, chatId: "pc-1" }, { ...chat, cli: "gemini" }]) {
+      const file = mustParse(JSON.stringify({ version: TAB_FILE_VERSION, activeIndex: 0, workspaces: [{ title: "a", root: { kind: "chat", chat: bad } }] }));
+      expect(file.workspaces[0].root).toEqual({ kind: "chat" });
+      expect(kinds(deserialize(file).tabs[0].root)).toEqual(["start"]);
+    }
+  });
+});

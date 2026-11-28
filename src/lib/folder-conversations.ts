@@ -172,7 +172,7 @@ export function folderBranch(
 
 // ── 키 → 동작 ──
 
-export type PickerAction = "up" | "down" | "resume" | "fork" | "forkHere" | "view" | "scope" | "close" | "refresh";
+export type PickerAction = "up" | "down" | "resume" | "resumeChat" | "fork" | "forkHere" | "view" | "scope" | "close" | "refresh";
 
 export interface PickerKeyEvent {
   code: string;
@@ -186,6 +186,8 @@ export interface PickerKeyEvent {
 /** IME 조합 중에는 아무것도 아니다 — 조합을 끝내는 Enter 가 재개가 되지 않게 */
 export function pickerActionForKey(ev: PickerKeyEvent): PickerAction | null {
   if (ev.isComposing) return null;
+  // Alt 조합 중 뜻이 있는 것은 Alt+Enter(채팅으로 열기) 하나뿐
+  if ((ev.code === "Enter" || ev.code === "NumpadEnter") && ev.altKey && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) return "resumeChat";
   if (ev.altKey || ev.metaKey) return null;
   if (ev.code === "Escape") return "close";
   if (ev.code === "ArrowUp" || ev.code === "ArrowDown") {

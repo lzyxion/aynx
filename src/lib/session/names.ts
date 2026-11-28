@@ -1,6 +1,7 @@
 // 패널 이름·탭 제목 합성 — 패널 헤더와 탭 바가 같은 이름을 쓰게 하는 한 곳(순수 함수, 문구는 `tr` 인자).
 
 import type { Key } from "$lib/i18n/keys";
+import { aiDisplayName } from "$lib/pane-icons";
 import { defaultTabNumber, localFsName, tabTitleLabel } from "./factory";
 import { isFileLeafKind, type PaneNode, type PaneSpec, type TabSpec, type Tr } from "./spec";
 import { listPanes } from "./tree";
@@ -58,6 +59,10 @@ export function paneName(pane: PaneSpec, tr: Tr): string {
     return name ? tr("pane.name.run.named", { name }) : tr("pane.name.run");
   }
   if (pane.kind === "producer") return tr("pane.name.producer");
+  if (pane.kind === "chat") {
+    const cli = pane.chat?.cli ?? "";
+    return tr("pane.name.chatTile", { agent: aiDisplayName(cli) ?? cli });
+  }
   if (pane.kind === "query") return pane.query?.name?.trim() || pane.query?.connId || tr("pane.name.query");
   if (pane.kind === "ssh") return pane.alias?.trim() || tr("pane.name.ssh");
   return shellLabel(pane.shell, tr);

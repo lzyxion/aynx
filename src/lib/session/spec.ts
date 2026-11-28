@@ -12,7 +12,7 @@ export type SessionKind = "local" | "ssh";
  * 값은 배치 파일에 글자 그대로 남는다 — 바꾸지 않는다. 걷은 `"plans"` 잎은 복원이 뺀다(`tabs.ts` 의 `RETIRED_KINDS`).
  * `"sftp"` · 원격 `"doc"`/`"image"` 는 자기 연결을 열지 않고 원본 터미널의 세션을 빌린다 — 열면 비밀번호 · TOFU 를 또 묻는다.
  */
-export type PaneKind = SessionKind | "sftp" | "localfs" | "start" | "doc" | "image" | "branches" | "diff" | "query" | "run" | "producer";
+export type PaneKind = SessionKind | "sftp" | "localfs" | "start" | "doc" | "image" | "branches" | "diff" | "query" | "run" | "producer" | "chat";
 
 export function isFileLeafKind(kind: PaneKind): kind is "doc" | "image" {
   return kind === "doc" || kind === "image";
@@ -307,12 +307,32 @@ export interface PaneSpec {
   historyStreamId?: string;
   /** `host` 가 있으면 `folder` 는 서버 경로다 — 이 PC 의 폴더로 쓰면 안 된다 */
   startProject?: { projectId: string; folder: string; host?: string };
-  /** 칸을 고칠 때는 객체를 통째로 새로 단다 — 분할 복제가 같은 객체를 나눠 든다(`diff` · `query` · `run` · `producer` 도 같다) */
+  /** 칸을 고칠 때는 객체를 통째로 새로 단다 — 분할 복제가 같은 객체를 나눠 든다(`diff` · `query` · `run` · `producer` · `chat` 도 같다) */
   branchGraph?: { projectId: string; branch?: string; name?: string };
   diff?: DiffSpec;
   query?: QuerySpec;
   run?: { runId: string; name?: string };
   producer?: ProducerSpec;
+  chat?: ChatTileSpec;
+}
+
+/** 토큰을 싣지 않는다 — 배치 파일 · 창 이관 · 원격 거울로 나간다 */
+export interface ChatTileSpec {
+  /** "ct-" + crypto.randomUUID()(소문자) — 서버 표의 열쇠 */
+  chatId: string;
+  cli: "claude" | "codex";
+  /** "" = CLI 기본 */
+  model: string;
+  /** "" = CLI 기본 */
+  effort: string;
+  /** 타일 폴더(이 PC 의 절대 경로) · "" = 홈(서버에 null) */
+  cwd: string;
+  /** 첫 턴이 선 뒤에만 — 있으면 다시 세울 때 resume */
+  conv?: string;
+  /** 사람이 그 타일에서 고른 CLI 권한 모드 — 없으면 사용자 CLI 설정. Claude: default · acceptEdits · plan · auto / Codex: readOnly · auto · plan */
+  permMode?: string;
+  /** 사람이 고른 Codex 속도 등급 id — 없으면 CLI 기본(스레드 · 사용자 config) */
+  tier?: string;
 }
 
 /** 토큰을 싣지 않는다 — 이 명세는 배치 파일 · 창 이관 · 원격 거울로 나간다 */

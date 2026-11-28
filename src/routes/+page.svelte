@@ -372,7 +372,8 @@
       return place && tab.workspaceId ? [{ ...place, workspaceId: tab.workspaceId, tabId: tab.id, paneId: pane.id,
         tabKey: tab.tabKey, tileKey: pane.tileKey, projectId: tab.projectId, focusedAt: paneFocusedAt(pane.id) }] : [];
     }));
-    publishWorkspaceStatus(dots, tiles, locations);
+    const chatStreams = tabs.flatMap((tab) => listPanes(tab.root)).flatMap((pane) => pane.kind === "chat" && pane.chat ? [pane.chat.chatId] : []);
+    publishWorkspaceStatus(dots, tiles, locations, chatStreams);
   });
   $effect(() => {
     if (paletteVisible()) untrack(ensureConversations);
@@ -690,6 +691,7 @@
     conversations={paletteConversations()}
     conversationsLoading={conversationsLoading()}
     onopenconversation={(agent, id, fork) => openConversationById(agent, id, fork, viewConversationById)}
+    onopenconversationchat={settings.chatTile ? (agent, id) => openConversationById(agent, id, false, viewConversationById, true) : undefined}
     onviewconversation={viewConversationById}
     noAgents={allAgentsDisabled(settings.disabledAgents)}
     usage={usagePaletteEntries(enabledAgentLimits(), usageClock(), t, (a) => aiDisplayName(a) ?? a)}

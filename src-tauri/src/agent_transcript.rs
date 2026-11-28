@@ -5,6 +5,8 @@
 //! - 대화 파일은 90 MB 까지 자라 통째로 읽지 않는다 — 끝(또는 커서)에서 거꾸로 한 쪽씩. 커서는 줄의 시작이어야 한다(앞 바이트가
 //!   `\n`). 대화 파일은 끝에 덧붙기만 하므로 커서는 파일이 자라도 옳다.
 //! - 쪽이 찬 뒤에도 보이는 것이 없는 줄은 계속 먹는다 — 그래야 파일 맨 앞의 메타 줄만 남았을 때 "더 있다" 로 잘못 말하지 않는다.
+//! - 되감은 대화: Claude 는 버린 갈래의 줄을 빼고([`claude_cut`] — 표지가 없는 기록은 지금 그대로) · Codex 는 되감기 조각을 앞 파일과 이어 읽는다
+//!   ([`codex_segments`] — 커서 · 그림 자리는 이은 흐름의 바이트 자리). 사람 말 항목의 `anchor` 는 채팅 타일 되감기의 기준점이다.
 //!
 //! ## 개인정보 — 화면과 오케스트레이션 조정자에만
 //!
@@ -15,6 +17,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -71,6 +74,16 @@ pub(crate) enum Ev {
     Interrupted,
     /// 결과 없는 가장 가까운 도구 호출이 권한에서 거절됐다 — Codex 의 `declined` 는 호출 id 와 따로 놀아 차례로만 붙인다. 보이는 항목이 아니다.
     Declined,
+    /// Codex 코드 모드가 도구 이름에 쓴 서버 이름(`alias`)의 원래 이름 — 보이는 항목이 아니고 화면 이름만 되돌린다.
+    McpServer { alias: String, server: String },
+    /// 바로 앞 에이전트 글이 Codex 계획(글 전체를 `<proposed_plan>` 이 감쌌다) — 보이는 항목이 아니다.
+    PlanText,
+    /// Claude 가 승인된 `ExitPlanMode` 결과 줄에 적은 계획(`toolUseResult.plan`) — 호출 줄 `input.plan` 은 낡은 글일 수 있어 이것만 믿는다.
+    PlanApproved { id: String, plan: String, file: Option<String> },
+    /// 바로 다음 사람 말의 되감기 기준점(Claude user 줄 `uuid` · Codex 턴 id) — 보이는 항목이 아니다.
+    Anchor { id: String },
+    /// Codex `item_completed{UserMessage}` 의 턴 id — 바로 앞 사람 말에 기준점이 없을 때만 붙는다. 보이는 항목이 아니다.
+    LateAnchor { id: String },
 }
 
 pub(crate) type LineEvents = fn(&Value) -> Vec<Ev>;
@@ -161,10 +174,15 @@ pub(crate) fn claude_events(v: &Value) -> Vec<Ev> {
     if ty == "user" {
         let origin = v["origin"]["kind"].as_str();
         let sdk = origin.is_none() && v["entrypoint"] == "sdk-cli";
+        // 기준점은 사람 말 줄만 — 도구 결과 · 끊김 표지 · 로컬 명령 줄은 내지 않는다
+        let anchor = |first: &str| {
+            v["uuid"].as_str().filter(|u| crate::side_chat::event::uuid_ok(u) && !local_command_marker(first.trim_start())).map(|u| Ev::Anchor { id: u.to_owned() })
+        };
         match content {
             Value::String(s) if interrupt_marker(s) => out.push(Ev::Interrupted),
             Value::String(s) => {
                 if claude_human_text(s, origin, sdk) {
+                    out.extend(anchor(s));
                     out.push(Ev::Text {
                         who: Speaker::User,
                         text: s.clone(),
@@ -201,11 +219,25 @@ pub(crate) fn claude_events(v: &Value) -> Vec<Ev> {
                         _ => {}
                     }
                 }
+                // `toolUseResult` 는 줄 하나에 하나 — 결과가 둘 이상인 줄은 어느 호출 것인지 모른다
+                let results: Vec<&Value> = parts.iter().filter(|p| p["type"] == "tool_result").collect();
+                if let ([r], Some(plan)) = (results.as_slice(), v["toolUseResult"]["plan"].as_str()) {
+                    if let (false, Some(id)) = (r["is_error"] == true, r["tool_use_id"].as_str()) {
+                        out.push(Ev::PlanApproved {
+                            id: id.to_owned(),
+                            plan: plan.to_owned(),
+                            file: v["toolUseResult"]["filePath"].as_str().map(str::to_owned),
+                        });
+                    }
+                }
                 // 도구 결과 줄의 이미지는 결과 쪽이라 세지 않는다
                 let tool_line = parts.iter().any(|p| p["type"] == "tool_result");
                 if !texts.is_empty()
                     || (images > 0 && !tool_line && origin.is_none_or(|k| k == "human"))
                 {
+                    if !tool_line && !interrupted {
+                        out.extend(anchor(texts.first().copied().unwrap_or("")));
+                    }
                     out.push(Ev::Text {
                         who: Speaker::User,
                         text: texts.join("\n\n"),
@@ -246,7 +278,7 @@ pub(crate) fn claude_events(v: &Value) -> Vec<Ev> {
     out
 }
 
-/// 말 · 도구는 `response_item` 만 본다 — `event_msg` 는 같은 말의 사본이다(사본이 아닌 끊김 · 거절 · 만든 그림만 거기서 읽는다).
+/// 말 · 도구는 `response_item` 만 본다 — `event_msg` 는 같은 말의 사본이다(사본이 아닌 끊김 · 거절 · 만든 그림 · 사람 말의 턴 id 만 거기서 읽는다).
 /// 주입된 사용자 몫(환경 · 지침 · AGENTS.md)은 목록의 제목 고르기와 같은 판정으로 건너뛴다.
 pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
     if v["type"] == "event_msg" {
@@ -254,6 +286,10 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
         return match pl["type"].as_str().unwrap_or("") {
             "turn_aborted" if pl["reason"] == "interrupted" => vec![Ev::Interrupted],
             "item_completed" if pl["item"]["status"] == "declined" => vec![Ev::Declined],
+            "item_completed" if pl["item"]["type"] == "UserMessage" => {
+                pl["turn_id"].as_str().filter(|t| crate::side_chat::event::uuid_ok(t)).map(|t| Ev::LateAnchor { id: t.to_owned() }).into_iter().collect()
+            }
+            "item_completed" if pl["item"]["type"] == "McpToolCall" => codex_mcp_alias(&pl["item"]).into_iter().collect(),
             "item_completed" => codex_generated_image(&pl["item"]).into_iter().collect(),
             _ => Vec::new(),
         };
@@ -276,6 +312,7 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
             };
             let mut texts: Vec<&str> = Vec::new();
             let mut images = 0u32;
+            let mut plans = 0usize;
             for p in parts {
                 match p["type"].as_str().unwrap_or("") {
                     "input_text" | "output_text" | "text" => {
@@ -283,7 +320,11 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
                             if who == Speaker::User && codex_injected(t) {
                                 continue;
                             }
-                            texts.push(t);
+                            let shown = if who == Speaker::Assistant { strip_proposed_plan(t) } else { t };
+                            if shown.len() != t.len() {
+                                plans += 1;
+                            }
+                            texts.push(shown);
                         }
                     }
                     "input_image" => images += 1,
@@ -293,11 +334,22 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
             if texts.is_empty() && images == 0 {
                 return Vec::new();
             }
-            vec![Ev::Text {
+            // 글 조각이 모두 계획일 때만 — 보통 답과 섞인 말은 계획 덩어리로 그리지 않는다
+            let plan = plans > 0 && plans == texts.len();
+            let mut out = Vec::new();
+            if who == Speaker::User {
+                let turn = pl["internal_chat_message_metadata_passthrough"]["turn_id"].as_str();
+                out.extend(turn.filter(|t| crate::side_chat::event::uuid_ok(t)).map(|t| Ev::Anchor { id: t.to_owned() }));
+            }
+            out.push(Ev::Text {
                 who,
                 text: texts.join("\n\n"),
                 images,
-            }]
+            });
+            if plan {
+                out.push(Ev::PlanText);
+            }
+            out
         }
         // `reasoning`(생각)은 싣지 않는다
         "function_call" => {
@@ -310,11 +362,15 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
                 input,
             }]
         }
-        "custom_tool_call" => vec![Ev::ToolUse {
-            id: call_id(),
-            name: name(),
-            input: pl["input"].clone(),
-        }],
+        "custom_tool_call" => {
+            let inner = (pl["name"] == "exec").then(|| pl["input"].as_str().and_then(code_mode_call)).flatten();
+            let (name, input) = inner.unwrap_or_else(|| (name(), pl["input"].clone()));
+            vec![Ev::ToolUse {
+                id: call_id(),
+                name,
+                input,
+            }]
+        }
         "local_shell_call" => vec![Ev::ToolUse {
             id: call_id(),
             name: "shell".into(),
@@ -326,6 +382,9 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
             input: pl["action"].clone(),
         }],
         "function_call_output" | "custom_tool_call_output" | "local_shell_call_output" => {
+            if let Some((output, error, denied)) = code_mode_result(&pl["output"]) {
+                return vec![Ev::ToolResult { id: call_id(), output, error, denied }];
+            }
             vec![Ev::ToolResult {
                 id: call_id(),
                 output: result_text(&pl["output"]),
@@ -335,6 +394,266 @@ pub(crate) fn codex_events(v: &Value) -> Vec<Ev> {
         }
         _ => Vec::new(),
     }
+}
+
+/// Codex 계획 모드의 답은 롤아웃에 `<proposed_plan>` 으로 감싼 글로 남는다 — **글 전체가 그 한 쌍(꼬리표는 제 줄)일 때만** 꼬리표를 걷는다.
+/// 일부만 감싼 글 · 꼬리표를 말하는 글은 그대로다.
+fn strip_proposed_plan(t: &str) -> &str {
+    const OPEN: &str = "<proposed_plan>";
+    const CLOSE: &str = "</proposed_plan>";
+    let s = t.trim();
+    let Some(inner) = s.strip_prefix(OPEN).and_then(|r| r.strip_suffix(CLOSE)) else { return t };
+    if inner.contains(OPEN) || inner.contains(CLOSE) {
+        return t;
+    }
+    let Some(inner) = inner.strip_prefix("\r\n").or_else(|| inner.strip_prefix('\n')) else { return t };
+    let Some(inner) = inner.strip_suffix("\r\n").or_else(|| inner.strip_suffix('\n')) else { return t };
+    if inner.trim().is_empty() {
+        return t;
+    }
+    inner
+}
+
+// ---------------------------------------------------------------------------
+// Codex 코드 모드 — `exec` 도구가 JS 한 조각으로 안쪽 도구를 부른다
+// ---------------------------------------------------------------------------
+
+const CODE_MODE_MAX_CHARS: usize = 64 * 1024;
+
+/// 코드 모드의 도구 이름은 서버 이름의 `[A-Za-z0-9_]` 밖 글자를 `_` 로 바꾼 꼴이다(실측 `aynx-sessions-dev` → `aynx_sessions_dev`).
+fn codex_mcp_alias(item: &Value) -> Option<Ev> {
+    let server = item["server"].as_str().filter(|s| !s.is_empty())?;
+    let alias: String = server.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    (alias != server).then(|| Ev::McpServer { alias, server: server.to_owned() })
+}
+
+/// 실시간 줄(`side_chat::codex` 의 `command` · 줄을 이은 명령)과 같은 이름표 — 코드 모드 · 함수 호출의 `exec_command` 만.
+fn shown_tool(name: String, input: &Value) -> (String, String) {
+    match input["cmd"].as_str() {
+        Some(cmd) if name == "exec_command" => {
+            let joined = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
+            let summary = match cap(&joined, SUMMARY_MAX_CHARS) {
+                (t, true) => format!("{}…", t.trim_end()),
+                (t, false) => t,
+            };
+            ("command".to_owned(), summary)
+        }
+        _ => {
+            let summary = tool_summary(input);
+            (name, summary)
+        }
+    }
+}
+
+/// 같은 alias 를 두 서버가 쓰면 되돌리지 않는다(`None`).
+fn unalias_mcp(name: &str, aliases: &HashMap<String, Option<String>>) -> Option<String> {
+    let rest = name.strip_prefix("mcp__")?;
+    let (alias, tool) = rest.split_once("__")?;
+    let server = aliases.get(alias)?.as_deref()?;
+    Some(format!("mcp__{server}__{tool}"))
+}
+
+/// `tools.<이름>(<리터럴>)` 이 **딱 하나**인 조각만 그 도구 호출로 푼다 — 둘 이상이거나 리터럴이 아니면 `None`(조각 그대로 보인다).
+fn code_mode_call(src: &str) -> Option<(String, Value)> {
+    if src.chars().count() > CODE_MODE_MAX_CHARS || src.matches("tools.").count() != 1 {
+        return None;
+    }
+    let at = src.find("tools.")? + "tools.".len();
+    let rest = &src[at..];
+    let name_len = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).unwrap_or(rest.len());
+    let name = &rest[..name_len];
+    if name.is_empty() {
+        return None;
+    }
+    let cs: Vec<char> = rest[name_len..].chars().collect();
+    let mut i = 0;
+    js_ws(&cs, &mut i);
+    if cs.get(i) != Some(&'(') {
+        return None;
+    }
+    i += 1;
+    js_ws(&cs, &mut i);
+    let input = if cs.get(i) == Some(&')') { Value::Object(Default::default()) } else { js_value(&cs, &mut i, 0)? };
+    js_ws(&cs, &mut i);
+    (cs.get(i) == Some(&')')).then(|| (name.to_owned(), input))
+}
+
+fn js_ws(cs: &[char], i: &mut usize) {
+    while cs.get(*i).is_some_and(|c| c.is_whitespace()) {
+        *i += 1;
+    }
+}
+
+/// JSON 보다 너그러운 리터럴만 — 따옴표 없는 열쇠 · 홑따옴표 · `${}` 없는 백틱 · 끝 쉼표. 식 · 변수는 `None`.
+fn js_value(cs: &[char], i: &mut usize, depth: u32) -> Option<Value> {
+    if depth > 32 {
+        return None;
+    }
+    js_ws(cs, i);
+    match *cs.get(*i)? {
+        '{' => {
+            *i += 1;
+            let mut m = serde_json::Map::new();
+            loop {
+                js_ws(cs, i);
+                match *cs.get(*i)? {
+                    '}' => {
+                        *i += 1;
+                        return Some(Value::Object(m));
+                    }
+                    q @ ('"' | '\'' | '`') => {
+                        *i += 1;
+                        let k = js_string(cs, i, q)?;
+                        m.insert(k, js_field(cs, i, depth)?);
+                    }
+                    c if c.is_ascii_alphabetic() || c == '_' || c == '$' => {
+                        let s = *i;
+                        while cs.get(*i).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$') {
+                            *i += 1;
+                        }
+                        let k: String = cs[s..*i].iter().collect();
+                        m.insert(k, js_field(cs, i, depth)?);
+                    }
+                    _ => return None,
+                }
+                js_ws(cs, i);
+                match *cs.get(*i)? {
+                    ',' => *i += 1,
+                    '}' => {}
+                    _ => return None,
+                }
+            }
+        }
+        '[' => {
+            *i += 1;
+            let mut a = Vec::new();
+            loop {
+                js_ws(cs, i);
+                if *cs.get(*i)? == ']' {
+                    *i += 1;
+                    return Some(Value::Array(a));
+                }
+                a.push(js_value(cs, i, depth + 1)?);
+                js_ws(cs, i);
+                match *cs.get(*i)? {
+                    ',' => *i += 1,
+                    ']' => {}
+                    _ => return None,
+                }
+            }
+        }
+        q @ ('"' | '\'' | '`') => {
+            *i += 1;
+            js_string(cs, i, q).map(Value::String)
+        }
+        _ => {
+            let s = *i;
+            while cs.get(*i).is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')) {
+                *i += 1;
+            }
+            let word: String = cs[s..*i].iter().collect();
+            match word.as_str() {
+                "true" => Some(Value::Bool(true)),
+                "false" => Some(Value::Bool(false)),
+                "null" | "undefined" => Some(Value::Null),
+                w => serde_json::from_str::<serde_json::Number>(w).ok().map(Value::Number),
+            }
+        }
+    }
+}
+
+fn js_field(cs: &[char], i: &mut usize, depth: u32) -> Option<Value> {
+    js_ws(cs, i);
+    if cs.get(*i) != Some(&':') {
+        return None;
+    }
+    *i += 1;
+    js_value(cs, i, depth + 1)
+}
+
+/// 여는 따옴표 다음부터 — 닫는 따옴표 뒤에 선다.
+fn js_string(cs: &[char], i: &mut usize, q: char) -> Option<String> {
+    let mut out = String::new();
+    loop {
+        let c = *cs.get(*i)?;
+        *i += 1;
+        match c {
+            c if c == q => return Some(out),
+            '$' if q == '`' && cs.get(*i) == Some(&'{') => return None,
+            '\\' => {
+                let e = *cs.get(*i)?;
+                *i += 1;
+                match e {
+                    'n' => out.push('\n'),
+                    't' => out.push('\t'),
+                    'r' => out.push('\r'),
+                    'b' => out.push('\u{8}'),
+                    'f' => out.push('\u{c}'),
+                    'v' => out.push('\u{b}'),
+                    '0' => out.push('\0'),
+                    '\n' => {}
+                    'x' => {
+                        let h: String = cs.get(*i..*i + 2)?.iter().collect();
+                        *i += 2;
+                        out.push(char::from_u32(u32::from_str_radix(&h, 16).ok()?)?);
+                    }
+                    'u' => {
+                        let h: String = if cs.get(*i) == Some(&'{') {
+                            let end = cs[*i..].iter().position(|c| *c == '}')? + *i;
+                            let h = cs[*i + 1..end].iter().collect();
+                            *i = end + 1;
+                            h
+                        } else {
+                            let h = cs.get(*i..*i + 4)?.iter().collect();
+                            *i += 4;
+                            h
+                        };
+                        let n = u32::from_str_radix(&h, 16).ok()?;
+                        // 대리 쌍은 뒤 반쪽과 합친다
+                        if (0xD800..0xDC00).contains(&n) && cs.get(*i) == Some(&'\\') && cs.get(*i + 1) == Some(&'u') {
+                            let lo: String = cs.get(*i + 2..*i + 6)?.iter().collect();
+                            let lo = u32::from_str_radix(&lo, 16).ok()?;
+                            *i += 6;
+                            out.push(char::from_u32(0x10000 + ((n - 0xD800) << 10) + (lo.checked_sub(0xDC00)?))?);
+                        } else {
+                            out.push(char::from_u32(n).unwrap_or('\u{fffd}'));
+                        }
+                    }
+                    other => out.push(other),
+                }
+            }
+            c => out.push(c),
+        }
+    }
+}
+
+/// `exec` 결과(`Script completed|failed` 머리 + 조각들) → (출력, 오류, 사람이 거절). 안쪽 명령의 JSON 결과는 `output` 만.
+fn code_mode_result(v: &Value) -> Option<(String, bool, bool)> {
+    let parts: Vec<&str> = v.as_array()?.iter().filter_map(|p| p["text"].as_str()).collect();
+    let head = *parts.first()?;
+    let failed = head.starts_with("Script failed");
+    if !failed && !head.starts_with("Script completed") {
+        return None;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for p in &parts[1..] {
+        let t = p.trim_start();
+        let inner = t.starts_with('{').then(|| serde_json::from_str::<Value>(t).ok()).flatten();
+        let mcp = inner.as_ref().and_then(|j| j["content"].as_array()).map(|cs| {
+            cs.iter().filter_map(|c| c["text"].as_str()).collect::<Vec<_>>().join("\n")
+        });
+        match (inner.as_ref().and_then(|j| j["output"].as_str()), mcp) {
+            (Some(o), _) => out.push(o.to_owned()),
+            (None, Some(t)) => out.push(t),
+            (None, None) => out.push((*p).to_owned()),
+        }
+    }
+    let exit_bad = parts[1..].iter().any(|p| {
+        serde_json::from_str::<Value>(p.trim_start()).ok().and_then(|j| j["exit_code"].as_i64()).is_some_and(|c| c != 0)
+    });
+    // Codex 가 사람의 거절을 적는 글 — `Rejected("rejected by user")`
+    let denied = parts.iter().any(|p| p.contains("rejected by user"));
+    Some((out.join("\n"), failed || exit_bad, denied))
 }
 
 /// 만든 그림 → 에이전트 말 `![지시문](savedPath)`(사이드 채팅 실시간 `side_chat::event::image_markdown` 과 같은 글자). 그림
@@ -609,6 +928,30 @@ pub struct TranscriptItem {
     /// 맨 끝의 파일 첨부 꼬리에서 읽은 파일 이름 — 글에서는 걷혔다.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<String>,
+    /// 계획 표지 — Codex 계획 글(`assistant` · 본문은 `text`) · Claude `ExitPlanMode` 호출(`tool`). 화면에 따라 덩어리로 그린다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanTag>,
+    /// 되감기 기준점 — 사람 말 줄만. Claude = 그 user 줄 `uuid` · Codex = 그 말의 턴 id. 화면이 `chat_tile_rewind` 에 그대로 돌려준다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
+}
+
+/// 계획 줄의 덧칸 — **`Debug` 없음**. Claude 본문은 믿을 수 있는 출처에서만 채운다(`settle_plans`) — 없으면 경로 · 결과만.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanTag {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub body_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    /// `approved` · `kept`(사람이 계속 계획을 골랐다) — 결과가 없거나 끊겼으면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<&'static str>,
+    /// 계속 계획에 사람이 쓴 고칠 점 — 앱 기본 글은 싣지 않는다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback: Option<String>,
 }
 
 /// `cursor` 가 있으면 더 오래된 것이 있다(다음 호출의 `before`).
@@ -704,7 +1047,10 @@ struct LineOut {
 }
 
 fn counts(e: &Ev) -> bool {
-    !matches!(e, Ev::ToolResult { .. } | Ev::Declined)
+    !matches!(
+        e,
+        Ev::ToolResult { .. } | Ev::Declined | Ev::McpServer { .. } | Ev::PlanText | Ev::PlanApproved { .. } | Ev::Anchor { .. } | Ev::LateAnchor { .. }
+    )
 }
 
 fn weight(e: &Ev) -> usize {
@@ -712,16 +1058,29 @@ fn weight(e: &Ev) -> usize {
         Ev::Text { text, .. } => text.len().min(TEXT_MAX_CHARS * 4),
         Ev::ToolUse { input, .. } => 64 + input.to_string().len().min(INPUT_MAX_CHARS * 4),
         Ev::ToolResult { output, .. } => output.len().min(OUTPUT_MAX_CHARS * 4),
-        Ev::Interrupted | Ev::Declined => 16,
+        Ev::PlanApproved { plan, .. } => plan.len().min(TEXT_MAX_CHARS * 4),
+        Ev::Interrupted | Ev::Declined | Ev::McpServer { .. } | Ev::PlanText | Ev::Anchor { .. } | Ev::LateAnchor { .. } => 16,
     }
 }
 
 fn read_page_from<R: Read + Seek>(
+    f: R,
+    size: u64,
+    before: Option<u64>,
+    limit: usize,
+    parse: LineEvents,
+) -> Result<TranscriptPage, String> {
+    read_page_in(f, size, before, limit, parse, &HashSet::new())
+}
+
+/// `cut` = 되감기로 버려진 갈래의 줄 `uuid`([`claude_cut`]) — 그 줄은 빈 줄처럼 건너뛴다.
+fn read_page_in<R: Read + Seek>(
     mut f: R,
     size: u64,
     before: Option<u64>,
     limit: usize,
     parse: LineEvents,
+    cut: &HashSet<String>,
 ) -> Result<TranscriptPage, String> {
     let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
     let end = match before {
@@ -767,13 +1126,19 @@ fn read_page_from<R: Read + Seek>(
             cursor = off;
             continue;
         };
+        if !cut.is_empty() && v["uuid"].as_str().is_some_and(|u| cut.contains(u)) {
+            cursor = off;
+            continue;
+        }
         if latest && last.is_none() {
             last = line_model(&v, off);
         }
         let evs = parse(&v);
         let has_content = !evs.is_empty();
+        // 늦은 기준점만 든 줄은 쪽을 끊지 않는다 — 그 줄이 없던 때와 커서가 같다
+        let stops = evs.iter().any(|e| !matches!(e, Ev::LateAnchor { .. }));
         let full = shown >= limit || (bytes >= PAGE_MAX_BYTES && shown > 0);
-        if full && has_content && (orphans.is_empty() || extra >= EXTEND_MAX_LINES) {
+        if full && stops && (orphans.is_empty() || extra >= EXTEND_MAX_LINES) {
             more = true;
             break;
         }
@@ -785,7 +1150,7 @@ fn read_page_from<R: Read + Seek>(
         if !has_content {
             continue;
         }
-        if full {
+        if full && stops {
             extra += 1;
         }
         for e in &evs {
@@ -902,9 +1267,23 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
     let attach_root = crate::agent_attachments::attachments_root().ok().map(|p| norm_path(&p.to_string_lossy()));
     let mut items: Vec<TranscriptItem> = Vec::new();
     let mut calls: HashMap<String, usize> = HashMap::new();
+    let mut aliases: HashMap<String, Option<String>> = HashMap::new();
+    let mut plans = PlanTrack::default();
+    // Codex 코드 모드 — 오래 도는 `exec` 는 "cell ID N" 만 돌려주고, 결과(사람의 거절 포함)는 뒤의 `wait{cell_id}` 가 받는다
+    let mut cells: HashMap<String, usize> = HashMap::new();
+    let mut waits: HashMap<String, String> = HashMap::new();
+    let mut next_anchor: Option<String> = None;
     for LineOut { at, evs, mut pics } in lines {
         for e in evs {
             match e {
+                Ev::PlanText => {
+                    if let Some(last) = items.last_mut().filter(|i| i.role == "assistant") {
+                        last.plan = Some(PlanTag::default());
+                    }
+                }
+                Ev::PlanApproved { id, plan, file } => {
+                    plans.approved.insert(id, (plan, file));
+                }
                 Ev::Text { who, text, images } => {
                     // 그림이 붙은 말은 줄에 하나뿐이다 — 그 말이 줄의 그림 자리를 가져간다
                     let pictures = if images > 0 { std::mem::take(&mut pics) } else { Vec::new() };
@@ -913,7 +1292,15 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                     let brief = briefed.is_some();
                     let text = briefed.unwrap_or(text);
                     // 파일 첨부 꼬리는 연결 머리글보다 먼저 걷는다 — 머리글만 있는 글의 `] ` 가 꼬리 앞에 남는다
-                    let refs = (who == Speaker::User).then(|| crate::side_chat::event::parse_file_refs(&text).map(|(n, b)| (n, b.to_owned()))).flatten();
+                    // 사이드 채팅 사본(`…/attachments/<이름>`) 또는 채팅 타일의 앱 첨부 자리(`<root>/<64hex>/<이름>`) — 같은 꼬리 꼴만
+                    let refs = (who == Speaker::User)
+                        .then(|| {
+                            use crate::side_chat::event::{parse_file_refs, parse_file_refs_by};
+                            parse_file_refs(&text)
+                                .or_else(|| attach_root.as_deref().and_then(|r| parse_file_refs_by(&text, |p| attach_name(p, r))))
+                                .map(|(n, b)| (n, b.to_owned()))
+                        })
+                        .flatten();
                     let (mut files, text) = match refs {
                         Some((names, body)) => (names, body),
                         None => (Vec::new(), text),
@@ -932,6 +1319,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         None => (None, text),
                     };
                     let (text, truncated) = cap(&text, TEXT_MAX_CHARS);
+                    let anchor = next_anchor.take().filter(|_| who == Speaker::User);
                     items.push(TranscriptItem {
                         role: if who == Speaker::User {
                             "user"
@@ -948,14 +1336,25 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         wake,
                         brief,
                         files,
+                        plan: None,
+                        anchor,
                     });
                 }
                 Ev::ToolUse { id, name, input } => {
                     let text = tool_input_text(&input);
                     let (input_text, input_truncated) = cap(&text, INPUT_MAX_CHARS);
+                    let plan = plans.on_call(&id, &name, &input, items.len());
+                    if name == "wait" {
+                        let cell = input["cell_id"].as_str().map(str::to_owned).or_else(|| input["cell_id"].as_u64().map(|n| n.to_string()));
+                        if let (Some(cell), false) = (cell, id.is_empty()) {
+                            waits.insert(id.clone(), cell);
+                        }
+                    }
                     if !id.is_empty() {
                         calls.insert(id, items.len());
                     }
+                    let name = unalias_mcp(&name, &aliases).unwrap_or(name);
+                    let (name, summary) = shown_tool(name, &input);
                     items.push(TranscriptItem {
                         role: "tool",
                         text: None,
@@ -964,7 +1363,7 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         pictures: Vec::new(),
                         tool: Some(ToolCall {
                             name,
-                            summary: tool_summary(&input),
+                            summary,
                             input: (!input_text.trim().is_empty()).then_some(input_text),
                             input_truncated,
                             output: None,
@@ -977,9 +1376,21 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         wake: None,
                         brief: false,
                         files: Vec::new(),
+                        plan,
+                        anchor: None,
                     });
                 }
                 Ev::ToolResult { id, output, error, denied } => {
+                    plans.results.insert(id.clone(), error);
+                    if let (Some(cell), Some(&at_call)) = (output.strip_prefix(CELL_RUNNING).and_then(|r| r.split_whitespace().next()), calls.get(&id)) {
+                        cells.insert(cell.to_owned(), at_call);
+                    }
+                    // 기다린 명령의 거절 — 그 명령 줄에 단다(기다리는 줄이 가로채지 않게)
+                    let waited = waits.get(&id).and_then(|c| cells.get(c)).copied().filter(|_| denied);
+                    let denied = denied && waited.is_none();
+                    if let Some(t) = waited.and_then(|i| items.get_mut(i)).and_then(|i| i.tool.as_mut()) {
+                        t.denied = true;
+                    }
                     let (out, output_truncated) = cap(&output, OUTPUT_MAX_CHARS);
                     let slot = calls
                         .get(&id)
@@ -1013,6 +1424,8 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                             wake: None,
                             brief: false,
                             files: Vec::new(),
+                            plan: None,
+                            anchor: None,
                         }),
                     }
                 }
@@ -1028,7 +1441,16 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                     wake: None,
                     brief: false,
                     files: Vec::new(),
+                    plan: None,
+                    anchor: None,
                 }),
+                Ev::Anchor { id } => next_anchor = Some(id),
+                // 바로 앞 항목이 기준점 없는 사람 말일 때만 — 다른 말의 턴 id 를 붙이지 않는다
+                Ev::LateAnchor { id } => {
+                    if let Some(last) = items.last_mut().filter(|i| i.role == "user" && i.anchor.is_none()) {
+                        last.anchor = Some(id);
+                    }
+                }
                 Ev::Declined => {
                     // 결과 줄은 이 표식보다 뒤에 온다
                     let open = items
@@ -1041,10 +1463,114 @@ fn assemble(lines: Vec<LineOut>) -> Vec<TranscriptItem> {
                         t.denied = true;
                     }
                 }
+                Ev::McpServer { alias, server } => {
+                    let slot = aliases.entry(alias).or_insert_with(|| Some(server.clone()));
+                    if slot.as_deref() != Some(server.as_str()) {
+                        *slot = None;
+                    }
+                    // 완료 표지는 호출 뒤에 온다 — 이미 놓인 줄도 되돌린다
+                    for t in items.iter_mut().filter_map(|i| i.tool.as_mut()) {
+                        if let Some(n) = unalias_mcp(&t.name, &aliases) {
+                            t.name = n;
+                        }
+                    }
+                }
             }
         }
     }
+    plans.settle(&mut items);
     items
+}
+
+/// Codex 코드 모드 `exec` 가 끝나기 전에 돌려주는 글의 머리.
+const CELL_RUNNING: &str = "Script running with cell ID ";
+
+/// Claude 계획(`ExitPlanMode`)의 본문 출처. 믿는 것은 둘뿐이다 — ① 승인 결과 줄의 `toolUseResult.plan`(CLI 가 승인된 글을 적는다)
+/// ② 그 호출 앞의 마지막 **통째 쓰기**(`Write`)가 성공한 계획 파일 글(CLI 는 카드에 그 파일을 보인다). 호출 줄의 `input.plan` 은 낡을 수 있어 쓰지 않고,
+/// 그 사이 부분 고치기(`Edit` 등)가 있었거나 쓰기가 이 쪽에 없으면 본문 없이 경로 · 결과만 낸다. 파일은 읽지 않는다(그 뒤 바뀌었을 수 있다).
+#[derive(Default)]
+struct PlanTrack {
+    /// 정규화 경로 → 마지막 통째 쓰기(호출 id · 글) — `None` = 그 뒤 부분 고치기
+    writes: HashMap<String, Option<(String, String)>>,
+    last_plan_file: Option<String>,
+    calls: Vec<PlanCall>,
+    approved: HashMap<String, (String, Option<String>)>,
+    /// 호출 id → 오류였나
+    results: HashMap<String, bool>,
+}
+
+struct PlanCall {
+    /// `items` 의 자리
+    at: usize,
+    id: String,
+    file: Option<String>,
+    /// 그 호출 앞의 마지막 통째 쓰기(호출 id · 글)
+    write: Option<(String, String)>,
+}
+
+fn plan_file_like(p: &str) -> bool {
+    let n = p.replace('\\', "/");
+    let mut parts = n.rsplit('/');
+    let name = parts.next().unwrap_or("");
+    name.to_ascii_lowercase().ends_with(".md") && parts.next().is_some_and(|d| d.eq_ignore_ascii_case("plans"))
+}
+
+impl PlanTrack {
+    fn on_call(&mut self, id: &str, name: &str, input: &Value, at: usize) -> Option<PlanTag> {
+        let path = input["file_path"].as_str().filter(|s| !s.is_empty());
+        match (name, path) {
+            ("Write", Some(p)) => {
+                let content = input["content"].as_str().map(|c| (id.to_owned(), c.to_owned()));
+                self.writes.insert(norm_path(p), content);
+                if plan_file_like(p) {
+                    self.last_plan_file = Some(p.to_owned());
+                }
+                None
+            }
+            ("Edit" | "MultiEdit", Some(p)) => {
+                self.writes.insert(norm_path(p), None);
+                if plan_file_like(p) {
+                    self.last_plan_file = Some(p.to_owned());
+                }
+                None
+            }
+            ("ExitPlanMode", _) => {
+                let file = input["planFilePath"].as_str().filter(|s| !s.is_empty()).map(str::to_owned).or_else(|| self.last_plan_file.clone());
+                let write = file.as_deref().and_then(|f| self.writes.get(&norm_path(f)).cloned().flatten());
+                self.calls.push(PlanCall { at, id: id.to_owned(), file, write });
+                Some(PlanTag::default())
+            }
+            _ => None,
+        }
+    }
+
+    fn settle(self, items: &mut [TranscriptItem]) {
+        for PlanCall { at, id, file, write } in self.calls {
+            let Some(item) = items.get_mut(at) else { continue };
+            let Some(tool) = item.tool.as_ref() else { continue };
+            let outcome = match (&tool.output, tool.error, tool.denied) {
+                (Some(_), false, _) => Some("approved"),
+                (Some(_), true, true) => Some("kept"),
+                _ => None,
+            };
+            let feedback = (outcome == Some("kept"))
+                .then(|| tool.output.as_deref().map(str::trim).filter(|o| !o.is_empty() && *o != crate::side_chat::claude::PLAN_KEEP && *o != crate::side_chat::claude::DENIED))
+                .flatten()
+                .map(|o| cap(o, 2_000).0);
+            let approved = self.approved.get(&id);
+            let written = write.filter(|(w, _)| self.results.get(w) == Some(&false)).map(|(_, body)| body);
+            let body = approved.map(|(p, _)| p.clone()).or(written);
+            let (body, body_truncated) = match body {
+                Some(b) => {
+                    let (b, cut) = cap(&b, TEXT_MAX_CHARS);
+                    (Some(b), cut)
+                }
+                None => (None, false),
+            };
+            let file = approved.and_then(|(_, f)| f.clone()).or(file);
+            item.plan = Some(PlanTag { body, body_truncated, file, outcome, feedback });
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,7 +1631,7 @@ fn turn_tail_from<R: Read + Seek>(f: R, size: u64, parse: LineEvents) -> std::io
                 Ev::Text {
                     who: Speaker::User, ..
                 } => return Ok(out),
-                Ev::Interrupted | Ev::Declined => {}
+                Ev::Interrupted | Ev::Declined | Ev::McpServer { .. } | Ev::PlanText | Ev::PlanApproved { .. } | Ev::Anchor { .. } | Ev::LateAnchor { .. } => {}
             }
         }
     }
@@ -1199,18 +1725,6 @@ pub(crate) fn default_limit() -> usize {
     LIMIT_DEFAULT
 }
 
-fn read_page(
-    path: &Path,
-    before: Option<u64>,
-    limit: usize,
-    parse: LineEvents,
-) -> Result<TranscriptPage, String> {
-    let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
-    let f = std::fs::File::open(path).map_err(io)?;
-    let size = f.metadata().map_err(io)?.len();
-    read_page_from(f, size, before, limit, parse)
-}
-
 /// **오케스트레이션의 고정 파일 전용** — 그쪽이 CLI 폴더 · worktree cwd 를 **이 손잡이로** 검증했다. 화면의 명령은 경로를 받지 않는다.
 pub(crate) fn page_of_file(
     f: std::fs::File,
@@ -1221,9 +1735,35 @@ pub(crate) fn page_of_file(
     let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
     let size = f.metadata().map_err(io)?.len();
     let mut page = read_page_from(f, size, before, limit.unwrap_or(LIMIT_DEFAULT), parse)?;
-    // 모델 · 강도는 표시 전용 — 오케스트레이션(MCP `read_worker`)으로는 싣지 않는다
+    // 모델 · 강도 · 되감기 기준점은 화면 전용 — 오케스트레이션(MCP `read_worker`)으로는 싣지 않는다
     page.last = None;
+    for it in &mut page.items {
+        it.anchor = None;
+    }
     Ok(page)
+}
+
+/// 화면이 읽는 기록 — Claude 는 되감기로 버려진 갈래를 뺀 그 파일 · Codex 는 되감기 조각을 이은 가상 흐름(조각이 하나면 그 파일 그대로).
+enum Source {
+    File(PathBuf, Arc<HashSet<String>>),
+    Segments(Segments),
+}
+
+fn source_of(t: &'static SessionTarget, roots: &[PathBuf], id: &str) -> Result<Source, String> {
+    let path = crate::agent_sessions::conversation_file(t, roots, id)?;
+    if t.id == "claude" {
+        let cut = claude_cut(&path);
+        return Ok(Source::File(path, cut));
+    }
+    let id = id.to_ascii_lowercase();
+    let files = crate::agent_sessions::codex_files_of(roots, &id);
+    // 되감은 직후의 새 조각에는 턴이 없어 색인이 옛 파일을 고를 수 있다 — 이름(만든 순)이 가장 늦은 것이 지금 조각이다
+    let newest = files.last().cloned().unwrap_or(path);
+    let segs = codex_segments(&files, &newest, &id);
+    match segs.as_slice() {
+        [(only, _)] => Ok(Source::File(only.clone(), Arc::default())),
+        _ => Segments::open(&segs).map(Source::Segments).map_err(|e| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}")),
+    }
 }
 
 fn transcript_in(
@@ -1233,8 +1773,304 @@ fn transcript_in(
     before: Option<u64>,
     limit: Option<usize>,
 ) -> Result<TranscriptPage, String> {
-    let path = crate::agent_sessions::conversation_file(t, roots, id)?;
-    read_page(&path, before, limit.unwrap_or(LIMIT_DEFAULT), t.transcript)
+    let limit = limit.unwrap_or(LIMIT_DEFAULT);
+    match source_of(t, roots, id)? {
+        Source::File(path, cut) => {
+            let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
+            let f = std::fs::File::open(&path).map_err(io)?;
+            let size = f.metadata().map_err(io)?.len();
+            read_page_in(f, size, before, limit, t.transcript, &cut)
+        }
+        Source::Segments(s) => {
+            let size = s.total;
+            read_page_from(s, size, before, limit, t.transcript)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Claude 되감기 갈래 — 되감은 기록은 버려진 갈래를 뺀다
+// ---------------------------------------------------------------------------
+
+/// CLI 가 대화를 되감을 때 남기는 표지 줄(`last-prompt`)의 글자 — 이것이 없는 기록은 줄 순서 그대로 읽는다(지금과 한 글자도 같다).
+const REWOUND_MARK: &[u8] = br#""rewound":true"#;
+const CUT_MEMO_MAX: usize = 32;
+
+/// 갈래를 따지는 데 필요한 칸만 — 본문은 읽지 않는다.
+#[derive(serde::Deserialize)]
+struct ChainLine {
+    #[serde(rename = "type")]
+    ty: Option<String>,
+    uuid: Option<String>,
+    #[serde(rename = "parentUuid")]
+    parent: Option<String>,
+    #[serde(rename = "logicalParentUuid")]
+    logical: Option<String>,
+    rewound: Option<bool>,
+    #[serde(rename = "cutUuid")]
+    cut_uuid: Option<String>,
+}
+
+/// 버려진 갈래 — `last-prompt{rewound:true, cutUuid}` 마다 그 표지 **앞**에 적힌 줄 가운데 `parentUuid`(압축 경계는 `logicalParentUuid`)를
+/// 거슬러 `cutUuid` 에 닿는 줄. 없는 uuid · 끊긴 사슬 · 사슬 칸 없는 줄은 남긴다(줄 순서 그대로).
+/// 잎에서 거슬러 오르는 대신 잘린 쪽을 고르는 까닭: 되감은 적 없는 기록에도 잎 사슬 밖 줄(병렬 도구 결과 등)이 흔하다.
+fn cut_of(lines: impl Iterator<Item = ChainLine>) -> HashSet<String> {
+    let mut parent: HashMap<String, Option<String>> = HashMap::new();
+    let mut order: Vec<(String, usize)> = Vec::new();
+    let mut marks: Vec<(String, usize)> = Vec::new();
+    for (i, l) in lines.enumerate() {
+        if l.ty.as_deref() == Some("last-prompt") && l.rewound == Some(true) {
+            marks.extend(l.cut_uuid.map(|c| (c, i)));
+        }
+        if let Some(u) = l.uuid {
+            parent.insert(u.clone(), l.parent.or(l.logical));
+            order.push((u, i));
+        }
+    }
+    let mut out = HashSet::new();
+    for (cut, at) in marks {
+        if !parent.contains_key(&cut) {
+            continue;
+        }
+        let mut memo: HashMap<&str, bool> = HashMap::new();
+        for (u, i) in &order {
+            if *i < at && descends(u, &cut, &parent, &mut memo) {
+                out.insert(u.clone());
+            }
+        }
+    }
+    out
+}
+
+fn descends<'a>(u: &'a str, cut: &str, parent: &'a HashMap<String, Option<String>>, memo: &mut HashMap<&'a str, bool>) -> bool {
+    let mut path: Vec<&'a str> = Vec::new();
+    let mut cur = Some(u);
+    let mut hit = false;
+    while let Some(c) = cur {
+        if c == cut {
+            hit = true;
+            break;
+        }
+        if let Some(&m) = memo.get(c) {
+            hit = m;
+            break;
+        }
+        // 고리면 남긴다
+        if path.len() > parent.len() {
+            break;
+        }
+        path.push(c);
+        cur = parent.get(c).and_then(|p| p.as_deref());
+    }
+    for p in path {
+        memo.insert(p, hit);
+    }
+    hit
+}
+
+struct CutMemo {
+    path: PathBuf,
+    len: u64,
+    mtime: Option<std::time::SystemTime>,
+    marked: bool,
+    cut: Arc<HashSet<String>>,
+}
+
+static CUT_MEMO: LazyLock<Mutex<Vec<CutMemo>>> = LazyLock::new(Default::default);
+
+/// `[from, 끝)` 에 표지 글자가 있나 — 앞 조각과 걸친 자리는 부르는 쪽이 `from` 을 당겨 덮는다.
+fn has_mark(path: &Path, from: u64) -> std::io::Result<bool> {
+    let mut f = std::fs::File::open(path)?;
+    f.seek(SeekFrom::Start(from))?;
+    let mut buf = vec![0u8; CHUNK_BYTES as usize];
+    let mut carry: Vec<u8> = Vec::new();
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            return Ok(false);
+        }
+        carry.extend_from_slice(&buf[..n]);
+        let found = carry.iter().enumerate().any(|(i, b)| *b == b'"' && carry[i..].starts_with(REWOUND_MARK));
+        if found {
+            return Ok(true);
+        }
+        let keep = carry.len().saturating_sub(REWOUND_MARK.len() - 1);
+        carry.drain(..keep);
+    }
+}
+
+fn cut_full(path: &Path) -> std::io::Result<HashSet<String>> {
+    use std::io::BufRead;
+    let f = std::io::BufReader::new(std::fs::File::open(path)?);
+    let lines = f.split(b'\n').map_while(Result::ok).filter_map(|l| serde_json::from_slice::<ChainLine>(&l).ok());
+    Ok(cut_of(lines))
+}
+
+/// 그 Claude 기록의 버려진 갈래 줄 `uuid`. 되감기 표지가 없으면 비었다 — 파일이 자라면 늘어난 꼬리만 표지를 찾는다.
+pub(crate) fn claude_cut(path: &Path) -> Arc<HashSet<String>> {
+    let Ok(md) = std::fs::metadata(path) else { return Arc::default() };
+    let (len, mtime) = (md.len(), md.modified().ok());
+    let lock = || CUT_MEMO.lock().unwrap_or_else(|e| e.into_inner());
+    let prev = lock().iter().find(|m| m.path == path).map(|m| (m.len, m.mtime, m.marked, Arc::clone(&m.cut)));
+    let from = match prev {
+        Some((l, t, _, cut)) if l == len && t == mtime => return cut,
+        Some((l, _, false, _)) if l < len => l.saturating_sub(REWOUND_MARK.len() as u64 - 1),
+        _ => 0,
+    };
+    let marked = prev.is_some_and(|p| p.2 && p.0 <= len) || has_mark(path, from).unwrap_or(false);
+    let cut = if marked { Arc::new(cut_full(path).unwrap_or_default()) } else { Arc::default() };
+    let mut memo = lock();
+    memo.retain(|m| m.path != path);
+    if memo.len() >= CUT_MEMO_MAX {
+        memo.remove(0);
+    }
+    memo.push(CutMemo { path: path.to_path_buf(), len, mtime, marked, cut: Arc::clone(&cut) });
+    cut
+}
+
+/// 되감기 기준점 판정의 결과.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RewindPoint {
+    /// 현재 갈래의 마지막 사람 줄 `uuid`(CLI 의 `last_seen_user_message_uuid`).
+    pub last_seen: String,
+    /// 기준점 뒤에 현재 갈래의 압축 경계가 있다 — resume 한 CLI 는 이 기준점을 거절한다.
+    pub before_compact: bool,
+}
+
+const COMPACT_MARK: &[u8] = br#""compact_boundary""#;
+
+/// 되감기 op 의 서버 판정 — `anchor` 가 현재 갈래의 진짜 사람 줄일 때만 `Some`. 블로킹(파일).
+pub(crate) fn claude_rewind_point(path: &Path, anchor: &str) -> Option<RewindPoint> {
+    use std::io::BufRead;
+    let cut = claude_cut(path);
+    let f = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+    let (mut found, mut last, mut before_compact) = (false, None, false);
+    for raw in f.split(b'\n').map_while(Result::ok) {
+        let boundary = raw.windows(COMPACT_MARK.len()).any(|w| w == COMPACT_MARK);
+        // 사람 줄은 늘 `"type":"user"` 를 품는다 — 나머지 줄은 파싱하지 않는다
+        if !boundary && !raw.windows(6).any(|w| w == b"\"user\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_slice::<Value>(&raw) else { continue };
+        if v["uuid"].as_str().is_some_and(|u| cut.contains(u)) {
+            continue;
+        }
+        if v["type"] == "system" && v["subtype"] == "compact_boundary" {
+            before_compact |= found;
+            continue;
+        }
+        if let Some(id) = claude_events(&v).into_iter().find_map(|e| match e {
+            Ev::Anchor { id } => Some(id),
+            _ => None,
+        }) {
+            found |= id == anchor;
+            last = Some(id);
+        }
+    }
+    let last_seen = found.then_some(last).flatten()?;
+    Some(RewindPoint { last_seen, before_compact })
+}
+
+/// `from` 바이트 뒤에 대화 되감기 표지가 적혔나 — CLI 는 제어 답을 먼저 내고 표지를 조금 뒤에 쓴다. 블로킹(파일).
+pub(crate) fn claude_marked_since(path: &Path, from: u64) -> bool {
+    has_mark(path, from.saturating_sub(REWOUND_MARK.len() as u64 - 1)).unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
+// Codex 되감기 조각 — 앞 조각의 앞부분 + 지금 조각을 한 흐름으로
+// ---------------------------------------------------------------------------
+
+const SEGMENTS_MAX: usize = 16;
+
+/// 파일 이름이 담은 id — 조각이면 꼬리 `_<조각 id>` · 원본이면 대화 id.
+fn file_thread_id(path: &Path, id: &str) -> Option<String> {
+    let stem = path.file_stem()?.to_string_lossy().to_ascii_lowercase();
+    let at = stem.find(id)?;
+    let rest = &stem[at + id.len()..];
+    match rest.strip_prefix('_') {
+        Some(seg) if crate::agent_sessions::uuid_shape(seg) => Some(seg.to_string()),
+        Some(_) => None,
+        None => rest.is_empty().then(|| id.to_string()),
+    }
+}
+
+/// 그 대화의 읽을 조각들 — 앞 조각부터 `(파일, 읽을 바이트)`. 지금 조각의 첫 줄 `session_meta.payload.history_base{thread_id, end_byte_offset}` 의
+/// `thread_id` 를 **파일 이름의 id** 와 맞춰 그 파일의 앞 `end_byte_offset` 바이트를 붙인다(되풀이 · 16개). 대상 크기가 모자라거나 그 자리가 줄 끝이
+/// 아니면 거기서 멈춘다 — 그 조각부터만 읽는다.
+fn codex_segments(files: &[PathBuf], newest: &Path, id: &str) -> Vec<(PathBuf, u64)> {
+    let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    let Some(n) = size(newest) else { return vec![(newest.to_path_buf(), 0)] };
+    let mut chain = vec![(newest.to_path_buf(), n)];
+    let mut cur = newest.to_path_buf();
+    while chain.len() < SEGMENTS_MAX {
+        let Some(meta) = crate::agent_sessions::first_line_json(&cur) else { break };
+        let hb = &meta["payload"]["history_base"];
+        let (Some(tid), Some(off)) = (hb["thread_id"].as_str(), hb["end_byte_offset"].as_u64()) else { break };
+        let tid = tid.to_ascii_lowercase();
+        let Some(target) = files.iter().find(|f| **f != cur && !chain.iter().any(|(c, _)| c == *f) && file_thread_id(f, id).as_deref() == Some(tid.as_str())) else {
+            break;
+        };
+        if off == 0 || size(target).is_none_or(|s| s < off) || byte_at(target, off - 1) != Some(b'\n') {
+            break;
+        }
+        chain.push((target.clone(), off));
+        cur = target.clone();
+    }
+    chain.reverse();
+    chain
+}
+
+fn byte_at(path: &Path, at: u64) -> Option<u8> {
+    let mut f = std::fs::File::open(path).ok()?;
+    f.seek(SeekFrom::Start(at)).ok()?;
+    let mut one = [0u8; 1];
+    f.read_exact(&mut one).ok()?;
+    Some(one[0])
+}
+
+/// 여러 파일의 앞부분을 하나로 보이는 `Read + Seek` — 커서(`before`) · 그림 자리는 이 가상 흐름의 바이트 자리다(앞 조각은 굳었고 마지막 조각만 자란다).
+struct Segments {
+    /// (파일, 가상 시작, 길이)
+    parts: Vec<(std::fs::File, u64, u64)>,
+    pos: u64,
+    total: u64,
+}
+
+impl Segments {
+    fn open(segs: &[(PathBuf, u64)]) -> std::io::Result<Segments> {
+        let mut parts = Vec::new();
+        let mut at = 0u64;
+        for (p, len) in segs {
+            parts.push((std::fs::File::open(p)?, at, *len));
+            at += len;
+        }
+        Ok(Segments { parts, pos: 0, total: at })
+    }
+}
+
+impl Read for Segments {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let pos = self.pos;
+        let Some((f, start, len)) = self.parts.iter_mut().find(|(_, s, l)| pos >= *s && pos < *s + *l) else { return Ok(0) };
+        let inner = pos - *start;
+        let n = ((*len - inner) as usize).min(buf.len());
+        f.seek(SeekFrom::Start(inner))?;
+        let got = f.read(&mut buf[..n])?;
+        self.pos += got as u64;
+        Ok(got)
+    }
+}
+
+impl Seek for Segments {
+    fn seek(&mut self, to: SeekFrom) -> std::io::Result<u64> {
+        let next = match to {
+            SeekFrom::Start(n) => Some(n),
+            SeekFrom::End(d) => self.total.checked_add_signed(d),
+            SeekFrom::Current(d) => self.pos.checked_add_signed(d),
+        };
+        self.pos = next.ok_or_else(|| std::io::Error::other("seek"))?;
+        Ok(self.pos)
+    }
 }
 
 /// 파일은 id 로 목록의 색인에서만 찾는다(경로를 받지 않는다).
@@ -1251,10 +2087,24 @@ pub async fn agent_conversation_transcript(
         .map_err(|e| e.to_string())?
 }
 
-fn image_in_file(path: &Path, at: u64, len: u64, n: u32) -> Result<Vec<u8>, String> {
+/// 자리는 쪽을 낸 것과 같은 흐름의 바이트 자리다(Codex 조각이면 가상 흐름).
+fn image_in(src: Source, at: u64, len: u64, n: u32) -> Result<Vec<u8>, String> {
     let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
-    let mut f = std::fs::File::open(path).map_err(io)?;
-    let size = f.metadata().map_err(io)?.len();
+    match src {
+        Source::File(path, _) => {
+            let f = std::fs::File::open(&path).map_err(io)?;
+            let size = f.metadata().map_err(io)?.len();
+            image_in_reader(f, size, at, len, n)
+        }
+        Source::Segments(s) => {
+            let size = s.total;
+            image_in_reader(s, size, at, len, n)
+        }
+    }
+}
+
+fn image_in_reader<R: Read + Seek>(mut f: R, size: u64, at: u64, len: u64, n: u32) -> Result<Vec<u8>, String> {
+    let io = |e: std::io::Error| tr!(ko: "대화 파일을 읽지 못했습니다: {e}", en: "Could not read the conversation file: {e}");
     if len == 0 || len > IMAGE_LINE_MAX_BYTES || at.saturating_add(len) > size {
         return image_in_window(size, 0, &[], at, len, n);
     }
@@ -1276,10 +2126,7 @@ pub async fn agent_conversation_image(
     n: u32,
 ) -> Result<tauri::ipc::Response, String> {
     let t = crate::agent_sessions::target(&agent)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = crate::agent_sessions::conversation_file(t, &(t.roots)(), &id)?;
-        image_in_file(&path, at, len, n)
-    })
+    tauri::async_runtime::spawn_blocking(move || image_in(source_of(t, &(t.roots)(), &id)?, at, len, n))
     .await
     .map_err(|e| e.to_string())?
     .map(tauri::ipc::Response::new)

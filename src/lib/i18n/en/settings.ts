@@ -1358,6 +1358,8 @@ export const settings: Record<keyof typeof koSettings, string> = {
   "ai.start_dir.placeholder": "Leave empty to open in your home folder",
   "ai.start_dir.browse": "Browse…",
   "ai.start_dir.dialog": "Choose the folder to open AI tiles in",
+  "ai.chat_tile.label": "Chat form for AI tiles (experimental)",
+  "ai.chat_tile.note": "Shows [Chat] next to each agent in the new tile menu. It opens the conversation in chat form with the same CLI, settings, instructions and MCP servers. Local folders only.",
   "ai.start_dir.note.before": "The ",
   "ai.start_dir.note.term": "current folder",
   "ai.start_dir.note.after": " of the focused local terminal wins when there is one; this value is used when there is not (from the start screen, or from an SSH tile). A folder that does not exist falls back to home.",

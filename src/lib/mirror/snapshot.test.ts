@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PaneSpec, TabSpec } from "$lib/session/spec";
 import { MAX_WORKSPACES, MIRROR_VERSION, buildSnapshot, parseSnapshot, sanitizePane, sanitizeView } from "./snapshot";
+import { mirrorTileMode } from "./tile-policy";
 
 // 원격 웹 R2-B — 메인 PC 화면 거울의 스냅숏은 허용 칸만 싣는다(실행 재료 · 토큰 표식 · 화면 버퍼는 원격으로 가지 않는다).
 
@@ -273,5 +274,15 @@ describe("startBoard", () => {
       expect(out).not.toBeNull();
       expect(out).not.toHaveProperty("startBoard");
     }
+  });
+});
+
+describe("채팅 모양 AI 타일 — 거울", () => {
+  it("chat 명세가 남고(토큰 칸은 없다) 원격은 따로 읽어 그린다", () => {
+    const chat: PaneSpec = { id: "pane-7", kind: "chat", chat: { chatId: "ct-0f8fad5b-d9cb-469f-a165-70867728950e", cli: "claude", model: "", effort: "", cwd: "C:/w", conv: "1b4e28ba-2fa1-11d2-883f-0016d3cca427" } };
+    const out = sanitizePane(chat);
+    expect(out).toEqual(chat);
+    expect(out.chat).not.toBe(chat.chat);
+    expect(mirrorTileMode("chat")).toBe("render");
   });
 });

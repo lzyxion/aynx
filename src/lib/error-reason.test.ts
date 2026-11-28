@@ -85,6 +85,22 @@ describe("stripReason — 사용자는 대괄호를 보지 않는다", () => {
     }
   });
 
+  it("채팅 타일 권한 모드 · 결정 넷 — 대괄호를 떼고 서로 오인하지 않는다", () => {
+    expect(stripReason("[bad-mode] this permission mode cannot be chosen here")).toBe("this permission mode cannot be chosen here");
+    expect(stripReason("[bad-answer] x")).toBe("x");
+    expect(stripReason("[no-session-allow] x")).toBe("x");
+    expect(stripReason("[unsupported] x")).toBe("x");
+    expect(hasReason("[git-unsupported] x", "unsupported")).toBe(false);
+    expect(hasReason("[unsupported] x", "unsupported")).toBe(true);
+  });
+
+  it("대화 상호 거절 둘 — 사이드 채팅 ↔ 채팅 타일", () => {
+    expect(stripReason("[conversation-in-side-chat] this conversation is held by a side chat")).toBe("this conversation is held by a side chat");
+    expect(stripReason("[conversation-in-chat-tile] this conversation is open in a chat tile")).toBe("this conversation is open in a chat tile");
+    expect(hasReason("[conversation-in-chat-tile] x", "conversation-in-chat-tile")).toBe(true);
+    expect(hasReason("[conversation-in-chat-tile] x", "conversation-in-side-chat")).toBe(false);
+  });
+
   it("금고 셋이 표에 있다 — Rust `errors.rs` 의 상수와 글자까지 같다", () => {
     // 2026-09-19 (docs/log/2026-09-19-vault.md): 이 셋이 표에 없으면 `[vault-locked]`
     // 대괄호가 **화면에 그대로 찍힌다** (`stripReason` 의 정규식이 이 목록에서 나온다).
@@ -115,5 +131,51 @@ describe("withReason — 프런트가 스스로 만드는 실패", () => {
     expect(made).toBe("[session-gone] 터미널이 연결되어 있지 않습니다");
     expect(hasReason(made, "session-gone")).toBe(true);
     expect(stripReason(made)).toBe("터미널이 연결되어 있지 않습니다");
+  });
+});
+
+describe("채팅 모양 AI 타일의 이유 코드", () => {
+  it("새 다섯이 표에 있고 화면 글에서 떨어진다", () => {
+    for (const code of ["wrong-chat-kind", "bad-cwd", "conversation-busy", "chat-tile-off", "not-ready"] as const) {
+      expect(REASONS).toContain(code);
+      expect(hasReason(`[${code}] chat tile`, code)).toBe(true);
+      expect(stripReason(`[${code}] chat tile`)).toBe("chat tile");
+    }
+  });
+
+  it("압축 · 스킬 다섯 — 표에 있고 대괄호를 뗀다", () => {
+    for (const code of ["turn-running", "not-started", "nothing-to-compact", "bad-instructions", "bad-skill"] as const) {
+      expect(REASONS).toContain(code);
+      expect(hasReason(`[${code}] chat tile`, code)).toBe(true);
+      expect(stripReason(`[${code}] chat tile`)).toBe("chat tile");
+    }
+    expect(stripReason("[turn-running] a turn is running — compact after it ends")).toBe("a turn is running — compact after it ends");
+    expect(hasReason("[not-started] x", "session-gone")).toBe(false);
+  });
+
+  it("되감기 일곱 — 표에 있고 대괄호를 뗀다 · 서로 오인하지 않는다", () => {
+    for (const code of ["bad-anchor", "bad-scope", "nothing-to-rewind", "preview-first", "rewind-running", "rewind-timeout", "rewind-failed"] as const) {
+      expect(REASONS).toContain(code);
+      expect(hasReason(`[${code}] chat tile`, code)).toBe(true);
+      expect(stripReason(`[${code}] chat tile`)).toBe("chat tile");
+    }
+    expect(stripReason("[preview-first] preview this rewind first")).toBe("preview this rewind first");
+    expect(stripReason("[rewind-timeout]")).toBe("");
+    expect(hasReason("[rewind-running] x", "turn-running")).toBe(false);
+    expect(hasReason("[bad-scope] x", "bad-anchor")).toBe(false);
+  });
+});
+
+describe("채팅 타일 검토 · 목표 · 속도 · MCP 상태 일곱", () => {
+  it("표에 있고 대괄호를 뗀다 · 서로 · 비슷한 낱말을 오인하지 않는다", () => {
+    for (const code of ["bad-review-target", "bad-goal", "bad-objective", "bad-budget", "no-goal", "bad-tier", "mcp-status-busy"] as const) {
+      expect(REASONS).toContain(code);
+      expect(hasReason(`[${code}] chat tile`, code)).toBe(true);
+      expect(stripReason(`[${code}] chat tile`)).toBe("chat tile");
+    }
+    expect(hasReason("[mcp-status-busy] x", "busy")).toBe(false);
+    expect(hasReason("[bad-goal] x", "no-goal")).toBe(false);
+    expect(hasReason("[bad-objective] x", "bad-goal")).toBe(false);
+    expect(hasReason("[bad-review-target] x", "review-active")).toBe(false);
   });
 });

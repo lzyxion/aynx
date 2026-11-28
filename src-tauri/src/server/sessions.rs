@@ -5,7 +5,7 @@
 //! - **연결이 끊겨도 세션은 산다**(임대만 푼다 · `Detached`). 세션 종료는 명시 op 와 셸의 자연 종료뿐이고, 복원이 데려가지 않은 세션도 닫지 않는다.
 //! - 시청자 규칙은 `crate::session_core::viewers` 머리말 하나다. 시청자 크레딧은 수문·전체 예산과 무관 — 넘치면 그 시청자만 뗀다.
 
-use super::{ai, hub, producer, side_chat};
+use super::{ai, chat_tile, hub, producer, side_chat};
 
 mod types;
 mod io;

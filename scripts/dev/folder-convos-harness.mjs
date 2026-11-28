@@ -17,7 +17,8 @@
 // 기록 보기 ⑨ 밖에서 열림 → 한 번 묻는다 ⑩ 독 지난 대화 칸 클릭 · ⋯ 메뉴(단축키 글자) · 팔레트 줄 — 같은 목록 ⑪ 빈 상태(quiet: 단추
 // 없음 · 빈 워크트리: 이 프로젝트 전체 보기) · 0 이어도 흐리지 않음 ⑫ 폴더 없는 타일 → 탭의 프로젝트 폴더 · 빈 탭 → 모든 대화
 // ⑬ 시작 화면(대화 0 인 프로젝트 · 새 워크트리도 선다 · 칩 · Tab · 빈 상태 단추 · Enter = 셸) ⑭ 예외 0.
-// PNG: fconv.png · fconv-split.png · fconv-empty.png · fconv-menu.png · pstart-empty.png
+// Ⓐ 채팅으로 열기(설정 끔 = 오늘 그대로 · 켬 = 두 단추 · open 먼저 · 거절 · 흐림 셋 · 기록 시트).
+// PNG: fconv.png · fconv-split.png · fconv-empty.png · fconv-menu.png · pstart-empty.png · fconv-chat(-narrow · -blocked).png · fconv-viewer-chat.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { waitBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
@@ -76,6 +77,10 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   const OTHERS = [S(30, 'C:\\\\Users\\\\me\\\\scratch', 90 * 60_000, { title: 'Scratch question' })];
   window.__launch = [];
   window.__tr = [];
+  window.__ctOpen = []; window.__linksReads = 0; window.__ctHold = false; window.__ctFail = null;
+  const ctCli = {};
+  const ctSnap = (chat) => ({ chat, cli: ctCli[chat] ?? 'claude', model: '', effort: null, cwd: FEAT, epoch: 0, seq: 0, status: 'stopped',
+    conversationId: null, mcpServers: [], liveTurn: [], pending: [] });
   const TR = [];
   for (let i = 0; i < 12; i++) TR.push({ role: i % 2 ? 'assistant' : 'user', text: 'Line ' + i, truncated: false, images: 0, tool: null, at: NOW - (12 - i) * 60_000 });
   const answers = {
@@ -118,6 +123,22 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       if (cmd === 'git_worktree_add') return Promise.resolve({ path: 'C:/src/proj-wt/' + args.name, branch: args.name, branch_created: true });
       if (cmd === 'load_settings') return Promise.resolve(window.__settings ?? {});
       if (cmd === 'agent_autorun_command') return Promise.resolve(args.command);
+      // 채팅으로 열기(Ⓐ) — open 은 __ctHold 면 풀릴 때까지 잡아 두고 __ctFail 이면 한 번 거절한다
+      if (cmd === 'agent_conversation_links') { window.__linksReads++; return Promise.resolve([]); }
+      if (cmd === 'side_chat_dir') return Promise.resolve('C:/Users/me/AppData/Roaming/aynx/sidechat/' + args.id);
+      if (cmd === 'side_chats_save') return Promise.resolve({ rev: 2 });
+      if (cmd === 'side_chat_list') return Promise.resolve([]);
+      if (cmd === 'side_chat_subscribe') return Promise.resolve(null);
+      if (cmd === 'side_chat_attach') return Promise.resolve({ link: null, chat: args.chat, cli: 'claude', model: '', effort: null, epoch: 0, leaseEpoch: 0, seq: 0, status: 'stopped', conversationId: null, cwd: null, mcpServers: [], liveTurn: [], pending: [] });
+      if (cmd === 'chat_tile_open') {
+        window.__ctOpen.push({ args, panes: document.querySelectorAll('[data-pane]').length });
+        if (window.__ctFail) { const m = window.__ctFail; window.__ctFail = null; return Promise.reject(new Error(m)); }
+        ctCli[args.chat] = args.cli;
+        if (window.__ctHold) { window.__ctHold = false; return new Promise((r) => { window.__ctRelease = () => r(ctSnap(args.chat)); }); }
+        return Promise.resolve(ctSnap(args.chat));
+      }
+      if (cmd === 'chat_tile_subscribe') return Promise.resolve({ subGen: 1, snapshot: ctSnap(args.chat) });
+      if (cmd === 'chat_tile_unsubscribe' || cmd === 'chat_tile_close') return Promise.resolve(true);
       if (cmd === 'agent_sessions_list') {
         const byKey = {}; for (const [k, v] of Object.entries(window.__convo)) byKey[key(k)] = v;
         return Promise.resolve({
@@ -429,6 +450,142 @@ await ev(`(async () => { const s = await ${setMod}; s.setProjectStartScreen('aut
 await sleep(2500);
 const saved = await ev(`(() => { const c = window.__calls.filter(c => c[0] === 'workspaces_apply' && c[1]?.mutation?.op === 'putTabs').at(-1); return c ? JSON.stringify(c[1]) : null; })()`);
 check(typeof saved === "string" && !/Feature Y|Busy elsewhere|Fix the flaky|Conversation \d|Scratch question/.test(saved), `workspaces.json 에 대화 제목 없음 (${saved ? saved.length + " B" : "저장 없음"})`);
+
+// ── Ⓐ 채팅으로 열기 — 설정 [ai] chat_tile 끔/켬 ─────────────────────────────────
+// 같은 대화를 채팅 모양으로(fork 아님) · 서버 open 이 먼저 · 거절이면 잎 없음(docs/log/2026-11-28-chat-tile-stage2-contract.md 5-3 · 5-4)
+const ALT = 1;
+const chatPanes = async () => JSON.parse(await ev(`(async () => { const w = await ${tabsMod}; ${WALK} return JSON.stringify(w.currentWorkspaceTabs().flatMap(t => walk(t.root, [])).filter(p => p.kind === 'chat').map(p => ({ id: p.id, chat: p.chat }))); })()`));
+const focusOf = async () => ev(`(async () => { const w = await ${tabsMod}; const t = w.activeTab(); return t ? w.paneOf(t) : null; })()`);
+const BTNS = (sel) => `JSON.stringify([...${sel}].map(b => ({ act: b.dataset.act, cls: [...b.classList].filter(c => !/^s(velte)?-/.test(c)).join(' '), disabled: b.disabled, title: b.title, text: b.textContent.trim(), fits: b.scrollWidth <= b.clientWidth + 1 })))`;
+const acts = async (rid) => JSON.parse(await ev(`(() => { const r = ${PICK}?.querySelector('[data-fc-row="${rid}"]'); return r ? ${BTNS(`r.querySelectorAll('[data-convo-acts] [data-act]')`)} : 'null'; })()`));
+const selectRow = async (rid) => { await ev(`${PICK}.querySelector('[data-fc-row="${rid}"] .main').click()`); await sleep(200); };
+const openPicker = async (pane) => { await focusPaneBody(pane); await key("KeyY", CTRL | SHIFT, "Y"); await sleep(900); };
+const setChat = async (on) => { await ev(`(async () => { const s = await ${setMod}; s.setChatTile(${on}); })()`); await sleep(200); };
+const toasts = async () => JSON.parse(await ev(`JSON.stringify([...document.querySelectorAll('.toasts .toast')].map(t => t.textContent.replace(/\\s+/g, ' ').trim()))`));
+const opens = async () => JSON.parse(await ev(`JSON.stringify(window.__ctOpen)`));
+// 줄 셋을 더 둔다 — 23 경로 없음 · 24 사이드 채팅의 대화 · 22 는 밖에서 열리지 않게 되돌린다
+await ev(`(() => { const L = window.__convo[${JSON.stringify(FEAT.toLowerCase())}]; const b = L.find(x => x.id === '${id(21)}'); L.find(x => x.id === '${id(22)}').updatedAt = Date.now() - 50 * 3600_000; L.push({ ...b, id: '${id(23)}', title: 'Gone folder', updatedAt: b.updatedAt - 60_000, cwdExists: false }, { ...b, id: '${id(24)}', title: 'Side chat convo', updatedAt: b.updatedAt - 120_000 }); })()`);
+const shellC = await openShellTab(null, "C:\\src\\proj-wt\\feat-y\\src");
+const tabC = (await state()).tab;
+
+// A1 끔 → 오늘 그대로
+await setChat(false);
+await openPicker(shellC);
+let a = await acts(id(20));
+check(JSON.stringify(a?.map((b) => b.act)) === JSON.stringify(["more", "resume"]) && a[1].cls === "btn btn-primary btn-sm" && a[1].text === "재개", `A1 끔 → 고른 줄 단추 [⋯][재개] 그대로 (${JSON.stringify(a?.map((b) => b.act + ":" + b.cls))})`);
+pk = await picker();
+check(pk.keys === "Enter옆에서 이어서 Shift+Enter새 대화로 계속 Ctrl+Enter기록 보기 Tab범위" && !(await ev(`!!${PICK}.querySelector('[data-fc-chat]')`)), `A1 끔 → 바닥 줄 그대로 (${pk.keys})`);
+await key("Enter", ALT); await sleep(400);
+check((await opens()).length === 0 && (await ev(`!!${PICK}`)) === true, "A1 끔 → Alt+Enter 는 아무것도 하지 않는다");
+await key("Escape"); await sleep(300);
+
+// A2 켬 → [⋯][터미널로 열기][채팅으로 열기] 같은 무게
+await setChat(true);
+await openPicker(shellC);
+a = await acts(id(20));
+check(JSON.stringify(a?.map((b) => b.act)) === JSON.stringify(["more", "resume", "resume-chat"]), `A2 켬 → 단추 셋 (${JSON.stringify(a?.map((b) => b.act))})`);
+check(a?.[1].cls === "btn btn-secondary btn-sm" && a[2].cls === a[1].cls && a[1].text === "터미널로 열기" && a[2].text === "채팅으로 열기", `A2 두 단추 같은 class · 글자 (${a?.[1].cls} | ${a?.[2].cls})`);
+check(a?.[1].title === "터미널로 열기 (Enter)" && a[2].title === "채팅으로 열기 (Alt+Enter)" && !a[1].disabled && !a[2].disabled && a.every((b) => b.fits), `A2 툴팁 · 잘림 없음 (${a?.map((b) => b.title)})`);
+pk = await picker();
+check(pk.keys === "Enter옆에서 이어서 Alt+Enter채팅으로 열기 Shift+Enter새 대화로 계속 Ctrl+Enter기록 보기 Tab범위", `A2 바닥 줄에 Alt+Enter (${pk.keys})`);
+console.log("capture:", await shot("fconv-chat.png"));
+// 좁은 창 — 줄 안에 단추가 다 들어간다
+await send("Emulation.setDeviceMetricsOverride", { width: 640, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(600);
+const narrow = JSON.parse(await ev(`(() => { const p = ${PICK}.getBoundingClientRect(); const r = ${PICK}.querySelector('[data-fc-row="${id(20)}"]').getBoundingClientRect(); const bs = [...${PICK}.querySelectorAll('[data-fc-row="${id(20)}"] [data-convo-acts] [data-act]')].map(b => { const x = b.getBoundingClientRect(); return { l: Math.round(x.left), r: Math.round(x.right), fits: b.scrollWidth <= b.clientWidth + 1 }; }); return JSON.stringify({ pr: Math.round(p.right), rr: Math.round(r.right), bs }); })()`));
+check(narrow.bs.length === 3 && narrow.bs.every((b) => b.fits && b.r <= narrow.rr + 1 && b.r <= narrow.pr), `A2 좁은 창(640) — 단추가 줄 · 목록 안 · 글자 안 잘림 (${JSON.stringify(narrow)})`);
+console.log("capture:", await shot("fconv-chat-narrow.png"));
+await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(500);
+
+// A3 [채팅으로 열기] → chat_tile_open{resume} 이 잎보다 먼저 · 옆에 채팅 잎
+const launches0 = await ev(`window.__launch.length`);
+await ev(`window.__ctHold = true`);
+await ev(`${PICK}.querySelector('[data-fc-row="${id(20)}"] [data-act="resume-chat"]').click()`); await sleep(500);
+let o = await opens();
+check(o.length === 1 && JSON.stringify(o[0].args.mode) === JSON.stringify({ kind: "resume", conv: id(20) }) && o[0].args.cli === "claude" && o[0].args.model === "" && o[0].args.chat.startsWith("ct-"), `A3 chat_tile_open{mode:resume · conv} (${JSON.stringify(o[0]?.args)})`);
+check((await chatPanes()).length === 0, "A3 서버 답 전에는 잎이 없다");
+await ev(`window.__ctRelease()`); await sleep(1200);
+let cp = await chatPanes();
+let s4 = await state();
+check(cp.length === 1 && cp[0].chat.conv === id(20) && cp[0].chat.cwd === FEAT && cp[0].chat.chatId === o[0].args.chat && cp[0].chat.cli === "claude", `A3 kind:"chat" 잎 · conv = 그 id · cwd = 스냅숏 cwd (${JSON.stringify(cp[0]?.chat)})`);
+check(s4.tab === tabC && s4.panes.length === 2 && s4.focus === cp[0]?.id && (await ev(`window.__launch.length`)) === launches0, `A3 같은 탭 셸 옆 · 포커스 · 터미널 명세를 묻지 않는다 (${s4.panes.length} · ${s4.focus})`);
+await openPicker(shellC);
+a = await acts(id(20));
+const pill20 = await ev(`${PICK}.querySelector('[data-fc-row="${id(20)}"] [data-pill="open"]')?.textContent.trim() ?? null`);
+check(pill20 === "열림" && JSON.stringify(a?.map((b) => b.act)) === JSON.stringify(["more", "goto"]), `A3 줄 = 열림 + [타일로 가기] (${pill20} · ${JSON.stringify(a?.map((b) => b.act))})`);
+await ev(`${PICK}.querySelector('[data-fc-row="${id(20)}"] [data-act="goto"]').click()`); await sleep(500);
+check((await focusOf()) === cp[0]?.id && (await opens()).length === 1 && (await chatPanes()).length === 1, "A3 [타일로 가기] → 그 채팅 잎에 포커스 · 새로 열지 않는다");
+
+// A4 Alt+Enter 도 같다
+await openPicker(shellC);
+await selectRow(id(21));
+await key("Enter", ALT); await sleep(1200);
+o = await opens();
+cp = await chatPanes();
+check(o.length === 2 && o[1].args.mode.conv === id(21) && cp.length === 2 && cp.some((p) => p.chat.conv === id(21)) && !(await ev(`!!${PICK}`)), `A4 Alt+Enter → 채팅 잎 (${o.length} · ${cp.length})`);
+
+// A5 거절 → 알림 하나 · 잎 없음 · 장부 다시 읽기
+await openPicker(shellC);
+await selectRow(id(22));
+const reads0 = await ev(`window.__linksReads`);
+const toasts0 = (await toasts()).length;
+const refuse = "[conversation-in-side-chat] this conversation is held by a side chat";
+const ctText = importApp("chat-tile/chat-tile-text.ts");
+const want = await ev(`(async () => (await ${ctText}).chatTileErrorText(new Error(${JSON.stringify(refuse)})))()`);
+await ev(`window.__ctFail = ${JSON.stringify(refuse)}`);
+await ev(`${PICK}.querySelector('[data-fc-row="${id(22)}"] [data-act="resume-chat"]').click()`); await sleep(900);
+const ts = await toasts();
+check((await opens()).length === 3 && (await chatPanes()).length === 2, `A5 거절 → 잎 수 그대로 (${(await chatPanes()).length})`);
+check(ts.length === toasts0 + 1 && typeof want === "string" && ts.at(-1)?.includes(want), `A5 알림 하나 = chatTileErrorText (${JSON.stringify(ts.at(-1))} · ${want})`);
+check((await ev(`window.__linksReads`)) > reads0, `A5 agent_conversation_links 다시 읽음 (${reads0} → ${await ev(`window.__linksReads`)})`);
+
+// A6 밖에서 열림 → [채팅으로 열기] 흐림 · Enter 는 오늘의 한 번 묻기
+await ev(`window.__convo[${JSON.stringify(FEAT.toLowerCase())}].find(x => x.id === '${id(22)}').updatedAt = Date.now() - 20000`);
+await openPicker(shellC);
+await selectRow(id(22));
+a = await acts(id(22));
+check(a?.[1].act === "resume" && !a[1].disabled && a[2].act === "resume-chat" && a[2].disabled && a[2].title === "Aynx 밖에서 열려 있는 대화는 채팅으로 열 수 없습니다", `A6 밖에서 열림 → 채팅 흐림 · 툴팁 (${JSON.stringify(a?.[2])})`);
+await key("Enter"); await sleep(300);
+check((await ev(`!!${PICK}?.querySelector('[data-fc-confirm]')`)) === true && (await opens()).length === 3, "A6 Enter → 한 번 묻는다(터미널)");
+await key("Escape"); await sleep(200);
+await key("Enter", ALT); await sleep(300);
+check((await opens()).length === 3, "A6 Alt+Enter → 아무것도 안 함");
+
+// A7 경로 없음 → 둘 다 흐림
+await selectRow(id(23));
+a = await acts(id(23));
+check(a?.[1].disabled && a[2].disabled && a[2].title === "시작한 폴더가 없습니다" && (await ev(`!!${PICK}.querySelector('[data-fc-row="${id(23)}"] [data-pill="missing"]')`)), `A7 경로 없음 → 둘 다 흐림 (${JSON.stringify(a?.map((b) => b.disabled))})`);
+
+await key("Escape"); await sleep(300);
+
+// A9 기록 보기 시트 머리 [새 대화로 계속][터미널로 열기][채팅으로 열기]
+await ev(`window.__convo[${JSON.stringify(FEAT.toLowerCase())}].find(x => x.id === '${id(22)}').updatedAt = Date.now() - 50 * 3600_000`);
+await openPicker(shellC);
+await selectRow(id(22));
+await key("Enter", CTRL); await sleep(800);
+const va = JSON.parse(await ev(`${BTNS(`document.querySelectorAll('[data-viewer-acts] [data-act]')`)}`));
+check(JSON.stringify(va.filter((b) => b.act !== "delete").map((b) => b.act)) === JSON.stringify(["fork", "resume", "resume-chat"]) && va.filter((b) => b.act !== "delete").every((b) => b.cls === "btn btn-secondary btn-sm" && !b.disabled), `A9 시트 머리 단추 셋 · 같은 무게 (${JSON.stringify(va.map((b) => b.act + ":" + b.cls))})`);
+console.log("capture:", await shot("fconv-viewer-chat.png"));
+await ev(`document.querySelector('[data-viewer-acts] [data-act="resume-chat"]').click()`); await sleep(1200);
+o = await opens();
+cp = await chatPanes();
+check(o.length === 4 && JSON.stringify(o[3].args.mode) === JSON.stringify({ kind: "resume", conv: id(22) }) && cp.length === 3 && !(await ev(`!!document.querySelector('[data-convo-viewer]')`)), `A9 시트의 채팅 → 같은 호출 · 시트 닫힘 · 잎 (${o.length} · ${cp.length})`);
+// (사이드 채팅을 세우는 판이라 맨 끝)
+// A8 사이드 채팅의 대화 → 채팅만 흐림(사이드 채팅 하나가 id(24) 를 쥔다)
+const scMod = importApp("app/side-chats.svelte.ts");
+await ev(`(async () => { const m = await ${scMod}; const c = await m.newSideChat('claude', ''); m.noteSideChatConversation(c.id, 'claude', '${id(24)}'); })()`); await sleep(400);
+await openPicker(shellC);
+await selectRow(id(24));
+a = await acts(id(24));
+const sidePill = await ev(`!!${PICK}.querySelector('[data-fc-row="${id(24)}"] [data-pill="side-chat"]')`);
+check(sidePill === true && !a?.[1].disabled && a?.[2].disabled && a[2].title === "사이드 채팅의 대화입니다 — 사이드 채팅에서 이어 가세요", `A8 사이드 채팅 → 채팅 흐림 · 툴팁 (${sidePill} · ${a?.[2]?.title})`);
+await key("Enter", ALT); await sleep(300);
+check((await opens()).length === 4, "A8 Alt+Enter → 아무것도 안 함");
+console.log("capture:", await shot("fconv-chat-blocked.png"));
+await key("Escape"); await sleep(300);
+
+// 끝 — 만든 탭을 걷고 빈 탭 하나
+await closeAllTabs();
+await ev(`(async () => { const w = await ${tabsMod}; const s = await ${sessMod}; w.openTab(s.newTab()); })()`); await sleep(300);
 
 console.log(errors.length ? "exceptions:\n  " + errors.join("\n  ") : "no exceptions");
 check(errors.length === 0, `예외 0 (${errors.length})`);

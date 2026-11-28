@@ -199,6 +199,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "remoteReauth.what.orchestration_delete_archived": "Delete an archived album forever",
   "remoteReauth.what.orchestration_merge": "Merge an album into a branch",
   "remoteReauth.what.set_session_ai_read": "Allow AI to read this tile",
+  "remoteReauth.what.chat_tile_goal_start": "Set or resume a goal in a chat tile",
   "veil.gate.title": "Locked",
   "veil.gate.label": "Master password",
   // The locked screen must not tell a passer-by that an empty Enter opens it (see `Veil.svelte`).
@@ -370,6 +371,9 @@ export const app: Record<keyof typeof koApp, string> = {
   "dock.launch.installAiTip": "Install Claude Code or Codex and it appears here — Settings › AI agents",
   "dock.launch.otherShells": "Right-click: other shells",
   "dock.launch.orchestration": "Orchestration",
+  "dock.launch.terminal": "Terminal",
+  "dock.launch.chat": "Chat",
+  "dock.launch.chatTip": "{name} — open in chat form",
   "keepAwake.label": "Keep awake",
   "keepAwake.on": "Keep awake on",
   "keepAwake.off": "Keep awake off",
@@ -460,6 +464,7 @@ export const app: Record<keyof typeof koApp, string> = {
   "chatDock.err.tooMany": "You can attach up to 8 photos and files in one message.",
   "chatDock.err.tooBig": "An attached file is larger than 10 MB.",
   "chatDock.err.attachment": "The attached file could not be sent — try attaching it again.",
+  "chatDock.err.inChatTile": "This conversation is open in a chat tile — close that tile and try again",
   "chatDock.err.cliNotFound": "This CLI's executable (.exe) was not found on PATH — chats do not use the .cmd version installed by npm.",
   "chatDock.fork.unknown": "This tile's conversation is not known yet — talk to the AI once and try again",
   "chatDock.fork.failed": "Could not continue in a side chat: {e}",
@@ -593,6 +598,8 @@ export const app: Record<keyof typeof koApp, string> = {
   "agent.stop.toast": "{name} — {agent} finished its turn",
   "agent.permission.body": "{agent} is asking for permission",
   "agent.permission.toast": "{name} — {agent} is asking for permission",
+  "agent.failed.body": "{agent} failed to answer",
+  "agent.failed.toast": "{name} — {agent} failed to answer",
   "messenger.command": "Command {outcome}",
   "messenger.osc": "Program notification — {text}",
   "messenger.tools": "{n} tool uses",
@@ -744,6 +751,8 @@ export const app: Record<keyof typeof koApp, string> = {
   // AI CLI picker
   "ai.launch.aria": "Choose an AI CLI to open",
   "ai.launch.notInstalled": "Not installed",
+  "ai.launch.terminal": "Terminal",
+  "ai.launch.chat": "Chat",
 
   // ── Restore · reconnect ───────────────────────────────────────────────────
   "restore.tabs": "Restored {count} tabs.",

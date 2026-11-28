@@ -26,7 +26,7 @@ import {
   type TabTemplate,
 } from "$lib/tab-templates";
 import { freshAgentAutorun } from "$lib/agent-sessions";
-import { leafOf, newLocalPane, newProjectStartPane, newQueryPane, newRunPane, newSshPane, type PaneNode } from "$lib/session";
+import { leafOf, newChatTilePane, newLocalPane, newProjectStartPane, newQueryPane, newRunPane, newSshPane, type PaneNode } from "$lib/session";
 import type { SavedNode } from "$lib/tabs";
 
 const split = (dir: "row" | "col", a: PaneNode, b: PaneNode, ratio = 0.5): PaneNode => ({ type: "split", dir, ratio, a, b });
@@ -332,5 +332,14 @@ describe("첫 AI 잎 — firstAiLeaf · withFirstAi", () => {
   it("AI 잎이 없으면 트리 그대로", () => {
     const plain: SavedNode = { kind: "query", query: { connId: "c1" } };
     expect(withFirstAi(plain, { autorun: "claude" })).toEqual(plain);
+  });
+});
+
+describe("채팅 모양 AI 타일 — 템플릿에서 빠진다", () => {
+  it("채팅 잎은 세지 않고 빼며 남는 것만 템플릿이 된다", () => {
+    const chat = newChatTilePane({ chatId: "ct-0f8fad5b-d9cb-469f-a165-70867728950e", cli: "claude", model: "", effort: "", cwd: "C:\\w" });
+    const out = templateFromTree(split("row", leafOf(chat), leafOf(newLocalPane())), null);
+    expect(out.skipped).toBe(1);
+    expect(out.root).toEqual({ kind: "local" });
   });
 });

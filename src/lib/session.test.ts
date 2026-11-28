@@ -3,6 +3,7 @@ import {
   adoptTab,
   borrowsSession,
   clonePane,
+  newChatTilePane,
   migrateFileView,
   closePane,
   countPanes,
@@ -1139,5 +1140,27 @@ describe("tabFromPane — 떼어 낸 타일의 새 탭은 원래 탭의 제목�
     expect("name" in t).toBe(false);
     expect("pinnedTitle" in t).toBe(false);
     expect("projectFolder" in t).toBe(false);
+  });
+});
+
+describe("clonePane — 채팅 잎은 새 서버 항목 · 새 대화", () => {
+  it("새 chatId · conv 없음 · 원본 객체를 나눠 들지 않는다", () => {
+    const src = newChatTilePane({ chatId: "ct-0f8fad5b-d9cb-469f-a165-70867728950e", cli: "codex", model: "o3", effort: "high", cwd: "C:/w", conv: "1b4e28ba-2fa1-11d2-883f-0016d3cca427" });
+    const copy = clonePane(src);
+    expect(copy.kind).toBe("chat");
+    expect(copy.chat?.chatId).toMatch(/^ct-[0-9a-f-]{36}$/);
+    expect(copy.chat?.chatId).not.toBe(src.chat?.chatId);
+    expect(copy.chat).not.toHaveProperty("conv");
+    expect(copy.chat).toMatchObject({ cli: "codex", model: "o3", effort: "high", cwd: "C:/w" });
+    expect(copy.chat).not.toBe(src.chat);
+    expect(src.chat?.conv).toBe("1b4e28ba-2fa1-11d2-883f-0016d3cca427");
+    expect(src.chat?.chatId).toBe("ct-0f8fad5b-d9cb-469f-a165-70867728950e");
+  });
+
+  it("권한 모드를 물려주지 않는다 — 원본은 그대로", () => {
+    const src = newChatTilePane({ chatId: "ct-0f8fad5b-d9cb-469f-a165-70867728950e", cli: "claude", model: "", effort: "", cwd: "C:/w", permMode: "acceptEdits" });
+    const copy = clonePane(src);
+    expect(copy.chat).not.toHaveProperty("permMode");
+    expect(src.chat?.permMode).toBe("acceptEdits");
   });
 });

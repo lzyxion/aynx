@@ -14,12 +14,16 @@
   /**
    * AI CLI 고르기 돌림판 — 판 · 뒤 효과 없이 캐릭터만 띄운다(어두운 막 · 빛 무리 · 유리 판은 사용자가 걷었다).
    * Esc 는 여기서 끊는다 — 뒤 화면의 Escape 사슬로 새지 않게.
+   * [터미널] [채팅]은 고른 줄이 채팅 모양을 받을 때만 선다 — Tab 이 둘 사이를 오가고 Enter 가 고른 모양으로 연다.
    */
 
   const picker = $derived(aiLaunchPicker());
 
   let el = $state<HTMLElement | null>(null);
   let sel = $state(0);
+  /** 고른 줄의 모양 — 줄을 옮기면 터미널로 돌아간다 */
+  let form = $state<"terminal" | "chat">("terminal");
+  const chatRow = $derived(picker?.rows[sel]?.chat === true);
   /** 한 번에 두 칸 넘게 뛴 줄(둘러 가기)은 화면을 가로지르지 않게 미끄럼 없이 옮긴다 */
   let prevOffsets: number[] = [];
 
@@ -27,6 +31,7 @@
     const p = picker;
     if (!p) return;
     sel = p.selected;
+    form = "terminal";
     prevOffsets = [];
   });
 
@@ -53,12 +58,12 @@
     return out;
   });
 
-  function choose(i: number): void {
+  function choose(i: number, as: "terminal" | "chat" = "terminal"): void {
     runOnMenu(
       () => {
         const p = aiLaunchPicker();
         const row = p?.rows[i];
-        return p && row ? { cli: row.cli, here: p.here } : null;
+        return p && row ? { cli: row.cli, here: p.here, chat: as === "chat" && row.chat } : null;
       },
       () => closeAiLaunchPicker(false),
       runAiLaunch,
@@ -68,6 +73,7 @@
   function step(by: number): void {
     const n = picker?.rows.length ?? 0;
     if (n > 0) sel = (sel + by + n) % n;
+    form = "terminal";
   }
 
   function onKey(ev: KeyboardEvent): void {
@@ -85,11 +91,12 @@
     }
     if (ev.key === "Enter") {
       stop();
-      choose(sel);
+      choose(sel, form);
       return;
     }
     if (ev.key === "Tab") {
       ev.preventDefault(); // 포커스가 상자 밖으로 새지 않게 — 고르는 것은 화살표다
+      if (chatRow) form = form === "terminal" ? "chat" : "terminal";
       return;
     }
     const combo = comboFromEvent(ev);
@@ -115,9 +122,11 @@
     } else if (ev.key === "Home") {
       stop();
       sel = 0;
+      form = "terminal";
     } else if (ev.key === "End") {
       stop();
       sel = n - 1;
+      form = "terminal";
     }
   }
 
@@ -138,8 +147,11 @@
   }
 
   function onPick(i: number): void {
-    if (i === sel) choose(i);
-    else sel = i;
+    if (i === sel) choose(i, form);
+    else {
+      sel = i;
+      form = "terminal";
+    }
   }
 </script>
 
@@ -196,6 +208,15 @@
         {#if row && !row.installed}<span class="meta" data-not-installed>{t("app.ai.launch.notInstalled")}</span>{/if}
       </div>
     {/key}
+
+    {#if chatRow}
+      <div class="forms" role="group" aria-label={picker.rows[sel]?.cli.name ?? ""} data-ai-launch-forms>
+        <button type="button" class="form" class:on={form === "terminal"} tabindex="-1" aria-pressed={form === "terminal"}
+          data-ai-launch-form="terminal" onclick={() => choose(sel, "terminal")}>{t("app.ai.launch.terminal")}</button>
+        <button type="button" class="form" class:on={form === "chat"} tabindex="-1" aria-pressed={form === "chat"}
+          data-ai-launch-form="chat" onclick={() => choose(sel, "chat")}>{t("app.ai.launch.chat")}</button>
+      </div>
+    {/if}
 
     <div class="dots" aria-hidden="true">
       {#each picker.rows as row, i (row.cli.id)}<span class:on={i === sel}></span>{/each}
@@ -350,6 +371,36 @@
       opacity: 0;
       translate: 0 8px;
     }
+  }
+
+  .forms {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 3px;
+    background: var(--m3-surface-container-low);
+    border-radius: 999px;
+  }
+  .form {
+    min-width: 76px;
+    height: 30px;
+    padding: 0 var(--space-3);
+    font-family: var(--font-ui);
+    font-size: var(--t-xs);
+    font-weight: 500;
+    color: var(--control-fg);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .form:not(.on):hover {
+    color: var(--fg-1);
+    background: var(--control-ghost-hover);
+  }
+  .form.on {
+    color: var(--control-sel-fg);
+    background: var(--control-sel-bg);
   }
 
   .dots {

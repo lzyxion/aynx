@@ -213,6 +213,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
                 }
                 super::side_chat::detach_window(&d.window);
                 super::producer::detach_window(&d.window, &d.producer_subs);
+                super::chat_tile::detach_window(&d.window, &d.chat_tile_subs);
                 return Ok(json!([]));
             }
             let skip: HashSet<(Kind, u32)> = d
@@ -238,6 +239,8 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
                 log::line(format!("window {} reloaded — {chats} side chat(s) detached", d.window));
             }
             super::producer::detach_window(&d.window, &d.producer_subs);
+            // 리로드 · 떠나기는 닫지 않는다 — 구독만 떼고 TTL 에 맡긴다.
+            super::chat_tile::detach_window(&d.window, &d.chat_tile_subs);
             // 지금 번호 이상(새 페이지가 연 접속)은 건드리지 않는다 — 이 op 는 같은 연결 위에서 새 페이지의 열기보다 먼저 처리된다.
             crate::remote_worktree::cancel_for_window(&d.window, crate::ssh::next_id());
             Ok(json!(detached.into_iter().map(|(_, _, s)| s).collect::<Vec<_>>()))
@@ -252,6 +255,11 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             core().remove_window_viewers(&d.window);
             super::producer::detach_window(&d.window, &d.producer_subs);
             super::side_chat::detach_window(&d.window);
+            let held_tiles: HashSet<String> = d.chat_tiles.iter().cloned().collect();
+            let tiles = super::chat_tile::close_window(&d.window, &d.chat_tile_subs, &held_tiles);
+            if tiles > 0 {
+                log::line(format!("window {} gone — closed {tiles} chat tile(s)", d.window));
+            }
             let held_local: HashSet<u32> = d.ids.into_iter().collect();
             let held_ssh: HashSet<u32> = d.ssh_ids.into_iter().collect();
             // 창 파괴라 새 페이지가 없어 기준선은 없다.
@@ -290,6 +298,7 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             }
             drop(core);
             crate::db::table::set_home(&d.db_streams, &d.window);
+            super::chat_tile::set_home(&d.chat_tiles, &d.window);
             Ok(Value::Null)
         }
         "local_cwd" => {
@@ -316,8 +325,9 @@ async fn handle_op(op: &str, mut b: Value, ctx: &ConnCtx) -> Result<Value, WireE
             let d = crate::db::table::close_all();
             let c = super::side_chat::close_all();
             let p = super::producer::close_all();
+            let t = super::chat_tile::close_all();
             log::line(format!(
-                "close_all — closed {n} local · {m} ssh session(s) · {d} db connection(s) · {c} side chat(s) · {p} producer chat(s)"
+                "close_all — closed {n} local · {m} ssh session(s) · {d} db connection(s) · {c} side chat(s) · {p} producer chat(s) · {t} chat tile(s)"
             ));
             Ok(json!(n + m))
         }
@@ -482,6 +492,12 @@ struct WindowIds {
     /// 그 세대(`subGen`)만 지운다 — 같은 라벨의 새 페이지가 건 구독은 그대로다.
     #[serde(default)]
     producer_subs: Vec<u64>,
+    /// 채팅 타일 구독 — `producer_subs` 와 같은 규칙.
+    #[serde(default)]
+    chat_tile_subs: Vec<u64>,
+    /// `close_window`: 이관 중이라 닫지 않을 채팅 타일 · `set_home`: 책임 창을 옮길 채팅 타일.
+    #[serde(default)]
+    chat_tiles: Vec<String>,
 }
 
 #[cfg(test)]

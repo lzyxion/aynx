@@ -27,6 +27,8 @@ pub(crate) struct Held {
     pub(crate) streams: HashSet<String>,
     /// 이관 중인 쿼리 타일의 DB 연결 열쇠(`query:<tileKey>`) — 보낸 창의 리로드 · 파괴에서 떼어 두거나 닫지 않게.
     pub(crate) db_streams: HashSet<String>,
+    /// 이관 중인 채팅 타일 id(`ct-…`) — 보낸 창의 파괴에서 닫지 않게.
+    pub(crate) chat_tiles: HashSet<String>,
 }
 
 /// 쿼리 타일의 DB 연결 열쇠 머리 — 프런트 `app/query.svelte.ts` 의 `queryStreamOf` 와 같은 글자.
@@ -51,6 +53,18 @@ pub(crate) fn collect_held(payload: &str, held: &mut Held) {
                 .filter(|k| !k.is_empty())
             {
                 held.db_streams.insert(format!("{QUERY_STREAM_PREFIX}{key}"));
+            }
+            continue;
+        }
+        if pane_kind == Some("chat") {
+            if let Some(id) = entry
+                .get("pane")
+                .and_then(|p| p.get("chat"))
+                .and_then(|c| c.get("chatId"))
+                .and_then(|k| k.as_str())
+                .filter(|k| k.starts_with(crate::server::chat_tile::ID_PREFIX))
+            {
+                held.chat_tiles.insert(id.to_string());
             }
             continue;
         }
@@ -204,6 +218,7 @@ pub(crate) async fn reap(app: AppHandle, label: String, reaped_before: u64, even
             held.local.iter().copied().collect(),
             held.ssh.iter().copied().collect(),
             held.db_streams.iter().cloned().collect(),
+            held.chat_tiles.iter().cloned().collect(),
         )
         .await
     } else {
@@ -419,6 +434,25 @@ mod tests {
         assert_eq!(held.db_streams, ["query:tk-1".to_string()].into_iter().collect());
         assert_eq!(held.local, keep(&[4]));
         assert!(held.ssh.is_empty());
+    }
+
+    #[test]
+    fn collect_held_takes_chat_tiles() {
+        let mut held = Held::default();
+        collect_held(
+            r#"{"panes":[
+                 {"pane":{"kind":"chat","chat":{"chatId":"ct-11111111-2222-3333-4444-555555555555","cli":"claude"}},"sessionId":null},
+                 {"pane":{"kind":"chat","chat":{"chatId":"pc-nope"}},"sessionId":null},
+                 {"pane":{"kind":"chat","chat":{"chatId":7}},"sessionId":null},
+                 {"pane":{"kind":"chat","chat":"모양이 틀림"},"sessionId":null},
+                 {"pane":{"kind":"chat"},"sessionId":3},
+                 {"pane":{"kind":"local"},"sessionId":4}
+               ]}"#,
+            &mut held,
+        );
+        assert_eq!(held.chat_tiles, ["ct-11111111-2222-3333-4444-555555555555".to_string()].into_iter().collect());
+        assert!(held.local.contains(&4) && !held.local.contains(&3), "채팅 잎의 sessionId 는 세지 않는다");
+        assert!(held.db_streams.is_empty() && held.streams.is_empty());
     }
 
     #[test]

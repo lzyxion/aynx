@@ -132,6 +132,8 @@ export function reauthWhatKey(cmd: string): Key | null {
       return "app.remoteReauth.what.orchestration_merge";
     case "set_session_ai_read":
       return "app.remoteReauth.what.set_session_ai_read";
+    case "chat_tile_goal_start":
+      return "app.remoteReauth.what.chat_tile_goal_start";
     default:
       return null;
   }

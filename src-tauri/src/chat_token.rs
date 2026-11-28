@@ -1,4 +1,4 @@
-//! **사이드 채팅 · 프로듀서 MCP 토큰 · 연결 표**(docs/log/2026-10-23-side-chat-v2-design.md 2절 MCP). 세션 서버 프로세스에 한 벌.
+//! **사이드 채팅 · 프로듀서 · 채팅 타일 MCP 토큰 · 연결 표**(docs/log/2026-10-23-side-chat-v2-design.md 2절 MCP). 세션 서버 프로세스에 한 벌.
 //!
 //! 사이드 채팅 프로세스는 세션 코어에 오르지 않아 타일 토큰(`crate::tile_token`)과 따로 둔다 — 토큰은 **`(채팅, 프로세스 세대)`** 에
 //! 묶이고, 세대 `server::chat_proc::ProcId` 는 **서버 전역 단조 증가 · 재사용 없음**이다(같은 채팅을 닫고 다시 열어도 옛 세대와 겹치지
@@ -40,12 +40,13 @@ pub(crate) const READ_TOOLS: [&str; 7] = [
     "compare_command_results",
 ];
 
-/// 판정만 다르다 — 사이드 채팅은 요청마다 그 채팅의 지금 프로세스 세대를 표 밖에서 보고(`server::side_chat::live_proc`), **프로듀서는
-/// 칸이 있는 것 자체가 생존**이다(코어가 닫기를 시작하는 순간 칸을 먼저 거둔다 — 인증은 이 표의 잠금 하나만 본다).
+/// 판정만 다르다 — 사이드 채팅은 요청마다 그 채팅의 지금 프로세스 세대를 표 밖에서 보고(`server::side_chat::live_proc`), **프로듀서 ·
+/// 채팅 타일은 칸이 있는 것 자체가 생존**이다(코어가 닫기를 시작하는 순간 칸을 먼저 거둔다 — 인증은 이 표의 잠금 하나만 본다).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChatKind {
     Side,
     Producer,
+    Tile,
 }
 
 /// 멱등 기록 한 줄(`start_run` · `adopt_run` · `complete_run`).
@@ -189,7 +190,7 @@ impl ChatTokens {
     #[cfg(test)]
     pub(crate) fn authenticate(&self, header: Option<&str>, live: impl Fn(&str) -> Option<ProcId>) -> Option<Auth> {
         let (chat, proc, kind) = self.lookup(header)?;
-        let alive = kind == ChatKind::Producer || live(&chat) == Some(proc);
+        let alive = matches!(kind, ChatKind::Producer | ChatKind::Tile) || live(&chat) == Some(proc);
         Some(if alive { Auth::Chat { chat, kind, proc } } else { Auth::Stale })
     }
 
@@ -252,6 +253,16 @@ pub(crate) fn issue_producer(chat: &str, proc: ProcId, repo: &str, album: Option
     Some(token)
 }
 
+/// 채팅 타일(`ct-`)만. 칸이 곧 생존이라 서버가 끝 정리에서 **토큰 먼저** 거둔다(`revoke` · 닫기는 `forget`).
+pub(crate) fn issue_tile(chat: &str, proc: ProcId) -> Option<String> {
+    if !(chat.len() > 3 && chat.starts_with("ct-") && crate::side_chat::store::id_ok(chat)) {
+        return None;
+    }
+    let token = crate::token::generate_token()?;
+    table().insert_kind(chat, token.clone(), proc, ChatKind::Tile, None, false);
+    Some(token)
+}
+
 pub(crate) fn plan_tools_listed(chat: &str, proc: ProcId) -> bool {
     table().plan_tools(chat, proc)
 }
@@ -260,7 +271,7 @@ pub(crate) fn plan_tools_listed(chat: &str, proc: ProcId) -> bool {
 pub(crate) fn authenticate(header: Option<&str>) -> Option<Auth> {
     let (chat, proc, kind) = table().lookup(header)?;
     let alive = match kind {
-        ChatKind::Producer => true,
+        ChatKind::Producer | ChatKind::Tile => true,
         ChatKind::Side => crate::server::side_chat::live_proc(&chat) == Some(proc),
     };
     Some(if alive { Auth::Chat { chat, kind, proc } } else { Auth::Stale })
@@ -562,6 +573,30 @@ mod tests {
         assert_eq!(t.authenticate(Some("Bearer ptok"), never), None, "거둔 뒤엔 모르는 토큰(401)");
         t.insert_kind("pc-x", "ptok2".into(), p2, ChatKind::Producer, Some("C:/repo".into()), false);
         assert_eq!(t.begin_request("pc-x", p2, "r1", "start_run", "h"), Ok(None), "새 세대의 기록은 새로");
+    }
+
+    /// 시험 `chat_tile_token_is_its_own_liveness` — 채팅 타일 칸도 칸이 곧 생존 · `ct-` 만 받는다 · 옛 세대의 거두기는 새 칸에 닿지 않는다.
+    #[test]
+    fn chat_tile_token_is_its_own_liveness() {
+        let (p1, p2) = (ProcId::next(), ProcId::next());
+        let chat = format!("ct-test-{}-{}", std::process::id(), p1.get());
+        for bad in ["pc-x", "side-1", "ct-", "ct-a/b", "x-ct-1"] {
+            assert_eq!(issue_tile(bad, p1), None, "{bad}");
+        }
+        let t1 = issue_tile(&chat, p1).unwrap();
+        let tile = |proc| Some(Auth::Chat { chat: chat.clone(), kind: ChatKind::Tile, proc });
+        assert_eq!(authenticate(Some(&format!("Bearer {t1}"))), tile(p1), "사이드 채팅 표를 보지 않는다");
+        let t2 = issue_tile(&chat, p2).unwrap();
+        assert_eq!(authenticate(Some(&format!("Bearer {t1}"))), None, "갈아 치운 옛 토큰");
+        assert!(!revoke(&chat, p1), "옛 세대는 새 칸을 거두지 못한다");
+        assert_eq!(authenticate(Some(&format!("Bearer {t2}"))), tile(p2));
+        assert!(revoke(&chat, p2));
+        assert_eq!(authenticate(Some(&format!("Bearer {t2}"))), None, "거둔 뒤엔 모르는 토큰");
+        let mut t = ChatTokens::default();
+        t.insert_kind("ct-y", "ttok".into(), p1, ChatKind::Tile, None, false);
+        assert_eq!(t.authenticate(Some("Bearer ttok"), |_| None), Some(Auth::Chat { chat: "ct-y".into(), kind: ChatKind::Tile, proc: p1 }));
+        t.forget("ct-y");
+        assert_eq!(t.len(), 0);
     }
 
     /// 같은 묶음을 다시 걸면 false — 머리글을 되풀이하지 않게.

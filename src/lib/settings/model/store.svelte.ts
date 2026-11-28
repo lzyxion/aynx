@@ -213,6 +213,7 @@ class SettingsStore {
   );
   codexNoDaemon = $derived(this.current.ai.codex_no_daemon ?? true);
   claudeStatusline = $derived(this.current.ai.claude_statusline ?? true);
+  chatTile = $derived(this.current.ai.chat_tile === true);
   aiIconStyle = $derived<AiIconStyle>((this.current.ai.icon_style ?? DEFAULT_AI_ICON_STYLE) as AiIconStyle);
   aiAvatarClaude = $derived<string>(this.current.ai.avatar_claude ?? DEFAULT_AI_AVATARS.claude);
   aiAvatarCodex = $derived<string>(this.current.ai.avatar_codex ?? DEFAULT_AI_AVATARS.codex);

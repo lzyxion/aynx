@@ -131,7 +131,7 @@ pub(super) fn tools_list_result_for(with_db: bool) -> Value {
 pub(super) fn tools_list_for(caller: &crate::orchestration::Caller, db: bool, orchestration: bool) -> Value {
     use crate::orchestration::Caller;
     match caller {
-        Caller::Global | Caller::Tile { .. } => tools_list_result_for(db),
+        Caller::Global | Caller::Tile { .. } | Caller::ChatTile { .. } => tools_list_result_for(db),
         Caller::Coordinator { .. } => {
             let mut v = tools_list_result_for(db);
             if let Some(list) = v.get_mut("tools").and_then(Value::as_array_mut) {

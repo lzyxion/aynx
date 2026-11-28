@@ -53,6 +53,11 @@ pub fn agent_mcp_prefs() -> AiPrefs {
         .unwrap_or_default()
 }
 
+/// `[ai] chat_tile = true` 일 때만 — 없거나 파일이 깨졌으면 끔.
+pub fn chat_tile_enabled() -> bool {
+    settings_path().is_some_and(|path| load_at(&path).ai.chat_tile == Some(true))
+}
+
 /// 안 정했거나 파일이 없으면 켬.
 pub fn claude_statusline() -> bool {
     match settings_path() {

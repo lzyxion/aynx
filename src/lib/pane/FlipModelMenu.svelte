@@ -13,7 +13,7 @@
    * Codex 게이지에 Default 고리가 없는 것은 한 줄로 되돌리는 명령이 없어서다.
    * `document.body` 로 옮겨 그린다 — 카드 뒤집기(`transform`) 상자 안에서는 `position: fixed` 의 기준이 창이 아니고, 대화 면의 캡처 단계 키가 메뉴 키를 먼저 가로챈다.
    */
-  import { untrack } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import UiIcon from "$lib/UiIcon.svelte";
   import ChatEffortGauge from "$lib/chat/ChatEffortGauge.svelte";
   import { effortName } from "$lib/chat/side-chat-controls.svelte";
@@ -28,6 +28,7 @@
     note,
     trigger,
     touch = false,
+    extra,
     onmodel,
     oneffort,
     onclose,
@@ -41,6 +42,8 @@
     note: string;
     trigger: HTMLElement;
     touch?: boolean;
+    /** 메뉴 바닥에 그린다(구분선 아래) — 채팅 타일의 Codex 속도 줄. 넘기지 않으면 지금과 같다 */
+    extra?: Snippet;
     onmodel: (value: string) => void;
     oneffort: (level: string) => void;
     /** 참이면 연 단추로 포커스 */
@@ -176,6 +179,10 @@
   {/if}
   <ChatEffortGauge {levels} value={effort} nameOf={(e) => (e ? effortName(e) : ring ? effortName("") : "")} noDefault={!ring} {touch} onpick={(e) => oneffort(e)} />
   <p class="note" data-flip-model-note>{note}</p>
+  {#if extra}
+    <hr class="menu-sep" />
+    {@render extra()}
+  {/if}
 </div>
 
 <style>

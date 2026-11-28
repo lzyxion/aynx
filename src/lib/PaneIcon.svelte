@@ -12,6 +12,7 @@
   import { findDbConn } from "$lib/app/db-conns.svelte.js";
   import { DB_ENGINE_ICON } from "$lib/db-conn";
   import { paneAi, paneIdentity } from "$lib/app/titles.svelte.js";
+  import { aiIconName } from "$lib/pane-icons";
 
   let {
     pane,
@@ -34,6 +35,7 @@
   const localIcon = $derived(iconRef(localIdentity.icon));
 
   const remoteAi = $derived(pane.kind === "ssh" ? paneAi(pane) : null);
+  const chatAi = $derived(pane.kind === "chat" ? aiIconName(pane.chat?.cli ?? "") : null);
 
   const queryEngineIcon = $derived.by(() => {
     if (pane.kind !== "query" || !pane.query?.connId) return null;
@@ -63,6 +65,10 @@
   <UiIcon name="git-branch" {size} />
 {:else if pane.kind === "diff"}
   <UiIcon name="git-compare" {size} />
+{:else if pane.kind === "chat" && chatAi}
+  <AiGlyph name={chatAi} {size} />
+{:else if pane.kind === "chat"}
+  <UiIcon name="ai" {size} />
 {:else if pane.kind === "producer"}
   <ArtistAvatar cli={pane.producer?.cli || null} {size} />
 {:else if pane.kind === "run"}

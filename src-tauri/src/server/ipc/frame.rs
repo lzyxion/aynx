@@ -32,7 +32,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 pub(crate) const PROTOCOL_MIN: u32 = 7;
 /// 옛 서버는 모르는 칸을 **버린다** — 칸을 더할 때 버려지면 위험한 것(예: `autoCommit` · `readOnly` · `files` · `remember`)은 표지를 두고
 /// 옛 서버에 보내지 않는다.
-pub(crate) const PROTOCOL_MAX: u32 = 37;
+pub(crate) const PROTOCOL_MAX: u32 = 43;
 
 /// 이하 `*_PROTOCOL` = 그 op · 칸이 서는 판. 낮으면 그 op 만 보내지도 받지도 않는다(표지만인 것은 따로 적는다).
 pub(crate) const DB_PROTOCOL: u32 = 8;
@@ -102,6 +102,24 @@ pub(crate) const SLACK_BOT_PROTOCOL: u32 = 36;
 
 /// 옛 서버는 `side_chat_decide` 의 `remember` 를 버린다(허용 한 번으로 끝난다).
 pub(crate) const SIDE_CHAT_PERM_PROTOCOL: u32 = 37;
+
+/// 채팅 모양 AI 타일 op(`chat_tile_*`) · 창 op 몸의 `chatTileSubs` · `chatTiles`(옛 서버에는 채팅 타일이 없어 칸 표지는 두지 않는다).
+pub(crate) const CHAT_TILE_PROTOCOL: u32 = 38;
+
+/// 채팅 타일 보내기 몸의 `images` · `files`(옛 서버는 버린다 — 첨부 없이 글만 간다).
+pub(crate) const CHAT_TILE_ATTACH_PROTOCOL: u32 = 39;
+
+/// 채팅 타일 권한 모드 op · decide 의 allowSession · answer · 스냅숏 permMode · cliMode · 사건 cliMode
+pub(crate) const CHAT_TILE_PERM_PROTOCOL: u32 = 40;
+
+/// 채팅 타일 압축 op · 보내기 몸 skills · 스냅숏 commands · context · lastCompaction · 사건 commands · contextUsage · compaction
+pub(crate) const CHAT_TILE_SLASH_PROTOCOL: u32 = 41;
+
+/// 채팅 타일 되감기 op · 스냅숏 rewind · rewindGen · 사건 rewind · rewindCaps · 기록 항목 anchor
+pub(crate) const CHAT_TILE_REWIND_PROTOCOL: u32 = 42;
+
+/// 채팅 타일 review · goal · 속도 등급 · MCP 상태 op · 열기 몸 tier · 스냅숏 mcpStatus · goal · tier · tiers · 사건 mcpStatus · goal · review · serviceTiers
+pub(crate) const CHAT_TILE_EXTRA_PROTOCOL: u32 = 43;
 
 pub(crate) const PRODUCER_PROTOCOL: u32 = 20;
 
@@ -319,6 +337,10 @@ pub(crate) fn required_grade(op: &str) -> Option<Grade> {
         "producer_chat_open" | "producer_chat_send" | "producer_chat_interrupt" | "producer_chat_set_model" | "producer_chat_set_effort"
         | "producer_chat_decide" | "producer_chat_queue_cancel" | "producer_chat_close" | "producer_chat_subscribe"
         | "producer_chat_unsubscribe" => Some(Grade::Write),
+        "chat_tile_attach" | "chat_tile_list" => Some(Grade::Read),
+        "chat_tile_open" | "chat_tile_send" | "chat_tile_interrupt" | "chat_tile_set_model" | "chat_tile_set_effort"
+        | "chat_tile_set_perm_mode" | "chat_tile_decide" | "chat_tile_compact" | "chat_tile_rewind" | "chat_tile_close" | "chat_tile_subscribe"
+        | "chat_tile_unsubscribe" | "chat_tile_review" | "chat_tile_goal" | "chat_tile_set_tier" | "chat_tile_mcp_status" => Some(Grade::Write),
         // 타일 권한 카드의 결정은 **승인 등급 프레임이 아니다** — CLI 훅의 응답으로만 가고 PTY 에 쓰지 않는다.
         "tile_permission_snapshot" => Some(Grade::Read),
         "tile_permission_decide" | "tile_permission_face" => Some(Grade::Write),

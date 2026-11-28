@@ -6,7 +6,7 @@
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   /**
-   * 지난 대화 줄의 단추 묶음 `[⋯] [재개]` — 사용자 결정. 메뉴 순서는 열기 → 이름 → 위험한 것은 맨 아래.
+   * 지난 대화 줄의 단추 묶음 `[⋯] [재개]`(채팅 켬이면 `[⋯] [터미널로 열기] [채팅으로 열기]`) — 사용자 결정. 메뉴 순서는 열기 → 이름 → 위험한 것은 맨 아래.
    * 단추는 Tab 순서에 들지 않는다 — 키보드는 목록이 쥐고 같은 일을 단축키로 한다.
    */
   let {
@@ -22,6 +22,8 @@
     ondelete,
     deleteBlocked = null,
     onprimary,
+    onchat,
+    chatBlocked = null,
     onmenu,
     onclosefocus,
   }: {
@@ -40,6 +42,10 @@
     ondelete?: () => void;
     deleteBlocked?: string | null;
     onprimary: () => void;
+    /** 넘기면 [터미널로 열기] [채팅으로 열기] 두 단추(열리지 않은 줄) — 설정 끔 · 원격 대화는 넘기지 않는다 */
+    onchat?: () => void;
+    /** onchat 이 있을 때 — 툴팁 글이면 [채팅으로 열기]가 흐리다 */
+    chatBlocked?: string | null;
     /** 팝업은 메뉴가 열린 동안 마우스를 따라 고른 줄을 옮기지 않는다 — 메뉴로 가는 길에 다른 줄을 지난다 */
     onmenu?: (open: boolean) => void;
     onclosefocus?: () => void;
@@ -146,20 +152,51 @@
       setMenu(!menuOpen);
     }}><UiIcon name="more" size={14} /></button
   >
-  <button
-    type="button"
-    class="btn btn-primary btn-sm"
-    tabindex="-1"
-    data-act={open ? "goto" : "resume"}
-    title={open ? t("board.convo.goto") : `${t("board.convo.resume")} (Enter)`}
-    disabled={!open && !cwdExists}
-    onmousedown={noFocus}
-    ondblclick={stop}
-    onclick={(ev) => {
-      stop(ev);
-      onprimary();
-    }}>{open ? t("board.convo.goto") : t("board.convo.resume")}</button
-  >
+  {#if onchat && !open}
+    <button
+      type="button"
+      class="btn btn-secondary btn-sm"
+      tabindex="-1"
+      data-act="resume"
+      title={cwdExists ? `${t("board.convo.openTerminal")} (Enter)` : t("board.convo.missing.title")}
+      disabled={!cwdExists}
+      onmousedown={noFocus}
+      ondblclick={stop}
+      onclick={(ev) => {
+        stop(ev);
+        onprimary();
+      }}>{t("board.convo.openTerminal")}</button
+    >
+    <button
+      type="button"
+      class="btn btn-secondary btn-sm"
+      tabindex="-1"
+      data-act="resume-chat"
+      title={chatBlocked ?? `${t("board.convo.openChat")} (Alt+Enter)`}
+      disabled={chatBlocked !== null}
+      onmousedown={noFocus}
+      ondblclick={stop}
+      onclick={(ev) => {
+        stop(ev);
+        onchat();
+      }}>{t("board.convo.openChat")}</button
+    >
+  {:else}
+    <button
+      type="button"
+      class="btn btn-primary btn-sm"
+      tabindex="-1"
+      data-act={open ? "goto" : "resume"}
+      title={open ? t("board.convo.goto") : `${t("board.convo.resume")} (Enter)`}
+      disabled={!open && !cwdExists}
+      onmousedown={noFocus}
+      ondblclick={stop}
+      onclick={(ev) => {
+        stop(ev);
+        onprimary();
+      }}>{open ? t("board.convo.goto") : t("board.convo.resume")}</button
+    >
+  {/if}
 </span>
 
 {#if menuOpen && moreBtn}

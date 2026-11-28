@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addSent,
   clearEnded,
+  compactNoticeDetail,
   emptyLive,
   entryItem,
   foldAll,
@@ -9,6 +10,7 @@ import {
   historyHold,
   liveBusy,
   markSendFailed,
+  parseCompactNotice,
   pendingPermissions,
   seedLive,
   setSentLink,
@@ -54,6 +56,13 @@ function snap(over: Partial<SideChatSnapshot> = {}): SideChatSnapshot {
     ...over,
   };
 }
+
+describe("foldLive — cliMode", () => {
+  it("꼬리에 항목을 남기지 않고 같은 객체를 돌려준다(채팅 타일 상태 층이 따로 쥔다)", () => {
+    const s = foldLive(emptyLive(), ready);
+    expect(foldLive(s, { t: "cliMode", mode: "plan", choices: ["default", "acceptEdits", "plan"], chosen: "plan" })).toBe(s);
+  });
+});
 
 describe("foldLive — 턴 하나", () => {
   it("준비 → 보냄 → 받음 → 글 조각이 한 항목으로 모이고 끝 덩어리가 갈음한다 → 잘 끝남(알림 없음)", () => {
@@ -158,6 +167,29 @@ describe("foldLive — 도구", () => {
     let s = foldLive(emptyLive("running"), { t: "toolStarted", item: "t1", name: "X", summary: "", input: "raw" });
     s = foldLive(s, { t: "toolStarted", item: "t2", name: "Y", summary: "" });
     expect(only(s, "tool").map((e) => e.input)).toEqual(["raw", null]);
+  });
+
+  it("끊긴 턴의 흐르던 글은 턴 끝에 닫힌다 — 다음 턴의 item 없는 조각(Claude)이 거기 붙지 않는다", () => {
+    let s = foldAll(emptyLive("running"), [
+      { t: "textDelta", item: null, text: "…보고했습니다." },
+      { t: "turnEnded", turn: null, outcome: "interrupted", message: null },
+    ]);
+    expect(only(s, "text")[0].done).toBe(true);
+    s = foldAll(s, [{ t: "turnStarted", turn: null }, { t: "textDelta", item: null, text: "다만 Read 없이" }]);
+    expect(only(s, "text").map((e) => e.text)).toEqual(["…보고했습니다.", "다만 Read 없이"]);
+    const gone = foldAll(emptyLive("running"), [{ t: "textDelta", item: null, text: "a" }, { t: "exited", code: 1, reason: "crash" }]);
+    expect(only(gone, "text")[0].done).toBe(true);
+  });
+
+  it("한 블록 안의 문단 나눔은 조각을 이어도 그대로 · 블록마다 끝 덩어리가 오면 블록마다 항목", () => {
+    const s = foldAll(emptyLive("running"), [
+      { t: "textDelta", item: null, text: "Edit 도구가 성공을 보고했습니다." },
+      { t: "textDelta", item: null, text: "\n\n다만 Read 없이" },
+      { t: "text", item: null, text: "Edit 도구가 성공을 보고했습니다.\n\n다만 Read 없이 바꿨습니다." },
+      { t: "textDelta", item: null, text: "둘째 블록" },
+      { t: "text", item: null, text: "둘째 블록." },
+    ]);
+    expect(only(s, "text").map((e) => e.text)).toEqual(["Edit 도구가 성공을 보고했습니다.\n\n다만 Read 없이 바꿨습니다.", "둘째 블록."]);
   });
 
   it("끊긴 턴의 끝나지 않은 도구는 턴 끝에 끝난 것으로(영영 돌지 않게)", () => {
@@ -420,5 +452,118 @@ describe("historyHold · liveCut — 턴이 도는 동안 받은 기록의 겹�
     let s = addSent(foldLive(emptyLive(), ready), "옛 질문", "c1");
     s = foldAll(s, [{ t: "turnStarted", turn: null }, { t: "turnEnded", turn: null, outcome: "ok", message: null }, { t: "turnStarted", turn: null }]);
     expect(historyHold(s)).toEqual({ userText: null });
+  });
+});
+
+describe("채팅 타일 — 목록 · 사용량 · 압축 사건", () => {
+  it("commands · contextUsage 는 꼬리를 바꾸지 않는다(같은 객체)", () => {
+    const s = foldLive(emptyLive(), ready);
+    expect(foldLive(s, { t: "commands", commands: [{ name: "compact", description: "", hint: "", kind: "builtin", aliases: [] }], terminal: ["doctor"] })).toBe(s);
+    expect(foldLive(s, { t: "contextUsage", used: 36149, window: 1000000, source: "turn" })).toBe(s);
+  });
+
+  it("rewindCaps · rewind 는 꼬리를 바꾸지 않는다(같은 객체)", () => {
+    const s = foldLive(emptyLive(), ready);
+    expect(foldLive(s, { t: "rewindCaps", files: true, conversation: true })).toBe(s);
+    for (const phase of ["preview", "done", "failed"] as const) {
+      const ev = { t: "rewind" as const, phase, anchor: "30b5bc5c-33b6-47d1-802c-c06d0d28a93a", scope: "both" as const, can: phase !== "failed", files: ["src/a.ts"], moreFiles: 0, insertions: 1, deletions: 1, turns: null, skippedLinks: null, error: null };
+      expect(foldLive(s, ev)).toBe(s);
+    }
+  });
+
+  it("started → 알림 compacting · done → 그 항목을 compacted 로 갈음", () => {
+    let s = foldAll(foldLive(emptyLive(), ready), [{ t: "turnStarted", turn: null }, { t: "compaction", phase: "started", trigger: "manual", preTokens: null, postTokens: null }]);
+    expect(only(s, "notice")).toEqual([expect.objectContaining({ code: "compacting", detail: "manual" })]);
+    const n = only(s, "notice")[0].n;
+    s = foldLive(s, { t: "compaction", phase: "done", trigger: "manual", preTokens: 36241, postTokens: 8335 });
+    expect(only(s, "notice")).toEqual([{ n, kind: "notice", code: "compacted", detail: "36241>8335" }]);
+  });
+
+  it("started 없이 done → 새 항목 · 지난 턴의 compacting 은 갈음하지 않는다", () => {
+    let s = foldAll(foldLive(emptyLive(), ready), [{ t: "turnStarted", turn: null }, { t: "compaction", phase: "done", trigger: null, preTokens: null, postTokens: 8335 }]);
+    expect(only(s, "notice").map((e) => [e.code, e.detail])).toEqual([["compacted", ">8335"]]);
+    s = foldAll(s, [
+      { t: "compaction", phase: "started", trigger: null, preTokens: null, postTokens: null },
+      { t: "turnEnded", turn: null, outcome: "ok", message: null },
+      { t: "compaction", phase: "done", trigger: null, preTokens: null, postTokens: null },
+    ]);
+    expect(only(s, "notice").map((e) => e.code)).toEqual(["compacted", "compacting", "compacted"]);
+  });
+
+  it("실패 · 멈춤 알림은 이 턴의 compacting 줄을 갈음 · 없으면 새 줄 · 지난 턴 줄은 그대로", () => {
+    for (const code of ["compact-failed", "compact-canceled"]) {
+      let s = foldAll(foldLive(emptyLive(), ready), [{ t: "turnStarted", turn: null }, { t: "compaction", phase: "started", trigger: "manual", preTokens: null, postTokens: null }]);
+      const n = only(s, "notice")[0].n;
+      s = foldLive(s, { t: "notice", code, detail: code === "compact-failed" ? "Not enough messages to compact." : null });
+      expect(only(s, "notice")).toEqual([{ n, kind: "notice", code, detail: code === "compact-failed" ? "Not enough messages to compact." : null }]);
+      s = foldAll(s, [{ t: "turnEnded", turn: null, outcome: "ok", message: null }, { t: "notice", code, detail: null }]);
+      expect(only(s, "notice").map((e) => e.code)).toEqual([code, code]);
+    }
+    // 그 밖 알림은 갈음하지 않는다
+    let s = foldAll(foldLive(emptyLive(), ready), [{ t: "turnStarted", turn: null }, { t: "compaction", phase: "started", trigger: null, preTokens: null, postTokens: null }]);
+    s = foldLive(s, { t: "notice", code: "stderr", detail: "x" });
+    expect(only(s, "notice").map((e) => e.code)).toEqual(["compacting", "stderr"]);
+  });
+
+  it("compactNoticeDetail ↔ parseCompactNotice 왕복 · 빈 쪽", () => {
+    for (const [pre, post] of [[36241, 8335], [null, 8335], [36241, null], [null, null], [0, 0]] as const) {
+      expect(parseCompactNotice(compactNoticeDetail(pre, post))).toEqual({ pre, post });
+    }
+    expect(compactNoticeDetail(null, null)).toBe("");
+    expect(compactNoticeDetail(null, 8335)).toBe(">8335");
+    expect(parseCompactNotice(null)).toEqual({ pre: null, post: null });
+    expect(parseCompactNotice("manual")).toEqual({ pre: null, post: null });
+  });
+});
+
+describe("foldLive — 채팅 타일 검토 · 목표 · 속도 · MCP 상태", () => {
+  const started = (s: LiveState) => foldAll(foldLive(s, ready), [{ t: "turnStarted", turn: "B" }]);
+
+  it("mcpStatus · goal · serviceTiers 는 꼬리를 바꾸지 않는다(같은 객체)", () => {
+    const s = started(emptyLive());
+    expect(foldLive(s, { t: "mcpStatus", source: "init", servers: [{ name: "blender", state: "connecting", auth: null, tools: null, scope: "user" }] })).toBe(s);
+    expect(foldLive(s, { t: "goal", goal: { objective: "x", status: "active", tokensUsed: 0, tokenBudget: 500000, secondsUsed: 0, auto: false } })).toBe(s);
+    expect(foldLive(s, { t: "goal", goal: null })).toBe(s);
+    expect(foldLive(s, { t: "serviceTiers", byModel: { "gpt-6.2-sol": [{ id: "priority", name: "Fast", description: "2x speed, increased usage" }] }, thread: "default" })).toBe(s);
+  });
+
+  it("review started → 알림 reviewing · 끝 → reviewing 을 걷고 결과 글 뒤에 reviewed(글 항목은 글이 있을 때만)", () => {
+    let s = foldLive(started(emptyLive()), { t: "review", phase: "started", label: "current changes", text: null });
+    const at = s.entries.length - 1;
+    expect(s.entries[at]).toMatchObject({ kind: "notice", code: "reviewing", detail: "current changes" });
+    s = foldLive(s, { t: "text", item: "m1", text: "중간 글" });
+    s = foldLive(s, { t: "review", phase: "done", label: "current changes", text: "1. [P1] 고칠 것" });
+    expect(s.entries.filter((e) => e.kind === "notice" && e.code === "reviewing")).toEqual([]);
+    const tail = s.entries.slice(-3);
+    expect(tail.map((e) => (e.kind === "text" ? e.text : e.kind === "notice" ? e.code : e.kind))).toEqual(["중간 글", "1. [P1] 고칠 것", "reviewed"]);
+    expect(tail[1]).toMatchObject({ kind: "text", item: `review:${tail[1].n}`, done: true });
+    expect(tail[2]).toMatchObject({ kind: "notice", code: "reviewed", detail: "current changes" });
+
+    const t = foldLive(started(emptyLive()), { t: "review", phase: "started", label: "main", text: null });
+    const before = t.entries.length;
+    expect(foldLive(t, { t: "review", phase: "done", label: "main", text: null }).entries.length).toBe(before);
+    expect(foldLive(t, { t: "review", phase: "done", label: "main", text: "  " }).entries.length).toBe(before);
+  });
+
+  it("끊긴 검토의 끝 → review-stopped(마쳤다고 하지 않는다) · 결과 글 뒤", () => {
+    let s = foldLive(started(emptyLive()), { t: "review", phase: "started", label: "current changes", text: null });
+    s = foldLive(s, { t: "text", item: "m1", text: "Review was interrupted." });
+    s = foldLive(s, { t: "review", phase: "stopped", label: "current changes", text: null });
+    const codes = s.entries.map((e) => (e.kind === "notice" ? e.code : e.kind));
+    expect(codes.slice(-2)).toEqual(["text", "review-stopped"]);
+    expect(codes).not.toContain("reviewed");
+    expect(codes).not.toContain("reviewing");
+  });
+
+  it("started 없이 done → reviewed 를 덧붙인다 · 지난 턴의 reviewing 은 걷지 않는다", () => {
+    let s = foldLive(started(emptyLive()), { t: "review", phase: "done", label: "commit abc", text: "결과" });
+    const tail = s.entries.slice(-2);
+    expect(tail[0]).toMatchObject({ kind: "text", item: `review:${tail[0].n}`, text: "결과" });
+    expect(tail[1]).toMatchObject({ kind: "notice", code: "reviewed", detail: "commit abc" });
+
+    s = foldLive(started(emptyLive()), { t: "review", phase: "started", label: "old", text: null });
+    s = foldLive(s, { t: "turnEnded", turn: "B", outcome: "ok", message: null });
+    s = foldLive(s, { t: "review", phase: "done", label: "new", text: null });
+    expect(s.entries.filter((e) => e.kind === "notice").map((e) => (e.kind === "notice" ? e.code : ""))).toEqual(["reviewing", "reviewed"]);
   });
 });

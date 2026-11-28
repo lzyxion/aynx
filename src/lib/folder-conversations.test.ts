@@ -264,9 +264,16 @@ describe("pickerActionForKey — 키 → 동작", () => {
     expect(pickerActionForKey(ev("Tab", { shiftKey: true }))).toBe("scope");
     expect(pickerActionForKey(ev("Escape"))).toBe("close");
   });
+  it("Alt+Enter · Alt+NumpadEnter = 채팅으로 열기", () => {
+    expect(pickerActionForKey(ev("Enter", { altKey: true }))).toBe("resumeChat");
+    expect(pickerActionForKey(ev("NumpadEnter", { altKey: true }))).toBe("resumeChat");
+  });
   it("IME 조합 중 · Alt/Meta · 뜻 없는 조합 · 글자는 입력칸의 것", () => {
     expect(pickerActionForKey(ev("Enter", { isComposing: true }))).toBeNull();
-    expect(pickerActionForKey(ev("Enter", { altKey: true }))).toBeNull();
+    expect(pickerActionForKey(ev("Enter", { altKey: true, shiftKey: true }))).toBeNull();
+    expect(pickerActionForKey(ev("Enter", { altKey: true, ctrlKey: true }))).toBeNull();
+    expect(pickerActionForKey(ev("Enter", { altKey: true, isComposing: true }))).toBeNull();
+    expect(pickerActionForKey(ev("ArrowUp", { altKey: true }))).toBeNull();
     expect(pickerActionForKey(ev("ArrowDown", { shiftKey: true }))).toBeNull();
     expect(pickerActionForKey(ev("Tab", { ctrlKey: true }))).toBeNull();
     expect(pickerActionForKey(ev("KeyA"))).toBeNull();

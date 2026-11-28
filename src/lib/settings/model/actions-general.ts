@@ -124,6 +124,10 @@ export function setClaudeStatusline(on: boolean) {
   settings.current.ai.claude_statusline = on ? undefined : false;
 }
 
+export function setChatTile(on: boolean) {
+  settings.current.ai.chat_tile = on ? true : undefined;
+}
+
 /**
  * 검사하지 않는다 — 설정 화면이 Rust 미리보기(`agent_launch_preview`)를 통과한 값만 넘긴다.
  * 적는 중의 값을 다듬지 않는다 — 끝 공백을 떼면 낱말 사이 빈칸을 칠 수 없다(파일에 쓸 때 `normalizeStringMap` 이 뗀다).

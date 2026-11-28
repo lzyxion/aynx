@@ -32,15 +32,15 @@
 ## MCP 와 오케스트레이션
 
 - `mcp.rs` + `mcp/` 는 **읽기·계획 + 오케스트레이션 조율**(역할별 토큰 — 프로듀서 채팅: 귀속 앨범 이어받기, 조정자: 작업 정의·작업자 띄우기·이어지는 지시(resume 턴)·완료, 작업자: 자기 보고, 검토자: 판정).
-  `/mcp` 인증 순서(`mcp/http.rs`): 전역 토큰 → **타일 토큰**(`Caller::Tile{stream}` · 요청마다 회차 확인) → **채팅(사이드 · 프로듀서 — 종류 · 세대는 표에서 ·
-  `Caller::Producer{chat, proc}`)** → 작업자 · 검토자 턴 토큰. **프로듀서 채팅**의 목록 = 13(작업안 여섯은 앨범 구성 칸 "프로듀서 작업안 도구"를 켰을 때만 —
+  `/mcp` 인증 순서(`mcp/http.rs`): 전역 토큰 → **타일 토큰**(`Caller::Tile{stream}` · 요청마다 회차 확인) → **채팅(사이드 · 프로듀서 · 채팅 타일 — 종류 · 세대는 표에서 ·
+  `Caller::Producer{chat, proc}` · `Caller::ChatTile{chat, proc}`)** → 작업자 · 검토자 턴 토큰. **프로듀서 채팅**의 목록 = 13(작업안 여섯은 앨범 구성 칸 "프로듀서 작업안 도구"를 켰을 때만 —
   기본 꺼짐 · 띄울 때 고정 · 호출마다 지금 값으로 재판정 `producer-plan-tools-off`) + DB(늘 일곱 · 권한은 호출마다 서버 판정) + `adopt_run` + 조율 도구 전부(처음부터 고정 —
   조율은 그 채팅 세대가 서버 표에서 산 Run 의 조정자로 묶였을 때만 `orchestration/tile.rs` · 요청마다 **필수 `runId` · `gen`**, `get_run` 만 생략 가능해 둘을 돌려준다 ·
-  아니면 `not-coordinator`). **로컬 AI 타일 · 감싸개 셸 타일은 13 + DB**(읽기 · DB · 작업안 도구는 전역과 같은 판정 · 조율 도구 없음 — 불러도 모르는 도구 ·
+  아니면 `not-coordinator`). **로컬 AI 타일(터미널 · 채팅 모양) · 감싸개 셸 타일은 13 + DB**(읽기 · DB · 작업안 도구는 전역과 같은 판정 · 조율 도구 없음 — 불러도 모르는 도구 ·
   INSTRUCTIONS 에 안내 한 줄: 사람에게 오케스트레이션 탭 · [오케스트레이션으로 이어 가기]를 알린다 — 시험
   `tile_token_cannot_open_or_coordinate`). 사이드 채팅은 읽기 일곱. **목록은 조정자가 돼도 바뀌지 않는다**(Codex 는 대화 중 목록 갱신을 받지 않는다 — `list_changed` 에
   기대지 않음). CLI 미리 허용(타일 도구 · 조율 도구 — Claude `--allowedTools` · Codex `approval_mode`)은 프로듀서 실행 재료(`server/producer/launch.rs` `preallowed`)에만 있다 —
-  타일 autorun · 감싸개 셸 타일의 장식 파일에는 없다(시험 `tile_autorun_has_no_coordination_preallow`).
+  타일 autorun · 감싸개 셸 타일의 장식 파일 · 채팅 타일 실행 인자에는 없다(시험 `tile_autorun_has_no_coordination_preallow`).
   도구 노출 · 미리 허용 · 서버 판정은 **세 겹 별개**다(판정은 늘 서버 — `orchestration/start.rs` · `tile.rs`). 전역 토큰(`mcp.json`)의 목록은 바뀌지 않는다.
   조율 도구 스키마 합은 7.5 KB 이하(시험 `coordination_schemas_fit_budget`) — 긴 계약은 INSTRUCTIONS 의 오케스트레이션 절(프로듀서 채팅만 받는다).
   명령 실행·승인·키 전송 도구는 없다. 지금 선 것은 프로듀서 채팅의 `adopt_run` ·
@@ -86,7 +86,7 @@ Claude `-p --output-format stream-json --verbose --setting-sources "" --tools Re
 GUI `write` op 는 입력 출처(`keyboard`·`paste`·`mouse`·`protocol` — 프런트 `src/lib/term/input-source.ts`)를 싣는다(원격 웹의 크기 주인 판정 — 키 · 붙여넣기만 주인을 바꾼다. 마우스 보고 · 휠은 셸에 보내되 주인을 바꾸지 않고, 터미널 응답은 사람 입력이 아니다). 작업자 타일이 없으므로 개입 잠금도 없다.
 
 <a id="arch-orch-spawn"></a>
-### 서버가 띄우는 것 ①~④
+### 서버가 띄우는 것 ①~⑤
 
 **작업자 생성 주체는 AI(조정자의 `spawn_worker`)** 이고, 세션 서버가 **GUI 요청 없이 띄우는 것은 둘뿐**이다 — ① **헤드리스 턴**(작업자 · 해결자 · 판정형 모두 —
 셸 없는 CLI 하나 · 파이프 · 표준 입력 즉시 EOF · 창 없음 · **생성과 동시에 Job** · 세션 · PTY · 타일 아님 — `server/workers.rs` 의 `run_turn_blocking` · 턴 = 프로세스 하나 ·
@@ -124,7 +124,7 @@ CLI cwd 밖) · 새 채팅은 사람이 마지막에 고른 모드. 바꾸는 �
 `server/producer/wake.rs`). 깨우는 때는 Run running(보류 없음) · 그 자리가 지금 세대로 묶임 · 프로듀서가 쉼(대기열 빔 · 보류 없음 · 권한 대기 없음)뿐이다 — 사람 일시정지 ·
 보류 · 조율 한도면 깨우지 않는다. 상한: **사람 말 사이 = `Run.album.wake_max`**(기본 30 · 0 = 끔 · 0~200 · [새 앨범] · 사람의 [앨범 권한] 편집뿐 · 원격은 올림만 REAUTH · 앨범 없음/판정 실패면 깨우지 않음) ·
 앨범당 누적 200 고정(`Run.wakes` — 칸 없음 · 초기화 없음) · 최소 간격 20초 · 무반응 3 범위 · 재시도 1 — 꺼지면 사람 알림(`wake-limit` · `wake-ignored` · `wake-failed` ·
-`wake-turn-timeout`). 타일에는 깨움이 없다(타일 PTY 에 쓰는 길 없음 — 타일은 조정자 자리가 되지 못한다). 제어 프레임(결정 · 끊기 · 모델 · 강도)은 사람 op 에서만 — 깨움 턴 시한(30분)의
+`wake-turn-timeout`). 타일에는 깨움이 없다(타일 PTY 에 쓰는 길 없음 — 타일은 조정자 자리가 되지 못한다 · 채팅 모양 AI 타일도 같다). 제어 프레임(결정 · 끊기 · 모델 · 강도)은 사람 op 에서만 — 깨움 턴 시한(30분)의
 끊기 하나는 시계가 깨움 턴에만 붙인다. **프로듀서는 직접 파일을 변경하거나 읽기 전용 실행 경계를 벗어날 수 없다. Claude에는 Read·Grep·Glob만 제공하고, Codex에는 읽기 전용 샌드박스 안의 읽기 작업만 허용한다. 파일 변경·실행 경계 확대·외부 MCP·웹 검색은 프로듀서 권한 카드로도 허용하지 않는다. Aynx의 읽기·작업안·조율 도구는 각 서버 관문의 기존 권한 검사를 받는다. producer_chat_*의 원격 허용은 이 제한을 넓히지 않으며, 본문은 해당 프로듀서 채팅의 유효한 구독 연결에만 전달한다**
 (Claude `--setting-sources ""` · `--strict-mcp-config` · `MCP_TOOL_TIMEOUT` · Codex `approvalPolicy: never` · 웹 검색 끔 · `windows.sandbox` · `notify=[]` · 이름으로 끌 수 없는 사용자 MCP 면
 띄우지 않음 · **사람이 [허용] 할 수 있는 카드는 앨범 저장소 밖 Read · Aynx DB 읽기 도구 둘뿐 — 그 밖 승인 요청은 어댑터가 카드 없이 거절**(`side_chat::guard` · 시험
@@ -135,6 +135,18 @@ CLI cwd 밖) · 새 채팅은 사람이 마지막에 고른 모드. 바꾸는 �
 그 구독만 걷는다 · 원격 창 · 탭이 떠난 창은 구독만 풀고 채팅을 닫지 않는다 · 권한 결정은 여러 창에서 와도 한 번만 먹는다(시험 `producer_subs_windows_gen` ·
 `producer_slow_receiver_alone` · `producer_two_windows_one_decision`) ·
 앱은 토큰 · 볼트 값을 사건 · 스냅숏에 구조적으로 싣지 않는다.
+⑤ **채팅 모양 AI 타일 프로세스는 GUI 요청(사람 창 — 주 창 · 보조 창 · 원격 웹 창 — Tauri 명령 → `chat_tile_open` 으로 세우고, 띄우는 것은 보내기 `chat_tile_send` 와
+사람이 누른 되감기 미리 보기 `chat_tile_rewind{dryRun}` · 검토 `chat_tile_review` · 목표 정하기 · 이어 하기 `chat_tile_goal{set|resume}`(같은 대화 · 사용자 글 없음))로만 선다.**
+셸 없는 CLI 하나 · `spawn_in_job` · 공용 정화. **사용자 설정 · 지침 · 도구 · 사용자 MCP 그대로**(사이드 채팅의 제한 인자 없음 · 권한 모드 인자는 사람이 그 타일 칩에서 고른 값을 다시 띄울 때만 · Codex 는 채팅 타일 악수만 `experimentalApi` ·
+Claude 는 파일 체크포인트 환경 `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=1` 하나를 더 싣는다 — 사본은 CLI 자신의 `~/.claude/file-history`) · cwd = 타일 폴더 ·
+stdin 에는 사람 글(+사람이 첨부한 그림 · 파일 — 서버가 앱 첨부 폴더 안의 실제 파일인지 · 하나 10 MB · 합쳐 8개로 다시 확인 ·
+파일은 **사본을 두지 않고** 그 첨부 폴더의 경로 줄(`Attached file: …` — 서버가 지은 고정 꼬리)만 붙인다 · 사용자 저장소에는 쓰지 않는다 · 판 39) · 사람 결정 ·
+사람 제어만 닿는다. 압축은 사람 op 하나(`chat_tile_compact` — 띄우지 않는다 · 턴 중에는 거절) · 맥락 사용량은 받기만 한다.
+되감기는 사람 op 하나(`chat_tile_rewind` — 미리 보기 뒤에만 실행 · 턴 중 · 권한 대기 중에는 거절 · 실행은 띄우지 않는다)이고 CLI 자신의 되감기만 쓴다.
+검토(Codex `review/start` — 같은 대화 안 · 사람이 대상을 고른다 · 앱은 git 을 부르지 않는다) · 목표(Codex `thread/goal/*` — `origin:"user"` 는 사람 op 에서만 ·
+한도는 고정 값 다섯 중 하나) · 속도 등급(턴 몸의 `serviceTierForTurn` — 사용자 config 에 쓰지 않는다 · 띄우지 않는다)도 사람 op 하나씩이다. MCP 상태는 이름 ·
+상태 · 인증 낱말 · 도구 수만 받는다(값 · URL · 머리글 · 명령 · 오류 글은 싣지 않는다). 어댑터가 스스로 짓는 줄은 악수(Codex `model/list` · `collaborationMode/list` ·
+`skills/list`) · CLI 가 물은 것에 대한 고정 답 · 사람이 MCP 상태 보기를 열 때의 읽기(Claude `mcp_status` · Codex `mcpServerStatus/list` 와 그 다음 쪽)뿐이고 대화를 바꾸지 않는다.
 
 <a id="arch-orch-workers"></a>
 ### 작업자
@@ -186,6 +198,7 @@ MCP·`mcp.json`·거울·라우팅·작업안·실행기·감사는 **세션 서
 [docs/log/2026-10-08-session-core-local.md](log/2026-10-08-session-core-local.md).
 임대(주)는 하나 그대로이고, 그 밖에 **시청자**가 빼앗지 않고 덧붙는다(원격 웹 — `session_core/viewers.rs` 머리말: 쓰기는 둘 다 ·
 닫기는 주만 · 크기·터미널 질의 응답은 마지막 사람 입력의 쪽 · 느린 시청자는 생산자를 세우지 않고 떨어져 재동기화).
+**채팅 모양 AI 타일은 세션이 아니다** — 프로세스는 리로드 · GUI 종료 때 TTL 10분 뒤 쉬는 순간 닫고, 다음 보내기가 같은 대화를 resume 한다.
 
 <a id="arch-server"></a>
 ## 세션 서버

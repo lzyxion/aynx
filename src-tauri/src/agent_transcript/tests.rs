@@ -328,6 +328,62 @@ fn codex_interrupts_and_declines_are_rebuilt_from_the_rollout() {
     assert!(page(&lone, None, 40, codex_events).items.is_empty());
 }
 
+/// codex-cli 0.172 코드 모드 롤아웃(실기 기록에서 줄만 추리고 경로를 `C:/repo` 로 바꿈) — `exec` 의 JS 조각이 안쪽 도구 호출로
+/// 읽히고, 사람이 거절한 호출 · 끊긴 턴 표식이 남는다.
+#[test]
+fn codex_code_mode_exec_reads_as_the_inner_tool_call() {
+    let file = include_str!("fixtures/codex-code-mode.jsonl");
+    let p = page(file, None, 200, codex_events);
+    let tools: Vec<&ToolCall> = p.items.iter().filter_map(|i| i.tool.as_ref()).collect();
+    assert_eq!(tools.len(), 3);
+    let cmd = "Set-Content -LiteralPath 'note-codex.txt' -Value 'hello' -Encoding ascii -ErrorAction Stop";
+    // 거절된 호출 — 실시간 줄과 같은 `command` · 줄을 이은 명령 전체 · 거절 표지
+    let joined = format!("{cmd} [System.IO.File]::ReadAllText((Resolve-Path 'note-codex.txt').Path) -ceq \"hello`r`n\"");
+    assert_eq!(tools[0].name, "command");
+    assert_eq!(tools[0].summary, format!("{}…", cap(&joined, SUMMARY_MAX_CHARS).0.trim_end()));
+    assert!(tools[0].summary.contains("[System.IO.File]"), "첫 줄만이 아니라 둘째 줄까지");
+    let input: Value = serde_json::from_str(tools[0].input.as_deref().unwrap()).unwrap();
+    assert!(input["cmd"].as_str().unwrap().starts_with(cmd) && input["workdir"] == r"C:\repo", "{input}");
+    assert!(!tools[0].input.as_deref().unwrap().contains("tools."), "JS 조각이 아니라 명령 글");
+    assert!(tools[0].denied && tools[0].error);
+    // 허용된 호출 — 안쪽 결과의 `output` 만
+    assert_eq!((tools[1].name.as_str(), tools[1].summary.as_str()), ("command", tools[0].summary.as_str()));
+    assert_eq!(tools[1].output.as_deref(), Some("True\r\n"));
+    assert!(!tools[1].denied && !tools[1].error);
+    // MCP — 완료 표지(`McpToolCall.server`)로 원래 서버 이름을 되찾는다 · 결과 글
+    assert_eq!(tools[2].name, "mcp__aynx-sessions-dev__list_sessions");
+    assert_eq!(tools[2].output.as_deref(), Some("[]"));
+    // 끊긴 턴은 사람 말 뒤 표식 하나(부분 글은 롤아웃에 없다)
+    let at = p.items.iter().position(|i| i.role == "interrupted").unwrap();
+    assert_eq!(p.items[at - 1].role, "user");
+    assert!(p.items[at - 1].text.as_deref().unwrap().contains("2000"));
+}
+
+#[test]
+fn code_mode_calls_parse_only_a_single_literal_call() {
+    let (n, v) = code_mode_call(r#"text(await tools.exec_command({cmd:"a \"b\"\nc",'workdir':`C:\\repo`, n: -1.5, ok: true, xs: [1, null,],}))"#).unwrap();
+    assert_eq!(n, "exec_command");
+    assert_eq!(v, json!({"cmd": "a \"b\"\nc", "workdir": "C:\\repo", "n": -1.5, "ok": true, "xs": [1, null]}));
+    assert_eq!(code_mode_call("tools.list()").unwrap(), ("list".to_owned(), json!({})));
+    assert_eq!(code_mode_call(r#"tools.apply_patch("*** Begin Patch\n")"#).unwrap().1, json!("*** Begin Patch\n"));
+    assert_eq!(code_mode_call(r#"tools.x({a:"\u00e9\u{1F600}\x41"})"#).unwrap().1, json!({"a": "é😀A"}));
+    for bad in [
+        "ls",
+        "tools.a({}); tools.b({})",
+        "tools.a(cmd)",
+        "tools.a({cmd: x})",
+        "tools.a(`${x}`)",
+        "tools.a({cmd: \"open",
+        "tools.({})",
+    ] {
+        assert!(code_mode_call(bad).is_none(), "{bad}");
+    }
+    assert!(code_mode_result(&json!("plain")).is_none());
+    assert!(code_mode_result(&json!([{"type": "input_text", "text": "other"}])).is_none());
+    let bad_exit = json!([{"text": "Script completed\n"}, {"text": "{\"exit_code\":2,\"output\":\"nope\"}"}]);
+    assert_eq!(code_mode_result(&bad_exit), Some(("nope".to_owned(), true, false)));
+}
+
 /// Codex 0.163 롤아웃의 그림 만들기(10-24 실측 모양) — `event_msg item_completed{Extension · image_gen.generation · savedPath}` 가
 /// 에이전트 말 `![지시문](경로)` 로 선다(사이드 채팅 실시간과 같은 글자). 그 `exec` 호출 · 결과(`input_image` 데이터 URL)는 도구
 /// 한 항목 그대로이고 그림 말을 겹쳐 만들지 않는다. 끝나지 않은 · 경로 없는 그림은 아무것도 아니다.
@@ -1238,4 +1294,543 @@ fn measured_tui_attach_shapes_become_file_chips() {
         (Some(said), vec!["main.ts".to_string(), "shot.png".to_string()], 0),
         "그림 블록이 없으면 그림 경로도 칩"
     );
+}
+
+/// 채팅 타일의 첨부 꼬리(`with_file_refs` — `Attached file: <앱 첨부 자리>/<64hex>/<이름>`)는 두 CLI 모두 파일 칩으로 · 글에서 걷힌다.
+/// 경로는 이 PC 의 실제 첨부 자리로 짓는다. 사이드 채팅 판정(`parse_file_refs` — `…/attachments/<이름>`)은 그대로다.
+#[test]
+fn chat_tile_attach_tails_become_file_chips() {
+    use crate::side_chat::event::parse_file_refs;
+    let root = crate::agent_attachments::attachments_root().unwrap();
+    let hex = "ef".repeat(32);
+    let memo = root.join(&hex).join("memo-heron.txt").to_string_lossy().into_owned();
+    let ts = root.join(&hex).join("main (2).ts").to_string_lossy().into_owned();
+    let tail = format!("이거 봐 줘\n\nAttached file: {memo}\nAttached file: {ts}");
+    assert!(parse_file_refs(&tail).is_none(), "사이드 채팅 판정은 hex 폴더를 받지 않는다(그대로)");
+    let claude = lines(&[
+        c_user(json!(tail.clone()), json!({})),
+        c_user(
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG_1X1}},
+                   {"type": "text", "text": format!("Attached file: {memo}")}]),
+            json!({}),
+        ),
+    ]);
+    let p = page(&claude, None, 40, claude_events);
+    let us: Vec<_> = p.items.iter().filter(|i| i.role == "user").collect();
+    assert_eq!((us[0].text.as_deref(), us[0].files.clone()), (Some("이거 봐 줘"), vec!["memo-heron.txt".to_string(), "main (2).ts".to_string()]));
+    assert_eq!((us[1].text.as_deref(), us[1].files.clone(), us[1].images), (Some(""), vec!["memo-heron.txt".to_string()], 1));
+    let codex = lines(&[x_meta(), x_item(json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": tail.clone()}]}))]);
+    let p = page(&codex, None, 40, codex_events);
+    let u = p.items.iter().find(|i| i.role == "user").unwrap();
+    assert_eq!((u.text.as_deref(), u.files.clone()), (Some("이거 봐 줘"), vec!["memo-heron.txt".to_string(), "main (2).ts".to_string()]));
+    // 앱 첨부 자리 밖 · hex 가 아닌 폴더 · 가운데의 꼬리 · 한 단계 더 깊음은 글 그대로
+    for t in [
+        format!("봐\n\nAttached file: C:/elsewhere/{hex}/a.ts"),
+        format!("봐\n\nAttached file: {}", root.join("notes").join("a.ts").to_string_lossy()),
+        format!("Attached file: {memo}\n\n봐"),
+        format!("봐\n\nAttached file: {}", root.join(&hex).join("sub").join("a.ts").to_string_lossy()),
+    ] {
+        let p = page(&lines(&[c_user(json!(t.clone()), json!({}))]), None, 40, claude_events);
+        let u = p.items.iter().find(|i| i.role == "user").unwrap();
+        assert!(u.files.is_empty() && u.text.as_deref() == Some(t.as_str()), "{t}");
+    }
+}
+
+/// Codex 함수 호출 · 코드 모드의 `exec_command` 는 실시간 줄처럼 `command` · 줄을 이은 명령 — 다른 도구 이름은 그대로.
+#[test]
+fn codex_exec_command_reads_like_the_live_command_row() {
+    let file = lines(&[
+        x_meta(),
+        x_item(json!({"type": "function_call", "name": "exec_command", "call_id": "c1", "arguments": "{\"cmd\":\"cd C:/repo\\ngit status\",\"workdir\":\"C:/repo\"}"})),
+        x_item(json!({"type": "function_call", "name": "shell", "call_id": "c2", "arguments": "{\"command\":[\"bash\",\"-lc\",\"ls\\npwd\"]}"})),
+    ]);
+    let p = page(&file, None, 40, codex_events);
+    let t: Vec<(&str, &str)> = p.items.iter().filter_map(|i| i.tool.as_ref()).map(|t| (t.name.as_str(), t.summary.as_str())).collect();
+    assert_eq!(t, [("command", "cd C:/repo git status"), ("shell", "ls")]);
+}
+
+/// 코드 모드 MCP 이름 되돌리기 — 완료 표지가 호출 뒤에 와도 · 같은 alias 를 두 서버가 쓰면 되돌리지 않는다 · 표지가 없으면 그대로.
+#[test]
+fn codex_mcp_server_names_come_back_from_the_completion_marker() {
+    let call = |id: &str, tool: &str| x_item(json!({"type": "custom_tool_call", "name": "exec", "call_id": id, "input": format!("text(await tools.{tool}({{}}))")}));
+    let done = |server: &str| json!({"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "McpToolCall", "server": server, "tool": "t", "status": "completed"}}});
+    let names = |file: &str| -> Vec<String> {
+        page(file, None, 40, codex_events).items.iter().filter_map(|i| i.tool.as_ref()).map(|t| t.name.clone()).collect()
+    };
+    let one = lines(&[x_meta(), call("a", "mcp__my_db__query"), done("my-db"), call("b", "mcp__my_db__schema"), call("c", "mcp__other__x")]);
+    assert_eq!(names(&one), ["mcp__my-db__query", "mcp__my-db__schema", "mcp__other__x"]);
+    let clash = lines(&[x_meta(), call("a", "mcp__a_b__t"), done("a-b"), done("a.b"), call("b", "mcp__a_b__t")]);
+    assert_eq!(names(&clash).last().map(String::as_str), Some("mcp__a_b__t"));
+    let plain = lines(&[x_meta(), call("a", "mcp__srv__t"), done("srv")]);
+    assert_eq!(names(&plain), ["mcp__srv__t"]);
+}
+
+/// Codex 계획 모드의 답(롤아웃에 `<proposed_plan>` 으로 감싼 assistant 글 — codex-cli 0.172 실측 꼴) — 글 전체가 그 한 쌍일 때만 꼬리표를 걷는다.
+/// 일부만 감싼 글 · 꼬리표를 말하는 사람 글은 그대로다.
+#[test]
+fn codex_proposed_plan_wrapper_is_stripped_only_when_it_wraps_everything() {
+    let file = include_str!("fixtures/codex-proposed-plan.jsonl");
+    let p = page(file, None, 40, codex_events);
+    assert_eq!(roles(&p), ["user", "assistant", "user", "assistant"]);
+    let t = texts(&p);
+    assert_eq!(
+        t[1],
+        "**Append `const c = 4;` to `main.ts`**\n\n1. Add `const c = 4;` on a new line after `const b = 3;`.\n2. Verify the final three declarations appear in order `a`, `b`, `c`."
+    );
+    assert_eq!(t[2], "What does <proposed_plan> mean?", "사람 글은 그대로");
+    assert!(t[3].starts_with("Plan mode wraps") && t[3].contains("<proposed_plan>\n1. step\n</proposed_plan>"), "일부만 감싼 글은 그대로");
+    // 꼬리표가 제 줄이 아니거나 · 두 쌍이거나 · 속이 비면 그대로
+    for keep in [
+        "<proposed_plan>inline</proposed_plan>",
+        "<proposed_plan>\na\n</proposed_plan>\n<proposed_plan>\nb\n</proposed_plan>",
+        "<proposed_plan>\n\n</proposed_plan>",
+        "<proposed_plan>\nno end",
+    ] {
+        let one = lines(&[x_meta(), x_item(json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": keep}]}))]);
+        assert_eq!(texts(&page(&one, None, 40, codex_events)), [keep], "{keep}");
+    }
+    let crlf = "\r\n<proposed_plan>\r\n1. a\r\n</proposed_plan>\r\n";
+    let one = lines(&[x_meta(), x_item(json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": crlf}]}))]);
+    assert_eq!(texts(&page(&one, None, 40, codex_events)), ["1. a"]);
+}
+
+/// 꼬리표를 걷은 글만 계획 표지를 단다 — 화면이 턴 뒤 · 다시 읽은 뒤에도 계획 덩어리로 그린다.
+#[test]
+fn codex_plan_text_keeps_a_plan_tag() {
+    let p = page(include_str!("fixtures/codex-proposed-plan.jsonl"), None, 40, codex_events);
+    let tagged: Vec<bool> = p.items.iter().map(|i| i.plan.is_some()).collect();
+    assert_eq!(tagged, [false, true, false, false], "감싼 답만 · 사람 글 · 일부만 감싼 글은 아님");
+    let j = serde_json::to_value(&p.items[1]).unwrap();
+    assert_eq!(j["plan"], json!({}), "Codex 계획 표지는 빈 객체 — 본문은 text");
+    assert!(serde_json::to_value(&p.items[0]).unwrap().get("plan").is_none(), "보통 줄에는 칸이 없다");
+}
+
+fn plan_items(p: &TranscriptPage) -> Vec<&TranscriptItem> {
+    p.items.iter().filter(|i| i.tool.as_ref().is_some_and(|t| t.name == "ExitPlanMode")).collect()
+}
+
+/// Claude 2.1.332 실측(경로만 바꿈): 첫 `ExitPlanMode` 는 `input:{}` · 고친 계획의 호출은 `input.plan` 이 **앞 계획**(낡음)이다.
+/// 본문은 승인 결과의 `toolUseResult.plan` · 그 앞 계획 파일 통째 쓰기에서만 — 호출 입력의 `plan` 은 쓰지 않는다.
+#[test]
+fn claude_plan_bodies_come_only_from_the_approved_result_or_the_last_full_write() {
+    let p = page(include_str!("fixtures/claude-plan-turns.jsonl"), None, 200, claude_events);
+    let plans = plan_items(&p);
+    assert_eq!(plans.len(), 3);
+    let tag = |i: usize| plans[i].plan.as_ref().expect("계획 표지");
+    let head = |i: usize| tag(i).body.as_deref().map(|b| b.lines().next().unwrap_or("").to_owned());
+    // 1) 거절 + 고칠 점 — 본문은 직전 Write(그때 카드에 보인 글)
+    assert_eq!((tag(0).outcome, tag(0).feedback.as_deref(), head(0).as_deref()), (Some("kept"), Some("c 대신 d 로"), Some("# main.ts에 const c 추가")));
+    // 2) 승인 — 호출 입력은 앞 계획(c)이지만 본문은 승인된 d
+    assert!(plans[1].tool.as_ref().unwrap().input.as_deref().unwrap_or("").contains("const c 추가"), "픽스처: 호출 입력이 낡았다");
+    assert_eq!((tag(1).outcome, tag(1).feedback.as_deref(), head(1).as_deref()), (Some("approved"), None, Some("# main.ts에 const d 추가")));
+    // 3) 다음 턴 — 호출 입력은 d, 승인된 것은 e
+    assert_eq!((tag(2).outcome, head(2).as_deref()), (Some("approved"), Some("# main.ts에 const e 추가")));
+    for i in 0..3 {
+        let f = tag(i).file.as_deref().unwrap_or("");
+        assert!(f.ends_with(".md") && f.replace('\\', "/").contains("/.claude/plans/"), "{f}");
+    }
+    // 대화 면과 같은 파서 — 도구 줄 · 결과는 그대로
+    assert!(plans.iter().all(|i| i.role == "tool" && i.tool.as_ref().unwrap().output.is_some()));
+    assert!(plans[0].tool.as_ref().unwrap().denied);
+}
+
+#[test]
+fn claude_plan_without_a_reliable_body_carries_only_the_file_and_outcome() {
+    let f = "C:\\Users\\u\\.claude\\plans\\p.md";
+    let deny = |id: &str, text: &str| {
+        c_user(
+            json!([{"type": "tool_result", "tool_use_id": id, "content": text, "is_error": true}]),
+            json!({"permissionDecision": {"decision": "reject", "source": "user_reject"}}),
+        )
+    };
+    // 쓰기 뒤 부분 고치기 → 파일 글을 모른다
+    let edited = lines(&[
+        c_tool("w1", "Write", json!({"file_path": f, "content": "# A"})),
+        c_result("w1", json!("ok")),
+        c_tool("e1", "Edit", json!({"file_path": f, "old_string": "A", "new_string": "B"})),
+        c_result("e1", json!("ok")),
+        c_tool("x1", "ExitPlanMode", json!({"plan": "# stale", "planFilePath": f})),
+        deny("x1", crate::side_chat::claude::PLAN_KEEP),
+    ]);
+    let p = page(&edited, None, 40, claude_events);
+    let t = plan_items(&p)[0].plan.as_ref().unwrap();
+    assert_eq!((t.body.as_deref(), t.file.as_deref(), t.outcome, t.feedback.as_deref()), (None, Some(f), Some("kept"), None), "앱 기본 글은 고칠 점이 아니다");
+    // 쓰기가 실패했거나 · 쪽에 없으면 본문 없음 · 결과 없는(기다리는) 호출은 결과 없음
+    let failed = lines(&[
+        c_tool("w1", "Write", json!({"file_path": f, "content": "# A"})),
+        c_user(json!([{"type": "tool_result", "tool_use_id": "w1", "content": "denied", "is_error": true}]), json!({})),
+        c_tool("x1", "ExitPlanMode", json!({})),
+    ]);
+    let p = page(&failed, None, 40, claude_events);
+    let t = plan_items(&p)[0].plan.as_ref().unwrap();
+    assert_eq!((t.body.as_deref(), t.file.as_deref(), t.outcome), (None, Some(f), None));
+    let alone = lines(&[c_tool("x1", "ExitPlanMode", json!({"plan": "# stale"}))]);
+    let p = page(&alone, None, 40, claude_events);
+    let t = plan_items(&p)[0].plan.as_ref().unwrap();
+    assert_eq!((t.body.as_deref(), t.file.as_deref()), (None, None), "입력의 plan 은 본문이 아니다");
+    // 계획 파일이 아닌 쓰기는 경로를 대지 않는다
+    let other = lines(&[
+        c_tool("w1", "Write", json!({"file_path": "C:\\repo\\notes.md", "content": "# A"})),
+        c_result("w1", json!("ok")),
+        c_tool("x1", "ExitPlanMode", json!({})),
+    ]);
+    let p = page(&other, None, 40, claude_events);
+    assert!(plan_items(&p)[0].plan.as_ref().unwrap().file.is_none());
+}
+
+/// codex-cli 0.172 실측(경로만 바꿈): 사람이 거절한 명령은 `exec` 가 "cell ID 7" 로 먼저 돌아오고 거절 글은 뒤의 `wait{cell_id:"7"}` 결과에 실린다.
+#[test]
+fn codex_wait_rows_do_not_steal_the_decline_of_the_command_they_wait_for() {
+    let p = page(include_str!("fixtures/codex-wait-declined.jsonl"), None, 40, codex_events);
+    let tools: Vec<(String, String, bool)> =
+        p.items.iter().filter_map(|i| i.tool.as_ref()).map(|t| (t.name.clone(), t.summary.clone(), t.denied)).collect();
+    assert_eq!(tools.len(), 2);
+    assert_eq!((tools[0].0.as_str(), tools[0].2), ("command", true), "거절됨은 명령 줄에 — {:?}", tools[0].1);
+    assert!(tools[0].1.starts_with("New-Item"));
+    assert_eq!((tools[1].0.as_str(), tools[1].2), ("wait", false), "기다린 줄은 거절이 아니다");
+    // 기다린 명령을 이 쪽에서 못 찾으면 예전 그대로(wait 줄에)
+    let lone: String = include_str!("fixtures/codex-wait-declined.jsonl").lines().filter(|l| !l.contains("custom_tool_call")).map(|l| format!("{l}\n")).collect();
+    let p = page(&lone, None, 40, codex_events);
+    assert_eq!(p.items.iter().filter_map(|i| i.tool.as_ref()).map(|t| t.denied).collect::<Vec<_>>(), [true]);
+}
+
+// ---- 채팅 타일 되감기 — 기준점 · Claude 현재 갈래 · Codex 조각 잇기 ----
+
+fn anchors(p: &TranscriptPage) -> Vec<(String, Option<String>)> {
+    p.items.iter().filter(|i| i.role == "user").map(|i| (i.text.clone().unwrap_or_default(), i.anchor.clone())).collect()
+}
+
+fn user_texts(p: &TranscriptPage) -> Vec<String> {
+    p.items.iter().filter(|i| i.role == "user").map(|i| i.text.clone().unwrap_or_default()).collect()
+}
+
+/// 기준점은 진짜 사람 말 줄의 `uuid` 뿐 — 도구 결과 · `isMeta` · 로컬 명령 · 압축 요약 · 끊김 표지 · `file-history-*` 줄에는 없다(직렬화에 칸째 없다).
+#[test]
+fn claude_records_carry_user_anchor() {
+    let p = page(include_str!("fixtures/claude-anchor.jsonl"), None, 40, claude_events);
+    assert_eq!(
+        anchors(&p),
+        [
+            ("fix the build".to_string(), Some("aaaaaaa1-0000-4000-8000-000000000001".to_string())),
+            ("<command-name>/compact</command-name>\n<command-message>compact</command-message>".to_string(), None),
+            ("second ask".to_string(), Some("aaaaaaa7-0000-4000-8000-000000000007".to_string())),
+            ("no uuid here".to_string(), None),
+        ]
+    );
+    for it in p.items.iter().filter(|i| i.role != "user" || i.anchor.is_none()) {
+        assert!(serde_json::to_value(it).unwrap().get("anchor").is_none(), "{}", it.role);
+    }
+    let v = serde_json::to_value(&p.items[0]).unwrap();
+    assert_eq!(v["anchor"], "aaaaaaa1-0000-4000-8000-000000000001");
+}
+
+/// Codex 기준점 = 사람 말 `response_item` 의 `internal_chat_message_metadata_passthrough.turn_id` · 없으면 바로 뒤 `item_completed{UserMessage}.turn_id` ·
+/// 주입 몫 · 다른 사람 말이 끼면 붙지 않는다.
+#[test]
+fn codex_records_carry_turn_anchor() {
+    let (t1, t2, t3) = ("01a30000-0001-7000-8000-000000000001", "01a30000-0002-7000-8000-000000000002", "01a30000-0003-7000-8000-000000000003");
+    let user = |text: &str, turn: Option<&str>| {
+        let mut p = json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]});
+        if let Some(t) = turn {
+            p["internal_chat_message_metadata_passthrough"] = json!({"turn_id": t});
+        }
+        x_item(p)
+    };
+    let done = |turn: &str| json!({"type": "event_msg", "payload": {"type": "item_completed", "turn_id": turn, "item": {"type": "UserMessage", "content": []}}});
+    let asst = |text: &str| x_item(json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]}));
+    let file = lines(&[
+        x_meta(),
+        user("<environment_context>x</environment_context>", Some(t1)),
+        user("first", Some(t1)),
+        done(t1),
+        asst("a1"),
+        user("second", None),
+        done(t2),
+        asst("a2"),
+        user("third", None),
+        asst("a3"),
+        done(t3),
+    ]);
+    let p = page(&file, None, 40, codex_events);
+    assert_eq!(
+        anchors(&p),
+        [("first".to_string(), Some(t1.to_string())), ("second".to_string(), Some(t2.to_string())), ("third".to_string(), None)],
+        "주입 몫은 항목이 없다 · 늦은 기준점은 바로 앞 사람 말에만"
+    );
+    // 늦은 기준점만 든 줄은 쪽을 끊지 않는다 — 커서가 그 줄이 없을 때와 같다
+    let without: String = file.lines().filter(|l| !l.contains("UserMessage")).map(|l| format!("{l}\n")).collect();
+    let a = page(&file, None, 2, codex_events);
+    let b = page(&without, None, 2, codex_events);
+    assert_eq!(texts(&a), texts(&b));
+}
+
+/// 오케스트레이션 조정자의 판독(`page_of_file`)에는 기준점이 없다.
+#[test]
+fn read_worker_strips_anchor() {
+    let dir = temp_dir("rw-anchor");
+    for (name, body, parse) in [
+        ("c.jsonl", include_str!("fixtures/claude-anchor.jsonl"), claude_events as LineEvents),
+        ("x.jsonl", include_str!("fixtures/codex-revert-base.jsonl"), codex_events as LineEvents),
+    ] {
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        let full = page(body, None, 40, parse);
+        assert!(full.items.iter().any(|i| i.anchor.is_some()), "{name}: 화면 쪽에는 있다");
+        let p = page_of_file(std::fs::File::open(&path).unwrap(), None, Some(40), parse).unwrap();
+        assert_eq!(p.items.len(), full.items.len());
+        assert!(p.items.iter().all(|i| i.anchor.is_none()), "{name}");
+        assert!(!serde_json::to_string(&p).unwrap().contains("\"anchor\""), "{name}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn claude_file_page(path: &Path, limit: usize) -> TranscriptPage {
+    let cut = claude_cut(path);
+    let size = std::fs::metadata(path).unwrap().len();
+    read_page_in(std::fs::File::open(path).unwrap(), size, None, limit, claude_events, &cut).unwrap()
+}
+
+/// 되감은 적 없는 기록은 갈래 읽기가 한 글자도 바꾸지 않는다 — 지금 있는 기록 재료 전부(쪽 · 커서 · 직렬화).
+#[test]
+fn branch_reader_leaves_unrewound_records_alone() {
+    let dir = temp_dir("branch-same");
+    let fixtures: [(&str, &str); 6] = [
+        ("claude-plan-turns.jsonl", include_str!("fixtures/claude-plan-turns.jsonl")),
+        ("claude-anchor.jsonl", include_str!("fixtures/claude-anchor.jsonl")),
+        ("codex-code-mode.jsonl", include_str!("fixtures/codex-code-mode.jsonl")),
+        ("codex-proposed-plan.jsonl", include_str!("fixtures/codex-proposed-plan.jsonl")),
+        ("codex-wait-declined.jsonl", include_str!("fixtures/codex-wait-declined.jsonl")),
+        ("codex-revert-base.jsonl", include_str!("fixtures/codex-revert-base.jsonl")),
+    ];
+    for (name, body) in fixtures {
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        assert!(claude_cut(&path).is_empty(), "{name}");
+        for parse in [claude_events as LineEvents, codex_events as LineEvents] {
+            for limit in [3, 40, 200] {
+                let mut before = None;
+                loop {
+                    let plain = page(body, before, limit, parse);
+                    let size = body.len() as u64;
+                    let cut = claude_cut(&path);
+                    let read = read_page_in(std::fs::File::open(&path).unwrap(), size, before, limit, parse, &cut).unwrap();
+                    assert_eq!(serde_json::to_string(&read).unwrap(), serde_json::to_string(&plain).unwrap(), "{name} {limit} {before:?}");
+                    match plain.cursor {
+                        Some(c) => before = Some(c),
+                        None => break,
+                    }
+                }
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 실측 기록(개인 경로 걷음 · 본문 줄임)에서 현재 갈래만 — 되감은 메시지와 그 뒤 버린 갈래는 빠지고, 되감은 뒤 이어진 말 · 압축 경계 너머는 남는다.
+#[test]
+fn claude_rewound_records_follow_the_current_branch() {
+    let dir = temp_dir("branch");
+    let starts = |p: &TranscriptPage| -> Vec<String> { user_texts(p).iter().map(|t| t.chars().take(24).collect()).collect() };
+    // 한 번 되감고(cherry) 이어 감 · 압축 뒤까지
+    let path = dir.join("continued.jsonl");
+    std::fs::write(&path, include_str!("fixtures/claude-rewind-continued.jsonl")).unwrap();
+    let p = claude_file_page(&path, 200);
+    let users = starts(&p);
+    assert!(!users.iter().any(|t| t.contains("cherry")), "{users:?}");
+    assert_eq!(users.iter().filter(|t| t.starts_with("Remember the word")).count(), 3, "apple · banana · dates: {users:?}");
+    assert_eq!(users.last().map(String::as_str), Some("Without using tools: whi"));
+    // 쪽을 나눠 읽어도 같다
+    let mut got = Vec::new();
+    let mut before = None;
+    loop {
+        let size = std::fs::metadata(&path).unwrap().len();
+        let q = read_page_in(std::fs::File::open(&path).unwrap(), size, before, 3, claude_events, &claude_cut(&path)).unwrap();
+        let mut t = starts(&q);
+        t.append(&mut got);
+        got = t;
+        match q.cursor {
+            Some(c) => before = Some(c),
+            None => break,
+        }
+    }
+    assert_eq!(got, users);
+    // 두 번 되감음 — 둘째는 첫 메시지 기준(잎 없음)이라 앞 대화가 모두 빠진다
+    let path = dir.join("twice.jsonl");
+    std::fs::write(&path, include_str!("fixtures/claude-rewind-twice.jsonl")).unwrap();
+    let p = claude_file_page(&path, 200);
+    assert_eq!(starts(&p), ["Without using tools: whi"]);
+    assert!(p.items.iter().any(|i| i.role == "assistant"), "되감은 뒤의 답은 남는다");
+    // resume 한 프로세스에서 턴 없이 되감음(cherry → banana)
+    let path = dir.join("resumed.jsonl");
+    std::fs::write(&path, include_str!("fixtures/claude-rewind-resumed.jsonl")).unwrap();
+    let p = claude_file_page(&path, 200);
+    assert_eq!(starts(&p), ["Remember the word apple.", "Without using tools: whi"]);
+    // 되감기 판정 — 버린 갈래의 사람 줄은 기준점이 아니다 · 마지막 사람 말은 현재 갈래의 것
+    let kept: Vec<String> = p.items.iter().filter_map(|i| i.anchor.clone()).collect();
+    assert_eq!(kept.len(), 2);
+    let point = |a: &str| claude_rewind_point(&path, a).map(|p| p.last_seen);
+    assert_eq!(point(&kept[0]), Some(kept[1].clone()));
+    assert_eq!(point(&kept[1]), Some(kept[1].clone()));
+    let body = include_str!("fixtures/claude-rewind-resumed.jsonl");
+    let gone: Vec<String> = page(body, None, 200, claude_events).items.into_iter().filter_map(|i| i.anchor).filter(|a| !kept.contains(a)).collect();
+    assert!(!gone.is_empty(), "줄 순서로 읽으면 버린 갈래도 보인다");
+    for g in &gone {
+        assert_eq!(point(g), None, "버린 갈래");
+    }
+    assert_eq!(point("aaaaaaa1-0000-4000-8000-000000000001"), None, "없는 줄");
+    // 표지 없이 끊긴 사슬 · 없는 cutUuid 는 줄 순서 그대로
+    let broken: String = body.lines().map(|l| l.replace("\"rewound\":true", "\"rewound\":false")).map(|l| format!("{l}\n")).collect();
+    std::fs::write(&path, &broken).unwrap();
+    assert_eq!(texts(&claude_file_page(&path, 200)), texts(&page(&broken, None, 200, claude_events)));
+    let unknown: String = body.lines().map(|l| if l.contains("\"cutUuid\"") { cut_to_unknown(l) } else { l.to_string() }).map(|l| format!("{l}\n")).collect();
+    std::fs::write(&path, &unknown).unwrap();
+    assert_eq!(texts(&claude_file_page(&path, 200)), texts(&page(&unknown, None, 200, claude_events)));
+    // 파일이 자라면 늘어난 꼬리만 본다 — 표지가 새로 생기면 다시 판다
+    let path = dir.join("grow.jsonl");
+    let plain = include_str!("fixtures/claude-anchor.jsonl");
+    std::fs::write(&path, plain).unwrap();
+    assert!(claude_cut(&path).is_empty());
+    // 되감기 op 가 먼저 읽어 "표지 없음" 을 기억한 뒤 CLI 가 표지를 덧붙인다 — 기억이 늦은 답을 내면 안 된다
+    let from = plain.len() as u64;
+    assert!(claude_rewind_point(&path, "aaaaaaa7-0000-4000-8000-000000000007").is_some());
+    assert!(!claude_marked_since(&path, from));
+    let mark = json!({"type": "last-prompt", "leafUuid": null, "rewound": true, "cutUuid": "aaaaaaa7-0000-4000-8000-000000000007"});
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(f, "{mark}").unwrap();
+    }
+    assert!(claude_marked_since(&path, from));
+    assert!(!claude_marked_since(&path, std::fs::metadata(&path).unwrap().len()), "그 뒤에는 새 표지가 없다");
+    assert_eq!(claude_rewind_point(&path, "aaaaaaa7-0000-4000-8000-000000000007"), None, "잘린 기준점");
+    let cut = claude_cut(&path);
+    assert!(cut.contains("aaaaaaa7-0000-4000-8000-000000000007") && cut.contains("bbbbbbb2-0000-4000-8000-000000000002"), "그 메시지와 뒤 답");
+    assert!(!cut.contains("aaaaaaa1-0000-4000-8000-000000000001"));
+    assert_eq!(user_texts(&claude_file_page(&path, 40)).iter().filter(|t| *t == "second ask").count(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 압축 경계 앞의 기준점 — 현재 갈래의 경계가 기준점 뒤에 있으면 `before_compact`(막지는 않는다 — 같은 프로세스는 받는다).
+#[test]
+fn claude_rewind_point_knows_the_compact_boundary() {
+    let dir = temp_dir("rw-compact");
+    let path = dir.join("continued.jsonl");
+    std::fs::write(&path, include_str!("fixtures/claude-rewind-continued.jsonl")).unwrap();
+    let anchors: Vec<String> = claude_file_page(&path, 200).items.iter().filter_map(|i| i.anchor.clone()).collect();
+    assert!(anchors.len() >= 2, "{anchors:?}");
+    let first = claude_rewind_point(&path, &anchors[0]).unwrap();
+    assert!(first.before_compact, "경계 앞");
+    let last = claude_rewind_point(&path, anchors.last().unwrap()).unwrap();
+    assert!(!last.before_compact, "경계 뒤");
+    assert_eq!(first.last_seen, last.last_seen);
+    // 경계가 없는 기록
+    let path = dir.join("plain.jsonl");
+    std::fs::write(&path, include_str!("fixtures/claude-anchor.jsonl")).unwrap();
+    assert!(!claude_rewind_point(&path, "aaaaaaa1-0000-4000-8000-000000000001").unwrap().before_compact);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn cut_to_unknown(l: &str) -> String {
+    let mut v: Value = serde_json::from_str(l).unwrap();
+    v["cutUuid"] = json!("deadbeef-0000-4000-8000-000000000000");
+    v.to_string()
+}
+
+const XB: &str = "01a30000-0000-7000-8000-00000000000b";
+
+/// 기준 재료의 앞 `n` 턴이 끝나는 바이트(그 턴 답 줄 끝).
+fn base_cut(after: &str) -> u64 {
+    let base = include_str!("fixtures/codex-revert-base.jsonl");
+    let at = base.find(&format!("\"text\":\"{after}\"")).unwrap();
+    (at + base[at..].find('\n').unwrap() + 1) as u64
+}
+
+/// 조각 재료 — 새 사람 말 · 턴 id · 조각이 가리키는 파일 id · 바이트.
+fn seg(text: &str, turn: &str, thread: &str, offset: u64) -> String {
+    let body = include_str!("fixtures/codex-revert-seg.jsonl").replace("\"NEW", &format!("\"{text}")).replace("01a30000-0006-7000-8000-000000000006", turn);
+    let mut ls: Vec<Value> = body.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    ls[0]["payload"]["history_base"]["thread_id"] = json!(thread);
+    ls[0]["payload"]["history_base"]["end_byte_offset"] = json!(offset);
+    lines(&ls)
+}
+
+fn codex_day(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(tag);
+    let root = dir.join("sessions");
+    let day = root.join("2026").join("11").join("28");
+    std::fs::create_dir_all(&day).unwrap();
+    std::fs::write(day.join(format!("rollout-2026-11-28T01-00-00-{XB}.jsonl")), include_str!("fixtures/codex-revert-base.jsonl")).unwrap();
+    (dir, root)
+}
+
+fn codex_all(root: &Path, limit: usize) -> (Vec<String>, TranscriptPage) {
+    let codex = crate::agent_sessions::target("codex").unwrap();
+    let roots = vec![root.to_path_buf()];
+    let first = transcript_in(codex, &roots, XB, None, Some(200)).unwrap();
+    let mut got = Vec::new();
+    let mut before = None;
+    loop {
+        let p = transcript_in(codex, &roots, XB, before, Some(limit)).unwrap();
+        let mut t = texts(&p);
+        t.append(&mut got);
+        got = t;
+        match p.cursor {
+            Some(c) => before = Some(c),
+            None => break,
+        }
+    }
+    assert_eq!(got, texts(&first), "쪽을 나눠 거꾸로 읽어도 같다");
+    (user_texts(&first), first)
+}
+
+/// 되감은 Codex 대화 — 조각의 `history_base.thread_id` 를 **파일 이름의 id**(원본 = 대화 id · 조각 = 꼬리 `_<id>`)와 맞춰 앞 파일의 앞부분을 잇는다.
+/// 원본을 가리킴 · 앞 조각을 가리킴(두 번 되감음) · 줄 경계가 아니거나 모자라면 그 조각만 · 그림 자리는 가상 흐름의 자리.
+#[test]
+fn codex_reverted_thread_reads_history_base() {
+    let (s1, s2) = ("01a30000-00a1-7000-8000-0000000000a1", "01a30000-00a2-7000-8000-0000000000a2");
+    let (t6, t7) = ("01a30000-0006-7000-8000-000000000006", "01a30000-0007-7000-8000-000000000007");
+    // 되감기 전 — 원본 하나 그대로
+    let (dir, root) = codex_day("seg-none");
+    let (users, _) = codex_all(&root, 2);
+    assert_eq!(users, ["one", "two", "three", "four", "five"]);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // 원본을 가리키는 조각 — 앞 세 턴 + 새 턴
+    let (dir, root) = codex_day("seg-orig");
+    let day = root.join("2026").join("11").join("28");
+    let seg1 = day.join(format!("rollout-2026-11-28T01-01-00-{XB}_{s1}.jsonl"));
+    std::fs::write(&seg1, seg("six", t6, XB, base_cut("three-done"))).unwrap();
+    let (users, first) = codex_all(&root, 2);
+    assert_eq!(users, ["one", "two", "three", "six"], "빠진 턴 없음");
+    assert_eq!(first.items.iter().rfind(|i| i.role == "user").and_then(|i| i.anchor.as_deref()), Some(t6));
+    // 그림 — 원본 첫 말의 그림을 가상 자리로 다시 꺼낸다
+    let codex = crate::agent_sessions::target("codex").unwrap();
+    let roots = vec![root.clone()];
+    let pic = first.items.iter().find(|i| !i.pictures.is_empty()).unwrap().pictures[0].clone();
+    let png = data_encoding::BASE64.decode(PNG_1X1.as_bytes()).unwrap();
+    assert_eq!(image_in(source_of(codex, &roots, XB).unwrap(), pic.at, pic.len, pic.n).unwrap(), png);
+
+    // 앞 조각을 가리키는 둘째 조각 — 원본 앞 세 턴 + 첫 조각의 앞(새 턴 전) + 새 턴
+    let seg1_body = std::fs::read_to_string(&seg1).unwrap();
+    let before_six = seg1_body.find("\"text\":\"six\"").map(|at| seg1_body[..at].rfind('\n').unwrap() + 1).unwrap() as u64;
+    let seg2 = day.join(format!("rollout-2026-11-28T01-02-00-{XB}_{s2}.jsonl"));
+    std::fs::write(&seg2, seg("seven", t7, s1, before_six)).unwrap();
+    let (users, _) = codex_all(&root, 3);
+    assert_eq!(users, ["one", "two", "three", "seven"], "두 번 되감음");
+    // 압축 뒤처럼 앞 조각을 건너 원본을 가리켜도 된다
+    std::fs::write(&seg2, seg("seven", t7, XB, base_cut("one-done"))).unwrap();
+    assert_eq!(codex_all(&root, 3).0, ["one", "seven"]);
+
+    // 줄 경계가 아니면 · 대상이 모자라면 · 가리키는 파일이 없으면 그 조각만
+    for (thread, off) in [(XB, base_cut("three-done") - 2), (XB, 10_000_000), ("01a30000-ffff-7000-8000-00000000ffff", base_cut("two-done"))] {
+        std::fs::write(&seg2, seg("seven", t7, thread, off)).unwrap();
+        assert_eq!(codex_all(&root, 3).0, ["seven"], "{thread} {off}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // 이름 판정 — 조각 꼬리 · 원본 · 다른 대화
+    let p = PathBuf::from(format!("C:/x/rollout-2026-11-28T01-01-00-{XB}_{s1}.jsonl"));
+    assert_eq!(file_thread_id(&p, XB).as_deref(), Some(s1));
+    assert_eq!(file_thread_id(&PathBuf::from(format!("C:/x/rollout-2026-11-28T01-00-00-{XB}.jsonl")), XB).as_deref(), Some(XB));
+    assert_eq!(file_thread_id(&PathBuf::from("C:/x/rollout-2026-11-28T01-00-00-other.jsonl"), XB), None);
 }

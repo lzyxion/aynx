@@ -18,6 +18,11 @@ export type PermMode = "manual" | "auto";
 export type Outcome = "ok" | "interrupted" | "error";
 export type ExitReason = "closed" | "protocol" | "start-timeout" | "exit" | "crash";
 export type SideChatStatus = "stopped" | "starting" | "ready" | "running";
+/** [이 대화에서 늘 허용] 이 실을 것의 요약 — 실을 값 자체는 서버 어댑터의 대기 장부에만 있다 */
+export interface SessionAllowView {
+  kind: "mode" | "rules" | "dirs" | "command";
+  detail: string;
+}
 
 /** Rust `Ev` — 꼬리표 `t` · camelCase */
 export type SideChatEv =
@@ -39,7 +44,18 @@ export type SideChatEv =
   | { t: "toolStarted"; item: string; name: string; summary: string; input?: unknown }
   | { t: "toolOutput"; item: string; text: string }
   | { t: "toolFinished"; item: string; ok: boolean; output: string | null }
-  | { t: "permission"; requestId: string; kind: PermKind; title: string; detail: string; toolName: string }
+  /** `input` = 도구 입력 — 채팅 모양 AI 타일만 싣는다(16 KiB 를 넘으면 없다) */
+  | {
+      t: "permission";
+      requestId: string;
+      kind: PermKind;
+      title: string;
+      detail: string;
+      toolName: string;
+      input?: unknown;
+      /** 채팅 모양 AI 타일만 — 늘 허용할 수 있을 때 */
+      sessionAllow?: SessionAllowView;
+    }
   | { t: "permissionResolved"; requestId: string; decision: Decision | null; by: ResolvedBy }
   /** 서버가 카드 없이 대신 허용한 요청 — 곧이어 `permissionResolved` */
   | { t: "permissionAuto"; requestId: string; kind: PermKind; title: string; toolName: string; by: ResolvedBy }
@@ -52,7 +68,77 @@ export type SideChatEv =
   /** 화면 문구는 낱말로 고른다 — 새 낱말이 올 수 있다 */
   | { t: "notice"; code: string; detail: string | null }
   | { t: "mcpServers"; names: string[] }
+  /** 채팅 타일만 — CLI 자신의 권한 모드. `chosen` = 서버가 다시 띄울 때 쓸 값(없으면 사용자 CLI 설정) */
+  | { t: "cliMode"; mode: string; choices: string[]; chosen?: string | null }
+  /** 채팅 타일만 — `/` 메뉴 재료(스킬 경로는 오지 않는다) · `terminal` = CLI 가 터미널 전용이라 알린 이름 */
+  | { t: "commands"; commands: SlashCommandView[]; terminal: string[] }
+  /** 채팅 타일만 — 받기만 한 맥락 사용량 · `window` 모름 = null */
+  | { t: "contextUsage"; used: number; window: number | null; source: string }
+  | { t: "compaction"; phase: "started" | "done"; trigger: string | null; preTokens: number | null; postTokens: number | null }
+  /** 채팅 타일만 — 이 프로세스가 되감을 수 있는 범위 */
+  | { t: "rewindCaps"; files: boolean; conversation: boolean }
+  /** 채팅 타일만 — 사람이 부른 되감기의 답. `files` = cwd 기준 상대 경로(밖이면 절대) · `error` = CLI 글 한 줄 */
+  | {
+      t: "rewind";
+      phase: "preview" | "done" | "failed";
+      anchor: string;
+      scope: RewindScope;
+      can: boolean;
+      files: string[];
+      moreFiles: number;
+      insertions: number | null;
+      deletions: number | null;
+      turns: number | null;
+      skippedLinks: number | null;
+      error: string | null;
+    }
+  /** 채팅 타일만 — CLI 가 실은 MCP 서버의 상태(받기만 · 허용 목록 칸뿐) */
+  | { t: "mcpStatus"; servers: McpRowView[]; source: "init" | "startup" | "list" }
+  /** 채팅 타일만 — Codex 스레드 목표 · `null` = 없음(지움) */
+  | { t: "goal"; goal: GoalViewWire | null }
+  /** 채팅 타일만 — Codex 검토 표지. `label` = CLI 가 지은 짧은 이름 */
+  | { t: "review"; phase: "started" | "done" | "stopped"; label: string; text: string | null }
+  /** 채팅 타일만 — Codex 모델마다 고를 수 있는 속도 등급 · 스레드의 지금 값 */
+  | { t: "serviceTiers"; byModel: Record<string, TierView[]>; thread: string | null }
   | { t: "exited"; code: number | null; reason: ExitReason };
+
+/** MCP 상태 한 줄 — 이 칸 밖(값 · URL · 머리글 · 명령 · 오류 글)은 서버가 싣지 않고 프런트도 남기지 않는다. `aynx` · `picked` 는 스냅숏에만 */
+export interface McpRowView {
+  name: string;
+  state: "connected" | "connecting" | "needsAuth" | "failed" | "disabled" | "cancelled" | "unknown";
+  auth: "oauth" | "bearer" | "notLoggedIn" | "none" | null;
+  tools: number | null;
+  scope: string;
+  aynx?: boolean;
+  picked?: boolean;
+}
+
+/** `auto` = 이 프로세스에서 Aynx 가 정하지 않은 목표(터미널 모양 · 모델 · 다른 창) */
+export interface GoalViewWire {
+  objective: string;
+  status: string;
+  tokensUsed: number;
+  tokenBudget: number | null;
+  secondsUsed: number;
+  auto: boolean;
+}
+
+export interface TierView {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/** 채팅 타일 되감기 범위 — `both` 는 Claude 만 */
+export type RewindScope = "files" | "conversation" | "both";
+
+export interface SlashCommandView {
+  name: string;
+  description: string;
+  hint: string;
+  kind: "builtin" | "skill" | "command";
+  aliases: string[];
+}
 
 export type PermissionEv = Extract<SideChatEv, { t: "permission" }>;
 
@@ -223,7 +309,8 @@ export function sideChatList(): Promise<SideChatRow[]> {
 export const EV_TAGS: ReadonlySet<string> = new Set([
   "ready", "turnStarted", "userAccepted", "textDelta", "text", "toolStarted", "toolOutput", "toolFinished",
   "permission", "permissionResolved", "turnEnded", "modelChanged", "effortChanged", "notice", "mcpServers", "exited",
-  "permissionAuto", "permPolicy",
+  "permissionAuto", "permPolicy", "cliMode", "commands", "contextUsage", "compaction", "rewindCaps", "rewind",
+  "mcpStatus", "goal", "review", "serviceTiers",
 ]);
 
 /** 모르는 꼬리표는 버린다 — 새 사건은 Rust 와 함께 이 표에 넣는다. */

@@ -18,6 +18,8 @@ interface StatusReport {
   label: string;
   locations?: OpenLocation[];
   dots: Record<string, RawWorkspaceDot | null>;
+  /** 채팅 잎의 `ct-` — `tiles` 에 넣지 않는다(콘솔 줄 · 에이전트 카드로 새지 않게) */
+  chatStreams?: string[];
   tiles: { workspaceId: string; streamId: string; tabId: string; paneId: string; status: ConsoleRowInput["status"]; connected: boolean; kind?: "local" | "ssh"; alias?: string | null; agent?: TileAgent | null; folder?: string | null; tileKey?: string; tabKey?: string; projectId?: string; focusedAt?: number }[];
 }
 let reports = $state<Record<string, StatusReport>>({});
@@ -31,10 +33,11 @@ export function publishWorkspaceStatus(
   dots: Record<string, TabDot | null>,
   tiles: StatusReport["tiles"],
   locations: OpenLocation[] = [],
+  chatStreams: string[] = [],
 ): void {
   // 원격 창은 보조 창이 아니다 — 관문이 이 이벤트를 원격에서 거절한다(`remote/deny.rs`).
   if (workspaceMainWindow() || isRemote) return;
-  const report = { label: currentWindowLabel(), dots: rawWorkspaceDots(dots), tiles, locations };
+  const report = { label: currentWindowLabel(), dots: rawWorkspaceDots(dots), tiles, locations, chatStreams };
   const json = JSON.stringify(report);
   if (json === latestJson) return;
   latestJson = json;
@@ -84,7 +87,7 @@ export function focusAuxTile(paneId: string): boolean {
 export function focusAuxStream(streamId: string): boolean {
   if (!workspaceMainWindow()) return false;
   for (const report of Object.values(reports)) {
-    if (!report.tiles.some((tile) => tile.streamId === streamId)) continue;
+    if (!report.tiles.some((tile) => tile.streamId === streamId) && !report.chatStreams?.includes(streamId)) continue;
     void invoke("focus_window", { label: report.label }).then(() =>
       requestWindow(report.label, { kind: "focus", streamId })).catch(() => {});
     return true;

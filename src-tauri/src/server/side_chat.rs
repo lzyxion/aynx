@@ -20,6 +20,7 @@
 //! - `fork{from}` 은 대화 id 하나만 받는다(경로 없음) — cwd 는 서버가 대화 색인의 기록된 시작 cwd 로 정한다(`[conversation-not-found]` ·
 //!   `[conversation-folder-missing]`). 갈라 오기라 원본 파일 · 도는 타일은 그대로다. 경로는 어디에도 저장하지 않는다.
 //! - 타일의 대화를 그냥 이어 가는 길은 없다 — Claude 는 쓰기 잠금이 없어 도는 타일과 한 파일에 둘이 쓰면 대화가 갈라진다.
+//! - 채팅 타일 표에 있는 대화의 `resume` 은 `[conversation-in-chat-tile]` — 장부가 아니라 두 표를 맞대 본다(채팅 타일도 반대로 거절한다).
 //!
 //! ## stdin — 사람의 글과 사람의 결정뿐
 //!
@@ -808,9 +809,12 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
     if !store::id_ok(&b.chat) {
         return Err(fail("bad-chat", "invalid side chat id"));
     }
-    // 프로듀서 채팅 id(`pc-`)는 이 표가 받지 않는다
+    // 프로듀서 채팅 id(`pc-`) · 채팅 타일 id(`ct-`)는 이 표가 받지 않는다
     if b.chat.starts_with("pc-") {
         return Err(fail("wrong-chat-kind", "that id belongs to a producer chat — use producer_chat_*"));
+    }
+    if b.chat.starts_with(super::chat_tile::ID_PREFIX) {
+        return Err(fail("wrong-chat-kind", "that id belongs to a chat tile — use chat_tile_*"));
     }
     let cli = match b.cli.as_str() {
         "claude" => Cli::Claude,
@@ -837,6 +841,17 @@ fn op_open(b: OpenBody, conn: u64) -> Result<Value, WireError> {
             return Err(fail("bad-conversation", "invalid conversation id"))
         }
     };
+    // 채팅 타일이 쥔 대화는 이어 가지 않는다 — 이미 그 대화를 쥔 이 채팅의 다시 붙기만 통과. 남의 표는 제 잠금 없이 본다
+    if let Some(conv) = conversation.as_deref() {
+        let own = lock(&TABLE).chats.get(&b.chat).cloned();
+        let held = own.is_some_and(|c| {
+            let st = lock(&c.st);
+            st.cli == cli && st.conversation.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(conv))
+        });
+        if !held && super::chat_tile::holds_conversation(cli, conv) {
+            return Err(fail("conversation-in-chat-tile", "this conversation is open in a chat tile"));
+        }
+    }
     // 띄울 폴더는 `prepare` 와 같은 자리여야 한다 — 잠금 앞에서
     let plan_cwd = cwd.clone().or_else(|| sidechat_root().and_then(|r| store::chat_dir(&r, &b.chat)));
     let planned = plan_cwd.map(|p| planned_mcp(cli, &p.to_string_lossy().replace('\\', "/"))).unwrap_or_default();
@@ -968,12 +983,12 @@ fn op_send(b: SendBody) -> Result<Value, WireError> {
     Ok(json!({ "epoch": epoch, "link": link }))
 }
 
-const IMAGES_MAX: usize = 8;
+pub(super) const IMAGES_MAX: usize = 8;
 /// 기록 그림(`agent_transcript::IMAGE_MAX_BYTES`)과 같은 값.
 const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
 /// 앱 첨부 자리 안의 실제 파일만 받는다 — 링크로 빠져나가도 같다.
-fn chat_images(paths: &[String], bytes: bool) -> Result<Vec<crate::side_chat::UserImage>, WireError> {
+pub(super) fn chat_images(paths: &[String], bytes: bool) -> Result<Vec<crate::side_chat::UserImage>, WireError> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -1039,6 +1054,12 @@ pub(super) struct AttachedFile {
     path: String,
 }
 
+impl AttachedFile {
+    pub(super) fn path(&self) -> &str {
+        &self.path
+    }
+}
+
 /// 앱 첨부 자리 안의 실제 파일만 받고, 사본은 늘 그 채팅 자기 폴더의 `attachments/` 에 둔다 — 갈라 온 채팅도 기록된 cwd(사용자 저장소)에는
 /// 쓰지 않는다(사용자 결정). 사본 자리는 서버가 정한다.
 fn chat_files(id: &str, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
@@ -1063,6 +1084,26 @@ fn attach_read(id: &str) -> Option<(String, String)> {
 
 /// 모두 확인한 뒤에 옮긴다 — 하나라도 틀리면 아무것도 쓰지 않는다. 같은 이름은 덮지 않는다(`create_new`).
 pub(super) fn files_in(root: &Path, cwd: &Path, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
+    let picked = pick_files(root, paths)?;
+    let dest = files_dir(cwd)?;
+    picked.into_iter().map(|(real, name)| copy_unique(&real, &dest, Path::new(&name))).collect()
+}
+
+/// 앱 첨부 자리 안의 실제 파일인지만 본다 — 옮기지 않는다(채팅 타일은 cwd 가 사용자 저장소라 사본을 두지 않는다).
+pub(super) fn files_checked(paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let root = crate::agent_attachments::attachments_root().map_err(|_| fail("file-outside", "the attachment folder is unavailable"))?;
+    files_checked_in(&root, paths)
+}
+
+pub(super) fn files_checked_in(root: &Path, paths: &[String]) -> Result<Vec<AttachedFile>, WireError> {
+    Ok(pick_files(root, paths)?.into_iter().map(|(real, _)| AttachedFile { path: plain_path(&real) }).collect())
+}
+
+/// 모두 확인 — 화면이 준 경로를 믿지 않고 실제 경로(`canonicalize`)가 첨부 자리 안의 정규 파일인지 본다.
+fn pick_files(root: &Path, paths: &[String]) -> Result<Vec<(PathBuf, std::ffi::OsString)>, WireError> {
     if paths.len() > IMAGES_MAX {
         return Err(fail("too-many-attachments", "too many attachments in one message"));
     }
@@ -1085,8 +1126,7 @@ pub(super) fn files_in(root: &Path, cwd: &Path, paths: &[String]) -> Result<Vec<
         };
         picked.push((real, name));
     }
-    let dest = files_dir(cwd)?;
-    picked.into_iter().map(|(real, name)| copy_unique(&real, &dest, Path::new(&name))).collect()
+    Ok(picked)
 }
 
 /// 링크 · 정션이 아닌 그 폴더 바로 아래 실제 폴더인지 본다 — 밖으로 쓰지 않게.
@@ -1139,8 +1179,8 @@ fn copy_unique(src: &Path, dir: &Path, name: &Path) -> Result<AttachedFile, Wire
 }
 
 /// 꾸밈 없는 꼬리표 + 절대 경로로 둔다 — Claude 의 `@경로` 는 대화형 TUI 만 펼치고 stream-json · Codex app-server 의 글은 모델에 그대로 간다.
-/// 재료는 서버가 지은 사본 경로뿐이라 AI 문자열이 끼지 않는다.
-fn with_file_refs(text: &str, files: &[AttachedFile]) -> String {
+/// 재료는 서버가 다시 본 경로뿐이라 AI 문자열이 끼지 않는다.
+pub(super) fn with_file_refs(text: &str, files: &[AttachedFile]) -> String {
     if files.is_empty() {
         return text.to_string();
     }
@@ -1443,6 +1483,15 @@ fn op_link(b: LinkBody) -> Result<Value, WireError> {
         lock(&chat.st).link_note = true;
     }
     Ok(json!({ "links": link_views(&b.chat), "changed": changed }))
+}
+
+/// 표의 항목 중 같은 CLI 로 그 대화를 쥔 것이 있나(프로세스 유무 무관 · `fork_from` 은 원본에 쓰지 않아 셈하지 않는다). 블로킹 — 부르는 쪽은 잠금을 쥐지 않는다.
+pub(crate) fn holds_conversation(cli: Cli, conv: &str) -> bool {
+    let chats: Vec<Arc<Chat>> = lock(&TABLE).chats.values().cloned().collect();
+    chats.iter().any(|c| {
+        let st = lock(&c.st);
+        st.cli == cli && [&st.conversation, &st.conv_seen].into_iter().flatten().any(|x| x.eq_ignore_ascii_case(conv))
+    })
 }
 
 /// 채팅 토큰 판정에 쓴다 — 닫는 중이면 `None`.
@@ -1760,6 +1809,84 @@ mod image_tests {
         assert_eq!(std::fs::read_dir(cwd.join("attachments")).unwrap().count(), before);
         assert!(chat_files("x", &[]).unwrap().is_empty());
         std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// 채팅 타일 몫 — 판정은 `files_in` 과 같고(이유 낱말 · 순서) 아무 데도 쓰지 않는다. 돌려준 경로 = 첨부 자리 안 그 파일의 실제 경로.
+    #[test]
+    fn files_checked_never_copies() {
+        let base = std::env::temp_dir().join(format!("aynx-sidechat-check-{}", crate::token::generate_token().unwrap()));
+        let root = base.join("attachments");
+        let dir = root.join("c".repeat(64));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ts = dir.join("main.ts");
+        std::fs::write(&ts, b"export {}").unwrap();
+        let outside = base.join("secret.txt");
+        std::fs::write(&outside, b"x").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let entries = |p: &Path| std::fs::read_dir(p).unwrap().count();
+        let before = (entries(&base), entries(&root), entries(&dir));
+
+        let got = files_checked_in(&root, &[s(&ts)]).unwrap();
+        assert_eq!(got, vec![AttachedFile { path: plain_path(&std::fs::canonicalize(&ts).unwrap()) }]);
+        assert!(!got[0].path().starts_with(r"\\?\"), "CLI 에는 확장 머리 없는 경로");
+        assert_eq!((entries(&base), entries(&root), entries(&dir)), before, "새 항목 없음");
+        let escape = format!("{}/../../secret.txt", s(&dir));
+        for p in [s(&outside), escape, s(&root)] {
+            assert!(reason(files_checked_in(&root, &[p]).unwrap_err()).contains("[file-outside]"));
+        }
+        assert!(reason(files_checked_in(&root, &[s(&dir)]).unwrap_err()).contains("[file-not-file]"));
+        assert!(reason(files_checked_in(&root, &[s(&dir.join("없음.ts"))]).unwrap_err()).contains("[file-missing]"));
+        let big = dir.join("big.pdf");
+        std::fs::File::create(&big).unwrap().set_len(FILE_MAX_BYTES + 1).unwrap();
+        assert!(reason(files_checked_in(&root, &[s(&ts), s(&big)]).unwrap_err()).contains("[file-too-big]"));
+        let many: Vec<String> = (0..=IMAGES_MAX).map(|_| s(&ts)).collect();
+        assert!(reason(files_checked_in(&root, &many).unwrap_err()).contains("[too-many-attachments]"));
+        assert_eq!(files_checked_in(&root, &many[..IMAGES_MAX]).unwrap().len(), IMAGES_MAX);
+        assert!(files_checked(&[]).unwrap().is_empty());
+        assert_eq!(entries(&dir), before.2 + 1, "시험이 만든 큰 파일 하나뿐");
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// 채팅 타일의 resume 판정이 본다 — 표의 항목이 그 대화(`conversation` · `conv_seen`)를 쥐었나. 프로세스 유무 무관 · fork 는 셈하지 않는다.
+    #[test]
+    fn side_chat_holds_conversation_by_entry() {
+        let _g = super::super::tests::live::SESSION_STATE.blocking_lock();
+        let base = std::env::temp_dir().join(format!("aynx-sidechat-holds-{}", crate::token::generate_token().unwrap()));
+        let convs = base.join("convs").join("proj-dir");
+        let cwd = base.join("work");
+        std::fs::create_dir_all(&convs).unwrap();
+        std::fs::create_dir_all(&cwd).unwrap();
+        let pid = std::process::id();
+        let (held, forked) = (format!("8b8b8b8b-0000-4000-8000-{pid:012x}"), format!("9c9c9c9c-0000-4000-8000-{pid:012x}"));
+        let line = json!({ "type": "user", "cwd": cwd.to_string_lossy(), "sessionId": forked, "timestamp": "2026-10-23T01:00:00.000Z",
+                           "message": { "role": "user", "content": "q" }, "origin": { "kind": "human" } });
+        let reply = json!({ "type": "assistant", "cwd": cwd.to_string_lossy(), "timestamp": "2026-10-23T01:00:05.000Z",
+                            "message": { "model": "claude-haiku", "content": [] } });
+        std::fs::write(convs.join(format!("{forked}.jsonl")), format!("{line}\n{reply}\n")).unwrap();
+        set_fake_for_test(Some(FakeCli {
+            exe: "no-such-cli.exe".into(),
+            args: Vec::new(),
+            env: Vec::new(),
+            root: base.join("sidechat"),
+            mcp_port: None,
+            conv_roots: vec![("claude", base.join("convs"))],
+        }));
+        let (a, f) = (format!("sc-holds-{pid}"), format!("sc-holds-fork-{pid}"));
+        let open = |id: &str, mode: Value| handle("side_chat_open", json!({ "chat": id, "cli": "claude", "model": "", "mode": mode, "window": "main" }), 0);
+
+        assert!(!holds_conversation(Cli::Claude, &held));
+        open(&a, json!({ "kind": "resume", "conv": held })).unwrap();
+        assert!(holds_conversation(Cli::Claude, &held), "프로세스 없는 resume 항목");
+        assert!(holds_conversation(Cli::Claude, &held.to_ascii_uppercase()), "대소문자 무관");
+        assert!(!holds_conversation(Cli::Codex, &held), "다른 CLI");
+        open(&f, json!({ "kind": "fork", "from": forked })).unwrap();
+        assert!(!holds_conversation(Cli::Claude, &forked), "fork 원본은 쥐지 않는다");
+        for id in [&a, &f] {
+            assert_eq!(handle("side_chat_close", json!({ "chat": id }), 0).unwrap(), json!(true));
+        }
+        assert!(!holds_conversation(Cli::Claude, &held), "닫은 뒤");
+        set_fake_for_test(None);
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

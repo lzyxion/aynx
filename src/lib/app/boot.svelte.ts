@@ -427,7 +427,7 @@ export function mountAppListeners(): () => void {
     if (action.kind === "focus") {
       if (action.workspaceId) switchWorkspace(action.workspaceId);
       const pane = residentWindowTabs().flatMap((tab) => listPanes(tab.root)).find((pane) =>
-        action.streamId ? pane.historyStreamId === action.streamId : action.tileKey ? pane.tileKey === action.tileKey : pane.id === action.paneId);
+        action.streamId ? (pane.kind === "chat" ? pane.chat?.chatId === action.streamId : pane.historyStreamId === action.streamId) : action.tileKey ? pane.tileKey === action.tileKey : pane.id === action.paneId);
       if (!pane) return false;
       revealPane(pane.id);
       return true;

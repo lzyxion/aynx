@@ -15,7 +15,8 @@
 // 그 타일(화면은 남는다) ⑥ 더 보기 · 0 이 되어도 화면 유지 ⑦ 재개가 갈 자리 1–4 ⑧ 설정 off ⑨ 저장 — 주소만,
 // 제목 없음 ⑩ 예외 0 ⑪ 기록 보기 — 시작 화면 V · 줄 단추 · 머리의 재개 · 이전 더 보기 · Escape/포커스 · 팔레트 Ctrl+Enter.
 // 팔레트의 밖에서 열린 대화 Enter = 기록 시트(시트의 [재개]가 한 번 묻는다). 대시보드 "지난 대화" 줄은 4dda594 에 빠져
-// 그 판(대시보드 V · 대시보드 줄 확인)은 없다. PNG: pstart.png · pstart-light.png · pstart-split.png · viewer.png
+// 그 판(대시보드 V · 대시보드 줄 확인)은 없다. Ⓑ 채팅으로 열기(끔/켬 · 그 자리 갈음 · 템플릿을 골라 둔 채 Alt+Enter).
+// PNG: pstart.png · pstart-light.png · pstart-split.png · viewer.png · pstart-chat.png
 import { WORKSPACE_STUB } from "./workspace-stub.mjs";
 import { reloadBoot } from "./boot-wait.mjs";
 import fs from "node:fs";
@@ -71,6 +72,9 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   };
   const OTHERS = [S(30, 'C:\\\\Users\\\\me\\\\scratch', 90 * 60_000, { title: 'Scratch question' })];
   window.__launch = [];
+  window.__ctOpen = []; window.__tpl = null;
+  const ctSnap = (chat, cli) => ({ chat, cli, model: '', effort: null, cwd: INFRA, epoch: 0, seq: 0, status: 'stopped',
+    conversationId: null, mcpServers: [], liveTurn: [], pending: [] });
   // 기록 보기 — 지어낸 기록 96개(사용자 · 생각 · 도구 · 에이전트 차례). 커서 = 항목 번호(진짜는 바이트 위치)
   window.__tr = [];
   const BT = String.fromCharCode(96);
@@ -121,6 +125,12 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       if (cmd === 'git_worktree_list') return Promise.resolve(WT[args.repo] ?? []);
       if (cmd === 'load_settings') return Promise.resolve(window.__settings ?? {});
       if (cmd === 'agent_autorun_command') return Promise.resolve(args.command);
+      // 채팅으로 열기(Ⓑ) · 템플릿은 Ⓑ 가 심는다
+      if (cmd === 'load_tab_templates') return Promise.resolve(window.__tpl ?? null);
+      if (cmd === 'agent_conversation_links') return Promise.resolve([]);
+      if (cmd === 'chat_tile_open') { window.__ctOpen.push(args); return Promise.resolve(ctSnap(args.chat, args.cli)); }
+      if (cmd === 'chat_tile_subscribe') return Promise.resolve({ subGen: 1, snapshot: ctSnap(args.chat, 'claude') });
+      if (cmd === 'chat_tile_unsubscribe' || cmd === 'chat_tile_close') return Promise.resolve(true);
       if (cmd === 'agent_sessions_list') {
         const byKey = {}; for (const [k, v] of Object.entries(window.__convo)) byKey[key(k)] = v;
         return Promise.resolve({
@@ -509,6 +519,65 @@ await freshStart("P4");
 const so = await state();
 check(so.panes[0].kind === "local" && so.panes[0].cwd === "C:\\src\\infra" && so.panes[0].autorun === null, `설정 off → 대화가 있어도 곧장 셸 (${JSON.stringify(so.panes[0])})`);
 await ev(`(async () => { const s = await ${setMod}; s.setProjectStartScreen('auto'); })()`);
+
+// ── Ⓑ 채팅으로 열기 — 설정 [ai] chat_tile 끔/켬 (docs/log/2026-11-28-chat-tile-stage2-contract.md 5-4) ─────────
+const ALT = 1;
+const INFRA_KEY = `window.__convo['c:\\\\src\\\\infra']`;
+await ev(`(() => { const L = ${INFRA_KEY}; const b = L[0]; L.push({ ...b, id: '${id(41)}', title: 'Infra second', updatedAt: b.updatedAt - 60_000 }, { ...b, id: '${id(42)}', title: 'Infra third', updatedAt: b.updatedAt - 120_000 }); })()`);
+const chatCount = async () => ev(`(async () => { const w = await ${tabsMod}; ${WALK} return w.currentWorkspaceTabs().flatMap(t => walk(t.root, [])).filter(p => p.kind === 'chat').length; })()`);
+const startActs = async () => ev(`[...${PS}.querySelectorAll('[data-start-acts] [data-act]')].map(b => b.dataset.act + ':' + [...b.classList].filter(c => !/^s(velte)?-/.test(c)).join('.') + (b.disabled ? '!' : '')).join('|')`);
+const startSel = async () => ev(`${PS}?.querySelector('[data-start-row].selected')?.dataset.startRow ?? null`);
+const selectStart = async (rid) => { await focusStart(); for (let i = 0; i < 6 && (await startSel()) !== rid; i++) await key("ArrowDown"); };
+const chatState = async () => JSON.parse(await ev(`(async () => { const w = await ${tabsMod}; ${WALK} const t = w.activeTab(); return JSON.stringify({ tab: t.id, panes: walk(t.root, []).map(p => ({ id: p.id, kind: p.kind, chat: p.chat ?? null })), focus: w.paneOf(t) }); })()`));
+const setChat = async (on) => { await ev(`(async () => { const s = await ${setMod}; s.setChatTile(${on}); })()`); await sleep(200); };
+
+// B4 끔 → 오늘 그대로
+await setChat(false);
+await freshStart("P4");
+await selectStart(id(41));
+check((await startActs()) === "more:btn.btn-ghost.btn-sm.more|resume:btn.btn-primary.btn-sm", `B4 끔 → [⋯][재개] 그대로 (${await startActs()})`);
+check((await ev(`!!${PS}.querySelector('[data-start-chat-key]')`)) === false, "B4 끔 → 바닥 줄 그대로");
+await key("Enter", ALT); await sleep(400);
+check((await ev(`window.__ctOpen.length`)) === 0 && (await state()).panes[0].kind === "start", "B4 끔 → Alt+Enter 는 아무것도 하지 않는다");
+
+// B1 켬 → 줄 단추 셋
+await setChat(true);
+await freshStart("P4");
+await selectStart(id(41));
+check((await startActs()) === "more:btn.btn-ghost.btn-sm.more|resume:btn.btn-secondary.btn-sm|resume-chat:btn.btn-secondary.btn-sm", `B1 켬 → [⋯][터미널로 열기][채팅으로 열기] 같은 무게 (${await startActs()})`);
+const pkeys = await ev(`${PS}.querySelector('[data-start-keys]').textContent.replace(/\\s+/g, ' ').trim()`);
+check(pkeys.includes("Enter 재개 Alt+Enter 채팅으로 열기"), `B1 바닥 줄에 Alt+Enter (${pkeys})`);
+console.log("capture:", await shot("pstart-chat.png"));
+
+// B2 [채팅으로 열기] → 시작 화면 자리를 채팅 잎이 갈음
+const b0 = await chatState();
+await ev(`${PS}.querySelector('[data-start-row="${id(41)}"] [data-act="resume-chat"]').click()`); await sleep(1200);
+let b1 = await chatState();
+let co = JSON.parse(await ev(`JSON.stringify(window.__ctOpen)`));
+check(co.length === 1 && JSON.stringify(co[0].mode) === JSON.stringify({ kind: "resume", conv: id(41) }), `B2 chat_tile_open{resume} (${JSON.stringify(co[0]?.mode)})`);
+check(b1.tab === b0.tab && b1.panes.length === 1 && b1.panes[0].kind === "chat" && b1.panes[0].chat.conv === id(41) && b1.focus === b1.panes[0].id, `B2 그 자리 = 채팅 잎 (${JSON.stringify(b1.panes)})`);
+
+// B3 고른 템플릿이 있어도 Alt+Enter = 채팅 잎 하나(템플릿 안 씀)
+await ev(`window.__tpl = JSON.stringify({ version: 1, templates: [{ id: 't-1', name: 'Dev tab', projectId: 'P4', root: { dir: 'row', ratio: 0.5, a: { kind: 'local', shell: 'pwsh', autorun: 'claude' }, b: { kind: 'local', shell: 'pwsh' } }, savedAt: Date.now() - 3600000 }] })`);
+const tplMod = importApp("app/tab-templates.svelte.ts");
+await ev(`(async () => (await ${tplMod}).reloadTabTemplates())()`); await sleep(300);
+await freshStart("P4");
+await focusStart();
+await key("Digit1", 0, "1"); await sleep(300);
+const armedNow = await ev(`!!${PS}.querySelector('[data-armed]')`);
+await selectStart(id(42));
+const n0 = await chatCount();
+await key("Enter", ALT); await sleep(1200);
+b1 = await chatState();
+co = JSON.parse(await ev(`JSON.stringify(window.__ctOpen)`));
+check(armedNow === true && co.length === 2 && co[1].mode.conv === id(42) && b1.panes.length === 1 && b1.panes[0].kind === "chat" && (await chatCount()) === n0 + 1, `B3 템플릿을 골라 둔 채 Alt+Enter → 채팅 잎 하나 (armed ${armedNow} · ${JSON.stringify(b1.panes.map((p) => p.kind))})`);
+const launchesB = await ev(`window.__launch.filter(l => l.id === '${id(42)}').length`);
+check(launchesB === 0, "B3 터미널 명세를 묻지 않는다");
+await ev(`window.__tpl = null`);
+await ev(`(async () => (await ${tplMod}).reloadTabTemplates())()`);
+// 끝 — 만든 탭을 걷고 빈 탭 하나
+await ev(`(async () => { const w = await ${tabsMod}; for (const t of [...w.currentWorkspaceTabs()]) w.closeTab(t.id); })()`); await sleep(400);
+await newEmptyTab();
 
 console.log(errors.length ? "exceptions:\n  " + errors.join("\n  ") : "no exceptions");
 check(errors.length === 0, `예외 0 (${errors.length})`);

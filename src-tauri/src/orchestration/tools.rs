@@ -49,7 +49,7 @@ const WAIT_MAX_SECONDS: u64 = 120;
 /// 타일에는 이 갈래가 없어야 한다 — 조율 도구 이름이 모르는 도구로 거절된다(시험 `tile_token_cannot_open_or_coordinate`).
 pub(crate) fn is_tool_for(caller: &Caller, name: &str) -> bool {
     match caller {
-        Caller::Global | Caller::SideChat { .. } | Caller::Tile { .. } => false,
+        Caller::Global | Caller::SideChat { .. } | Caller::Tile { .. } | Caller::ChatTile { .. } => false,
         // `adopt_run` 은 프로듀서 채팅만(조정자가 되기 전에도).
         Caller::Producer { .. } => COORDINATOR_TOOLS.contains(&name) || super::start::TILE_TOOLS.contains(&name),
         Caller::Coordinator { .. } => COORDINATOR_TOOLS.contains(&name),

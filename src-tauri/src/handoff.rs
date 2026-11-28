@@ -198,14 +198,15 @@ pub async fn take_handoff(
     if let Some(payload) = &taken {
         let mut held = crate::reap::Held::default();
         crate::reap::collect_held(payload, &mut held);
-        if !held.local.is_empty() || !held.ssh.is_empty() || !held.db_streams.is_empty() {
+        if !held.local.is_empty() || !held.ssh.is_empty() || !held.db_streams.is_empty() || !held.chat_tiles.is_empty() {
             let ids: Vec<u32> = held.local.into_iter().collect();
             let ssh_ids: Vec<u32> = held.ssh.into_iter().collect();
             let db_streams: Vec<String> = held.db_streams.into_iter().collect();
+            let chat_tiles: Vec<String> = held.chat_tiles.into_iter().collect();
             if let Err(e) = crate::server::proxy::call(
                 crate::server::ipc::Grade::Write,
                 "set_home",
-                serde_json::json!({ "window": home, "ids": ids, "sshIds": ssh_ids, "dbStreams": db_streams }),
+                serde_json::json!({ "window": home, "ids": ids, "sshIds": ssh_ids, "dbStreams": db_streams, "chatTiles": chat_tiles }),
             )
             .await
             {

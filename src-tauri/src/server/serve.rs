@@ -66,7 +66,7 @@ pub(crate) enum Exit {
 /// 고아 자진 종료의 조건 묶음 — **바쁜 이유가 하나라도 있으면** 시계가 멈춘다. 살아 있는 세션이 하나라도 있으면 무기한이다.
 ///
 /// - **떨어진 세션으로 남은 쿼리 타일의 DB 연결은 세션으로 센다**(사용자 결정) — 사람이 닫거나 다시 붙일 때까지 서버가 산다.
-/// - **사이드 채팅 · 프로듀서 채팅 프로세스는 바쁜 이유가 아니다** — 끝날 때 닫는다.
+/// - **사이드 채팅 · 프로듀서 채팅 · 채팅 타일 프로세스는 바쁜 이유가 아니다** — 끝날 때 닫는다.
 /// - 진행 중 작업안(`plans`)과 살아 있는 Run(`runs`)은 바쁜 이유다. orphaned Run 은 아니다 — 그것만 남은 서버는 끝나도 파일이 남는다.
 /// - 자원 모니터는 여기 끼지 않는다(시험 `idle_exit_ignores_resources`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -143,6 +143,7 @@ impl Shared {
             "dbs": crate::db::table::live_count(),
             "sideChats": super::side_chat::live_count(),
             "producerChats": super::producer::live_count(),
+            "chatTiles": super::chat_tile::live_count(),
             "uptime_ms": self.started.elapsed().as_millis() as u64,
             "started_at_ms": self.started_at_ms,
             "own_job": self.own_job,
@@ -349,6 +350,10 @@ pub(crate) async fn run(cfg: Config) -> Exit {
     let producers = super::producer::close_all();
     if producers > 0 {
         log::line(format!("shutdown — closed {producers} producer chat(s)"));
+    }
+    let tiles = super::chat_tile::close_all();
+    if tiles > 0 {
+        log::line(format!("shutdown — closed {tiles} chat tile(s)"));
     }
     let ai_dbs = crate::db::ai::close_all();
     if ai_dbs > 0 {
@@ -558,6 +563,19 @@ async fn serve_conn(stream: BoxStream, peer: Peer, shared: Arc<Shared>) {
                     let r = tokio::task::spawn_blocking(move || super::producer::handle(&op, body, conn))
                         .await
                         .unwrap_or_else(|_| Err(WireError::new(super::producer::PRODUCER, "producer chat task failed")));
+                    let _ = tx.send(to_frame(id, r));
+                });
+                continue;
+            }
+            Routed::Session(_) if super::chat_tile::is_op(&op) && negotiated.is_some_and(|p| p < frame::CHAT_TILE_PROTOCOL) => {
+                Frame::err(id, WireError::new(code::PROTOCOL_MISMATCH, "chat tile ops need protocol 38"))
+            }
+            Routed::Session(body) if super::chat_tile::is_op(&op) => {
+                let tx = out_tx.clone();
+                tokio::spawn(async move {
+                    let r = tokio::task::spawn_blocking(move || super::chat_tile::handle(&op, body, conn))
+                        .await
+                        .unwrap_or_else(|_| Err(WireError::new(super::chat_tile::CHAT_TILE, "chat tile task failed")));
                     let _ = tx.send(to_frame(id, r));
                 });
                 continue;

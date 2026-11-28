@@ -139,7 +139,7 @@ pub(crate) static CALLS: LazyLock<CallLog> = LazyLock::new(CallLog::default);
 fn caller_kind(c: &Caller) -> &'static str {
     match c {
         Caller::Global => "global",
-        Caller::Tile { .. } | Caller::Coordinator { .. } => "tile",
+        Caller::Tile { .. } | Caller::ChatTile { .. } | Caller::Coordinator { .. } => "tile",
         Caller::Worker { .. } => "worker",
         Caller::Reviewer { .. } => "reviewer",
         Caller::SideChat { .. } => "sideChat",
@@ -155,6 +155,7 @@ fn caller_key(c: &Caller) -> String {
         Caller::Worker { attempt_id, .. } | Caller::Reviewer { attempt_id, .. } => format!("a:{attempt_id}"),
         Caller::SideChat { chat } => format!("s:{chat}"),
         Caller::Producer { chat, .. } => format!("p:{chat}"),
+        Caller::ChatTile { chat, .. } => format!("k:{chat}"),
     }
 }
 

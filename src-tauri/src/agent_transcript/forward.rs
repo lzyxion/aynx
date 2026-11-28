@@ -352,7 +352,7 @@ fn apply_event(page: &mut FwdPage, calls: &mut HashMap<String, usize>, e: &Ev, a
             (w, 1)
         }
         // 끊김 · 거절 표지는 조정자의 판독(`read_worker`)에 싣지 않는다.
-        Ev::Interrupted | Ev::Declined => (0, 0),
+        Ev::Interrupted | Ev::Declined | Ev::McpServer { .. } | Ev::PlanText | Ev::PlanApproved { .. } | Ev::Anchor { .. } | Ev::LateAnchor { .. } => (0, 0),
         Ev::ToolResult { id, output, error, .. } => {
             let (out, cut) = cap_bytes(output, FIELD_MAX_BYTES);
             let earlier = calls

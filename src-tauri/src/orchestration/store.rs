@@ -209,6 +209,8 @@ pub(crate) enum Caller {
     SideChat { chat: String },
     /// 프로듀서 채팅 프로세스 — **인증 때 확정한 세대 그대로**, 요청 처리 어디서도 지금 세대로 바꾸지 않는다(묶음 · 멱등 · 정리가 이 값을 정확히 비교한다).
     Producer { chat: String, proc: crate::server::chat_proc::ProcId },
+    /// 채팅 모양 AI 타일 프로세스 — 목록은 [`Caller::Tile`] 과 같다. **자리가 되지 못한다**(조율 도구는 모르는 도구).
+    ChatTile { chat: String, proc: crate::server::chat_proc::ProcId },
 }
 
 /// 조정자 자리 — 열쇠는 `ProcId` 까지다: 다시 띄운 같은 채팅(새 세대)은 다른 자리라 옛 묶음을 물려받지 않는다(그래서 `adopt_run`).

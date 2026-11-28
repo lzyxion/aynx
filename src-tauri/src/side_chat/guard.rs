@@ -52,9 +52,9 @@ impl ProducerGuard {
         let mut out = Step { evs: Vec::new(), stdin: step.stdin };
         for ev in step.evs {
             match ev {
-                Ev::Permission { request_id, kind, tool_name, title, detail } => {
+                Ev::Permission { request_id, kind, tool_name, title, detail, input, session_allow } => {
                     if card_allowed(kind, &tool_name, &self.aynx) {
-                        out.evs.push(Ev::Permission { request_id, kind, tool_name, title, detail });
+                        out.evs.push(Ev::Permission { request_id, kind, tool_name, title, detail, input, session_allow });
                         continue;
                     }
                     if let Ok(d) = self.inner.encode_decision(&request_id, Decision::Deny, Some(DENIED_BY_POLICY)) {

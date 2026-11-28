@@ -3,10 +3,11 @@
 // 전부 여기 두고 카운터를 내보내지 않는다. `paneOrder` 는 그 `pane-N` 모양에 기대므로 함께 둔다.
 
 import { quickConnectLabel, type QuickConnectTarget as AdhocTarget } from "$lib/quick-connect";
-import { canonQueryTabs, hasSession, isFileLeafKind, storedRowLimit, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
+import { canonQueryTabs, hasSession, isFileLeafKind, storedRowLimit, type ChatTileSpec, type DiffSpec, type PaneLeaf, type QuerySpec, type PaneNode, type PaneSpec, type ProducerSpec, type TabSpec, type Tr } from "./spec";
 import { findPane, listPanes } from "./tree";
 import { parseOrchMark } from "$lib/orchestration/orch-tab";
 import { freshLaunchOf } from "$lib/agent-sessions";
+import { newChatTileId } from "$lib/chat-tile/spec";
 
 let tabSeq = 0;
 let paneSeq = 0;
@@ -162,6 +163,10 @@ export function newRunPane(runId?: string): PaneSpec {
 
 export function newProducerPane(p: ProducerSpec): PaneSpec {
   return { id: nextPaneId(), kind: "producer", producer: { ...p } };
+}
+
+export function newChatTilePane(c: ChatTileSpec): PaneSpec {
+  return { id: nextPaneId(), kind: "chat", chat: { ...c } };
 }
 
 export function newQueryPane(q: QuerySpec): PaneSpec {
@@ -395,6 +400,13 @@ export function clonePane(src: PaneSpec): PaneSpec {
   delete copy.lastCwd;
   // 새 객체로 — 나눠 들면 한쪽의 초안이 다른 쪽에 적힌다.
   if (copy.query) copy.query = { ...copy.query };
+  // 새 서버 항목 · 새 대화 — 물려주면 두 타일이 한 채팅 · 한 대화를 잡는다(`agentLink` 와 같은 까닭).
+  // 권한 모드도 물려주지 않는다 — 복제가 넓은 모드로 시작하지 않게.
+  if (copy.chat) {
+    copy.chat = { ...copy.chat, chatId: newChatTileId() };
+    delete copy.chat.conv;
+    delete copy.chat.permMode;
+  }
   return copy;
 }
 

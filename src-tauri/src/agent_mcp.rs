@@ -562,15 +562,18 @@ fn sessions_for<'a>(
     prefs: &crate::settings::AiPrefs,
     server: Option<&'a SessionsServer>,
 ) -> Option<&'a SessionsServer> {
-    server.filter(|_| {
-        inject_mcp_token
-            && !shell.is_some_and(|s| s.starts_with("wsl:"))
-            && crate::agent_args::is_agent(agent)
-            && prefs.mcp_sessions_enabled.unwrap_or(true)
-            && prefs.mcp_sessions_agents.as_ref().is_none_or(|agents| {
-                agents.iter().any(|id| id == agent)
-            })
-    })
+    server.filter(|_| inject_mcp_token && !shell.is_some_and(|s| s.starts_with("wsl:")) && sessions_pref_on(agent, prefs))
+}
+
+fn sessions_pref_on(agent: &str, prefs: &crate::settings::AiPrefs) -> bool {
+    crate::agent_args::is_agent(agent)
+        && prefs.mcp_sessions_enabled.unwrap_or(true)
+        && prefs.mcp_sessions_agents.as_ref().is_none_or(|agents| agents.iter().any(|id| id == agent))
+}
+
+/// 채팅 타일에 Aynx 세션 서버를 싣나 — AI 타일과 같은 설정 판정. 블로킹(설정 파일).
+pub(crate) fn chat_tile_sessions_on(agent: &str) -> bool {
+    sessions_pref_on(agent, &crate::settings::agent_mcp_prefs())
 }
 
 /// 파일 실패는 이 장식만 빼고 띄우기는 계속한다. 실행 설정 파일을 쓰기 전에 세션 서버에 주장한다. 블로킹(파일 · 파이프 왕복).
@@ -663,6 +666,21 @@ pub(crate) fn side_chat_servers(cwd: Option<&str>) -> Vec<McpServer> {
     }
     let project = if all.iter().any(|s| s.project_id.is_some()) { project_for_cwd(cwd) } else { None };
     side_chat_selected(&all, project.as_deref())
+}
+
+/// 채팅 타일 — AI 타일과 같은 고르기(프로젝트 덮기 → 켬 · 대상 칩). 사이드 채팅 칩(`side_chat`)은 보지 않는다.
+pub(crate) fn chat_tile_selected(servers: &[McpServer], agent: &str, project: Option<&str>) -> Vec<McpServer> {
+    enabled(&servers_for_project(servers, project), agent)
+}
+
+/// 세션 서버가 저장된 설정을 직접 읽는다 — 목록은 op 몸 · 프런트 인자로 오지 않는다. 블로킹.
+pub(crate) fn chat_tile_servers(agent: &str, cwd: Option<&str>) -> Vec<McpServer> {
+    let all = crate::settings::agent_mcp_prefs().mcp_servers;
+    if !all.iter().any(|s| s.enabled) {
+        return Vec::new();
+    }
+    let project = if all.iter().any(|s| s.project_id.is_some()) { project_for_cwd(cwd) } else { None };
+    chat_tile_selected(&all, agent, project.as_deref())
 }
 
 /// 동일 이름은 프로젝트 항목 전체가 우선한다. 꺼진 프로젝트 항목도 전역 항목을 가린다.

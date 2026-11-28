@@ -6,7 +6,7 @@
 <a id="inv-1"></a>
 ## 1. Aynx 세션 서버의 MCP 등록 범위
 
-- **Aynx 세션 서버는 CLI 전역에 등록하지 않는다 — Aynx 가 띄우는 로컬 AI 타일과 감싸개가 있는 로컬 셸 타일(PowerShell · Git Bash · 셸 통합 켬 — 그 셸에서 친 `claude` · `codex`)에만 실리고 MCP 토큰은 사용자 CLI 설정 파일에 없다** → [docs/log/2026-10-03-mcp-sessions-inject.md](log/2026-10-03-mcp-sessions-inject.md) · [docs/log/2026-10-26-agent-enable.md](log/2026-10-26-agent-enable.md).
+- **Aynx 세션 서버는 CLI 전역에 등록하지 않는다 — Aynx 가 띄우는 로컬 AI 타일(터미널 · 채팅 모양)과 감싸개가 있는 로컬 셸 타일(PowerShell · Git Bash · 셸 통합 켬 — 그 셸에서 친 `claude` · `codex`)에만 실리고 MCP 토큰은 사용자 CLI 설정 파일에 없다** → [docs/log/2026-10-03-mcp-sessions-inject.md](log/2026-10-03-mcp-sessions-inject.md) · [docs/log/2026-10-26-agent-enable.md](log/2026-10-26-agent-enable.md).
 
 <a id="inv-2"></a>
 ## 2. 볼트와 비밀
@@ -60,6 +60,8 @@
   [docs/log/2026-10-03-mcp-scopes-env.md](log/2026-10-03-mcp-scopes-env.md).
   HTTP 헤더 값은 세션 서버 안 프록시가 붙여 Aynx 프로세스(GUI·세션 서버) 밖의 CLI·도우미로 나가지 않는다 →
   [docs/log/2026-10-04-mcp-http-header-proxy.md](log/2026-10-04-mcp-http-header-proxy.md).
+  채팅 모양 AI 타일의 MCP 상태 보기는 이름 · 상태 · 인증 낱말 · 도구 수 · "Aynx 가 더함" 표만 싣는다 — CLI 답에 든 브로커 티켓 · 환경 · 머리글 · URL ·
+  명령 · 오류 글은 어댑터가 열지 않고 사건 · 스냅숏 · 로그 어디에도 남기지 않는다.
 
 <a id="inv-4"></a>
 ## 4. 위임 범위 안에서만 실행
@@ -69,17 +71,25 @@
   (자동 승인)이되 **범위·한도가 명시된** 것(호스트 · DB 연결의 **YOLO** 는 범위 = 그 호스트 · 그 연결 전부 — 명령 정책 · 빈도 한도 없이,
   caps · 전체 스위치 · 감사는 그대로 → [docs/log/2026-10-23-approve-all.md](log/2026-10-23-approve-all.md)). 지켜지는 것: 원시 `send_command` 는 만들지 않는다(서버 op `ssh_exec` 도 아니다 —
   대상은 서버 표의 세션 id, 호출자는 GUI Rust 고정 조립 함수뿐, 프런트·MCP 명령 없음을 시험이 지킨다). **AI 문자열→PTY 길은 없다**.
-  **AI 자유 글과 실행 입력의 경계 — AI가 작성한 자유 글을 새 작업 지시로 실행 재료에 싣는 앱 경로는 오케스트레이션 작업자·검토자의 헤드리스 턴뿐이다. 프로듀서 채팅에는 사람이 제출한 입력 외에 서버가 Run 장부에서 제한된 타입으로 만든 깨움 메시지만 새 사용자 턴으로 넣을 수 있다. MCP 결과·작업자 대화·보고·판정 본문을 그대로 채팅 입력으로 전달하는 경로는 두지 않는다**(사이드 채팅 stdin 은 사람 문자열 — 아래 ③ · 프로듀서 채팅 — 아래 ④).
+  **AI 자유 글과 실행 입력의 경계 — AI가 작성한 자유 글을 새 작업 지시로 실행 재료에 싣는 앱 경로는 오케스트레이션 작업자·검토자의 헤드리스 턴뿐이다. 프로듀서 채팅에는 사람이 제출한 입력 외에 서버가 Run 장부에서 제한된 타입으로 만든 깨움 메시지만 새 사용자 턴으로 넣을 수 있다. MCP 결과·작업자 대화·보고·판정 본문을 그대로 채팅 입력으로 전달하는 경로는 두지 않는다**(사이드 채팅 stdin 은 사람 문자열 — 아래 ③ · 프로듀서 채팅 — 아래 ④ · 채팅 모양 AI 타일 — 아래 ⑤).
   **사이드 채팅의 권한 답**(2026-11-20) — stdin 으로 가는 권한 답은 사람의 그 자리 결정, 또는 **사람이 그 채팅에 정한 모드(Manual · Auto) · 허용 목록**([이 채팅에서
   허용] 이 올린 종류)에 따라 세션 서버가 대신 낸 **허용**이다. 모드 · 목록을 바꾸는 길은 사람의 Tauri 명령(→ 세션 서버 op — 원격 창은 같은 문)뿐이고 MCP · 채팅
   토큰 · 타일 토큰 · AI 가 쓴 글에는 없다 · 허용 목록의 종류는 서버가 그 기다리는 요청에서 읽는다(프런트가 보낸 글자를 믿지 않는다). 대신 답하는 것은 카드가 되는
   네 종류(채팅 폴더 밖 읽기 · 파일 바꾸기 · 샌드박스 밖 명령 · 실은 외부 MCP 서버의 도구)뿐이고 대화형 도구 · 그 밖의 서버 요청은 Auto 여도 거절이며, CLI 쪽
   제한(Claude `--tools` 다섯 · Codex `read-only` 샌드박스 + `on-request`)은 그대로다 — Auto 는 범위를 넓히지 않고 사람이 그 채팅에 위임한 사전 정책이다(범위 = 그 채팅의
-  그 네 종류). → [docs/architecture.md](architecture.md#arch-orch-spawn) ③ 헤드리스 턴은 첫 지시
+  그 네 종류). **채팅 모양 AI 타일의 권한 답은 사람의 그 자리 결정뿐**이다. 서버가 대신 답하는 모드 · 허용 목록은 없다. [이 대화에서 늘 허용]은
+  사람이 누른 CLI 자신의 세션 규칙(설정 파일에 쓰지 않음 — 서버가 대기 기록에서 고른 제안을 목적지 `session` 으로 고쳐 싣는다 · 터미널 모양 카드와 같은 판정)이다. 입력 칸의 권한 모드 칩은 CLI
+  자신의 모드(TUI 의 Shift+Tab)를 사람이 고르는 것이고 bypass · 묻지 않기 · 전체 접근은 내지 않는다. 계획 승인 · 질문 답도 같은 사람 결정 op 하나(`chat_tile_decide`)로만 간다.
+  되감기도 사람 op 하나(`chat_tile_rewind` — 미리 보기 뒤 확인 · 턴 중 거절)이고 CLI 자신의 되감기만 쓴다(Claude `rewind_files` = 파일 · `rewind_conversation` = 대화 ·
+  Codex `thread/revert` = 대화만). 서버는 스스로 되감지 않고, 앱은 체크포인트를 짓지 않고 사용자 저장소 · CLI 설정에 쓰지 않는다.
+  **목표(goal)는 사람이 정하는 위임**이다 — 사람이 Codex 목표 글과 토큰 한도(고정 값 다섯 중 하나 · 반드시)를 정하는 것(`chat_tile_goal`)이 사람 결정이고, 그 뒤 CLI 가
+  새 사람 글 없이 그 대화의 턴을 이어 연다. 범위 = 그 대화 · 그 목표 · 그 한도이고 도구마다의 권한 카드 · CLI 권한 모드는 그대로다. [중지]는 진행 중인 목표를 함께 멈춘다.
+  서버는 목표를 스스로 정하거나 이어 하지 않는다(멈춤 · 지우기도 사람 단추뿐 — Aynx 밖에서 선 목표 포함). Claude `/goal` 은 사람이 친 글이고 한도는 CLI 의 것이다.
+  검토(`chat_tile_review` — Codex · 같은 대화 안 · 사람이 대상을 고른다)도 사람 op 하나이고 앱은 git 을 부르지 않는다. → [docs/architecture.md](architecture.md#arch-orch-spawn) ③ · ⑤ 헤드리스 턴은 첫 지시
   (`spawn_worker`) · 이어지는 지시(MCP `send_prompt` = 같은 대화를 resume 하는 **새 턴** — `orchestration/resume.rs`)를 셸 없는 인자 배열의
   마지막(옵션 → `--` → 서버 머리줄 `[` 로 시작하는 지시)로만 싣는다. 대상은 **사람이 연 앨범의 Run 이 띄운 쓰기형 작업자**(`idle` ·
   대화가 끊기지 않았을 때 · 한 번에 한 턴 — 도는 중이면 `busy{attemptIds}` · 큐 없음 · 결과는 `started` 또는 `rejected{spawn-failed}` —
-  예약 수락과 실제 시작이 나뉠 수 있다(생성 대기 상한을 넘으면 `started{launching:true}` · 뒤에 못 서면 그 턴이 `failed:spawn-failed` · `idle` · 사건으로 보인다 — 끝내 모르는 상태는 없다)). 셸 타일 · 사람이 연 타일 · 원격 타일 · 프로듀서 채팅에는 길이 없다. 작업자에게는 권한 화면이 없다(비대화형 — 허용 밖은 CLI 가 거절하고
+  예약 수락과 실제 시작이 나뉠 수 있다(생성 대기 상한을 넘으면 `started{launching:true}` · 뒤에 못 서면 그 턴이 `failed:spawn-failed` · `idle` · 사건으로 보인다 — 끝내 모르는 상태는 없다)). 셸 타일 · 사람이 연 타일 · 원격 타일 · 프로듀서 채팅 · 채팅 모양 AI 타일에는 길이 없다. 작업자에게는 권한 화면이 없다(비대화형 — 허용 밖은 CLI 가 거절하고
   작업자는 `report_done{blocked}` 로 알린다: 비종결 · worktree 유지 · 사람이 [앨범 권한]에서 넓히면 조정자가 같은 대화를 잇는다). **오케스트레이션 검증**: 검증 문자열은 사람만 설정한다
   (**[새 앨범]의 구성에서만** — 글자는 앨범 시작 때 Run 에 고정되고 도중에 바뀌지 않는다 · [앨범 권한]은 사람 확인 ↔ 자동 실행만 · MCP 로 정하거나 바꿀 수 없다). 실행 대상 코드는 AI 가 바꿀 수 있다 — 그래서 실행은 **사람 확인(후보별 — 후보 OID ·
   명령 해시 · 통합 머리에 묶임)** 또는 **사람이 켠 자동 실행 위임 범위 안에서만** 한다(자동은 '전부 자동' 과 같은 위험 등급 표시). 승인 ·
@@ -95,7 +105,7 @@
   [docs/log/2026-11-19-discord-bridge.md](log/2026-11-19-discord-bridge.md) · [docs/log/2026-11-19-slack-bridge.md](log/2026-11-19-slack-bridge.md)) 채널마다 사람이 켠 것(`[messenger] telegram_chat` · `discord_chat` · `slack_chat` · 기본 끔 ·
   **켜기는 메인 PC 에서만**)이며 **채널마다 메인 PC 에서 6자리 코드로 짝지은 계정 하나**의 1:1 대화방 글만 받는다. 그 글은 **사람 입력**이다. 대상은
   **턴이 끝나 입력을 기다리는 로컬 AI CLI 타일뿐** — 에이전트 상태 표에 항목이 없으면 거절하므로(`session-end` 가 항목을 지운다) 셸 타일 · CLI 가 끝난 타일 ·
-  원격 타일 · 한 번도 턴이 끝나지 않은 타일에는 길이 없다. 세션 서버 안에서 PTY 에 쓰는 길은 세션 op `write`(창)와 다리의 넣기 함수 **둘뿐**이다(시험
+  원격 타일 · 한 번도 턴이 끝나지 않은 타일에는 길이 없다. 채팅 모양 AI 타일은 다리의 대상이 아니다(글 넣기 · 권한 카드 답 모두). 세션 서버 안에서 PTY 에 쓰는 길은 세션 op `write`(창)와 다리의 넣기 함수 **둘뿐**이다(시험
   `pty_writes_have_two_sites`) · **AI 문자열→PTY 길은 여전히 없다**. 다리는 **타일 권한 카드**에 [허용] · [거절] 로 답할 수 있다 — 다리가 돌보는 스트림
   (다리가 시작한 턴 · 단추 달린 권한 알림을 보낸 턴)의 카드만(단추는 그 스트림을 돌보는 채널마다 · 먼저 온 누름이 이긴다), 결정은 그 CLI 의 훅 응답으로만(PTY 아님 · 원격 웹의 카드 결정과 같은 등급 · 질문 카드 · 세션 허용은 없음).
   **작업안 승인 · AI 권한 · 위임 · 앨범 · 볼트로 가는 길은 없다**(시험 `bridge_has_no_approval_path` — 승인 대기는 알림만). 가림막이 걸려 있어도 받는다(자리를 비운
@@ -163,6 +173,8 @@
   F5 · 웹뷰 크래시 재부착은 그대로). **타일 토큰은 Run 을 열지도 이어받지도
   조율하지도 못한다** — 타일의 목록에 타일 도구 · 조율 도구가 없고, 불러도 서버가 거절한다(호출자 갈래에 타일이 없어 모르는 도구 — 시험
   `tile_token_cannot_open_or_coordinate`).
+  **채팅 모양 AI 타일**은 세션이 없어 `crate::chat_token` 의 채팅 타일 토큰(종류 `tile` — `(채팅, 프로세스 세대)`)을 받는다. 범위는 터미널 모양
+  AI 타일과 같고(13 + DB · 조율 없음), 값은 그 프로세스의 임시 `--mcp-config` · 환경에만 둔다.
   **조정자 토큰은 없다 — 조정자는 프로듀서 채팅의 채팅 토큰(종류 `producer`)에 서버 표가 붙인 역할**(Run 세대 ↔ 자리 묶음
   `Slot.coordinator = (gen, Seat{chat, proc})` — 묶음이 서는 길은 둘뿐: **사람의 앨범 시작 op**(`producer_album_start` — **Run 은 이 길로만 열린다** · 띄운 세대 · 묶음 · 귀속과 Run 이 한 잠금에서) ·
   조정자 없는 멈춘 Run 을 **그 앨범에 귀속된** 프로듀서 채팅이 `adopt_run`(세대 +1 · 알림 `run-adopted` · 판정은 `adopt_verdict` 하나 · 시간 한도 · 보류는 `not-adoptable` · 사람 [재개] 는
@@ -191,7 +203,7 @@
 ## 10. 대화 기록의 MCP 출구
 
 - **대화 기록이 MCP 로 나가는 길은 조정자 `read_worker` 하나 — 자기 Run 작업자의 고정 대화만**(처음 받은 대화 id · 그 CLI 대화 폴더 안 · 기록된 cwd = 그 worktree). 다른 대화(사람 타일 · 다른 Run · 작업자가 옮겨 간 대화)의 기록은 MCP 로 나가지 않고, 본문은 로그 · 감사 · 영속 파일 · `Debug` 에 없다 → 같은 설계 C-6.
-- **터미널 화면 거울은 이 출구에 들지 않는다 — 사람이 준 읽기 권한을 따른다.** AI CLI 타일의 화면(그 대화가 보이는 글자)은 다른 타일과 똑같이 세션 읽기 도구(`get_scrollback` · `get_session_snapshot` …)로 읽힌다: 로컬 타일은 타일별 'AI 읽기 허용'(기본 꺼짐 — AI CLI 타일도 같다), 원격은 호스트 AI 권한([전문 2](#inv-2)). 읽히는 것은 화면 글자뿐이고 CLI 가 남긴 대화 기록 파일은 아니다.
+- **터미널 화면 거울은 이 출구에 들지 않는다 — 사람이 준 읽기 권한을 따른다.** AI CLI 타일의 화면(그 대화가 보이는 글자)은 다른 타일과 똑같이 세션 읽기 도구(`get_scrollback` · `get_session_snapshot` …)로 읽힌다: 로컬 타일은 타일별 'AI 읽기 허용'(기본 꺼짐 — AI CLI 타일도 같다), 원격은 호스트 AI 권한([전문 2](#inv-2)). 읽히는 것은 화면 글자뿐이고 CLI 가 남긴 대화 기록 파일은 아니다. 채팅 모양 AI 타일은 거울이 없어 MCP 로 읽히지 않는다(본문을 거울에 싣지 않는다).
 
 <a id="inv-11"></a>
 ## 11. 원격 타일과 신호 전용 토큰
@@ -205,7 +217,7 @@
   [docs/log/2026-10-26-agent-enable.md](log/2026-10-26-agent-enable.md).
   원격의 주소·토큰은 서버 파일 `~/.config/aynx/signal/<스트림>.env`(0600, 접속마다 원자 교체)로 전달하고 **셸에는 스트림 id 만**
   export 한다(에이전트 활성화 호스트는 + PATH 심 폴더 — 비밀 아님 · 셸 통합 끔·SFTP 실패 때만 예전 export 폴백 — `src-tauri/src/remote_signal_file.rs`).
-  **로컬 타일은 모두 같은 신호 전용 토큰을 받고, MCP 토큰은 로컬 셸 타일(셸 통합 감싸개가 있는 셸 — PowerShell · Git Bash · 셸 통합 켬)과
+  **로컬 PTY 타일은 모두 같은 신호 전용 토큰을 받고, MCP 토큰은 로컬 셸 타일(셸 통합 감싸개가 있는 셸 — PowerShell · Git Bash · 셸 통합 켬)과
   AI 타일 — 타일마다 따로**(타일 토큰 · 서버 전역 토큰은 `mcp.json` 에 남되 조율 도구는 `not-a-tile`) 받는다(평범한 셸에서 친 `claude` 도
   신호를 보내게 · 그 `claude` · `codex` 가 AI 타일과 같은 추가 인자 · MCP · `--no-daemon` 을 받게 — GUI Rust 가 열 때 쓰는 타일
   장식 파일 `src-tauri/src/agent_tile.rs` · 셸에는 그 경로 `AYNX_TILE_AGENT` 만 · 감싸개 타일의 autorun 은 장식하지 않는다. cmd · WSL · 셸 통합 끔은
@@ -221,6 +233,7 @@
   쓰지 않는다 → [docs/log/2026-11-01-tile-permission-hook.md](log/2026-11-01-tile-permission-hook.md)
   (같은 장식의 Codex `Interrupt` 훅만은 **신호 경로**로 그 타일의 신호 전용 토큰을 써 `interrupt` 하나를 보낸다 — 상태 점 전용 그대로 ·
   대화 면 [중지]는 Esc 키 하나(사람 키) + 서버 op `agent_state_interrupt`.)
+  채팅 모양 AI 타일은 신호 · 권한 결정 토큰이 없다(상태 · 권한은 구조화 통로로).
 
 <a id="inv-12"></a>
 ## 12. 에이전트 포워딩
@@ -238,7 +251,8 @@
   메인 PC 전용 = 볼트 마스터 바꾸기·전체 삭제 · 기기 페어링 답 · 앱 업데이트(`update_*` — 찾기 · 받기 · 설치 · 건너뛰기) · 자동 승인 정책(`[automation]`) · `tailscale serve` 걸기·끄기 · 원격 접속 켜기·이름·포트(끄기·기기
   폐기는 원격도 된다) / 재확인 = 작업안 승인·AI 권한 올리기는 **마스터가 있으면 그 순간 다시 묻는다**(1회용 표 — 암호는 HTTP 몸으로만,
   ws·로그에 없음) / 프로듀서 채팅 명령(`producer_chat_*`)은 ALLOW(사람의 말 · 결정 · 끊기 — `decide` 는 허용 목록 두 카드에만 뜻 · 앨범 시작 `producer_album_start` · 앨범 권한 넓힘 `orchestration_album_widen` 은 REAUTH ·
-  앨범 영구 삭제 `orchestration_delete_archived` · 앨범 병합 `orchestration_merge` 는 REAUTH(병합 미리 보기는 ALLOW) · 넓힘 없는 변경 `orchestration_album_set` · 기본값 읽기 · 아티스트 명령 · 이름 변경 · `producer_fork_probe` 는 ALLOW — 서버가 다시 판정) / 사이드 채팅 명령(`side_chat_*` · `side_chats_*`)도 ALLOW(권한 카드 `side_chat_decide` 포함 · 재확인 없음 → [docs/log/2026-11-01-remote-side-chat.md](log/2026-11-01-remote-side-chat.md)). 플러그인은 `capabilities/remote.json` ACL 이 막고, 그 ACL 이 연 **이벤트 emit 은 이름으로 다시 거른다**(`deny::REMOTE_EMIT`
+  앨범 영구 삭제 `orchestration_delete_archived` · 앨범 병합 `orchestration_merge` 는 REAUTH(병합 미리 보기는 ALLOW) · 넓힘 없는 변경 `orchestration_album_set` · 기본값 읽기 · 아티스트 명령 · 이름 변경 · `producer_fork_probe` 는 ALLOW — 서버가 다시 판정) / 사이드 채팅 명령(`side_chat_*` · `side_chats_*`)도 ALLOW(권한 카드 `side_chat_decide` 포함 · 재확인 없음 → [docs/log/2026-11-01-remote-side-chat.md](log/2026-11-01-remote-side-chat.md)) / 채팅 타일 명령(`chat_tile_*`)도 ALLOW(권한 카드 포함 · 재확인 없음 — 예외 하나: CLI 가 스스로 턴을 이어 여는 목표 정하기 · 이어 하기 `chat_tile_goal_start` 는 REAUTH ·
+  멈춤 · 지우기 `chat_tile_goal_stop` 은 ALLOW). 플러그인은 `capabilities/remote.json` ACL 이 막고, 그 ACL 이 연 **이벤트 emit 은 이름으로 다시 거른다**(`deny::REMOTE_EMIT`
   넷만 — 기본 거절 · 메인 PC 리스너가 받는 순간 일을 하는 이벤트를 원격이 못 낸다). 메인 PC 에는 원격이 열 때 OS 알림 + 상태바 "원격 접속 중"
   (둘 다 끌 수 없다). 볼트 값·MCP 토큰·웹훅 URL · 봇 토큰은 여전히 원격으로 나가지 않는다 →
   [docs/log/2026-10-15-remote-web-client-design.md](log/2026-10-15-remote-web-client-design.md).

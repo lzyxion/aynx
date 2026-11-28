@@ -214,3 +214,25 @@ fn side_chat_reads_each_linked_session_on_its_own() {
     assert!(!e && rows.as_array().unwrap().len() == 1 && rows[0]["id"] == "sc-a", "{t}");
     crate::chat_token::forget(chat);
 }
+
+/// 시험 `chat_tile_cannot_coordinate` — 채팅 타일 토큰의 목록 · 안내 · 조율 판정은 `Caller::Tile` 과 같다(자리가 되지 못한다).
+#[test]
+fn chat_tile_cannot_coordinate() {
+    let tile = Caller::Tile { stream: "tile-x".into() };
+    let chat = Caller::ChatTile { chat: "ct-x".into(), proc: crate::server::chat_proc::ProcId::next() };
+    for method in ["tools/list", "initialize"] {
+        let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": {} });
+        assert_eq!(rpc(&chat, mirror(), body.clone())["result"], rpc(&tile, mirror(), body)["result"], "{method}");
+    }
+    let init = rpc(&chat, mirror(), json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }));
+    assert_eq!(init["result"], super::schema::initialize_result_for(super::schema::Instructions::TileHint));
+    let tools: Vec<&str> = crate::orchestration::preallowed_tools()
+        .chain(crate::orchestration::COORDINATOR_TOOLS.iter().copied())
+        .chain(crate::orchestration::TILE_TOOLS.iter().copied())
+        .collect();
+    for t in &tools {
+        assert!(!crate::orchestration::is_tool_for(&chat, t), "{t}");
+        let (e, text) = call(&chat, t, json!({}));
+        assert!(e && text.starts_with("Unknown tool"), "{t}: {text}");
+    }
+}

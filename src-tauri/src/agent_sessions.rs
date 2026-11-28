@@ -1042,6 +1042,39 @@ pub(crate) fn conversation_file(
         .ok_or_else(|| tr!(ko: "그 대화를 찾지 못했습니다", en: "Could not find that conversation"))
 }
 
+/// 첫 줄 하나(줄 상한 [`HEAD_LINE_EXTRA_MAX`]) — Codex 의 `session_meta` 는 지침을 품어 수십 KB 다.
+pub(crate) fn first_line_json(path: &Path) -> Option<Value> {
+    let f = std::fs::File::open(path).ok()?;
+    let mut line = Vec::new();
+    std::io::BufRead::read_until(&mut std::io::BufReader::new(f.take(HEAD_LINE_EXTRA_MAX)), b'\n', &mut line).ok()?;
+    serde_json::from_slice(&line).ok()
+}
+
+/// Codex 대화 하나의 롤아웃 파일들(되감기 조각 포함) — 이름에 id 가 들고 첫 줄 `session_meta.id == id` 인 것 · 이름(만든 순) 순. 목록 · 색인과 따로 논다.
+pub(crate) fn codex_files_of(roots: &[PathBuf], id: &str) -> Vec<PathBuf> {
+    const FILES_MAX: usize = 64;
+    let id = id.to_ascii_lowercase();
+    let mut out: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        for y in entries_desc(root).into_iter().filter(|d| d.is_dir()) {
+            for m in entries_desc(&y).into_iter().filter(|d| d.is_dir()) {
+                for d in entries_desc(&m).into_iter().filter(|d| d.is_dir()) {
+                    out.extend(entries_desc(&d).into_iter().filter(|p| {
+                        is_jsonl(p) && p.file_name().is_some_and(|n| n.to_string_lossy().to_ascii_lowercase().contains(&id))
+                    }));
+                }
+            }
+        }
+    }
+    out.retain(|p| {
+        first_line_json(p).is_some_and(|v| v["type"] == "session_meta" && str_of(&v["payload"]["id"]).is_some_and(|x| x.eq_ignore_ascii_case(&id)))
+    });
+    out.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    let over = out.len().saturating_sub(FILES_MAX);
+    out.drain(..over);
+    out
+}
+
 /// `id` 는 부르는 쪽이 모양을 확인했다(경로 글자 없음).
 fn named_file(t: &'static SessionTarget, roots: &[PathBuf], id: &str) -> Option<PathBuf> {
     let SessionSource::JsonlFiles { layout, .. } = &t.source;

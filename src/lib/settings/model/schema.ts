@@ -155,6 +155,8 @@ export interface AiPrefs {
   mcp_sessions_agents?: string[] | null;
   /** 모르는 id 도 버리지 않는다(`automation.bundles` 와 같은 보존 규칙) */
   disabled_agents?: string[] | null;
+  /** 실험 — 켰을 때만 적는다. 꺼도 이미 연 채팅 타일은 돈다(새 채팅 타일만 못 연다) */
+  chat_tile?: boolean | null;
 }
 
 /** `[wallpaper]` */

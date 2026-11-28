@@ -91,6 +91,7 @@ pub(crate) fn conn_opened(conn: u64) {
     core().conn_opened(conn);
     crate::db::table::conn_opened(conn);
     super::side_chat::conn_opened(conn);
+    super::chat_tile::conn_opened(conn);
 }
 
 /// 그 연결이 쥔 임대를 모두 푼다 — 세션은 산다(GUI 정상 종료·kill 이 같은 길).
@@ -105,6 +106,7 @@ pub(crate) fn conn_gone(conn: u64) {
         log::line(format!("client conn {conn} gone — {chats} side chat(s) detached"));
     }
     super::producer::conn_gone(conn);
+    super::chat_tile::conn_gone(conn);
     let detached = core().detach_conn(conn);
     for (kind, id, _) in &detached {
         unplug(*kind, *id);

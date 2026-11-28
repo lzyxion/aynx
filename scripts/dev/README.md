@@ -137,6 +137,19 @@ node scripts/dev/run-harness.mjs side-chat-path-links-harness.mjs <outdir> --siz
 #     scpl-phone-notify-row.png · scpl-phone-notify-open.png
 ```
 
+## chat-tile-harness.mjs — 채팅 모양 AI 타일
+
+(2026-11-27 — `chat-tile/ChatTileLeaf` · `ChatTileFace` · `ChatTilePermCard` · 독 · AI 고르기 상자의 [채팅]) 서버 없이 `chat_tile_*` 명령을 스텁이 답하고 사건은
+Channel 로 민다(`__ctEmit`). 스텁 서버 표는 `sessionStorage` 에 남아 모르는 채팅의 subscribe 는 `[session-gone]`(잎이 open 으로 세운다) · `h.gone` 이면 한 번
+`[session-gone]`. 설정 켬/끔의 [채팅] · open{fresh} · send{epoch, clientId} · 흐름 · 도구 줄 · 권한 카드(단추 둘 · diff · 입력 칸 대신 한 줄) · [중지] · 모델/강도 ·
+needs-terminal · 리로드(subscribe 만 · gone 이면 open{resume}) · 턴 중 닫기 물음 · 고르기 상자 Tab/Enter · 원격 창(명세 안 씀) · 폰 400(키 띠 숨김)을 본다.
+
+```bash
+node scripts/dev/run-harness.mjs chat-tile-harness.mjs <outdir> --size 1280x860
+#   → launcher-dock.png · chat-tile-empty.png · chat-tile-midturn.png · chat-tile-perm.png · chat-tile-model-menu.png ·
+#     chat-tile-needs-terminal.png · chat-tile-close-busy.png · launcher-picker.png · chat-tile-remote.png · chat-tile-phone.png
+```
+
 ## side-chat-perm-mode-harness.mjs — 사이드 채팅 권한 모드(Manual · Auto)
 
 (2026-11-20 — 판 37 · `chat/ChatPermChip` · `chat/ChatPermMenu`) 스텁은 `side-chat-composer-harness.mjs` 그대로 + 사건 통로 쏘기 · 새 명령

@@ -919,7 +919,22 @@ fn server_spawns_only_turns_and_verify() {
     assert!(core.contains("os::Stdin::Pipe") && !core.contains("Stdin::Eof"));
     // (2단계 단계 2) 넷째 — 프로듀서 채팅 프로세스(같은 코어 · GUI 요청 op `producer_chat_send` 의 전송 길 하나 — 시험
     // `server::producer::tests::producer_spawns_only_from_dispatch`).
-    assert_eq!(callers("chat_proc::start"), vec!["src/server/producer/mod.rs".to_string(), "src/server/side_chat.rs".to_string()]);
+    // 다섯째 — 채팅 모양 AI 타일 프로세스(같은 코어 · `start_ready` 하나 — GUI 요청 op `chat_tile_send` 와 되감기 미리 보기 — 시험
+    // `server::chat_tile::tests::chat_tile_spawns_only_from_the_send_op` · docs/architecture.md ⑤).
+    assert_eq!(
+        callers("chat_proc::start"),
+        vec![
+            "src/server/chat_tile/mod.rs".to_string(),
+            "src/server/producer/mod.rs".to_string(),
+            "src/server/side_chat.rs".to_string()
+        ]
+    );
+    let tile = std::fs::read_to_string("src/server/chat_tile/mod.rs").unwrap();
+    let tile = tile.split("mod tests {").next().unwrap();
+    assert!(!tile.contains("spawn_in_job"), "채팅 타일 표는 직접 띄우지 않는다");
+    assert_eq!(tile.matches("chat_proc::start(").count(), 1, "spawn 하나");
+    assert_eq!(tile.matches("spawn(chat, &mut st)").count(), 1, "start_ready 하나");
+    assert!(!std::fs::read_to_string("src/server/chat_tile/launch.rs").unwrap().contains("spawn_in_job"));
     let producer = std::fs::read_to_string("src/server/producer/mod.rs").unwrap();
     assert!(!producer.contains("spawn_in_job"), "프로듀서 레지스트리는 직접 띄우지 않는다");
     assert_eq!(producer.matches("chat_proc::start(").count(), 1, "spawn 하나");
@@ -931,6 +946,7 @@ fn server_spawns_only_turns_and_verify() {
         let s = std::fs::read_to_string(f).unwrap();
         assert!(!s.contains("\"side_chat_") && !s.contains("side_chat::"), "{f} 는 사이드 채팅으로 가는 길이 없다");
         assert!(!s.contains("\"producer_chat_") && !s.contains("producer::"), "{f} 는 프로듀서 채팅으로 가는 길이 없다");
+        assert!(!s.contains("\"chat_tile_") && !s.contains("chat_tile::"), "{f} 는 채팅 타일로 가는 길이 없다");
     }
     let os_src = std::fs::read_to_string("src/server/os.rs").unwrap();
     // os.rs 안: 검증 감싸개의 `spawn_in_job(` 한 번 + 공개 함수 → Windows 몸통(`win::spawn_in_job(`) 한 번.

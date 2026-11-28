@@ -1,0 +1,10 @@
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"canRewind":true,"filesChanged":["C:\\src\\proj\\src\\a.ts","D:\\x.txt"],"insertions":1,"deletions":1}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"canRewind":true,"skippedLinks":0}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"canRewind":false,"error":"No file checkpoint found for this message."}}}
+{"type":"control_response","response":{"subtype":"error","request_id":"RID","error":"No file checkpoint found for this message."}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"canRewind":false,"error":"File rewinding is not enabled."}}}
+{"type":"control_response","response":{"subtype":"error","request_id":"RID","error":"File rewinding is not enabled."}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"rewound":true,"targetMessageUuid":"9a573fe1-b87b-42a1-ab8f-77acc245e7d1","prefillText":"Remember the word cherry. Reply ok.","precedingAssistantUuid":"3d89041c-0865-4791-b750-6c817c7ad5f6"}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"rewound":false,"prefillText":null,"precedingAssistantUuid":null,"error":"stale target","reason":"stale_target"}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"RID","response":{"rewound":false,"prefillText":null,"precedingAssistantUuid":null,"error":"turn running","reason":"turn_running"}}}
+{"type":"control_response","response":{"subtype":"error","request_id":"RID","error":"Unsupported control request subtype: rewind_conversation","error_code":"unsupported_request"}}

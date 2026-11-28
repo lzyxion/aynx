@@ -24,6 +24,8 @@ import { isDocDirty, setDocDirty } from "$lib/app/doc-dirty.svelte.js";
 import { dropDocDraft } from "$lib/app/doc-drafts.svelte.js";
 import { confirmUnsavedClose } from "$lib/app/unsaved-docs";
 import { confirmDbTxClose, dbTxPanes, hasOpenDbTx } from "$lib/app/db-tx";
+import { askConfirm } from "$lib/app/confirm-dialog.svelte.js";
+import { chatTileBusy } from "$lib/app/chat-tile-busy";
 import { unsavedVerdict } from "$lib/unsaved-guard";
 import { autoSplitDir, computeLayout, neighborInDirection, type FocusDir } from "$lib/layout";
 import { autoPlaceTarget, movePaneDwindle, resizePaneStep, type CanvasSize } from "$lib/tree-ops";
@@ -697,7 +699,7 @@ export function dbTxPanesInWindow(): string[] {
   return dbTxPanes(residentWindowTabs().flatMap((tab) => listPanes(tab.root).map((p) => p.id)));
 }
 
-/** 타일 닫기의 모든 입구(× · ⋯ · `close-tile` · `Ctrl+D`)가 지나는 한 곳 — 저장 안 한 문서 · 열린 트랜잭션 물음도 여기 하나다 */
+/** 타일 닫기의 모든 입구(× · ⋯ · `close-tile` · `Ctrl+D`)가 지나는 한 곳 — 저장 안 한 문서 · 열린 트랜잭션 · 바쁜 채팅 타일 물음도 여기 하나다 */
 export function closePaneIn(tabId: string, paneId: string): void {
   if (remoteLayout({ op: "closeTile", tile: paneId })) return;
   const tab = residentWindowTabs().find((t) => t.id === tabId);
@@ -713,6 +715,14 @@ export function closePaneIn(tabId: string, paneId: string): void {
   // 열린 트랜잭션은 닫으면 서버가 되돌린다
   if (hasOpenDbTx(paneId)) {
     void confirmDbTxClose([paneId], docNameOf).then((go) => {
+      if (go) closePaneNow(tabId, paneId);
+    });
+    return;
+  }
+  // 채팅 잎이 보낸 말을 처리하는 중(띄우는 중 포함) · 권한을 기다리는 중이면 닫기가 그 턴을 멈춘다
+  if (chatTileBusy(paneId)) {
+    const body = t("pane.chatTile.closeBusy.body");
+    void askConfirm(body, { title: t("pane.chatTile.closeBusy.title"), kind: "warning", okLabel: t("pane.chatTile.closeBusy.ok") }).then((go) => {
       if (go) closePaneNow(tabId, paneId);
     });
     return;
