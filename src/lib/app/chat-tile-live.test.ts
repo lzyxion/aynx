@@ -16,14 +16,12 @@ vi.mock("$lib/tear", () => ({ isHandoff: (id: string) => state.handoff.has(id) }
 vi.mock("$lib/app/tabs.svelte.js", () => ({
   findPaneAnywhere: (id: string) => state.panes.get(id) ?? null,
   tabOfPane: (id: string) => (state.panes.has(id) ? { id: "tab-1" } : null),
-  replaceTile: vi.fn(() => true),
 }));
 vi.mock("$lib/app/agent-sessions.svelte.js", () => ({ noteChatTileConversation: vi.fn(), unlinkAgentSession: vi.fn() }));
 vi.mock("$lib/app/chat-tile-notify", () => ({ noteChatTileEvent: vi.fn() }));
 vi.mock("$lib/app/agent-banners.svelte.js", () => ({ dropAgentBanner: vi.fn() }));
 
 import { noteChatTileConversation, unlinkAgentSession } from "$lib/app/agent-sessions.svelte.js";
-import { replaceTile } from "$lib/app/tabs.svelte.js";
 import { chatTileBusy } from "$lib/app/chat-tile-busy";
 import { noteChatTileEvent } from "$lib/app/chat-tile-notify";
 import { dropAgentBanner } from "$lib/app/agent-banners.svelte.js";
@@ -50,6 +48,8 @@ import {
   retuneChatTile,
   sendChatTile,
   setChatTilePermMode,
+  switchChatTileCli,
+  takeChatTileDraft,
   type ChatTileTarget,
 } from "./chat-tile-live.svelte.js";
 
@@ -129,7 +129,6 @@ afterEach(() => {
   vi.mocked(unlinkAgentSession).mockClear();
   vi.mocked(noteChatTileEvent).mockClear();
   vi.mocked(dropAgentBanner).mockClear();
-  vi.mocked(replaceTile).mockClear();
 });
 afterAll(() => vi.unstubAllGlobals());
 
@@ -865,16 +864,18 @@ describe("`/` 메뉴 재료 · 맥락 사용량 · 압축", () => {
     expect(calls("chat_tile_send")[1]).toMatchObject({ text: "/docs 표", skills: [] });
   });
 
-  it("newChatInPlace — 새 chatId · 같은 cli/model/effort/cwd · permMode · conv 없음 · 일하는 중이면 false", async () => {
+  it("newChatInPlace — 같은 잎(pane id) · 명세의 chat 만 새 chatId · 같은 cli/model/effort/cwd · permMode · conv 없음 · 입력 칸 포커스 · 일하는 중이면 false", async () => {
     server();
     const tg = target({ cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new", conv: CONV, permMode: "plan" });
     snapExtra = { cli: "codex" };
-    state.panes.set(tg.paneId, { id: tg.paneId, kind: "chat", chat: { chatId: tg.chat, cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new", conv: CONV, permMode: "plan" } });
+    const pane: PaneSpec = { id: tg.paneId, kind: "chat", chat: { chatId: tg.chat, cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new", conv: CONV, permMode: "plan" } };
+    state.panes.set(tg.paneId, pane);
+    const before = pane.chat;
     observe(tg);
     await vi.waitFor(() => expect(chatTileLiveOf(tg.chat)?.subGen).toBe(1));
     emit(subs[0], tg.chat, { t: "turnStarted", turn: null });
     expect(newChatInPlace(tg)).toBe(false);
-    expect(replaceTile).not.toHaveBeenCalled();
+    expect(pane.chat).toBe(before);
     emit(subs[0], tg.chat, { t: "turnEnded", turn: null, outcome: "ok", message: null });
     // 원격 창은 명세를 쓰지 않는다 — 스스로 거절한다
     state.remote = true;
@@ -883,16 +884,57 @@ describe("`/` 메뉴 재료 · 맥락 사용량 · 압축", () => {
     } finally {
       state.remote = false;
     }
-    expect(replaceTile).not.toHaveBeenCalled();
+    expect(pane.chat).toBe(before);
     expect(newChatInPlace(tg)).toBe(true);
-    const [tabId, paneId, pane] = vi.mocked(replaceTile).mock.calls[0];
-    expect([tabId, paneId]).toEqual(["tab-1", tg.paneId]);
-    expect(pane.kind).toBe("chat");
-    expect(pane.id).not.toBe(tg.paneId);
+    expect(state.panes.get(tg.paneId)).toBe(pane);
+    expect(pane.id).toBe(tg.paneId);
     expect(pane.chat).toEqual({ chatId: expect.stringMatching(/^ct-/), cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new" });
-    expect(pane.chat?.chatId).not.toBe(tg.chat);
+    const fresh = pane.chat!.chatId;
+    expect(fresh).not.toBe(tg.chat);
+    // 새 몸은 빈 글로 입력 칸에 포커스만
+    expect(takeChatTileDraft(fresh)).toBe("");
+    // 명세가 이미 다른 채팅이면(두 번 누름) 다시 바꾸지 않는다
+    expect(newChatInPlace(tg)).toBe(false);
+    expect(pane.chat?.chatId).toBe(fresh);
+    // 서버 닫기 · 새 항목 붙기는 잎이 chatId 를 따라 한다 — 상태 층은 부르지 않는다
+    expect(calls("chat_tile_close")).toHaveLength(0);
+    expect(calls("chat_tile_open")).toHaveLength(0);
     // 잎이 없으면(다른 창 · 닫힘) 아무것도 안 한다
     expect(newChatInPlace(target())).toBe(false);
+  });
+
+  it("switchChatTileCli — 같은 잎 · 다른 CLI 의 새 chatId · 폴더만 물려줌 · 쓰던 글 한 번 · 같은 CLI · 원격 · 일하는 중이면 false", async () => {
+    server();
+    const tg = target({ cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new", conv: CONV, permMode: "plan", tier: "fast" });
+    snapExtra = { cli: "codex" };
+    const pane: PaneSpec = { id: tg.paneId, kind: "chat", chat: { chatId: tg.chat, cli: "codex", model: "gpt-5", effort: "high", cwd: "C:/src/new", conv: CONV, permMode: "plan", tier: "fast" } };
+    state.panes.set(tg.paneId, pane);
+    const before = pane.chat;
+    observe(tg);
+    await vi.waitFor(() => expect(chatTileLiveOf(tg.chat)?.subGen).toBe(1));
+    expect(switchChatTileCli(tg, "codex", "x")).toBe(false);
+    emit(subs[0], tg.chat, { t: "turnStarted", turn: null });
+    expect(switchChatTileCli(tg, "claude", "x")).toBe(false);
+    emit(subs[0], tg.chat, { t: "turnEnded", turn: null, outcome: "ok", message: null });
+    state.remote = true;
+    try {
+      expect(switchChatTileCli(tg, "claude", "x")).toBe(false);
+    } finally {
+      state.remote = false;
+    }
+    expect(pane.chat).toBe(before);
+    expect(switchChatTileCli(tg, "claude", "쓰던 글")).toBe(true);
+    expect(state.panes.get(tg.paneId)).toBe(pane);
+    expect(pane.chat).toEqual({ chatId: expect.stringMatching(/^ct-/), cli: "claude", model: "", effort: "", cwd: "C:/src/new" });
+    const fresh = pane.chat!.chatId;
+    expect(fresh).not.toBe(tg.chat);
+    expect(takeChatTileDraft(tg.chat)).toBeNull();
+    expect(takeChatTileDraft(fresh)).toBe("쓰던 글");
+    expect(takeChatTileDraft(fresh)).toBeNull();
+    // 바꾸지 못하면(명세가 이미 다른 채팅) 글을 남기지 않는다
+    expect(switchChatTileCli(tg, "claude", "남지 않음")).toBe(false);
+    expect(pane.chat?.chatId).toBe(fresh);
+    expect(switchChatTileCli(target(), "codex")).toBe(false);
   });
 });
 
@@ -1582,7 +1624,7 @@ describe("검토 · 목표 · 속도 · MCP 상태", () => {
     const cur = await codex({ tier: "priority", cwd: "C:/src/new-in-place" });
     state.panes.set(cur.paneId, { id: cur.paneId, kind: "chat", chat: { chatId: cur.chat, cli: "codex", model: "", effort: "", cwd: cur.cwd, tier: "priority" } });
     expect(newChatInPlace(cur)).toBe(true);
-    const fresh = vi.mocked(replaceTile).mock.calls.at(-1)![2] as PaneSpec;
+    const fresh = state.panes.get(cur.paneId)!;
     expect(fresh.chat).toMatchObject({ cli: "codex", tier: "priority" });
     expect(fresh.chat?.chatId).not.toBe(cur.chat);
   });

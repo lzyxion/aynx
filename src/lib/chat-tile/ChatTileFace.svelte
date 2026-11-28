@@ -51,7 +51,7 @@
   import { mcpSummary } from "$lib/chat-tile/chat-tile-mcp";
   import type { Key } from "$lib/i18n/keys";
   import { filesAfter, rewindable, rewindScopes, userTurnsFrom } from "$lib/chat-tile/chat-tile-rewind";
-  import type { RewindScope } from "$lib/side-chat-api";
+  import type { RewindScope, SideChatCli } from "$lib/side-chat-api";
   import {
     exactSlash,
     skillsInText,
@@ -100,19 +100,25 @@
     reviewChatTile,
     sendChatTile,
     setChatTilePermMode,
+    switchChatTileCli,
+    takeChatTileDraft,
     type ChatTileLive,
     type ChatTileTarget,
   } from "$lib/app/chat-tile-live.svelte.js";
+  import AiGlyph from "$lib/AiGlyph.svelte";
+  import { offeredAiClis, type AiCli } from "$lib/session";
+  import { chatTileCli } from "$lib/ai-launch-pick";
+  import { settings } from "$lib/settings.svelte.js";
   import { conversationList } from "$lib/app/agent-sessions.svelte.js";
   import { loadCodexModels, type CodexModels } from "$lib/app/side-chats.svelte.js";
   import { effortName, keywordModelLabel } from "$lib/chat/side-chat-controls.svelte";
   import { sideChatEffortChoices, sideChatModelChoices } from "$lib/side-chat";
   import { EFFORTS, MODEL_SUGGESTIONS } from "$lib/orchestration/config";
   import { modelLabel, orderModels } from "$lib/model-order";
-  import { aiDisplayName } from "$lib/pane-icons";
+  import { aiDisplayName, aiIconName } from "$lib/pane-icons";
   import { runOnMenu } from "$lib/browser/menu-runner";
   import { handheld } from "$lib/app/mobile.svelte.js";
-  import { openPathFromChat } from "$lib/app/panes.svelte.js";
+  import { knownAiClis, openPathFromChat } from "$lib/app/panes.svelte.js";
   import { resolvePathLink, type PathMatch, type ResolvedPath } from "$lib/path-links";
   import { stripReason } from "$lib/error-reason";
   import { chatTileErrorText, chatTileNoticeText, rewindActionKey, rewindTraceText, shortDetail } from "$lib/chat-tile/chat-tile-text";
@@ -132,6 +138,7 @@
     stageComposerAttachments,
     takeComposerPictures,
   } from "$lib/pane/composer-attachments.svelte.js";
+  import { paneHeadShown, setPaneTools } from "$lib/pane/pane-tools.svelte.js";
   import { t } from "$lib/i18n/i18n.svelte.js";
 
   let {
@@ -288,7 +295,10 @@
     for (const pics of Object.values(untrack(() => sentPics))) revokeSentPics(pics);
   });
 
-  const stillHere = () => chatTileLiveOf(target.chat)?.gone !== true;
+  // 같은 타일에 새 채팅이 서면(이 몸이 내려가면) 늦게 끝난 첨부를 걷는다 — 열쇠가 타일 id 라 새 몸에 칩이 남는다
+  let mounted = true;
+  onDestroy(() => (mounted = false));
+  const stillHere = () => mounted && chatTileLiveOf(target.chat)?.gone !== true;
 
   /** 10 MB — 서버 판정과 같다. 크기를 모르는 것(파일 타일 짐)은 서버가 본다 */
   function withinSize<T>(items: readonly T[], name: (x: T) => string, size: (x: T) => number | null): T[] {
@@ -374,6 +384,14 @@
     void interruptChatTile(target.chat);
     inputEl?.focus({ preventScroll: true });
   }
+
+  // ── 머리줄 — 대화 제목은 이름 뒤 · [중지]는 ⋯ 앞(타일이 맡긴 도구줄) ──
+
+  /** 이보다 좁은 타일의 머리줄 [중지]는 그림만 */
+  const HEAD_NARROW_PX = 420;
+  let faceW = $state(0);
+  const inHead = $derived(paneHeadShown(target.paneId));
+  $effect(() => setPaneTools(target.paneId, { bar: headBar, tail: headTail, keepBar: true, wholeName: true }));
 
   // ── 권한 ──
 
@@ -475,6 +493,54 @@
       (x) => void retuneChatTile(x.tg, { effort: x.effort }),
     );
   }
+
+  // ── CLI 바꾸기 = 이 자리에 다른 CLI 의 새 대화 ──
+
+  // 원격 창은 명세를 쓰지 않는다 — 줄을 그리지 않는다
+  let aiList = $state<AiCli[] | null>(null);
+  if (!isRemote) void knownAiClis().then((v) => (aiList = v));
+  /** 런처 [채팅] 과 같은 출처 — 지금 CLI 가 목록에서 빠졌어도(끈 에이전트) 고른 칸은 남긴다 */
+  const cliChoices = $derived.by((): { id: SideChatCli; name: string }[] => {
+    if (!aiList) return [];
+    const list = offeredAiClis(aiList, settings.disabledAgents).flatMap((c) => (chatTileCli(c.id) ? [{ id: c.id, name: c.name }] : []));
+    return list.some((c) => c.id === target.cli) ? list : [{ id: target.cli, name: agent }, ...list];
+  });
+  let cliRowEl = $state<HTMLElement | null>(null);
+
+  /** 확인 없이 바로 — 쓰던 글은 새 몸이 받고 붙인 첨부는 옮기지 않는다 */
+  function pickCli(cli: SideChatCli): void {
+    if (cli === target.cli) return;
+    runOnMenu(
+      () => (!working ? { tg: target, cli, draft: inputEl?.value ?? "" } : null),
+      () => closeModel(false),
+      (x) => void switchChatTileCli(x.tg, x.cli, x.draft),
+    );
+  }
+
+  function onCliKey(ev: KeyboardEvent): void {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight" && ev.key !== "Home" && ev.key !== "End") return;
+    const list = Array.from(cliRowEl?.querySelectorAll<HTMLElement>("[data-chat-tile-cli]") ?? []);
+    if (list.length === 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const i = list.indexOf(ev.currentTarget as HTMLElement);
+    const next = ev.key === "Home" ? 0 : ev.key === "End" ? list.length - 1 : ev.key === "ArrowRight" ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+    list[next].focus({ preventScroll: true });
+  }
+
+  // 같은 자리 새 채팅의 몸만 받는다 — 옛 몸의 쓰던 글을 넣고 입력 칸으로
+  let draftTaken = false;
+  $effect(() => {
+    const el = inputEl;
+    if (!el || draftTaken) return;
+    draftTaken = true;
+    untrack(() => {
+      const d = takeChatTileDraft(target.chat);
+      if (d === null) return;
+      if (d !== "") setComposerText(el, d);
+      else el.focus({ preventScroll: true });
+    });
+  });
 
   // ── 권한 모드(CLI 자신의 모드) ──
 
@@ -743,7 +809,7 @@
   // ── `/` 메뉴 ──
 
   const slashId = `ct-slash-${++faceSeq}`;
-  // 원격 창은 명세를 쓰지 않는다 — 그 자리 새 채팅(잎 갈아 끼우기)은 메인 PC 창에서만
+  // 원격 창은 명세를 쓰지 않는다 — 그 자리 새 채팅은 메인 PC 창에서만
   const slashAll = $derived.by(() => {
     const all = slashEntries(target.cli, live?.commands ?? null);
     return isRemote ? all.filter((e) => e.action !== "newChat") : all;
@@ -1401,6 +1467,32 @@
   {/if}
 {/snippet}
 
+{#snippet cliRow()}
+  <div class="cli-row" class:touch={phone} bind:this={cliRowEl} data-chat-tile-cli-row>
+    <div class="seg-group" role="radiogroup" aria-label={t("app.chatDock.cli.aria")} style:--seg-n={cliChoices.length}>
+      {#each cliChoices as x (x.id)}
+        {@const on = x.id === target.cli}
+        {@const logo = aiIconName(x.id)}
+        <button
+          type="button"
+          role="radio"
+          class="seg"
+          class:on
+          aria-checked={on}
+          tabindex={on ? 0 : -1}
+          data-chat-tile-cli={x.id}
+          onkeydown={onCliKey}
+          onclick={() => pickCli(x.id)}
+        >
+          {#if logo}<AiGlyph name={logo} size={14} mono />{:else}<UiIcon name="ai" size={14} />{/if}
+          <span class="seg-name">{x.name}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+  <hr class="menu-sep" />
+{/snippet}
+
 {#snippet tierRows()}
   <div class="tiers" data-chat-tile-tiers>
     <div class="tier-head" id="{slashId}-tier">{t("pane.chatTile.tier.title")}</div>
@@ -1442,18 +1534,39 @@
   </div>
 {/snippet}
 
-<div class="face" class:holding={pendingN > 0} bind:this={faceEl} role="region" aria-label={t("pane.name.chatTile", { agent })} data-chat-tile-face={target.chat}>
-  <div class="bar" data-chat-tile-bar>
-    <span class="form-chip" data-chat-tile-form>{t("pane.chatTile.form")}</span>
-    {#if title}<span class="conv-title" title={title} data-chat-tile-title>{title}</span>{/if}
-    <span class="grow"></span>
-    {#if running}
-      <button type="button" class="stop-pill" data-chat-tile-stop onclick={stop}>
-        <span class="stop-mark" aria-hidden="true"></span>{t("pane.chatTile.stop")}
-      </button>
-    {/if}
-  </div>
+{#snippet stopPill(compact: boolean)}
+  <button
+    type="button"
+    class="stop-pill"
+    class:compact
+    class:touch={phone}
+    data-chat-tile-stop
+    data-head-act={inHead ? "" : undefined}
+    title={t("pane.chatTile.stop")}
+    aria-label={t("pane.chatTile.stop")}
+    onclick={stop}
+  >
+    <span class="stop-mark" aria-hidden="true"></span>{#if !compact}<span>{t("pane.chatTile.stop")}</span>{/if}
+  </button>
+{/snippet}
 
+{#snippet headTail()}
+  {#if title}<span class="conv-title" title={title} data-chat-tile-title>{title}</span>{/if}
+{/snippet}
+
+{#snippet headBar()}
+  {#if running}<span class="head-stop">{@render stopPill(faceW > 0 && faceW < HEAD_NARROW_PX)}</span>{/if}
+{/snippet}
+
+<div
+  class="face"
+  class:holding={pendingN > 0}
+  bind:this={faceEl}
+  bind:clientWidth={faceW}
+  role="region"
+  aria-label={t("pane.name.chatTile", { agent })}
+  data-chat-tile-face={target.chat}
+>
   {#if live?.gone}
     <div class="banner err" role="alert" data-chat-tile-gone>
       <span class="grow">{chatTileErrorText(live.error ?? "")}</span>
@@ -1500,7 +1613,11 @@
   />
 
   {#if pendingN > 0}
-    <div class="held" role="status" data-chat-tile-held>{t("pane.chatTile.perm.held")}</div>
+    <!-- 머리줄이 없으면(폰 · 머리줄 끔) 입력 칸이 물러난 동안 [중지]는 이 줄에 -->
+    <div class="held" data-chat-tile-held>
+      <span role="status">{t("pane.chatTile.perm.held")}</span>
+      {#if running && !inHead}{@render stopPill(false)}{/if}
+    </div>
   {/if}
   {#if goalView && live?.goal}
     <div class="goal-slot" data-chat-tile-goal-slot>
@@ -1549,6 +1666,7 @@
       note={t("pane.chatTile.model.note")}
       trigger={modelBtn}
       touch={phone}
+      head={!isRemote && cliChoices.length > 1 ? cliRow : undefined}
       extra={isCodex && tierRowsList.length > 0 ? tierRows : undefined}
       onmodel={pickModel}
       oneffort={pickEffort}
@@ -1722,32 +1840,14 @@
     color: var(--fg-1);
   }
 
-  .bar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: 36px;
-    padding: var(--space-1) var(--space-3);
-    min-width: 0;
-  }
-
-  .form-chip {
-    flex: none;
-    padding: 1px 10px;
-    font-size: var(--t-xs);
-    color: var(--fg-2);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-  }
-
+  /* 머리줄 이름 뒤 — 밑동 0 으로 남는 폭만 받아 이름보다 먼저 준다(줄이는 비율로 나누면 이름도 1px 씩 잘린다) */
   .conv-title {
+    flex: 1000 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--t-xs);
-    color: var(--fg-2);
+    color: var(--fg-3);
   }
 
   .grow {
@@ -1755,13 +1855,24 @@
     min-width: 0;
   }
 
+  .head-stop {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    --head-act-gap: 0px;
+  }
+
   .stop-pill {
     flex: none;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    height: 26px;
-    padding: 0 12px 0 10px;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 0 10px 0 9px;
+    overflow: hidden;
+    white-space: nowrap;
     font-family: var(--font-ui);
     font-size: var(--t-xs);
     color: var(--fg-1);
@@ -1781,10 +1892,21 @@
   }
 
   .stop-mark {
+    flex: none;
     width: 8px;
     height: 8px;
     border-radius: 2px;
     background: currentColor;
+  }
+
+  .stop-pill.compact {
+    width: 24px;
+    padding: 0;
+  }
+
+  .stop-pill.touch {
+    height: 36px;
+    padding: 0 14px 0 12px;
   }
 
   .banner {
@@ -1792,7 +1914,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin: 0 var(--space-3) var(--space-1);
+    margin: var(--space-2) var(--space-3) var(--space-1);
     padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
     font-size: var(--t-xs);
     color: var(--fg-1);
@@ -1914,6 +2036,64 @@
     color: var(--accent);
   }
 
+  /* CLI 줄 — 사이드 채팅 모델 풍선(`ChatModelPopover`)의 세그먼트와 같은 모양 */
+  .cli-row {
+    flex: none;
+  }
+
+  .seg-group {
+    display: grid;
+    grid-template-columns: repeat(var(--seg-n), minmax(0, 1fr));
+    gap: 2px;
+    padding: 3px;
+    background: var(--m3-surface-container-low);
+    border-radius: 999px;
+  }
+
+  .seg {
+    min-width: 0;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 var(--space-2);
+    font-family: var(--font-ui);
+    font-size: var(--t-xs);
+    font-weight: 500;
+    color: var(--control-fg);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .cli-row.touch .seg {
+    height: 44px;
+  }
+
+  .seg:not(.on):hover {
+    color: var(--fg-1);
+    background: var(--control-ghost-hover);
+  }
+
+  .seg.on {
+    color: var(--control-sel-fg);
+    background: var(--control-sel-bg);
+  }
+
+  .seg:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  .seg-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .tiers {
     flex: none;
     display: flex;
@@ -1970,6 +2150,11 @@
     max-width: calc(760px + 2 * var(--space-5));
     margin: 0 auto;
     padding: var(--space-1) var(--space-5) var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
     font-size: var(--t-xs);
     color: var(--fg-3);
     text-align: center;

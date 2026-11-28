@@ -3,6 +3,7 @@ import type { FileView } from "$lib/session";
 import type { StartScreenMode } from "$lib/project-start";
 import { text } from "$lib/settings-codec";
 import { toggleDisabled } from "$lib/agent-enabled";
+import { parseLaunchForm } from "$lib/ai-launch-pick";
 import { forgetLastFileView } from "$lib/app/file-ui-last.svelte.js";
 import {
   AI_ICON_STYLES,
@@ -126,6 +127,10 @@ export function setClaudeStatusline(on: boolean) {
 
 export function setChatTile(on: boolean) {
   settings.current.ai.chat_tile = on ? true : undefined;
+}
+
+export function setAiLaunchForm(form: string) {
+  settings.current.ai.launch_form = parseLaunchForm(form) === "chat" ? "chat" : undefined;
 }
 
 /**

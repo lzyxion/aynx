@@ -1,4 +1,4 @@
-/** AI CLI 고르기 상자(`AiLaunchPicker.svelte`)의 줄 짓기 — 후보가 하나면(고를 모양도 없으면) 상자 없이 곧바로 연다 */
+/** AI CLI 고르기 상자(`AiLaunchPicker.svelte`)의 줄 짓기 — 후보가 하나면 상자 없이 곧바로 연다 */
 
 export interface AiLaunchCli {
   command: string;
@@ -11,7 +11,7 @@ export interface AiLaunchRow {
   /** 아니면 흐리게 — 골라도 열고 설치 안내 */
   installed: boolean;
   digit: string | null;
-  /** [채팅] 을 보인다 — 실험 설정이 켜졌고 채팅 모양이 있는 CLI(Claude Code · Codex)만 */
+  /** 채팅 모양으로도 열 수 있다 — 실험 설정이 켜졌고 채팅 모양이 있는 CLI(Claude Code · Codex)만 */
   chat: boolean;
 }
 
@@ -20,12 +20,27 @@ export function chatTileCli(id: string): id is "claude" | "codex" {
   return id === "claude" || id === "codex";
 }
 
+/** `[ai] launch_form` — 생략 · 모르는 값은 터미널 */
+export type AiLaunchForm = "terminal" | "chat";
+
+export function parseLaunchForm(v: unknown): AiLaunchForm {
+  return v === "chat" ? "chat" : "terminal";
+}
+
+/** 누르기 · Enter 가 여는 모양 — 채팅을 못 받는 줄(`chat` 거짓)은 설정과 상관없이 터미널 */
+export function launchFormFor(chat: boolean, pref: AiLaunchForm): AiLaunchForm {
+  return chat && pref === "chat" ? "chat" : "terminal";
+}
+
+export function otherLaunchForm(form: AiLaunchForm): AiLaunchForm {
+  return form === "chat" ? "terminal" : "chat";
+}
+
 export type AiLaunchPlan =
   | { mode: "none" }
-  | { mode: "direct"; cli: AiLaunchCli }
+  | { mode: "direct"; cli: AiLaunchCli; chat: boolean }
   | { mode: "pick"; rows: AiLaunchRow[]; selected: number };
 
-/** 후보가 하나여도 [채팅] 이 있으면 상자를 띄운다 — 모양을 고를 자리가 있어야 한다 */
 export function planAiLaunch(
   offered: readonly AiLaunchCli[],
   detected: readonly { id: string; installed: boolean }[],
@@ -33,7 +48,7 @@ export function planAiLaunch(
   chatOn = false,
 ): AiLaunchPlan {
   if (offered.length === 0) return { mode: "none" };
-  if (offered.length === 1 && !(chatOn && chatTileCli(offered[0].id))) return { mode: "direct", cli: offered[0] };
+  if (offered.length === 1) return { mode: "direct", cli: offered[0], chat: chatOn && chatTileCli(offered[0].id) };
   const rows = offered.map((cli, i) => ({
     cli,
     installed: detected.some((d) => d.id === cli.id && d.installed),

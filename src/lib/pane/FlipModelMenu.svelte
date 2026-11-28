@@ -28,6 +28,7 @@
     note,
     trigger,
     touch = false,
+    head,
     extra,
     onmodel,
     oneffort,
@@ -42,6 +43,8 @@
     note: string;
     trigger: HTMLElement;
     touch?: boolean;
+    /** 메뉴 맨 위에 그린다 — 채팅 타일의 CLI 줄. 넘기지 않으면 지금과 같다 */
+    head?: Snippet;
     /** 메뉴 바닥에 그린다(구분선 아래) — 채팅 타일의 Codex 속도 줄. 넘기지 않으면 지금과 같다 */
     extra?: Snippet;
     onmodel: (value: string) => void;
@@ -156,6 +159,7 @@
   onkeydown={onKey}
   data-flip-model-menu={cli}
 >
+  {#if head}{@render head()}{/if}
   {#if models.length > 0}
     <div class="label" id={labelId}>{t("app.chatDock.model.label")}</div>
     <div class="models" role="radiogroup" aria-labelledby={labelId}>

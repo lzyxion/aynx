@@ -371,9 +371,6 @@ export const app: Record<keyof typeof koApp, string> = {
   "dock.launch.installAiTip": "Install Claude Code or Codex and it appears here — Settings › AI agents",
   "dock.launch.otherShells": "Right-click: other shells",
   "dock.launch.orchestration": "Orchestration",
-  "dock.launch.terminal": "Terminal",
-  "dock.launch.chat": "Chat",
-  "dock.launch.chatTip": "{name} — open in chat form",
   "keepAwake.label": "Keep awake",
   "keepAwake.on": "Keep awake on",
   "keepAwake.off": "Keep awake off",
@@ -751,8 +748,8 @@ export const app: Record<keyof typeof koApp, string> = {
   // AI CLI picker
   "ai.launch.aria": "Choose an AI CLI to open",
   "ai.launch.notInstalled": "Not installed",
-  "ai.launch.terminal": "Terminal",
-  "ai.launch.chat": "Chat",
+  "ai.launch.terminal": "Open as terminal",
+  "ai.launch.chat": "Open as chat",
 
   // ── Restore · reconnect ───────────────────────────────────────────────────
   "restore.tabs": "Restored {count} tabs.",

@@ -112,6 +112,7 @@ fn sample() -> AppSettings {
             mcp_sessions_enabled: Some(false),
             mcp_sessions_agents: Some(vec!["codex".to_string()]),
             chat_tile: Some(true),
+            launch_form: Some("chat".to_string()),
             disabled_agents: vec!["codex".to_string()],
             mcp_servers: vec![crate::agent_mcp::McpServer {
                 project_id: None,
@@ -260,6 +261,24 @@ fn unset_fields_are_not_written() {
     assert!(!text.contains("accent"), "{text}");
     assert!(!text.contains("font_family"), "{text}");
     assert!(!text.contains("chat_tile"), "{text}");
+    assert!(!text.contains("launch_form"), "{text}");
+}
+
+/// `[ai] launch_form` — `"chat"` 만 남고 틀린 꼴 · 터미널은 접혀 파일에 적히지 않는다.
+#[test]
+fn ai_launch_form_keeps_only_chat() {
+    let tmp = TempDir::new("여는모양");
+    for (raw, want) in [("\"chat\"", Some("chat")), ("\" chat \"", Some("chat")), ("\"terminal\"", None), ("\"Chat\"", None), ("\"\"", None)] {
+        let path = tmp.path("form.toml");
+        std::fs::write(&path, format!("[ai]\nlaunch_form = {raw}\n")).expect("쓰기");
+        assert_eq!(load_at(&path).ai.launch_form.as_deref(), want, "{raw}");
+    }
+    let path = tmp.path("save.toml");
+    let mut s = AppSettings::default();
+    s.ai.launch_form = Some("chat".to_string());
+    save_at(&path, &s).expect("저장");
+    assert!(std::fs::read_to_string(&path).unwrap().contains("launch_form = \"chat\""));
+    assert_eq!(load_at(&path).ai.launch_form.as_deref(), Some("chat"));
 }
 
 #[test]

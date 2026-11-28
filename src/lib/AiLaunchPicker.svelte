@@ -3,35 +3,41 @@
   import AiGlyph from "$lib/AiGlyph.svelte";
   import { t } from "$lib/i18n/i18n.svelte.js";
   import { runOnMenu } from "$lib/browser/menu-runner";
+  import { placeFlyout, type RectLike } from "$lib/menu-flyout";
   import { aiIconName } from "$lib/pane-icons";
   import { aiAvatarSrc } from "$lib/avatars.svelte.js";
   import { comboFromEvent, effectiveCombo } from "$lib/keybindings";
   import { settings } from "$lib/settings.svelte.js";
-  import { carouselOffset, digitRowIndex } from "$lib/ai-launch-pick";
+  import { carouselOffset, digitRowIndex, launchFormFor, otherLaunchForm, type AiLaunchForm } from "$lib/ai-launch-pick";
   import { aiLaunchPicker, closeAiLaunchPicker, runAiLaunch } from "$lib/app/ai-launch.svelte.js";
   import { veilVisible } from "$lib/app/veil.svelte.js";
 
   /**
    * AI CLI 고르기 돌림판 — 판 · 뒤 효과 없이 캐릭터만 띄운다(어두운 막 · 빛 무리 · 유리 판은 사용자가 걷었다).
    * Esc 는 여기서 끊는다 — 뒤 화면의 Escape 사슬로 새지 않게.
-   * [터미널] [채팅]은 고른 줄이 채팅 모양을 받을 때만 선다 — Tab 이 둘 사이를 오가고 Enter 가 고른 모양으로 연다.
+   * 채팅 모양을 받는 줄: 누르기 · Enter = 설정의 기본 모양(`[ai] launch_form`) · Alt+Enter = 다른 모양 · 우클릭 · 메뉴 키 = 두 모양 메뉴.
    */
 
   const picker = $derived(aiLaunchPicker());
+  const FORMS: readonly AiLaunchForm[] = ["terminal", "chat"];
 
   let el = $state<HTMLElement | null>(null);
   let sel = $state(0);
-  /** 고른 줄의 모양 — 줄을 옮기면 터미널로 돌아간다 */
-  let form = $state<"terminal" | "chat">("terminal");
-  const chatRow = $derived(picker?.rows[sel]?.chat === true);
   /** 한 번에 두 칸 넘게 뛴 줄(둘러 가기)은 화면을 가로지르지 않게 미끄럼 없이 옮긴다 */
   let prevOffsets: number[] = [];
+
+  /** 모양 메뉴 — `i` 는 연 줄 */
+  let menu = $state<{ i: number; x: number; y: number } | null>(null);
+  let menuPos = $state<{ left: number; top: number } | null>(null);
+  let menuEl = $state<HTMLElement | null>(null);
+  const menuRow = $derived(menu ? (picker?.rows[menu.i] ?? null) : null);
+  const menuDefault = $derived<AiLaunchForm>(launchFormFor(menuRow?.chat === true, settings.aiLaunchForm));
 
   $effect(() => {
     const p = picker;
     if (!p) return;
     sel = p.selected;
-    form = "terminal";
+    menu = null;
     prevOffsets = [];
   });
 
@@ -43,6 +49,14 @@
 
   $effect(() => {
     if (picker && veilVisible()) closeAiLaunchPicker(false);
+  });
+
+  $effect(() => {
+    const node = menuEl;
+    const m = menu;
+    if (!node || !m) return;
+    const at: RectLike = { left: m.x, right: m.x, top: m.y };
+    menuPos = placeFlyout(at, at, { width: node.offsetWidth, height: node.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
   });
 
   const slots = $derived.by(() => {
@@ -58,27 +72,96 @@
     return out;
   });
 
-  function choose(i: number, as: "terminal" | "chat" = "terminal"): void {
+  /** `as` 를 주지 않으면 그 줄의 기본 모양 — 채팅을 못 받는 줄은 무엇을 주든 터미널 */
+  function choose(i: number, as?: AiLaunchForm): void {
     runOnMenu(
       () => {
         const p = aiLaunchPicker();
         const row = p?.rows[i];
-        return p && row ? { cli: row.cli, here: p.here, chat: as === "chat" && row.chat } : null;
+        if (!p || !row) return null;
+        const form = as ?? launchFormFor(row.chat, settings.aiLaunchForm);
+        return { cli: row.cli, here: p.here, chat: row.chat && form === "chat" };
       },
       () => closeAiLaunchPicker(false),
       runAiLaunch,
     );
   }
 
+  /** 메뉴 항목 — 줄은 메뉴 상태에서 스냅샷한다(docs/conventions.md 의 메뉴 통로) */
+  function chooseFromMenu(form: AiLaunchForm): void {
+    runOnMenu(
+      () => {
+        const p = aiLaunchPicker();
+        const row = menu ? p?.rows[menu.i] : undefined;
+        return p && row ? { cli: row.cli, here: p.here, chat: row.chat && form === "chat" } : null;
+      },
+      () => {
+        menu = null;
+        closeAiLaunchPicker(false);
+      },
+      runAiLaunch,
+    );
+  }
+
+  function openMenu(i: number, x: number, y: number): void {
+    if (picker?.rows[i]?.chat !== true) return;
+    sel = i;
+    menu = { i, x, y };
+    menuPos = null;
+    void tick().then(() => menuEl?.querySelector<HTMLElement>("button[role='menuitem']")?.focus({ preventScroll: true }));
+  }
+
+  function closeMenu(): void {
+    menu = null;
+    el?.focus({ preventScroll: true });
+  }
+
+  /** 채팅을 받지 않는 줄은 손대지 않는다 — 창 전역 차단이 기본 메뉴를 막는다 */
+  function onCardContext(ev: MouseEvent, i: number): void {
+    if (picker?.rows[i]?.chat !== true) return;
+    ev.preventDefault();
+    openMenu(i, ev.clientX, ev.clientY);
+  }
+
+  function openMenuAtSel(): void {
+    const r = el?.querySelector<HTMLElement>(`#ailaunch-row-${sel}`)?.getBoundingClientRect();
+    if (r) openMenu(sel, r.left + r.width / 2, r.top + r.height / 2);
+  }
+
+  /** 메뉴가 열려 있으면 키는 메뉴 것 — Enter 는 포커스 선 항목의 기본 누르기에 맡긴다 */
+  function onMenuKey(ev: KeyboardEvent): void {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeMenu();
+      return;
+    }
+    if (ev.key === "Tab") {
+      ev.preventDefault();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
+    ev.preventDefault();
+    const buttons = Array.from(menuEl?.querySelectorAll<HTMLButtonElement>("button[role='menuitem']") ?? []);
+    if (buttons.length === 0) return;
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const down = ev.key === "ArrowDown";
+    const next = ev.key === "Home" ? 0 : ev.key === "End" ? buttons.length - 1 : (at + (down ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus({ preventScroll: true });
+  }
+
   function step(by: number): void {
     const n = picker?.rows.length ?? 0;
     if (n > 0) sel = (sel + by + n) % n;
-    form = "terminal";
   }
 
   function onKey(ev: KeyboardEvent): void {
     const p = picker;
     if (!p) return;
+    if (menu) {
+      onMenuKey(ev);
+      return;
+    }
     const n = p.rows.length;
     const stop = () => {
       ev.preventDefault();
@@ -89,14 +172,23 @@
       closeAiLaunchPicker(true);
       return;
     }
+    if (ev.key === "Enter" && ev.altKey && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) {
+      stop();
+      if (p.rows[sel]?.chat) choose(sel, otherLaunchForm(launchFormFor(true, settings.aiLaunchForm)));
+      return;
+    }
     if (ev.key === "Enter") {
       stop();
-      choose(sel, form);
+      choose(sel);
+      return;
+    }
+    if (ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey)) {
+      stop();
+      openMenuAtSel();
       return;
     }
     if (ev.key === "Tab") {
       ev.preventDefault(); // 포커스가 상자 밖으로 새지 않게 — 고르는 것은 화살표다
-      if (chatRow) form = form === "terminal" ? "chat" : "terminal";
       return;
     }
     const combo = comboFromEvent(ev);
@@ -122,11 +214,9 @@
     } else if (ev.key === "Home") {
       stop();
       sel = 0;
-      form = "terminal";
     } else if (ev.key === "End") {
       stop();
       sel = n - 1;
-      form = "terminal";
     }
   }
 
@@ -134,24 +224,30 @@
   let wheelAcc = 0;
   function onWheel(ev: WheelEvent): void {
     ev.preventDefault();
+    if (menu) return;
     wheelAcc += Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.deltaY;
     if (Math.abs(wheelAcc) < 40) return;
     step(wheelAcc > 0 ? 1 : -1);
     wheelAcc = 0;
   }
 
+  /** 메뉴가 열려 있으면 바깥 누르기는 메뉴만 닫는다 */
   function onDown(ev: PointerEvent): void {
     const target = ev.target;
+    if (menu) {
+      if (!(target instanceof Element && target.closest("[data-ai-launch-menu]"))) {
+        ev.preventDefault();
+        closeMenu();
+      }
+      return;
+    }
     if (target instanceof Element && target.closest("[data-ai-launch-card]")) return;
     closeAiLaunchPicker(true);
   }
 
   function onPick(i: number): void {
-    if (i === sel) choose(i, form);
-    else {
-      sel = i;
-      form = "terminal";
-    }
+    if (i === sel) choose(i);
+    else sel = i;
   }
 </script>
 
@@ -193,6 +289,7 @@
           style:--i={s.i}
           style:pointer-events={far > 1 ? "none" : null}
           onclick={() => onPick(s.i)}
+          oncontextmenu={(ev) => onCardContext(ev, s.i)}
         >
           <span class="face" class:logo={!avatar}>
             {#if ai}<AiGlyph name={ai} size={avatar ? 116 : 64} />{/if}
@@ -209,20 +306,25 @@
       </div>
     {/key}
 
-    {#if chatRow}
-      <div class="forms" role="group" aria-label={picker.rows[sel]?.cli.name ?? ""} data-ai-launch-forms>
-        <button type="button" class="form" class:on={form === "terminal"} tabindex="-1" aria-pressed={form === "terminal"}
-          data-ai-launch-form="terminal" onclick={() => choose(sel, "terminal")}>{t("app.ai.launch.terminal")}</button>
-        <button type="button" class="form" class:on={form === "chat"} tabindex="-1" aria-pressed={form === "chat"}
-          data-ai-launch-form="chat" onclick={() => choose(sel, "chat")}>{t("app.ai.launch.chat")}</button>
-      </div>
-    {/if}
-
     <div class="dots" aria-hidden="true">
       {#each picker.rows as row, i (row.cli.id)}<span class:on={i === sel}></span>{/each}
     </div>
 
     </div>
+
+    {#if menu && menuRow}
+      <div class="form-menu menu-surface menu-keyed" role="menu" tabindex="-1" aria-label={menuRow.cli.name} data-ai-launch-menu
+        bind:this={menuEl} style:left={(menuPos?.left ?? 0) + "px"} style:top={(menuPos?.top ?? 0) + "px"}>
+        <p class="menu-title">{menuRow.cli.name}</p>
+        {#each FORMS as form (form)}
+          <button type="button" class="menu-row form-row" role="menuitem" data-ai-launch-form={form}
+            data-default={form === menuDefault ? "" : undefined} onclick={() => chooseFromMenu(form)}>
+            <span class="form-name">{t(form === "chat" ? "app.ai.launch.chat" : "app.ai.launch.terminal")}</span>
+            <span class="menu-kbd">{form === menuDefault ? t("app.shellmenu.default") : "Alt+Enter"}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -373,34 +475,23 @@
     }
   }
 
-  .forms {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2px;
-    padding: 3px;
-    background: var(--m3-surface-container-low);
-    border-radius: 999px;
+  /* 층(121) 안이라 z-index 는 돌림판 위로만 */
+  .form-menu {
+    position: fixed;
+    z-index: 20;
+    min-width: 200px;
+    max-width: min(320px, calc(100vw - 16px));
   }
-  .form {
-    min-width: 76px;
-    height: 30px;
-    padding: 0 var(--space-3);
-    font-family: var(--font-ui);
-    font-size: var(--t-xs);
-    font-weight: 500;
-    color: var(--control-fg);
-    background: transparent;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
+  .form-row {
+    display: flex;
+    align-items: center;
   }
-  .form:not(.on):hover {
-    color: var(--fg-1);
-    background: var(--control-ghost-hover);
-  }
-  .form.on {
-    color: var(--control-sel-fg);
-    background: var(--control-sel-bg);
+  .form-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .dots {

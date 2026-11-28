@@ -350,6 +350,7 @@
   class:talk={flip === "convo"}
   class:has-tools={tools !== null}
   class:keep-tools={tools?.keepBar === true}
+  class:whole-name={tools?.wholeName === true}
   bind:this={headEl}
   data-pane-head={pane.id}
   draggable="true"
@@ -620,6 +621,10 @@
   /* 모자란 폭은 이름이 먼저 먹는다 — 도구줄 끝의 [저장] 이 먼저 잘리지 않게 */
   .pane-head.keep-tools .pane-ident {
     flex-shrink: 10000;
+  }
+
+  .pane-head.has-tools.whole-name .pane-ident {
+    max-width: none;
   }
 
   .pane-head.keep-tools .pane-tools {

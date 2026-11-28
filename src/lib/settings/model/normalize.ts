@@ -21,6 +21,7 @@ import {
 } from "$lib/settings-codec";
 import { MESSENGER_AWAY_MAX_MIN, MESSENGER_WHENS } from "$lib/messenger-notify";
 import { normalizeUiScale } from "$lib/ui-scale";
+import { parseLaunchForm } from "$lib/ai-launch-pick";
 import { isDefaultChipOrder, migrateLegacyChips, normalizeChipHidden, normalizeChipOrder } from "$lib/header-chips";
 import {
   DYNAMIC_DARK_TERM_KEY,
@@ -239,6 +240,7 @@ export function sameSettings(a: AppSettings, b: AppSettings): boolean {
     sameStringList(normalizeMcpSessionsAgents(a.ai.mcp_sessions_agents) ?? ["claude", "codex"], normalizeMcpSessionsAgents(b.ai.mcp_sessions_agents) ?? ["claude", "codex"]) &&
     sameStringList(a.ai.disabled_agents ?? [], b.ai.disabled_agents ?? []) &&
     (a.ai.chat_tile === true) === (b.ai.chat_tile === true) &&
+    parseLaunchForm(a.ai.launch_form) === parseLaunchForm(b.ai.launch_form) &&
     a.wallpaper.file === b.wallpaper.file &&
     a.wallpaper.dim === b.wallpaper.dim &&
     a.wallpaper.blur === b.wallpaper.blur &&
@@ -434,6 +436,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
       codex_no_daemon: typeof ai.codex_no_daemon === "boolean" ? ai.codex_no_daemon : undefined,
       claude_statusline: typeof ai.claude_statusline === "boolean" ? ai.claude_statusline : undefined,
       chat_tile: ai.chat_tile === true ? true : undefined,
+      launch_form: parseLaunchForm(ai.launch_form) === "chat" ? "chat" : undefined,
       // 옛 칸 `loading_art = "character"` 는 새 칸이 비었을 때만 `avatar` 로 옮기고 싣지 않는다 — Rust `sanitize` 도 같은 이사를 한다
       icon_style: known(ai.icon_style, AI_ICON_STYLES) ?? (ai.loading_art === "character" ? "avatar" : undefined),
       avatar_claude: avatarChoice(ai.avatar_claude, DEFAULT_AI_AVATARS.claude),

@@ -186,6 +186,7 @@ export function toPayload(s: AppSettings): AppSettings {
   if (s.ai.codex_no_daemon === false) ai.codex_no_daemon = false;
   if (s.ai.claude_statusline === false) ai.claude_statusline = false;
   if (s.ai.chat_tile === true) ai.chat_tile = true;
+  if (s.ai.launch_form === "chat") ai.launch_form = "chat";
   if (s.ai.icon_style && s.ai.icon_style !== DEFAULT_AI_ICON_STYLE) ai.icon_style = s.ai.icon_style;
   if (s.ai.avatar_claude && s.ai.avatar_claude !== DEFAULT_AI_AVATARS.claude) ai.avatar_claude = s.ai.avatar_claude;
   if (s.ai.avatar_codex && s.ai.avatar_codex !== DEFAULT_AI_AVATARS.codex) ai.avatar_codex = s.ai.avatar_codex;

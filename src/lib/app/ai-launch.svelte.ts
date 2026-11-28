@@ -1,7 +1,7 @@
 import { noneInstalled, noticeNoAiCli } from "$lib/app/ai-none-notice";
 import { settings } from "$lib/settings.svelte.js";
 import { offeredAiClis } from "$lib/session";
-import { planAiLaunch, type AiLaunchCli, type AiLaunchRow } from "$lib/ai-launch-pick";
+import { launchFormFor, planAiLaunch, type AiLaunchCli, type AiLaunchRow } from "$lib/ai-launch-pick";
 import {
   focusHere,
   knownAiClis,
@@ -59,7 +59,7 @@ export async function openAiLaunchPicker(): Promise<void> {
     return;
   }
   if (plan.mode === "direct") {
-    runAiLaunch({ cli: plan.cli, here });
+    runAiLaunch({ cli: plan.cli, here, chat: launchFormFor(plan.chat, settings.aiLaunchForm) === "chat" });
     return;
   }
   rememberFocusOrigin(FOCUS_KEY);

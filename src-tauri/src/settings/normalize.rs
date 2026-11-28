@@ -121,6 +121,7 @@ impl AppSettings {
                 self.ai.icon_style = Some("avatar".to_owned());
             }
         }
+        self.ai.launch_form = self.ai.launch_form.take().filter(|v| v.trim() == "chat").map(|_| "chat".to_owned());
         fold_empty(&mut self.ai.avatar_claude);
         fold_empty(&mut self.ai.avatar_codex);
         if let Some(s) = &mut self.ai.notify_focused_after_secs {

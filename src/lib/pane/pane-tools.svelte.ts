@@ -24,6 +24,8 @@ export interface PaneTools {
   iconBusy?: () => string | null;
   /** 좁으면 이름이 먼저 준다(기본은 도구 칸이 먼저) — 문서 타일의 [저장] 이 잘리지 않게 */
   keepBar?: boolean;
+  /** 이름 묶음을 40% 로 묶지 않는다 — 좁으면 이름 뒤 `tail` 이 먼저 준다(채팅 타일의 대화 제목) */
+  wholeName?: boolean;
   /** 파일 타일: 빵부스러기 경로가 곧 이름이다 */
   replaceName?: boolean;
   hideIcon?: boolean;

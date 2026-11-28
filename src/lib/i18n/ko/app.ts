@@ -406,9 +406,6 @@ export const app = {
   "dock.launch.installAiTip": "Claude Code · Codex 를 설치하면 이 자리에 나옵니다 — 설정 › AI 에이전트",
   "dock.launch.otherShells": "우클릭: 다른 셸",
   "dock.launch.orchestration": "오케스트레이션",
-  "dock.launch.terminal": "터미널",
-  "dock.launch.chat": "채팅",
-  "dock.launch.chatTip": "{name} — 채팅 모양으로 열기",
   "keepAwake.label": "잠자기 방지",
   "keepAwake.on": "잠자기 방지 켜짐",
   "keepAwake.off": "잠자기 방지 꺼짐",
@@ -806,8 +803,8 @@ export const app = {
   // AI CLI 고르기 상자
   "ai.launch.aria": "열 AI CLI 고르기",
   "ai.launch.notInstalled": "설치 안 됨",
-  "ai.launch.terminal": "터미널",
-  "ai.launch.chat": "채팅",
+  "ai.launch.terminal": "터미널로 열기",
+  "ai.launch.chat": "채팅으로 열기",
 
   // ── 복원 · 재연결 ────────────────────────────────────────────────────────
   "restore.tabs": "탭 {count}개를 복원했습니다.",

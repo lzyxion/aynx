@@ -157,6 +157,8 @@ export interface AiPrefs {
   disabled_agents?: string[] | null;
   /** 실험 — 켰을 때만 적는다. 꺼도 이미 연 채팅 타일은 돈다(새 채팅 타일만 못 연다) */
   chat_tile?: boolean | null;
+  /** 런처의 AI 줄을 누르면 여는 모양 — `"chat"` 만 적는다(생략 = 터미널). `chat_tile` 이 꺼져 있으면 보지 않는다 */
+  launch_form?: string | null;
 }
 
 /** `[wallpaper]` */

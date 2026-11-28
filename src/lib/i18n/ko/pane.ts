@@ -520,7 +520,6 @@ export const pane = {
   "name.query": "쿼리",
   // 채팅 모양 AI 타일 — 모양 이름은 "채팅" · "터미널", 지난 기록은 "대화"
   "name.chatTile": "{agent} 채팅",
-  "chatTile.form": "채팅",
   "chatTile.empty": "메시지를 보내면 대화가 시작됩니다",
   "chatTile.placeholder": "{agent}에게 메시지 보내기",
   "chatTile.send": "보내기",

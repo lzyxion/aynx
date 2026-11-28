@@ -21,6 +21,7 @@
   import HostIcon from "$lib/HostIcon.svelte";
   import Toggle from "$lib/Toggle.svelte";
   import TipName from "$lib/settings/TipName.svelte";
+  import ChoiceChips, { type ChoiceEntry } from "$lib/settings/ChoiceChips.svelte";
   import { iconRef } from "$lib/host-icons";
   import { aiIconName } from "$lib/pane-icons";
   import { agentAnchor } from "$lib/settings-index";
@@ -30,6 +31,7 @@
     settings,
     setAgentEnabled,
     setAgentExtraArgs,
+    setAiLaunchForm,
     setAiStartDir,
     setChatTile,
     setClaudeStatusline,
@@ -39,6 +41,10 @@
 
   let { active = false }: { active?: boolean } = $props();
   const clis = $derived(detectedAiClis());
+  const LAUNCH_FORM_ENTRIES: readonly ChoiceEntry[] = [
+    ["terminal", "settings.ai.launch_form.terminal"],
+    ["chat", "settings.ai.launch_form.chat"],
+  ];
 
   let pickingDir = $state(false);
 
@@ -264,12 +270,18 @@
       {/if}
     </div>
   </div>
-  <!-- `[ai] chat_tile` — 새 타일 메뉴의 [채팅]만 가린다(이미 연 채팅 타일은 그대로 돈다) -->
+  <!-- `[ai] chat_tile` — 새 타일 메뉴의 채팅 모양만 가린다(이미 연 채팅 타일은 그대로 돈다) -->
   <div class="srow">
     <TipName id="ai-chat-tile" for="ai-chat-tile" label={t("settings.ai.chat_tile.label")} tip={t("settings.ai.chat_tile.note")} />
     <div class="size-row">
       <Toggle id="ai-chat-tile" checked={settings.chatTile} onchange={setChatTile} />
     </div>
+  </div>
+  <!-- 실험 토글이 꺼져 있으면 잠근다 — 값은 남지만 런처는 보지 않는다 -->
+  <div class="srow" data-ai-launch-form-row>
+    <TipName id="ai-launch-form" label={t("settings.ai.launch_form.label")} tip={t("settings.ai.launch_form.note")} />
+    <ChoiceChips id="ai-launch-form" labelledby="ai-launch-form-label" entries={LAUNCH_FORM_ENTRIES} value={settings.aiLaunchForm}
+      disabled={!settings.chatTile} onpick={setAiLaunchForm} />
   </div>
 </div>
 

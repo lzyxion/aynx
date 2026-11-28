@@ -14,7 +14,7 @@
   import { effectiveDefaultShellId, offeredAiClis, shellInfoLabel, shellLabel, type AiCli, type ShellInfo } from "$lib/session";
   import { noneInstalled } from "$lib/app/ai-none-notice";
   import { addLocal, detectedAiClis, knownAiClis, knownShellList, noteShellMenuAi, openAiPaneHere, openChatTileHere, refreshKnownAiClis } from "$lib/app/panes.svelte.js";
-  import { chatTileCli } from "$lib/ai-launch-pick";
+  import { chatTileCli, launchFormFor, type AiLaunchForm } from "$lib/ai-launch-pick";
   import { openSettingsAt } from "$lib/app/overlays.svelte.js";
   import { runAction } from "$lib/app/keys.svelte.js";
   import { displayCombo, effectiveCombo } from "$lib/keybindings";
@@ -27,7 +27,7 @@
    * 셸 메뉴에서 고른 셸은 그 한 번만 연다 — 설정의 기본 셸(`[shell] default`)은 건드리지 않는다.
    * 셸 메뉴 · 백드롭은 독 안의 DOM 이다 — 밖이면 독의 바깥 누르기 감지가 메뉴 줄을 누르는 순간 독을 접는다. 독이 쉬는 동안
    * `transform` 이 없고 흐림은 `::before` 에만 걸려(`theme.css`) 안쪽 `fixed` 의 기준은 창 그대로다.
-   * 채팅 모양 실험 설정이 켜지면 AI 칸은 한 줄씩 [터미널] [채팅] 둘을 든다 — 꺼지면 예전 배치 그대로다.
+   * 채팅 모양 실험 설정이 켜지면 Claude Code · Codex 칸의 누르기는 `[ai] launch_form` 모양 · 우클릭 = 두 모양 메뉴 — 꺼지면 예전 그대로다.
    */
   let {
     onclose,
@@ -83,8 +83,10 @@
   );
   const layout = $derived(launchLayout(noAiInstalled ? 1 : aiItems.length, iconKeys.length));
   const chatOn = $derived(settings.chatTile && !noAiInstalled);
-  /** 채팅 모양이 켜지면 AI 칸마다 글 칸 두 열을 다 쓴다 — 단추 둘이 이름과 한 줄에 들어가야 한다 */
-  const aiCells = $derived(chatOn ? aiItems.map((_, i): LaunchCell => ({ row: 2 + i, col: 1, span: 2 })) : layout.ais);
+  /** 이 칸이 채팅 모양으로도 열린다 — 아니면 우클릭 메뉴도 없다 */
+  function chatCli(id: string): boolean {
+    return chatOn && chatTileCli(id);
+  }
   /** 목록에 없는 칸은 그리지 않으니 첫 자리로 둔다 */
   function iconAt(key: string): LaunchCell {
     return layout.icons[iconKeys.indexOf(key)] ?? { row: 1, col: 3, span: 1 };
@@ -94,8 +96,11 @@
   const convAt = $derived(iconAt("folder-conversations"));
   const orchAt = $derived(iconAt("orchestration-start"));
 
-  /** `keyed` 면 바깥 누르기로 닫아도 칸으로 포커스를 돌려준다 */
-  let menu = $state<{ x: number; y: number; keyed: boolean } | null>(null);
+  type LaunchAi = Pick<AiCli, "command" | "id" | "name">;
+  /** `keyed` 면 바깥 누르기로 닫아도 칸으로 포커스를 돌려준다 · `ai` 가 있으면 그 CLI 의 모양 메뉴, 없으면 셸 메뉴 */
+  let menu = $state<{ x: number; y: number; keyed: boolean; ai: LaunchAi | null } | null>(null);
+  /** 메뉴를 연 칸 — 닫으면 포커스가 돌아간다 */
+  let menuFrom: HTMLElement | null = null;
   /** 붙은 직후는 `null` — 숨기지 않는다(숨기면 첫 줄 포커스가 빗나간다) */
   let menuPos = $state<{ left: number; top: number } | null>(null);
   let menuEl = $state<HTMLElement | null>(null);
@@ -115,29 +120,32 @@
   export function collapse(focusTo = false): boolean {
     if (menu === null) return false;
     menu = null;
-    if (focusTo) void tick().then(() => tileEl?.focus());
+    const back = menuFrom ?? tileEl;
+    if (focusTo) void tick().then(() => back?.focus());
     return true;
   }
 
-  function openMenu(next: NonNullable<typeof menu>): void {
+  function openMenu(next: NonNullable<typeof menu>, from: HTMLElement | null): void {
     menu = next;
+    menuFrom = from;
     menuPos = null;
     void tick().then(() => menuEl?.querySelector<HTMLElement>("button[role='menuitem']")?.focus({ preventScroll: true }));
   }
 
   /** `preventDefault` 했으니 창 전역 차단(`shouldBlockNativeContextMenu`)은 앱 메뉴로 친다 */
-  function onTileContext(ev: MouseEvent): void {
+  function onTileContext(ev: MouseEvent, ai: LaunchAi | null = null): void {
     ev.preventDefault();
-    openMenu({ x: ev.clientX, y: ev.clientY, keyed: false });
+    openMenu({ x: ev.clientX, y: ev.clientY, keyed: false, ai }, ev.currentTarget as HTMLElement);
   }
 
-  function onTileKey(ev: KeyboardEvent): void {
+  function onTileKey(ev: KeyboardEvent, ai: LaunchAi | null = null): void {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.key !== "ContextMenu" && !(ev.key === "F10" && ev.shiftKey)) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    openMenu({ x: r.left + r.width / 2, y: r.top + r.height / 2, keyed: true });
+    const from = ev.currentTarget as HTMLElement;
+    const r = from.getBoundingClientRect();
+    openMenu({ x: r.left + r.width / 2, y: r.top + r.height / 2, keyed: true, ai }, from);
   }
 
   $effect(() => {
@@ -171,20 +179,33 @@
     runOnMenu(() => true, close, () => openSettingsAt("ai"));
   }
 
-  function pickAi(cli: { command: string; id: string }): void {
-    runOnMenu(() => cli, close, (c) => {
-      // 블록 넘기기의 "새로 열기" 기본값이 이것을 읽는다 (docs/log/2026-09-28-ask-ai-block.md)
-      noteShellMenuAi(c.id);
-      void openAiPaneHere(c);
-    });
+  function openAiAs(c: { command: string; id: string }, form: AiLaunchForm): void {
+    // 블록 넘기기의 "새로 열기" 기본값이 이것을 읽는다 (docs/log/2026-09-28-ask-ai-block.md)
+    noteShellMenuAi(c.id);
+    void (form === "chat" ? openChatTileHere(c) : openAiPaneHere(c));
   }
 
-  function pickAiChat(cli: { command: string; id: string }): void {
-    runOnMenu(() => cli, close, (c) => {
-      noteShellMenuAi(c.id);
-      void openChatTileHere(c);
-    });
+  /** 칸 누르기 = 기본 모양 */
+  function pickAi(cli: LaunchAi): void {
+    runOnMenu(() => ({ cli: { command: cli.command, id: cli.id }, form: launchFormFor(chatCli(cli.id), settings.aiLaunchForm) }), close, (x) =>
+      openAiAs(x.cli, x.form),
+    );
   }
+
+  /** 모양 메뉴 항목 — CLI 는 메뉴 상태에서 스냅샷한다 */
+  function pickAiForm(form: AiLaunchForm): void {
+    runOnMenu(
+      () => {
+        const ai = menu?.ai;
+        return ai ? { cli: { command: ai.command, id: ai.id }, form: chatCli(ai.id) ? form : "terminal" } : null;
+      },
+      close,
+      (x) => openAiAs(x.cli, x.form),
+    );
+  }
+
+  const menuAiDefault = $derived<AiLaunchForm>(menu?.ai ? launchFormFor(chatCli(menu.ai.id), settings.aiLaunchForm) : "terminal");
+  const AI_FORMS: readonly AiLaunchForm[] = ["terminal", "chat"];
 
   function act(action: string): void {
     runAfterClose(close, () => runAction(action));
@@ -244,26 +265,15 @@
   <!-- 모르는 CLI 에는 지어낸 로고를 붙이지 않는다 -->
   {#each aiItems as cli, i (cli.id)}
     {@const logo = aiIconName(cli.id)}
-    {@const at = aiCells[i]}
-    {#if chatOn && chatTileCli(cli.id)}
-      <div class="pair" role="group" aria-label={cli.name} data-launch-pair={cli.id}
-        style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
-        <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
-        <span class="lbl" title={cli.name}>{cli.name}</span>
-        <span class="choices">
-        <button type="button" class="choice" data-launch="ai" data-ai-id={cli.id} title={cli.name}
-          aria-label={`${cli.name} — ${t("app.dock.launch.terminal")}`} onclick={() => pickAi(cli)}>{t("app.dock.launch.terminal")}</button>
-        <button type="button" class="choice" data-launch="ai-chat" data-ai-id={cli.id} title={t("app.dock.launch.chatTip", { name: cli.name })}
-          aria-label={t("app.dock.launch.chatTip", { name: cli.name })} onclick={() => pickAiChat(cli)}>{t("app.dock.launch.chat")}</button>
-        </span>
-      </div>
-    {:else}
-      <button type="button" class="tile text" data-launch="ai" data-ai-id={cli.id} title={cli.name} aria-label={cli.name}
-        onclick={() => pickAi(cli)} style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
-        <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
-        <span class="lbl">{cli.name}</span>
-      </button>
-    {/if}
+    {@const at = layout.ais[i]}
+    {@const chat = chatCli(cli.id)}
+    <button type="button" class="tile text" data-launch="ai" data-ai-id={cli.id} title={cli.name} aria-label={cli.name}
+      onclick={() => pickAi(cli)} oncontextmenu={chat ? (ev) => onTileContext(ev, cli) : undefined}
+      onkeydown={chat ? (ev) => onTileKey(ev, cli) : undefined}
+      style:grid-row={at?.row} style:grid-column={at ? gridColumn(at) : undefined}>
+      <span class="badge">{#if logo}<AiGlyph name={logo} size={LOGO_PX} mono />{:else}<UiIcon name="ai" size={LOGO_PX} />{/if}</span>
+      <span class="lbl">{cli.name}</span>
+    </button>
   {/each}
   {#if noAiInstalled}
     {@const at = layout.ais[0]}
@@ -305,6 +315,21 @@
   <!-- 닫기는 click 에서 — mousedown 에서 닫으면 그 아래 칸이 이어지는 click 을 받아 셸을 연다 -->
   <div class="launch-menu-backdrop" role="presentation" onclick={() => collapse(menu?.keyed)}
     oncontextmenu={(ev) => { ev.preventDefault(); collapse(menu?.keyed); }}></div>
+  {#if menu.ai}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="launch-menu menu-surface menu-keyed" role="menu" tabindex="-1" aria-label={menu.ai.name} data-launch-menu="ai"
+      data-ai-id={menu.ai.id} bind:this={menuEl} onkeydown={onMenuKey}
+      style:left={(menuPos?.left ?? 0) + "px"} style:top={(menuPos?.top ?? 0) + "px"}>
+      <p class="menu-title">{menu.ai.name}</p>
+      {#each AI_FORMS as form (form)}
+        <button type="button" class="menu-row row" role="menuitem" data-launch-form={form}
+          data-default={form === menuAiDefault ? "" : undefined} onpointermove={hover} onclick={() => pickAiForm(form)}>
+          <span class="name">{t(form === "chat" ? "app.ai.launch.chat" : "app.ai.launch.terminal")}</span>
+          {#if form === menuAiDefault}<span class="menu-kbd">{t("app.shellmenu.default")}</span>{/if}
+        </button>
+      {/each}
+    </div>
+  {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="launch-menu menu-surface menu-keyed" role="menu" tabindex="-1" aria-label={t("app.shellmenu.here")} data-launch-menu="shell"
     bind:this={menuEl} onkeydown={onMenuKey}
@@ -327,6 +352,7 @@
       {/each}
     </div>
   </div>
+  {/if}
 {/if}
 
 <style>
@@ -375,61 +401,6 @@
     gap: 10px;
     padding: 0 var(--space-3) 0 8px;
     text-align: start;
-  }
-
-  /* 글 칸과 같은 알약 — 누르는 것은 안쪽 단추 둘이다 */
-  .pair {
-    --tile-face: var(--control-tile-bg);
-    box-sizing: border-box;
-    min-width: 0;
-    height: 52px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 6px 0 8px;
-    font-family: var(--font-ui);
-    font-size: var(--t-sm);
-    font-weight: 500;
-    color: var(--fg-1);
-    background: var(--tile-face);
-    border-radius: 26px;
-    box-shadow: var(--glass-ctl-edge, none);
-    --mono-cut: var(--tile-face);
-  }
-
-  .pair .lbl {
-    flex: 1 1 auto;
-  }
-
-  /* 두 단추가 같은 폭 — 긴 쪽 글자에 맞춘다 */
-  .choices {
-    flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-  }
-
-  .choice {
-    height: 36px;
-    min-width: 48px;
-    padding: 0 10px;
-    font-family: var(--font-ui);
-    font-size: var(--t-xs);
-    font-weight: 500;
-    color: var(--fg-1);
-    background: transparent;
-    border: 1px solid var(--line-strong);
-    border-radius: 18px;
-    cursor: pointer;
-  }
-
-  .choice:hover {
-    background: var(--control-tile-bg-hover);
-  }
-
-  .choice:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
   }
 
   /* 판 위에 섞어 불투명하게 — 무늬 구멍이 같은 색으로 메워진다 */

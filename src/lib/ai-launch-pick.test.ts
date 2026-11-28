@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carouselOffset, digitRowIndex, planAiLaunch } from "./ai-launch-pick";
+import { carouselOffset, digitRowIndex, launchFormFor, otherLaunchForm, parseLaunchForm, planAiLaunch } from "./ai-launch-pick";
 
 const claude = { command: "claude", id: "claude", name: "Claude Code" };
 const codex = { command: "codex", id: "codex", name: "Codex" };
@@ -10,7 +10,7 @@ describe("planAiLaunch", () => {
   });
 
   it("후보가 하나면 상자 없이 곧바로", () => {
-    expect(planAiLaunch([codex], [{ id: "codex", installed: true }], "claude")).toEqual({ mode: "direct", cli: codex });
+    expect(planAiLaunch([codex], [{ id: "codex", installed: true }], "claude")).toEqual({ mode: "direct", cli: codex, chat: false });
   });
 
   it("줄 순서 · 숫자 키 · 설치 여부는 후보 그대로", () => {
@@ -65,9 +65,35 @@ describe("planAiLaunch — 채팅 모양(실험 설정)", () => {
     expect(plan.mode === "pick" && plan.rows.map((r) => r.chat)).toEqual([false, false]);
   });
 
-  it("후보가 하나여도 [채팅] 이 있으면 상자를 띄운다 · 채팅 모양이 없는 CLI 하나면 곧바로", () => {
-    expect(planAiLaunch([codex], det, null, true)).toEqual({ mode: "pick", selected: 0, rows: [{ cli: codex, installed: true, digit: "1", chat: true }] });
-    expect(planAiLaunch([gemini], det, null, true)).toEqual({ mode: "direct", cli: gemini });
+  it("후보가 하나면 설정과 상관없이 곧바로 — 채팅을 받는지만 싣는다", () => {
+    expect(planAiLaunch([codex], det, null, true)).toEqual({ mode: "direct", cli: codex, chat: true });
+    expect(planAiLaunch([codex], det, null, false)).toEqual({ mode: "direct", cli: codex, chat: false });
+    expect(planAiLaunch([gemini], det, null, true)).toEqual({ mode: "direct", cli: gemini, chat: false });
+  });
+});
+
+describe("여는 모양 — [ai] launch_form", () => {
+  it("parseLaunchForm — \"chat\" 만 채팅 · 생략 · 틀린 꼴은 터미널", () => {
+    expect(parseLaunchForm("chat")).toBe("chat");
+    for (const v of [undefined, null, "", "terminal", "Chat", " chat", 1, true, {}]) expect(parseLaunchForm(v)).toBe("terminal");
+  });
+
+  it("launchFormFor — 채팅을 못 받는 줄(설정 끔 · 모르는 CLI · 원격)은 늘 터미널", () => {
+    expect(launchFormFor(true, "chat")).toBe("chat");
+    expect(launchFormFor(true, "terminal")).toBe("terminal");
+    expect(launchFormFor(false, "chat")).toBe("terminal");
+    expect(launchFormFor(false, "terminal")).toBe("terminal");
+  });
+
+  it("설정 끔이면 기본 모양이 채팅이어도 줄은 터미널로 연다", () => {
+    const det = [{ id: "claude", installed: true }, { id: "codex", installed: true }];
+    const plan = planAiLaunch([claude, codex], det, null, false);
+    expect(plan.mode === "pick" && plan.rows.map((r) => launchFormFor(r.chat, "chat"))).toEqual(["terminal", "terminal"]);
+  });
+
+  it("otherLaunchForm", () => {
+    expect(otherLaunchForm("chat")).toBe("terminal");
+    expect(otherLaunchForm("terminal")).toBe("chat");
   });
 });
 

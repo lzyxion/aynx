@@ -2,6 +2,7 @@
   /**
    * 채팅 모양 AI 타일의 잎 — 구독은 마운트된 동안 쥔다(숨은 탭도 — 떼어 둔 시계가 돌지 않게).
    * 언마운트가 곧 닫기다(터미널 · 쿼리 타일과 같다 — 탭 · 워크스페이스 전환은 잎을 내리지 않는다). 원격 창 · 창 이관이면 상태 층이 구독만 푼다.
+   * 명세의 `chatId` 가 바뀌어도(같은 자리 새 채팅) 옛 항목을 닫고 새 항목에 붙는다 — 잎은 그대로다.
    */
   import { untrack } from "svelte";
   import type { PaneSpec } from "$lib/session";
@@ -62,7 +63,10 @@
 
 <div class="leaf" data-chat-tile={spec?.chatId ?? ""} data-chat-tile-cli={spec?.cli ?? ""}>
   {#if target}
-    <ChatTileFace {target} {live} {visible} onretry={retry} />
+    <!-- 새 채팅(CLI 바꾸기 · /clear)은 몸만 다시 세운다 — 타일 틀 · 머리줄은 그대로 -->
+    {#key target.chat}
+      <ChatTileFace {target} {live} {visible} onretry={retry} />
+    {/key}
   {/if}
 </div>
 

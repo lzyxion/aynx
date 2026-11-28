@@ -499,7 +499,6 @@ export const pane: Record<keyof typeof koPane, string> = {
   "name.producer": "Producer",
   "name.query": "Query",
   "name.chatTile": "{agent} chat",
-  "chatTile.form": "Chat",
   "chatTile.empty": "Send a message to start the conversation",
   "chatTile.placeholder": "Message {agent}",
   "chatTile.send": "Send",

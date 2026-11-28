@@ -195,23 +195,21 @@ check(await ev(`(() => { const t=getComputedStyle(document.querySelector('.dock 
 check(await ev(`document.querySelector('.dock [data-launch="shell"] .lbl').textContent.trim()`) === 'PowerShell 7', 'default shell tile follows effective default');
 // 자리(10-28 판 E — `launchLayout`): 1줄 = 셸(글자 두 열) + 로컬 파일 · ☕, 2줄 = Claude · Codex + 지난 대화 · 오케스트레이션
 check(await ev(`(() => { const r=k=>document.querySelector('.dock [data-launch="'+k+'"]').getBoundingClientRect(); const ai=[...document.querySelectorAll('.dock [data-launch="ai"]')].map(b=>b.getBoundingClientRect()); const sh=r('shell'), fs=r('localfs'), aw=r('keep-awake'), cv=r('folder-conversations'), or=r('orchestration-start'); const same=(a,b)=>Math.abs(a.top-b.top)<1; return same(sh,fs) && same(sh,aw) && ai.every(a=>same(a,cv) && same(a,or)) && ai[0].top>sh.bottom && Math.abs(sh.left-ai[0].left)<1 && Math.abs(sh.right-ai[1].right)<1 && Math.abs(ai[0].width-ai[1].width)<1 && fs.left>sh.right && Math.abs(fs.left-cv.left)<1 && Math.abs(aw.left-or.left)<1; })()`) === true, 'grid E: shell spans both text columns on row 1 with localfs · keep-awake; AIs + conversations · orchestration on row 2');
-// 채팅 모양 실험 설정(2026-11-27) — 켜면 AI 칸마다 한 줄 [터미널] [채팅] · 끄면 위의 판 E 그대로
-check(await ev(`!document.querySelector('.dock [data-launch="ai-chat"]')`) === true, 'chat form off: no [채팅] on the AI tiles');
+// 채팅 모양 실험 설정 — 켜도 AI 칸은 판 E 그대로(모양 단추 없음) · 우클릭 = 모양 메뉴(터미널로 · 채팅으로, 기본 표시)
+const gridE = () => ev(`(() => { const ai=[...document.querySelectorAll('.dock [data-launch="ai"]')]; return JSON.stringify([ai.map(b=>b.className.includes('tile') && b.dataset.aiId).join(','), ai.map(b=>Math.round(b.getBoundingClientRect().width)), !!document.querySelector('.dock [data-launch="ai-chat"], .dock [data-launch-pair]')]); })()`);
+const rclick = async (sel) => { const r=await point(sel); for (const type of ['mousePressed','mouseReleased']) await send('Input.dispatchMouseEvent',{type,x:r.x+r.w/2,y:r.y+r.h/2,button:'right',buttons:type==='mousePressed'?2:0,clickCount:1}); await sleep(250); };
+const offGrid = await gridE();
+await rclick('.dock [data-launch="ai"][data-ai-id="claude"]');
+check(await ev(`!document.querySelector('.dock [data-launch-menu]')`) === true, 'chat form off: right-click on an AI tile opens no form menu');
 await ev(`(async()=>{const m=await ${importApp('/src/lib/settings.svelte.ts')};m.setChatTile(true);})()`); await sleep(400);
-check(await ev(`[...document.querySelectorAll('.dock [data-launch="ai-chat"]')].map(b=>b.dataset.aiId).join(',')`) === 'claude,codex', 'chat form on: [채팅] on Claude Code · Codex');
-check(await ev(`[...document.querySelectorAll('.dock [data-launch-pair]')].every(p=>{ const t=p.querySelector('[data-launch="ai"]'), c=p.querySelector('[data-launch="ai-chat"]'); return !!t && !!c && t.dataset.aiId===p.dataset.launchPair && /터미널|Terminal/.test(t.textContent) && /채팅|Chat/.test(c.textContent); })`) === true, 'chat form on: each AI row = name + [터미널](data-launch=ai) + [채팅]');
-{
-  const lay = JSON.parse(await ev(`(() => { const R=e=>e.getBoundingClientRect(); const sh=R(document.querySelector('.dock [data-launch="shell"]')); const fs=R(document.querySelector('.dock [data-launch="localfs"]')); const cv=R(document.querySelector('.dock [data-launch="folder-conversations"]'));
-    const pairs=[...document.querySelectorAll('.dock [data-launch-pair]')].map(p=>{ const P=R(p), L=R(p.querySelector('.lbl')), T=R(p.querySelector('[data-launch="ai"]')), C=R(p.querySelector('[data-launch="ai-chat"]')); const lbl=p.querySelector('.lbl');
-      return { span: Math.abs(P.left-sh.left)<1 && Math.abs(P.right-sh.right)<1, h: Math.round(P.height), inside: T.left>=P.left && C.right<=P.right+0.5 && T.top>=P.top && T.bottom<=P.bottom && C.top>=P.top && C.bottom<=P.bottom,
-        order: L.right<=T.left+0.5 && T.right<=C.left+0.5, equal: Math.abs(T.width-C.width)<=1 && Math.abs(T.height-C.height)<1, nameShown: lbl.clientWidth>20, top: P.top, bottom: P.bottom }; });
-    return JSON.stringify({ pairs, stacked: pairs.length===2 && pairs[0].top>=sh.bottom && pairs[1].top>=pairs[0].bottom, icons: Math.abs(fs.top-sh.top)<1 && Math.abs(cv.top-pairs[0].top)<1 && fs.left>sh.right }); })()`));
-  console.log('info chat-on launch layout:', JSON.stringify(lay));
-  check(lay.stacked && lay.icons && lay.pairs.every(p=>p.span && p.h===52 && p.inside && p.order && p.equal && p.nameShown), 'chat form on: one 52px row per AI across both text columns · buttons inside · name · [터미널] · [채팅] in order, same size · icon tiles stay put');
-}
+check(await gridE() === offGrid && JSON.parse(offGrid)[2] === false, 'chat form on: AI tiles keep grid E (no [터미널] [채팅] buttons)');
+await rclick('.dock [data-launch="ai"][data-ai-id="claude"]');
+check(await ev(`(() => { const m=document.querySelector('.dock [data-launch-menu="ai"]'); if (!m) return false; const rows=[...m.querySelectorAll('[data-launch-form]')]; return m.dataset.aiId==='claude' && rows.map(r=>r.dataset.launchForm).join(',')==='terminal,chat' && rows[0].hasAttribute('data-default') && !rows[1].hasAttribute('data-default') && !!rows[0].querySelector('.menu-kbd'); })()`) === true, 'chat form on: right-click = form menu (terminal · chat) · default marked');
 await shot('dock-chat-on.png');
+await key('Escape'); await sleep(250);
+check(await ev(`!document.querySelector('.dock [data-launch-menu]') && !!document.querySelector('.dock [data-launch="ai"]')`) === true, 'Esc closes the form menu, dock stays');
 await ev(`(async()=>{const m=await ${importApp('/src/lib/settings.svelte.ts')};m.setChatTile(false);})()`); await sleep(400);
-check(await ev(`!document.querySelector('.dock [data-launch="ai-chat"]') && !document.querySelector('.dock [data-launch-pair]') && [...document.querySelectorAll('.dock [data-dock-launch] .tile.text')].map(b=>b.dataset.launch).join(',')==='shell,ai,ai'`) === true, 'chat form off again: back to the plain AI tiles');
+check(await gridE() === offGrid, 'chat form off again: back to the plain AI tiles');
 check(await ev(`[...document.querySelectorAll('.dock .segs [data-segment]')].map(b=>b.dataset.segment).join(',')`) === 'alerts,hosts,projects,db', 'segments: alerts · hosts · projects · db');
 check(await ev(`(() => { const a=document.querySelector('.dock .seg.active'); const pill=a.querySelector('.seg-ico'); const probe=document.createElement('div'); probe.style.background='var(--control-sel-bg)'; document.body.appendChild(probe); const sel=getComputedStyle(probe).backgroundColor; probe.remove(); return a.dataset.segment==='alerts' && getComputedStyle(a).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(pill).backgroundColor===sel; })()`) === true, 'active segment = MD3 pill indicator (secondaryContainer), button itself unpainted (10-18)');
 check(await ev(`(() => { const r=document.querySelector('.dock .seg').getBoundingClientRect(); return r.height>=56 && r.height<=64; })()`) === true, 'segment button is ~60px tall');

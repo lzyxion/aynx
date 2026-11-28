@@ -384,6 +384,31 @@ describe("끈 에이전트 (`[ai] disabled_agents`)", () => {
   });
 });
 
+describe("AI 타일을 누르면 여는 모양 (`[ai] launch_form`)", () => {
+  it("\"chat\" 만 남고 생략 · 틀린 꼴은 터미널(안 적음)", () => {
+    expect(normalizeSettings({ ai: { launch_form: "chat" } }).ai.launch_form).toBe("chat");
+    for (const v of ["terminal", "Chat", "", 1, true, null, ["chat"]]) {
+      expect(normalizeSettings({ ai: { launch_form: v } }).ai.launch_form).toBeUndefined();
+    }
+  });
+
+  it("왕복 — 채팅만 파일에 적히고 다시 읽어도 같다", () => {
+    expect(toPayload(normalizeSettings({})).ai.launch_form).toBeUndefined();
+    const p = toPayload(normalizeSettings({ ai: { chat_tile: true, launch_form: "chat" } }));
+    expect(p.ai.launch_form).toBe("chat");
+    expect(normalizeSettings(p).ai.launch_form).toBe("chat");
+  });
+
+  it("비교는 바뀐 것을 알아채고 틀린 꼴은 생략과 같다", () => {
+    const a = normalizeSettings({});
+    const b = cloneSettings(a);
+    b.ai.launch_form = "chat";
+    expect(sameSettings(a, b)).toBe(false);
+    b.ai.launch_form = "nope";
+    expect(sameSettings(a, b)).toBe(true);
+  });
+});
+
 describe("HTTP MCP 비밀 헤더", () => {
   it("헤더 참조만 왕복하고 깊은 복사·취소 비교에서 평문 값을 제거한다", () => {
     const saved = normalizeSettings({ ai: { mcp_servers: [{

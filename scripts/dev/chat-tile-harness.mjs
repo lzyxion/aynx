@@ -25,6 +25,11 @@
 // Claude `/goal` 안내 줄 · 검토 카드(대상 넷 · 미리 채움 · 턴 중 막힘 · 표지) · 목표 카드 · 띠 · [중지] · 속도 줄 · 칩 · `/fast` · 하나만 · 작은 타일 · 원격 · 폰.
 // W(S47–S52): 리로드 뒤 속도 칩 · 줄 · 목록 모르는 등급 끄기 · 검토 중지 표지(결과 글 뒤 · 다음 턴 뒤에도) · 남는 `/goal` 말풍선 ·
 // MCP 풍선(시작 전 · 연결된 줄 · 꺼진 줄 · 사건 표 · 읽기 실패) · `/` 메뉴(쉬는 포인터 · 정확히 친 명령 Enter) · 검토 실패 뒤 보내기 · 빈 목표 까닭 · 낮은 목표 카드.
+// X(CLI 바꾸기 X1–X7): 모델 메뉴 맨 위 CLI 줄 · 누르면 확인 없이 바로 바꿈(빈 대화 · 대화 · 첨부가 있어도 — 머리 · 탭 제목 · 옛 항목 close · 쓰던 글 옮김 · 첨부는 안 옮김) ·
+// 지금 CLI 누름은 아무 일 없음 · 일하는 중은 칩이 잠겨 메뉴가 닫힘 · 작은 타일 · 좁은 창 · 원격 창 · 폰에는 줄 없음.
+// CLI 바꾸기 · `/clear` 는 같은 타일(pane id)에서 몸만 다시 선다 — 타일 상자 · 머리줄 DOM 그대로 · 등장 애니메이션 없음.
+// H(머리줄): H1 몸 위 띠 없음 · 대화 영역이 머리줄 바로 아래 H2 이름 뒤 흐린 대화 제목(말줄임) · ⋯ 앞 [중지](턴 중만) H3 좁은 타일 = 그림만
+// H4 카드가 떠도 머리줄 [중지] H5 원격 창 = 머리줄 H6 폰 = 입력 칸이 물러난 안내 줄의 [중지] · 누르면 끊음.
 //
 //   node scripts/dev/run-harness.mjs chat-tile-harness.mjs <outdir> --size 1280x860
 import { waitBoot } from "./boot-wait.mjs";
@@ -125,6 +130,32 @@ const clickAt = async (expr) => {
   return true;
 };
 
+/** 진짜 마우스 오른쪽 단추 — 창 전역 `contextmenu` 차단까지 같은 길 */
+const rightClickAt = async (expr) => {
+  const at = () => evj(`(() => { const e = ${expr}; if (!e) return 'null'; const b = e.getBoundingClientRect(); return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }); })()`);
+  let r = await at();
+  for (let i = 0; i < 20 && r; i++) {
+    await sleep(100);
+    const r2 = await at();
+    if (r2 && r2.x === r.x && r2.y === r.y) break;
+    r = r2;
+  }
+  if (!r) return false;
+  await mouse("mouseMoved", r.x, r.y, { buttons: 0 });
+  await mouse("mousePressed", r.x, r.y, { button: "right", buttons: 2 });
+  await mouse("mouseReleased", r.x, r.y, { button: "right", buttons: 0 });
+  await sleep(250);
+  return true;
+};
+const DOCK_AI = (cli) => `.dock [data-launch="ai"][data-ai-id="${cli}"]`;
+const DOCK_MENU = `.dock [data-launch-menu="ai"]`;
+/** 독 AI 칸 우클릭 → 모양 메뉴의 한 항목 */
+const dockOpenAs = async (cli, form) => {
+  await rightClickAt(`document.querySelector('${DOCK_AI(cli)}')`);
+  if (!(await waitFor(`!!document.querySelector('${DOCK_MENU} [data-launch-form="${form}"]')`, 3000))) return false;
+  return clickAt(`document.querySelector('${DOCK_MENU} [data-launch-form="${form}"]')`);
+};
+
 let bad = 0;
 const check = (name, got, want) => {
   const okj = JSON.stringify(got) === JSON.stringify(want);
@@ -223,6 +254,7 @@ const stub = (remote, sc = false) => `
       if (cmd === 'side_chat_attach') return Promise.reject(new Error('[session-gone] no such side chat'));
       if (cmd === 'side_chat_open') return Promise.reject(new Error('[conversation-in-chat-tile] this conversation is open in a chat tile'));
       if (cmd === 'agent_conversation_transcript') return Promise.resolve(window.__transcript);
+      if (cmd === 'agent_sessions_list' && window.__convOthers) return Promise.resolve({ groups: args.cwds.map((c) => ({ cwd: c, exists: true, sessions: [], more: false })), others: window.__convOthers, othersMore: false });
       if (cmd === 'agent_conversation_image') return Promise.resolve(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0)).buffer);
       if (cmd === 'open_local_session') { const id = nextSession++; window.__chan[id] = { cb: args?.onData?.id, idx: 0 }; boot(id); return Promise.resolve({ id, shell: 'pwsh' }); }
       if (cmd === 'probe_session') return Promise.resolve({ state: 'none', sessionEpoch: null, checkpoint: null });
@@ -272,25 +304,80 @@ const emit = (e, chat) =>
 const chatSpec = () =>
   evj(`(async () => { const t = await ${W}; for (const tab of t.residentWindowTabs()) { const stack = [tab.root]; while (stack.length) { const x = stack.pop(); if (x.type === 'leaf') { if (x.pane.kind === 'chat') return JSON.stringify({ id: x.pane.id, tab: tab.id, chat: x.pane.chat }); } else stack.push(x.a, x.b); } } return 'null'; })()`);
 const L = "[data-chat-tile]";
+/** [중지] — 머리줄(데스크톱)이든 입력 칸이 물러난 안내 줄(폰)이든 한 타일에 하나 */
+const STOP = "[data-chat-tile-stop]";
+/** 채팅 잎이 선 타일 상자 · 머리줄 */
+const CT_BOX = `document.querySelector('${L}')?.closest('[data-pane]')`;
+const CT_HEAD = `${CT_BOX}?.querySelector(':scope > [data-pane-head]')`;
+/** 새 채팅(CLI 바꾸기 · /clear) 전에 타일 상자 · 머리줄 DOM 에 표지를 단다 — 뒤에 같은 노드인지 본다 */
+const markFrame = () => ev(`(() => { const b = ${CT_BOX}; const h = ${CT_HEAD}; if (!b || !h) return false; b.__ctMark = 1; h.__ctMark = 1; return true; })()`);
+const frameKept = () => evj(`(() => { const b = ${CT_BOX}; const h = ${CT_HEAD}; return JSON.stringify([b?.__ctMark === 1, h?.__ctMark === 1]); })()`);
+/** 상자 · 머리줄 자신에 걸린 애니메이션 수(등장 `in:` · 머리줄 head-in — 호버 전환은 뺀다) */
+const frameAnims = () => ev(`(() => { const b = ${CT_BOX}; const h = ${CT_HEAD}; const n = (e) => e ? e.getAnimations().filter((x) => !(x instanceof CSSTransition)).length : -1; return n(b) + n(h); })()`);
+/** 머리줄 — 이름 · 제목 · [중지] · ⋯ 의 자리와 잘림 */
+const headShape = () =>
+  evj(`(() => { const h = ${CT_HEAD}; if (!h) return 'null'; const R = (e) => e ? e.getBoundingClientRect() : null;
+    const name = h.querySelector('.pane-name'), title = h.querySelector('[data-chat-tile-title]'), stop = h.querySelector('${STOP}'), more = h.querySelector('[data-tile-menu-btn]');
+    const N = R(name), T = R(title), S = R(stop), M = R(more), H = R(h);
+    return JSON.stringify({ title: title?.textContent.trim() ?? null, titleAfterName: !!(T && N && T.left >= N.right - 0.5), titleCut: !!title && title.scrollWidth > title.clientWidth + 1,
+      nameCut: !!name && name.scrollWidth > name.clientWidth, titleDim: !!title && getComputedStyle(title).color !== getComputedStyle(name).color,
+      stop: !!stop, stopText: stop?.textContent.trim() ?? null, stopLabel: stop?.getAttribute('aria-label') ?? null, stopTip: stop?.getAttribute('title') ?? null,
+      stopBeforeMore: !!(S && M && S.right <= M.left + 0.5), stopShown: !!S && S.width >= 20, stopInHead: !!(S && S.top >= H.top - 0.5 && S.bottom <= H.bottom + 0.5) }); })()`);
 
 // ═══ A. 메인 PC 창 ═══════════════════════════════════════════════════════════════════
 await bootPage({ remote: false, width: 1280, height: 860 });
 errors.length = 0;
 
-// ① 독 [채팅] — 설정 켬이면 서고 끄면 없다
+// ① 독 — 모양 단추는 없고 AI 칸은 예전 글 칸 그대로 · 우클릭 = 모양 메뉴(설정 켬일 때만)
 await ev(`(async () => (await ${DOCKM}).openDock('alerts'))()`);
 await waitFor(`!!document.querySelector('.dock [data-launch="ai"]')`, 6000);
-check("① 설정 켬 — 독 AI 줄마다 [채팅]", await ev(`[...document.querySelectorAll('.dock [data-launch="ai-chat"]')].map((b) => b.dataset.aiId).join(',')`), "claude,codex");
+const dockShape = () => ev(`JSON.stringify([document.querySelectorAll('.dock .tile.text[data-launch="ai"]').length, document.querySelectorAll('.dock [data-launch="ai-chat"], .dock [data-launch-pair], .dock .choice').length, [...document.querySelectorAll('.dock .tile.text[data-launch="ai"] .lbl')].every((l) => l.scrollWidth <= l.clientWidth)])`);
+const offShape = JSON.parse(await dockShape());
+check("① 설정 켬 — AI 칸 둘 · 모양 단추 없음", offShape.slice(0, 2), [2, 0]);
 await shot("launcher-dock.png");
+await rightClickAt(`document.querySelector('${DOCK_AI("claude")}')`);
+check("① 우클릭 = 모양 메뉴 두 항목 · 기본(터미널) 표시", await evj(`JSON.stringify([...document.querySelectorAll('${DOCK_MENU} [data-launch-form]')].map((b) => [b.dataset.launchForm, b.hasAttribute('data-default'), b.textContent.trim()]))`),
+  [["terminal", true, "터미널로 열기 기본"], ["chat", false, "채팅으로 열기"]]);
+check("① 메뉴가 첫 항목에 포커스", await ev(`document.activeElement?.dataset?.launchForm ?? null`), "terminal");
+await shot("launcher-dock-menu.png");
+await key("Escape");
+check("① Esc = 메뉴만 닫힘 · 독은 그대로", await ev(`!document.querySelector('${DOCK_MENU}') && !!document.querySelector('${DOCK_AI("claude")}')`), true);
+// 키보드 — 칸에 포커스 · Shift+F10 / 메뉴 키
+await ev(`document.querySelector('${DOCK_AI("codex")}').focus()`);
+for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, code: "F10", key: "F10", modifiers: 8, windowsVirtualKeyCode: 121, nativeVirtualKeyCode: 121 });
+await sleep(250);
+check("① Shift+F10 = 같은 메뉴(Codex)", await ev(`document.querySelector('${DOCK_MENU}')?.dataset.aiId ?? null`), "codex");
+await key("Escape");
+await ev(`document.querySelector('${DOCK_AI("claude")}').focus()`);
+for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, code: "ContextMenu", key: "ContextMenu", windowsVirtualKeyCode: 93, nativeVirtualKeyCode: 93 });
+await sleep(250);
+check("① 메뉴 키 = 같은 메뉴(Claude)", await ev(`document.querySelector('${DOCK_MENU}')?.dataset.aiId ?? null`), "claude");
+await key("Escape");
+check("① 키로 연 메뉴를 닫으면 포커스가 칸으로", await ev(`document.activeElement?.dataset?.aiId ?? null`), "claude");
 await ev(`(async () => (await ${SET}).setChatTile(false))()`);
 await sleep(300);
-check("① 설정 끔 — [채팅] 없음 · [터미널] 칸은 예전 그대로", [await ev(`document.querySelectorAll('.dock [data-launch="ai-chat"]').length`), await ev(`document.querySelectorAll('.dock .tile.text[data-launch="ai"]').length`)], [0, 2]);
-await ev(`(async () => (await ${SET}).setChatTile(true))()`);
-await sleep(300);
-
-// ② [채팅] 누름 → 채팅 잎 · open{fresh} · subscribe
+check("① 설정 끔 — 칸은 켬과 같다(이름 잘림 여부까지)", JSON.parse(await dockShape()), offShape);
+await rightClickAt(`document.querySelector('${DOCK_AI("claude")}')`);
+check("① 설정 끔 — 우클릭해도 모양 메뉴 없음", await ev(`document.querySelectorAll('.dock [data-launch-menu]').length`), 0);
+// 설정 끔 + 기본 채팅 — 누르기는 터미널
+await ev(`(async () => (await ${SET}).setAiLaunchForm('chat'))()`);
+await sleep(200);
+const leafIds = () => evj(`(async () => { const t = await ${W}; const out = []; for (const tab of t.residentWindowTabs()) { const stack = [tab.root]; while (stack.length) { const x = stack.pop(); if (x.type === 'leaf') out.push([tab.id, x.pane.id, x.pane.kind ?? null, x.pane.autorun ?? null]); else stack.push(x.a, x.b); } } return JSON.stringify(out); })()`);
+const leavesBefore = (await leafIds()).map((x) => x[1]);
 let c0 = await callCount();
-await clickAt(`document.querySelector('.dock [data-launch="ai-chat"][data-ai-id="claude"]')`);
+await clickAt(`document.querySelector('${DOCK_AI("claude")}')`);
+await sleep(800);
+const newLeaves = (await leafIds()).filter((x) => !leavesBefore.includes(x[1]));
+check("① 설정 끔 · 기본 채팅 — 누르기 = 터미널 AI 타일(chat_tile_open 없음)", [(await callsOf("chat_tile_open", c0)).length, newLeaves.map((x) => [x[2] === "chat", /claude/.test(x[3] ?? "")])], [0, [[false, true]]]);
+// 처음 판으로 — 연 터미널 타일 · 바꾼 설정을 걷는다(스텁 설정 = 실험 켬 · 기본 터미널)
+await bootPage({ remote: false, width: 1280, height: 860 });
+errors.length = 0;
+
+// ② 우클릭 [채팅으로 열기] → 채팅 잎 · open{fresh} · subscribe
+await ev(`(async () => (await ${DOCKM}).openDock('alerts'))()`);
+await waitFor(`!!document.querySelector('${DOCK_AI("claude")}')`, 6000);
+c0 = await callCount();
+await dockOpenAs("claude", "chat");
 check("② 채팅 잎이 선다", await waitFor(`!!document.querySelector('${L} [data-chat-tile-face]')`, 6000), true);
 await waitFor(`window.__calls.filter(([c]) => c === 'chat_tile_subscribe').length >= 2`, 4000);
 const opened = await callsOf("chat_tile_open", c0);
@@ -298,8 +385,12 @@ let spec = await chatSpec();
 check("② 명세 — ct- id · claude · 타일 폴더 · conv 없음", [/^ct-[0-9a-f-]{36}$/.test(spec?.chat?.chatId ?? ""), spec?.chat?.cli, spec?.chat?.cwd, "conv" in (spec?.chat ?? {})], [true, "claude", "C:\\src\\proj", false]);
 check("② subscribe([session-gone]) → chat_tile_open{mode: fresh, cwd} 한 번 → subscribe", [opened.map((a) => [a.chat === spec.chat.chatId, a.cli, a.mode]), (await callsOf("chat_tile_subscribe", c0)).length],
   [[[true, "claude", { kind: "fresh", cwd: "C:\\src\\proj" }]], 2]);
-check("② 머리줄 이름 · 형태 칩 · 터미널로 그리지 않음", [await ev(`document.querySelector('[data-pane="${spec.id}"]').textContent.includes('Claude Code 채팅')`),
-  await ev(`document.querySelector('${L} [data-chat-tile-form]')?.textContent.trim()`), await ev(`!document.querySelector('[data-pane="${spec.id}"] .xterm')`)], [true, "채팅", true]);
+check("② 머리줄 이름 · 터미널로 그리지 않음", [await ev(`document.querySelector('[data-pane="${spec.id}"]').textContent.includes('Claude Code 채팅')`),
+  await ev(`!document.querySelector('[data-pane="${spec.id}"] .xterm')`)], [true, true]);
+// H1 머리줄 아래 띠 없음 — 형태 칩 · 띠가 없고 대화 영역이 머리줄 바로 아래에서 시작한다
+check("H1 띠 · 형태 칩 없음 · 몸의 첫 칸이 머리줄 바로 아래", await evj(`(() => { const f = document.querySelector('${L} [data-chat-tile-face]'); const h = ${CT_HEAD};
+  const first = f.firstElementChild; return JSON.stringify([!document.querySelector('[data-chat-tile-bar], [data-chat-tile-form]'), first?.hasAttribute('data-viewer-body') || !!first?.querySelector('[data-viewer-body]'),
+    Math.abs(first.getBoundingClientRect().top - h.getBoundingClientRect().bottom) <= 1]); })()`), [true, true, true]);
 const CH = spec.chat.chatId;
 await shot("chat-tile-empty.png");
 
@@ -338,8 +429,31 @@ await emit({ t: "toolFinished", item: "tool1", ok: true, output: "42 lines" }, C
 await emit({ t: "toolStarted", item: "tool2", name: "Grep", summary: "TODO", input: { pattern: "TODO" } }, CH);
 await sleep(400);
 check("④ 도구 줄 둘(끝난 것 · 도는 것)", [await ev(`document.querySelectorAll('${L} [data-item="tool"]').length`), await ev(`document.querySelectorAll('${L} [data-tool-running]').length`)], [2, 1]);
-check("④ [중지] 가 선다(턴 중)", await ev(`!!document.querySelector('${L} [data-chat-tile-stop]')`), true);
+check("④ [중지] 가 선다(턴 중)", await ev(`!!document.querySelector('${STOP}')`), true);
 await shot("chat-tile-midturn.png");
+
+// H2 머리줄 — 이름 뒤 흐린 대화 제목 · ⋯ 앞 [중지](글 · 툴팁) · 몸에는 [중지] 없음
+const LONG_TITLE = "src 폴더 정리 — 오래된 유틸 파일을 모아 옮기고 테스트까지 다시 맞추는 아주 긴 대화 제목";
+await ev(`(window.__convOthers = [{ agent: 'claude', id: '${CONV}', cwd: 'C:\\\\src\\\\proj', branch: null, title: ${JSON.stringify(LONG_TITLE)}, titleSource: 'ai', startedAt: Date.now() - 60000,
+  updatedAt: Date.now(), model: null, forkedFrom: null, cwdExists: true }], 1)`);
+await ev(`(async () => (await ${importApp("app/agent-sessions.svelte.ts")}).loadConversations())()`);
+await waitFor(`!!(${CT_HEAD})?.querySelector('[data-chat-tile-title]')`, 4000);
+let hs = await headShape();
+check("H2 머리줄 — 이름 뒤 흐린 제목 · 넓은 타일에서도 넘치면 말줄임 · 이름은 안 잘림",
+  [hs?.title, hs?.titleAfterName, hs?.titleDim, hs?.nameCut], [LONG_TITLE, true, true, false]);
+check("H2 머리줄 [중지] — ⋯ 앞 · 머리줄 안 · 글 · 툴팁 · 이름표 · 몸에는 없음",
+  [hs?.stop, hs?.stopBeforeMore, hs?.stopInHead, hs?.stopText, hs?.stopTip, hs?.stopLabel, await ev(`document.querySelectorAll('${L} ${STOP}').length`)],
+  [true, true, true, "중지", "중지", "중지", 0]);
+await shot("h2-head-title-stop.png");
+// H3 좁은 타일 — 제목이 먼저 줄고 [중지]는 그림만(이름표 · 툴팁은 남는다)
+await send("Emulation.setDeviceMetricsOverride", { width: 400, height: 760, deviceScaleFactor: 1, mobile: false });
+await sleep(700);
+hs = await headShape();
+check("H3 좁은 타일(400) — 제목 말줄임 · 이름 안 잘림 · [중지] 그림만 · 툴팁 · 이름표 · ⋯ 앞",
+  [hs?.titleCut, hs?.nameCut, hs?.stopShown, hs?.stopText, hs?.stopTip, hs?.stopLabel, hs?.stopBeforeMore], [true, false, true, "", "중지", "중지", true]);
+await shot("h3-narrow-head.png");
+await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+await sleep(500);
 await emit({ t: "toolFinished", item: "tool2", ok: true, output: "3 matches" }, CH);
 
 // ⑤ 권한 카드 — 단추 둘 · diff · [허용]
@@ -354,6 +468,9 @@ const card = await evj(`(() => { const c = document.querySelector('${L} [data-ch
 check("⑤ 카드 — [허용] [거절] 둘뿐 · 카드 안 · 파일 고치기 · 경로 · 줄 diff", [card.buttons, card.inside, card.kind, card.target, card.diff],
   [["허용", "거절"], true, "edit", "C:/src/proj/src/main.ts", [" const a = 1;", "-const b = 2;", "+const b = 3;"]]);
 check("⑤ 기다리는 동안 입력 칸 대신 한 줄", [await ev(`!!document.querySelector('${L} [data-chat-tile-held]')`), await ev(`getComputedStyle(document.querySelector('${L} .composer-slot')).display`)], [true, "none"]);
+hs = await headShape();
+check("H4 카드가 떠 입력 칸이 물러나도 머리줄 [중지]가 보인다 · 안내 줄에는 없음(데스크톱)",
+  [hs?.stop, hs?.stopShown, await ev(`!document.querySelector('${L} [data-chat-tile-held] ${STOP}')`)], [true, true, true]);
 check("⑤ 늘 허용 · 모드 칩 · 사이드 채팅 [+] 메뉴 없음", await ev(`!document.querySelector('${L} [data-side-chat-allow-chat], ${L} [data-chat-perm-chip], ${L} [data-chat-plus], ${L} [data-flip-pick]')`), true);
 await shot("chat-tile-perm.png");
 c0 = await callCount();
@@ -367,7 +484,7 @@ check("⑤ 답한 카드 = 끝난 한 줄 · 입력 칸 돌아옴", [await ev(`d
 
 // ⑥ [중지]
 c0 = await callCount();
-await clickAt(`document.querySelector('${L} [data-chat-tile-stop]')`);
+await clickAt(`document.querySelector('${STOP}')`);
 await sleep(300);
 check("⑥ [중지] = chat_tile_interrupt{chat, epoch}", (await callsOf("chat_tile_interrupt", c0)).map((a) => [a.chat === CH, a.epoch]), [[true, 1]]);
 await emit({ t: "text", item: "a1", text: "먼저 파일을 살펴보겠습니다. `src/main.ts:12` 를 봅니다." }, CH);
@@ -377,7 +494,7 @@ await ev(`(window.__transcript = { items: [
 ], cursor: null }, 1)`);
 await emit({ t: "turnEnded", turn: "t1", outcome: "interrupted", message: null }, CH);
 await sleep(800);
-check("⑥ 턴 끝 — [중지] 걷힘 · 기록에서 받은 말 · 경로 링크", [await ev(`!document.querySelector('${L} [data-chat-tile-stop]')`),
+check("⑥ 턴 끝 — [중지] 걷힘 · 기록에서 받은 말 · 경로 링크", [await ev(`!document.querySelector('${STOP}')`),
   await ev(`document.querySelector('${L}').textContent.includes('먼저 파일을 살펴보겠습니다')`), await ev(`!!document.querySelector('${L} [data-path-link]')`)], [true, true, true]);
 
 // ⑦ 모델 · 강도
@@ -503,15 +620,26 @@ await clickAt(`document.querySelector('[data-confirm-dialog] [data-confirm-choic
 await sleep(500);
 check("⑩ [닫기] = chat_tile_close{chat} · 잎 걷힘", [(await callsOf("chat_tile_close", c0)).map((a) => a.chat === CH), await ev(`!document.querySelector('${L}')`)], [[true], true]);
 
-// AI 고르기 상자 — 줄마다 [터미널] [채팅]
-await ev(`(async () => (await ${importApp("app/ai-launch.svelte.ts")}).openAiLaunchPicker())()`);
-check("고르기 상자 — [터미널] [채팅]", await waitFor(`document.querySelectorAll('[data-ai-launch-forms] [data-ai-launch-form]').length === 2`, 4000), true);
-await key("Tab");
-check("고르기 상자 — Tab 이 [채팅] 으로", await ev(`document.querySelector('[data-ai-launch-form="chat"]').classList.contains('on')`), true);
+// AI 고르기 상자 — 모양 단추 없음 · 우클릭 = 모양 메뉴 · Alt+Enter = 기본이 아닌 모양
+const PICK = importApp("app/ai-launch.svelte.ts");
+await ev(`(async () => (await ${PICK}).openAiLaunchPicker())()`);
+await waitFor(`!!document.querySelector('[data-ai-launch-picker] [data-ai-launch-row]')`, 4000);
+await sleep(500);
+check("고르기 상자 — 모양 단추 없음", await ev(`document.querySelectorAll('[data-ai-launch-forms], [data-ai-launch-picker] [data-ai-launch-form]').length`), 0);
 await shot("launcher-picker.png");
+await rightClickAt(`document.querySelector('[data-ai-launch-row][aria-selected="true"]')`);
+check("고르기 상자 — 우클릭 = 모양 메뉴 · 기본(터미널) 표시 · 다른 쪽은 Alt+Enter", await evj(`JSON.stringify([...document.querySelectorAll('[data-ai-launch-menu] [data-ai-launch-form]')].map((b) => [b.dataset.aiLaunchForm, b.hasAttribute('data-default'), b.textContent.trim()]))`),
+  [["terminal", true, "터미널로 열기 기본"], ["chat", false, "채팅으로 열기 Alt+Enter"]]);
+await shot("launcher-picker-menu.png");
+await key("Escape");
+check("고르기 상자 — Esc 가 메뉴만 닫는다", await ev(`!document.querySelector('[data-ai-launch-menu]') && !!document.querySelector('[data-ai-launch-picker]')`), true);
+for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, code: "F10", key: "F10", modifiers: 8, windowsVirtualKeyCode: 121, nativeVirtualKeyCode: 121 });
+await sleep(250);
+check("고르기 상자 — Shift+F10 = 같은 메뉴", await ev(`!!document.querySelector('[data-ai-launch-menu]')`), true);
+await key("Escape");
 c0 = await callCount();
-await key("Enter");
-check("고르기 상자 — Enter = 채팅 잎 · open{fresh}", [await waitFor(`!!document.querySelector('${L}') && window.__calls.slice(${c0}).some(([c]) => c === 'chat_tile_open')`, 5000), (await callsOf("chat_tile_open", c0)).map((a) => a.mode.kind)], [true, ["fresh"]]);
+for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, code: "Enter", key: "Enter", modifiers: 1, windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+check("고르기 상자 — Alt+Enter(기본 터미널) = 채팅 잎 · open{fresh}", [await waitFor(`!!document.querySelector('${L}') && window.__calls.slice(${c0}).some(([c]) => c === 'chat_tile_open')`, 5000), (await callsOf("chat_tile_open", c0)).map((a) => a.mode.kind)], [true, ["fresh"]]);
 
 // ⑭ 띄우는 중 닫기 — 첫 보내기를 받은 뒤 턴이 서기 전(Claude ≈5초)에도 묻는다 · 둘째 글은 막힌다
 await waitFor(`!!document.querySelector('${L} [data-flip-input]') && window.__calls.filter(([c]) => c === 'chat_tile_subscribe').length > 0`, 4000);
@@ -523,7 +651,7 @@ c0 = await callCount();
 await key("Enter");
 await waitFor(`window.__calls.slice(${c0}).some(([c]) => c === 'chat_tile_send')`, 3000);
 await sleep(300);
-check("⑭ 보낸 뒤 턴 전 — 입력 칸 대신 '시작하는 중' 줄 · [중지] 없음", [await ev(`document.querySelector('${L} [data-flip-gate]')?.textContent.trim() ?? null`), await ev(`!document.querySelector('${L} [data-chat-tile-stop]')`)],
+check("⑭ 보낸 뒤 턴 전 — 입력 칸 대신 '시작하는 중' 줄 · [중지] 없음", [await ev(`document.querySelector('${L} [data-flip-gate]')?.textContent.trim() ?? null`), await ev(`!document.querySelector('${STOP}')`)],
   ["Claude Code 시작하는 중…", true]);
 await ev(`(async () => (await ${W}).closePaneIn(${JSON.stringify(spec.tab)}, ${JSON.stringify(spec.id)}))()`);
 check("⑭ 띄우는 중 닫기 = 확인 상자", await waitFor(`!!document.querySelector('[data-confirm-dialog]')`, 3000), true);
@@ -533,11 +661,17 @@ await clickAt(`document.querySelector('[data-confirm-dialog] [data-confirm-choic
 await sleep(500);
 check("⑭ [닫기] = chat_tile_close · 잎 걷힘", [(await callsOf("chat_tile_close", c0)).length, await ev(`!document.querySelector('${L}')`)], [1, true]);
 // ═══ D. 첨부 · 탭 점 · 배너 ═══════════════════════════════════════════════════════════════
+// 기본 모양 = 채팅 — 고르기 상자의 Enter 가 채팅으로 연다
+await ev(`(async () => (await ${SET}).setAiLaunchForm('chat'))()`);
 await ev(`(async () => (await ${importApp("app/ai-launch.svelte.ts")}).openAiLaunchPicker())()`);
-await waitFor(`document.querySelectorAll('[data-ai-launch-forms] [data-ai-launch-form]').length === 2`, 4000);
-await key("Tab");
+await waitFor(`!!document.querySelector('[data-ai-launch-picker] [data-ai-launch-row]')`, 4000);
+await sleep(400);
+await rightClickAt(`document.querySelector('[data-ai-launch-row][aria-selected="true"]')`);
+check("D 기본 채팅 — 메뉴의 기본 표시가 채팅으로", await evj(`JSON.stringify([...document.querySelectorAll('[data-ai-launch-menu] [data-ai-launch-form]')].map((b) => [b.dataset.aiLaunchForm, b.hasAttribute('data-default')]))`), [["terminal", false], ["chat", true]]);
+await key("Escape");
 c0 = await callCount();
 await key("Enter");
+await ev(`(async () => (await ${SET}).setAiLaunchForm('terminal'))()`);
 await waitFor(`!!document.querySelector('${L} [data-flip-input]') && window.__calls.slice(${c0}).filter(([c]) => c === 'chat_tile_subscribe').length > 0`, 6000);
 await sleep(500);
 spec = await chatSpec();
@@ -745,16 +879,16 @@ await bootPage({ remote: false, width: 1280, height: 860 });
 errors.length = 0;
 const CLAUDE3 = ["default", "acceptEdits", "plan"];
 const CODEX3 = ["readOnly", "auto", "plan"];
-/** 채팅 잎 하나를 독 [채팅] 으로 연다 — 스냅숏 덧칸은 열기 전에 고른다 */
+/** 채팅 잎 하나를 독 우클릭 [채팅으로 열기] 로 연다 — 스냅숏 덧칸은 열기 전에 고른다 */
 const openChatTile = async (cli, extra) => {
   await ev(`(window.__ctSnap = ${JSON.stringify(extra)}, 1)`);
   // 독이 늦게 서면 누름이 빗나간다 — 한 번 더 연다(`openCT` 와 같다)
   for (let tries = 0; tries < 2; tries++) {
     await ev(`(async () => (await ${DOCKM}).openDock('alerts'))()`);
-    await waitFor(`!!document.querySelector('.dock [data-launch="ai-chat"][data-ai-id="${cli}"]')`, 6000);
+    await waitFor(`!!document.querySelector('${DOCK_AI(cli)}')`, 6000);
     await sleep(300);
     const from = await callCount();
-    await clickAt(`document.querySelector('.dock [data-launch="ai-chat"][data-ai-id="${cli}"]')`);
+    await dockOpenAs(cli, "chat");
     const up = await waitFor(`!!document.querySelector('${L} [data-chat-tile-mode-chip]') && window.__calls.slice(${from}).filter(([c]) => c === 'chat_tile_subscribe').length >= 2`, 6000);
     await sleep(500);
     const sp = await chatSpec();
@@ -1296,6 +1430,9 @@ spec = await chatSpec();
 check("⑪ 원격 — 다른 창이 보낸 사람 말풍선 · Codex 명령 카드 · 명세에 conv 안 씀",
   [await ev(`document.querySelector('${L}').textContent.includes('메인 PC 에서 보낸 말')`), await ev(`document.querySelector('${L} [data-chat-tile-perm="q1"]')?.dataset.chatTilePermKind ?? null`), "conv" in (spec?.chat ?? {})],
   [true, "command", false]);
+hs = await headShape();
+check("H5 원격 창 — 카드가 떠 있어도 [중지]는 머리줄(⋯ 앞) · 안내 줄에는 없음 · 띠 없음",
+  [hs?.stop, hs?.stopShown, hs?.stopBeforeMore, await ev(`!document.querySelector('${L} [data-chat-tile-held] ${STOP}')`), await ev(`!document.querySelector('[data-chat-tile-bar]')`)], [true, true, true, true, true]);
 await shot("chat-tile-remote.png");
 c0 = await callCount();
 await clickAt(`document.querySelector('${L} [data-chat-tile-deny]')`);
@@ -1408,6 +1545,15 @@ await sleep(400);
 const phoneCard = async (id) => evj(`(() => { const c = document.querySelector('[data-chat-tile-perm="${id}"]'); const R = c.getBoundingClientRect(); const pre = c.querySelector('pre');
   return JSON.stringify({ inside: R.left >= -0.5 && R.right <= innerWidth + 0.5, wrap: !pre || pre.scrollWidth <= pre.clientWidth + 1, scroll: document.documentElement.scrollWidth <= innerWidth + 1 }); })()`);
 check("⑱ 폰 — 명령 카드 화면 안 · 줄바꿈", await phoneCard("m-cmd"), { inside: true, wrap: true, scroll: true });
+// H6 폰 — 머리줄이 없어 입력 칸이 물러난 동안 [중지]는 안내 줄에 · 누르기 좋은 크기 · 누르면 끊는다
+const heldStop = await evj(`(() => { const s = document.querySelector('${L} [data-chat-tile-held] ${STOP}'); if (!s) return 'null'; const S = s.getBoundingClientRect();
+  return JSON.stringify({ n: document.querySelectorAll('${STOP}').length, head: !!${CT_HEAD}, inside: S.left >= -0.5 && S.right <= innerWidth + 0.5 && S.bottom <= innerHeight + 0.5, tall: S.height >= 36, text: s.textContent.trim(), label: s.getAttribute('aria-label') }); })()`);
+check("H6 폰 — 머리줄 없음 · [중지]는 안내 줄에 하나 · 화면 안 · ≥ 36px · 글", heldStop, { n: 1, head: false, inside: true, tall: true, text: "중지", label: "중지" });
+await shot("h6-phone-held-stop.png");
+c0 = await callCount();
+await clickAt(`document.querySelector('${L} [data-chat-tile-held] ${STOP}')`);
+await sleep(300);
+check("H6 폰 — 안내 줄 [중지] = chat_tile_interrupt 하나", (await callsOf("chat_tile_interrupt", c0)).map((a) => a.chat === CHAT), [true]);
 check("㉘ 폰 — 명령 카드의 단추 줄이 굴리지 않아도 보임 · 카드가 대화 칸 안", await actionsSeen("m-cmd").then((x) => [x.actions, x.fits]), [true, true]);
 await shot("chat-tile-phone-command-actions.png");
 await ev(`document.querySelector('[data-chat-tile-perm="m-cmd"]').scrollIntoView({ block: 'center' })`);
@@ -1532,16 +1678,16 @@ const openPop = async () => {
   await clickAt(`document.querySelector('${L} [data-chat-tile-context]')`);
   return waitFor(`!!document.querySelector('[data-chat-tile-context-popover]')`, 3000);
 };
-/** 채팅 잎 하나를 독 [채팅] 으로 연다 — 스냅숏 덧칸은 열기 전에 고른다 */
+/** 채팅 잎 하나를 독 우클릭 [채팅으로 열기] 로 연다 — 스냅숏 덧칸은 열기 전에 고른다 */
 const openCT = async (cli, extra) => {
   await ev(`(window.__ctSnap = ${JSON.stringify(extra)}, 1)`);
   // 독이 늦게 서면 누름이 빗나간다 — 한 번 더 연다
   for (let tries = 0; tries < 2; tries++) {
     await ev(`(async () => (await ${DOCKM}).openDock('alerts'))()`);
-    await waitFor(`!!document.querySelector('.dock [data-launch="ai-chat"][data-ai-id="${cli}"]')`, 6000);
+    await waitFor(`!!document.querySelector('${DOCK_AI(cli)}')`, 6000);
     await sleep(300);
     const from = await callCount();
-    await clickAt(`document.querySelector('.dock [data-launch="ai-chat"][data-ai-id="${cli}"]')`);
+    await dockOpenAs(cli, "chat");
     const up = await waitFor(`!!document.querySelector('${L} [data-chat-tile-mode-chip]') && window.__calls.slice(${from}).filter(([c]) => c === 'chat_tile_subscribe').length >= 2`, 10000);
     await sleep(500);
     const sp = await chatSpec();
@@ -1727,9 +1873,11 @@ check("S6 /copy → 안내 줄 copyHint · 보내기 없음", [(await slashNoteO
 await setField("");
 
 // S7 /clear → 같은 자리 새 채팅(chatId 바뀜) · 옛 항목 chat_tile_close
+await markFrame();
 g0 = await callCount();
 await setField("/clear");
 await press("Enter");
+const clearAnims = await frameAnims();
 await waitFor(`window.__calls.slice(${g0}).some(([c, a]) => c === 'chat_tile_close' && a.chat === ${JSON.stringify(GC)})`, 4000);
 await waitFor(`window.__calls.slice(${g0}).filter(([c]) => c === 'chat_tile_subscribe').length >= 2`, 4000);
 await sleep(500);
@@ -1737,6 +1885,8 @@ const gsNew = await chatSpec();
 check("S7 /clear → 잎의 chatId 바뀜 · 같은 cli · 같은 자리 · 옛 항목 close · 보내기 없음",
   [gsNew.chat.chatId !== GC, gsNew.chat.cli, gsNew.tab === gs.tab, (await callsOf("chat_tile_close", g0)).some((a) => a.chat === GC), (await callsOf("chat_tile_send", g0)).length],
   [true, "claude", true, true, 0]);
+check("S7 /clear → 같은 타일(pane id) · 틀 · 머리줄 DOM 그대로 · 등장 애니메이션 없음 · 입력 칸 포커스",
+  [gsNew.id === gs.id, ...(await frameKept()), clearAnims, (await fieldState()).focus], [true, true, true, 0, true]);
 gs = gsNew;
 GC = gs.chat.chatId;
 
@@ -1768,7 +1918,7 @@ check("S11 [지금 압축] → chat_tile_compact 열쇠 chat · epoch · instruc
 await emit({ t: "turnStarted", turn: null }, GC);
 await emit({ t: "compaction", phase: "started", trigger: "manual", preTokens: null, postTokens: null }, GC);
 await sleep(300);
-check("S12 started → \"압축하는 중\" 알림 · [중지] · 인라인 [압축] 흐림", [await noticeOf("compacting"), await ev(`!!document.querySelector('${L} [data-chat-tile-stop]')`), (await meter())?.inline],
+check("S12 started → \"압축하는 중\" 알림 · [중지] · 인라인 [압축] 흐림", [await noticeOf("compacting"), await ev(`!!document.querySelector('${STOP}')`), (await meter())?.inline],
   ["맥락을 압축하는 중…", true, "true"]);
 await openPop();
 check("S12 턴 중 [지금 압축] 흐림 · 툴팁 · 이유 줄이 보인다", [(await popOf())?.go, (await popOf())?.tip, (await popOf())?.why], ["true", "턴이 끝난 뒤 압축할 수 있습니다", "턴이 끝난 뒤 압축할 수 있습니다"]);
@@ -2124,7 +2274,7 @@ let RC = gs.chat.chatId;
 check("R 기록이 선다(사람 말 셋)", await seedRecord(RC, claudeRec, { ...READY_C, conversationId: RVC }, 3), true);
 let r0 = await callCount();
 
-await hoverAt(`document.querySelector('${L} [data-chat-tile-bar]')`);
+await hoverAt(CT_HEAD);
 // S16 기록 사람 줄 — 기준점 있는 줄에만 [되감기] · 호버 전 숨김 · 호버하면 보임 · 에이전트 줄 · 기준점 없는 줄에는 없음
 let rbtns = await rwBtns();
 check("S16 단추는 기준점 있는 사람 줄 둘에만 · 호버 전 숨김 · 이름 = 기본 범위(파일과 대화)",
@@ -2781,7 +2931,7 @@ for (const txt of ["/goal", "/goal clear"]) {
 // Claude 는 속도 줄 없음 · `/fast` 는 터미널 안내
 await clickAt(`document.querySelector('${L} [data-chat-model-chip]')`);
 await waitFor(`!!document.querySelector('[data-flip-model-menu]')`, 3000);
-check("S42 Claude 모델 메뉴 — 속도 줄 없음 · 구분선 하나(모델 | 강도)", [await ev(`document.querySelectorAll('[data-flip-model-menu] [data-chat-tile-tiers]').length`), await ev(`document.querySelectorAll('[data-flip-model-menu] hr').length`)], [0, 1]);
+check("S42 Claude 모델 메뉴 — 속도 줄 없음 · 구분선 하나(모델 | 강도)", [await ev(`document.querySelectorAll('[data-flip-model-menu] [data-chat-tile-tiers]').length`), await ev(`[...document.querySelectorAll('[data-flip-model-menu] hr')].filter((h) => !h.previousElementSibling?.matches('[data-chat-tile-cli-row]')).length`)], [0, 1]);
 await press("Escape");
 await setField("/fast");
 await sleep(150);
@@ -2880,7 +3030,7 @@ await emit({ t: "review", phase: "started", label: "current changes", text: null
 await sleep(300);
 check("S37 시작 표지 = 검토하는 중: label · 회전", [await noticeOf("reviewing"), await ev(`!!document.querySelector('${L} [data-chat-tile-notice="reviewing"] .spin')`)], ["검토하는 중: current changes", true]);
 v0 = await callCount();
-await clickAt(`document.querySelector('${L} [data-chat-tile-stop]')`);
+await clickAt(`document.querySelector('${STOP}')`);
 check("S37 검토 중 [중지] → interrupt 하나", (await callsOf("chat_tile_interrupt", v0)).length, 1);
 await emit({ t: "review", phase: "done", label: "current changes", text: "1. [P1] `src/a.ts:12` 에서 널 검사가 빠졌습니다." }, VX);
 await sleep(300);
@@ -3002,7 +3152,7 @@ vb = await goalBand();
 check("S40 턴 중에도 띠 보임 · [멈춤] 눌러짐", [vb?.status, vb?.buttons], ["active", ["pause", "clear"]]);
 await shot("v-s40-band-running.png");
 v0 = await callCount();
-await clickAt(`document.querySelector('${L} [data-chat-tile-stop]')`);
+await clickAt(`document.querySelector('${STOP}')`);
 await sleep(300);
 check("S40 [중지] → chat_tile_interrupt 하나 · 목표 명령 0", [(await callsOf("chat_tile_interrupt", v0)).length, (await goalCalls(v0)).length], [1, 0]);
 await emit({ t: "turnEnded", turn: "auto2", outcome: "interrupted", message: null }, VX);
@@ -3607,6 +3757,161 @@ await press("Escape");
 await setField("");
 await ev(`(window.__ctSnap = null, 1)`);
 check("S46 폰 예외 0", errors.slice(), []);
+
+// ═══ X. 한 타일에서 CLI 바꾸기 — 그 자리에 다른 CLI 의 새 대화(모델 메뉴 맨 위 CLI 줄) ═══════════════════════════════
+LABEL = "main";
+subGenNow = 1;
+await bootPage({ remote: false, width: 1280, height: 860 });
+errors.length = 0;
+const TITLES = importApp("app/titles.svelte.ts");
+const tabTitleNow = () => ev(`(async () => { const w = await ${W}; const ti = await ${TITLES}; return ti.displayTabTitle(w.activeTab()); })()`);
+const headOf = (paneId) => ev(`document.querySelector('[data-pane="${paneId}"]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
+const CHIP = `document.querySelector('${L} [data-chat-model-chip]')`;
+const openModelMenu = async () => {
+  await clickAt(CHIP);
+  return waitFor(`!!document.querySelector('[data-flip-model-menu]')`, 3000);
+};
+const cliMenu = () =>
+  evj(`(() => { const m = document.querySelector('[data-flip-model-menu]'); if (!m) return 'null'; const row = m.querySelector('[data-chat-tile-cli-row]'); const M = m.getBoundingClientRect();
+    const segs = [...m.querySelectorAll('[data-chat-tile-cli]')];
+    const inM = (e) => { const R = e.getBoundingClientRect(); return R.left >= M.left - 0.5 && R.right <= M.right + 0.5 && R.top >= M.top - 0.5 && R.bottom <= M.bottom + 0.5; };
+    return JSON.stringify({ row: !!row, first: !!row && m.firstElementChild === row, segs: segs.map((s) => s.dataset.chatTileCli), on: segs.filter((s) => s.getAttribute('aria-checked') === 'true').map((s) => s.dataset.chatTileCli),
+      logos: segs.length > 0 && segs.every((s) => !!s.querySelector('svg')), names: segs.map((s) => s.textContent.trim()), models: m.querySelectorAll('[data-flip-model]').length > 0,
+      inside: M.left >= -0.5 && M.right <= innerWidth + 0.5 && M.top >= -0.5 && M.bottom <= innerHeight + 0.5, segsIn: segs.every(inM), noX: document.documentElement.scrollWidth <= innerWidth + 1,
+      segH: Math.round(segs[0]?.getBoundingClientRect().height ?? 0) }); })()`);
+const clickCli = (id) => clickAt(`document.querySelector('[data-flip-model-menu] [data-chat-tile-cli="${id}"]')`);
+/** 갈아 끼우기를 기다린다 — 옛 항목 close · 새 항목 subscribe(open 뒤) */
+const waitSwap = async (oldChat, from) => {
+  await waitFor(`window.__calls.slice(${from}).some(([c, a]) => c === 'chat_tile_close' && a.chat === ${JSON.stringify(oldChat)})`, 5000);
+  await waitFor(`window.__calls.slice(${from}).filter(([c, a]) => c === 'chat_tile_subscribe' && a.chat !== ${JSON.stringify(oldChat)}).length >= 2`, 5000);
+  await sleep(500);
+  return chatSpec();
+};
+
+// X1 메뉴 맨 위 CLI 줄 — 사이드 채팅 모델 풍선과 같은 세그먼트 · 로고 · 지금 CLI 고름 · 아래는 그대로
+let xs = await openCT("claude", null);
+let XC = xs.chat.chatId;
+check("X1 (준비) Claude 채팅 잎 · 탭 제목 · 머리", [xs.chat.cli, (await tabTitleNow())?.includes("Claude Code"), (await headOf(xs.id))?.includes("Claude Code 채팅")], ["claude", true, true]);
+await setField("쓰던 글 그대로");
+check("X1 모델 메뉴 열림", await openModelMenu(), true);
+let xm = await cliMenu();
+check("X1 CLI 줄 — 맨 위 · Claude Code | Codex · 로고 · 지금 CLI 고름 · 모델 줄은 아래 그대로",
+  [xm?.row, xm?.first, xm?.segs, xm?.names, xm?.logos, xm?.on, xm?.models, xm?.inside, xm?.segsIn],
+  [true, true, ["claude", "codex"], ["Claude Code", "Codex"], true, ["claude"], true, true, true]);
+await shot("x1-cli-row.png");
+// ←→ 는 옮기기만 — 고르지 않는다
+await ev(`document.querySelector('[data-flip-model-menu] [data-chat-tile-cli="claude"]').focus()`);
+let x0 = await callCount();
+await press("ArrowRight");
+check("X1 → 는 포커스만 Codex 로 · 잎 그대로 · close 없음", [await ev(`document.activeElement?.dataset.chatTileCli ?? null`), (await chatSpec())?.chat?.chatId === XC, (await callsOf("chat_tile_close", x0)).length], ["codex", true, 0]);
+await ev(`document.querySelector('[data-flip-model-menu] [data-chat-tile-cli="claude"]').focus()`);
+
+// X2 빈 대화 — 누르면 바로 바꾼다
+await markFrame();
+x0 = await callCount();
+await clickCli("codex");
+const swapAnims = await frameAnims();
+let xn = await waitSwap(XC, x0);
+check("X2 같은 타일(pane id) · 틀 · 머리줄 DOM 그대로 · 등장 애니메이션 없음", [xn?.id === xs.id, ...(await frameKept()), swapAnims], [true, true, true, 0]);
+check("X2 빈 대화 → 바로 Codex 새 잎 · 같은 자리 · 폴더만 물려줌 · model/effort 빈 값 · conv/permMode/tier 없음",
+  [xn?.chat?.cli, xn?.chat?.chatId !== XC, xn?.tab === xs.tab, xn?.chat?.model, xn?.chat?.effort, xn?.chat?.cwd === xs.chat.cwd, ["conv", "permMode", "tier"].filter((k) => k in (xn?.chat ?? {}))],
+  ["codex", true, true, "", "", true, []]);
+check("X2 옛 항목 close · 새 항목은 open{fresh, codex}(CLI 를 띄우지 않음) · 보내기 없음",
+  [(await callsOf("chat_tile_close", x0)).map((a) => a.chat === XC), (await callsOf("chat_tile_open", x0)).map((a) => [a.chat === xn?.chat?.chatId, a.cli, a.mode?.kind]), (await callsOf("chat_tile_send", x0)).length],
+  [[true], [[true, "codex", "fresh"]], 0]);
+check("X2 머리 · 탭 제목이 Codex 를 따른다 · 메뉴 닫힘", [(await headOf(xn?.id))?.includes("Codex 채팅"), (await tabTitleNow())?.includes("Codex"), await ev(`!document.querySelector('[data-flip-model-menu]')`)], [true, true, true]);
+check("X2 쓰던 글이 새 잎 입력 칸으로 · 포커스도", await fieldState().then((f) => [f.value, f.focus]), ["쓰던 글 그대로", true]);
+await shot("x2-switched-codex.png");
+xs = xn;
+XC = xs.chat.chatId;
+
+// X5 일하는 중 — 칩이 잠기고 열린 메뉴는 닫힌다(CLI 줄에 닿을 길이 없다)
+await setField("");
+check("X5 (준비) 메뉴 열림", await openModelMenu(), true);
+await emit({ t: "ready", cli: "codex", version: "0.80.0", model: "gpt-6-sol", models: [], efforts: {}, conversationId: null }, XC);
+await emit({ t: "turnStarted", turn: "x5" }, XC);
+await sleep(400);
+check("X5 턴이 서면 메뉴 닫힘 · 칩 잠김", [await ev(`!document.querySelector('[data-flip-model-menu]')`), await ev(`${CHIP}?.getAttribute('aria-disabled')`)], [true, "true"]);
+await clickAt(CHIP);
+await sleep(300);
+check("X5 잠긴 칩을 눌러도 메뉴 없음 · 잎 그대로", [await ev(`!document.querySelector('[data-flip-model-menu]')`), (await chatSpec())?.chat?.chatId === XC], [true, true]);
+await shot("x5-working-locked.png");
+await emit({ t: "turnEnded", turn: "x5", outcome: "ok", message: null }, XC);
+await sleep(400);
+
+// X3 대화 · 첨부가 있어도 누르면 바로 바뀜(확인 없음 — 사이드 채팅 CLI 줄과 같다) · 쓰던 글은 옮기고 첨부는 옮기지 않는다
+await setField("첫 말");
+x0 = await callCount();
+await press("Enter");
+await sleep(300);
+const xcid = (await callsOf("chat_tile_send", x0))[0]?.clientId;
+await emit({ t: "ready", cli: "codex", version: "0.80.0", model: "gpt-6-sol", models: [], efforts: {}, conversationId: CONV }, XC);
+await emit({ t: "turnStarted", turn: "x3" }, XC);
+await emit({ t: "userAccepted", clientId: xcid, text: "첫 말" }, XC);
+await emit({ t: "textDelta", item: "xa", text: "답입니다" }, XC);
+await ev(`(window.__transcript = { items: [
+  { role: 'user', text: '첫 말', truncated: false, images: 0, tool: null, at: Date.now() - 3000 },
+  { role: 'assistant', text: '답입니다', truncated: false, images: 0, tool: null, at: Date.now() - 2000 },
+], cursor: null }, 1)`);
+await emit({ t: "turnEnded", turn: "x3", outcome: "ok", message: null }, XC);
+await sleep(800);
+await pickFiles(["notes.txt"]);
+await waitFor(`!!document.querySelector('${L} [data-flip-attachment]:not(.staging)')`, 4000);
+await setField("다음 글");
+check("X3 (준비) 대화 · 첨부 칩 · 메뉴 열림", [(await chatSpec())?.chat?.conv, await ev(`document.querySelectorAll('${L} [data-flip-attachment]').length`), await openModelMenu()], [CONV, 1, true]);
+await shot("x3-before-switch.png");
+x0 = await callCount();
+await clickCli("claude");
+xn = await waitSwap(XC, x0);
+check("X3 대화 · 첨부가 있어도 바로 Claude 새 잎 · 같은 자리 · conv 없음 · 옛 항목 close · 새 항목은 send 없음",
+  [xn?.chat?.cli, xn?.chat?.chatId !== XC, xn?.tab === xs.tab, "conv" in (xn?.chat ?? {}), (await callsOf("chat_tile_close", x0)).map((a) => a.chat === XC), (await callsOf("chat_tile_send", x0)).length],
+  ["claude", true, true, false, [true], 0]);
+check("X3 머리 · 탭 제목 Claude Code · 메뉴 닫힘 · 쓰던 글 · 포커스 · 첨부 칩 없음",
+  [(await headOf(xn?.id))?.includes("Claude Code 채팅"), (await tabTitleNow())?.includes("Claude Code"), await ev(`!document.querySelector('[data-flip-model-menu]')`),
+    ...(await fieldState().then((f) => [f.value, f.focus])), await ev(`document.querySelectorAll('${L} [data-flip-attachment]').length`)],
+  [true, true, true, "다음 글", true, 0]);
+await shot("x3-switched-claude.png");
+xs = xn;
+XC = xs.chat.chatId;
+// 같은 CLI 를 누르면 아무 일 없음(메뉴도 열린 채)
+await openModelMenu();
+x0 = await callCount();
+await clickCli("claude");
+await sleep(400);
+check("X4 지금 CLI 누름 → 메뉴 열린 채 · 잎 그대로 · close 없음", [!!(await cliMenu())?.row, (await chatSpec())?.chat?.chatId === XC, (await callsOf("chat_tile_close", x0)).length], [true, true, 0]);
+await press("Escape");
+
+// X6 작은 타일(560×400) · 좁은 창(400) — 줄이 메뉴 폭 안 · 메뉴 화면 안 · 가로 넘침 없음
+for (const [w, h, name] of [[560, 400, "x6-small-tile.png"], [400, 760, "x6-narrow.png"]]) {
+  await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+  await sleep(600);
+  await openModelMenu();
+  await sleep(300);
+  xm = await cliMenu();
+  check(`X6 ${w}×${h} — 메뉴 화면 안 · 세그먼트가 메뉴 안 · 가로 넘침 없음`, [xm?.row, xm?.inside, xm?.segsIn, xm?.noX], [true, true, true, true]);
+  await shot(name);
+  await press("Escape");
+}
+await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+check("X 예외 0", errors.slice(), []);
+
+// X7 원격 창 · 폰 — CLI 줄 없음(원격 창은 타일 명세를 쓰지 않는다)
+LABEL = "remote-h-1";
+subGenNow = 1;
+for (const [mobile, w, h, name] of [[false, 1280, 860, "x7-remote.png"], [true, 400, 844, "x7-phone.png"]]) {
+  await bootPage({ remote: true, width: w, height: h, mobile });
+  errors.length = 0;
+  await pushMirror(MIRROR_PANE);
+  await waitFor(`!!document.querySelector('${L} [data-chat-tile-face]') && ${CHIP}?.getAttribute('aria-disabled') !== 'true'`, 8000);
+  await sleep(400);
+  if (!(await openModelMenu())) await ev(`(${CHIP}.click(), 1)`);
+  await waitFor(`!!document.querySelector('[data-flip-model-menu]')`, 3000);
+  xm = await cliMenu();
+  check(`X7 ${mobile ? "폰" : "원격 창"} — 모델 메뉴는 열림 · CLI 줄 없음 · 화면 안`, [xm?.models, xm?.row, xm?.segs, xm?.inside, xm?.noX], [true, false, [], true, true]);
+  await shot(name);
+  await press("Escape");
+  check(`X7 ${mobile ? "폰" : "원격 창"} 예외 0`, errors.slice(), []);
+}
 
 console.log(bad === 0 ? "ALL OK" : `${bad} FAILED`);
 ws.close();

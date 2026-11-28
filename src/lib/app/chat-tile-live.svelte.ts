@@ -57,8 +57,8 @@ import {
   type TierView,
 } from "$lib/side-chat-api";
 import { addSent, clearEnded, compactNoticeDetail, emptyLive, foldLive, markSendFailed, pendingPermissions, seedLive, type LiveState } from "$lib/side-chat-live";
-import { findPaneAnywhere, replaceTile, tabOfPane } from "$lib/app/tabs.svelte.js";
-import { newChatTilePane } from "$lib/session";
+import { findPaneAnywhere, tabOfPane } from "$lib/app/tabs.svelte.js";
+import type { ChatTileSpec } from "$lib/session";
 import { newChatTileId, tierOffered, tierOptions, tiersOf, tierWordOk } from "$lib/chat-tile/spec";
 import { noteChatTileConversation, unlinkAgentSession } from "$lib/app/agent-sessions.svelte.js";
 import { setChatTileBusy } from "$lib/app/chat-tile-busy";
@@ -1166,19 +1166,54 @@ export function cancelRewind(chat: string): void {
 }
 
 /**
- * 이 자리에 새 채팅 — 같은 cli · model · effort · tier · cwd 의 새 잎으로 갈아 끼운다(권한 모드 · 대화는 물려주지 않는다).
- * 옛 잎의 언마운트가 그 항목을 닫는다. 일하는 중이면 거짓.
+ * 이 자리에 새 채팅 — 같은 cli · model · effort · tier · cwd 의 새 대화로 바꾼다(권한 모드 · 대화는 물려주지 않는다).
+ * 원격 창 · 일하는 중이면 거짓.
  */
 export function newChatInPlace(tg: ChatTileTarget): boolean {
-  // 원격 창은 명세를 쓰지 않는다 — 잎 갈아 끼우기는 메인 PC 창에서만
+  const cur = targets.get(tg.chat) ?? tg;
+  const tier = cur.cli === "codex" && tierWordOk(cur.tier) ? { tier: cur.tier } : {};
+  return replaceInPlace(tg, newChatTileId(), { cli: cur.cli, model: cur.model, effort: cur.effort, ...tier }, "");
+}
+
+/**
+ * 다른 CLI 의 새 대화로 바꾼다 — 대화 기록은 CLI 마다 따로라 이어받지 않는다(하던 대화는 지난 대화 목록에 남는다).
+ * 폴더만 물려준다 — 모델 · 강도 · 권한 모드 · 속도 등급은 CLI 마다 뜻이 다르다. `draft` 는 새 몸의 입력 칸이 한 번 받는다(`takeChatTileDraft`).
+ */
+export function switchChatTileCli(tg: ChatTileTarget, cli: SideChatCli, draft = ""): boolean {
+  if (cli === (targets.get(tg.chat) ?? tg).cli) return false;
+  return replaceInPlace(tg, newChatTileId(), { cli, model: "", effort: "" }, draft);
+}
+
+/** 바꾼 뒤 새 몸이 마운트하며 한 번 받는다 — null 이면 바꾼 자리가 아니다(포커스를 가져가지 않는다) */
+export function takeChatTileDraft(chat: string): string | null {
+  const d = drafts.get(chat);
+  if (d === undefined) return null;
+  drafts.delete(chat);
+  return d;
+}
+
+const drafts = new Map<string, string>();
+
+/**
+ * 잎(pane id)은 그대로 두고 명세의 `chat` 만 새 채팅으로 바꾼다 — 타일 틀 · 머리줄은 다시 서지 않아 등장 애니메이션이 돌지 않는다.
+ * 옛 항목 닫기 · 새 항목 붙기는 잎이 `chatId` 를 따라 한다(`ChatTileLeaf`).
+ */
+function replaceInPlace(
+  tg: ChatTileTarget,
+  chatId: string,
+  spec: Pick<ChatTileSpec, "cli" | "model" | "effort" | "tier">,
+  draft: string,
+): boolean {
+  // 원격 창은 명세를 쓰지 않는다 — 메인 PC 창에서만
   if (isRemote) return false;
   const l = lives[tg.chat];
   if (l && chatTileWorking(l)) return false;
-  const tab = tabOfPane(tg.paneId);
-  if (!tab || findPaneAnywhere(tg.paneId)?.kind !== "chat") return false;
-  const cur = targets.get(tg.chat) ?? tg;
-  const tier = cur.cli === "codex" && tierWordOk(cur.tier) ? { tier: cur.tier } : {};
-  return replaceTile(tab.id, tg.paneId, newChatTilePane({ chatId: newChatTileId(), cli: cur.cli, model: cur.model, effort: cur.effort, cwd: cur.cwd, ...tier }));
+  const pane = tabOfPane(tg.paneId) ? findPaneAnywhere(tg.paneId) : null;
+  if (pane?.kind !== "chat" || pane.chat?.chatId !== tg.chat) return false;
+  const cwd = (targets.get(tg.chat) ?? tg).cwd;
+  drafts.set(chatId, draft);
+  pane.chat = { chatId, ...spec, cwd };
+  return true;
 }
 
 export async function interruptChatTile(chat: string): Promise<void> {

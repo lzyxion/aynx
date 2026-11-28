@@ -139,15 +139,15 @@ node scripts/dev/run-harness.mjs side-chat-path-links-harness.mjs <outdir> --siz
 
 ## chat-tile-harness.mjs — 채팅 모양 AI 타일
 
-(2026-11-27 — `chat-tile/ChatTileLeaf` · `ChatTileFace` · `ChatTilePermCard` · 독 · AI 고르기 상자의 [채팅]) 서버 없이 `chat_tile_*` 명령을 스텁이 답하고 사건은
+(2026-11-27 — `chat-tile/ChatTileLeaf` · `ChatTileFace` · `ChatTilePermCard` · 독 · AI 고르기 상자의 모양 메뉴) 서버 없이 `chat_tile_*` 명령을 스텁이 답하고 사건은
 Channel 로 민다(`__ctEmit`). 스텁 서버 표는 `sessionStorage` 에 남아 모르는 채팅의 subscribe 는 `[session-gone]`(잎이 open 으로 세운다) · `h.gone` 이면 한 번
-`[session-gone]`. 설정 켬/끔의 [채팅] · open{fresh} · send{epoch, clientId} · 흐름 · 도구 줄 · 권한 카드(단추 둘 · diff · 입력 칸 대신 한 줄) · [중지] · 모델/강도 ·
-needs-terminal · 리로드(subscribe 만 · gone 이면 open{resume}) · 턴 중 닫기 물음 · 고르기 상자 Tab/Enter · 원격 창(명세 안 씀) · 폰 400(키 띠 숨김)을 본다.
+`[session-gone]`. 설정 켬/끔의 독 칸(모양 단추 없음 · 우클릭 · Shift+F10 · 메뉴 키 = 모양 메뉴 · 끔이면 메뉴 없음 · 끔 + 기본 채팅 = 터미널) · open{fresh} · send{epoch, clientId} · 흐름 · 도구 줄 · 권한 카드(단추 둘 · diff · 입력 칸 대신 한 줄) · [중지] · 모델/강도 ·
+needs-terminal · 리로드(subscribe 만 · gone 이면 open{resume}) · 턴 중 닫기 물음 · 고르기 상자 우클릭 메뉴 · Alt+Enter · 기본 채팅의 Enter · 원격 창(명세 안 씀) · 폰 400(키 띠 숨김)을 본다.
 
 ```bash
 node scripts/dev/run-harness.mjs chat-tile-harness.mjs <outdir> --size 1280x860
-#   → launcher-dock.png · chat-tile-empty.png · chat-tile-midturn.png · chat-tile-perm.png · chat-tile-model-menu.png ·
-#     chat-tile-needs-terminal.png · chat-tile-close-busy.png · launcher-picker.png · chat-tile-remote.png · chat-tile-phone.png
+#   → launcher-dock.png · launcher-dock-menu.png · chat-tile-empty.png · chat-tile-midturn.png · chat-tile-perm.png · chat-tile-model-menu.png ·
+#     chat-tile-needs-terminal.png · chat-tile-close-busy.png · launcher-picker.png · launcher-picker-menu.png · chat-tile-remote.png · chat-tile-phone.png
 ```
 
 ## side-chat-perm-mode-harness.mjs — 사이드 채팅 권한 모드(Manual · Auto)
